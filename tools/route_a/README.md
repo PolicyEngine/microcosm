@@ -270,9 +270,9 @@ finished H5. A run without `--certify` ends with `ROUTE_A_BUILT.json`, which
 records the build, its directory and record, whether its release gates
 failed and the base preflight's verdict, and says how to certify it. A failed
 certification is its own stage, so a rerun with `--certify` repeats only it,
-never the build. After certification the hand-off file written at the end
-(`ROUTE_A_DONE.json` or `ROUTE_A_BLOCKED.json`), which replaces
-`ROUTE_A_BUILT.json`, records the tier, the release
+never the build. Once certification is accepted the driver removes
+`ROUTE_A_BUILT.json`, and the hand-off file written at the end
+(`ROUTE_A_DONE.json` or `ROUTE_A_BLOCKED.json`) records the tier, the release
 and the published build ID, the candidate paths and preflight verdicts, plus
 two manual commands the driver never runs: `publish_command` publishes the
 build through the emitter into its folder of the release certification chose,

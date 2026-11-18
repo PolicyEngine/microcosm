@@ -1478,18 +1478,129 @@ def test_route_a_keeps_a_build_that_failed_its_release_gates() -> None:
     assert ': "${ROUTE_A_EVIDENCE_FAILURE_OWNERS=}"' in example
 
 
-def test_route_a_replaces_the_build_only_hand_off_once_certified() -> None:
-    """A run with --certify ends with ROUTE_A_DONE.json (or
-    ROUTE_A_BLOCKED.json), which supersedes the ROUTE_A_BUILT.json an earlier
-    run without --certify left, so the two never stand side by side (review
-    of microcosm#1672)."""
+def test_route_a_removes_the_build_only_hand_off_once_certified() -> None:
+    """Once certification is accepted, the build-only ROUTE_A_BUILT.json an
+    earlier run left no longer holds, whatever the preflights after it find,
+    so it goes then, not only with a run that succeeds (review of #1681)."""
     source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
-    chosen = source.index("OUTF=$RUN_ROOT/ROUTE_A_DONE.json;")
+    certified = source.index('[ -f "$REL_DIR/release_manifest.json" ] || fail')
     removed = source.index('rm -f "$RUN_ROOT/ROUTE_A_BUILT.json"')
-    written = source.index('"$PY" - "$OUTF"')
-    assert chosen < removed < written
+    preflight = source.index("run_stage preflight-release")
+    assert certified < removed < preflight
+    assert source.count('rm -f "$RUN_ROOT/ROUTE_A_BUILT.json"') == 1
     readme = " ".join((ROUTE_A_TOOLS / "README.md").read_text(encoding="utf-8").split())
-    assert "which replaces `ROUTE_A_BUILT.json`" in readme
+    assert (
+        "Once certification is accepted the driver removes `ROUTE_A_BUILT.json`"
+        in readme
+    )
+
+
+def _after_the_release_stage(
+    tmp_path: Path,
+    *,
+    returncode: int,
+    certify: str,
+    tier: str = "certified",
+    owners: str = "",
+    blocked: str = "0",
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """Run the driver from the release stage's acceptance to the certify
+    stage, on a release stage that exited ``returncode``."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    start = source.index('[ -f "$REL_OUT/build_record.json" ] || fail')
+    end = source.index("wait_prior_supervisor certify\n")
+    run_root = tmp_path / "run-root"
+    run = run_root / "run-abc"
+    (run / "release-sup").mkdir(parents=True)
+    (run / "release-sup" / "ACCEPTED").write_text(
+        f"returncode={returncode} 2026-11-18 20:00:00\n"
+    )
+    rel_out = run / "release-out" / "populace-us-2024-x"
+    rel_out.mkdir(parents=True)
+    (rel_out / "build_record.json").write_text("{}")
+    settings = {
+        "RUN_ROOT": str(run_root),
+        "RUN": str(run),
+        "REL_OUT": str(rel_out),
+        "RID": "populace-us-2024-x",
+        "PY": sys.executable,
+        "C": "c" * 40,
+        "PEUS": "2.145.3",
+        "BASE_H5": "/fixture/base.h5",
+        "BASE_SHA": "b" * 64,
+        "PF_BLOCKED": blocked,
+        "BUILT_FAILED_GATES_RC": "3",
+        "ROUTE_A_CERTIFY": certify,
+        "ROUTE_A_CERTIFY_TIER": tier,
+        "ROUTE_A_EVIDENCE_FAILURE_OWNERS": owners,
+        "LOG": str(run_root / "route_a.log"),
+    }
+    # The driver's own log, fail and sha_of, so the run is the driver's.
+    helpers = source[source.index("log() {") : source.index("free_bytes() {")]
+    script = "set -u\n"
+    script += "".join(
+        f"{key}={shlex.quote(value)}\n" for key, value in settings.items()
+    )
+    script += helpers + source[start:end]
+    script += "echo REACHED_THE_CERTIFY_STAGE\n"
+    result = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=30
+    )
+    return result, run_root
+
+
+def test_route_a_keeps_a_failed_build_and_certifies_it_only_as_evidence(
+    tmp_path: Path,
+) -> None:
+    """Run, not read: a release stage that exited 3 (a build that failed its
+    release gates) is kept. A build-only run says so and exits 3; a certify
+    run refuses the certified tier before the certify stage, and the evidence
+    tier goes on to it (review of #1681)."""
+    built, root = _after_the_release_stage(tmp_path / "a", returncode=3, certify="0")
+    assert built.returncode == 3, built.stderr
+    hand_off = json.loads((root / "ROUTE_A_BUILT.json").read_text())
+    assert hand_off["release_gates_failed"] is True
+    assert hand_off["certified"] is False
+    assert "ROUTE_A_CERTIFY_TIER=evidence" in hand_off["next"]
+    assert "REACHED_THE_CERTIFY_STAGE" not in built.stdout
+
+    green, root = _after_the_release_stage(tmp_path / "b", returncode=0, certify="0")
+    assert green.returncode == 0, green.stderr
+    assert (
+        json.loads((root / "ROUTE_A_BUILT.json").read_text())["release_gates_failed"]
+        is False
+    )
+    blocked, _ = _after_the_release_stage(
+        tmp_path / "c", returncode=0, certify="0", blocked="1"
+    )
+    assert blocked.returncode == 4, blocked.stderr
+
+    refused, root = _after_the_release_stage(tmp_path / "d", returncode=3, certify="1")
+    assert refused.returncode == 1
+    assert "refuses it at the certified tier" in refused.stdout
+    assert (root / "ROUTE_A_FAILED").is_file()
+    assert "REACHED_THE_CERTIFY_STAGE" not in refused.stdout
+
+    owners = tmp_path / "owners.json"
+    owners.write_text("{}")
+    for case, given in (("e", ""), ("f", str(owners))):
+        evidence, root = _after_the_release_stage(
+            tmp_path / case, returncode=3, certify="1", tier="evidence", owners=given
+        )
+        assert evidence.returncode == 0, evidence.stderr
+        assert "REACHED_THE_CERTIFY_STAGE" in evidence.stdout
+        assert not (root / "ROUTE_A_FAILED").exists()
+        digest = hashlib.sha256(owners.read_bytes()).hexdigest()
+        assert (f"sha256 {digest}" in evidence.stdout) is bool(given)
+    missing, _ = _after_the_release_stage(
+        tmp_path / "g",
+        returncode=3,
+        certify="1",
+        tier="evidence",
+        owners=str(tmp_path / "absent.json"),
+    )
+    assert missing.returncode == 1
+    assert "is not a file" in missing.stdout
 
 
 def test_route_a_checks_the_certification_parser_for_the_tier_flags() -> None:

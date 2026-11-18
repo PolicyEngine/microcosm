@@ -3248,15 +3248,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="rows per chunked source read (default: sized from 128 MiB)",
     )
     args = parser.parse_args(argv)
-    if args.reference_release_dir is not None:
-        # A failed build keeps its H5 to be evaluated, which the probe may
-        # score as --export, but it is no reference (microcosm#1585 item 11).
-        failed = load_builder()._failed_build_holding(args.reference_release_dir)
+    # A failed build keeps its H5 to be evaluated, which the probe may score
+    # as --export, but it is no reference (microcosm#1585 item 11): neither
+    # its directories nor any of its files given as one (review of #1681).
+    # --calibration-diagnostics is the scored build's own fit, so a failed
+    # build's goes with its export.
+    for flag, reference in (
+        ("--reference-release-dir", args.reference_release_dir),
+        ("--reference-smoke", args.reference_smoke),
+        ("--reference-validation", args.reference_validation),
+        ("--reference-build-manifest", args.reference_build_manifest),
+    ):
+        failed = (
+            None
+            if reference is None
+            else load_builder()._failed_build_holding(reference)
+        )
         if failed is not None:
             parser.error(
-                f"--reference-release-dir {args.reference_release_dir} belongs "
-                f"to {failed}. A failed build can be scored as --export, but "
-                "not taken as the reference."
+                f"{flag} {reference} belongs to {failed}. A failed build can be "
+                "scored as --export, but not taken as the reference."
             )
 
     receipt_path = args.sample_receipt

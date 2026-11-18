@@ -54,6 +54,7 @@ import dataclasses
 import gc
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import math
 import platform
@@ -2620,6 +2621,38 @@ def _write_reform_income_tax_cache(
     return digest, values_path
 
 
+def _finished_release_manifest(release_dir: Path) -> dict | None:
+    """``release_dir``'s release manifest, if a certification finished it.
+
+    Certification's last writes are the build-folder rewrite
+    (:func:`rewrite_release_dir`), which names the release and the build at
+    the top level of the release manifest and then of the build manifest.
+    Until both read and name the same build, a crash left the certification
+    part-written: it certifies nothing, and a rerun replaces both manifests
+    (review of #1681).
+    """
+
+    release_dir = Path(release_dir)
+    manifests = []
+    for name in ("release_manifest.json", "build_manifest.json"):
+        try:
+            manifest = json.loads((release_dir / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not (
+            isinstance(manifest, dict)
+            and manifest.get("release") == release_dir.name
+            and isinstance(manifest.get("build"), str)
+            and manifest["build"]
+        ):
+            return None
+        manifests.append(manifest)
+    release_manifest, build_manifest = manifests
+    if build_manifest["build"] != release_manifest["build"]:
+        return None
+    return release_manifest
+
+
 def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
     """Fail loud when --out points at a finished build's release directory.
 
@@ -2632,11 +2665,11 @@ def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
     or the directory removed deliberately.
     """
 
-    manifest_path = Path(release_dir) / "release_manifest.json"
-    if manifest_path.exists():
+    if _finished_release_manifest(release_dir) is not None:
         raise RuntimeError(
             f"Release directory {release_dir} already carries a certified "
-            "release (release_manifest.json present). Choose a new --out for "
+            "release (its release and build manifests name the build). Choose "
+            "a new --out for "
             "this build or deliberately remove the stale directory before "
             "rerunning."
         )
@@ -2711,8 +2744,14 @@ def _build_certified_as_evidence(release_root: Path) -> bool:
     mistake, not an edit, until certification signs (PR 4b).
     """
 
-    release_dir = _certification_release_dir(release_root, evidence_release=True)
-    return (release_dir / "release_manifest.json").is_file()
+    manifest = _finished_release_manifest(
+        _certification_release_dir(release_root, evidence_release=True)
+    )
+    return (
+        manifest is not None
+        and manifest.get("tier") == "evidence"
+        and bool(manifest.get("known_failures"))
+    )
 
 
 def _recorded_release_gate_failures(payload: object) -> list[str]:
@@ -2777,7 +2816,7 @@ def _failed_build_holding(path: Path) -> str | None:
     """
 
     target = Path(path).resolve()
-    for release_root in target.parents:
+    for release_root in (target, *target.parents):
         record_path = release_root / US_BUILD_RECORD_FILENAME
         if not record_path.is_file():
             continue
@@ -3563,8 +3602,64 @@ def _local_workspace_package_version(package: str) -> str:
     return version if isinstance(version, str) and version else "not-installed"
 
 
+def _repository_root() -> Path:
+    """The checkout this tool's code is in, where its git checks run.
+
+    A build and its certification check the commit and the work tree of the
+    code that runs, not of the current directory, so a tool run from
+    another checkout's directory cannot pass as that checkout's code (review
+    of #1681). The workspace packages must load from it too
+    (:func:`_packages_outside_the_checkout`).
+    """
+
+    return Path(__file__).resolve().parents[1]
+
+
+#: The workspace packages a build and its certification run. Every one
+#: reports the same version wherever it is installed from, so a version check
+#: cannot tell checkouts apart: each must load from this tool's checkout.
+_WORKSPACE_PACKAGES = (
+    "microcosm.build",
+    "microcosm.calibrate",
+    "microcosm.data",
+    "microcosm.diagnostics",
+    "microcosm.fit",
+    "microcosm.frame",
+    "microcosm.graph",
+)
+
+
+def _packages_outside_the_checkout() -> list[str]:
+    """The workspace packages that load from outside this tool's checkout."""
+
+    root = _repository_root().resolve()
+    outside = []
+    for name in _WORKSPACE_PACKAGES:
+        spec = importlib.util.find_spec(name)
+        origin = None if spec is None else spec.origin
+        if origin is None or root not in Path(origin).resolve().parents:
+            outside.append(f"{name} ({origin})")
+    return outside
+
+
+def _refuse_packages_from_another_checkout(action: str) -> None:
+    """Refuse to ``action`` with workspace packages from another tree."""
+
+    outside = _packages_outside_the_checkout()
+    if outside:
+        raise SystemExit(
+            f"Refusing to {action} with packages from outside this tool's "
+            f"checkout ({_repository_root()}): " + "; ".join(outside) + ". Run "
+            "it from a checkout whose own packages are installed (`uv sync "
+            "--all-packages` there), so the commit it records is the code that "
+            "ran."
+        )
+
+
 def _git_output(*args: str) -> str:
-    return subprocess.check_output(("git", *args), text=True).strip()
+    return subprocess.check_output(
+        ("git", "-C", str(_repository_root()), *args), text=True
+    ).strip()
 
 
 def _git_dirty() -> bool:
@@ -12164,16 +12259,58 @@ def _read_standing_evidence_failure_owners(text: str) -> tuple[tuple[str, str], 
                 f"{source}: each owner entry is an object with a pattern, an "
                 f"owner and the reason it is owned; got {entry!r}."
             )
-        entries.append((entry.get("pattern"), entry.get("owner")))
+        pattern = entry.get("pattern")
+        # A register-only commit can certify (microcosm#1585 item 11), so a
+        # standing pattern must name one gate's failure lines, as its prefix
+        # "<gate words> failed:" does; a short pattern would own every
+        # ownable failure (review of #1681).
+        if isinstance(pattern, str) and pattern.strip():
+            gate_words = pattern.removesuffix(" failed:").split()
+            names_a_gate = pattern.endswith(" failed:") and len(gate_words) >= 2
+        else:
+            names_a_gate = True  # _evidence_owner_pairs refuses it as empty
+        if not names_a_gate:
+            raise ValueError(
+                f"{source}: standing pattern {pattern!r} must be a gate's "
+                "failure prefix, at least two words then ' failed:', so it owns "
+                "that gate's failures alone."
+            )
+        entries.append((pattern, entry.get("owner")))
     return _evidence_owner_pairs(entries, source=source)
 
 
-#: The standing register, as this checkout packages it.
+_STANDING_EVIDENCE_FAILURE_OWNERS_BYTES = (
+    _standing_evidence_failure_owners_file().read_bytes()
+)
+#: The standing register, as this checkout packages it, read once, and the
+#: digest of the bytes it was read from, which an evidence certification
+#: records (review of #1681).
 US_EVIDENCE_FAILURE_OWNERS: tuple[tuple[str, str], ...] = (
     _read_standing_evidence_failure_owners(
-        _standing_evidence_failure_owners_file().read_text(encoding="utf-8")
+        _STANDING_EVIDENCE_FAILURE_OWNERS_BYTES.decode("utf-8")
     )
 )
+US_EVIDENCE_FAILURE_OWNERS_SHA256 = hashlib.sha256(
+    _STANDING_EVIDENCE_FAILURE_OWNERS_BYTES
+).hexdigest()
+
+
+def _read_evidence_failure_owners_file(
+    path: Path,
+) -> tuple[tuple[tuple[str, str], ...], str]:
+    """A per-run owners file's pairs, and the digest of the bytes they came
+    from, so a certification records the file that decided ownership."""
+    data = Path(path).read_bytes()
+    payload = json.loads(data)
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"--evidence-failure-owners {path} must be a JSON object of "
+            "failure-substring pattern -> owner issue ref."
+        )
+    pairs = _evidence_owner_pairs(
+        payload.items(), source=f"--evidence-failure-owners {path}"
+    )
+    return pairs, hashlib.sha256(data).hexdigest()
 
 
 def _load_evidence_failure_owner_patterns(
@@ -12183,15 +12320,7 @@ def _load_evidence_failure_owner_patterns(
     standing register, so a run-specific entry can sharpen a standing owner."""
     per_run: tuple[tuple[str, str], ...] = ()
     if path is not None:
-        payload = json.loads(path.read_text())
-        if not isinstance(payload, dict):
-            raise ValueError(
-                f"--evidence-failure-owners {path} must be a JSON object of "
-                "failure-substring pattern -> owner issue ref."
-            )
-        per_run = _evidence_owner_pairs(
-            payload.items(), source=f"--evidence-failure-owners {path}"
-        )
+        per_run, _ = _read_evidence_failure_owners_file(path)
     return (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
 
 
@@ -14301,7 +14430,14 @@ def _certification_may_change(path: str) -> bool:
 def _git_commit_exists(commit: str) -> bool:
     return (
         subprocess.run(
-            ("git", "cat-file", "-e", f"{commit}^{{commit}}"),
+            (
+                "git",
+                "-C",
+                str(_repository_root()),
+                "cat-file",
+                "-e",
+                f"{commit}^{{commit}}",
+            ),
             capture_output=True,
             check=False,
         ).returncode
@@ -14327,9 +14463,10 @@ def _certifying_commit(record: _USBuildRecord) -> tuple[str, list[str]]:
             f"checkout does not have; fetch it, so certification at {head} can "
             "check what changed since the build."
         )
+    root = str(_repository_root())
     descends = (
         subprocess.run(
-            ("git", "merge-base", "--is-ancestor", record.commit, head),
+            ("git", "-C", root, "merge-base", "--is-ancestor", record.commit, head),
             capture_output=True,
             check=False,
         ).returncode
@@ -14344,7 +14481,17 @@ def _certifying_commit(record: _USBuildRecord) -> tuple[str, list[str]]:
     changed = [
         path
         for path in subprocess.check_output(
-            ("git", "diff", "--name-only", "--no-renames", "-z", record.commit, head),
+            (
+                "git",
+                "-C",
+                root,
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                record.commit,
+                head,
+            ),
             text=True,
         ).split("\0")
         if path
@@ -14398,6 +14545,7 @@ class _Certification:
         evidence_release: bool,
         owner_patterns: Sequence[tuple[str, str]],
         owners_file: Path | None,
+        owners_file_sha256: str | None,
         release_dir: Path,
         build: str,
         commit: str,
@@ -14406,6 +14554,7 @@ class _Certification:
         self.evidence_release = bool(evidence_release)
         self.owner_patterns = tuple(owner_patterns)
         self.owners_file = owners_file
+        self.owners_file_sha256 = owners_file_sha256
         self.release_dir = Path(release_dir)
         self.build = build
         self.commit = commit
@@ -14434,15 +14583,15 @@ class _Certification:
             },
         }
         if self.evidence_release:
-            register = _standing_evidence_failure_owners_file()
+            # The digests of the bytes that decided ownership, taken when they
+            # were read: the standing register at import, the per-run file
+            # before any scoring (review of #1681).
             block["evidence_failure_owners"] = {
                 "standing_register": {
                     "path": US_EVIDENCE_FAILURE_OWNERS_REGISTER,
-                    "sha256": hashlib.sha256(register.read_bytes()).hexdigest(),
+                    "sha256": US_EVIDENCE_FAILURE_OWNERS_SHA256,
                 },
-                "per_run_file_sha256": (
-                    None if self.owners_file is None else _sha256(self.owners_file)
-                ),
+                "per_run_file_sha256": self.owners_file_sha256,
             }
         return block
 
@@ -14463,6 +14612,9 @@ def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) ->
 
     release_dir.mkdir(parents=True, exist_ok=True)
     for name in {
+        # Part-written by an earlier attempt: a finished one is refused
+        # before placement (_refuse_reusing_a_certified_build).
+        "release_manifest.json",
         *US_CERTIFICATION_OUTPUT_FILES,
         *US_RELEASE_GATE_EVIDENCE_FILES.values(),
         *US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.values(),
@@ -14516,6 +14668,7 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     _refuse_reopening_the_builds_staging_run(args, record)
     failures = _recorded_release_gate_failures(record.payload)
     owner_patterns: tuple[tuple[str, str], ...] = ()
+    owners_file_sha256: str | None = None
     if record.artifact_integrity_failures:
         raise SystemExit(
             f"Build {record.build}: its written H5 failed its own checks, which "
@@ -14532,9 +14685,12 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
                 "tier (microcosm#506) covers the national artifact only. "
                 "Certify it without --evidence-release."
             )
-        owner_patterns = _load_evidence_failure_owner_patterns(
-            args.evidence_failure_owners
-        )
+        per_run: tuple[tuple[str, str], ...] = ()
+        if args.evidence_failure_owners is not None:
+            per_run, owners_file_sha256 = _read_evidence_failure_owners_file(
+                args.evidence_failure_owners
+            )
+        owner_patterns = (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
         _refuse_an_unowned_evidence_certification(failures, owner_patterns)
     else:
         if failures:
@@ -14566,6 +14722,7 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
             + "; ".join(dirty[:5])
             + ("; ..." if len(dirty) > 5 else "")
         )
+    _refuse_packages_from_another_checkout("certify a build")
     head, changed_since_build = _certifying_commit(record)
     runtime = _runtime_versions()
     mismatched = sorted(
@@ -14586,6 +14743,7 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
         evidence_release=args.evidence_release,
         owner_patterns=owner_patterns,
         owners_file=args.evidence_failure_owners,
+        owners_file_sha256=owners_file_sha256,
         release_dir=_certification_release_dir(
             record.release_root, evidence_release=args.evidence_release
         ),
@@ -15217,6 +15375,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     dry_run = _ReleaseDryRun.start(args, argv)
     if dry_run is None and _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
+    if dry_run is None:
+        _refuse_packages_from_another_checkout("build a release")
     # A build has no tier (microcosm#1585 item 11): only a dry run takes
     # --evidence-release, to preview an evidence certification's owners
     # (_parse_args refuses it on a build). Loaded up front so a malformed
@@ -18961,6 +19121,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # relaxes gate verdicts, never the written artifact's own checks
     # (microcosm#506), so the record lists these apart.
     artifact_integrity_failures: list[str] = []
+    # A failed build's --out may be built into again, so its build may have
+    # been certified as evidence since this build started: its H5 and record
+    # are then a certified build's, never to be overwritten (review of #1681).
+    _refuse_reusing_a_certified_build(release_root)
     dataset_path = artifact_root / dataset_filename
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after

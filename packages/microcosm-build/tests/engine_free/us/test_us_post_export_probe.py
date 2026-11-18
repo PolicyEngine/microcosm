@@ -595,7 +595,9 @@ def test_the_target_surface_resolves_from_an_uncertified_builds_record(
     )
 
 
-def test_a_failed_build_is_no_reference(probe_tool, builder, tmp_path, capsys) -> None:
+def test_a_failed_build_is_no_reference(
+    probe_tool, builder, tmp_path, capsys, monkeypatch
+) -> None:
     """A failed build keeps its H5 to be evaluated, which the probe may score
     as --export, but its directories are refused as the reference (review of
     #1672), until an evidence-tier certification makes it an evidence
@@ -615,27 +617,79 @@ def test_a_failed_build_is_no_reference(probe_tool, builder, tmp_path, capsys) -
         )
     )
     evidence_dir = out / "releases" / builder.US_EVIDENCE_RELEASE_ID
+    diagnostics = build_dir / "calibration_diagnostics.json"
+    diagnostics.write_text("{}")
 
-    def argv(reference: Path) -> list[str]:
+    def argv(flag: str, reference: Path) -> list[str]:
         return [
             "--export",
             str(tmp_path / "sample.h5"),
             "--out",
             str(tmp_path / "probe"),
-            "--reference-release-dir",
+            flag,
             str(reference),
         ]
 
-    for reference in (build_dir, evidence_dir):
+    # Its directories, the --out itself, and any file under it given as an
+    # explicit reference (review of #1681).
+    for flag, reference in (
+        ("--reference-release-dir", build_dir),
+        ("--reference-release-dir", evidence_dir),
+        ("--reference-release-dir", out),
+        ("--reference-smoke", build_dir / "reform_coverage_smoke.json"),
+        ("--reference-validation", build_dir / "reform_validation.json"),
+        ("--reference-build-manifest", build_dir / "build_manifest.json"),
+    ):
         with pytest.raises(SystemExit):
-            probe_tool.main(argv(reference))
+            probe_tool.main(argv(flag, reference))
         assert (
-            f"--reference-release-dir {reference} belongs to build "
-            "populace-us-2024-failed" in capsys.readouterr().err
+            f"{flag} {reference} belongs to build populace-us-2024-failed"
+            in capsys.readouterr().err
         )
     assert not (tmp_path / "probe").exists()
+
+    # Its own calibration diagnostics are the scored build's fit, not a
+    # reference, so they go with its export: the probe passes its reference
+    # check and goes on to resolve the reference files.
+    class ReferenceCheckPassedError(Exception):
+        pass
+
+    def stop(*args, **kwargs):
+        raise ReferenceCheckPassedError
+
+    monkeypatch.setattr(probe_tool, "reference_paths", stop)
+    with pytest.raises(ReferenceCheckPassedError):
+        probe_tool.main(argv("--calibration-diagnostics", diagnostics))
+    # A part-written evidence certification exempts nothing; a finished one
+    # makes it an evidence release, which is a reference again.
     evidence_dir.mkdir(parents=True)
     (evidence_dir / "release_manifest.json").write_text("{}")
+    assert builder._failed_build_holding(evidence_dir) is not None
+    (evidence_dir / "release_manifest.json").write_text(
+        json.dumps(
+            {
+                "release": builder.US_EVIDENCE_RELEASE_ID,
+                "build": "populace-us-2024-evidence-failed",
+                "tier": "evidence",
+                "known_failures": [
+                    {
+                        "failure": "Input coverage failed: x",
+                        "owner": "PolicyEngine/microcosm#1",
+                    }
+                ],
+            }
+        )
+    )
+    # The rewrite names the build in the build manifest last.
+    assert builder._failed_build_holding(evidence_dir) is not None
+    (evidence_dir / "build_manifest.json").write_text(
+        json.dumps(
+            {
+                "release": builder.US_EVIDENCE_RELEASE_ID,
+                "build": "populace-us-2024-evidence-failed",
+            }
+        )
+    )
     assert builder._failed_build_holding(evidence_dir) is None
 
 

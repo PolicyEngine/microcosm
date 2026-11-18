@@ -79,6 +79,28 @@ def _calls_named(function, name: str) -> list:
     ]
 
 
+def _finished_release_manifest(
+    release_dir: Path,
+    *,
+    build: str = "populace-us-2024-test-build",
+    evidence: bool = False,
+) -> Path:
+    """Both manifests as a finished certification leaves them: rewritten into
+    the build-folder layout, each naming its release and its build."""
+    release_dir.mkdir(parents=True, exist_ok=True)
+    named = {"release": release_dir.name, "build": build}
+    manifest: dict[str, object] = dict(named)
+    if evidence:
+        manifest["tier"] = "evidence"
+        manifest["known_failures"] = [
+            {"failure": "Input coverage failed: x", "owner": "PolicyEngine/microcosm#1"}
+        ]
+    (release_dir / "build_manifest.json").write_text(json.dumps(named))
+    path = release_dir / "release_manifest.json"
+    path.write_text(json.dumps(manifest))
+    return path
+
+
 def _manifest_call(builder):
     """The one ``_build_manifests`` call, which certification makes.
 
@@ -374,25 +396,59 @@ def test_certified_release_dir_refusal_precedes_all_side_effects() -> None:
         for n in ast.walk(main_fn)
         if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "mkdir"
     ]
-    assert len(refusals) == 2
+    assert len(refusals) == 3
     assert downloads and min(r.lineno for r in refusals) < min(
         d.lineno for d in downloads
     ), "the known-id refusal must precede the base download"
     assert mkdirs and sorted(r.lineno for r in refusals)[1] < min(
         m.lineno for m in mkdirs
     ), "the unconditional refusal must precede every output mkdir"
+    # And again right before the H5 write: a failed build's --out may be
+    # built into again, and its build certified as evidence meanwhile
+    # (review of #1681).
+    writes = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "write_dataset"
+    ]
+    assert len(writes) == 1
+    last = sorted(r.lineno for r in refusals)[2]
+    assert last < writes[0].lineno
+    assert not any(
+        isinstance(n, ast.Call) and last < n.lineno < writes[0].lineno
+        for n in ast.walk(main_fn)
+        if getattr(getattr(n, "func", None), "attr", "") in {"mkdir", "write_text"}
+    )
 
 
 def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
     """microcosm#568 round 3: a run pointed at a directory already carrying
-    release_manifest.json must refuse before writing anything — a failed
-    retry would otherwise mix its weight evidence with the prior certified
-    release."""
+    a finished certification's manifests must refuse before writing anything
+    — a failed retry would otherwise mix its weight evidence with the prior
+    certified release."""
     builder = _load_builder_module()
     release_dir = tmp_path / "releases" / "some-id"
     release_dir.mkdir(parents=True)
     builder._refuse_certified_release_dir_reuse(release_dir)  # absent: fine
-    (release_dir / "release_manifest.json").write_text("{}")
+    # A manifest a crash left part-written certifies nothing, so it blocks
+    # neither a rerun of the certification nor a build (review of #1681).
+    for part_written in ("{}", '{"release": "some-id", "bu', '{"schema_version": 1}'):
+        (release_dir / "release_manifest.json").write_text(part_written)
+        builder._refuse_certified_release_dir_reuse(release_dir)
+    _finished_release_manifest(release_dir)
+    # The rewrite names the build in the release manifest first: a crash
+    # before the build manifest names it too leaves the certification
+    # unfinished, as does a build manifest naming another build.
+    for build_manifest in ('{"build": {"id": "x"}}', '{"release": "some-id", "bu'):
+        (release_dir / "build_manifest.json").write_text(build_manifest)
+        builder._refuse_certified_release_dir_reuse(release_dir)
+    (release_dir / "build_manifest.json").unlink()
+    builder._refuse_certified_release_dir_reuse(release_dir)
+    (release_dir / "build_manifest.json").write_text(
+        json.dumps({"release": "some-id", "build": "populace-us-2024-other"})
+    )
+    builder._refuse_certified_release_dir_reuse(release_dir)
+    _finished_release_manifest(release_dir)
     with pytest.raises(RuntimeError, match="already carries a certified"):
         builder._refuse_certified_release_dir_reuse(release_dir)
 
@@ -495,6 +551,11 @@ def test_the_standing_evidence_owners_are_a_packaged_register() -> None:
     )
     payload = json.loads(packaged.read_text())
     assert all(entry["reason"].strip() for entry in payload["owners"])
+    # Read once, with the digest of the bytes it was read from, which an
+    # evidence certification records (review of #1681).
+    assert builder.US_EVIDENCE_FAILURE_OWNERS_SHA256 == (
+        hashlib.sha256(packaged.read_bytes()).hexdigest()
+    )
 
     def register(**changes) -> str:
         return json.dumps({**payload, **changes})
@@ -507,8 +568,29 @@ def test_the_standing_evidence_owners_are_a_packaged_register() -> None:
             "the reason it is owned",
         ),
         (
-            register(owners=[{"pattern": "x", "owner": "Max", "reason": "r"}]),
+            register(
+                owners=[
+                    {"pattern": "Input coverage failed:", "owner": "Max", "reason": "r"}
+                ]
+            ),
             "must carry an issue reference",
+        ),
+        # A register-only commit can certify, so a standing pattern must name
+        # one gate's failure lines (review of #1681).
+        *(
+            (
+                register(
+                    owners=[
+                        {
+                            "pattern": pattern,
+                            "owner": "PolicyEngine/microcosm#1",
+                            "reason": "r",
+                        }
+                    ]
+                ),
+                "must be a gate's failure prefix",
+            )
+            for pattern in ("x", "failed:", "coverage failed:", "Input coverage")
         ),
         (
             register(
@@ -605,7 +687,9 @@ def test_certification_may_run_at_a_commit_that_changes_only_what_it_never_runs(
         "build",
     )
     record = SimpleNamespace(commit=built, build="populace-us-2024-test-build")
-    monkeypatch.chdir(repo)
+    # The checks run in the tool's own checkout, not the current directory.
+    monkeypatch.setattr(builder, "_repository_root", lambda: repo)
+    monkeypatch.chdir(tmp_path)
 
     assert builder._certifying_commit(record) == (built, [])
     signed = commit(
@@ -20693,8 +20777,7 @@ def test_certify_main_refuses_another_commit_and_a_certified_build(
     # A build is certified once, at either tier (microcosm#1585 item 11).
     for release in builder.US_CERTIFICATION_RELEASES:
         certified_dir = path.parent / "releases" / release
-        certified_dir.mkdir(parents=True, exist_ok=True)
-        (certified_dir / "release_manifest.json").write_text("{}")
+        _finished_release_manifest(certified_dir)
         with pytest.raises(RuntimeError, match="already carries a certified release"):
             builder.certify_main([str(path.parent)])
         (certified_dir / "release_manifest.json").unlink()
@@ -20705,9 +20788,12 @@ def test_certify_main_refuses_another_commit_and_a_certified_build(
     # each as its record pins it; the artifacts stay in artifacts/.
     release_dir = path.parent / "releases" / builder.US_NATIONAL_RELEASE_ID
     (release_dir / "reform_coverage_smoke.json").write_text('{"stale": true}')
+    # A manifest a crashed attempt left part-written is cleared too.
+    (release_dir / "release_manifest.json").write_text('{"schema_version"')
     builder.certify_main([str(path.parent)])
     assert len(certified) == 1
     assert not (release_dir / "reform_coverage_smoke.json").exists()
+    assert not (release_dir / "release_manifest.json").exists()
     for role in (
         "calibration_diagnostics",
         "us_ssi_take_up",
@@ -20805,6 +20891,21 @@ def test_certification_chooses_the_tier_of_a_failed_build(
         *builder.US_EVIDENCE_FAILURE_OWNERS,
     )
     assert certification.owners_file == owners
+    # Its digest is the bytes ownership was decided on, read before scoring;
+    # an edit afterwards does not change what is recorded (review of #1681).
+    decided = hashlib.sha256(owners.read_bytes()).hexdigest()
+    assert certification.owners_file_sha256 == decided
+    owners.write_text(
+        json.dumps({"Input coverage failed:": "PolicyEngine/microcosm#2"})
+    )
+    block = certification.manifest_block(builder._read_us_build_record(path))
+    assert block["evidence_failure_owners"] == {
+        "standing_register": {
+            "path": builder.US_EVIDENCE_FAILURE_OWNERS_REGISTER,
+            "sha256": builder.US_EVIDENCE_FAILURE_OWNERS_SHA256,
+        },
+        "per_run_file_sha256": decided,
+    }
     # Telemetry names the build as certification publishes it.
     assert seen["emitter_run"]["candidate_id"] == "populace-us-2024-test-build"
     assert seen["emitter_run"]["release_id"] == "populace-us-2024-evidence-test-build"
@@ -21108,10 +21209,13 @@ def test_a_build_refuses_an_out_awaiting_certification(tmp_path: Path) -> None:
     payload["terminal_gate_failures"] = ["Input coverage failed: x"]
     builder._write_us_build_record(root, payload)
     builder._refuse_overwriting_a_build_awaiting_certification(root)
-    # Certified as evidence, it is a certified build, which no build replaces.
+    # Certified as evidence, it is a certified build, which no build replaces;
+    # a part-written certification certifies nothing (review of #1681).
     evidence_dir = root / "releases" / builder.US_EVIDENCE_RELEASE_ID
     evidence_dir.mkdir(parents=True)
     (evidence_dir / "release_manifest.json").write_text("{}")
+    builder._refuse_reusing_a_certified_build(root)
+    _finished_release_manifest(evidence_dir, evidence=True)
     with pytest.raises(RuntimeError, match="already carries a certified release"):
         builder._refuse_reusing_a_certified_build(root)
     (evidence_dir / "release_manifest.json").unlink()
@@ -21259,17 +21363,25 @@ def test_a_failed_build_holds_every_file_under_its_out(tmp_path: Path) -> None:
         f"build populace-us-2024-test-build ({record_path}), which failed 1 "
         "release gate(s) when it was built"
     )
+    # Its --out itself is held too (review of #1681).
     for held in (
         h5,
         build_dir,
+        path.parent,
         path.parent / "checkpoints" / "frame.h5",
         evidence_dir,
     ):
         assert builder._failed_build_holding(held) == failed
 
-    # Certified as evidence, its failures ship as owned known failures.
+    # A part-written evidence certification exempts nothing (review of #1681).
     evidence_dir.mkdir(parents=True)
-    (evidence_dir / "release_manifest.json").write_text("{}")
+    for part_written in ("{}", '{"release": "microcosm-us-2024-evidence"'):
+        (evidence_dir / "release_manifest.json").write_text(part_written)
+        assert builder._failed_build_holding(h5) == failed
+    _finished_release_manifest(evidence_dir)
+    assert builder._failed_build_holding(h5) == failed
+    # Certified as evidence, its failures ship as owned known failures.
+    _finished_release_manifest(evidence_dir, evidence=True)
     assert builder._failed_build_holding(h5) is None
     assert builder._failed_build_holding(evidence_dir) is None
     (evidence_dir / "release_manifest.json").unlink()
@@ -21463,7 +21575,10 @@ def test_the_dirty_check_leaves_out_a_build_inside_the_work_tree(
     (build / "releases").mkdir(parents=True)
     (build / builder.US_BUILD_RECORD_FILENAME).write_text("{}")
     (repo / "sub").mkdir()
-    monkeypatch.chdir(repo / "sub")
+    # The checks run in the tool's own checkout, whatever the current
+    # directory (review of #1681): here, the repository's subdirectory.
+    monkeypatch.setattr(builder, "_repository_root", lambda: repo / "sub")
+    monkeypatch.chdir(tmp_path)
 
     assert builder._git_dirty_paths(excluding=build) == []
     # A build directory outside the work tree leaves nothing out.
@@ -21479,3 +21594,95 @@ def test_the_dirty_check_leaves_out_a_build_inside_the_work_tree(
         " M tracked.txt",
         "?? stray.txt",
     ]
+
+
+def test_git_checks_and_packages_are_the_tools_own_checkout(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A build and its certification check the commit and the work tree of
+    the code that runs, not of the current directory, and the workspace
+    packages must load from that checkout: they all report one version
+    wherever they are installed from (review of #1681)."""
+    builder = _load_builder_module()
+    root = Path(builder.__file__).resolve().parents[1]
+    assert builder._repository_root() == root
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    subprocess.run(["git", "init", "-q"], cwd=elsewhere, check=True)
+    monkeypatch.chdir(elsewhere)
+    assert (
+        Path(builder._git_output("rev-parse", "--show-toplevel")).resolve()
+        == root.resolve()
+    )
+    assert builder._packages_outside_the_checkout() == []
+
+    monkeypatch.setattr(builder, "_repository_root", lambda: elsewhere)
+    outside = builder._packages_outside_the_checkout()
+    assert [entry.split(" ")[0] for entry in outside] == list(
+        builder._WORKSPACE_PACKAGES
+    )
+    with pytest.raises(SystemExit, match="packages from outside this tool's checkout"):
+        builder._refuse_packages_from_another_checkout("certify a build")
+
+
+def test_certification_and_the_build_refuse_another_checkouts_packages(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Both refuse before any work when a workspace package loads from
+    another tree (review of #1681)."""
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(builder, tmp_path)
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    monkeypatch.setattr(
+        builder,
+        "_packages_outside_the_checkout",
+        lambda: ["microcosm.build (/elsewhere/microcosm/build/__init__.py)"],
+    )
+    _stub_certify_telemetry(builder, monkeypatch)
+    certified: list[object] = []
+    monkeypatch.setattr(
+        builder,
+        "_certify_us_build",
+        lambda record, *, certification, telemetry: certified.append(certification),
+    )
+    with pytest.raises(SystemExit, match="Refusing to certify a build with packages"):
+        builder.certify_main([str(path.parent)])
+    assert certified == []
+    assert not (path.parent / "releases").exists()
+
+    calls: list[tuple[str, str]] = []
+
+    class FakeEmitter:
+        available = True
+
+        def transition_stage(self, stage_id, **details):
+            calls.append(("stage", stage_id))
+
+        def fail(self, error, **details):
+            calls.append(("failed", type(error).__name__))
+
+    monkeypatch.setattr(
+        builder, "start_local_telemetry_emitter_service", lambda **run: FakeEmitter()
+    )
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(
+        builder,
+        "_download_base_h5",
+        lambda: pytest.fail("the build reached the base download"),
+    )
+    out = tmp_path / "out"
+    with pytest.raises(SystemExit, match="Refusing to build a release with packages"):
+        builder.main(
+            [
+                "--ledger-facts",
+                str(tmp_path / "facts.jsonl"),
+                "--out",
+                str(out),
+                "--no-staging",
+            ]
+        )
+    assert calls == [("stage", "preflight"), ("failed", "SystemExit")]
+    assert not out.exists()

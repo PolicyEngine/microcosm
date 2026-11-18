@@ -94,7 +94,11 @@ A US national build and its certification are two steps (microcosm#1585 item
     match an owner pattern, from `--evidence-failure-owners FILE` first, then
     the standing register
     (`packages/microcosm-build/src/microcosm/build/us_runtime/data/evidence_failure_owners.json`),
-    and rides the release manifest's `known_failures`. At least one failure
+    and rides the release manifest's `known_failures`. Since a commit that
+    changes only the register may certify, each standing pattern must be one
+    gate's failure prefix, at least two words and then ` failed:`, and the
+    digest certification records for each owners file is of the bytes it
+    decided ownership from. At least one failure
     must exist, a QRF tail-concentration register mismatch is never owned, and
     an `--exact-k` build, a build of the national release, is never evidence.
     The recorded failures are owner-checked before any scoring, so an unowned
@@ -149,10 +153,17 @@ A US national build and its certification are two steps (microcosm#1585 item
   changing only what the rule above allows, or with changes outside the build
   directory; packages other than the ones the build was built with (`runtime`
   in the record), since the manifests name those as the build's; and a build
-  already certified at either tier. A build refuses an `--out` that holds a
-  build awaiting certification or a certified build; a failed build's `--out`
-  may be built into again, so a failed build meant for an evidence
-  certification should be certified before anything else is built there.
+  already certified at either tier. The checkout checked is the tool's own,
+  whatever the current directory, and the workspace packages must load from
+  it: they all report one version wherever they are installed from, so only
+  their location tells checkouts apart. A build counts as certified once both
+  manifests name it, the last write certification makes in the release
+  directory, so a certification that stopped before then certifies nothing
+  and may be rerun. A build refuses an `--out` that holds a build awaiting
+  certification or a certified build, and checks for a certified one again
+  just before it writes the H5; a failed build's `--out` may be built into
+  again, so a failed build meant for an evidence certification should be
+  certified before anything else is built there.
 - **Staging.** Certification opens a staging run of its own where its build
   staged (the build's run id with `-certify` appended, to the build's staging
   repository), so the post-export verdicts and the manifests reach the staging
