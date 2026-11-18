@@ -9,16 +9,21 @@ run ends with `ROUTE_A_BUILT.json`, so the build can be evaluated first
 `route_a.sh --certify` (or `ROUTE_A_CERTIFY=1`) on the same `RUN_ROOT` skips
 the accepted stages and certifies that build with
 `tools/certify_us_national_build.py`, which runs the release's post-export
-checks on the written H5 and writes the manifests publication requires. It then
-runs `preflight_us_release_gates.py` against the release manifest and
-`microcosm-publish-release-build` with `--preflight-only`, and leaves a hand-off
-with `published: false`. Publication remains a separate manual step that Max
-authorizes.
+checks on the written H5 and writes the manifests publication requires. Once
+the build is accepted, the driver does not hash the raw inputs again, since
+certification reads none of them. It then runs `preflight_us_release_gates.py`
+against the release manifest and `microcosm-publish-release-build` with
+`--preflight-only`, and leaves a hand-off with `published: false`. Publication
+remains a separate manual step that Max authorizes. Only a run with
+`--certify` is a from-scratch build and certification receipt: a run that
+stops at `ROUTE_A_BUILT.json` has not been through the post-export checks or
+either preflight.
 
 The driver, `supervise.py`, `sample_series.py`, `check_flags.py` and
 `with_hf_token.sh` live together here. The driver, supervisor and sampler
-originated in the off-repository Route A tooling. The release stage now enables
-staging telemetry by default; `ROUTE_A_STAGING=0` restores `--no-staging`.
+originated in the off-repository Route A tooling. The release and certify
+stages enable staging telemetry by default; `ROUTE_A_STAGING=0` restores
+`--no-staging` for both.
 
 ## Configure and run
 
@@ -148,7 +153,7 @@ overnight chain is alive, unless `EARLY_START_AFTER_HEAVY=1` and its log records
 | `base` | Runs `build_us_puf_support_base.py --stage all` on the pinned raw inputs, with seed 0, 32 estimators, target year 2024, district assignment/crosswalk and block ladder. Requires exit 0 and the expected H5, then hashes it. |
 | `preflight-base` | Runs `preflight_us_release_gates.py` on that H5 and the pinned feed, with the configured new-lineage mode and optional export-mass reference. Accepts 0 (clean) or 2 (AT-RISK); `RELEASE_DESPITE_PREFLIGHT_FAIL=1` also accepts 1 here. |
 | `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Requires exit 0 and `<release-out>/build_record.json`. Staging telemetry is enabled for this stage. Without `--certify` the run ends here with `ROUTE_A_BUILT.json`. |
-| `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>` without credentials. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. |
+| `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>`. Certification stages where its build staged, in a run of its own, so with `ROUTE_A_STAGING=1` it gets the release stage's staging credential; with `ROUTE_A_STAGING=0` it runs offline, without secrets and with `--no-staging`. Requires exit 0 and `<release-out>/releases/microcosm-us-2024-national/release_manifest.json`. |
 | `preflight-release` | Repeats the release-gate preflight with the candidate's release manifest. Accepts 0 or 2. |
 | `publisher-preflight` | Runs `microcosm-publish-release-build --preflight-only` against the release directory, `<release-out>/releases/microcosm-us-2024-national`, where a national run writes its build, and the artifacts. Requires exit 0. The command checks the build with its release contract, prints what it would publish, and starts no emitter. It takes no `--extra-file`: the command publishes every artifact the release manifest lists, including the two SCF education-debt fit tables of a release run with `--scf-education-debt` in `RELEASE_EXTRA_ARGS`. |
 
@@ -262,7 +267,8 @@ shell tracing, removes inherited HF credential aliases, calls the configured
 `agent-secret get HUGGING_FACE_TOKEN_MAX` at run time, refuses a failed/empty
 lookup, exports `HF_TOKEN` and immediately `exec`s the release. It does not put
 the returned value into argv, a config or a log. Do not fetch a token before
-starting the driver. With `ROUTE_A_STAGING=0`, the release gets `--no-staging`,
+starting the driver. The certify stage starts the same way. With
+`ROUTE_A_STAGING=0`, the release and certification get `--no-staging`,
 inherited HF credential variables are removed and the wrapper is not called.
 
 The release parser defaults to `policyengine/populace-us-staging` and reads
@@ -285,14 +291,19 @@ stride grows past ten only when the run's solves total more than 24,000
 epochs. Because each solve's rows start at epoch 1, the epoch falls wherever
 the refit begins, even when `--epochs` is ten or fewer. The builder emits
 stages for loading the base, source enrichments, target compilation,
-calibration, export/gates, diagnostics and manifests, and uploads attached
-diagnostics as they are written. Completion records status `passed`; reported
-failures record status `failed`.
+calibration, export/gates and diagnostics, and uploads attached diagnostics
+as they are written. Completion records status `passed`; reported failures
+record status `failed`. Certification opens a staging run of its own,
+`<release-id>-certify`, where its build staged: its stages are the post-export
+checks and the manifests, it attaches their files, and a failed certification
+records `failed` there. The release's build manifest names that run as its
+staging run and the build's inside it, so the publisher's staging check reads
+the run that scored what it publishes.
 
 Telemetry is written locally under
-`<release-out>/staging/runs/<release-id>/` and uploaded under
-`runs/<release-id>/`, with `run_manifest.json`, `latest_staging.json` and
-`runs.json` allowing discovery. The base, donor prefetch, offline preflights
+`<release-out>/staging/runs/<run-id>/` and uploaded under `runs/<run-id>/`,
+with `run_manifest.json`, `latest_staging.json` and `runs.json` allowing
+discovery. The base, donor prefetch, offline preflights
 and supervisor resource series do not emit these staging records. If uploads
 fail, dashboard visibility is not guaranteed. A staging upload does not publish
 the build or change `releases.json` in `policyengine/populace-us`.

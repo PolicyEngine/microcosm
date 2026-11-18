@@ -2608,6 +2608,37 @@ def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
         )
 
 
+def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> None:
+    """Fail loud when --out holds a finished build that awaits certification.
+
+    A build stops at its record (microcosm#1585 item 11, PR 4a), so its
+    directory carries no release manifest until certification writes one,
+    and :func:`_refuse_certified_release_dir_reuse` would let a rerun
+    overwrite it. A build whose release gates failed can never be certified,
+    so a rerun into its --out still replaces it, as it did before builds
+    wrote a record.
+    """
+
+    path = Path(release_root) / US_BUILD_RECORD_FILENAME
+    if not path.is_file():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        failed = (
+            bool(payload["terminal_gate_failures"])
+            and not (payload["settings"]["evidence_release"])
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        failed = False
+    if not failed:
+        raise RuntimeError(
+            f"{release_root} holds a finished build awaiting certification "
+            f"({US_BUILD_RECORD_FILENAME}). Certify it with "
+            f"{_certify_command(release_root)}, or choose a new --out for this "
+            "build."
+        )
+
+
 #: Files the release manifest declares whenever they exist, written only by
 #: a run that does not skip their check, with the option that skips it.
 _SKIPPABLE_CHECK_FILES = (
@@ -13062,13 +13093,15 @@ def _build_progress(
     release_id: str,
     run_id: str | None = None,
     emitter: LocalTelemetryEmitter,
+    epoch_every: int | None = None,
 ) -> _BuildProgress:
     global _ACTIVE_PROGRESS
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
     _ACTIVE_PROGRESS = None
     run_id = run_id or args.staging_run_id or release_id
-    epoch_every = _calibration_epoch_every(args)
+    if epoch_every is None:
+        epoch_every = _calibration_epoch_every(args)
     if args.no_staging:
         _ACTIVE_PROGRESS = _BuildProgress(
             run_id=run_id,
@@ -13396,6 +13429,7 @@ def _us_build_record(
     snap_state_take_up_diagnostics: Mapping[str, object],
     timing: Mapping[str, object],
     staging: Mapping[str, object],
+    staging_settings: Mapping[str, object],
 ) -> dict[str, object]:
     """What certification needs of a finished build, as strict JSON.
 
@@ -13531,13 +13565,30 @@ def _us_build_record(
         },
         "timing": dict(timing),
         "staging": dict(staging),
+        # Where the build staged, so certification stages there too.
+        "staging_settings": dict(staging_settings),
     }
 
 
+def _us_build_record_digest(record: Mapping[str, object]) -> str:
+    """The sha256 of a build record's canonical JSON, its own digest aside."""
+
+    body = {key: value for key, value in record.items() if key != "record_sha256"}
+    return hashlib.sha256(_canonical_json(body).encode("utf-8")).hexdigest()
+
+
 def _write_us_build_record(release_root: Path, record: Mapping[str, object]) -> Path:
-    """Write the build record atomically; certification refuses a torn one."""
+    """Write the build record atomically; certification refuses a torn one.
+
+    The record carries a digest of itself, so certification refuses one
+    edited after its build wrote it. That catches an edit, not a forgery:
+    anyone who recomputes the digest can change the record, until
+    certification signs (PR 4b).
+    """
 
     path = release_root / US_BUILD_RECORD_FILENAME
+    record = {key: value for key, value in record.items() if key != "record_sha256"}
+    record["record_sha256"] = _us_build_record_digest(record)
     text = json.dumps(record, indent=1, allow_nan=False) + "\n"
     staged = path.with_name(f".{path.name}.tmp")
     staged.write_text(text, encoding="utf-8")
@@ -13581,6 +13632,7 @@ class _USBuildRecord:
         self.n_households = int(payload["n_households"])
         self.timing = dict(payload["timing"])
         self.staging = dict(payload["staging"])
+        self.staging_settings = dict(payload["staging_settings"])
         self.manifest_inputs = dict(payload["manifest"])
         self.source_coverage = dict(payload["source_coverage"])
         self.take_up = dict(payload["take_up"])
@@ -13654,6 +13706,11 @@ def _read_us_build_record(path: Path) -> _USBuildRecord:
             f"{path} has build record schema {payload.get('schema_version')!r}; "
             f"this tool reads schema {US_BUILD_RECORD_SCHEMA_VERSION}."
         )
+    if payload.get("record_sha256") != _us_build_record_digest(payload):
+        raise RuntimeError(
+            f"{path} does not hash to the record_sha256 it carries; the record "
+            "changed after its build wrote it."
+        )
     release_root = path.resolve().parent
     for role, pinned in payload["files"].items():
         file_path = release_root / pinned["path"]
@@ -13718,7 +13775,85 @@ def _certify_parser() -> argparse.ArgumentParser:
         type=Path,
         help=f"The build's --out directory, holding {US_BUILD_RECORD_FILENAME}.",
     )
+    parser.add_argument(
+        "--no-staging",
+        action="store_true",
+        help=(
+            "Certify without a staging run, even where the build staged; "
+            "hosted telemetry remains active. A build that did not stage is "
+            "certified without one regardless."
+        ),
+    )
+    parser.add_argument(
+        "--staging-run-id",
+        help=(
+            "The certification's staging run id. Defaults to the build's "
+            "staging run id with -certify appended."
+        ),
+    )
+    parser.add_argument(
+        "--staging-dir",
+        type=Path,
+        help=(
+            "Local directory for the certification's staging run files. "
+            "Defaults to <build_dir>/staging/runs/<run id>."
+        ),
+    )
     return parser
+
+
+def _certify_progress(
+    args: argparse.Namespace,
+    *,
+    record: _USBuildRecord,
+    run_id: str,
+    emitter: LocalTelemetryEmitter,
+) -> _BuildProgress:
+    """Certification's staging run, where its build staged.
+
+    The post-export verdicts and the manifests reach the staging dashboard,
+    as they did when a build certified itself (microcosm#1585 item 11, PR
+    4a). Certification stages where its build did, to the build's repository
+    and prefix, in a run of its own, since a staging run's files start afresh
+    when it opens. A build that did not stage (``--no-staging``, which
+    ``--exact-k`` requires) is certified without staging, and
+    ``--no-staging`` opts certification out.
+    """
+
+    settings = record.staging_settings
+    reason = (
+        "--no-staging"
+        if args.no_staging
+        else "the build did not stage (--no-staging)"
+        if settings["no_staging"]
+        else None
+    )
+    if reason is not None:
+        return _BuildProgress(
+            run_id=run_id,
+            emitter=emitter,
+            staging_bundle=None,
+            staging_opt_out_reason=reason,
+        )
+    staging_dir = args.staging_dir
+    if staging_dir is None and not settings["repo_id"]:
+        # A build that staged only locally is certified into the same layout.
+        staging_dir = record.release_root / "staging" / "runs" / run_id
+    return _build_progress(
+        SimpleNamespace(
+            no_staging=False,
+            staging_run_id=run_id,
+            staging_dir=staging_dir,
+            staging_repo_id=settings["repo_id"],
+            staging_prefix=settings["prefix"],
+            staging_upload_interval_seconds=settings["upload_interval_seconds"],
+        ),
+        release_root=record.release_root,
+        release_id=record.build,
+        run_id=run_id,
+        emitter=emitter,
+        epoch_every=CALIBRATION_EPOCH_EVERY,
+    )
 
 
 def certify_main(argv: Sequence[str] | None = None) -> None:
@@ -13729,9 +13864,12 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     built with, so the checks and the manifests are the build's own code and
     score the H5 on the versions its manifests name. A build whose release
     directory already carries a release manifest is refused: a certified
-    build is never changed.
+    build is never changed. Certification opens its own staging run where
+    the build staged (:func:`_certify_progress`) and marks it failed if it
+    does not finish.
     """
 
+    global _ACTIVE_EMITTER
     args = _certify_parser().parse_args(argv)
     record = _read_us_build_record(args.build_dir / US_BUILD_RECORD_FILENAME)
     if record.terminal_gate_failures and not record.settings["evidence_release"]:
@@ -13739,6 +13877,25 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
             f"Build {record.build} failed {len(record.terminal_gate_failures)} "
             "release gate(s) when it was built, so it cannot be certified: "
             + "; ".join(record.terminal_gate_failures)
+        )
+    # Only a build whose release gates failed writes the #568 weight
+    # evidence (a green build removes any it finds), so its presence refuses
+    # the build whatever its record says.
+    weight_evidence = [
+        name
+        for name in (
+            FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
+            FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
+            FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
+        )
+        if (record.release_dir / name).exists()
+    ]
+    if weight_evidence:
+        raise SystemExit(
+            f"Build {record.build}: its release directory holds the weight "
+            f"evidence a build writes when its release gates fail "
+            f"({', '.join(weight_evidence)}, microcosm#568), so it cannot be "
+            "certified."
         )
     dirty = _git_dirty_paths(excluding=record.release_root)
     if dirty:
@@ -13770,7 +13927,37 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     _refuse_certified_release_dir_reuse(record.release_dir)
     for name in US_CERTIFICATION_OUTPUT_FILES:
         (record.release_dir / name).unlink(missing_ok=True)
-    _certify_us_build(record)
+    run_id = args.staging_run_id or (
+        f"{record.staging.get('run_id') or record.build}-certify"
+    )
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="US",
+        pipeline="us_fiscal_refresh",
+        candidate_id=record.build,
+        release_id=record.build,
+        run_kind="certification",
+    )
+    telemetry: _BuildProgress | None = None
+    try:
+        telemetry = _certify_progress(
+            args, record=record, run_id=run_id, emitter=_ACTIVE_EMITTER
+        )
+        _certify_us_build(record, telemetry=telemetry)
+    except BaseException as error:
+        try:
+            if telemetry is not None:
+                telemetry.fail(error)
+            elif _ACTIVE_EMITTER.available:
+                _ACTIVE_EMITTER.fail(error)
+        except Exception as telemetry_error:  # pragma: no cover - defensive
+            # A failing failure-report must not replace the real traceback.
+            print(
+                "warning: could not record the certification's staging run as "
+                f"failed: {type(telemetry_error).__name__}: {telemetry_error}",
+                file=sys.stderr,
+            )
+        raise
 
 
 def _certify_command(release_root: Path) -> str:
@@ -14444,6 +14631,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # --checkpoint-root beneath releases/<release> must not mutate a certified
     # directory before the raise (microcosm#568 round 4).
     _refuse_certified_release_dir_reuse(release_dir)
+    if dry_run is None:
+        _refuse_overwriting_a_build_awaiting_certification(release_root)
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
     )
@@ -17554,7 +17743,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         dataset_path, export_frame_stored_inputs
     )
     if stored_input_premise_failure is not None:
-        raise RuntimeError(stored_input_premise_failure)
+        if build_refusal is None:
+            raise RuntimeError(stored_input_premise_failure)
+        # A failed build still ends at its record (microcosm#1585 item 11,
+        # PR 4a): what its written file fails joins its release gate failures
+        # instead of replacing them.
+        terminal_gate_failures.append(stored_input_premise_failure)
     # The build ends here (microcosm#1585 item 11, PR 4a). The optional export
     # audit and the calibration NPZ read the calibration result, which only
     # this process holds, so they run first. Every later stage scores the
@@ -17566,12 +17760,19 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "post_export_audit",
                 message="Auditing exported H5 against calibration targets.",
             )
-        _assert_export_matches_calibration(
-            dataset_path,
-            result,
-            target_specs,
-            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-        )
+        try:
+            _assert_export_matches_calibration(
+                dataset_path,
+                result,
+                target_specs,
+                maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+            )
+        except Exception as error:
+            if build_refusal is None:
+                raise
+            terminal_gate_failures.append(
+                f"Export audit failed: {type(error).__name__}: {error}"
+            )
 
     if telemetry is not None:
         telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
@@ -17583,6 +17784,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         release_root / f"base_{base_h5.name}",
         authenticated_pool_h5=authenticated_pool_h5,
     )
+    if build_refusal is not None:
+        # The refusal names every failure the record carries, those found
+        # after the H5 write included.
+        build_refusal = RuntimeError(
+            "Release gates failed: " + "; ".join(terminal_gate_failures)
+        )
     timing["build_seconds"] = time.perf_counter() - build_started
     build_record_path = _write_us_build_record(
         release_root,
@@ -17649,6 +17856,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             snap_state_take_up_diagnostics=snap_state_take_up_diagnostics,
             timing=timing,
             staging=_staging_manifest_block(telemetry),
+            staging_settings={
+                "no_staging": bool(args.no_staging),
+                "repo_id": args.staging_repo_id or None,
+                "prefix": args.staging_prefix,
+                "upload_interval_seconds": float(args.staging_upload_interval_seconds),
+            },
         ),
     )
     if telemetry is not None:
@@ -18090,7 +18303,10 @@ def _certify_us_build(
         ledger_artifact=inputs["ledger_artifact"],
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-        staging=record.staging,
+        # The staging run the publisher checks is certification's, which
+        # carries the post-export verdicts and the manifests; the build's
+        # rides inside it.
+        staging={**_staging_manifest_block(telemetry), "build": dict(record.staging)},
         dataset_key=dataset_key,
         dataset_filename=dataset_filename,
         calibration_key=calibration_key,

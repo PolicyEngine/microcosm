@@ -6923,6 +6923,14 @@ def _run_green_register_release(
     # The manifests' provenance is the build's, from its record, not the
     # certifying process's (microcosm#1585 item 11, PR 4a).
     build_record = json.loads((out / builder.US_BUILD_RECORD_FILENAME).read_text())
+    # The staging run the publisher checks is certification's. This build did
+    # not stage, so neither did its certification; the build's block rides
+    # inside.
+    assert build_manifest["staging"] == {
+        "enabled": False,
+        "reason": "the build did not stage (--no-staging)",
+        "build": {"enabled": False, "reason": "--no-staging"},
+    }
     assert release_manifest["built_at"] == build_record["built_at"]
     assert build_manifest["created_at"] == build_record["built_at"]
     assert build_manifest["runtime"] == build_record["runtime"]
@@ -7441,6 +7449,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
     if terminal_mode != "telemetry" and not prepared_pool:
         argv.append("--no-staging")
+    if terminal_mode == "merge":
+        argv.append("--audit-export-targets")
     argv += [
         "--acs-person-zip",
         str(acs_person_zip),
@@ -7560,6 +7570,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             builder,
             "_build_progress",
             lambda *args, **kwargs: live_telemetry,
+        )
+    if terminal_mode == "merge":
+        # An export audit that errors on a failed build joins its failures.
+        def failing_export_audit(path, result, target_specs, **kwargs):
+            raise AssertionError("export audit sentinel")
+
+        monkeypatch.setattr(
+            builder, "_assert_export_matches_calibration", failing_export_audit
         )
     if terminal_mode in {"merge", "crash", "target_frame_checkpoint"}:
         # A build whose release gates fail still writes its H5 (microcosm#1585
@@ -7728,7 +7746,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             Path(path),
             captured.get("written_dataset"),
         )
-        if terminal_mode == "stored_input_premise":
+        # A failed build's written file can fail its premise too
+        # (microcosm#1585 item 11, PR 4a): the merge run's failure joins its
+        # release gate failures.
+        if terminal_mode in {"stored_input_premise", "merge"}:
             return STORED_INPUT_PREMISE_FIXTURE
         return None
 
@@ -9576,6 +9597,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert message == "Release gates failed: " + "; ".join(
         failed_record["terminal_gate_failures"]
     )
+    if terminal_mode == "merge":
+        # What the written file and the export audit fail after the H5 write
+        # joins the record's failures and the refusal, instead of replacing
+        # the refusal and leaving the H5 without a record.
+        assert failed_record["terminal_gate_failures"][-2:] == [
+            STORED_INPUT_PREMISE_FIXTURE,
+            "Export audit failed: AssertionError: export audit sentinel",
+        ]
     assert not list(release_dir.glob("*manifest*"))
     with pytest.raises(SystemExit, match="cannot be certified"):
         builder.certify_main([str(out)])
@@ -16302,19 +16331,23 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
             elif name == "_write_us_build_record":
                 smokes.append(node.lineno)
 
-    assert len(batched_raises) == 1, batched_raises
+    # The batched refusal is made before the H5 write and restated once the
+    # written file's checks have run, so it names what they fail too
+    # (microcosm#1585 item 11, PR 4a).
+    assert len(batched_raises) == 2, batched_raises
+    refusal, restated = sorted(batched_raises)
     assert len(writes) == 1, (
         "main() must write the export H5 exactly once; the smoke gate and "
         f"release manifest read that file (microcosm#443). Found: {writes}"
     )
     assert len(smokes) == 1, smokes
     assert len(final_raises) == 1, final_raises
-    assert batched_raises[0] < writes[0] < smokes[0] < final_raises[0], (
+    assert refusal < writes[0] < restated < smokes[0] < final_raises[0], (
         "Ordering contract violated: batched pre-export refusal "
-        f"(line {batched_raises[0]}) < H5 write ({writes[0]}) < build record "
-        f"({smokes[0]}) < its raise ({final_raises[0]}) must hold so a "
-        "gate-failed build leaves its H5 and record and the smoke scores the "
-        "just-written file."
+        f"(line {refusal}) < H5 write ({writes[0]}) < restated refusal "
+        f"({restated}) < build record ({smokes[0]}) < its raise "
+        f"({final_raises[0]}) must hold so a gate-failed build leaves its H5 "
+        "and record and the smoke scores the just-written file."
     )
 
 
@@ -19227,14 +19260,18 @@ def test_spm_composition_gate_rides_the_batched_pre_export_raise() -> None:
         "the gate's verdict must join terminal_gate_failures, or a failing "
         f"export is exported anyway; found {extends}"
     )
-    assert len(batched_raises) == 1, batched_raises
+    # The refusal is restated after the written file's checks, before the
+    # build record (microcosm#1585 item 11, PR 4a); the first is the
+    # batched pre-export refusal.
+    assert len(batched_raises) == 2, batched_raises
+    refusal = min(batched_raises)
     assert len(writes) == 1, writes
     assert len(npz_writes) == 1, npz_writes
-    assert gate_calls[0] < extends[0] < batched_raises[0] < writes[0] < npz_writes[0], (
+    assert gate_calls[0] < extends[0] < refusal < writes[0] < npz_writes[0], (
         "Ordering contract violated: the SPM composition gate "
         f"({gate_calls[0]}) must be evaluated and extended into the batch "
         f"({extends[0]}) before the batched pre-export refusal "
-        f"({batched_raises[0]}), which must precede the export H5 write "
+        f"({refusal}), which must precede the export H5 write "
         f"({writes[0]}) and the calibration NPZ write ({npz_writes[0]})."
     )
 
@@ -19919,7 +19956,7 @@ def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emit
 
 
 def _build_record_fixture(
-    builder, tmp_path: Path, *, terminal_gate_failures=()
+    builder, tmp_path: Path, *, terminal_gate_failures=(), staging_settings=None
 ) -> tuple[Path, dict]:
     """A minimal finished build: the files certification reads, and its record.
 
@@ -20020,9 +20057,53 @@ def _build_record_fixture(
         snap_state_take_up_diagnostics={"states": []},
         timing={"calibration_seconds": 1.0, "build_seconds": 3.0},
         staging={"enabled": False, "reason": "--no-staging"},
+        staging_settings=staging_settings
+        or {
+            "no_staging": True,
+            "repo_id": None,
+            "prefix": "runs",
+            "upload_interval_seconds": 30.0,
+        },
     )
     path = builder._write_us_build_record(release_root, payload)
     return path, payload
+
+
+class _CertifyTelemetry:
+    """Certification's progress handle, as certify_main drives it."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, object]] = []
+
+    def stage(self, stage, **details) -> None:
+        self.events.append(("stage", stage))
+
+    def attach_artifact(self, name, path, **details) -> None:
+        self.events.append(("attach_artifact", name))
+
+    def complete(self) -> None:
+        self.events.append(("complete", None))
+
+    def fail(self, error) -> None:
+        self.events.append(("fail", error))
+
+
+def _stub_certify_telemetry(builder, monkeypatch) -> dict[str, object]:
+    """Start no emitter, and hand certification a recording progress handle."""
+
+    seen: dict[str, object] = {"telemetry": _CertifyTelemetry()}
+
+    def start_emitter(**run):
+        seen["emitter_run"] = run
+        return SimpleNamespace(client=None, available=False)
+
+    def certify_progress(args, *, record, run_id, emitter):
+        seen["progress_run_id"] = run_id
+        return seen["telemetry"]
+
+    monkeypatch.setattr(builder, "start_local_telemetry_emitter_service", start_emitter)
+    monkeypatch.setattr(builder, "_certify_progress", certify_progress)
+    return seen
 
 
 def test_the_build_record_carries_what_certification_reads(tmp_path: Path) -> None:
@@ -20159,8 +20240,13 @@ def test_certify_main_refuses_another_commit_and_a_certified_build(
     builder = _load_builder_module()
     path, _ = _build_record_fixture(builder, tmp_path)
     monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
+    seen_telemetry = _stub_certify_telemetry(builder, monkeypatch)
     certified: list[object] = []
-    monkeypatch.setattr(builder, "_certify_us_build", certified.append)
+    monkeypatch.setattr(
+        builder,
+        "_certify_us_build",
+        lambda record, *, telemetry: certified.append((record, telemetry)),
+    )
 
     monkeypatch.setattr(builder, "_git_output", lambda *args: "d" * 40)
     with pytest.raises(SystemExit, match="certify it from a checkout of that commit"):
@@ -20192,6 +20278,18 @@ def test_certify_main_refuses_another_commit_and_a_certified_build(
     builder.certify_main([str(path.parent)])
     assert len(certified) == 1
     assert not (release_dir / "reform_coverage_smoke.json").exists()
+    # Certification runs in a telemetry run of its own, named after the
+    # build's, and hands its progress handle to the post-export stages.
+    assert seen_telemetry["emitter_run"] == {
+        "run_id": "populace-us-2024-test-build-certify",
+        "country_code": "US",
+        "pipeline": "us_fiscal_refresh",
+        "candidate_id": "populace-us-2024-test-build",
+        "release_id": "populace-us-2024-test-build",
+        "run_kind": "certification",
+    }
+    assert seen_telemetry["progress_run_id"] == "populace-us-2024-test-build-certify"
+    assert certified[0][1] is seen_telemetry["telemetry"]
 
 
 def test_certify_main_refuses_a_build_whose_release_gates_failed(
@@ -20206,17 +20304,203 @@ def test_certify_main_refuses_a_build_whose_release_gates_failed(
     )
     monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
     monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    _stub_certify_telemetry(builder, monkeypatch)
     certified: list[object] = []
-    monkeypatch.setattr(builder, "_certify_us_build", certified.append)
+    monkeypatch.setattr(
+        builder,
+        "_certify_us_build",
+        lambda record, *, telemetry: certified.append(record),
+    )
 
     with pytest.raises(SystemExit, match="1 release gate.*Input coverage failed: x"):
         builder.certify_main([str(path.parent)])
     assert certified == []
 
     payload["settings"]["evidence_release"] = True
-    path.write_text(json.dumps(payload))
+    builder._write_us_build_record(path.parent, payload)
     builder.certify_main([str(path.parent)])
     assert len(certified) == 1
+
+
+def test_certify_main_refuses_a_build_that_wrote_failed_weight_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Only a build whose release gates failed writes the #568 weight
+    evidence, so certification refuses its directory whatever its record says
+    (microcosm#1585 item 11, PR 4a)."""
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(builder, tmp_path)
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    _stub_certify_telemetry(builder, monkeypatch)
+    certified: list[object] = []
+    monkeypatch.setattr(
+        builder,
+        "_certify_us_build",
+        lambda record, *, telemetry: certified.append(record),
+    )
+    release_dir = path.parent / "releases" / builder.US_NATIONAL_RELEASE_ID
+    (release_dir / builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME).write_bytes(b"w")
+
+    with pytest.raises(SystemExit, match="weight evidence a build writes when its"):
+        builder.certify_main([str(path.parent)])
+    assert certified == []
+
+
+def test_certification_refuses_an_edited_record(tmp_path: Path) -> None:
+    """The record carries a digest of itself, so clearing a failed build's
+    failures by hand is refused; a record rewritten through the writer is the
+    deliberate path, until certification signs (PR 4b)."""
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(
+        builder, tmp_path, terminal_gate_failures=["Input coverage failed: x"]
+    )
+    written = json.loads(path.read_text())
+    assert written["record_sha256"] == builder._us_build_record_digest(written)
+
+    edited = {**written, "terminal_gate_failures": []}
+    path.write_text(json.dumps(edited))
+    with pytest.raises(RuntimeError, match="does not hash to the record_sha256"):
+        builder._read_us_build_record(path)
+
+    builder._write_us_build_record(path.parent, payload)
+    assert builder._read_us_build_record(path).terminal_gate_failures == (
+        "Input coverage failed: x",
+    )
+
+
+def test_certify_main_marks_its_staging_run_failed(tmp_path: Path, monkeypatch) -> None:
+    builder = _load_builder_module()
+    path, _ = _build_record_fixture(builder, tmp_path)
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    seen = _stub_certify_telemetry(builder, monkeypatch)
+    error = RuntimeError("Release gates failed: the smoke failed")
+
+    def failing_certification(record, *, telemetry):
+        raise error
+
+    monkeypatch.setattr(builder, "_certify_us_build", failing_certification)
+    with pytest.raises(RuntimeError, match="the smoke failed"):
+        builder.certify_main([str(path.parent)])
+    assert seen["telemetry"].events == [("fail", error)]
+
+    # A staging run that cannot open fails the emitter's run instead.
+    failed: list[BaseException] = []
+    emitter = SimpleNamespace(client=object(), available=True, fail=failed.append)
+    monkeypatch.setattr(
+        builder, "start_local_telemetry_emitter_service", lambda **run: emitter
+    )
+    unopened = OSError("staging directory is read-only")
+
+    def unopenable(args, *, record, run_id, emitter):
+        raise unopened
+
+    monkeypatch.setattr(builder, "_certify_progress", unopenable)
+    with pytest.raises(OSError, match="read-only"):
+        builder.certify_main([str(path.parent)])
+    assert failed == [unopened]
+
+
+def test_certification_stages_where_its_build_staged(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Certification's own staging run carries the post-export verdicts and
+    the manifests; it follows the build's choice and destination."""
+    builder = _load_builder_module()
+    emitter = SimpleNamespace(client=None, available=False)
+    args = builder._certify_parser().parse_args([str(tmp_path / "build")])
+
+    # A build that did not stage (--exact-k requires that) is certified
+    # without staging, and so is any build certified with --no-staging.
+    path, _ = _build_record_fixture(builder, tmp_path)
+    record = builder._read_us_build_record(path)
+    progress = builder._certify_progress(
+        args, record=record, run_id="b-certify", emitter=emitter
+    )
+    assert progress.staging_bundle is None
+    assert progress.staging_opt_out_reason == "the build did not stage (--no-staging)"
+    assert builder._staging_manifest_block(progress) == {
+        "enabled": False,
+        "reason": "the build did not stage (--no-staging)",
+    }
+
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    path, _ = _build_record_fixture(
+        builder,
+        staged,
+        staging_settings={
+            "no_staging": False,
+            "repo_id": "policyengine/populace-us-staging",
+            "prefix": "builds",
+            "upload_interval_seconds": 12.0,
+        },
+    )
+    record = builder._read_us_build_record(path)
+    opted_out = builder._certify_parser().parse_args([str(path.parent), "--no-staging"])
+    assert (
+        builder._certify_progress(
+            opted_out, record=record, run_id="b-certify", emitter=emitter
+        ).staging_opt_out_reason
+        == "--no-staging"
+    )
+    # A build that staged is certified into the same repository and prefix.
+    built: dict[str, object] = {}
+
+    def build_progress(staging_args, **kwargs):
+        built.update(vars(staging_args), **kwargs)
+        return "progress"
+
+    monkeypatch.setattr(builder, "_build_progress", build_progress)
+    assert (
+        builder._certify_progress(
+            builder._certify_parser().parse_args([str(path.parent)]),
+            record=record,
+            run_id="b-certify",
+            emitter=emitter,
+        )
+        == "progress"
+    )
+    assert built == {
+        "no_staging": False,
+        "staging_run_id": "b-certify",
+        "staging_dir": None,
+        "staging_repo_id": "policyengine/populace-us-staging",
+        "staging_prefix": "builds",
+        "staging_upload_interval_seconds": 12.0,
+        "release_root": record.release_root,
+        "release_id": record.build,
+        "run_id": "b-certify",
+        "emitter": emitter,
+        "epoch_every": builder.CALIBRATION_EPOCH_EVERY,
+    }
+
+
+def test_a_build_refuses_an_out_awaiting_certification(tmp_path: Path) -> None:
+    """A rerun into the --out of a build awaiting certification would
+    overwrite it; a failed build's --out may still be built into again."""
+    builder = _load_builder_module()
+    root = tmp_path / "build"
+    builder._refuse_overwriting_a_build_awaiting_certification(root)
+
+    path, payload = _build_record_fixture(builder, tmp_path)
+    with pytest.raises(RuntimeError, match="awaiting certification"):
+        builder._refuse_overwriting_a_build_awaiting_certification(root)
+
+    payload["terminal_gate_failures"] = ["Input coverage failed: x"]
+    builder._write_us_build_record(root, payload)
+    builder._refuse_overwriting_a_build_awaiting_certification(root)
+
+    # An evidence-tier build's owned failures certify, so it awaits too.
+    payload["settings"]["evidence_release"] = True
+    builder._write_us_build_record(root, payload)
+    with pytest.raises(RuntimeError, match="awaiting certification"):
+        builder._refuse_overwriting_a_build_awaiting_certification(root)
+
+    path.write_text("not json")
+    with pytest.raises(RuntimeError, match="awaiting certification"):
+        builder._refuse_overwriting_a_build_awaiting_certification(root)
 
 
 def test_certify_main_refuses_packages_other_than_the_builds(
@@ -20228,8 +20512,13 @@ def test_certify_main_refuses_packages_other_than_the_builds(
     path, payload = _build_record_fixture(builder, tmp_path)
     monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
     monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    _stub_certify_telemetry(builder, monkeypatch)
     certified: list[object] = []
-    monkeypatch.setattr(builder, "_certify_us_build", certified.append)
+    monkeypatch.setattr(
+        builder,
+        "_certify_us_build",
+        lambda record, *, telemetry: certified.append(record),
+    )
     built_with = payload["runtime"]["policyengine-us"]
     monkeypatch.setattr(
         builder,

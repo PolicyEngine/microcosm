@@ -8,8 +8,8 @@
 # --certify (or ROUTE_A_CERTIFY=1) on the same RUN_ROOT then certifies that
 # build (the release's post-export checks and its manifests,
 # tools/certify_us_national_build.py), runs the offline preflights, and leaves
-# publication to Max (microcosm#1585 item 11, PR 4a). Release staging
-# telemetry is enabled unless ROUTE_A_STAGING=0.
+# publication to Max (microcosm#1585 item 11, PR 4a). Release and certification
+# staging telemetry is enabled unless ROUTE_A_STAGING=0.
 #
 # Usage: ./route_a.sh [--resolve|--certify]
 # --resolve fetches refs, hashes inputs, and checks commit pins; no stages run.
@@ -338,6 +338,25 @@ release_command() {
     ${staging[@]+"${staging[@]}"} ${extra[@]+"${extra[@]}"})
 }
 
+certify_command() {
+  # Certification stages where its build staged, in a run of its own, so it
+  # needs the release stage's staging credential; without staging it runs
+  # offline and without secrets (microcosm#1585 item 11, PR 4a).
+  local -a staging=() launcher=()
+  case "${ROUTE_A_STAGING-1}" in
+  0)
+    staging=(--no-staging)
+    launcher=("${NOSECRETS[@]}")
+    ;;
+  1)
+    launcher=("$TOKEN_WRAPPER" "$AGENT_SECRET")
+    ;;
+  *) fail "ROUTE_A_STAGING must be 0 or 1" ;;
+  esac
+  CERTIFY_ARGV=("${launcher[@]}" "$W/.venv/bin/python" -B tools/certify_us_national_build.py
+    "$REL_OUT" ${staging[@]+"${staging[@]}"})
+}
+
 # ---------------------------------------------------------------------------
 # Dry run.
 # ---------------------------------------------------------------------------
@@ -379,7 +398,18 @@ log "route A driver start (pid $$)"
 C=$(git -C "$MAIN" rev-parse --verify --quiet "$COMMIT^{commit}") || fail "COMMIT $COMMIT not found after git fetch origin"
 PC=$(git -C "$MAIN" rev-parse --verify --quiet "${PREFLIGHT_COMMIT:-$C}^{commit}") || fail "PREFLIGHT_COMMIT $PREFLIGHT_COMMIT not found"
 refuse_bad_release_args
-verify_inputs
+# Certifying an accepted build reads none of the raw inputs, which the build
+# verified when it ran, so they are not hashed again (microcosm#1585 item 11,
+# PR 4a).
+CERTIFY_ONLY=0
+if [ "$ROUTE_A_CERTIFY" = 1 ] && [ -f "$RUN_ROOT/run-${C:0:12}/release-sup/ACCEPTED" ]; then
+  CERTIFY_ONLY=1
+fi
+if [ "$CERTIFY_ONLY" = 1 ]; then
+  log "inputs: not hashed again; the build at ${C:0:12} is accepted and certification reads none of them"
+else
+  verify_inputs
+fi
 check_commit "$C" "$PC"
 report_resolution "$C"
 [ ${#INPUT_PROBLEMS[@]} = 0 ] || fail "input problems (see above)"
@@ -457,8 +487,10 @@ else
     *) log "overnight chain process gone without CHAIN DONE or FAIL; proceeding" ;;
   esac
 fi
-verify_inputs
-[ ${#INPUT_PROBLEMS[@]} = 0 ] || { report_resolution "$C"; fail "inputs changed while waiting"; }
+if [ "$CERTIFY_ONLY" != 1 ]; then
+  verify_inputs
+  [ ${#INPUT_PROBLEMS[@]} = 0 ] || { report_resolution "$C"; fail "inputs changed while waiting"; }
+fi
 
 # --- helpers for supervised stages ---
 avail_ram_bytes() { "$PY" -c 'import psutil; print(psutil.virtual_memory().available)'; }
@@ -701,8 +733,9 @@ EOF
 fi
 wait_prior_supervisor certify
 if ! stage_done certify; then
-  write_config certify 110 "$RELEASE_RAM_GIB" 45 "${CERTIFY_WALL_SECONDS:-345600}" 2000000 "$W" "$PF_ENV" -- \
-    "${NOSECRETS[@]}" "$W/.venv/bin/python" -B tools/certify_us_national_build.py "$REL_OUT"
+  certify_command
+  write_config certify 110 "$RELEASE_RAM_GIB" 45 "${CERTIFY_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- \
+    "${CERTIFY_ARGV[@]}"
   run_stage certify 0 "$RELEASE_RAM_GIB" 45 "Certification scores the written H5; free disk beside the build."
 fi
 [ -f "$REL_DIR/release_manifest.json" ] || fail "certify accepted but $REL_DIR/release_manifest.json is missing"

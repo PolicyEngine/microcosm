@@ -1194,11 +1194,88 @@ def test_route_a_stops_after_the_build_and_certifies_only_when_asked() -> None:
     preflight = source.index("run_stage preflight-release")
     assert built < handoff < certify < certified < preflight
     assert '"$RUN_ROOT/ROUTE_A_BUILT.json"' in source
-    # Certification publishes nothing, so it runs without credentials.
+    # The certify stage runs the command certify_command builds, in the
+    # release stage's environment.
     assert (
-        '"${NOSECRETS[@]}" "$W/.venv/bin/python" -B '
-        'tools/certify_us_national_build.py "$REL_OUT"'
+        "  certify_command\n"
+        '  write_config certify 110 "$RELEASE_RAM_GIB" 45 '
+        '"${CERTIFY_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- \\\n'
+        '    "${CERTIFY_ARGV[@]}"\n'
     ) in source
+
+
+def _certify_argv(staging: str | None) -> list[str]:
+    settings = {
+        "W": "/fixture/worktree",
+        "REL_OUT": "/fixture/release-out",
+        "TOKEN_WRAPPER": str(ROUTE_A_TOOLS / "with_hf_token.sh"),
+        "AGENT_SECRET": "/fixture/agent-secret",
+    }
+    script = "set -eu\nfail() { printf '%s\\n' \"$*\" >&2; exit 1; }\n"
+    script += "\n".join(
+        f"{key}={shlex.quote(value)}" for key, value in settings.items()
+    )
+    script += "\nNOSECRETS=(/usr/bin/env -u HF_TOKEN HF_HUB_OFFLINE=1)\n"
+    script += "unset ROUTE_A_STAGING\n"
+    if staging is not None:
+        script += f"ROUTE_A_STAGING={shlex.quote(staging)}\n"
+    script += _function("certify_command")
+    script += '\ncertify_command\nprintf "%s\\0" "${CERTIFY_ARGV[@]}"\n'
+    result = subprocess.run(
+        ["bash", "-c", script], capture_output=True, check=False, timeout=20
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    return result.stdout.decode().rstrip("\0").split("\0")
+
+
+@pytest.mark.parametrize("staging", [None, "1", "0"])
+def test_certification_stages_like_the_release(staging: str | None) -> None:
+    """Certification opens a staging run where its build staged, so it gets
+    the release stage's staging credential; without staging it runs offline
+    and without secrets (microcosm#1585 item 11, PR 4a)."""
+    argv = _certify_argv(staging)
+    command = [
+        "/fixture/worktree/.venv/bin/python",
+        "-B",
+        "tools/certify_us_national_build.py",
+        "/fixture/release-out",
+    ]
+    if staging == "0":
+        assert argv == [
+            "/usr/bin/env",
+            "-u",
+            "HF_TOKEN",
+            "HF_HUB_OFFLINE=1",
+            *command,
+            "--no-staging",
+        ]
+    else:
+        assert argv == [
+            str(ROUTE_A_TOOLS / "with_hf_token.sh"),
+            "/fixture/agent-secret",
+            *command,
+        ]
+
+
+def test_route_a_certifies_an_accepted_build_without_hashing_its_inputs() -> None:
+    """Certification reads none of the raw inputs, which the build verified
+    when it ran, so --certify on an accepted build hashes them neither at the
+    start nor after the wait (microcosm#1585 item 11, PR 4a)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    decided = source.index(
+        'if [ "$ROUTE_A_CERTIFY" = 1 ] && '
+        '[ -f "$RUN_ROOT/run-${C:0:12}/release-sup/ACCEPTED" ]; then'
+    )
+    first = source.index("verify_inputs\nfi\ncheck_commit")
+    waited = source.index('if [ "$CERTIFY_ONLY" != 1 ]; then\n  verify_inputs\n')
+    assert decided < first < waited
+    # The run directory the decision reads is the one the stages use.
+    assert "RUN=$RUN_ROOT/run-${C:0:12}\n" in source
+    # A real run calls it only inside those two guards; --resolve, which
+    # exits before the real run, hashes them as before.
+    real_run = source[source.index("# Real run.") :]
+    calls = [line for line in real_run.splitlines() if line.strip() == "verify_inputs"]
+    assert calls == ["  verify_inputs", "  verify_inputs"]
 
 
 @pytest.mark.parametrize("flag", ["--certify", "--resolve"])

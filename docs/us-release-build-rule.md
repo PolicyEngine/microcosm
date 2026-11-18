@@ -14,6 +14,14 @@ large enough to change how the dataset is built carries a from-scratch build and
 certification receipt from its own tree before it merges. Main carries the same
 build as a standing check afterwards.
 
+Since a build and its certification are two steps
+([Build, then certify](#build-then-certify)), a receipt and the standing check
+need both halves: the build from raw sources, its certification, and the
+release-gate and publisher preflights. A Route A run without `--certify`
+stops at `ROUTE_A_BUILT.json`, before the post-export checks and both
+preflights, so it shows the build half only. The same run continued with
+`route_a.sh --certify` on its `RUN_ROOT` makes the receipt.
+
 A dataset earns default status separately, by beating the incumbent. The rule
 main enforces is microcosm#578's: the candidate beats the incumbent on the
 frozen comparison register, both rescored on it, with strict improvement
@@ -64,8 +72,8 @@ A US national build and its certification are two steps (microcosm#1585 item
   record: the reform-coverage smoke, reform validation, demographics and the
   holdouts on the written H5, then source coverage and take-up participation,
   then both manifests. It needs the build's directory, a checkout of the
-  build's commit and the engine the build ran on; it needs none of the build's
-  raw inputs.
+  build's commit, the packages the build ran on and, where the build staged,
+  its staging credential; it needs none of the build's raw inputs.
 - **Why.** On the 30 September and 24 October Route A builds, the work after
   calibration took 28.3 h of 33.0 h and 52.8 h of 56.5 h
   (`timing.elapsed_through_calibration_seconds` against
@@ -82,27 +90,41 @@ A US national build and its certification are two steps (microcosm#1585 item
   packages that built it), which the manifests carry as the build's, the
   options the checks read, the 13 gate verdicts the manifests carry, the
   release gate summary, the calibration losses and in-sample fit, the
-  post-export scoring plan, and the source-coverage and take-up receipts.
-  Certification rebuilds the scoring plan and refuses one that differs from
-  the recorded plan.
+  post-export scoring plan, the source-coverage and take-up receipts, and
+  where the build staged. It carries a digest of itself (`record_sha256`), so
+  an edit after the build is refused; anyone who recomputes the digest can
+  still change it, until certification signs (PR 4b). Certification rebuilds
+  the scoring plan and refuses one that differs from the recorded plan.
 - **Refusals.** Certification refuses a record whose files changed after the
   build, or a file it would read that appeared after the build; a checkout at
   another commit, or with changes outside the build directory; packages other
   than the ones the build was built with (`runtime` in the record), since the
   manifests name those as the build's; and a release directory that already
-  carries a release manifest.
+  carries a release manifest. A build refuses an `--out` that holds a build
+  awaiting certification; a failed build's `--out` may be built into again.
+- **Staging.** Certification opens a staging run of its own where its build
+  staged (the build's run id with `-certify` appended, to the build's staging
+  repository), so the post-export verdicts and the manifests reach the staging
+  dashboard, and a failed certification marks that run failed. The build
+  manifest's `staging` block, which the publisher checks, is certification's,
+  with the build's inside it under `build`. A build that did not stage is
+  certified without staging; `--no-staging` opts certification out.
 - **A failed release gate.** A build whose terminal gates fail still writes
-  its H5, its calibration weights and its record, so it can be evaluated,
-  and exits with the same "Release gates failed" error once its record is
-  written. Certification refuses a record that carries release-gate failures,
-  unless the build is evidence-tier. Input gates still stop the build where
-  they fail.
+  its H5, its calibration weights, its #568 weight evidence and its record,
+  so it can be evaluated, and exits with the same "Release gates failed" error
+  once its record is written. A written-file stored-input failure or an
+  export-audit error after the H5 write joins those failures rather than
+  replacing them. Certification refuses a record that carries release-gate
+  failures, unless the build is evidence-tier, and refuses any build whose
+  release directory holds the #568 weight evidence, which only a failed build
+  writes. Input gates still stop the build where they fail.
 - **Timing.** Both manifests' `timing` blocks carry `build_seconds` and
   `certify_seconds`; `total_build_seconds` is their sum.
 - **Drivers.** Route A (`tools/route_a/route_a.sh`) stops after the build with
   `ROUTE_A_BUILT.json`; `route_a.sh --certify` on the same `RUN_ROOT` certifies
-  that build and runs the release-gate and publisher preflights. The exact-k
-  ladder launcher's receipt carries the command that certifies its build.
+  that build, without hashing its raw inputs again, and runs the release-gate
+  and publisher preflights. The exact-k ladder launcher's receipt carries the
+  command that certifies its build.
 
 ## What stands between main and that build
 
