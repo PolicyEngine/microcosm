@@ -2259,7 +2259,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     except ValueError as error:
         parser.error(str(error))
-    for attribute, flag in _REFERENCE_H5_OPTIONS:
+    for attribute, flag in _REFERENCE_OPTIONS:
         path = getattr(args, attribute)
         failed = None if path is None else _failed_build_holding(path)
         if failed is not None:
@@ -2652,8 +2652,10 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
     tier, so a rerun into its --out still replaces it, as it did before
     builds wrote a record. Certifying it at the evidence tier is a choice
     made before such a rerun, and a build certified at either tier refuses
-    one. A record of another schema is refused the same way, and the refusal
-    names the code that can certify it.
+    one. A record that does not read cannot be certified either, so its
+    --out is a failed build's too, as :func:`_failed_build_holding` counts
+    it. A record of another schema is refused, and the refusal names the
+    code that can certify it.
     """
 
     path = Path(release_root) / US_BUILD_RECORD_FILENAME
@@ -2662,7 +2664,7 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        payload = None
+        return
     if _build_failed(payload):
         return
     awaiting = (
@@ -2739,14 +2741,17 @@ US_FAILED_BUILD_WEIGHT_EVIDENCE = (
     FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
 )
 
-#: The options whose H5 is the reference a gate judges this build against.
-#: A failed build's files are refused there. As a starting point (--base-h5,
-#: --selection-source-h5, --warm-start-calibration-npz) they are allowed:
-#: they can cut a rerun's time while its data is fixed, and the build's own
-#: gates judge its result.
-_REFERENCE_H5_OPTIONS = (
+#: The options whose file is a reference a gate judges this build against:
+#: the two input-mass references, and the incumbent diagnostics a critical
+#: target may improve on. A failed build's files are refused there, as the
+#: release-gate preflight refuses them as its export input-mass reference.
+#: As a starting point (--base-h5, --selection-source-h5,
+#: --warm-start-calibration-npz) they are allowed: they can cut a rerun's
+#: time while its data is fixed, and the build's own gates judge its result.
+_REFERENCE_OPTIONS = (
     ("input_mass_reference_h5", "--input-mass-reference-h5"),
     ("export_input_mass_reference_h5", "--export-input-mass-reference-h5"),
+    ("incumbent_diagnostics", "--incumbent-diagnostics"),
 )
 
 
@@ -2756,14 +2761,19 @@ def _failed_build_holding(path: Path) -> str | None:
     A build whose release gates fail still writes its H5, its calibration
     weights and its record, so it can be evaluated (microcosm#1585 item 11,
     PR 4a), and its files may start a later build. No gate judges against
-    it: a later build refuses its files as an input-mass reference, and the
+    it: a later build refuses its files as an input-mass reference or as the
+    incumbent diagnostics (:data:`_REFERENCE_OPTIONS`), the release-gate
+    preflight refuses them as its export input-mass reference, and the
     post-export probe refuses its directories as the reference. A path
     belongs to the build whose record sits in the nearest directory above
     it. That build failed if its record carries release-gate failures
     (:func:`_build_failed`), or if its own directory holds the #568 weight
     evidence, unless an evidence-tier certification has made it an evidence
-    release. Like the record's digest, this stops a mistake, not an edit,
-    until certification signs (PR 4b).
+    release. A record that does not read cannot be certified, so its build
+    counts as failed, as the --out refusal counts it
+    (:func:`_refuse_overwriting_a_build_awaiting_certification`). Like the
+    record's digest, this stops a mistake, not an edit, until certification
+    signs (PR 4b).
     """
 
     target = Path(path).resolve()
@@ -2774,7 +2784,7 @@ def _failed_build_holding(path: Path) -> str | None:
         try:
             payload = json.loads(record_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            continue
+            return f"the build whose record {record_path} does not read"
         if not isinstance(payload, dict) or payload.get("kind") != US_BUILD_RECORD_KIND:
             continue
         build = f"build {payload.get('build')} ({record_path})"
@@ -13548,9 +13558,10 @@ US_BUILD_RECORD_KIND = "microcosm_us_national_build_record"
 #: Schema 2 added the build's provenance (``built_at``, ``runtime``), its
 #: staging settings and the record's own digest (``record_sha256``). Schema 3
 #: dropped the tier: a build has no release, no ``evidence_release`` setting
-#: and no owner patterns, and its own directory is ``layout.build_dir``
-#: (microcosm#1585 item 11). A record of another schema is certified with the
-#: code that built it.
+#: and no owner patterns, and its own directory is ``layout.build_dir``; it
+#: lists the failures of the written H5's own checks apart, as
+#: ``artifact_integrity_failures`` (microcosm#1585 item 11). A record of
+#: another schema is certified with the code that built it.
 US_BUILD_RECORD_SCHEMA_VERSION = 3
 #: The options of the build that its post-export checks read. Certification
 #: takes them from the record, never from its own command line, so a build is
@@ -13707,6 +13718,7 @@ def _us_build_record(
     args: argparse.Namespace,
     terminal_gate_failures: Sequence[str],
     n_households: int,
+    artifact_integrity_failures: Sequence[str] = (),
     result,
     post_export_scoring_plan: _PostExportScoringPlan,
     release_gate_failures: Sequence[str] | None,
@@ -13806,6 +13818,9 @@ def _us_build_record(
         },
         "settings": {name: getattr(args, name) for name in US_BUILD_RECORD_SETTINGS},
         "terminal_gate_failures": list(terminal_gate_failures),
+        # The ones the written H5 failed in its own checks, which no tier
+        # certifies; each is also among terminal_gate_failures.
+        "artifact_integrity_failures": list(artifact_integrity_failures),
         "n_households": int(n_households),
         # The calibration fit as the reform-validation consumer reads it: each
         # target's name, final estimate and target value, in solve order.
@@ -13935,6 +13950,9 @@ class _USBuildRecord:
         self.settings = dict(payload["settings"])
         self.terminal_gate_failures = tuple(
             str(line) for line in payload["terminal_gate_failures"]
+        )
+        self.artifact_integrity_failures = tuple(
+            str(line) for line in payload["artifact_integrity_failures"]
         )
         self.n_households = int(payload["n_households"])
         self.timing = dict(payload["timing"])
@@ -14491,6 +14509,14 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     _refuse_reopening_the_builds_staging_run(args, record)
     failures = _recorded_release_gate_failures(record.payload)
     owner_patterns: tuple[tuple[str, str], ...] = ()
+    if record.artifact_integrity_failures:
+        raise SystemExit(
+            f"Build {record.build}: its written H5 failed its own checks, which "
+            "no tier certifies, since the evidence tier relaxes gate verdicts, "
+            "never the written artifact's (microcosm#506): "
+            + "; ".join(record.artifact_integrity_failures)
+            + ". Build it again."
+        )
     if args.evidence_release:
         if record.exact_k():
             raise SystemExit(
@@ -18885,7 +18911,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # record is written. A build has no tier: certification refuses it at the
     # certified tier while its failures stand, and only an evidence-tier
     # certification, which needs an owner for every failure, can ship them.
-    build_refusal: _BuildFailedReleaseGatesError | None = None
+    build_refusal: RuntimeError | None = None
     if terminal_gate_failures:
         # Gate-failure path ONLY (microcosm#568 review): the exact calibrated
         # weight vector — with the ordered household ids it aligns to, bound
@@ -18947,12 +18973,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             [] if mismatch is None else [mismatch]
         ),
     )
+    # What the written file fails, its stored-input premise here and the
+    # export audit below, is recorded with the release-gate failures, on a
+    # green build too, so its H5 never stands without a record that marks it
+    # failed (review of #1672). No tier certifies it: the evidence tier
+    # relaxes gate verdicts, never the written artifact's own checks
+    # (microcosm#506), so the record lists these apart.
+    artifact_integrity_failures: list[str] = []
     if stored_input_premise_failure is not None:
-        if build_refusal is None:
-            raise RuntimeError(stored_input_premise_failure)
-        # A failed build still ends at its record (microcosm#1585 item 11,
-        # PR 4a): what its written file fails joins its release gate failures
-        # instead of replacing them.
+        artifact_integrity_failures.append(stored_input_premise_failure)
         terminal_gate_failures.append(stored_input_premise_failure)
     # The build ends here (microcosm#1585 item 11, PR 4a). The optional export
     # audit and the calibration NPZ read the calibration result, which only
@@ -18973,11 +19002,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 maximum_microsim_batch_size=args.maximum_microsim_batch_size,
             )
         except Exception as error:
-            if build_refusal is None:
-                raise
-            terminal_gate_failures.append(
-                f"Export audit failed: {type(error).__name__}: {error}"
-            )
+            audit_failure = f"Export audit failed: {type(error).__name__}: {error}"
+            artifact_integrity_failures.append(audit_failure)
+            terminal_gate_failures.append(audit_failure)
 
     if telemetry is not None:
         telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
@@ -18989,10 +19016,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         release_root / f"base_{base_h5.name}",
         authenticated_pool_h5=authenticated_pool_h5,
     )
-    if build_refusal is not None:
+    if terminal_gate_failures:
         # The refusal names every failure the record carries, those found
-        # after the H5 write included.
-        build_refusal = _BuildFailedReleaseGatesError(
+        # after the H5 write included. A build whose written file failed its
+        # own checks exits as a refusal (exit 1), not with
+        # US_BUILD_FAILED_RELEASE_GATES_EXIT: no tier certifies it, so a
+        # driver must not keep it for certification.
+        refusal = (
+            RuntimeError
+            if artifact_integrity_failures
+            else _BuildFailedReleaseGatesError
+        )
+        build_refusal = refusal(
             "Release gates failed: " + "; ".join(terminal_gate_failures)
         )
     timing["build_seconds"] = time.perf_counter() - build_started
@@ -19012,6 +19047,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             runtime=_runtime_versions(),
             args=args,
             terminal_gate_failures=terminal_gate_failures,
+            artifact_integrity_failures=artifact_integrity_failures,
             n_households=int(export_frame.n("household")),
             result=result,
             post_export_scoring_plan=post_export_scoring_plan,

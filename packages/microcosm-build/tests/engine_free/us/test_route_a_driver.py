@@ -1478,6 +1478,20 @@ def test_route_a_keeps_a_build_that_failed_its_release_gates() -> None:
     assert ': "${ROUTE_A_EVIDENCE_FAILURE_OWNERS=}"' in example
 
 
+def test_route_a_replaces_the_build_only_hand_off_once_certified() -> None:
+    """A run with --certify ends with ROUTE_A_DONE.json (or
+    ROUTE_A_BLOCKED.json), which supersedes the ROUTE_A_BUILT.json an earlier
+    run without --certify left, so the two never stand side by side (review
+    of microcosm#1672)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    chosen = source.index("OUTF=$RUN_ROOT/ROUTE_A_DONE.json;")
+    removed = source.index('rm -f "$RUN_ROOT/ROUTE_A_BUILT.json"')
+    written = source.index('"$PY" - "$OUTF"')
+    assert chosen < removed < written
+    readme = " ".join((ROUTE_A_TOOLS / "README.md").read_text(encoding="utf-8").split())
+    assert "which replaces `ROUTE_A_BUILT.json`" in readme
+
+
 def test_route_a_checks_the_certification_parser_for_the_tier_flags() -> None:
     """The flags the certify stage passes are checked against the build
     commit's certification parser, not its build parser, which declares

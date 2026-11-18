@@ -944,6 +944,8 @@ log "publisher --preflight-only: $PUB_VERDICT"
 # --- 9. Hand-off. Nothing was published. ---
 STATE="done"; [ "$PF_BLOCKED" = 1 ] && STATE=blocked
 OUTF=$RUN_ROOT/ROUTE_A_DONE.json; [ "$STATE" = blocked ] && OUTF=$RUN_ROOT/ROUTE_A_BLOCKED.json
+# This hand-off supersedes the build-only one a run without --certify left.
+rm -f "$RUN_ROOT/ROUTE_A_BUILT.json"
 PFB=BLOCKED; PFR=BLOCKED
 if [ "$PF_BLOCKED" = 0 ]; then
   PFB=$(cat "$RUN/preflight-base-sup/ACCEPTED"); PFR=$(cat "$RUN/preflight-release-sup/ACCEPTED")

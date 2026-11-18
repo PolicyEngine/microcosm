@@ -6722,9 +6722,10 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
     A refusal is a batched pre-export gate failure: in an otherwise green run
     it is the raise's only line and the gate ran once on the export frame.
     The build still writes its H5 and its record, which certification refuses
-    (microcosm#1585 item 11, PR 4a). A premise failure aborts right after the
-    write, before the record, so nothing can certify the build. Neither mints
-    a manifest.
+    at the certified tier (microcosm#1585 item 11, PR 4a). A premise failure
+    is recorded too, once the H5 is written, as a failure of the written
+    artifact that no tier certifies (review of #1672). Neither mints a
+    manifest.
     """
 
     with pytest.raises(RuntimeError) as abort:
@@ -6755,8 +6756,23 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
             "details": {**STORED_INPUT_GATE_DETAILS, "refused": ["would_claim_wic"]},
         }
     else:
-        assert str(abort.value) == STORED_INPUT_PREMISE_FIXTURE
-        assert not (release_dir.parent / builder.US_BUILD_RECORD_FILENAME).exists()
+        # A green build's written file failing its premise is recorded too, so
+        # its H5 never stands without a record marking it failed (review of
+        # #1672); no tier certifies it, so it exits as a refusal.
+        assert str(abort.value) == (
+            f"Release gates failed: {STORED_INPUT_PREMISE_FIXTURE}"
+        )
+        assert type(abort.value) is RuntimeError
+        record = json.loads(
+            (release_dir.parent / builder.US_BUILD_RECORD_FILENAME).read_text()
+        )
+        assert record["terminal_gate_failures"] == [STORED_INPUT_PREMISE_FIXTURE]
+        assert record["artifact_integrity_failures"] == [STORED_INPUT_PREMISE_FIXTURE]
+        h5 = release_dir.parent / record["files"]["dataset"]["path"]
+        assert builder._failed_build_holding(h5) is not None
+        assert not list(release_dir.glob("final_household_weight*"))
+        with pytest.raises(SystemExit, match="which no tier certifies"):
+            builder.certify_main([str(release_dir.parent), "--evidence-release"])
         assert captured["stored_input_post_write_check"] == (
             captured["written_dataset"],
             captured["written_dataset"],
@@ -9823,6 +9839,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     try:
         builder.main()
     except RuntimeError as exc:
+        captured["refusal_type"] = type(exc).__name__
         # microcosm#547 cofailure contract: the batched report leads with the
         # early terminal failures (SSI delivery + its retry-basis note, then
         # the corridor lines in evaluation order); degraded-mode
@@ -10035,13 +10052,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     if terminal_mode == "merge":
         # What the written file and the export audit fail after the H5 write
         # joins the record's failures and the refusal, instead of replacing
-        # the refusal and leaving the H5 without a record.
-        assert failed_record["terminal_gate_failures"][-2:] == [
+        # the refusal and leaving the H5 without a record. The record lists
+        # them apart, since no tier certifies them, and the build exits as a
+        # refusal, not with the exit that keeps it for certification.
+        integrity = [
             STORED_INPUT_PREMISE_FIXTURE,
             "Export audit failed: AssertionError: export audit sentinel",
         ]
+        assert failed_record["terminal_gate_failures"][-2:] == integrity
+        assert failed_record["artifact_integrity_failures"] == integrity
+        assert captured["refusal_type"] == "RuntimeError"
+    else:
+        assert failed_record["artifact_integrity_failures"] == []
+        assert captured["refusal_type"] == "_BuildFailedReleaseGatesError"
     assert not list(release_dir.glob("*manifest*"))
-    with pytest.raises(SystemExit, match="cannot be certified"):
+    # What the written file failed (the merge run's premise and export audit)
+    # no tier certifies; the other failures only the evidence tier can ship.
+    with pytest.raises(
+        SystemExit,
+        match=(
+            "which no tier certifies"
+            if failed_record["artifact_integrity_failures"]
+            else "cannot be certified at the certified tier"
+        ),
+    ):
         builder.certify_main([str(out)])
     if terminal_mode in qrf_tail_register_modes:
         assert captured["qrf_tail_register_seen"] == {
@@ -20832,6 +20866,49 @@ def test_an_evidence_certification_refuses_what_no_owner_can_ship(
     ]
 
 
+def test_no_tier_certifies_a_written_h5_that_failed_its_own_checks(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The evidence tier relaxes gate verdicts, never the written artifact's
+    own checks (microcosm#506): a build whose written H5 failed its stored
+    input premise or the export audit is refused at either tier, whatever an
+    owner pattern says, before anything is scored (review of #1672)."""
+    builder = _load_builder_module()
+    audit = "Export audit failed: AssertionError: target 'x' differs"
+    path, payload = _build_record_fixture(
+        builder, tmp_path, terminal_gate_failures=[audit]
+    )
+    payload["artifact_integrity_failures"] = [audit]
+    builder._write_us_build_record(path.parent, payload)
+    monkeypatch.setattr(builder, "_git_dirty_paths", lambda **_: [])
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "c" * 40)
+    _stub_certify_telemetry(builder, monkeypatch)
+    certified: list[object] = []
+    monkeypatch.setattr(
+        builder,
+        "_certify_us_build",
+        lambda record, *, certification, telemetry: certified.append(certification),
+    )
+    owners = tmp_path / "owners.json"
+    owners.write_text(json.dumps({"Export audit failed:": "PolicyEngine/microcosm#1"}))
+    for argv in (
+        [str(path.parent)],
+        [
+            str(path.parent),
+            "--evidence-release",
+            "--evidence-failure-owners",
+            str(owners),
+        ],
+    ):
+        with pytest.raises(SystemExit, match="which no tier certifies") as refused:
+            builder.certify_main(argv)
+        assert audit in str(refused.value)
+    assert certified == []
+    assert not (path.parent / "releases").exists()
+    record = builder._read_us_build_record(path)
+    assert record.artifact_integrity_failures == (audit,)
+
+
 def test_certify_main_refuses_a_build_that_wrote_failed_weight_evidence(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -21043,9 +21120,13 @@ def test_a_build_refuses_an_out_awaiting_certification(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="awaiting certification .* schema 2"):
         builder._refuse_overwriting_a_build_awaiting_certification(root)
 
+    # A record that does not read cannot be certified: its --out may be built
+    # into again, and its files are no reference (review of #1672).
     path.write_text("not json")
-    with pytest.raises(RuntimeError, match="awaiting certification"):
-        builder._refuse_overwriting_a_build_awaiting_certification(root)
+    builder._refuse_overwriting_a_build_awaiting_certification(root)
+    assert builder._failed_build_holding(root / "artifacts") == (
+        f"the build whose record {path.resolve()} does not read"
+    )
 
 
 def test_certification_never_reopens_the_builds_staging_run(tmp_path: Path) -> None:
@@ -21195,17 +21276,23 @@ def test_a_failed_build_holds_every_file_under_its_out(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "flag", ["--input-mass-reference-h5", "--export-input-mass-reference-h5"]
+    ("flag", "role"),
+    [
+        ("--input-mass-reference-h5", "dataset"),
+        ("--export-input-mass-reference-h5", "dataset"),
+        ("--incumbent-diagnostics", "calibration_diagnostics"),
+    ],
 )
 def test_a_failed_build_is_no_input_mass_reference(
-    tmp_path: Path, capsys, flag: str
+    tmp_path: Path, capsys, flag: str, role: str
 ) -> None:
     """An input-mass reference is the certified yardstick a gate judges the
-    build against, so a failed build's H5 is refused there and a green
-    build's is read as before (review of #1672)."""
+    build against, and so are the incumbent diagnostics a critical target may
+    improve on, so a failed build's file is refused there and a green build's
+    is read as before (review of #1672)."""
     builder = _load_builder_module()
     path, payload = _build_record_fixture(builder, tmp_path)
-    file = path.parent / payload["files"]["dataset"]["path"]
+    file = path.parent / payload["files"][role]["path"]
     argv = [
         "--ledger-facts",
         str(tmp_path / "facts.jsonl"),

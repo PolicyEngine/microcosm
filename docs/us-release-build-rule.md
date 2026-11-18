@@ -168,18 +168,27 @@ A US national build and its certification are two steps (microcosm#1585 item
   its H5, its calibration weights, its #568 weight evidence and its record,
   so it can be evaluated, and exits with the same "Release gates failed" error
   once its record is written, with exit status 3, so a driver can tell it from
-  a refusal or a crash and keep it. A written-file stored-input failure or an
-  export-audit error after the H5 write joins those failures rather than
-  replacing them. Certification at the certified tier refuses a record that
-  carries release-gate failures and any build whose directory holds the #568
-  weight evidence, which only a failed build writes; the evidence tier
-  certifies it once each failure has an owner. Until then no gate judges
-  against it: a later build refuses any file under its `--out` as an
-  input-mass reference, and the post-export probe refuses its directories as
-  the reference. Its files may still start a later build, as its base,
+  a refusal or a crash and keep it. Certification at the certified tier
+  refuses a record that carries release-gate failures and any build whose
+  directory holds the #568 weight evidence, which only a failed build writes;
+  the evidence tier certifies it once each failure has an owner. Until then
+  no gate judges against it: a later build refuses any file under its
+  `--out` as an input-mass reference or as its `--incumbent-diagnostics`, the
+  release-gate preflight refuses it as its `--export-input-mass-reference-h5`,
+  and the post-export probe refuses its directories as the reference. A
+  record that does not read counts as a failed build's, both there and for
+  the `--out` refusal. Its files may still start a later build, as its base,
   selection source or warm start, since that build's own gates judge the
   result, and the probe may score its H5. Input gates still stop the build
   where they fail.
+- **What the written file fails.** A written-file stored-input failure or an
+  export-audit error after the H5 write is recorded with the release-gate
+  failures, on a green build too, so the H5 never stands without a record
+  marking it failed, and the record also lists these apart
+  (`artifact_integrity_failures`). No tier certifies such a build: the
+  evidence tier relaxes gate verdicts, never the written artifact's own
+  checks. It exits 1, as a refusal, so a driver does not keep it for
+  certification.
 - **Timing.** Both manifests' `timing` blocks carry `build_seconds` and
   `certify_seconds`; `total_build_seconds` is their sum.
 - **Drivers.** Route A (`tools/route_a/route_a.sh`) stops after the build with
