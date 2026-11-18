@@ -43,12 +43,18 @@ it serves :func:`require_one_population`, PR 5's loader and later callers.
 
 What the later d2283 PRs owe this library:
 
-- PR 3 flips four strict xfails of the whole-frame differential: the
-  weeks-unemployed UC-rule scope, Medicare take-up, retirement
-  contributions and retirement distributions. On the assembled form the
-  weeks UC rows key on the stored channel and clone index
-  (``weeks_unemployed.py`` :1366-1373), and the other three readers'
-  ``_asec_source_mask`` returns the stored-``asec`` rows.
+- PR 3 flips six strict xfails of the whole-frame differential. Four
+  compare statistics on the reader frame: the weeks-unemployed UC-rule
+  scope, Medicare take-up, retirement contributions and retirement
+  distributions. Two compare verdicts on a frame with one clone-only
+  defect (d2283 lead call L7): a clone row's ``MCARE`` disagreeing with its
+  take-up flag fails Route A's Medicare reconciliation and passes the
+  assembled one, and a clone row with weeks unemployed and no
+  unemployment compensation fails Route A's UC rule and passes the
+  assembled one. On the assembled form the weeks UC rows key on the
+  stored channel and clone index (``weeks_unemployed.py`` :1366-1373), and
+  the other three readers' ``_asec_source_mask`` returns the
+  stored-``asec`` rows.
 - PR 4 (prepare) fills on ACS rows every engine input outside
   :data:`RELEASE_WRITTEN_INPUTS`, ``takes_up_snap_if_eligible`` included
   (the SNAP take-up gate misgrades an ACS null). Lead call L1 moved ten

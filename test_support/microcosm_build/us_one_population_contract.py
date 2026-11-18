@@ -1158,6 +1158,45 @@ READER_SOURCE_COLUMNS: Mapping[str, tuple[str, ...]] = MappingProxyType(
 #: The WIC gate's source-local identity on a frame without spine ids.
 WIC_SOURCE_TRIPLE = ("source_year", "source_household_id", "source_person_id")
 
+#: The two clone-only defects d2283 lead call L7 adds to X5. Each changes
+#: one cell on one clone row so the row breaks its reader's Route A
+#: reconciliation, which the assembled readers leave out: Medicare's
+#: assembled source mask keeps stored-``asec`` rows, and the assembled weeks
+#: UC rule keys on the stored channel and clone index. Each maps to its
+#: reader and the one failure Route A's gate then reports.
+READER_CLONE_DEFECTS: Mapping[str, tuple[str, str]] = MappingProxyType(
+    {
+        "medicare_clone_mcare_mismatch": (
+            "medicare_take_up",
+            "takes_up_medicare_if_eligible: 1 MCARE reconciliation mismatch(es)",
+        ),
+        "weeks_clone_uc_mismatch": (
+            "weeks_unemployed",
+            "weeks_unemployed has 1 row(s) positive outside the "
+            "unemployment-compensation constraint.",
+        ),
+    }
+)
+
+#: Each defect's cell: the native person (group, index) whose one clone row
+#: changes, the column and the new value. Elder 0 is enrolled (``MCARE``
+#: 1, take-up True) and its clone now reports code 2; worker 5 receives
+#: unemployment compensation, so its clone carries 10 weeks, and the clone's
+#: compensation is now 0. Neither sits in a tail-source household, so each
+#: has exactly one clone row.
+_CLONE_DEFECT_CELLS: Mapping[str, tuple[tuple[str, int], str, object]] = (
+    MappingProxyType(
+        {
+            "medicare_clone_mcare_mismatch": (("elder", 0), "MCARE", 2),
+            "weeks_clone_uc_mismatch": (
+                ("worker", 5),
+                "unemployment_compensation",
+                0.0,
+            ),
+        }
+    )
+)
+
 _READER_WEIGHT = 1_000.0
 #: One single's household weighs a tenth of the rest, so the Keogh
 #: distribution it carries sits inside the gate's 0.5% share bound.
@@ -1444,7 +1483,7 @@ def _on_clones(person: pd.DataFrame, column: str, values: Mapping[int, float]) -
         person.loc[clone & (source == native_id), column] = value
 
 
-def reader_population() -> ReaderPopulation:
+def reader_population(*, clone_defect: str | None = None) -> ReaderPopulation:
     """An ASEC-only population for the whole-frame differential (d2283 X5).
 
     The native rows (:func:`_reader_native_frame`) carry every reader's raw
@@ -1474,9 +1513,16 @@ def reader_population() -> ReaderPopulation:
     person and both columns are copied to every clone, so the two keys
     partition the rows alike.
 
+    Args:
+        clone_defect: A key of :data:`READER_CLONE_DEFECTS`, to change that
+            defect's one clone cell (d2283 lead call L7), or ``None``.
+
     Raises:
-        AssertionError: If any reader's gate fails on the Route A frame, so
-            a differential never compares two failing gates.
+        AssertionError: If any reader's gate fails on the Route A frame (or,
+            with ``clone_defect``, if the defect's reader does not fail with
+            exactly its one failure while every other reader passes), so a
+            differential never compares two gates failing for another
+            reason.
     """
 
     native, positions = _reader_native_frame()
@@ -1524,6 +1570,15 @@ def reader_population() -> ReaderPopulation:
         person.loc[clone, column] = person.loc[clone, column] * factor
     clone_only_ssi = native_id("single", 6)
     _on_clones(person, US_SSI_TAKE_UP_ANCHOR, {clone_only_ssi: 2_000.0})
+    if clone_defect is not None:
+        (group, index), column, value = _CLONE_DEFECT_CELLS[clone_defect]
+        source = person["person_source_id"].to_numpy(dtype=np.int64)
+        rows = np.flatnonzero(clone & (source == native_id(group, index)))
+        if len(rows) != 1:
+            raise AssertionError(
+                f"The {clone_defect} defect needs one clone row; found {len(rows)}."
+            )
+        person.loc[person.index[rows[0]], column] = value
     route_a = Frame(
         tables,
         route_a.schema,
@@ -1535,7 +1590,7 @@ def reader_population() -> ReaderPopulation:
     reporters = frozenset(
         str(native_id(group, index)) for group, index in (("elder", 6), ("single", 5))
     )
-    _check_reader_gates(route_a, reporters=reporters)
+    _check_reader_gates(route_a, reporters=reporters, clone_defect=clone_defect)
 
     empty_acs = {
         entity: table.iloc[:0]
@@ -1556,16 +1611,25 @@ def reader_population() -> ReaderPopulation:
     )
 
 
-def _check_reader_gates(frame: Frame, *, reporters: frozenset[str]) -> None:
+def _check_reader_gates(
+    frame: Frame, *, reporters: frozenset[str], clone_defect: str | None = None
+) -> None:
+    expected: dict[str, list[str]] = {}
+    if clone_defect is not None:
+        defect_reader, failure = READER_CLONE_DEFECTS[clone_defect]
+        expected[defect_reader] = [failure]
     failures: dict[str, object] = {}
     for name, reader in READER_GATES.items():
         result = reader(frame)
         if isinstance(result, frozenset):
             if result != reporters:
                 failures[name] = sorted(result)
-        elif not result.passed:
+        elif result.passed == (name in expected) or list(result.failures) != (
+            expected.get(name, [])
+        ):
             failures[name] = list(result.failures)
     if failures:
         raise AssertionError(
-            f"Route A reader gates fail on the reader frame: {failures}."
+            f"Route A reader gates fail on the reader frame: {failures} "
+            f"(expected failures: {expected})."
         )

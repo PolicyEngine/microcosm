@@ -43,7 +43,10 @@ reader. The four readers Route A's clone label moves (the weeks UC-rule
 scope, Medicare take-up and both retirement families) are strict expected
 failures naming PR 3, with a companion check that each moves only its named
 fields; ``acs_local_hours`` is left out, its donor prep refusing the
-assembled population.
+assembled population. Lead call L7 (11-18) adds two more strict expected
+failures on verdicts: one clone-only defect each (a clone's ``MCARE``
+mismatch, a clone's weeks with no unemployment compensation) fails Route
+A's gate and passes the assembled one, so PR 3 owns six.
 """
 
 from __future__ import annotations
@@ -125,6 +128,7 @@ from microcosm.data.stored_inputs import (
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind
 from test_support.microcosm_build.us_one_population_contract import (
+    READER_CLONE_DEFECTS,
     READER_GATES,
     READER_SOURCE_COLUMNS,
     RELEASE_WRITTEN_ON_ACS,
@@ -4472,8 +4476,14 @@ def test_group_quarters_add_nothing_to_household_type_targets(assembled) -> None
 # ------------- phase 4: X5, the whole-frame differential (BP, K-21, Q4)
 
 #: The fields each moved reader's statistics change in (d2283 Q4: CPS clones
-#: keep Route A's ``puf_tax_detail`` label once assembled). PR 3 owns all four.
+#: keep Route A's ``puf_tax_detail`` label once assembled), keyed by reader,
+#: and, keyed by defect, the detail fields each clone-only defect of
+#: :data:`READER_CLONE_DEFECTS` moves besides the verdict (lead call L7).
+#: PR 3 owns all six.
 _X5_MOVED_FIELDS: dict[str, frozenset[str]] = {
+    "medicare_clone_mcare_mismatch": frozenset(
+        {"source_mismatch_count", "source_rows"}
+    ),
     "medicare_take_up": frozenset({"source_rows"}),
     "retirement_contributions": frozenset(
         {
@@ -4485,10 +4495,20 @@ _X5_MOVED_FIELDS: dict[str, frozenset[str]] = {
         }
     ),
     "retirement_distributions": frozenset({"source_rows"}),
+    "weeks_clone_uc_mismatch": frozenset(
+        {"uc_constraint_mismatch_count", "uc_constraint_rows"}
+    ),
     "weeks_unemployed": frozenset({"uc_constraint_rows"}),
 }
 
 _X5_PR3_REASONS: dict[str, str] = {
+    "medicare_clone_mcare_mismatch": (
+        "d2283 PR 3 flips this. Medicare take-up, fail to pass: one clone row's "
+        "MCARE disagrees with its take-up flag. Route A reconciles every row "
+        "and fails (medicare_take_up.py:306-308); once assembled, "
+        "_asec_source_mask keeps only stored-asec rows (:134-146), so the "
+        "clone's mismatch is not counted and the gate passes."
+    ),
     "medicare_take_up": (
         "d2283 PR 3 flips this. Medicare take-up: once assembled, "
         "_asec_source_mask keeps only rows whose stored channel is asec "
@@ -4508,6 +4528,14 @@ _X5_PR3_REASONS: dict[str, str] = {
         "(retirement_distributions.py:274-295) where Route A takes every row, "
         "so source_rows moves and clone-row DST codes go unvalidated; "
         "reconciliation does not move."
+    ),
+    "weeks_clone_uc_mismatch": (
+        "d2283 PR 3 flips this. Weeks unemployed, fail to pass: one clone row "
+        "has weeks unemployed and no unemployment compensation. Route A puts "
+        "every clone in the UC rule (weeks_unemployed.py:1351) and fails "
+        "(:1422-1426); once assembled the rule's scope is (asec & clone) | "
+        "(non-asec & native) (:1366-1373), which a puf_tax_detail clone is "
+        "not in, so the gate passes."
     ),
     "weeks_unemployed": (
         "d2283 PR 3 flips this. Weeks unemployed, the UC-rule scope: once "
@@ -4536,12 +4564,24 @@ _X5_WRITERS = frozenset(
 def readers():
     # pytest counts a fixture's error as a marked test's expected failure
     # when its type matches ``raises``; the builder's self-checks raise
-    # AssertionError, so re-raise them as an error the four strict xfails
+    # AssertionError, so re-raise them as an error the strict xfails
     # (raises=AssertionError) report rather than absorb.
     try:
         return reader_population()
     except AssertionError as exc:
         raise RuntimeError(f"The X5 reader frame is broken: {exc}") from exc
+
+
+@pytest.fixture(scope="module")
+def defect_readers():
+    # As ``readers``: a broken defect frame is an error, never an xfail.
+    try:
+        return {
+            defect: reader_population(clone_defect=defect)
+            for defect in READER_CLONE_DEFECTS
+        }
+    except AssertionError as exc:
+        raise RuntimeError(f"An X5 clone-defect frame is broken: {exc}") from exc
 
 
 def _x5_statistics(result: object) -> object:
@@ -4629,7 +4669,12 @@ def test_x5_covers_every_assembled_form_reader() -> None:
     assert callers <= modules
     assert set(READER_SOURCE_COLUMNS) == set(READER_GATES)
     assert set(_X5_MOVED_FIELDS) == set(_X5_PR3_REASONS)
-    assert set(_X5_MOVED_FIELDS) <= set(READER_GATES)
+    assert set(READER_GATES).isdisjoint(READER_CLONE_DEFECTS)
+    assert set(_X5_MOVED_FIELDS) <= set(READER_GATES) | set(READER_CLONE_DEFECTS)
+    assert set(READER_CLONE_DEFECTS) <= set(_X5_MOVED_FIELDS)
+    assert {reader for reader, _ in READER_CLONE_DEFECTS.values()} <= set(
+        _X5_MOVED_FIELDS
+    )
 
 
 def test_the_reader_frame_exercises_every_reader(readers) -> None:
@@ -4734,7 +4779,8 @@ def test_assembled_readers_return_route_a_statistics(readers, reader) -> None:
     Run once on the Route A frame and once on its
     ``to_assembled_provenance`` with no ACS row. The four readers whose
     assembled branch moves under Route A's clone label are strict expected
-    failures, each naming PR 3; the WIC frame's two clone partitions agree
+    failures, each naming PR 3 (two more, on verdicts, follow below); the
+    WIC frame's two clone partitions agree
     (see the fixture test), so the WIC case compares one partition.
     """
 
@@ -4742,7 +4788,7 @@ def test_assembled_readers_return_route_a_statistics(readers, reader) -> None:
     assert _x5_differences(route_a, assembled) == []
 
 
-@pytest.mark.parametrize("reader", sorted(_X5_MOVED_FIELDS))
+@pytest.mark.parametrize("reader", sorted(set(_X5_MOVED_FIELDS) & set(READER_GATES)))
 def test_a_moved_reader_moves_only_its_named_fields(readers, reader) -> None:
     """Outside the expected failure, a moved reader keeps its verdict and
     every statistic but the fields named for it, and Route A's value of
@@ -4764,6 +4810,94 @@ def test_a_moved_reader_moves_only_its_named_fields(readers, reader) -> None:
         source = person["RETCB_VAL"].to_numpy() > 0
         assert details["source_positive_rows"] == int(source.sum())
         assert details["allocation_mismatch_rows"] > 0
+
+
+def test_each_clone_defect_changes_one_clone_cell(readers, defect_readers) -> None:
+    """L7's preconditions, outside the expected failures: each defect frame
+    differs from the reader frame in one cell, on a clone row, on both
+    forms; the builder has already checked that Route A's gate for the
+    defect's reader fails with exactly its one failure and every other
+    reader passes."""
+
+    for defect, population in defect_readers.items():
+        reader, failure = READER_CLONE_DEFECTS[defect]
+        for form in ("route_a", "assembled"):
+            base = getattr(readers, form).table("person")
+            changed = getattr(population, form).table("person")
+            assert list(base.columns) == list(changed.columns), (defect, form)
+            differs = [
+                (row, column)
+                for column in base.columns
+                for row in np.flatnonzero(
+                    (base[column] != changed[column]).to_numpy()
+                    & ~(base[column].isna() & changed[column].isna()).to_numpy()
+                )
+            ]
+            assert len(differs) == 1, (defect, form, differs)
+            row, column = differs[0]
+            assert base["person_support_clone_index"].iloc[row] > 0, (defect, form)
+            assert column in READER_SOURCE_COLUMNS[reader], (defect, column)
+        result = READER_GATES[reader](population.route_a)
+        assert list(result.failures) == [failure], defect
+
+
+_X5_DEFECT_CASES = [
+    pytest.param(
+        defect,
+        id=defect,
+        marks=pytest.mark.xfail(
+            strict=True, raises=AssertionError, reason=_X5_PR3_REASONS[defect]
+        ),
+    )
+    for defect in sorted(READER_CLONE_DEFECTS)
+]
+
+
+@pytest.mark.parametrize("defect", _X5_DEFECT_CASES)
+def test_a_clone_only_defect_keeps_route_a_verdict(defect_readers, defect) -> None:
+    """X5 on verdicts (lead call L7): a defect on one clone row fails Route
+    A's gate, so the assembled gate must fail with the same failures.
+
+    Today the assembled reader leaves the clone row out and passes: a strict
+    expected failure naming PR 3. A defect that did nothing would leave both
+    gates passing and turn this into a strict unexpected pass.
+    """
+
+    route_a, assembled = _x5_run(
+        defect_readers[defect], READER_CLONE_DEFECTS[defect][0]
+    )
+    assert (assembled["passed"], assembled["failures"]) == (
+        route_a["passed"],
+        route_a["failures"],
+    )
+
+
+@pytest.mark.parametrize("defect", sorted(READER_CLONE_DEFECTS))
+def test_a_clone_only_defect_moves_only_its_named_fields(
+    defect_readers, defect
+) -> None:
+    """Outside the expected failure, a defect moves only the verdict and its
+    named fields, and Route A counts the one clone mismatch (true before
+    and after PR 3)."""
+
+    reader, failure = READER_CLONE_DEFECTS[defect]
+    population = defect_readers[defect]
+    route_a, assembled = _x5_run(population, reader)
+    moved = {("passed",), ("failures",)} | {
+        ("details", field) for field in _X5_MOVED_FIELDS[defect]
+    }
+    assert set(_x5_differences(route_a, assembled)) <= moved
+    assert not route_a["passed"]
+    assert route_a["failures"] == [failure]
+    person = population.route_a.table("person")
+    clones = int((person["person_support_clone_index"] > 0).sum())
+    details = route_a["details"]
+    if reader == "weeks_unemployed":
+        assert details["uc_constraint_mismatch_count"] == 1
+        assert details["uc_constraint_rows"] == clones
+    else:
+        assert details["source_mismatch_count"] == 1
+        assert details["source_rows"] == len(person)
 
 
 def test_the_local_hours_donor_refuses_the_assembled_population(readers) -> None:
