@@ -31,11 +31,11 @@ Who reads the spine assembly record. At this module's commit
 ``validate_assembly_provenance`` is called by ``spine_assembly.py`` (:136),
 ``spine_agreement.py`` (:330), ``acs_release_predictors.py`` (:1407, only
 when a row carries channel ``acs``, which this module never writes),
-``puf_support.py`` (:797, :859, :878), ``multispine_pool.py`` (:3589,
-:3597, :3621, :3652, :3673, all inside ``run_multispine_pool_path``, the
+``puf_support.py`` (:797, :859, :878), ``multispine_pool.py`` (:3597,
+:3605, :3629, :3660, :3681, all inside ``run_multispine_pool_path``, the
 stacked-pool build path, not a loader), ``stacked_spine.py`` (:1442),
 ``support_provenance.py``'s receipt and count helpers (:265, :284) and
-``tools/build_us_multispine_pool.py`` (:3356, :4183). The release tool calls
+``tools/build_us_multispine_pool.py`` (:3390, :4217). The release tool calls
 none of them, and the pool loader it uses
 (``h5_io.load_authenticated_us_multispine_pool_for_release``) never
 validates. So on main nothing on the release tool's arm reads the record:
@@ -295,7 +295,7 @@ _ACS_HOUSEHOLD_TYPES = (1, 2, 3)
 #: (``_ssi_person_uncapped_amount``). Like every pass built from the frame,
 #: it loads each frame column that is an engine variable, whether or not it
 #: computes anything from it.
-_SSI_DECEMBER_PASS = "tools/build_us_fiscal_refresh_release.py:14951"
+_SSI_DECEMBER_PASS = "tools/build_us_fiscal_refresh_release.py:15416"
 _NO_EARLIER_READER = (
     "Earlier readers: none; no engine pass runs before this stage (the first, "
     f"the SSI December pass, is at {_SSI_DECEMBER_PASS}) and no pool-arm stage "
@@ -348,7 +348,7 @@ _ORG_EVIDENCE = (
 #: rewrite that one on every SPM unit and raise on a null
 #: (U/snap_state_take_up.py:282-290), but the SNAP take-up stage before it
 #: passes ACS nulls through (U/snap_take_up.py:231-239, :274-277), and the
-#: release's SNAP take-up gate (tools/build_us_fiscal_refresh_release.py:14414)
+#: release's SNAP take-up gate (tools/build_us_fiscal_refresh_release.py:14819)
 #: grades that frame through ``to_numpy(dtype=bool)``
 #: (U/snap_take_up.py:319), which reads a NaN as take-up, a None as no
 #: take-up and refuses a ``pd.NA``: it misgrades ACS nulls.
@@ -359,12 +359,12 @@ _ORG_EVIDENCE = (
 #: :276-291, a static read), so a null in ``cps_race``, ``hourly_wage``,
 #: ``fsla_overtime_premium``, ``detailed_occupation_recode``,
 #: ``detailed_industry_recode``, ``major_industry_recode`` (org_wages,
-#: tools/build_us_fiscal_refresh_release.py:15189),
+#: tools/build_us_fiscal_refresh_release.py:15684),
 #: ``selected_marketplace_plan_benchmark_ratio`` (aca_marketplace_inputs,
-#: :15217), ``other_health_insurance_premiums`` or
-#: ``health_insurance_premiums`` (other_health_insurance_premiums, :15308)
-#: stops the build at the SSI December pass (:14951). The ACA, Medicaid and
-#: SNAP-state passes (:15217, :15248, :15277) also compute from
+#: :15716), ``other_health_insurance_premiums`` or
+#: ``health_insurance_premiums`` (other_health_insurance_premiums, :15823)
+#: stops the build at the SSI December pass (:15416). The ACA, Medicaid and
+#: SNAP-state passes (:15716, :15751, :15786) also compute from
 #: ``health_insurance_premiums`` and ``is_self_employed`` (the self-employed
 #: health insurance deduction into AGI and MAGI, and medical expenses), and
 #: a boolean null there reads silently as True or False. Staging writes the
@@ -380,7 +380,7 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
             "on every household when any value is not finite "
             "(U/scf_wealth.py:1048, :1129; rewrite, :1157). "
             f"{_NO_EARLIER_READER} (sipp_vehicles reads it later, "
-            "tools/build_us_fiscal_refresh_release.py:15071)"
+            "tools/build_us_fiscal_refresh_release.py:15554)"
         ),
         "meets_ssi_disability_criteria": (
             "ssi_disability_criteria stage: with_us_ssi_disability_criteria "
@@ -401,7 +401,7 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
             "boolean column with no null equal to its assignment, else writes "
             "the assignment on every person (U/ssi_take_up.py:1260-1261, "
             f":1268). {_LOADED_NOT_COMPUTED}; the pass's docstring says the "
-            "same (tools/build_us_fiscal_refresh_release.py:4253-4256)"
+            "same (tools/build_us_fiscal_refresh_release.py:4275-4277)"
         ),
         "would_file_taxes_voluntarily": (
             "voluntary_filing_input stage: with_us_voluntary_filing_input "
@@ -426,15 +426,15 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
         "takes_up_aca_if_eligible": (
             "aca_marketplace_inputs stage: _with_aca_marketplace_source_outputs "
             "raises if the output misses a tax unit and writes it on every tax "
-            "unit (tools/build_us_fiscal_refresh_release.py:4113, :4119). "
+            "unit (tools/build_us_fiscal_refresh_release.py:4134, :4140). "
             f"{_LOADED_NOT_COMPUTED}; the stage's own pass reads the potential "
-            "aca_ptc, not the take-up flag (:3907-3909)"
+            "aca_ptc, not the take-up flag (:3928-3930)"
         ),
         "takes_up_medicaid_if_eligible": (
             "medicaid_take_up stage: with_us_medicaid_take_up raises if any "
             "person is unassigned and writes every person "
             f"(U/medicaid_take_up.py:319, :323). {_LOADED_NOT_COMPUTED}. The "
-            "ACA stage's pass (tools/build_us_fiscal_refresh_release.py:15217) "
+            "ACA stage's pass (tools/build_us_fiscal_refresh_release.py:15716) "
             "reads it only through medicaid_enrolled in pays_aca_premium's "
             "ineligible-coverage sum, which also holds is_medicaid_eligible, "
             "the variable medicaid_enrolled is defined for, so the flag cannot "
@@ -2133,7 +2133,7 @@ def require_one_population(
       integral ``congressional_district_geoid`` whose state prefix
       (geoid // 100) is the household's ``state_fips``, as staging checks
       donor districts. The release's CD-vintage preflight needs only one
-      positive district (REL:13578-13582, check at :3500-3522), and its
+      positive district (REL:13862-13866, check at :3521-3543), and its
       every-household rule (``_integer_geography_codes``) runs only when CD
       targets are materialized, which Route A's national surface drops. The
       clause keeps every household's district for a future CD surface and
