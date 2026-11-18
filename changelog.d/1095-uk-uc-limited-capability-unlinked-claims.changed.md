@@ -15,3 +15,7 @@ Universal Credit claims without a linked DWP record now take an imputed limited 
 
 **The receipt** adds each cell's rate, and each proxy and condition group's, and beside it the rate of the linked claims with their own ESA award that the cell leaves out. A rate is printed only where its LCWRA claims and the rest each rest on three source households or more.
 
+**The take-up redraw** can hold young people with the element to a count of their own (`uc_take_up`, PolicyEngine/microcosm#1663).
+- With a young count, the drawn units in which a young claimant or partner would hold the element claim at a third odds ratio, in place of the LCWRA fit's.
+- It is solved in turn with the age fit's ratio and the LCWRA fit's.
+- The stage passes no young count until Chronicle carries the fact (PolicyEngine/chronicle#442). Until then the redraw is unchanged.
