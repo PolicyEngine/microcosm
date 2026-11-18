@@ -443,6 +443,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Bake-off arm accounting, split mirror and ESS; evaluates support mixes,
         # never transforms a population.
         "support_mix.py",
+        # d2283's one-population selection over support_mix's order: unit
+        # keys, eligibility flags, the nested plan, starting weights and a
+        # manifest. Reads no frame and treats no population itself.
+        "one_population_selection.py",
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",

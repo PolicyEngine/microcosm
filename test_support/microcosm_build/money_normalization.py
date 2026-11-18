@@ -262,8 +262,18 @@ _TARGET = (
 )
 
 
-def money_feed_facts(*, rate: str | None = None) -> list[dict]:
-    """The toy feed: two 2024 source halves, one 2027 anchor and a growth row."""
+#: Levels the toy feed publishes as projections for 2027's halves, on request.
+_PROJECTION_LEVELS = ("111", "113")
+
+
+def money_feed_facts(
+    *, rate: str | None = None, published_projections: bool = False
+) -> list[dict]:
+    """The toy feed: two 2024 source halves, one 2027 anchor and a growth row.
+
+    ``published_projections`` adds two 2027 halves the source publishes as
+    projections; by default the fact list is unchanged.
+    """
     facts = [
         _fact(f"source-{index}", level, *_SOURCE[index])
         for index, level in enumerate(_SOURCE_LEVELS)
@@ -313,6 +323,13 @@ def money_feed_facts(*, rate: str | None = None) -> list[dict]:
                 },
             }
         )
+    if published_projections:
+        for index, level in enumerate(_PROJECTION_LEVELS):
+            fact = _fact(f"projection-{index}", level, *_TARGET[index])
+            fact.update(
+                {"assertion": "source_projection", "provenance_class": "model_output"}
+            )
+            facts.append(fact)
     return facts
 
 
@@ -395,9 +412,13 @@ def money_factor_declaration(
     }
 
 
-def write_money_feed(root: Path, *, rate: str | None = None):
+def write_money_feed(
+    root: Path, *, rate: str | None = None, published_projections: bool = False
+):
     """Write the toy feed; return ``(path, pin, identity, lexical facts)``."""
-    path, pin = write_pinned_artifact(root, money_feed_facts(rate=rate))
+    path, pin = write_pinned_artifact(
+        root, money_feed_facts(rate=rate, published_projections=published_projections)
+    )
     pin["source_commit"] = "c" * 40
     artifact = load_ledger_consumer_artifact(path, feed_pin=pin, lexical_floats=True)
     return path, pin, chronicle_feed_identity(pin), artifact.facts
@@ -408,6 +429,63 @@ def money_factor_context(identity: dict, facts, **declaration_options) -> dict:
     entries = []
     for profile in PROFILES:
         declaration = money_factor_declaration(profile, identity, **declaration_options)
+        factor, receipt = resolve_reference_factor(declaration, facts, identity)
+        entries.append(
+            {
+                "declaration": declaration,
+                "operational_factor": factor,
+                "receipt": receipt,
+            }
+        )
+    return {"schema_version": 1, "feed_identity": identity, "factors": entries}
+
+
+def published_projection_money_context(identity: dict, facts) -> dict:
+    """Resolve one published-projection money factor per toy profile.
+
+    Source slots are the 2024 halves (observations). Target slots read the 2027
+    halves of ``money_feed_facts(published_projections=True)``; nothing is
+    projected, so every profile ages by the same factor.
+    """
+    target = [_slot(*row, index, target=False) for index, row in enumerate(_TARGET)]
+    for slot in target:
+        slot["selector"]["assertion"] = "source_projection"
+        slot["validation"].update(
+            {"assertion": "source_projection", "provenance_class": "model_output"}
+        )
+    mean_target = sum(map(Fraction, _PROJECTION_LEVELS)) / len(_PROJECTION_LEVELS)
+    mean_source = sum(map(Fraction, _SOURCE_LEVELS)) / len(_SOURCE_LEVELS)
+    numerator = round(mean_target / mean_source * 10**6)
+    entries = []
+    for profile in PROFILES:
+        declaration = {
+            "schema_version": 1,
+            "id": factor_id(profile),
+            "operation": "published_projection_period_average_ratio",
+            "operation_version": 1,
+            "purpose": "money_normalization_input",
+            "feed_identity": deepcopy(identity),
+            "source_period": "toy-2024",
+            "target_period": 2027,
+            "source_schedule": [
+                _slot(*row, index, target=False) for index, row in enumerate(_SOURCE)
+            ],
+            "target_schedule": deepcopy(target),
+            "subperiods_per_year": 2,
+            "rounding": {"digits": 6, "mode": "nearest_half_even"},
+            "expected_operational_factor": {
+                "numerator": numerator,
+                "denominator": 10**6,
+            },
+            "validity": {
+                "declared_on": "2025-01-01",
+                "valid_from": "2025-01-01",
+                "valid_until": "2099-12-31",
+                "as_of": "2025-01-01",
+            },
+            "evidence": ["toy published pay levels and projections"],
+            "decision_references": ["toy reviewed decision"],
+        }
         factor, receipt = resolve_reference_factor(declaration, facts, identity)
         entries.append(
             {
