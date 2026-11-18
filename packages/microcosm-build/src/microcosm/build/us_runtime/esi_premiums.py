@@ -1025,8 +1025,9 @@ def _raw_evidence_mask(
             raise SourceRuntimeError(
                 f"US ESI premium stage: {int((~complete).sum())} row(s) lack some "
                 f"of the raw ASEC fields: {', '.join(gaps)}; {not_restored}. "
-                "Only a frame that holds transferred ACS rows is graded with "
-                "allow_transferred_rows=True; a frame of CPS rows never is."
+                "Only a frame that holds transferred ACS rows needs "
+                "allow_transferred_rows=True; on any other frame, restore the "
+                "fields."
             )
         return complete
     partial = present.any(axis=1) & ~complete

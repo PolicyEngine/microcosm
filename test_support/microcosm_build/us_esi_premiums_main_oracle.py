@@ -12,8 +12,12 @@ PR 0) left each of those unchanged.
 The shared helpers are ``_person_raw_shares``, ``_person_with_state``,
 ``_stable_person_keys``, ``_weighted``, ``load_meps_ic_esi_premium_cells`` and
 ``meps_ic_private_active_employer_totals``, beside the constants imported with
-them. A change to any of them moves the oracle and the live gates together, so
-the differential test (T2) cannot detect it. For those names the evidence is
+them, and everything those call: ``_EsiCodes``, ``_cell_values``,
+``_esi_person_codes``, ``_government_cell``, ``_integer_codes``,
+``_no_contribution_share``, ``_private_cell``, ``_raw_employer_share`` and
+constants such as ``_CODE_DOMAINS``, ``_SIZE_BY_NOEMP`` and
+``_GRPFTYP_FOR_GRPFTYP2``. A change to any of them moves the oracle and the
+live gates together, so the differential test (T2) cannot detect it. For those names the evidence is
 main's own file or an AST comparison against it, not T2.
 
 Track main only; do not edit otherwise. This file exists so that one process

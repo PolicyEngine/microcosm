@@ -264,20 +264,22 @@ def test_a_null_raw_field_is_refused_with_mains_diagnosis(route_a) -> None:
             assert _NOT_RESTORED in text
             # The keyword is the ACS local lane's, not a Route A remedy.
             assert (
-                "Only a frame that holds transferred ACS rows is graded with "
-                "allow_transferred_rows=True" in text
+                "Only a frame that holds transferred ACS rows needs "
+                "allow_transferred_rows=True; on any other frame, restore the "
+                "fields." in text
             )
         # Main says the same of the same row.
         assert _NOT_RESTORED in main.us_esi_premiums_signal_gate(frame).failures[0]
-    # Several columns: each is named with its own count.
+    # Several columns: each is named with its own count, and the lead
+    # count is rows, not cells (row 7 lacks both fields).
     frame = with_person_cells(
         with_person_cells(route_a["export"], [7], "NOW_HIPAID", np.nan),
-        [3, 9],
+        [7, 9],
         "PEMLR",
         np.nan,
     )
     text = us_esi_premiums_signal_gate(frame).failures[0]
-    assert "3 row(s) lack some of the raw ASEC fields" in text
+    assert "2 row(s) lack some of the raw ASEC fields" in text
     assert "NOW_HIPAID has 1 missing row(s), PEMLR has 2 missing row(s);" in text
     assert (
         "the Census columns were not restored for every vintage "
