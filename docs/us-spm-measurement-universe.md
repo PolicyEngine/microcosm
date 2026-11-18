@@ -31,10 +31,10 @@ ACS SPM sample is limited to people living in households, and Microcosm's ACS
 spine inherits exactly that limitation. The ASEC ruling is the opposite shape:
 the CPS ASEC sample frame already equals the CPS SPM universe, so there is no
 ASEC record outside it to declare. The ASEC ruling is therefore made at the
-spine rather than per record, and it carries its own refusal — if a frame ever
-arrives carrying an ASEC household record-type field, the producer refuses
-rather than applying a ruling that was made on the premise that no such field
-is read.
+spine rather than per record. The reviewed `HRHTYPE` carry distinguishes
+housing households (1–8) from group quarters (9/10) for ACS household targets;
+both remain within the CPS SPM sample. Other ASEC record-type fields still
+refuse until reviewed against that SPM ruling.
 
 `UNRESOLVED` is the engine's *absence* sentinel, not a producer value. A
 producer that cannot decide refuses.
@@ -79,7 +79,7 @@ Every refusal is a named, fail-closed `ValueError`:
 | `SPM_UNIVERSE_EMPTY_UNIT` | an SPM unit with no member |
 | `SPM_UNIVERSE_UNIT_SPANS_KINDS` | one SPM unit whose members sit in households of different kinds |
 | `SPM_UNIVERSE_DEGRADED_PARTITION` | the ASEC arm's SPM partition is not the native one: `SPM_ID` absent, missing, or not one-to-one with the frame's units per support-clone copy |
-| `SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED` | the frame carries an ASEC record-type field the spine-level ruling was not derived against |
+| `SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED` | the frame carries an unreviewed ASEC record-type field; carried `HRHTYPE` is reviewed and does not change the CPS SPM sample |
 | `SPM_UNIVERSE_INVALID_CLONE_INDEX` | the person table carries a support-clone index that is missing, non-finite, negative or non-integral, so a row's clone copy is undecidable |
 
 `SPM_UNIVERSE_UNIT_SPANS_KINDS` is natively unreachable — ACS group-quarters

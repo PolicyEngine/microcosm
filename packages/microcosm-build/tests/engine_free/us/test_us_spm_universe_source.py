@@ -554,6 +554,17 @@ def test_refuses_an_asec_vintage_carrying_a_record_type_field(field):
         )
 
 
+@pytest.mark.parametrize("kind", range(1, 11))
+def test_reviewed_hrhtype_does_not_change_the_cps_spm_universe(kind):
+    # HRHTYPE 9/10 exclude housing-household targets, but these source records
+    # already belong to the CPS SPM sample. Carrying the classification must
+    # not make the source producer refuse or remove their SPM observations.
+    assert _classify(
+        [{"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11}],
+        household_extra={1: {"HRHTYPE": kind}},
+    ) == {1: INCLUDED}
+
+
 def test_refuses_an_asec_record_type_field_on_the_person_table():
     with _refuses("SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED"):
         _classify(

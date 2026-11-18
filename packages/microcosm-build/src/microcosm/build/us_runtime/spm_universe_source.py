@@ -30,9 +30,10 @@ cannot separate institutional from noninstitutional group quarters, so the ACS
 SPM sample is limited to people living in households. The ASEC ruling is the
 opposite shape: the CPS ASEC *sample frame* already equals the CPS SPM
 universe, so there is no ASEC record outside it to declare. That ruling is
-therefore made at the spine, not per record, and carries its own refusal
-(:data:`ASEC_RECORD_TYPE_FIELDS`) so that a future ASEC vintage which admits a
-record-type field cannot be silently declared in-universe.
+therefore made at the spine, not per record. Carried ``HRHTYPE`` distinguishes
+housing households from noninstitutional group quarters within that CPS sample;
+both remain in its SPM universe. Other unreviewed record-type fields still
+refuse (:data:`ASEC_RECORD_TYPE_FIELDS`).
 
 ``UNRESOLVED`` is the engine's *absence* sentinel, not a value a producer
 emits. A producer that cannot decide refuses; it never writes ``UNRESOLVED``.
@@ -91,6 +92,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .asec_household_type import ASEC_HOUSEHOLD_KIND_COLUMN
 from .support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     _validated_clone_indices,
@@ -155,11 +157,10 @@ ACS_HOUSEHOLD_KINDS = (ACS_HOUSING_UNIT_KIND, *ACS_GROUP_QUARTERS_KINDS)
 #: household fallback (``microcosm.frame.units.assign_us_unit_structure``).
 ASEC_NATIVE_UNIT_COLUMN = "SPM_ID"
 
-#: ASEC household record-type fields. Microcosm reads none of them at this
-#: head, which is why the ASEC ruling is made at the spine. If one ever
-#: arrives on a frame, the spine-level ruling has to be re-derived against it
-#: rather than silently applied, so its presence refuses.
-ASEC_RECORD_TYPE_FIELDS = ("H_TYPE", "HRHTYPE", "H_HHTYPE", "HUNITS", "H_LIVQRT")
+#: Unreviewed ASEC record-type fields. HRHTYPE is now carried and reviewed for
+#: housing targets: its group quarters remain part of the CPS SPM sample.
+#: Other fields still require a separate review before this ruling applies.
+ASEC_RECORD_TYPE_FIELDS = ("H_TYPE", "H_HHTYPE", "HUNITS", "H_LIVQRT")
 
 SPM_UNIVERSE_METHODOLOGY = (
     "Census SEHSD-WP2020-09, pages 6-7: all people living in group quarters "
@@ -565,7 +566,7 @@ def _assert_asec_record_type_unreviewed(
         "SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED",
         f"the frame carries ASEC household record-type field(s) {found}. The "
         f"ASEC ruling ({ASEC_SPM_INCLUDED_AUTHORITY}) was made at the spine "
-        "precisely because Microcosm reads none of these; it must be "
+        f"with only {ASEC_HOUSEHOLD_KIND_COLUMN} reviewed; it must be "
         "re-derived against the field rather than applied over it.",
     )
 

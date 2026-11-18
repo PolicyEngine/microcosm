@@ -436,7 +436,7 @@ def test_acs_congressional_district_age_targets_are_always_compiled() -> None:
 
 
 def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
-    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 48
+    assert len(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS) == 50
     assert all(
         source_record_id.startswith(("census_stc.", "hhs_acf_tanf.", "irs_soi."))
         for source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
@@ -665,7 +665,6 @@ def test_all_vintage_scope_is_vintage_invariant_and_cell_exact() -> None:
     from hypothesis import strategies as st
 
     entries = sorted(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS)
-    assert all(entry.split(".")[1] == "ty2023" for entry in entries)
 
     def at_vintage(entry: str, token: str) -> str:
         source, _, rest = entry.split(".", 2)
@@ -706,8 +705,9 @@ def test_exclusion_vintage_scope_registers_are_consistent() -> None:
     """Each all-vintage entry is a register key, and each bypass is another
     vintage of exactly one register key that is not all-vintage scoped (else
     it could never be selected) and says why it may calibrate. The all-vintage
-    set is the four #564 other-income rows plus the #451 tips return count
-    (decision d179), and no bypass remains."""
+    set holds the four #564 other-income rows, the #451 tips return count
+    (decision d179), and the two #880 superseded national CTC totals; no
+    bypass remains."""
     period_free = fiscal_targets._period_free_source_record_id
     assert US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS <= set(
         US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
@@ -718,6 +718,7 @@ def test_exclusion_vintage_scope_registers_are_consistent() -> None:
             for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
         ),
         _W2_TIPS_RETURN_COUNT.format(year=2023),
+        *fiscal_targets.US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS,
     }
     assert US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES == {}
     for source_record_id, reason in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES.items():
@@ -1308,7 +1309,9 @@ def test_us_fiscal_target_references_cover_reference_program_surface() -> None:
         for target in complete_coverage_targets()
         if isinstance(target, dict)
     }
-    assert REFERENCE_PROGRAM_TARGET_ROLES <= roles
+    # The CTC total requirement now checks the four Table 1.3 status cells;
+    # no single cell carries the retired national-total target role.
+    assert REFERENCE_PROGRAM_TARGET_ROLES - {"ctc_total"} <= roles
 
 
 def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> None:
@@ -2572,8 +2575,11 @@ def test_soi_premium_tax_credit_targets_use_annual_assigned_ptc() -> None:
 
 
 def test_soi_ctc_targets_expose_allowed_nonrefundable_basis() -> None:
-    amount_source_record_id = "irs_soi.ty2022.historic_table_2.us.all.ctc_amount"
-    returns_source_record_id = "irs_soi.ty2022.historic_table_2.us.all.ctc_claims"
+    status = "married_filing_jointly_surviving_spouse"
+    amount_record_set = "irs_soi.ty2023.table_1_3.filing_status_ctc_amount"
+    returns_record_set = "irs_soi.ty2023.table_1_3.filing_status_ctc_returns"
+    amount_source_record_id = f"{amount_record_set}.{status}.ctc_amount"
+    returns_source_record_id = f"{returns_record_set}.{status}.ctc_claims"
     registry = compile_us_fiscal_target_registry(
         [
             *packaged_reference_facts(),
@@ -2581,17 +2587,19 @@ def test_soi_ctc_targets_expose_allowed_nonrefundable_basis() -> None:
                 source_record_id=amount_source_record_id,
                 source_name="irs_soi",
                 measure_id="ctc_amount",
-                value=82_863_353_000,
-                period_value=2022,
-                dimensions={"income_range": "all", "filing_status": "all"},
+                value=40_000_000_000,
+                period_value=2023,
+                layout_record_set_id=amount_record_set,
+                dimensions={"income_range": "all", "filing_status": status},
             ),
             _dynamic_ledger_fact(
                 source_record_id=returns_source_record_id,
                 source_name="irs_soi",
                 measure_id="ctc_claims",
-                value=38_068_980,
-                period_value=2022,
-                dimensions={"income_range": "all", "filing_status": "all"},
+                value=22_000_000,
+                period_value=2023,
+                layout_record_set_id=returns_record_set,
+                dimensions={"income_range": "all", "filing_status": status},
             ),
         ],
         allow_unaged_dollar_targets=True,
@@ -2600,7 +2608,7 @@ def test_soi_ctc_targets_expose_allowed_nonrefundable_basis() -> None:
     specs = {spec.name: spec for spec in registry.specs}
     amount = specs[amount_source_record_id]
     assert amount.family == "irs_soi"
-    assert amount.metadata["target_role"] == "ctc_total"
+    assert amount.metadata["target_role"] == "soi_fiscal_distribution"
     assert amount.metadata["variable"] == "ctc"
     assert amount.metadata["materializer"] == "irs_soi_slice"
     assert amount.metadata["measure_mode"] == "sum"

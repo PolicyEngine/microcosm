@@ -424,6 +424,23 @@ build in `releases/microcosm-us-2024-national/`, runs only
 `microcosm-publish-release-build --preflight-only`, which checks the build
 offline, and leaves publication to Max.
 
+The US fiscal-refresh release binds national ACS household-type counts by
+default, including the household total. Its dense, sparse and exact-k solve
+arms use free mass: ACS group-quarters placeholders carry positive weights
+but do not count as households. Fresh ASEC pools carry household `HRHTYPE`
+and exclude its group-quarters codes 9/10 from these cells too. A frame that
+carries the field refuses a missing code on the ASEC arm or on any household
+without `TYPEHUGQ`, and refuses a household that carries both codes.
+Historical frames without that field still use the roster and include those
+ASEC records. That fallback warns, and the release's calibration diagnostics
+record it at `build.target_compilation.household_universe`: households and
+initial weight by `TYPEHUGQ`, `HRHTYPE` and roster fallback, and each
+household-type target's fallback part. Only `_load_or_materialize_target_frame`
+attaches that receipt; `_materialize_target_frame` doesn't, because the
+scorers digest its compilation per household slice. The re-solve receipt must
+still state that limitation. Keep these universes separate when changing
+weight handling. See [the household-target guide](us-household-type-targets.md).
+
 The US fiscal-refresh builder scores its written H5 in household batches.
 Alongside its out-of-sample reports, it writes
 `us_ssi_social_security_holdout.json`: the household-weighted share of SSI

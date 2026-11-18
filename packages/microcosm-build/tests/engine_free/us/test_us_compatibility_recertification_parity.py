@@ -6,10 +6,17 @@ refuses, and the walker that reads which of them an engine computed. The data
 shard cannot import the tool, so the tool reads all three from it
 (microcosm#1585). These tests hold the tool's names to the shared rules, and
 the walker to each tool's former behaviour.
+
+Two SOI rules run the other way: the scorer keeps its own copies of the
+tool's no-op ledger filter rule and of the EITC masks the tool's SOI slice
+applies (microcosm#880), so these tests also hold each copy to the tool's
+function over generated rows.
 """
 
 from __future__ import annotations
 
+import ast
+import inspect
 from types import SimpleNamespace
 
 import numpy as np
@@ -115,4 +122,106 @@ def test_signed_component_is_the_release_tools(release_tool, values, source):
     np.testing.assert_array_equal(
         recert.signed_component(values, source),
         release_tool._signed_component(np.asarray(values), source),
+    )
+
+
+_FILTER_VALUES = (
+    "",
+    " ",
+    "all",
+    "All",
+    " ALL ",
+    "_all",
+    "all_",
+    "all statuses",
+    "all_returns",
+    "none",
+    "0",
+    "3plus",
+)
+
+
+@settings(max_examples=300, deadline=None)
+@given(value=st.one_of(st.sampled_from(_FILTER_VALUES), st.text(max_size=12)))
+def test_noop_ledger_filter_rule_is_the_release_tools(release_tool, value):
+    assert recert._is_noop_ledger_filter_value(value) == (
+        release_tool._is_noop_ledger_filter_value(value)
+    )
+
+
+def _eitc_literals(function, method):
+    """The string literals ``function`` passes to ``str.<method>``."""
+
+    tree = ast.parse(inspect.getsource(function))
+    return {
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == method
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
+
+
+def test_eitc_child_count_patterns_are_the_release_tools(release_tool):
+    """A record set or measure the tool learns to read as a child count must
+    reach the scorer's copy, or the scorer would score that row unmasked."""
+
+    tool = release_tool._soi_eitc_child_count_filter
+    assert _eitc_literals(tool, "endswith") == set(recert._EITC_CHILD_COUNT_RECORD_SETS)
+    assert _eitc_literals(tool, "startswith") == set(recert._EITC_CHILD_COUNT_MEASURES)
+
+
+_RECORD_SETS = (
+    "",
+    "irs_soi.table_2_5",
+    "irs_soi.table_2_5.eitc_by_agi",
+    "eitc_by_agi_children.one_qualifying_child",
+    "irs_soi.eitc_by_agi_children.two_qualifying_children.amount",
+    *(f"irs_soi.table_2_5{suffix}" for suffix in recert._EITC_CHILD_COUNT_RECORD_SETS),
+)
+_MEASURES = (
+    "",
+    "eitc_total",
+    "eitc_no_children",
+    "returns_eitc_one_child_",
+    "itemized_deductions_amount",
+    *(f"{prefix}amount" for prefix in recert._EITC_CHILD_COUNT_MEASURES),
+)
+_DOMAINS = (
+    recert._POSITIVE_EITC_DOMAIN,
+    "individual_income_tax_returns",
+    f"{recert._POSITIVE_EITC_DOMAIN}_by_state",
+)
+
+
+def _optional(values):
+    return st.one_of(st.none(), st.sampled_from(values), st.text(max_size=8))
+
+
+@settings(max_examples=500, deadline=None)
+@given(
+    domain=_optional(_DOMAINS),
+    child_count=_optional(_FILTER_VALUES),
+    record_set=_optional(_RECORD_SETS),
+    measure=_optional(_MEASURES),
+)
+def test_eitc_mask_is_the_release_tools(
+    release_tool, domain, child_count, record_set, measure
+):
+    """The scorer refuses a row exactly when the tool's SOI slice would narrow
+    it to positive-EITC returns or to one EITC child count."""
+
+    fields = {
+        "ledger_domain": domain,
+        "ledger_filter_eitc_child_count": child_count,
+        "ledger_layout_record_set_id": record_set,
+        "source_measure_id": measure,
+    }
+    metadata = {key: value for key, value in fields.items() if value is not None}
+    assert recert._soi_eitc_masked(metadata) == (
+        release_tool._soi_eitc_child_count_filter(metadata) is not None
+        or release_tool._soi_requires_positive_eitc_filter(metadata)
     )

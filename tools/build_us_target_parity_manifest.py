@@ -51,7 +51,12 @@ from microcosm.build.us_runtime.chronicle_feed import (
     load_us_chronicle_feed,
     require_us_chronicle_feed_row_contracts,
 )
-from microcosm.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
+from microcosm.build.us_runtime.fiscal_targets import (
+    US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS,
+    compile_us_fiscal_target_registry,
+    household_type_fact_exclusion_reason,
+    soi_filing_status_fact_exclusion_reason,
+)
 from microcosm.build.us_runtime.medicaid_take_up import (
     apply_us_medicaid_enrollment_substitutions,
 )
@@ -70,7 +75,7 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
-DEFAULT_FEED_NAME = "consumer_facts_us_41b2fb2.jsonl"
+DEFAULT_FEED_NAME = "consumer_facts_us_60266a3.jsonl"
 DEFAULT_FEED_PATH = (
     Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
 )
@@ -528,8 +533,10 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
         "not an administrative universe. The compiler admits ACS population-age "
         "facts only at congressional-district geography, while every acs1_2023 "
         "fact in this pinned feed is state-grain.",
-        "fiscal_targets._reference_from_ledger_fact accepts census_acs only when "
-        "geography_level == congressional_district; sample fact "
+        "fiscal_targets._reference_from_ledger_fact accepts ACS population-age "
+        "facts only when geography_level == congressional_district; its separate "
+        "2024 household-type branch does not admit these 2023 state-age facts; "
+        "sample fact "
         "census_acs.acs1_2023.b01001.female_age.01.age_15_to_17.female_population",
         _fence(
             origin=(
@@ -541,7 +548,8 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
             verdict_basis=(
                 "survey_derived and mechanically inert: every acs1_2023 fact in "
                 "the feed is state-grain (468/468 verified), so the CD-only ACS "
-                "source gate compiles none of them."
+                "population-age branch compiles none of them. The separate "
+                "2024 household-type branch does not admit this family."
             ),
         ),
     ),
@@ -653,6 +661,27 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
 #: Keyed by vintage-free family id, so a repin to the next IRS
 #: congressional-district release keeps its note.
 _COMPILED_FAMILY_NOTES = {
+    "census_acs.acs1_2024": (
+        "ACS 2024 B11001/B11003 national household-type estimates bind by "
+        "default (microcosm#880). The cell review records all eight bound "
+        "estimates and every reviewed exclusion: state estimates, Puerto Rico, "
+        "margins of error, redundant totals and deferred child-age splits. "
+        "B11001 001 binds the housing-unit household total with free solve mass."
+    ),
+    "irs_soi.table_1_3": (
+        "Four filing statuses times returns, adjusted gross income, "
+        "nonrefundable child and other dependent credit returns, and credit "
+        "amount bind by default (microcosm#880), in the existing SOI tax-unit "
+        "universe without a filer mask. The all-status returns and AGI cells "
+        "repeat Table 1.2; the all-status credit cells sum the four bound "
+        "statuses within publisher rounding. All four totals receive reviewed "
+        "exclusions in the cell review."
+    ),
+    "irs_soi.historic_table_2": (
+        "Table 1.3's TY2023 filing-status CTC counts and amounts replace the "
+        "two older national all-AGI CTC aggregates. The cell review records "
+        "these superseded totals; the remaining Historic Table 2 cells bind."
+    ),
     "irs_soi.congressional_district": (
         "One US target surface: national, state, and congressional-district "
         "facts compile for every calibrated artifact. Geography is a constraint; "
@@ -795,6 +824,45 @@ def _compiled_families(facts: list[dict]) -> set[str]:
     return families
 
 
+def _household_filing_cell_review(facts: list[dict]) -> dict[str, dict]:
+    """Account for every new household/filing-status fact, within its family.
+
+    The existing parity gate checks family presence. These finer dispositions
+    make the intentionally narrow binding surface reviewable without treating
+    an ACS margin of error or a duplicate SOI total as another target family.
+    The compiler owns each exclusion reason, so generation cannot diverge from
+    the release compile's cell selection.
+    """
+    reviews: dict[str, dict] = {}
+    for fact in facts:
+        source_record_id = (fact.get("lineage") or {}).get("source_record_id", "")
+        record_set = (fact.get("layout") or {}).get("record_set_id", "")
+        if source_record_id in US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS:
+            reason = US_SOI_SUPERSEDED_CTC_TOTAL_EXCLUSIONS[source_record_id]
+        elif record_set in {
+            f"census_acs.acs1_2024.{table}.{geography}"
+            for table in ("b11001", "b11003")
+            for geography in ("national", "state")
+        }:
+            reason = household_type_fact_exclusion_reason(fact)
+        elif record_set.startswith("irs_soi.ty2023.table_1_3.filing_status_"):
+            reason = soi_filing_status_fact_exclusion_reason(fact)
+        else:
+            continue
+        family = us_target_family_id(source_record_id)
+        entry = {
+            "source_record_id": source_record_id,
+            "status": REVIEWED_EXCLUSION_STATUS if reason else COMPILED_STATUS,
+        }
+        if reason:
+            entry["reason"] = reason
+        reviews.setdefault(family, {})[source_record_id] = entry
+    return {
+        family: {key: rows[key] for key in sorted(rows)}
+        for family, rows in sorted(reviews.items())
+    }
+
+
 def _exclusion_for(family: str) -> tuple[str, str, str, dict[str, str]]:
     if family in _FAMILY_EXCLUSIONS:
         return _FAMILY_EXCLUSIONS[family]
@@ -832,6 +900,9 @@ def build_manifest(
                 "evidence": evidence,
                 "fence": fence,
             }
+
+    for family, review in _household_filing_cell_review(facts).items():
+        families[family]["cell_review"] = list(review.values())
 
     invented = sorted(compiled - set(feed_counts))
     if invented:

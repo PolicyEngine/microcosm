@@ -17,9 +17,9 @@ never recalibrates. What it adds is evidence about the newer engine:
 - **a loader replay** under the tested country, Core and calculator wheels;
 - **the engine's column changes**: what the newer engine ignores that the
   built-with one read, and what it reads that no engine read before;
-- **the drift**: the 18 exact critical rows, the scorable national SOI Table
-  1.4 dollar rows and the headline totals, scored on the same H5 under both
-  engines;
+- **the drift**: every row of the 18 exact critical requirements, the
+  scorable national SOI Table 1.4 dollar rows and the headline totals, scored
+  on the same H5 under both engines;
 - **a claim**, declared by a named person after reading the drift.
 
 **The wrapper loader is not attested here.** policyengine.py imports its
@@ -159,7 +159,20 @@ from the H5, so both engines weigh the same rows identically. The rules:
 
 - **Critical rows** use the release tool's SOI semantics: the signed
   component (positive part, except the identity and loss sources), the
-  nonrefundable-CTC rule and the itemizer mask.
+  nonrefundable-CTC rule, the itemizer mask and the filing-status partition.
+  CTC status rows retain the `ctc_amount` and `ctc_claims` requirements without
+  needing an all-status row; joint returns include surviving spouses. A
+  ledger filter whose value selects every return (`all` in any case, or
+  empty) filters nothing, as in the release tool, so the national Table 4.3
+  itemized-deduction row, whose income percentile range is `all`, is scored.
+  A row the release tool narrows in a way the scorer does not reproduce stays
+  unscored, such as a row with any other ledger filter, or one the release
+  tool masks by EITC, which it does from the row's domain (returns with the
+  credit) or from a qualifying-child count that the row's record set or
+  measure implies. The drift refuses any unscored exact critical row, even
+  when its siblings score the same requirement. A drift certified before the
+  Table 4.3 row was scored, for a parent that carries the row, attests
+  definitions that leave it unscored, so it no longer recomputes.
 - **Population aggregates are refused.** A batch engine that computed one of
   the release tool's population-aggregate formulas refuses
   (`POPULATION_AGGREGATE_VARIABLES`).

@@ -40,11 +40,12 @@ serve exactly the carried manifest bytes.
 - *Drift* (:func:`combine_drift`). The publisher's tool scores the H5 once
   under the built-with engine and once under the tested engine (and once more
   with the newly read inputs withheld), with the same household-batched scorer
-  and the same metric definitions (:func:`drift_metric_definitions`): the 18
-  exact US critical rows, every scorable national SOI Table 1.4 dollar row and
-  the headline aggregates in :data:`HEADLINE_METRICS`. The drift document
-  embeds all score documents, so every row recomputes from them; the tested
-  side's runtime must be the exact runtime the loader replay certified.
+  and the same metric definitions (:func:`drift_metric_definitions`): every
+  row of the 18 exact US critical requirements, every scorable national SOI
+  Table 1.4 dollar row and the headline aggregates in
+  :data:`HEADLINE_METRICS`. The drift document embeds all score documents, so
+  every row recomputes from them; the tested side's runtime must be the exact
+  runtime the loader replay certified.
 - *Claim*. ``compatible_model_packages`` keeps every parent entry and gains one
   ``publisher_claim`` entry for the tested version, attributed to a named
   declarer. ``compatibility.claim_measurement`` records the one version
@@ -86,6 +87,10 @@ from microcosm.data.contract import (
     publishes_to_build_folder,
     release_artifact_role,
     required_release_files,
+)
+from microcosm.diagnostics.us_filing_status_constants import (
+    SOI_FILING_STATUS_ENGINE_NAMES,
+    SOI_FILING_STATUS_LABELS,
 )
 
 RECERTIFICATION_RELEASE_TYPE = "compatibility_recertification"
@@ -1613,8 +1618,10 @@ class DriftMetric:
     base_part_b_premium) * medicare_enrolled``. ``entity =
     "household_members"`` sums a person variable over each household, as the
     release tool's ``policyengine_variable`` rows do. ``itemizers_only`` masks
-    by ``tax_unit_itemizes``. The weight is the H5's household weight of the
-    unit's household, so both engines weigh the same rows identically.
+    by ``tax_unit_itemizes``; ``filing_statuses`` selects the named engine
+    filing statuses (an empty tuple selects all). The weight is the H5's
+    household weight of the unit's household, so both engines weigh the same
+    rows identically.
     """
 
     metric_id: str
@@ -1625,6 +1632,7 @@ class DriftMetric:
     unit: str
     combine: str = "add"
     itemizers_only: bool = False
+    filing_statuses: tuple[str, ...] = ()
     batching: str = BATCHING_HOUSEHOLD
     requirement_id: str | None = None
     target_name: str | None = None
@@ -1791,14 +1799,69 @@ def signed_component(values, source_variable: str):
     return np.maximum(values, 0.0)
 
 
+def _is_noop_ledger_filter_value(value: object) -> bool:
+    """Whether a ``ledger_filter_*`` value selects everything.
+
+    The release tool's ``_is_noop_ledger_filter_value``: its SOI slice skips a
+    ledger filter with this value, so it filters nothing.
+    """
+
+    return str(value).strip().lower().replace("_", " ") in {"", "all"}
+
+
+#: The release tool's SOI slice keeps only positive-EITC returns on this
+#: domain (its ``_soi_requires_positive_eitc_filter``).
+_POSITIVE_EITC_DOMAIN = "individual_income_tax_returns_with_earned_income_credit"
+#: The record sets and measures from which the release tool's
+#: ``_soi_eitc_child_count_filter`` infers an EITC child count.
+_EITC_CHILD_COUNT_RECORD_SETS = (
+    ".eitc_by_agi_children.no_qualifying_children",
+    ".eitc_by_agi_children.one_qualifying_child",
+    ".eitc_by_agi_children.two_qualifying_children",
+    ".eitc_by_agi_children.three_or_more_qualifying_children",
+)
+_EITC_CHILD_COUNT_MEASURES = (
+    "eitc_no_children_",
+    "eitc_one_child_",
+    "eitc_two_children_",
+    "eitc_three_or_more_children_",
+)
+
+
+def _soi_eitc_masked(metadata: Mapping) -> bool:
+    """Whether the release tool applies an EITC mask to this SOI row.
+
+    The release tool keeps only positive-EITC returns on
+    :data:`_POSITIVE_EITC_DOMAIN`, and only one EITC child count when the row
+    names one or its record set or measure implies one. A
+    ``ledger_filter_eitc_child_count`` of ``all`` names none, but the record
+    set or measure can still imply one. The drift scorer applies neither mask.
+    """
+
+    if metadata.get("ledger_domain") == _POSITIVE_EITC_DOMAIN:
+        return True
+    explicit = metadata.get("ledger_filter_eitc_child_count")
+    if explicit and str(explicit).strip().lower() != "all":
+        return True
+    record_set = str(metadata.get("ledger_layout_record_set_id") or "")
+    measure = str(metadata.get("source_measure_id") or "")
+    return record_set.endswith(_EITC_CHILD_COUNT_RECORD_SETS) or measure.startswith(
+        _EITC_CHILD_COUNT_MEASURES
+    )
+
+
 def _soi_row_metric(target: Mapping, requirement_id: str | None) -> DriftMetric | None:
-    """A national, all-AGI, all-status SOI or SSA row as a metric, else ``None``.
+    """A national, all-AGI SOI or SSA row as a metric, else ``None``.
 
     Only the rows whose release-tool materialization this module reproduces
     are scored: the SOI slice on the national all-returns population (no state,
-    district, filing-status, AGI-band, child-count, positive-EITC or
-    taxable-only filter, no ledger filters other than the trivial ones), and
-    the plain-sum ``policyengine_variable`` rows.
+    district, AGI-band, EITC child-count, positive-EITC
+    (:func:`_soi_eitc_masked`) or taxable-only filter), with all-status or
+    supported filing-status slices and no other nontrivial ledger filters, and
+    the plain-sum ``policyengine_variable`` rows. A ledger filter whose value
+    selects everything (:func:`_is_noop_ledger_filter_value`, such as Table
+    4.3's ``ledger_filter_income_percentile_range="all"``) is trivial, as it
+    is to the release tool.
     """
 
     metadata = _mapping(target.get("metadata"))
@@ -1835,22 +1898,35 @@ def _soi_row_metric(target: Mapping, requirement_id: str | None) -> DriftMetric 
         )
     if materializer != "irs_soi_slice":
         return None
+    filing_status = metadata.get("filing_status")
+    ledger_status = metadata.get("ledger_filter_filing_status")
     if (
         metadata.get("agi_lower_bound") != "-inf"
         or metadata.get("agi_upper_bound") != "inf"
-        or metadata.get("filing_status") != "All"
+        or not isinstance(filing_status, str)
+        or filing_status not in SOI_FILING_STATUS_ENGINE_NAMES
+        or (
+            ledger_status is not None
+            and (
+                not isinstance(ledger_status, str)
+                or SOI_FILING_STATUS_LABELS.get(ledger_status) != filing_status
+            )
+        )
         or metadata.get("state_fips")
         or metadata.get("congressional_district_geoid")
         or metadata.get("taxable_only") == "true"
         or metadata.get("requires_total_eitc_uprating") == "true"
         or metadata.get("requires_total_soi_uprating") == "true"
+        or _soi_eitc_masked(metadata)
         or any(
             key.startswith("ledger_filter_")
             and key not in {"ledger_filter_filing_status", "ledger_filter_income_range"}
-            for key in metadata
+            and not _is_noop_ledger_filter_value(value)
+            for key, value in metadata.items()
         )
-        or metadata.get("ledger_filter_filing_status", "all") != "all"
-        or metadata.get("ledger_filter_income_range", "all") != "all"
+        or not _is_noop_ledger_filter_value(
+            metadata.get("ledger_filter_income_range", "all")
+        )
     ):
         return None
     source_variable = str(metadata.get("source_variable") or metadata.get("variable"))
@@ -1868,6 +1944,7 @@ def _soi_row_metric(target: Mapping, requirement_id: str | None) -> DriftMetric 
         "count" if mode == "indicator_sum" else "usd",
         combine=combine,
         itemizers_only=metadata.get("itemized_only") == "true",
+        filing_statuses=SOI_FILING_STATUS_ENGINE_NAMES[filing_status],
         requirement_id=requirement_id,
         target_name=name,
         source_variable=source_variable,
@@ -1881,8 +1958,9 @@ def drift_metric_definitions(calibration_diagnostics: Mapping) -> dict:
     metrics are :data:`HEADLINE_METRICS` plus one per national row of the 18
     exact critical requirements and of the SOI Table 1.4 dollar blanket that
     :func:`_soi_row_metric` reproduces. A critical row it cannot reproduce is
-    listed, and :func:`combine_drift` refuses a drift that leaves one of the 18
-    unscored.
+    listed, and :func:`combine_drift` refuses a drift that leaves any row of
+    the 18 exact requirements unscored, even when a sibling row scores its
+    requirement.
     """
 
     from microcosm.data.contract import _target_registry_family
@@ -1926,8 +2004,17 @@ def drift_metric_definitions(calibration_diagnostics: Mapping) -> dict:
             )
             continue
         metrics.append(metric)
+    definitions = []
+    for metric in metrics:
+        definition = asdict(metric)
+        if not metric.filing_statuses:
+            # All-status definitions keep their historical wire shape, so
+            # definitions that gain no newly scorable row keep their attested
+            # hash.
+            definition.pop("filing_statuses")
+        definitions.append(definition)
     return {
-        "metrics": [asdict(metric) for metric in metrics],
+        "metrics": definitions,
         "unscored_critical_rows": unscored,
     }
 
@@ -2113,6 +2200,16 @@ def combine_drift(
         failures.append(
             "drift must score every exact critical row; unscored: "
             f"{sorted(exact - scored_exact)}"
+        )
+    unscored_exact = sorted(
+        row["target_name"]
+        for row in definitions["unscored_critical_rows"]
+        if row["requirement_id"] in exact
+    )
+    if unscored_exact:
+        failures.append(
+            "drift must score every exact critical row; unscored targets: "
+            f"{unscored_exact}"
         )
     sides = [
         ("baseline", baseline, VARIANT_AS_STORED),

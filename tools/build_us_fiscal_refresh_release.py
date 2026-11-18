@@ -296,6 +296,12 @@ from microcosm.build.us_runtime.h5_io import (
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
 )
+from microcosm.build.us_runtime.household_type_targets import (
+    HOUSEHOLD_TYPE_MATERIALIZER,
+    ROSTER_FALLBACK,
+    household_type_household_values,
+    household_universe_receipt,
+)
 from microcosm.build.us_runtime.input_mass import (
     us_input_mass_parity_gate,
     us_input_mass_totals,
@@ -401,6 +407,7 @@ from microcosm.build.us_runtime.warm_start_selection import (
     select_frozen_support,
 )
 from microcosm.calibrate import (
+    FREE_MASS,
     CalibrationResult,
     L0RefitResult,
     TargetRegistry,
@@ -452,6 +459,7 @@ from microcosm.diagnostics import (
     DiagnosticsWriteOutcome,
     DiagnosticsWriteSuccess,
 )
+from microcosm.diagnostics.us_filing_status_constants import FILING_STATUS_MAP
 from microcosm.frame import Frame, MassChange, WeightKind, Weights, read_frame_table
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
@@ -699,16 +707,21 @@ def _automatic_gc_suspended():
             gc.enable()
 
 
+# ACS B11001 001 binds housing-unit households, excluding group quarters.
+# Conserving a scalar household-table weight total cannot enforce that
+# universe when ACS group-quarters placeholders have positive person weights.
+US_FISCAL_CALIBRATION_MASS = FREE_MASS
+
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
 US_BASE_PERSON_POPULATION_MAX_ABS_RELATIVE_ERROR = 0.25
 US_BASE_PERSON_POPULATION_REPAIR_REASON = (
     "US fiscal refresh rescaled base household weights to the Census 2024 "
-    "national person-population benchmark before mass='conserve' calibration."
+    "national person-population benchmark before fiscal calibration."
 )
 US_SOCIAL_SECURITY_COMPONENT_REPAIR_REASON = (
     "US fiscal refresh rescaled Social Security component leaf inputs to SSA "
     "component payment targets from the active fiscal target registry before "
-    "mass='conserve' calibration."
+    "fiscal calibration."
 )
 US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES = {
     "ssa_retirement_total": "social_security_retirement",
@@ -1121,17 +1134,6 @@ US_ACA_PERSON_COUNT_TARGET_TABLES = frozenset(
 )
 US_MEDICAID_ENROLLMENT_TARGET_ROLE = "medicaid_enrollment"
 US_SNAP_HOUSEHOLDS_TARGET_ROLE = "snap_households"
-
-FILING_STATUS_MAP = {
-    "All": None,
-    "Head of Household": "HEAD_OF_HOUSEHOLD",
-    "Married Filing Jointly/Surviving Spouse": {
-        "JOINT",
-        "SURVIVING_SPOUSE",
-    },
-    "Married Filing Separately": "SEPARATE",
-    "Single": "SINGLE",
-}
 
 SUPPORTED_SOI_LEDGER_FILTERS = frozenset(
     {
@@ -6374,6 +6376,15 @@ def _restated_ledger_filter_refusal(
     """
 
     concept, side = _restated_ledger_filter_concept(key)
+    if concept in {"household_type", "own_children", "statistic"}:
+        if metadata.get("materializer") != HOUSEHOLD_TYPE_MATERIALIZER:
+            return key
+        compiled = metadata.get(concept)
+        if side is not None or compiled != value:
+            return f"{key}={value} disagrees with compiled {concept}={compiled}"
+        if concept == "statistic" and value != "estimate":
+            return f"{key}={value} is not an ACS estimate"
+        return None
     rule = RESTATED_LEDGER_FILTER_CONCEPTS.get(concept) if concept else None
     if rule is None:
         return key
@@ -6517,6 +6528,76 @@ def _compile_materialized_target_registry(
     }
 
 
+def _with_household_universe(
+    target_frame: Frame,
+    registry: TargetRegistry,
+    compilation: Mapping[str, object],
+) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    """Attach the household-universe receipt to the release's compilation.
+
+    Only :func:`_load_or_materialize_target_frame` calls this, on the frame
+    the release calibrates, whether materialized fresh or reloaded from its
+    checkpoint. :func:`_materialize_target_frame` does not: the scorers and
+    the post-export audit run it too, and a scorer's household slice would
+    otherwise record that slice's households under the scored artifact's
+    weights and carry them into the slice's compilation digest.
+    """
+    compilation = dict(compilation)
+    household_universe = _household_universe_compilation(target_frame, registry.specs)
+    if household_universe is not None:
+        compilation["household_universe"] = household_universe
+    return target_frame, registry, compilation
+
+
+def _household_universe_compilation(
+    target_frame: Frame, compiled_specs: Iterable
+) -> dict[str, object] | None:
+    """Record which field classified the household-type targets' households.
+
+    Counts the target frame's households, and their initial weights, by
+    TYPEHUGQ, HRHTYPE or the roster fallback, and gives each compiled
+    household-type target the weighted part that fallback households supply
+    (microcosm#880). A frame built before the HRHTYPE carry classifies its
+    ASEC households by the roster alone, so its ASEC group quarters count as
+    housing households; that fallback prints a warning and stays on record in
+    the calibration diagnostics. Without a household-type target there is
+    nothing to record.
+    """
+    household = target_frame.table("household")
+    specs = [
+        spec
+        for spec in compiled_specs
+        if spec.metadata.get("materializer") == HOUSEHOLD_TYPE_MATERIALIZER
+        and spec.measure in household.columns
+    ]
+    if not specs:
+        return None
+    weights = target_frame.weights_for("household")
+    receipt = household_universe_receipt(
+        target_frame,
+        weights=weights.values,
+        indicators={spec.name: household[spec.measure].to_numpy() for spec in specs},
+    )
+    fallback_households = receipt["households"][ROSTER_FALLBACK]
+    if fallback_households:
+        fallback_weight = receipt["weighted_households"][ROSTER_FALLBACK]
+        print(
+            "WARNING: household-type targets classified "
+            f"{fallback_households:,} household(s) with initial weight "
+            f"{fallback_weight:,.0f} by the roster fallback: they carry neither "
+            "TYPEHUGQ nor HRHTYPE, so any ASEC group quarters among them count "
+            "as housing households. calibration_diagnostics.json records them "
+            "under build.target_compilation.household_universe.",
+            file=sys.stderr,
+            flush=True,
+        )
+    return {
+        "weight_basis": "initial_household_weights",
+        "weight_kind": weights.kind.value,
+        **receipt,
+    }
+
+
 def _load_or_materialize_target_frame(
     base_frame: Frame,
     target_specs: tuple,
@@ -6556,7 +6637,7 @@ def _load_or_materialize_target_frame(
             gate_congressional_district_targets=gate_congressional_district_targets,
         )
         if loaded is not None:
-            return loaded
+            return _with_household_universe(*loaded)
 
     target_frame, registry, compilation = _materialize_target_frame(
         base_frame,
@@ -6586,7 +6667,8 @@ def _load_or_materialize_target_frame(
         **dict(compilation),
         "target_frame_checkpoint": checkpoint_payload,
     }
-    return target_frame, registry, compilation
+    # After the checkpoint write, so the stored compilation carries no receipt.
+    return _with_household_universe(target_frame, registry, compilation)
 
 
 def _base_simulation_household_columns(
@@ -6661,6 +6743,11 @@ def _base_simulation_household_columns(
         variable="state_income_tax",
         tax_unit_positions=tax_unit_positions,
     )
+    for spec in target_specs:
+        if spec.metadata.get("materializer") == HOUSEHOLD_TYPE_MATERIALIZER:
+            columns[spec.measure] = household_type_household_values(
+                frame, spec.metadata
+            )
     # Federal Student Aid portfolio targets (microcosm#1074) read the SCF
     # education-debt stage's stored person balances, not an engine variable:
     # the pinned engine does not define them yet, and a stored input is what
@@ -6871,7 +6958,7 @@ def _base_simulation_household_columns(
         status = FILING_STATUS_MAP[spec.metadata["filing_status"]]
         if isinstance(status, str):
             mask &= filing_status == status
-        elif isinstance(status, set):
+        elif status is not None:
             mask &= np.isin(filing_status, sorted(status))
         child_filter = _soi_eitc_child_count_filter(spec.metadata)
         if child_filter is not None:
@@ -8964,7 +9051,7 @@ def _base_population_scale_gate(
         "benchmark": benchmark,
         "relative_error": relative_error,
         "max_abs_relative_error": max_abs,
-        "calibration_mass_policy": "conserve",
+        "calibration_mass_policy": US_FISCAL_CALIBRATION_MASS,
     }
     if mass_repair is not None:
         details["mass_repair"] = dict(mass_repair)
@@ -8980,8 +9067,7 @@ def _base_population_scale_gate(
         failure = (
             f"weighted person population {population:,.0f} differs from Census "
             f"benchmark {benchmark:,.0f} by {relative_error:.1%}; release "
-            "calibration uses mass='conserve', so the base H5 must already be "
-            "national scale."
+            "calibration must start from a national-scale base H5."
         )
     return GateResult(
         name="base_population_scale",
@@ -13974,7 +14060,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     if telemetry is not None:
         telemetry.stage(
             "base_population_repair",
-            message="Repaired base population mass for conserved calibration.",
+            message="Repaired base population mass before fiscal calibration.",
             applied=base_population_repair.get("applied"),
             factor=base_population_repair.get("factor"),
             initial_population=base_population_repair.get("initial_population"),
@@ -15804,7 +15890,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             refit_epochs=args.epochs,
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
-            mass="conserve",
+            mass=US_FISCAL_CALIBRATION_MASS,
             l0_lambda=ladder_l0_lambda,
             l2_lambda=args.l2_lambda,
             refit_l2_lambda=args.refit_l2_lambda,
@@ -15876,7 +15962,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
             seed=args.seed,
-            mass="conserve",
+            mass=US_FISCAL_CALIBRATION_MASS,
             l2_lambda=args.l2_lambda,
             target_loss_weights=target_loss_weights,
             target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
@@ -15903,7 +15989,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             learning_rate=args.learning_rate,
             max_weight_ratio=args.max_weight_ratio,
             seed=args.seed,
-            mass="conserve",
+            mass=US_FISCAL_CALIBRATION_MASS,
             l0_lambda=float(l0_refit_lambda),
             l2_lambda=args.l2_lambda,
             refit_l2_lambda=args.refit_l2_lambda,

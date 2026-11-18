@@ -147,6 +147,14 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1074: us_runtime.fiscal_targets imports the FSA student
         # loan targets.
         "microcosm.build.us_runtime.fsa_student_loan_targets",
+        # microcosm#880: the fiscal compiler names the stored-roster
+        # household materializer in each ACS household-type target. Its
+        # group-quarters constants come from the source-universe producer.
+        "microcosm.build.us_runtime.household_type_targets",
+        "microcosm.build.us_runtime.asec_household_type",
+        "microcosm.build.us_runtime.spm_universe_source",
+        # The fiscal compiler and recertifier share SOI status selections.
+        "microcosm.diagnostics.us_filing_status_constants",
         # microcosm#1585: the US keyed draws call
         # stochastic_assignment.stable_identity_uniforms.
         "microcosm.build.stochastic_assignment",

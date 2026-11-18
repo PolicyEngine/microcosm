@@ -1105,14 +1105,14 @@ class TestOperatorBoundary:
 #: they carry the three banked B4923C facts from the #454 feed to the pinned
 #: one. A re-pin that keeps the rows adds its report here, with ``None`` when it
 #: adds no row, or else the committed listing of its added rows
-#: (``experiments/us-feed-ed-fsa/list_added_rows.py``), the one source they
-#: must all come from and the record-set namespace they must all sit in. The
+#: (``experiments/us-feed-ed-fsa/list_added_rows.py``), and the reviewed mapping
+#: from each source to the record-set namespaces its added rows must sit in. The
 #: namespace is declared rather than read from the source, because a source's
 #: record sets need not sit in a namespace of its name (``bea`` rows sit in
 #: ``bea_nipa.`` and ``bea_regional.``). One that drops or changes rows needs
 #: its own check.
 _LATER_ROW_KEEPING_REPIN_REPORTS: tuple[
-    tuple[str, tuple[str, str, str] | None], ...
+    tuple[str, tuple[str, dict[str, tuple[str, ...]]] | None], ...
 ] = (
     # microcosm#1343: three dimension values relabelled, nothing else.
     ("experiments/us-feed-agi-age-labels/compare.json", None),
@@ -1120,7 +1120,22 @@ _LATER_ROW_KEEPING_REPIN_REPORTS: tuple[
     # rows from the six packages/ed_fsa packages; nothing else.
     (
         "experiments/us-feed-ed-fsa/compare.json",
-        ("experiments/us-feed-ed-fsa/added_rows.json", "ed_fsa", "ed_fsa."),
+        ("experiments/us-feed-ed-fsa/added_rows.json", {"ed_fsa": ("ed_fsa.",)}),
+    ),
+    # microcosm#880: eight household-type and filing-status pairs added;
+    # every old row stays byte-identical, including the three B4923C anchors.
+    (
+        "experiments/us-feed-household-filing-status-880/compare.json",
+        (
+            "experiments/us-feed-household-filing-status-880/added_rows.json",
+            {
+                "census_acs": (
+                    "census_acs.acs1_2024.b11001.",
+                    "census_acs.acs1_2024.b11003.",
+                ),
+                "irs_soi": ("irs_soi.ty2023.table_1_3.",),
+            },
+        ),
     ),
 )
 #: The row fields those re-pins may change: labels, and the record-set hash
@@ -1141,6 +1156,7 @@ def _follow_later_repin_report(
     added: dict | None = None,
     declared_source: str | None = None,
     declared_namespace: str | None = None,
+    declared_source_namespaces: dict[str, tuple[str, ...]] | None = None,
     label: str = "report",
 ) -> tuple[str, int]:
     """Check one later re-pin report against the feed before it.
@@ -1148,9 +1164,10 @@ def _follow_later_repin_report(
     The report must start at ``feed_sha256``, keep every key of the feed before
     it, change only labels and ``record_set_spec_hash`` and leave the B4923C
     record sets alone. It may add rows only when ``added`` lists exactly the
-    keys it adds and every one of them comes from ``declared_source``, outside
-    the B4923C record sets, in a record set whose id starts with
-    ``declared_namespace``. Returns the new feed's digest and row count.
+    keys it adds and every one comes from a reviewed source, outside the
+    B4923C record sets, in a namespace reviewed for that same source. The
+    single-source arguments remain available for their existing refusal cases.
+    Returns the new feed's digest and row count.
     """
 
     rows = later["rows"]
@@ -1175,8 +1192,23 @@ def _follow_later_repin_report(
     if added is None:
         assert added_keys == [], (label, "adds rows without declaring them")
     else:
-        assert declared_source, (label, "declares added rows without a source")
-        assert declared_namespace, (label, "declares added rows without a namespace")
+        if declared_source_namespaces is None:
+            assert declared_source, (label, "declares added rows without a source")
+            assert declared_namespace, (
+                label,
+                "declares added rows without a namespace",
+            )
+            declared_source_namespaces = {declared_source: (declared_namespace,)}
+        else:
+            assert declared_source is None and declared_namespace is None, (
+                label,
+                "combines source declarations",
+            )
+        assert declared_source_namespaces, (label, "declares no reviewed sources")
+        assert all(
+            source and namespaces and all(namespaces)
+            for source, namespaces in declared_source_namespaces.items()
+        ), (label, "declares a source without a namespace")
         assert added["new_feed"]["sha256"] == later["feeds"]["new"]["sha256"], (
             label,
             "a listing of another feed",
@@ -1185,7 +1217,7 @@ def _follow_later_repin_report(
         assert len(listed) == len(added["rows"]), (label, "an added key twice")
         assert set(listed) == set(added_keys), (label, "added keys differ")
         sources = {row["source_name"] for row in listed.values()}
-        assert sources == {declared_source}, (
+        assert sources == set(declared_source_namespaces), (
             label,
             "an added row from another source",
             sources,
@@ -1196,12 +1228,14 @@ def _follow_later_repin_report(
         outside = sorted(
             row["record_set_id"]
             for row in listed.values()
-            if not row["record_set_id"].startswith(declared_namespace)
+            if not row["record_set_id"].startswith(
+                declared_source_namespaces[row["source_name"]]
+            )
         )
         assert outside == [], (
             label,
             "an added row outside the namespace",
-            declared_namespace,
+            declared_source_namespaces,
             outside,
         )
     assert rows["new_rows"] == rows["old_rows"] + len(added_keys), (
@@ -1244,9 +1278,9 @@ class TestAnchorFeedCheck:
         committed report of every later re-pin that kept the feed's rows
         (``_LATER_ROW_KEEPING_REPIN_REPORTS``). Each later report must start
         from the feed before it, keep every key, change no value, leave the
-        three B4923C record sets alone and add rows only from its declared
-        source (``_follow_later_repin_report``), and the last must end at the
-        pin.
+        three B4923C record sets alone and add rows only within each source's
+        declared namespaces (``_follow_later_repin_report``). The last report
+        must end at the pin.
         Changing the anchor without re-pinning the feed, or the reverse, fails
         here and not only at a release preflight.
         """
@@ -1276,9 +1310,9 @@ class TestAnchorFeedCheck:
         feed_rows = report["new"]["rows"]
         for report_path, additions in _LATER_ROW_KEEPING_REPIN_REPORTS:
             later = json.loads((_REPOSITORY_ROOT / report_path).read_text())
-            later_added, declared_source, declared_namespace = None, None, None
+            later_added, declared_source_namespaces = None, None
             if additions is not None:
-                added_path, declared_source, declared_namespace = additions
+                added_path, declared_source_namespaces = additions
                 later_added = json.loads((_REPOSITORY_ROOT / added_path).read_text())
             feed_sha256, feed_rows = _follow_later_repin_report(
                 later,
@@ -1286,8 +1320,7 @@ class TestAnchorFeedCheck:
                 feed_rows=feed_rows,
                 anchor_record_sets=anchor_record_sets,
                 added=later_added,
-                declared_source=declared_source,
-                declared_namespace=declared_namespace,
+                declared_source_namespaces=declared_source_namespaces,
                 label=report_path,
             )
         assert feed_sha256 == pin["facts_sha256"]
@@ -1386,6 +1419,102 @@ class TestAnchorFeedCheck:
             feed_rows=10,
             anchor_record_sets=self._ANCHORS,
         ) == ("new", 10)
+
+    def test_a_later_report_may_add_rows_from_two_reviewed_sources(self) -> None:
+        declared = _LATER_ROW_KEEPING_REPIN_REPORTS[-1][1][1]
+        added = self._added(
+            [
+                ("k1", "census_acs", "census_acs.acs1_2024.b11001.national"),
+                ("k2", "irs_soi", "irs_soi.ty2023.table_1_3.filing_status_returns"),
+                ("k3", "census_acs", "census_acs.acs1_2024.b11003.state"),
+            ]
+        )
+        assert _follow_later_repin_report(
+            self._later_report(added_keys=["k1", "k2", "k3"]),
+            feed_sha256="old",
+            feed_rows=10,
+            anchor_record_sets=self._ANCHORS,
+            added=added,
+            declared_source_namespaces=declared,
+        ) == ("new", 13)
+
+    @pytest.mark.parametrize(
+        ("source", "record_set"),
+        [
+            ("census_acs", "irs_soi.ty2023.table_1_3.filing_status_returns"),
+            ("irs_soi", "census_acs.acs1_2024.b11001.national"),
+            ("census_acs", "census_acs.acs1_2023.b11001.national"),
+            ("irs_soi", "irs_soi.ty2023.table_1_2.all"),
+            ("census_acs", "x.census_acs.acs1_2024.b11003.state"),
+        ],
+        ids=[
+            "acs-in-irs",
+            "irs-in-acs",
+            "other-acs-year",
+            "other-irs-table",
+            "embedded",
+        ],
+    )
+    def test_two_sources_keep_their_own_reviewed_namespaces(
+        self, source, record_set
+    ) -> None:
+        added = self._added(
+            [
+                ("k1", "census_acs", "census_acs.acs1_2024.b11001.national"),
+                ("k2", source, record_set),
+                ("k3", "irs_soi", "irs_soi.ty2023.table_1_3.filing_status_returns"),
+            ]
+        )
+        with pytest.raises(AssertionError, match="an added row outside the namespace"):
+            _follow_later_repin_report(
+                self._later_report(added_keys=["k1", "k2", "k3"]),
+                feed_sha256="old",
+                feed_rows=10,
+                anchor_record_sets=self._ANCHORS,
+                added=added,
+                declared_source_namespaces=_LATER_ROW_KEEPING_REPIN_REPORTS[-1][1][1],
+            )
+
+    def test_household_filing_receipt_keeps_exact_pairs_and_the_banked_anchors(
+        self,
+    ) -> None:
+        report_path, (added_path, _) = _LATER_ROW_KEEPING_REPIN_REPORTS[-1]
+        report = json.loads((_REPOSITORY_ROOT / report_path).read_text())
+        added = json.loads((_REPOSITORY_ROOT / added_path).read_text())
+        assert added["row_count"] == 3094
+        assert added["by_source"] == {"census_acs": 3074, "irs_soi": 20}
+        expected_pairs = {
+            **{
+                f"census_acs.acs1_2024.{table}.{geography}": ("calendar_year", "2024")
+                for table in ("b11001", "b11003")
+                for geography in ("national", "state")
+            },
+            **{
+                f"irs_soi.ty2023.table_1_3.filing_status_{measure}": (
+                    "tax_year",
+                    "2023",
+                )
+                for measure in ("returns", "agi", "ctc_returns", "ctc_amount")
+            },
+        }
+        assert set(added["by_record_set"]) == set(expected_pairs)
+        for row in added["rows"]:
+            assert (row["period"]["type"], str(row["period"]["value"])) == (
+                expected_pairs[row["record_set_id"]]
+            )
+        assert report["rows"]["changed_fields"] == {}
+        assert report["rows"]["retained_bytes_equal_old_feed"]
+        assert report["rows"]["retained_sha256"] == report["feeds"]["old"]["sha256"]
+        assert set(report["anchors"]) == self._ANCHORS
+        for year, value in esi.EMPLOYER_PREMIUM_ANCHOR["values"].items():
+            record_set = esi.EMPLOYER_PREMIUM_ANCHOR["feed_record_set"].format(
+                year=year
+            )
+            expected = {
+                "value": value,
+                "source_sha256": esi.EMPLOYER_PREMIUM_ANCHOR["sha256"],
+            }
+            assert report["anchors"][record_set] == {"old": expected, "new": expected}
 
     def test_a_later_report_may_add_rows_from_a_source_with_its_own_namespace(
         self,
