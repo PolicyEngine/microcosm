@@ -207,8 +207,9 @@ Max's failure log (#1654) is the place for new observed stops.
 - `block_v1` with the rent fix (#1444) on a fresh base: county and district fit.
 - The voluntary-filing PTC probe in the reform-coverage smoke (floor $100M).
   policyengine-us 2.145.3 lets a tax unit that takes up ACA coverage claim the
-  credit without filing for another reason, so neutralizing voluntary filing
-  now moves the credit only for units that do not take up coverage.
+  credit without another reason to file, so the probe now measures only the
+  pre-take-up credit (`aca_ptc`) of voluntary filers who do not take up
+  coverage. No household's received credit (`assigned_aca_ptc`) moves.
 - Time and memory on the new engine, which projects one more year (to 2036) in
   post-export scoring.
 

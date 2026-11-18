@@ -67,3 +67,8 @@ def test_policyengine_2_145_3_contract_and_aca_ptc_neutralization() -> None:
     assert not neutralized.calculate("tax_unit_is_filer", 2024)[0]
     assert baseline.calculate("aca_ptc", 2024)[0] == pytest.approx(11_600.0)
     assert neutralized.calculate("aca_ptc", 2024)[0] == 0.0
+    # The credit a household receives is assigned_aca_ptc (aca_ptc times
+    # take-up), which the neutralization cannot move: the probe measures the
+    # pre-take-up credit, which shows the filing leaf binds.
+    assert baseline.calculate("assigned_aca_ptc", 2024)[0] == 0.0
+    assert neutralized.calculate("assigned_aca_ptc", 2024)[0] == 0.0
