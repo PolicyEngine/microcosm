@@ -1,0 +1,80 @@
+{
+  "annual_candidate_base": "c020783da1621b032467f36bf688d597cdd5604c",
+  "annual_source_capsule": {
+    "integration.patch": "aa965522e5db12b19b235448849906ff4896c89755bfabd26ef66510fe9fd29b",
+    "paths.json": "9ed2586d33939fe2cda4104c778290453de81e9cd469c31038c740c1efd287aa",
+    "rebuild.py": "dae0a73c3743c88ff932dcce10c6e237cd4fdf7a70c116f0cf5aaa66ebf6affc"
+  },
+  "base_chronicle_commit": "41b2fb2b864a28c0eda03322b77a97ef147dfa3c",
+  "chronicle_annual_pr295": "f55ae34915e52601f25a039e7888b9d027f5b5c4",
+  "chronicle_annual_pr296": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+  "chronicle_geographic_and_w2": "25e9a69bfd3228a7f7b66cb12eb8965f57b5ff7f",
+  "county_universe_sha256": "67b0998aa2ee1aeed6637dab6a846f405246706508074b1c1b5bab7bd98c8bea",
+  "crosswalks": {
+    "congressional_district_vintage_crosswalk.csv": "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
+    "congressional_district_vintage_crosswalk_118_119.csv": "e3b65d94af3752b7dab0158b4fbffd0b6bf80396f1f26d5c6d11b48a5d1659fa"
+  },
+  "feeds": {
+    "annual": "2fe8de04c0ec03d58c800e9df01cff30e20cb652d7672fa6d7876427827cf04c",
+    "base": "1d45a89c28177a95371b4cc4068d3657c7bf12bd8edad7c82fe25bf453f9ea07",
+    "geographic": "7e8feae0f0aeec3fb09d069ada2ae729922e823f84d0f8eebe9590f5f39fc328",
+    "w2_2021": "b488fc6030024d169046cda13b1fccdf21eb1f8b7e7b4931ff4ff2fc50972056",
+    "w2_2022": "f66b101e89368efae7553923a4f8b12fe3011bde6efd741d2dfb6621cb533f1c"
+  },
+  "publisher_artifacts": {
+    "21in04w2all.xlsx": {
+      "rows": 5,
+      "sha256": "8a04be2b4bec1e45687c36005cc7fee442cb6dbb1b00633ba4862a344b377db8",
+      "url": "https://www.irs.gov/pub/irs-soi/21in04w2all.xlsx",
+      "year": 2021
+    },
+    "22in04w2all.xlsx": {
+      "rows": 5,
+      "sha256": "faca5f781845905f1a3ca6ab2e211eb1225fd05e230c46612de4f719ce92736a",
+      "url": "https://www.irs.gov/pub/irs-soi/22in04w2all.xlsx",
+      "year": 2022
+    },
+    "23in04w2all.xlsx": {
+      "rows": 5,
+      "sha256": "f8fda7757188d19c97f3ff47ad85d92e6808dfdbc504e066751685346eca8e20",
+      "url": "https://www.irs.gov/pub/irs-soi/23in04w2all.xlsx",
+      "year": 2023
+    },
+    "23in05ira.xlsx": {
+      "rows": 2,
+      "sha256": "17b02670eeb35dab5d3f8be6a26333d527993f8b22933fa77bb3a06f3c8ad143",
+      "url": "https://www.irs.gov/pub/irs-soi/23in05ira.xlsx",
+      "year": 2023
+    },
+    "23in06ira.xlsx": {
+      "rows": 2,
+      "sha256": "b526e4d4163172ed9992d16375cbf601b1c8b4d5bcf66f86e038c0e91c420418",
+      "url": "https://www.irs.gov/pub/irs-soi/23in06ira.xlsx",
+      "year": 2023
+    },
+    "23in54us.xlsx": {
+      "rows": 4,
+      "sha256": "4bc45f2586fb924c1e0e7818773096bdcf71223b6407120ca058efaed728607a",
+      "url": "https://www.irs.gov/pub/irs-soi/23in54us.xlsx",
+      "year": 2023
+    },
+    "23in55cmcsv.csv": {
+      "rows": 6266,
+      "sha256": "d1f7c8901fcefb2c46f5dd14f22715b7c8513794ce7b9ea6a6a947f1c548668f",
+      "url": "https://www.irs.gov/pub/irs-soi/23in55cmcsv.csv",
+      "year": 2023
+    },
+    "23incd.csv": {
+      "rows": 29822,
+      "sha256": "1db3058b4b07e50b4640d902843ace3c8b5a6d951a5b99c248f2e921bacf4c53",
+      "url": "https://www.irs.gov/pub/irs-soi/23incd.csv",
+      "year": 2023
+    },
+    "23incyallnoagi.csv": {
+      "rows": 6286,
+      "sha256": "f5cfc2b9bd4ed26e1e07d3405e2f167842b8463fb2201c652aa70c47847f4374",
+      "url": "https://www.irs.gov/pub/irs-soi/23incyallnoagi.csv",
+      "year": 2023
+    }
+  }
+}
