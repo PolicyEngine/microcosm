@@ -7035,8 +7035,9 @@ def _armed_pool_gate_shadow(
     """Arm the stacked path's shadow; finish it when the build returns.
 
     It finishes after every file today's build writes, its Logbook row
-    included, so a verdict difference fails the run without changing them.
-    With the switch off (the test suite) the build runs without one.
+    included, and records a verdict difference without failing the run or
+    changing them. With the switch off (the test suite) the build runs
+    without one.
     """
 
     if not tool_gate_shadows_enabled():

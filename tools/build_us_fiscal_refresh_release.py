@@ -13510,7 +13510,8 @@ def _finish_national_gate_shadow(
     stopped_by: BaseException | None = None,
     stopped_at: str | None = None,
 ) -> None:
-    """Finish the armed shadow, if any; only a finished build can fail it."""
+    """Finish the armed shadow, if any. It never fails the build: a finished
+    build's differences are recorded and printed."""
 
     global _ACTIVE_GATE_SHADOW
     shadow, _ACTIVE_GATE_SHADOW = _ACTIVE_GATE_SHADOW, None
@@ -13581,10 +13582,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     AT-RISK only, 0 clean.
 
     The gate battery's shadow (microcosm#1585 item 11) finishes after the
-    build's own handler. By then a finished build's telemetry has completed
-    its staging run and its emitter, which closes on that outcome, so a
-    verdict difference that the shadow raises fails the program's exit
-    alone: both records stay as the build left them.
+    build's own handler, and never changes the program's exit: today's gates
+    decide until the flip, so a verdict difference is recorded in the
+    shadow's comparison file and printed as a warning. By then a finished
+    build's telemetry has completed its staging run and its emitter, which
+    closes on that outcome.
     """
 
     global _ACTIVE_DRY_RUN
@@ -13626,9 +13628,10 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         )
     except BaseException as error:
-        # A finished release's telemetry has closed the emitter by now (see
-        # the docstring), so this records an outcome only on an emitter that
-        # something left open.
+        # Only a fault in the wiring reaches here: the shadow reports a
+        # difference without raising. A finished release's telemetry has
+        # closed the emitter by now (see the docstring), so this records an
+        # outcome only on an emitter that something left open.
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
             _ACTIVE_EMITTER.fail(error)
         raise

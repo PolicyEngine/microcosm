@@ -8,16 +8,18 @@ declared ``us/gates.json`` entry through one
 :class:`~microcosm.build.gate_battery.GateBatteryRun` per tool scope, on the
 same evidence, then compares the two verdicts.
 
-Today's code stays authoritative. Its raises, written files and manifest keys
-do not change, and nothing here raises while the tool is still running: a
-difference, or a fault in the shadow itself, is recorded and decided at the
-end. When the tool finishes, the scope's battery report and the comparison
-are written beside its outputs as shadow files. A verdict difference then
-fails the run, so a build proves parity on its own inputs. When today's code
-raises, the files are written with what the battery saw up to that point, and
-today's exception propagates unchanged. The phase it stopped in is recorded
-only when every entry there without an outcome is one today's code never
-reached, here or in a process whose observations were loaded.
+Today's code stays authoritative. Its raises, written files, manifest keys
+and exit do not change, and the shadow never fails a build: a difference, or
+a fault in the shadow itself, is recorded. When the tool finishes, the
+scope's battery report and the comparison are written beside its outputs as
+shadow files. A verdict difference is then flagged in the comparison
+(``verdict_difference``) and printed as a warning, so each build records on
+its own inputs whether the battery agrees, while today's gates go on
+deciding until the flip (PR 3) makes the battery authoritative. When today's
+code raises, the files are written with what the battery saw up to that
+point, and today's exception propagates unchanged. The phase it stopped in
+is recorded only when every entry there without an outcome is one today's
+code never reached, here or in a process whose observations were loaded.
 
 The comparison follows the waiver proposal posted on microcosm#1609, which is
 still for Max and María to settle:
@@ -34,9 +36,9 @@ Two cases have no verdict to compare. A gate today's code did not evaluate on
 this build (a stage that did not run, a gate a flag skips) matches a battery
 outcome of ``evidence_absent``. A gate whose threshold the build overrode
 with a command-line flag is evaluated by the battery at the declared value,
-so a difference there is recorded as explained by the override and does not
-fail the run: the spec cannot hold a per-run threshold, and that decision
-belongs to the flip (PR 3), not to the shadow.
+so a difference there is recorded as explained by the override and is not
+flagged as a verdict difference: the spec cannot hold a per-run threshold,
+and that decision belongs to the flip (PR 3), not to the shadow.
 
 Every real run arms its tool's shadow. The test suite sets
 :data:`US_GATE_SHADOW_SWITCH` to ``off`` for every test, because its tests
@@ -79,7 +81,6 @@ __all__ = [
     "GATE_BATTERY_SHADOW_SCHEMA_VERSION",
     "US_GATE_SHADOW_SWITCH",
     "GateBatteryShadow",
-    "GateBatteryShadowMismatchError",
     "LegacyStatus",
     "LegacyVerdict",
     "active_gate_shadow",
@@ -368,23 +369,19 @@ class _Observation:
     explained_by: tuple[str, ...]
 
 
-class GateBatteryShadowMismatchError(RuntimeError):
-    """The battery's verdicts differ from today's on a finished run.
+def _disagreement_warning(scope: str, differences: Sequence[str], path: Path) -> str:
+    """The warning a finished run prints when the battery disagrees.
 
-    Raised by :meth:`GateBatteryShadow.finish` only after both shadow files
-    are on disk, and only when today's code completed: when today's code
-    raised, its own exception is the one that propagates.
+    Printed only after both shadow files are on disk. Today's gates still
+    decide, so the build's exit is the one they gave.
     """
 
-    def __init__(self, scope: str, differences: Sequence[str], path: Path) -> None:
-        self.scope = scope
-        self.differences = tuple(differences)
-        self.comparison_path = path
-        lines = "\n".join(f"  - {line}" for line in self.differences)
-        super().__init__(
-            f"US gate battery shadow for scope {scope!r} disagrees with today's "
-            f"gates (comparison: {path}):\n{lines}"
-        )
+    lines = "\n".join(f"  - {line}" for line in differences)
+    return (
+        f"warning: US gate battery shadow for scope {scope!r} disagrees with "
+        f"today's gates (comparison: {path}). Today's gates still decide, so "
+        f"the build's exit is unchanged:\n{lines}"
+    )
 
 
 def _sha256_file(path: Path) -> str | None:
@@ -414,7 +411,7 @@ class GateBatteryShadow:
 
     No observation raises: an unknown entry, a context that cannot be built,
     or any other fault in the shadow is recorded as a shadow error, which
-    fails the run at :meth:`finish` like a verdict difference. The battery is
+    :meth:`finish` flags and reports like a verdict difference. The battery is
     run with the record-without-enforce posture (``release_candidate`` false,
     never ``enforce``), so every phase the tool reaches is recorded and the
     shadow report is never shippable: it is evidence, not an authority.
@@ -498,9 +495,16 @@ class GateBatteryShadow:
     def _clear_stale_files(self) -> None:
         # A rerun into the same output directory must not leave an earlier
         # attempt's shadow files looking like this run's when it stops before
-        # writing its own.
-        for stale in (self._run.report_path, self._comparison_path):
-            stale.unlink(missing_ok=True)
+        # writing its own. Never raises, so arming the shadow cannot stop a
+        # build: a fault is recorded as a shadow error.
+        try:
+            for stale in (self._run.report_path, self._comparison_path):
+                stale.unlink(missing_ok=True)
+        except Exception as exc:  # noqa: BLE001 - the shadow never fails a build
+            self._shadow_errors.append(
+                f"shadow could not clear an earlier run's files: "
+                f"{type(exc).__name__}: {exc}"
+            )
 
     def release_files(self) -> None:
         """Let a shadow built with ``hold_files`` clear and write its files.
@@ -512,13 +516,7 @@ class GateBatteryShadow:
             if not self._files_held:
                 return
             self._files_held = False
-            try:
-                self._clear_stale_files()
-            except Exception as exc:  # noqa: BLE001 - the shadow never stops the tool
-                self._shadow_errors.append(
-                    f"shadow could not clear an earlier run's files: "
-                    f"{type(exc).__name__}: {exc}"
-                )
+            self._clear_stale_files()
 
     # -- properties ---------------------------------------------------------
 
@@ -688,7 +686,8 @@ class GateBatteryShadow:
     def record_error(self, entry_id: str, message: str) -> None:
         """Record a fault in the shadow's own wiring for ``entry_id``.
 
-        It fails a finished run like a verdict difference; it never raises.
+        A finished run flags and reports it like a verdict difference; it
+        never raises.
         """
 
         with self._lock:
@@ -840,8 +839,8 @@ class GateBatteryShadow:
         """Note that a process which may have reached this scope's entries left
         no observations here, such as a stage that ran and saved none.
 
-        It does not fail a finished run by itself: an entry that process
-        observed is then unobserved, which does. A stopped run cannot tell
+        It is not a difference by itself: an entry that process observed is
+        then unobserved, which a finished run flags. A stopped run cannot tell
         that process's entries from the ones never reached, so it leaves the
         phase it stopped in unrecorded. Never raises.
         """
@@ -926,20 +925,23 @@ class GateBatteryShadow:
         stopped_by: BaseException | None = None,
         stopped_at: str | None = None,
     ) -> dict[str, object]:
-        """Record the phases, write both shadow files, then decide.
+        """Record the phases, write both shadow files, and report.
 
-        A finished run (``stopped_by`` and ``stopped_at`` both ``None``) must
-        have observed every entry of its scope; it raises
-        :class:`GateBatteryShadowMismatchError` on any unexplained difference,
-        unobserved entry or shadow error, after the files are written. A run
-        today's code stopped early (``stopped_by``: its exception) or that
-        stops on purpose before its last phase (``stopped_at``: why, as the
-        release's dry run does) records the phases it completed, plus the
-        phase it stopped in when a battery outcome there blocks, and never
-        raises: the tool's own exit stands. That phase names unreached the
-        entries without an outcome, so it is recorded only when today's code
-        reached none of them and no observations are missing; otherwise it
-        stays unrecorded rather than mark a gate that ran as never reached.
+        It never fails the tool: today's gates decide until the flip, so the
+        tool's own exit stands whatever the battery found. A finished run
+        (``stopped_by`` and ``stopped_at`` both ``None``) must have observed
+        every entry of its scope. An unexplained difference, an unobserved
+        entry or a shadow error is flagged in the comparison
+        (``verdict_difference``) and printed as a warning after the files are
+        written. A run today's code stopped early (``stopped_by``: its
+        exception) or that stops on purpose before its last phase
+        (``stopped_at``: why, as the release's dry run does) records the
+        phases it completed, plus the phase it stopped in when a battery
+        outcome there blocks. That phase names unreached the entries without
+        an outcome, so it is recorded only when today's code reached none of
+        them and no observations are missing; otherwise it stays unrecorded
+        rather than mark a gate that ran as never reached. A shadow file that
+        cannot be written is a warning too.
 
         Returns:
             The comparison payload written to disk, or an empty mapping when a
@@ -1007,12 +1009,9 @@ class GateBatteryShadow:
         )
         try:
             _atomic_write_json(self._comparison_path, payload)
-        except Exception as exc:
-            if completed:
-                raise
-            # Today's own exception (or deliberate stop) is the one that
-            # propagates; a shadow file that cannot be written must not
-            # replace it.
+        except Exception as exc:  # noqa: BLE001 - the shadow never fails a build
+            # A shadow file that cannot be written must neither fail the build
+            # nor replace today's own exception (or deliberate stop).
             print(
                 f"warning: US gate battery shadow for scope {self._scope!r} "
                 f"could not write {self._comparison_path}: "
@@ -1022,8 +1021,9 @@ class GateBatteryShadow:
             return payload
         differences = self.differences()
         if completed and differences:
-            raise GateBatteryShadowMismatchError(
-                self._scope, differences, self._comparison_path
+            print(
+                _disagreement_warning(self._scope, differences, self._comparison_path),
+                file=sys.stderr,
             )
         return payload
 

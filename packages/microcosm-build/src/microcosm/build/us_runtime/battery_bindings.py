@@ -171,9 +171,11 @@ class USGateSpec:
             build that passes another value is a runtime override, which
             the shadow records and explains.
         failure_lines: For a ``mapping`` gate, the reference of the function
-            that gives a failing mapping's lines, as today's verdict reads
-            them, for a gate whose failing mapping may carry none (the
-            district ESS gate fails a blocking collapse on its counts).
+            that gives the mapping's failure lines, passing or failing, as
+            today's verdict reads them, for a gate whose own ``failures`` do
+            not match its verdict. The district ESS gate fails a blocking
+            collapse on its counts with no line, and passes a report-only
+            entry it cannot evaluate with one.
     """
 
     check: str
@@ -457,8 +459,8 @@ def _verdict_of(
     """The gate's return value as its result, by :attr:`USGateSpec.returns`.
 
     ``failure_lines`` is the resolved :attr:`USGateSpec.failure_lines`: a
-    failing mapping's lines come from it, since a result that fails must
-    name why.
+    mapping's lines come from it whether it passes or fails, since a result
+    that fails must name why and one that passes must name nothing.
     """
 
     name = spec.legacy_name
@@ -473,7 +475,7 @@ def _verdict_of(
         passed = bool(value.get("passed"))
         failures = _lines(
             failure_lines(value)
-            if failure_lines is not None and not passed
+            if failure_lines is not None
             else value.get("failures") or (),
             spec.check,
         )
@@ -1149,6 +1151,8 @@ def _us_national_specs() -> tuple[USGateSpec, ...]:
             gate="tool:us_ssi_take_up_gate",
             positional=("ssi_take_up_diagnostics",),
             arguments={"targets": "ssi_band_targets"},
+            # The slack on each band's documented prior.
+            pinned=_pins("ssi_take_up", "_PRIOR_EPSILON"),
         ),
         USGateSpec(
             check="health_input_signal",
@@ -1256,6 +1260,9 @@ def _us_national_specs() -> tuple[USGateSpec, ...]:
                     "target_registry",
                 )
             },
+            # The cap on a critical target that improves on the incumbent. Each
+            # target's own tolerance sits in the critical-target register.
+            pinned=_tool_pins("US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR"),
             returns="failures",
         ),
         USGateSpec(
@@ -1351,6 +1358,8 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
             legacy_name="acs_self_employment_identity",
             gate="tool:_require_acs_self_employment_identity",
             positional=(FRAME,),
+            # The tool calls the gate at its default tolerance.
+            pinned=_pins("acs_inputs", "ACS_SELF_EMPLOYMENT_IDENTITY_TOLERANCE"),
             refusals=refuses,
             returns="receipt",
         ),
@@ -1360,12 +1369,16 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
             gate="tool:acs_local_ssi_medicaid_take_up_signal_gate",
             positional=(FRAME,),
             arguments={"receipt": "ssi_medicaid_receipt"},
-            pinned=_pins(
-                "acs_local_ssi_medicaid_take_up",
-                "_RESIDUAL_RELATIVE_TOLERANCE",
-                "_SATURATED_RELATIVE_TOLERANCE",
-                "ACS_LOCAL_SSI_BAND_RELATIVE_TOLERANCE",
-            ),
+            pinned={
+                **_pins(
+                    "acs_local_ssi_medicaid_take_up",
+                    "_RESIDUAL_RELATIVE_TOLERANCE",
+                    "_SATURATED_RELATIVE_TOLERANCE",
+                    "ACS_LOCAL_SSI_BAND_RELATIVE_TOLERANCE",
+                ),
+                # The receipt's Medicaid re-grade runs at the gate's default.
+                **_pins("medicaid_take_up", "US_MEDICAID_ENROLLMENT_TOLERANCE"),
+            },
         ),
         # The calibrated artifact's gates at finalize, and package's re-checks.
         USGateSpec(
@@ -1404,18 +1417,31 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
             legacy_name="acs_local_take_up_signal",
             gate="tool:acs_local_take_up_signal_gate",
             positional=(FRAME,),
-            pinned=_pins(
-                "acs_local_take_up",
-                "_MEDICARE_AGED_SHARE_FLOOR",
-                "_SHARE_BANDS",
-                "_DISCRETIONARY_SHARE_FACTORS",
-            ),
+            pinned={
+                **_pins(
+                    "acs_local_take_up",
+                    "_MEDICARE_AGED_SHARE_FLOOR",
+                    "_SHARE_BANDS",
+                    "_DISCRETIONARY_SHARE_FACTORS",
+                ),
+                # Head Start: the ACS share's factors around the donor's, and
+                # the donor share's own band, as the national entry pins it.
+                **_pins("acs_local_vehicles_head_start", "_HEAD_START_SHARE_FACTORS"),
+                **_pins("sipp_head_start", "_ELIGIBLE_TAKE_UP_SHARE_BAND"),
+            },
         ),
         USGateSpec(
             check="immigration_signal",
             legacy_name="acs_local_immigration_signal",
             gate="tool:acs_local_immigration_signal_gate",
             positional=(FRAME,),
+            # The ACS spine's non-citizen band, and the whole file's
+            # composition gate, as the national entry pins them.
+            pinned=_pins(
+                "immigration",
+                "_NON_CITIZEN_SHARE_BAND",
+                "_UNDOCUMENTED_ANCHOR_RELATIVE_BAND",
+            ),
         ),
         USGateSpec(
             check="work_disability_signal",

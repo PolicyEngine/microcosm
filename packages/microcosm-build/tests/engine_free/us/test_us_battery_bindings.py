@@ -79,27 +79,29 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
         ),
     },
     "us_national": {
+        # Moved by the SSI take-up and release-gate entries that pin the
+        # thresholds they compare against (review of #1635, round 2).
         "gates_manifest_sha256": (
-            "db5578411c6a3a17ede8a28e85bfa641590016580e51307f1bd3da3b8fe4b7cd"
+            "356b3387360ca77862c6684d4267710601eb96c5e29986615f58eb7346aca71c"
         ),
         "policy_sha256": (
-            "fa4a2eb355e35271e2bc79be903649f333cd5ed62c899d359029db0ac5387ac6"
+            "8be8670ce4f58b10c34d58b994645885b0d8758a4996c4f77797ddfbb698d8bb"
         ),
         "spec_fingerprint": (
-            "898315b5b0fd8cd782c4238d5003008a5237bcac1e205c45676b089252b4a9b0"
+            "5226397586571f99f94526636a05e7bd4cb91fc9e7ab50c6e3dbe0a2f0952782"
         ),
     },
     "us_local": {
-        # Moved by the five entries that pin the thresholds they compare
-        # against (review of #1635).
+        # Moved by the entries that pin the thresholds they compare against
+        # (review of #1635, rounds 1 and 2).
         "gates_manifest_sha256": (
-            "3356e3f69213870398f2920dbc08b983c994551e61d45175c22ef9efef9c53f8"
+            "50d2d77198074ae355655c4717e3bd108e71b73c518521b8285c53ade37c6adb"
         ),
         "policy_sha256": (
-            "cb3471437b10de6b4e5c67818007edb5b647c77c25aa055bd26ce50203f9ff88"
+            "8c0a58ddee2fd707ba2e45d285c197b689c11723281e7f925965ff33d65ace21"
         ),
         "spec_fingerprint": (
-            "28c7f82d14bce4a63c82b20cfbaee5f7caf225c893633e34f91f3855f0344b15"
+            "7ac8b2657c007f178afde6c23782c6934b98d120d3ed4f53f68d1ad4e9a88906"
         ),
     },
 }
@@ -486,6 +488,52 @@ def test_a_blocking_district_collapse_fails_both_verdicts_on_one_line(
     assert outcome is not None and outcome.status is GateStatus.FAILED
     assert outcome.result.failures == (line,)
     assert tool["_legacy_district_ess_verdict"](entry).failures == (line,)
+    assert shadow.differences() == ()
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        pytest.param({}, id="no-per-district-ess"),
+        pytest.param(
+            {
+                "design": {"effective_sample_size_by_district": {"0601": 100.0}},
+                "calibrated": {"effective_sample_size_by_district": {"0602": 60.0}},
+            },
+            id="different-districts",
+        ),
+    ],
+)
+def test_a_report_only_district_entry_it_cannot_evaluate_passes_both_verdicts(
+    tmp_path, origin
+) -> None:
+    # Report-only, the district ESS gate passes an entry it cannot evaluate
+    # and keeps the reason as a failure line. A result that passes must name
+    # nothing, so the binding reads district_ess_collapse_failures, which
+    # gives no line for a passing entry, as today's verdict does; before,
+    # the binding kept the entry's line and GateResult refused it, which the
+    # shadow recorded as a difference (review of #1635).
+    tool = vars(load_us_gate_tool("us_local"))
+    shadow = _shadow(tmp_path, "us_local")
+    with active_gate_shadow(shadow):
+        entry = shadow_value(
+            "us_local_district_ess_collapse",
+            lambda: tool["district_ess_collapse_gate"](
+                origin, relative_floor=0.25, absolute_floor=15.0, blocking=False
+            ),
+            EvidenceContext(
+                artifacts={"weight_origin": origin, "district_ess_blocking": False}
+            ),
+            verdict=tool["_legacy_district_ess_verdict"],
+        )
+    # Today's entry is written as before: passing, with its reason.
+    assert entry["passed"] is True and entry["criteria_met"] is None
+    assert len(entry["failures"]) == 1
+    outcome = shadow.outcome("us_local_district_ess_collapse")
+    assert outcome is not None and outcome.status is GateStatus.PASSED
+    assert outcome.result.failures == ()
+    assert tool["_legacy_district_ess_verdict"](entry).failures == ()
+    # Differences include the shadow's own errors, such as a refused result.
     assert shadow.differences() == ()
 
 

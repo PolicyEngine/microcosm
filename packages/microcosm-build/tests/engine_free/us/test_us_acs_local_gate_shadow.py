@@ -18,7 +18,6 @@ from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
 from microcosm.build.us_runtime.gate_shadow import (
     US_GATE_SHADOW_SWITCH,
-    GateBatteryShadowMismatchError,
     current_gate_shadow,
     shadow_file_paths,
     shadow_not_run,
@@ -216,8 +215,8 @@ def test_a_stage_that_saved_nothing_is_never_named_unreached(
     assert payload["blocked_at_phase"] is None
 
 
-def test_a_difference_fails_the_finished_package_stage(
-    tmp_path, monkeypatch, acs
+def test_a_difference_is_recorded_without_failing_the_package_stage(
+    tmp_path, monkeypatch, acs, capsys
 ) -> None:
     args = _args(tmp_path)
     stand_in_gates(monkeypatch, "us_local", acs, failing={"local_hours_signal"})
@@ -230,5 +229,31 @@ def test_a_difference_fails_the_finished_package_stage(
     }
     # Earlier stages record and go on, whatever they saw.
     _run_stage(acs, args, "finalize", legacy=legacy)
-    with pytest.raises(GateBatteryShadowMismatchError, match="us_local_hours"):
-        _run_stage(acs, args, "package", legacy=legacy)
+    # Today's gates still decide: the package stage finishes.
+    _run_stage(acs, args, "package", legacy=legacy)
+    payload = _comparison(args)
+    assert payload["run_completed"] is True
+    assert payload["verdict_difference"] is True
+    differing = [row["id"] for row in payload["differences"]]
+    assert differing and all(entry.startswith("us_local_hours") for entry in differing)
+    assert "scope 'us_local' disagrees with today's gates" in capsys.readouterr().err
+
+
+def test_a_package_stage_finishes_when_its_shadow_files_fail(
+    tmp_path, monkeypatch, acs, capsys
+) -> None:
+    # The shadow never stops a stage: here the package stage's observation
+    # files can be neither cleared at its start, saved, nor read back.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa", "finalize"):
+        _run_stage(acs, args, stage)
+
+    def unreachable(args, stage):
+        raise OSError("observations unreachable")
+
+    monkeypatch.setattr(acs, "_local_stage_observations", unreachable)
+    _run_stage(acs, args, "package")
+    out = capsys.readouterr().out
+    assert "gate battery shadow could not clear earlier files" in out
+    assert "gate battery shadow could not be rebuilt" in out
