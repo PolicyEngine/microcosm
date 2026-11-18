@@ -363,9 +363,10 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
             # microcosm#1641 moves it again: docstring and comment wording in
             # solve and ssi_take_up, and the calibration contract's renamed modes.
+            # microcosm#1585's us/gates.json row in country_package.json moves it.
             # The QRF draw's default thread count, joblib.cpu_count() in
             # microcosm.fit.qrf, moves it again.
-            "spec_sha256": "d663eccbf3b334da2520d6d89045742357a803daf01829adbad3ac7f3b6d6d98",
+            "spec_sha256": "e087d0cc9e10df986d191814d3e8736b71a252390e6c88466346bc297ab785d4",
         },
     }
 

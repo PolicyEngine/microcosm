@@ -896,8 +896,9 @@ def _source_households_by_entity(
     """Each entity's rows' source household, or None without lineage.
 
     A benefit unit takes its first member's household's source. Every built
-    frame carries ``household_source_id`` (the input-mass gate fails closed
-    without it); a hand-made fixture may not.
+    frame carries the true source, ``source_household_id``
+    (``receipt_counts.SOURCE_HOUSEHOLD_COLUMN``; the input-mass gate fails
+    closed without it, microcosm#931); a hand-made fixture may not.
     """
 
     from microcosm.build.uk_runtime.receipt_counts import SOURCE_HOUSEHOLD_COLUMN

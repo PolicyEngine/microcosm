@@ -97,6 +97,19 @@ compares it with the fingerprint recorded there for the feed the provenance
 names. A stock rebuilt on a new feed records that feed's fingerprint beside it;
 the test reports it.
 
+The conditioned atomic-area supports (microcosm#931) read feed facts too: the
+Scottish support's band weights come from NRS's dwellings by council-tax band
+and 2022 data zone at December 2024 (record set
+`nrs.dwellings_data_zone_2025.2024`, chronicle#421). Their provenance
+(`uk/uk_atomic_area_conditioned_supports.provenance.json`) names the feed they
+were built from and fingerprints the counts read. The feed-gated
+`test_the_pinned_feed_carries_the_band_facts_the_supports_were_built_from`
+(`tests/engine_free/uk/test_uk_conditioned_area_supports.py`) reads those facts
+on the new pin and compares them with the provenance. If they moved, rebuild
+the supports with `tools/build_uk_conditioned_area_supports.py` and update
+their digests in `sources.yaml`; if not, the supports and their provenance stay
+as built.
+
 The constituency domestic energy resource (`uk/desnz_constituency_energy_facts.json`,
 microcosm#1095) is built from feed facts too: DESNZ's authority and LSOA / data
 zone consumption and meter counts. Its loader refuses a resource built on

@@ -3874,14 +3874,14 @@
         "method_card_row": "BE-MC6",
         "method_card_status": "proposed_pending_d1902",
         "fit_tolerance": "0.05",
-        "parking_reason": "W3: needs a pinned rulespec-be binding for be/statutes/social_security/workers/contribution_rates.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+        "parking_reason": "W3: needs a pinned rulespec-be binding for be/statutes/social_security/workers/contribution_rates.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902).",
         "ageing": "rolled_forward_by_ratio",
         "ageing_pair": "fpb_t11_actual_social_contributions",
         "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
         "source_period": "2024",
         "target_period": "2026"
       },
-      "notes": "W3: needs a pinned rulespec-be binding for be/statutes/social_security/workers/contribution_rates.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+      "notes": "W3: needs a pinned rulespec-be binding for be/statutes/social_security/workers/contribution_rates.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902).",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -3995,7 +3995,7 @@
         "method_card_row": "BE-MC6",
         "method_card_status": "proposed_pending_d1902",
         "fit_tolerance": "0.05",
-        "parking_reason": "W3: needs a pinned rulespec-be binding for be/regulations/unemployment/pilot_oracle_pipeline.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads. Unemployment history inputs and W3's receipt contract are also missing.",
+        "parking_reason": "W3: needs a pinned rulespec-be binding for be/regulations/unemployment/pilot_oracle_pipeline.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902). Unemployment history inputs and W3's receipt contract are also missing.",
         "ageing_target_equals": "FPB's 2026 projection of the base's own row",
         "ageing": "rolled_forward_by_ratio",
         "ageing_pair": "fpb_t24_social_security_cash_unemployment",
@@ -4003,7 +4003,7 @@
         "source_period": "2025",
         "target_period": "2026"
       },
-      "notes": "W3: needs a pinned rulespec-be binding for be/regulations/unemployment/pilot_oracle_pipeline.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads. Unemployment history inputs and W3's receipt contract are also missing.",
+      "notes": "W3: needs a pinned rulespec-be binding for be/regulations/unemployment/pilot_oracle_pipeline.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902). Unemployment history inputs and W3's receipt contract are also missing.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -4078,7 +4078,7 @@
         "method_card_row": "BE-MC6",
         "method_card_status": "proposed_pending_d1902",
         "fit_tolerance": "0.05",
-        "parking_reason": "GRAPA is means-tested on pension income, and legal pensions are not modelled until d1902 settles BE-MC3's pension route. W3: needs a pinned rulespec-be binding for be/statutes/income_guarantee_for_elderly/payable_amount.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+        "parking_reason": "GRAPA is means-tested on pension income, and legal pensions are not modelled until d1902 settles BE-MC3's pension route. W3: needs a pinned rulespec-be binding for be/statutes/income_guarantee_for_elderly/payable_amount.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902).",
         "ageing_target_equals": "FPB's 2026 projection of the base's own row",
         "ageing": "rolled_forward_by_ratio",
         "ageing_pair": "fpb_t24_federal_cash_income_guarantee_for_older_people",
@@ -4086,7 +4086,7 @@
         "source_period": "2025",
         "target_period": "2026"
       },
-      "notes": "GRAPA is means-tested on pension income, and legal pensions are not modelled until d1902 settles BE-MC3's pension route. W3: needs a pinned rulespec-be binding for be/statutes/income_guarantee_for_elderly/payable_amount.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+      "notes": "GRAPA is means-tested on pension income, and legal pensions are not modelled until d1902 settles BE-MC3's pension route. W3: needs a pinned rulespec-be binding for be/statutes/income_guarantee_for_elderly/payable_amount.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902).",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -4152,7 +4152,7 @@
       "assertion_policy": "allow_source_projection",
       "metadata": {
         "contract_target_id": "fpb_net_mixed_income",
-        "activation_status": "requires_currency_bridge_b4",
+        "activation_status": "requires_money_node_and_mixed_income_factor",
         "criticality": "release_blocking",
         "measure_kind": "transported_input",
         "publisher": "Federal Planning Bureau",
@@ -4161,7 +4161,7 @@
         "method_card_row": "BE-MC3",
         "method_card_status": "proposed_pending_d1902",
         "fit_tolerance": "0.05",
-        "parking_reason": "B4: BE-MC3 gives self-employment income FX and uprating only, then calibrates its aggregate; the euro column has no producer until B4's currency bridge. FPB's net mixed income also covers farm income, which the donor carries separately.",
+        "parking_reason": "B4: BE-MC3 gives self-employment income FX and uprating only, then calibrates its aggregate. money_normalization.json converts the euro column once at the donor-year rate and, while FPB's projected 2026 level cannot be a money factor's target, holds it at 2024 levels under an interim identity (proposed pending d1902). The row waits for a Belgian transport graph that runs that normalization, the column's producer, and for d1902 item 20's net mixed income factor, without which held 2024 amounts would be calibrated to a 2026 total. FPB's net mixed income also covers farm income, which the donor carries separately.",
         "ageing_target_equals": "FPB's 2026 projection of the base's own row",
         "ageing": "rolled_forward_by_ratio",
         "ageing_pair": "fpb_t11_net_mixed_income",
@@ -4169,7 +4169,7 @@
         "source_period": "2025",
         "target_period": "2026"
       },
-      "notes": "B4: BE-MC3 gives self-employment income FX and uprating only, then calibrates its aggregate; the euro column has no producer until B4's currency bridge. FPB's net mixed income also covers farm income, which the donor carries separately.",
+      "notes": "B4: BE-MC3 gives self-employment income FX and uprating only, then calibrates its aggregate. money_normalization.json converts the euro column once at the donor-year rate and, while FPB's projected 2026 level cannot be a money factor's target, holds it at 2024 levels under an interim identity (proposed pending d1902). The row waits for a Belgian transport graph that runs that normalization, the column's producer, and for d1902 item 20's net mixed income factor, without which held 2024 amounts would be calibrated to a 2026 total. FPB's net mixed income also covers farm income, which the donor carries separately.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {

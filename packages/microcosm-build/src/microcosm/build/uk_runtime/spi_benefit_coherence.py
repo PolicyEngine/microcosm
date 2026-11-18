@@ -132,7 +132,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
     UK_WITHHELD,
     distinct_count,
-    source_household_ids,
+    record_source_households,
     support_band,
 )
 from microcosm.build.uk_runtime.spi_support import (
@@ -1010,16 +1010,13 @@ def _within_limit_receipt(
 def _person_source_households(
     person: pd.DataFrame, household: pd.DataFrame
 ) -> np.ndarray:
-    """Each person's source household, the lineage the receipt counts by."""
+    """Each person's true source household, the lineage the receipt counts by."""
 
-    by_household = pd.Series(
-        source_household_ids(household, stage=SPI_BENEFIT_COHERENCE_STAGE_NAME),
-        index=household["household_id"].to_numpy(),
+    return record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage=SPI_BENEFIT_COHERENCE_STAGE_NAME,
     )
-    sources = person["person_household_id"].map(by_household)
-    if sources.isna().any():
-        raise ValueError("SPI benefit coherence persons must map to a household.")
-    return sources.to_numpy()
 
 
 def _person_weights(
