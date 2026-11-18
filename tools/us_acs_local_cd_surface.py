@@ -196,6 +196,16 @@ def is_cd_file_spec(spec) -> bool:
     return record_set_spec_id(spec).startswith(CD_FILE_RECORD_SET_SPEC_PREFIX)
 
 
+def _has_defective_cd_file_column(spec, measure: str) -> bool:
+    # The TY2023 package checks A/N18460 and N85770 against the CSV header.
+    # Keep the exclusion on other vintages until their columns are verified.
+    verified_source = "irs_soi.congressional_district_2023.all_returns.v1"
+    return (
+        measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES
+        and record_set_spec_id(spec) != verified_source
+    )
+
+
 def soi_materializer_semantics(spec) -> tuple:
     """Everything the SOI slice reads from a spec, except its geography.
 
@@ -433,7 +443,7 @@ def state_cd_soi_surface(
         metadata = spec.metadata
         measure = str(metadata.get("source_measure_id"))
         state = str(metadata["state_fips"])
-        if measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES:
+        if _has_defective_cd_file_column(spec, measure):
             drop(spec, f"defective_cd_file_column:{measure}")
         elif measure in STATE_CD_UNPARENTED_CD_MEASURES:
             drop(spec, f"no_state_parent:{measure}")
@@ -468,7 +478,7 @@ def state_cd_soi_surface(
     for key, spec in sorted(cd_file_state_by_key.items()):
         state, identity = key
         measure = identity[0]
-        if key in ht2_by_key or measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES:
+        if key in ht2_by_key or _has_defective_cd_file_column(spec, measure):
             continue
         sibling = level_bridges.get(measure)
         if sibling is None:
@@ -654,7 +664,7 @@ def state_cd_soi_surface(
     for spec in cd_file_state:
         measure = str(spec.metadata.get("source_measure_id"))
         key = (spec.metadata["state_fips"], soi_concept_identity(spec))
-        if measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES:
+        if _has_defective_cd_file_column(spec, measure):
             drop(spec, f"defective_cd_file_column:{measure}")
         elif key in ht2_by_key:
             drop(spec, "second_vintage_of_state_concept")
@@ -684,8 +694,8 @@ def state_cd_soi_surface(
     receipt = {
         "vintage_rule": STATE_CD_VINTAGE_RULE,
         "vintage_rule_description": (
-            "Historic Table 2 (TY2022) is the single vintage of every state "
-            "concept it carries. District-file (22incd.csv) district rows "
+            "Historic Table 2 supplies the level for every state "
+            "concept it carries. District-file rows "
             "keep only their within-state shares and are rebased to sum to "
             "that parent. Concepts only the district file carries keep its "
             "own state row as their parent, lifted onto the Historic Table 2 "

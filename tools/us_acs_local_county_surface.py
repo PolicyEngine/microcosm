@@ -75,6 +75,15 @@ def _concatenate(parts, dtype):
     )
 
 
+def _combined_cell_basis(year):
+    if year == 2022:
+        return SOI_COMBINED_CELL_BASIS
+    return (
+        f"IRS SOI county TY{year} omits the county. The declared combined "
+        "cell uses its host county's published share."
+    )
+
+
 def _codes(values, *, column: str) -> np.ndarray:
     numeric = pd.to_numeric(pd.Series(values), errors="raise").to_numpy(float)
     if not np.isfinite(numeric).all() or (numeric != np.floor(numeric)).any():
@@ -495,7 +504,14 @@ def state_county_soi_surface(
         members = {code: [code] for code in sorted(block)}
         for code, host in sorted(merged.items()):
             members[host].append(code)
-            merges[(host, code)].append(f"{measure}|{period}")
+            host_fact = block[host][1]
+            source = (
+                "https://www.irs.gov/pub/irs-soi/22incydocguide.docx"
+                if year == 2022
+                else host_fact.get("source", {}).get("url")
+                or host_fact["layout"]["record_set_id"]
+            )
+            merges[(host, code, year, source)].append(f"{measure}|{period}")
         total = math.fsum(value for value, _fact in block.values())
         if total <= 0:
             raise ValueError(
@@ -546,11 +562,7 @@ def state_county_soi_surface(
                 metadata["state_county_cell_members"] = ",".join(
                     f"{member:05d}" for member in cell
                 )
-                metadata["state_county_cell_basis"] = (
-                    SOI_COMBINED_CELL_BASIS
-                    if period == "2022"
-                    else f"IRS SOI county TY{period} omits the county. The declared combined cell uses its host county's published share."
-                )
+                metadata["state_county_cell_basis"] = _combined_cell_basis(year)
             specs.append(
                 dataclasses.replace(
                     parent,
@@ -594,12 +606,12 @@ def state_county_soi_surface(
                     "host": f"{host:05d}",
                     "absent_from_soi": f"{absent:05d}",
                     "concepts": sorted(concepts),
-                    "basis": SOI_COMBINED_CELL_BASIS,
-                    "source": "https://www.irs.gov/pub/irs-soi/22incydocguide.docx",
+                    "basis": _combined_cell_basis(year),
+                    "source": source,
                     "own_rows_kept": "ladder population, ACS households and "
                     "ACS validation rows stay per county",
                 }
-                for (host, absent), concepts in sorted(merges.items())
+                for (host, absent, year, source), concepts in sorted(merges.items())
             ],
             "new_engine_columns": 0,
             "basis": "state target x county fact / state sum of county facts",

@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime.congressional_district_vintage import (
+    SOI_CD_2022_CORRECTED_RECORD_SET,
     SOI_CD_2022_RECORD_SET,
     SOI_CD_2023_RECORD_SET,
 )
@@ -32,7 +33,12 @@ def congressional_district_distribution_from_ledger_facts(
     facts = tuple(facts)
     # A 2023 file's raw rows are 118th-plan districts. Only sample its
     # district weights after the compiler's 118th-to-current translation.
-    selected = SOI_CD_2022_RECORD_SET
+    ids = {_mapping_at(fact, "layout").get("record_set_id") for fact in facts}
+    selected = (
+        SOI_CD_2022_CORRECTED_RECORD_SET
+        if SOI_CD_2022_CORRECTED_RECORD_SET in ids
+        else SOI_CD_2022_RECORD_SET
+    )
     if any(
         _mapping_at(f, "layout").get("record_set_id") == SOI_CD_2023_RECORD_SET
         and _mapping_at(f, "lineage").get("target_geography_vintage")

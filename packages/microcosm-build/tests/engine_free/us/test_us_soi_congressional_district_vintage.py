@@ -723,6 +723,29 @@ def test_household_district_distribution_refuses_another_district_file() -> None
     assert distribution["sampling_weight"].tolist() == [100_000]
 
 
+def test_corrected_2022_period_supersedes_legacy_copy():
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        SOI_CD_2022_CORRECTED_RECORD_SET,
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+        translate_congressional_district_facts_to_current_vintage,
+    )
+
+    facts = [
+        _cd_fact(CD_2022, "return_count", 130),
+        _cd_fact(SOI_CD_2022_CORRECTED_RECORD_SET, "return_count", 125),
+    ]
+    walk = load_congressional_district_vintage_crosswalk(
+        default_congressional_district_vintage_crosswalk_path()
+    )
+    converted = translate_congressional_district_facts_to_current_vintage(facts, walk)
+    assert {fact["layout"]["record_set_id"] for fact in converted} == {
+        SOI_CD_2022_CORRECTED_RECORD_SET
+    }
+    weights = congressional_district_distribution_from_ledger_facts(converted)
+    assert weights["sampling_weight"].sum() == pytest.approx(125)
+
+
 # --- the pinned feed (skipped where it is absent, as in CI) ----------------
 
 

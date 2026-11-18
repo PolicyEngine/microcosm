@@ -438,6 +438,29 @@ def test_state_county_requires_both_concepts_and_parents_in_every_state(
         )
 
 
+def test_combined_county_receipt_tracks_each_used_source_vintage():
+    parents, facts = [], []
+    for measure, year in (("return_count", 2022), ("adjusted_gross_income", 2023)):
+        parents.append(_state_spec(measure, state="15"))
+        fact = _fact("15009", measure, 1.0)
+        fact["period"]["value"] = year
+        fact["source"] = {
+            "url": f"https://www.irs.gov/pub/irs-soi/{str(year)[2:]}incyallnoagi.csv"
+        }
+        facts.append(fact)
+    surface = _county().state_county_soi_surface(parents, facts, {15005: 1, 15009: 99})
+    cells = surface.receipt["combined_cells"]
+    assert [cell["concepts"] for cell in cells] == [
+        ["return_count|2022"],
+        ["adjusted_gross_income|2023"],
+    ]
+    assert cells[0]["source"].endswith("22incydocguide.docx")
+    assert cells[1]["source"] == facts[1]["source"]["url"]
+    assert {cell["basis"] for cell in cells} == {
+        spec.metadata["state_county_cell_basis"] for spec in surface.specs
+    }
+
+
 def test_kalawao_without_its_declared_host_still_refuses_with_the_missing_code() -> (
     None
 ):

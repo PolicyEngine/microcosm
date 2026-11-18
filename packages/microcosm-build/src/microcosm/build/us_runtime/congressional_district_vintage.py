@@ -22,6 +22,9 @@ SOURCE_CONGRESSIONAL_DISTRICT_PREFIX = "5001700US"
 CONGRESS_118_PREFIX = "5001800US"
 SOI_CD_2023_RECORD_SET = "irs_soi.ty2023.congressional_district_2023.all_returns"
 SOI_CD_2022_RECORD_SET = "irs_soi.ty2023.congressional_district_2022.all_returns"
+SOI_CD_2022_CORRECTED_RECORD_SET = (
+    "irs_soi.ty2022.congressional_district_2022.all_returns"
+)
 CROSSWALK_118_119_RESOURCE = "congressional_district_vintage_crosswalk_118_119.csv"
 CURRENT_CONGRESSIONAL_DISTRICT_PREFIX = "5001900US"
 CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE = "119th_congress"
@@ -220,21 +223,22 @@ def select_irs_district_source(facts, *, source_prefix: str, target_period: int 
     and US totals as well as district rows, so select the whole file together.
     """
     # Newer Chronicle feeds correct the original one-year TY2022 stamp error.
-    old = {
-        SOI_CD_2022_RECORD_SET,
-        "irs_soi.ty2022.congressional_district_2022.all_returns",
-    }
+    old = {SOI_CD_2022_RECORD_SET, SOI_CD_2022_CORRECTED_RECORD_SET}
     new = SOI_CD_2023_RECORD_SET
     materialized = tuple(facts)
     ids = {_mapping_at(fact, "layout").get("record_set_id") for fact in materialized}
+    excluded = set()
+    if SOI_CD_2022_CORRECTED_RECORD_SET in ids:
+        excluded.add(SOI_CD_2022_RECORD_SET)
     if new not in ids:
-        return materialized
-    if source_prefix == CONGRESS_118_PREFIX and int(target_period) >= 2023:
+        if not excluded:
+            return materialized
+    elif source_prefix == CONGRESS_118_PREFIX and int(target_period) >= 2023:
         excluded = old
     elif source_prefix == SOURCE_CONGRESSIONAL_DISTRICT_PREFIX and not old.isdisjoint(
         ids
     ):
-        excluded = {new}
+        excluded.add(new)
     else:
         raise ValueError(
             "No IRS district file matches the supplied source-plan crosswalk and tax year. "

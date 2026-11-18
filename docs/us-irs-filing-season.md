@@ -4,7 +4,7 @@ The IRS workbook counts current-year individual returns as the IRS first process
 
 ## Reproduce the 2024–2025 comparison
 
-Run these commands from the Chronicle checkout that contains the four IRS source packages. Each bundle reads the two official workbooks for its tax year. Inspect each bundle's validation report before combining the rows.
+Run these commands from Chronicle commit `25e9a69bfd3228a7f7b66cb12eb8965f57b5ff7f`. Each bundle reads the two official workbooks for its tax year. Inspect each bundle's validation report before combining the rows. [Chronicle source commit](https://github.com/PolicyEngine/chronicle/commit/25e9a69bfd3228a7f7b66cb12eb8965f57b5ff7f)
 
 ```sh
 for year in 2024 2025; do
