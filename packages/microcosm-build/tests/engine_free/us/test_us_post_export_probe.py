@@ -560,20 +560,26 @@ def test_the_target_surface_resolves_from_an_uncertified_builds_record(
     probe_tool, tmp_path
 ) -> None:
     """A build not yet certified has no manifest; the probe reads its
-    selection from the build_record.json two levels above its release
-    directory (microcosm#1585 item 11, PR 4a). A flag still wins."""
+    selection from the build_record.json in its --out directory: one level
+    above the build's own directory, build/, and two above a release
+    directory certification placed it in (microcosm#1585 item 11). A flag
+    still wins."""
     selection = {
         "mode": "national_state",
         "dropped_congressional_district_targets": 27_148,
     }
     release_dir = tmp_path / "out" / "releases" / "microcosm-us-2024-national"
     release_dir.mkdir(parents=True)
+    build_dir = tmp_path / "out" / "build"
+    build_dir.mkdir()
     assert probe_tool.reference_build_record(release_dir) is None
+    assert probe_tool.reference_build_record(build_dir) is None
     record_path = tmp_path / "out" / "build_record.json"
     record_path.write_text(
         json.dumps({"manifest": {"target_surface_selection": selection}})
     )
     assert probe_tool.reference_build_record(release_dir) == record_path.resolve()
+    assert probe_tool.reference_build_record(build_dir) == record_path.resolve()
     record = json.loads(record_path.read_text())
 
     assert probe_tool.resolve_target_surface(None, None, None, record) == {
@@ -591,38 +597,46 @@ def test_the_target_surface_resolves_from_an_uncertified_builds_record(
 
 def test_a_failed_build_is_no_reference(probe_tool, builder, tmp_path, capsys) -> None:
     """A failed build keeps its H5 to be evaluated, which the probe may score
-    as --export, but its release directory is refused as the reference
-    (review of #1672)."""
+    as --export, but its directories are refused as the reference (review of
+    #1672), until an evidence-tier certification makes it an evidence
+    release (microcosm#1585 item 11)."""
     out = tmp_path / "out"
-    release_dir = out / "releases" / "microcosm-us-2024-national"
-    release_dir.mkdir(parents=True)
+    build_dir = out / builder.US_BUILD_FILES_DIRECTORY
+    build_dir.mkdir(parents=True)
     (out / "build_record.json").write_text(
         json.dumps(
             {
                 "kind": builder.US_BUILD_RECORD_KIND,
                 "build": "populace-us-2024-failed",
-                "layout": {"release_dir": "releases/microcosm-us-2024-national"},
-                "settings": {"evidence_release": False},
+                "layout": {"build_dir": builder.US_BUILD_FILES_DIRECTORY},
+                "settings": {},
                 "terminal_gate_failures": ["Input coverage failed: x"],
             }
         )
     )
-    argv = [
-        "--export",
-        str(tmp_path / "sample.h5"),
-        "--out",
-        str(tmp_path / "probe"),
-        "--reference-release-dir",
-        str(release_dir),
-    ]
+    evidence_dir = out / "releases" / builder.US_EVIDENCE_RELEASE_ID
 
-    with pytest.raises(SystemExit):
-        probe_tool.main(argv)
-    assert (
-        f"--reference-release-dir {release_dir} belongs to build "
-        "populace-us-2024-failed" in capsys.readouterr().err
-    )
+    def argv(reference: Path) -> list[str]:
+        return [
+            "--export",
+            str(tmp_path / "sample.h5"),
+            "--out",
+            str(tmp_path / "probe"),
+            "--reference-release-dir",
+            str(reference),
+        ]
+
+    for reference in (build_dir, evidence_dir):
+        with pytest.raises(SystemExit):
+            probe_tool.main(argv(reference))
+        assert (
+            f"--reference-release-dir {reference} belongs to build "
+            "populace-us-2024-failed" in capsys.readouterr().err
+        )
     assert not (tmp_path / "probe").exists()
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "release_manifest.json").write_text("{}")
+    assert builder._failed_build_holding(evidence_dir) is None
 
 
 def test_census_with_a_receipt_is_refused(

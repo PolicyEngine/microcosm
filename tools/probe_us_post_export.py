@@ -3132,15 +3132,21 @@ def _read_json(path: Path | None):
 
 
 def reference_build_record(release_dir: Path | None) -> Path | None:
-    """The record of the build whose release directory is the reference.
+    """The record of the build whose directory is the reference.
 
-    A build writes ``build_record.json`` in its ``--out`` directory, two
-    levels above ``releases/<release>/`` (microcosm#1585 item 11, PR 4a).
+    A build writes ``build_record.json`` in its ``--out`` directory: one
+    level above the build's own directory, ``build/``, and two above the
+    release directory certification places the build in,
+    ``releases/<release>/`` (microcosm#1585 item 11).
     """
     if release_dir is None:
         return None
-    candidate = Path(release_dir).resolve().parent.parent / "build_record.json"
-    return candidate if candidate.is_file() else None
+    resolved = Path(release_dir).resolve()
+    for root in (resolved.parent, resolved.parent.parent):
+        candidate = root / "build_record.json"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -3184,9 +3190,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "an older build's releases/<build id>/): "
         "defaults --reference-smoke, --reference-validation, "
         "--reference-build-manifest and --calibration-diagnostics to its files. "
-        "A build not yet certified works too: its target surface then comes "
-        "from the build_record.json in its --out directory. A build whose "
-        "release gates failed is refused",
+        "A build not yet certified works too, as its own build/ directory: "
+        "its target surface then comes from the build_record.json in its "
+        "--out directory. A build whose release gates failed is refused, "
+        "unless it is certified at the evidence tier",
     )
     parser.add_argument(
         "--reference-smoke",

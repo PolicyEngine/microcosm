@@ -1214,12 +1214,20 @@ def test_route_a_sources_contain_no_machine_paths_or_credentials() -> None:
 
 
 def test_route_a_preflights_the_build_in_its_release_directory() -> None:
-    """A national run writes its build into the national release's directory,
-    and the publication command that publishes into build folders runs its
-    preflight (microcosm#1570)."""
+    """Certification places the build in its tier's release directory, the
+    national release's or the evidence release's (microcosm#1585 item 11), and
+    the publication command that publishes into build folders runs its
+    preflight there (microcosm#1570)."""
     source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
 
-    assert "REL_DIR=$REL_OUT/releases/microcosm-us-2024-national" in source
+    assert (
+        'if [ "$ROUTE_A_CERTIFY_TIER" = evidence ]; then\n'
+        "  REL_RELEASE=microcosm-us-2024-evidence\n"
+        "else\n"
+        "  REL_RELEASE=microcosm-us-2024-national\n"
+        "fi\n"
+        "REL_DIR=$REL_OUT/releases/$REL_RELEASE\n"
+    ) in source
     assert '"$W/.venv/bin/microcosm-publish-release-build"' in source
     assert '"$W/.venv/bin/microcosm-publish-release" ' not in source
 
@@ -1279,7 +1287,9 @@ def test_route_a_stops_after_the_build_and_certifies_only_when_asked() -> None:
     ) in source
 
 
-def _certify_argv(staging: str | None) -> list[str]:
+def _certify_argv(
+    staging: str | None, *, tier: str | None = None, owners: str | None = None
+) -> list[str]:
     settings = {
         "W": "/fixture/worktree",
         "REL_OUT": "/fixture/release-out",
@@ -1290,9 +1300,15 @@ def _certify_argv(staging: str | None) -> list[str]:
     script += "\n".join(
         f"{key}={shlex.quote(value)}" for key, value in settings.items()
     )
-    script += "\nunset ROUTE_A_STAGING\n"
+    script += (
+        "\nunset ROUTE_A_STAGING ROUTE_A_CERTIFY_TIER ROUTE_A_EVIDENCE_FAILURE_OWNERS\n"
+    )
     if staging is not None:
         script += f"ROUTE_A_STAGING={shlex.quote(staging)}\n"
+    if tier is not None:
+        script += f"ROUTE_A_CERTIFY_TIER={shlex.quote(tier)}\n"
+    if owners is not None:
+        script += f"ROUTE_A_EVIDENCE_FAILURE_OWNERS={shlex.quote(owners)}\n"
     script += _function("certify_command")
     script += '\ncertify_command\nprintf "%s\\0" "${CERTIFY_ARGV[@]}"\n'
     result = subprocess.run(
@@ -1336,6 +1352,164 @@ def test_certification_stages_like_the_release(staging: str | None) -> None:
             "/fixture/agent-secret",
             *command,
         ]
+
+
+@pytest.mark.parametrize("owners", [None, "/fixture/owners with spaces.json"])
+def test_the_certify_stage_passes_the_tier_it_was_given(owners: str | None) -> None:
+    """A build has no tier: ROUTE_A_CERTIFY_TIER chooses it at certification,
+    and the evidence tier passes the per-run owners file (microcosm#1585 item
+    11). The certified tier, the default, passes neither flag."""
+    command = [
+        "/fixture/worktree/.venv/bin/python",
+        "-B",
+        "tools/certify_us_national_build.py",
+        "/fixture/release-out",
+    ]
+    launcher = [str(ROUTE_A_TOOLS / "with_hf_token.sh"), "/fixture/agent-secret"]
+    assert _certify_argv("1", tier="certified") == [*launcher, *command]
+    expected = [*launcher, *command, "--evidence-release"]
+    if owners is not None:
+        expected += ["--evidence-failure-owners", owners]
+    assert _certify_argv("1", tier="evidence", owners=owners) == expected
+
+
+def _settings_file(tmp_path: Path, **overrides: str) -> Path:
+    """A settings file that passes the driver's required-settings checks."""
+    values = {
+        name: str(tmp_path / name.lower())
+        for name in (
+            "PE",
+            "MAIN",
+            "WT_ROOT",
+            "RUN_ROOT",
+            "CHAIN_ROOT",
+            "CHAIN_LOG",
+            "DISK_PATH",
+            "UV",
+            "STORAGE",
+            "EDU",
+            "FEED",
+            "LADDER",
+            "SSI",
+            "SCF",
+            "AGENT_SECRET",
+        )
+    }
+    values["PYTHON"] = sys.executable
+    values.update(overrides)
+    path = tmp_path / "route_a.env"
+    path.write_text(
+        "".join(f"{name}={shlex.quote(value)}\n" for name, value in values.items()),
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"ROUTE_A_CERTIFY_TIER": "gold"}, b"must be certified or evidence"),
+        (
+            {"ROUTE_A_EVIDENCE_FAILURE_OWNERS": "/fixture/owners.json"},
+            b"needs ROUTE_A_CERTIFY_TIER=evidence",
+        ),
+        (
+            {
+                "ROUTE_A_CERTIFY_TIER": "evidence",
+                "ROUTE_A_EVIDENCE_FAILURE_OWNERS": "owners.json",
+            },
+            b"must be an absolute path",
+        ),
+    ],
+)
+def test_route_a_refuses_a_tier_setting_it_cannot_use(
+    tmp_path: Path, overrides: dict[str, str], message: bytes
+) -> None:
+    """The tier settings are checked with the other settings, before the run
+    root is made or any ref is fetched."""
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ROUTE_A_")
+    }
+    env["ROUTE_A_ENV"] = str(_settings_file(tmp_path, **overrides))
+    result = subprocess.run(
+        ["bash", str(ROUTE_A_TOOLS / "route_a.sh"), "--certify"],
+        capture_output=True,
+        env=env,
+        timeout=20,
+    )
+    assert result.returncode == 64, result.stderr.decode()
+    assert message in result.stderr
+    assert not (tmp_path / "run_root").exists()
+
+
+def test_route_a_keeps_a_build_that_failed_its_release_gates() -> None:
+    """A build that failed its release gates writes its H5 and record and
+    exits 3 (the release tool's US_BUILD_FAILED_RELEASE_GATES_EXIT). The
+    release stage accepts that, so the build is kept for an evidence-tier
+    certification rather than moved aside and built again; a build-only run
+    says so and exits 3, and a certify run at the certified tier fails before
+    the certify stage starts (microcosm#1585 item 11)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    tool = (ROUTE_A_TOOLS.parent / "build_us_fiscal_refresh_release.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "US_BUILD_FAILED_RELEASE_GATES_EXIT = 3\n" in tool
+    assert "BUILT_FAILED_GATES_RC=3\n" in source
+    assert 'result_accepted "$RUN/release-sup" "0 $BUILT_FAILED_GATES_RC"' in source
+    assert 'run_stage release "0 $BUILT_FAILED_GATES_RC"' in source
+    assert "run_stage release 0 " not in source
+    handoff = source.index('if [ "$ROUTE_A_CERTIFY" != 1 ]; then')
+    certify = source.index("run_stage certify 0")
+    built_only = source[handoff:certify]
+    assert '"release_gates_failed": failed,' in built_only
+    assert built_only.index('if [ "$BUILD_FAILED_GATES" = 1 ]; then') < (
+        built_only.index("exit 3")
+    )
+    assert built_only.index("exit 3") < built_only.index("exit 4")
+    refusal = built_only.index(
+        'if [ "$BUILD_FAILED_GATES" = 1 ] && [ "$ROUTE_A_CERTIFY_TIER" != evidence ]'
+    )
+    assert built_only.index("exit 0") < refusal
+    example = (ROUTE_A_TOOLS / "route_a.env.example").read_text(encoding="utf-8")
+    assert ': "${ROUTE_A_CERTIFY_TIER=certified}"' in example
+    assert ': "${ROUTE_A_EVIDENCE_FAILURE_OWNERS=}"' in example
+
+
+def test_route_a_checks_the_certification_parser_for_the_tier_flags() -> None:
+    """The flags the certify stage passes are checked against the build
+    commit's certification parser, not its build parser, which declares
+    --evidence-release for its dry run (microcosm#1585 item 11)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    assert (
+        '"$PYTHON" "$SCRIPT_DIR/check_flags.py" --in-function _certify_parser '
+        "$CERTIFY_FLAGS"
+    ) in source
+    checker = _flag_checker()
+    tool = (ROUTE_A_TOOLS.parent / "build_us_fiscal_refresh_release.py").read_text(
+        encoding="utf-8"
+    )
+    flags = ["--evidence-release", "--evidence-failure-owners", "--no-staging"]
+    assert checker.missing_flags(tool, flags, function="_certify_parser") == []
+    # The build parser declares them too, so only the narrowed check tells a
+    # certification parser without the tier apart.
+    assert checker.missing_flags(tool, ["--evidence-release"]) == []
+    without_tier = (
+        "def _certify_parser():\n"
+        "    parser.add_argument('build_dir')\n"
+        "    parser.add_argument('--no-staging')\n"
+        "def _parse_args():\n"
+        "    parser.add_argument('--evidence-release')\n"
+    )
+    assert checker.missing_flags(
+        without_tier, ["--evidence-release"], function="_certify_parser"
+    ) == ["--evidence-release"]
+    assert checker.missing_flags(without_tier, ["--evidence-release"]) == []
+    assert checker.missing_flags("x = 1\n", ["--a"], function="_certify_parser") == [
+        "--a"
+    ]
 
 
 def test_route_a_certifies_an_accepted_build_without_hashing_its_inputs() -> None:
