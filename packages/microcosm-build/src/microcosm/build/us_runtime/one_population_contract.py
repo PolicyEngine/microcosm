@@ -2647,15 +2647,16 @@ def absences(
     ``declared`` is the mapping :func:`require_one_population` takes, so a declaration this frame does not use is recorded, never
     refused (d2283 lead call (b), 11-18): ``needless_declarations`` lists
     each declared column that needs no decision here (release-written, not
-    model-named, or whose every gap on this frame took a kind that needs
-    none, such as an origin-native amount), and ``unused_declarations``
+    model-named, named by ``fill_manifest`` or ``zero_written``, whose
+    receipt files it, or whose every gap on this frame took a kind that
+    needs none, such as an origin-native amount), and ``unused_declarations``
     each other declared column no origin lacks on this frame (a stale
     declaration; on a frame with no ACS row, every such declaration). Each
     list holds ``{"column", "decision"}`` entries sorted by column. A
     declaration for an engine input is filed like any other, although
     :func:`require_one_population`'s R6 refuses that input's nulls on the
-    same frame whatever is declared. A column named by more than one of
-    ``declared``, ``fill_manifest`` and ``zero_written`` still refuses.
+    same frame whatever is declared. A column named by both
+    ``fill_manifest`` and ``zero_written`` refuses: an absence has one kind.
 
     Args:
         frame: The joined frame after prepare's fill.
@@ -2685,20 +2686,15 @@ def absences(
     tables = _frame_tables(frame)
     fills = _fills(fill_manifest, tables)
 
-    named = {
-        "declared": set(declared),
-        "fill_manifest": {str(fill["column"]) for fill in fills},
-        "zero_written": set(zero_written),
-    }
-    sources = list(named)
-    for position, first in enumerate(sources):
-        for second in sources[position + 1 :]:
-            both = sorted(named[first] & named[second])
-            if both:
-                raise OnePopulationContractError(
-                    f"An absence has one kind: {both} are named by both {first} "
-                    f"and {second}."
-                )
+    filled_columns = {str(fill["column"]) for fill in fills}
+    both = sorted(filled_columns & set(zero_written))
+    if both:
+        raise OnePopulationContractError(
+            f"An absence has one kind: {both} are named by both fill_manifest "
+            "and zero_written."
+        )
+    # A declared column a receipt also names is needless: the receipt files it.
+    receipted = filled_columns | set(zero_written)
     masses = {
         entity: _entity_mass(frame, entity, tables[entity])
         for entity in US_SCHEMA.entities
@@ -2755,6 +2751,7 @@ def absences(
         column
         for column in set(declared) - used
         if column in gapped
+        or column in receipted
         or column in RELEASE_WRITTEN_INPUTS
         or not is_model_named(column)
     )

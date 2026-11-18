@@ -3557,15 +3557,6 @@ _ABSENCE_REFUSALS = [
         "zero_written",
     ),
     (
-        "declared and zero written",
-        lambda f: {
-            "declared": {"tip_income": "decision"},
-            "zero_written": {"tip_income": "receipt"},
-        },
-        "An absence has one kind: ['tip_income'] are named by both declared and "
-        "zero_written",
-    ),
-    (
         "declared empty",
         lambda f: {"declared": {"parent_1_id": " "}},
         "A declared absence needs its owner's decision; 'parent_1_id' has none",
@@ -3887,6 +3878,32 @@ class TestOneDeclarationsMapping:
             "origin-native",
             "CPS",
         ) in _keyed(record)
+
+    @pytest.mark.parametrize("receipt", ["fill_manifest", "zero_written"])
+    def test_a_declaration_a_receipt_covers_is_needless(
+        self, population, assembled, receipt
+    ) -> None:
+        # The owner declared a gap that prepare later filled (or staging wrote
+        # as zero): the receipt files the entry and the declaration is
+        # recorded as needless, on the mapping R10 also accepts.
+        declared = {"tip_income": f"{_DECISION} (before the fill)"}
+        inputs = (
+            {"fills": [_acs_fill(assembled, "tip_income")]}
+            if receipt == "fill_manifest"
+            else {"zero_written": {"tip_income": "staging receipt"}}
+        )
+        _require(population, assembled, declared_absences=declared)
+        record = _absences(assembled, declared=declared, **inputs)
+        assert record["needless_declarations"] == [
+            {"column": "tip_income", "decision": declared["tip_income"]}
+        ]
+        assert record["unused_declarations"] == []
+        kinds = {
+            kind for (_, column, kind, _) in _keyed(record) if column == "tip_income"
+        }
+        assert kinds == {
+            "reviewed default fill" if receipt == "fill_manifest" else "zero written"
+        }
 
     def test_a_frame_with_no_acs_row_lists_every_declaration_as_unused(
         self, population
