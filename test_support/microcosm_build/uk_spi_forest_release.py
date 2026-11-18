@@ -9,9 +9,13 @@ rows, and the stage-2 forests. This module provides:
 - :func:`run_spi_forest_scenario`, one run of the imputation on them;
 - :func:`spi_result_digests`, SHA-256 digests of the person table and of every
   receipt in the result;
-- :func:`tracked_spi_forest_fits`, which holds weak references to each fitted
-  target and checks, when a later fit starts, that the models it replaces are
-  dead.
+- :class:`FitEveryTargetFirstQRF`, the real model with the lifetimes and order
+  the stage used to have, which records what the stage passes it;
+- :func:`tracked_spi_forest_fits`, which tracks what each fitted target owns
+  and checks, when a later fit starts, that the models it replaces are dead.
+
+``python -m test_support.microcosm_build.uk_spi_forest_release`` prints the
+digests the byte tests freeze, for this platform and this checkout's code.
 """
 
 from __future__ import annotations
@@ -20,8 +24,11 @@ import dataclasses
 import gc
 import hashlib
 import json
+import platform
+import sys
+import tempfile
 import weakref
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -80,6 +87,16 @@ SPI_FOREST_SCENARIOS: dict[str, dict[str, object]] = {
         "stage1_gate_level_columns": ("spi_age_band", "has_pay", "main_source"),
         "condition_on_state_pension_receipt": True,
     },
+}
+#: Runs whose two stages declare different gates. No digests are frozen for
+#: them: their receipts are checked against the models the run fitted.
+SPI_FOREST_MIXED_GATE_SCENARIOS: dict[str, dict[str, object]] = {
+    "stage1_cross_fitted": {"stage1_gate_calibration": "cross_fitted"},
+    "stage2_cross_fitted": {"stage2_gate_calibration": "cross_fitted"},
+}
+SPI_FOREST_ALL_SCENARIOS: dict[str, dict[str, object]] = {
+    **SPI_FOREST_SCENARIOS,
+    **SPI_FOREST_MIXED_GATE_SCENARIOS,
 }
 
 
@@ -243,8 +260,21 @@ def run_spi_forest_scenario(
         donor_sample_size=None,
         state_pension_age=_STATE_PENSION_AGE,
         allow_in_sample_reference=True,
-        **SPI_FOREST_SCENARIOS[scenario],
+        **SPI_FOREST_ALL_SCENARIOS[scenario],
     )
+
+
+@dataclass(frozen=True)
+class RecordedStage2Step:
+    """What one ``fit_draw_next`` call received, and the draw it returned."""
+
+    target: str
+    recipient_index: pd.Index
+    prior_draws: pd.DataFrame
+    quantiles: np.ndarray
+    sign_uniforms: np.ndarray
+    groups: np.ndarray
+    raw_draw: np.ndarray
 
 
 class FitEveryTargetFirstQRF(RegimeGatedQRF):
@@ -255,10 +285,20 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
     draws its target from that fit, through the function
     ``predict_from_uniforms`` draws each target with. A run with this class
     computes what the stage computed when it fitted stage 2 whole and held
-    every model until it returned.
+    every model until it returned, given the inputs the stage passes here;
+    :attr:`chain_targets`, :attr:`chain_groups` and :attr:`steps` record those
+    inputs so a test can check them.
     """
 
     kept_fits: ClassVar[list[object]] = []
+    chain_targets: ClassVar[list[tuple[str, ...]]] = []
+    chain_groups: ClassVar[list[np.ndarray]] = []
+    steps: ClassVar[list[RecordedStage2Step]] = []
+
+    @classmethod
+    def forget_recorded(cls) -> None:
+        for recorded in (cls.kept_fits, cls.chain_targets, cls.chain_groups, cls.steps):
+            recorded.clear()
 
     def fit(self, *args: object, **kwargs: object) -> object:
         fitted = super().fit(*args, **kwargs)
@@ -274,6 +314,8 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
         weights: object,
         groups: object = None,
     ) -> object:
+        self.chain_targets.append(tuple(targets))
+        self.chain_groups.append(np.array(groups, copy=True))
         self._every_target_fit = self.fit(
             frame_or_df, predictors, targets, weights=weights, groups=groups
         )
@@ -299,11 +341,23 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
         for prior in state.completed_targets:
             features[prior] = raw_prior_draws[prior].to_numpy(dtype=np.float64)
         target_outcome = fitted.gate_outcomes()[target]
+        raw_draw = _draw_target_from_uniforms(
+            features, fitted._target_models[target], quantiles, sign_uniforms
+        )
+        self.steps.append(
+            RecordedStage2Step(
+                target=target,
+                recipient_index=recipient_predictors.index.copy(),
+                prior_draws=raw_prior_draws.copy(deep=True),
+                quantiles=np.array(quantiles, copy=True),
+                sign_uniforms=np.array(sign_uniforms, copy=True),
+                groups=np.array(groups, copy=True),
+                raw_draw=np.array(raw_draw, copy=True),
+            )
+        )
         return SimpleNamespace(
             target=target,
-            raw_draw=_draw_target_from_uniforms(
-                features, fitted._target_models[target], quantiles, sign_uniforms
-            ),
+            raw_draw=raw_draw,
             state=replace(state, completed_targets=(*state.completed_targets, target)),
             regime=fitted.regimes()[target],
             weight_kind=fitted.weight_kind,
@@ -435,11 +489,12 @@ def _classifier_parts(
 
 
 def fitted_target_parts(model: object) -> list[tuple[str, object]]:
-    """The weakly referenceable objects one fitted target owns, with their kinds.
+    """The objects one fitted target owns, with their kinds.
 
     A cross-fitted sign gate contributes each fold's classifier. Each forest
-    contributes its regressor, its trees and the numpy array of every leaf's
-    training-row positions (the large, zero-padded allocation).
+    contributes its regressor, its trees with their compiled node storage, the
+    regressor's leaf sorter and the numpy array of every leaf's training-row
+    positions (the large, zero-padded allocation).
     """
 
     gate = getattr(model, "gate", None)
@@ -454,24 +509,54 @@ def fitted_target_parts(model: object) -> list[tuple[str, object]]:
         regressor = getattr(forest, "model", None)
         parts.append((f"{sign} forest", forest))
         parts.append((f"{sign} regressor", regressor))
-        parts.extend(
-            (f"{sign} tree", tree)
-            for tree in getattr(regressor, "estimators_", None) or ()
-        )
+        for tree in getattr(regressor, "estimators_", None) or ():
+            parts.append((f"{sign} tree", tree))
+            parts.append((f"{sign} compiled tree", getattr(tree, "tree_", None)))
+        parts.append((f"{sign} leaf sorter", getattr(regressor, "sorter_", None)))
         leaves = getattr(getattr(regressor, "forest_", None), "y_train_leaves", None)
         parts.append((f"{sign} leaf array", getattr(leaves, "base", None)))
     return [(kind, part) for kind, part in parts if part is not None]
 
 
+class _HeldPart:
+    """A reference to a part that cannot be weakly referenced.
+
+    Calling it returns the part while anything else references it too, and
+    ``None`` once this holder is the only reference left, as a dead weak
+    reference does.
+    """
+
+    def __init__(self, part: object) -> None:
+        self.part = part
+
+    def reference_count(self) -> int:
+        return sys.getrefcount(self.part)
+
+    def __call__(self) -> object | None:
+        if self.reference_count() > _SOLE_HOLDER_REFERENCE_COUNT:
+            return self.part
+        return None
+
+
+_SOLE_HOLDER_REFERENCE_COUNT = _HeldPart(object()).reference_count()
+
+
+def _lifetime_reference(part: object) -> Callable[[], object | None]:
+    try:
+        return weakref.ref(part)
+    except TypeError:
+        return _HeldPart(part)
+
+
 @dataclass
 class SPIForestLifetimes:
-    """Weak references to what each ``RegimeGatedQRF._fit_target`` call built."""
+    """References to what each ``RegimeGatedQRF._fit_target`` call built."""
 
     seed: int
     stop_at_first_violation: bool = True
     fitted: list[tuple[str, int, str]] = field(default_factory=list)
     violations: list[str] = field(default_factory=list)
-    _references: list[tuple[str, int, str, str, weakref.ref]] = field(
+    _references: list[tuple[str, int, str, str, Callable[[], object | None]]] = field(
         default_factory=list
     )
     _reference_fold: int = -1
@@ -497,7 +582,9 @@ class SPIForestLifetimes:
     def record(self, fit: str, fold: int, target: str, model: object) -> None:
         self.fitted.append((fit, fold, target))
         for kind, part in fitted_target_parts(model):
-            self._references.append((fit, fold, target, kind, weakref.ref(part)))
+            self._references.append(
+                (fit, fold, target, kind, _lifetime_reference(part))
+            )
 
     def alive(self, fit: str, *, before_fold: int | None = None) -> list[tuple]:
         """What is still alive of ``fit``, optionally of its earlier folds only."""
@@ -557,10 +644,10 @@ def tracked_spi_forest_fits(
     only when nothing references it, which is when its memory goes back; a
     reference cycle would keep it alive and fail the check.
 
-    scikit-learn's compiled ``Tree`` node storage and quantile-forest's
-    ``QuantileForest`` cannot be weakly referenced. Each belongs to a tracked
-    object and is freed with it, unless something references it directly,
-    which this check cannot see.
+    scikit-learn's compiled ``Tree`` cannot be weakly referenced, so the check
+    holds each one and counts its other references. quantile-forest's
+    ``QuantileForest`` cannot be weakly referenced either, and holding it would
+    keep its leaf array alive; a reference to it shows up through that array.
 
     A violation raises at once, unless ``stop_at_first_violation`` is false:
     then the run goes on and :attr:`SPIForestLifetimes.violations` lists them.
@@ -591,4 +678,22 @@ def tracked_spi_forest_fits(
         monkeypatch.setattr(RegimeGatedQRF, "_fit_target", original)
 
 
+def print_spi_forest_digests() -> None:
+    """Print each frozen scenario's digests for this platform and checkout."""
+
+    digests: dict[str, dict[str, str]] = {}
+    for scenario in SPI_FOREST_SCENARIOS:
+        with (
+            pytest.MonkeyPatch.context() as monkeypatch,
+            tempfile.TemporaryDirectory() as directory,
+        ):
+            result = run_spi_forest_scenario(scenario, Path(directory), monkeypatch)
+        digests[scenario] = spi_frozen_digests(result)
+    here = [platform.system(), platform.machine()]
+    print(json.dumps({"platform": here, "digests": digests}, indent=1))
+
+
 __all__ = [name for name in globals() if not name.startswith("__")]
+
+if __name__ == "__main__":
+    print_spi_forest_digests()

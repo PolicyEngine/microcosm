@@ -11,7 +11,9 @@ byte-identical.
 Two kinds of comparison:
 
 - In this process, against ``FitEveryTargetFirstQRF``: the real model with the
-  lifetimes and order the stage used to have. It runs on every platform.
+  lifetimes and order the stage used to have. The inputs the stage passes it
+  and the receipts it reports are checked against expressions written out here
+  from what the stage computed before. These run on every platform.
 - Against SHA-256 digests recorded by running origin/main 402c3587d's
   ``impute_uk_spi_income_support`` on the fixture. QRF draws are bitwise
   reproducible only within one platform (``docs/graph-qrf-cross-platform.md``),
@@ -22,9 +24,10 @@ Two kinds of comparison:
   skip.
 
 A change that is meant to move these outputs records new digests from its own
-code on each platform, says why the outputs move, and renames what here says
-the digests come from origin/main 402c3587d. Any other change must leave them
-passing.
+code on each platform with
+``python -m test_support.microcosm_build.uk_spi_forest_release``, says why the
+outputs move, and renames what here says the digests come from origin/main
+402c3587d. Any other change must leave them passing.
 """
 
 from __future__ import annotations
@@ -39,9 +42,27 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.gates import FitWeightRecord
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+)
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    gate_level_reports,
+    gate_level_settings_receipt,
+    gate_levels,
+    gate_outcomes,
+    pooled_gate_level_reports,
+    pooled_gate_levels,
+    pooled_gate_outcomes,
+)
 from microcosm.build.uk_runtime.spi_income import (
+    _STAGE2_SALT_NAMES,
     FRS_ONLY_FIT_NAME,
     SPI_DONOR_FIT_NAME,
+    SPI_MINIMUM_RECIPIENT_AGE,
+    SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     UKSPIIncomeImputationResult,
 )
 from microcosm.build.uk_runtime.spi_rank_transport import (
@@ -49,18 +70,28 @@ from microcosm.build.uk_runtime.spi_rank_transport import (
     SPI_TRANSPORT_SEED_OFFSET,
     analogue_targets,
 )
-from microcosm.build.uk_runtime.spi_support import SPI_INCOME_QRF_OUTPUT_COLUMNS
+from microcosm.build.uk_runtime.spi_support import (
+    BASE_FRS_SUPPORT_CHANNEL,
+    FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
+    SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPI_SYNTHETIC_SUPPORT_CHANNEL,
+    support_channel_column,
+)
 from microcosm.fit import RegimeGatedQRF
 from test_support.microcosm_build.uk_spi_forest_release import (
     REFERENCE_FIT,
+    SPI_FOREST_ALL_SCENARIOS,
     SPI_FOREST_SCENARIOS,
     SPI_FOREST_SEED,
     STAGE1_FIT,
     STAGE2_FIT,
     FitEveryTargetFirstQRF,
+    RecordedStage2Step,
     SPIForestLifetimes,
     fitted_target_parts,
+    receipt_digest,
     run_spi_forest_scenario,
+    spi_forest_support,
     spi_frozen_digests,
     spi_result_digests,
     tracked_spi_forest_fits,
@@ -111,13 +142,13 @@ def _origin_main_digests(scenario: str) -> dict[str, str]:
     if recorded is None:
         pytest.skip(
             f"origin/main's digests were recorded on {sorted(_ORIGIN_MAIN_DIGESTS)}, "
-            f"not {here}; the in-process comparison covers this platform."
+            f"not {here}; the same-run checks still run here."
         )
     installed = {name: version(name) for name in _RECORDED_DEPENDENCIES}
     if installed != _RECORDED_DEPENDENCIES:
         pytest.skip(
             f"origin/main's digests were recorded with {_RECORDED_DEPENDENCIES}, "
-            f"not {installed}; the in-process comparison covers these versions."
+            f"not {installed}; the same-run checks still run here."
         )
     return recorded[scenario]
 
@@ -159,6 +190,45 @@ def tracked_run(tmp_path_factory) -> Callable[[str], _TrackedRun]:
     return run
 
 
+@dataclass(frozen=True)
+class _ReferenceRun:
+    result: UKSPIIncomeImputationResult
+    kept_fits: list[object]
+    chain_targets: list[tuple[str, ...]]
+    chain_groups: list[np.ndarray]
+    steps: list[RecordedStage2Step]
+
+
+@pytest.fixture(scope="module")
+def reference_run(tmp_path_factory) -> Callable[[str], _ReferenceRun]:
+    """Each scenario's run with ``FitEveryTargetFirstQRF``, made once."""
+
+    runs: dict[str, _ReferenceRun] = {}
+
+    def run(scenario: str) -> _ReferenceRun:
+        if scenario not in runs:
+            directory = tmp_path_factory.mktemp(f"reference_{scenario}")
+            FitEveryTargetFirstQRF.forget_recorded()
+            with pytest.MonkeyPatch.context() as monkeypatch:
+                result = run_spi_forest_scenario(
+                    scenario,
+                    directory,
+                    monkeypatch,
+                    qrf_class=FitEveryTargetFirstQRF,
+                )
+            runs[scenario] = _ReferenceRun(
+                result,
+                list(FitEveryTargetFirstQRF.kept_fits),
+                list(FitEveryTargetFirstQRF.chain_targets),
+                list(FitEveryTargetFirstQRF.chain_groups),
+                list(FitEveryTargetFirstQRF.steps),
+            )
+            FitEveryTargetFirstQRF.forget_recorded()
+        return runs[scenario]
+
+    return run
+
+
 # ---------------------------------------------------------------------------
 # Output and receipts
 # ---------------------------------------------------------------------------
@@ -173,20 +243,127 @@ def test_output_and_receipts_reproduce_origin_main_bytes(scenario, tracked_run) 
 
 @pytest.mark.parametrize("scenario", SPI_FOREST_SCENARIOS)
 def test_output_and_receipts_match_fitting_every_target_first(
-    scenario, tracked_run, tmp_path, monkeypatch
+    scenario, tracked_run, reference_run
 ) -> None:
     """Freeing models and drawing per target moves no value and no receipt."""
 
-    FitEveryTargetFirstQRF.kept_fits.clear()
-    reference = run_spi_forest_scenario(
-        scenario, tmp_path, monkeypatch, qrf_class=FitEveryTargetFirstQRF
-    )
-    assert FitEveryTargetFirstQRF.kept_fits
-    FitEveryTargetFirstQRF.kept_fits.clear()
-
+    reference = reference_run(scenario).result
     result = tracked_run(scenario).result
+
     pd.testing.assert_frame_equal(result.person, reference.person, check_exact=True)
     assert spi_result_digests(result) == spi_result_digests(reference)
+
+
+@pytest.mark.parametrize("scenario", SPI_FOREST_ALL_SCENARIOS)
+def test_receipts_equal_what_the_kept_models_report(scenario, reference_run) -> None:
+    """The receipts, built as the stage built them from the models it held."""
+
+    run = reference_run(scenario)
+    options = SPI_FOREST_ALL_SCENARIOS[scenario]
+    stage1, *reference_folds, stage2 = run.kept_fits
+    stage1_gate = options.get("stage1_gate_calibration", UK_DEFAULT_GATE_CALIBRATION)
+    stage2_gate = options.get("stage2_gate_calibration", UK_DEFAULT_GATE_CALIBRATION)
+    level_columns = options.get("stage1_gate_level_columns", ())
+    expected_outcomes = {
+        **(
+            {}
+            if stage1_gate == UK_DEFAULT_GATE_CALIBRATION
+            else {
+                **gate_outcomes(SPI_DONOR_FIT_NAME, stage1),
+                **pooled_gate_outcomes(SPI_TRANSPORT_FIT_NAME, reference_folds),
+            }
+        ),
+        **(
+            {}
+            if stage2_gate == UK_DEFAULT_GATE_CALIBRATION
+            else gate_outcomes(FRS_ONLY_FIT_NAME, stage2)
+        ),
+    }
+    expected_levels = (
+        {
+            "declared": list(level_columns),
+            "settings": gate_level_settings_receipt(),
+            "offset_levels": {
+                **gate_levels(SPI_DONOR_FIT_NAME, stage1),
+                **pooled_gate_levels(SPI_TRANSPORT_FIT_NAME, reference_folds),
+            },
+            "level_fits": {
+                **gate_level_reports(SPI_DONOR_FIT_NAME, stage1),
+                **pooled_gate_level_reports(SPI_TRANSPORT_FIT_NAME, reference_folds),
+            },
+        }
+        if level_columns
+        else None
+    )
+    expected_weight_records = (
+        FitWeightRecord(SPI_DONOR_FIT_NAME, stage1.weight_kind),
+        FitWeightRecord(SPI_TRANSPORT_FIT_NAME, reference_folds[0].weight_kind),
+        FitWeightRecord(FRS_ONLY_FIT_NAME, stage2.weight_kind),
+    )
+
+    assert len(reference_folds) == len(run.result.stage1_transport["fold_receipts"])
+    assert run.result.gate_outcomes == expected_outcomes
+    assert receipt_digest(run.result.gate_outcomes) == receipt_digest(expected_outcomes)
+    assert receipt_digest(run.result.gate_levels) == receipt_digest(expected_levels)
+    assert receipt_digest(run.result.fit_weight_records) == receipt_digest(
+        expected_weight_records
+    )
+
+
+@pytest.mark.parametrize("scenario", SPI_FOREST_ALL_SCENARIOS)
+def test_stage2_steps_get_the_inputs_of_the_whole_fit_and_draw(
+    scenario, reference_run
+) -> None:
+    """Targets, rows, uniforms, fold groups and prior draws, target by target."""
+
+    run = reference_run(scenario)
+    person = spi_forest_support().person
+    channel = person[support_channel_column("person")]
+    base_rows = channel == BASE_FRS_SUPPORT_CHANNEL
+    drawn_rows = (channel == SPI_SYNTHETIC_SUPPORT_CHANNEL) & person["age"].ge(
+        SPI_MINIMUM_RECIPIENT_AGE
+    )
+    expected_targets = tuple(
+        column
+        for column in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
+        if column not in SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS
+    )
+    expected_groups = person.loc[base_rows, "person_household_id"].to_numpy()
+    record_keys = integer_record_keys(
+        person.loc[drawn_rows, "person_id"].to_numpy(),
+        label="SPI stage-2 person_id",
+    )
+    stage2_seed = SPI_FOREST_SEED + 1
+
+    assert run.chain_targets == [expected_targets]
+    np.testing.assert_array_equal(run.chain_groups[0], expected_groups)
+    assert tuple(step.target for step in run.steps) == expected_targets
+    for position, step in enumerate(run.steps):
+        salt_name = _STAGE2_SALT_NAMES.get(step.target, step.target)
+        assert step.recipient_index.equals(person.index[drawn_rows])
+        np.testing.assert_array_equal(step.groups, expected_groups)
+        np.testing.assert_array_equal(
+            step.quantiles,
+            stable_identity_uniforms(
+                record_keys,
+                seed=stage2_seed,
+                salt=f"{FRS_ONLY_FIT_NAME}:{salt_name}",
+            ),
+        )
+        np.testing.assert_array_equal(
+            step.sign_uniforms,
+            stable_identity_uniforms(
+                record_keys,
+                seed=stage2_seed,
+                salt=f"{FRS_ONLY_FIT_NAME}:{salt_name}:sign",
+            ),
+        )
+        assert list(step.prior_draws.columns) == list(expected_targets[:position])
+        for earlier in run.steps[:position]:
+            assert (
+                step.prior_draws[earlier.target].to_numpy().tobytes()
+                == earlier.raw_draw.tobytes()
+            )
 
 
 def test_the_cross_fitted_scenario_fills_every_receipt_read_from_a_model(
@@ -233,38 +410,60 @@ def test_no_fitted_model_outlives_the_stage(scenario, tracked_run) -> None:
         assert lifetimes.alive(fit) == []
 
 
-def _fitted_forest_target() -> object:
-    """One real fitted target with a sign classifier and a positive forest."""
+def _fitted_forest_target(gate_calibration: str) -> object:
+    """One real fitted target with a sign classifier and forests of both signs."""
 
     generator = np.random.default_rng(1)
-    predictor = generator.random(200)
-    table = pd.DataFrame(
-        {
-            "predictor": predictor,
-            "target": np.where(predictor > 0.5, 1.0 + predictor, 0.0),
-        }
+    predictor = generator.random(300)
+    target = np.select(
+        [predictor < 1 / 3, predictor > 2 / 3],
+        [-1.0 - predictor, 1.0 + predictor],
+        default=0.0,
     )
-    fitted = RegimeGatedQRF(n_estimators=2, seed=SPI_FOREST_SEED).fit(
-        table, ["predictor"], ["target"], weights="none"
-    )
+    table = pd.DataFrame({"predictor": predictor, "target": target})
+    fitted = RegimeGatedQRF(
+        n_estimators=2, seed=SPI_FOREST_SEED, gate_calibration=gate_calibration
+    ).fit(table, ["predictor"], ["target"], weights="none")
     return fitted._target_models["target"]
 
 
+_IN_SAMPLE_GATE_PARTS = (
+    "target model",
+    "sign classifier",
+    "sign classifier bins",
+    "sign classifier tree",
+    "sign classifier tree nodes",
+    *(
+        f"{sign} {part}"
+        for sign in ("positive", "negative")
+        for part in (
+            "forest",
+            "regressor",
+            "tree",
+            "compiled tree",
+            "leaf sorter",
+            "leaf array",
+        )
+    ),
+)
+_CROSS_FITTED_GATE_PARTS = (
+    "fold sign classifier",
+    "fold sign classifier bins",
+    "fold sign classifier tree",
+    "fold sign classifier tree nodes",
+)
+
+
 @pytest.mark.parametrize(
-    "kept_kind",
+    ("gate_calibration", "kept_kind"),
     [
-        "target model",
-        "sign classifier",
-        "sign classifier tree",
-        "positive forest",
-        "positive regressor",
-        "positive tree",
-        "positive leaf array",
+        *(("in_sample", kind) for kind in _IN_SAMPLE_GATE_PARTS),
+        *(("cross_fitted", kind) for kind in _CROSS_FITTED_GATE_PARTS),
     ],
 )
-def test_the_lifetime_check_notices_one_kept_part(kept_kind) -> None:
+def test_the_lifetime_check_notices_one_kept_part(gate_calibration, kept_kind) -> None:
     lifetimes = SPIForestLifetimes(seed=SPI_FOREST_SEED)
-    model = _fitted_forest_target()
+    model = _fitted_forest_target(gate_calibration)
     lifetimes.record(STAGE1_FIT, 0, "target", model)
     kept = next(part for kind, part in fitted_target_parts(model) if kind == kept_kind)
     del model
