@@ -9,6 +9,13 @@ Source: PolicyEngine/microcosm main at
 they read comes from the live module; the slice of microcosm#1199 (d2283
 PR 0) left each of those unchanged.
 
+The shared helpers are ``_person_raw_shares``, ``_person_with_state``,
+``_stable_person_keys``, ``_weighted``, ``load_meps_ic_esi_premium_cells`` and
+``meps_ic_private_active_employer_totals``, beside the constants imported with
+them. A change to any of them moves the oracle and the live gates together, so
+the differential test (T2) cannot detect it. For those names the evidence is
+main's own file or an AST comparison against it, not T2.
+
 Track main only; do not edit otherwise. This file exists so that one process
 grades the same frame with main's gates and the live ones
 (``tests/engine_free/us/test_us_esi_premiums_route_a_differential.py``).

@@ -992,7 +992,8 @@ def _raw_evidence_mask(
 
     A single-source frame carries the raw fields on every row. Without
     ``allow_transferred_rows`` that is the only frame accepted: a row that
-    lacks any raw field is refused, and the CPS record id is not read.
+    lacks any raw field is refused, naming each field that is missing and on
+    how many rows, and the CPS record id is not read.
 
     With it, a frame may also hold rows a cross-source transfer filled, with
     transferred premiums and nulls in all of the fields. A row with some of
@@ -1007,11 +1008,25 @@ def _raw_evidence_mask(
     complete = present.all(axis=1)
     if not allow_transferred_rows:
         if not complete.all():
+            gaps = [
+                f"{column} has {int(count)} missing row(s)"
+                for column, count in zip(
+                    _RAW_EVIDENCE_COLUMNS, (~present).sum(axis=0), strict=True
+                )
+                if count
+            ]
+            not_restored = (
+                "the Census column was not restored for every vintage "
+                "(asec_census_person_columns) and is never defaulted"
+                if len(gaps) == 1
+                else "the Census columns were not restored for every vintage "
+                "(asec_census_person_columns) and are never defaulted"
+            )
             raise SourceRuntimeError(
                 f"US ESI premium stage: {int((~complete).sum())} row(s) lack some "
-                f"of the raw ASEC fields {list(_RAW_EVIDENCE_COLUMNS)}. Every row "
-                "must carry them unless the caller grades transferred rows "
-                "(allow_transferred_rows=True)."
+                f"of the raw ASEC fields: {', '.join(gaps)}; {not_restored}. "
+                "Only a frame that holds transferred ACS rows is graded with "
+                "allow_transferred_rows=True; a frame of CPS rows never is."
             )
         return complete
     partial = present.any(axis=1) & ~complete
@@ -1566,6 +1581,10 @@ def us_esi_premiums_summary(
         return summary
     mixed = not source.all()
     transferred_total = 0.0
+    # Only a mixed frame is subset by ``source``; a frame of CPS rows keeps its
+    # own arrays, as a single-source frame does. No in-process test can see
+    # this part of the guard, because an all-True subset holds the same values
+    # in the same order: it holds by construction, not by a test.
     if mixed:
         summary |= _transferred_row_summary(frame, person, weights, employer, source)
         transferred_total = float(summary["transferred_employer_premium_total"])

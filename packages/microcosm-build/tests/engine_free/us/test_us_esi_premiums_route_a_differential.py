@@ -15,7 +15,15 @@ verdict is main's. Main's gates are the vendored oracle
 (``test_support/microcosm_build/us_esi_premiums_main_oracle.py``). Where main
 grades a frame without a structural error, the failures and every summary and
 ``details`` value are identical too, bit for bit. Where main refuses a frame,
-only the verdict is compared: the refusal text may differ.
+only the verdict is compared: the refusal text may differ. A null raw field
+is still refused with main's diagnosis (the column, its row count and the
+remediation), which one test checks.
+
+One part of the summary's all-CPS guard is out of this module's reach: on a
+frame of CPS rows the summary does not subset by ``source``. A subset by an
+all-True mask holds identical values in the same order, so no in-process test
+can tell the two apart. That part holds by construction, as the code reads,
+not by these tests.
 
 Fixtures, by the branch the row rule takes:
 
@@ -228,6 +236,55 @@ def test_frames_main_refuses_are_refused(route_a, edit, expected) -> None:
     assert _mains_verdicts(edit(route_a["export"])) == expected
 
 
+_NOT_RESTORED = (
+    "the Census column was not restored for every vintage "
+    "(asec_census_person_columns) and is never defaulted"
+)
+
+
+def test_a_null_raw_field_is_refused_with_mains_diagnosis(route_a) -> None:
+    # The base builder prints this text in its SystemExit and the release
+    # writes it to esi_premiums.json, so it keeps main's diagnosis: the column,
+    # its row count and the remediation.
+    for name, anchor in (("pre_clone", False), ("base", False), ("export", True)):
+        frame = with_person_cells(route_a[name], [7], "NOW_HIPAID", np.nan)
+        with pytest.raises(SourceRuntimeError) as refused:
+            us_esi_premiums_summary(frame)
+        gates = [us_esi_premiums_signal_gate(frame)]
+        if anchor:
+            gates.append(us_esi_premiums_anchor_gate(frame, time_period=YEAR))
+        for gate in gates:
+            assert not gate.passed
+            assert gate.failures[0] == gate.details["structural_error"]
+        for text in (str(refused.value), *(gate.failures[0] for gate in gates)):
+            assert "1 row(s) lack some of the raw ASEC fields" in text
+            assert "NOW_HIPAID has 1 missing row(s)" in text
+            # Only the incomplete column is named.
+            assert not any(column in text for column in RAW if column != "NOW_HIPAID")
+            assert _NOT_RESTORED in text
+            # The keyword is the ACS local lane's, not a Route A remedy.
+            assert (
+                "Only a frame that holds transferred ACS rows is graded with "
+                "allow_transferred_rows=True" in text
+            )
+        # Main says the same of the same row.
+        assert _NOT_RESTORED in main.us_esi_premiums_signal_gate(frame).failures[0]
+    # Several columns: each is named with its own count.
+    frame = with_person_cells(
+        with_person_cells(route_a["export"], [7], "NOW_HIPAID", np.nan),
+        [3, 9],
+        "PEMLR",
+        np.nan,
+    )
+    text = us_esi_premiums_signal_gate(frame).failures[0]
+    assert "3 row(s) lack some of the raw ASEC fields" in text
+    assert "NOW_HIPAID has 1 missing row(s), PEMLR has 2 missing row(s);" in text
+    assert (
+        "the Census columns were not restored for every vintage "
+        "(asec_census_person_columns) and are never defaulted" in text
+    )
+
+
 @pytest.mark.parametrize("blank", _BLANK_IDS)
 def test_f4_a_blank_record_id_on_a_complete_row_keeps_mains_verdict(f2, blank) -> None:
     for name, anchor in (("pre_clone", False), ("base", False), ("export", True)):
@@ -326,4 +383,14 @@ def _edited_frames(draw) -> Frame:
 )
 @given(_edited_frames())
 def test_any_mix_of_rows_gets_mains_verdict(frame: Frame) -> None:
+    """Any mix of complete, partial, field-less and blank-id rows: main's verdict.
+
+    It compares statistics too wherever main grades without a structural
+    error, but it is not the evidence that they are bit-equal: a mutant that
+    swapped main's ``other_policyholder_employer_total`` expression for
+    #1199's passed it. The named F1/F2 tests (the base builder and release
+    orders, and the lane keyword on an all-CPS frame) pin the bit-equal
+    statistics.
+    """
+
     _mains_verdicts(frame)
