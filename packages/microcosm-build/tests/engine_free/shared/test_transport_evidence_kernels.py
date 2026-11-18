@@ -153,6 +153,10 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1585 item 11: us_runtime.multispine_pool's shadow sites
         # import us_runtime.gate_shadow.
         "microcosm.build.us_runtime.gate_shadow",
+        # microcosm#1676: the policyengine-us 2.145.3 frame adapter keeps the
+        # static consumer index's helper reviews in their own module, which
+        # microcosm.frame.adapters.policyengine_us imports.
+        "microcosm.frame.adapters._policyengine_us_helper_reviews",
         # microcosm#1405: the gate battery refuses a signing key the committed
         # registry does not let sign, so it imports
         # microcosm.data.gate_signing_keys, and with it the microcosm.data
