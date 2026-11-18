@@ -1822,8 +1822,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
-          "size_bytes": 2187,
+          "sha256": "44c3cb2900b70e15828a8bb021be463ac69ebd079aadd28f3eabd56aa139499b",
+          "size_bytes": 2330,
           "table": "child",
           "vintage": "synthetic-h2"
         }
@@ -2326,8 +2326,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
-          "size_bytes": 2187,
+          "sha256": "44c3cb2900b70e15828a8bb021be463ac69ebd079aadd28f3eabd56aa139499b",
+          "size_bytes": 2330,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -2601,8 +2601,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
-          "size_bytes": 2187,
+          "sha256": "44c3cb2900b70e15828a8bb021be463ac69ebd079aadd28f3eabd56aa139499b",
+          "size_bytes": 2330,
           "table": "child",
           "vintage": "synthetic-h2"
         },

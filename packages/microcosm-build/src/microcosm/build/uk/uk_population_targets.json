@@ -50021,8 +50021,13 @@
             "concept": "uk.employment.status",
             "in": [
               "ft_employed",
-              "pt_employed"
+              "pt_employed",
+              "child"
             ]
+          },
+          {
+            "concept": "uk.employment.in_work",
+            "equals": true
           },
           {
             "concept": "uk.demographics.age",
@@ -50042,8 +50047,14 @@
               "variable": "employment_status",
               "in": [
                 "FT_EMPLOYED",
-                "PT_EMPLOYED"
+                "PT_EMPLOYED",
+                "CHILD"
               ]
+            },
+            {
+              "variable": "in_work",
+              "operator": "==",
+              "value": true
             },
             {
               "variable": "age",
@@ -50051,7 +50062,7 @@
               "value": 17
             }
           ],
-          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Table 28 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 0 to 17 by their age at payment, each month's average of daily counts, averaged over the twelve months of 2025. Since PolicyEngine/microcosm#1663 (María's go of 2026-11-18), the model counts its employees at the FRS interview aged 0 to 17 (employment_status FT_EMPLOYED or PT_EMPLOYED), a point-in-time stock like RTI's monthly count, in place of anyone with employment income in the year: on the November builds the count at interview read at least as high as the annual one, so the job turnover the rows were held out for does not show. Every dependent child, under 16 or aged 16 to 19 in full-time non-advanced education on the FRS child table, is CHILD and never counts, so the model counts only the 16- and 17-year-olds with an adult record, far below RTI's count. The rows are the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095); the table publishes no split at 21. This row stays a held-out check."
+          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Table 28 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 0 to 17 by their age at payment, each month's average of daily counts, averaged over the twelve months of 2025. Since PolicyEngine/microcosm#1663 (María's go of 2026-11-18), the model counts its employees at the FRS interview aged 0 to 17 (employment_status FT_EMPLOYED or PT_EMPLOYED, in work), a point-in-time stock like RTI's monthly count, in place of anyone with employment income in the year: on the November builds the count at interview read at least as high as the annual one, so the job turnover the rows were held out for does not show. Since Vahid's review of #1663 (María's call of 2026-11-18), the count adds the dependent children with pay: people the FRS keeps on its child table (under 16, or aged 16 to 19 in full-time non-advanced education) are CHILD, and the spine now carries their own pay, CHILD.CHEARNS, so those in work (in_work: pay or hours above zero) count as RTI counts anyone on a payroll. The rows are the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095); the table publishes no split at 21. This row stays a held-out check."
         },
         "axiom": {
           "metric_name": "ons/paye_rti/employees_aged_0_to_17",
@@ -50110,8 +50121,13 @@
             "concept": "uk.employment.status",
             "in": [
               "ft_employed",
-              "pt_employed"
+              "pt_employed",
+              "child"
             ]
+          },
+          {
+            "concept": "uk.employment.in_work",
+            "equals": true
           },
           {
             "concept": "uk.demographics.age",
@@ -50136,8 +50152,14 @@
               "variable": "employment_status",
               "in": [
                 "FT_EMPLOYED",
-                "PT_EMPLOYED"
+                "PT_EMPLOYED",
+                "CHILD"
               ]
+            },
+            {
+              "variable": "in_work",
+              "operator": "==",
+              "value": true
             },
             {
               "variable": "age",
@@ -50150,7 +50172,7 @@
               "value": 24
             }
           ],
-          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Table 28 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 18 to 24 by their age at payment, each month's average of daily counts, averaged over the twelve months of 2025. Since PolicyEngine/microcosm#1663 (María's go of 2026-11-18), the model counts its employees at the FRS interview aged 18 to 24 (employment_status FT_EMPLOYED or PT_EMPLOYED), a point-in-time stock like RTI's monthly count, in place of anyone with employment income in the year: on the November builds the count at interview read at least as high as the annual one, so the job turnover the rows were held out for does not show. People the FRS keeps as dependent children, aged 16 to 19 in full-time non-advanced education on its child table, are CHILD and never count, though RTI counts any of them on a payroll: part of the row's shortfall against RTI is that coverage gap, not the adults' data (Vahid's review of #1663). The rows are the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095); the table publishes no split at 21. This row binds since #1663."
+          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Table 28 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 18 to 24 by their age at payment, each month's average of daily counts, averaged over the twelve months of 2025. Since PolicyEngine/microcosm#1663 (María's go of 2026-11-18), the model counts its employees at the FRS interview aged 18 to 24 (employment_status FT_EMPLOYED or PT_EMPLOYED, in work), a point-in-time stock like RTI's monthly count, in place of anyone with employment income in the year: on the November builds the count at interview read at least as high as the annual one, so the job turnover the rows were held out for does not show. Since Vahid's review of #1663 (María's call of 2026-11-18), the count adds the dependent children with pay: people the FRS keeps on its child table (under 16, or aged 16 to 19 in full-time non-advanced education) are CHILD, and the spine now carries their own pay, CHILD.CHEARNS, so those in work (in_work: pay or hours above zero) count as RTI counts anyone on a payroll. The rows are the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095); the table publishes no split at 21. This row binds since #1663."
         },
         "axiom": {
           "metric_name": "ons/paye_rti/employees_aged_18_to_24",
@@ -50209,8 +50231,13 @@
             "concept": "uk.employment.status",
             "in": [
               "ft_employed",
-              "pt_employed"
+              "pt_employed",
+              "child"
             ]
+          },
+          {
+            "concept": "uk.employment.in_work",
+            "equals": true
           },
           {
             "concept": "uk.demographics.age",
@@ -50235,8 +50262,14 @@
               "variable": "employment_status",
               "in": [
                 "FT_EMPLOYED",
-                "PT_EMPLOYED"
+                "PT_EMPLOYED",
+                "CHILD"
               ]
+            },
+            {
+              "variable": "in_work",
+              "operator": "==",
+              "value": true
             },
             {
               "variable": "age",
@@ -50249,7 +50282,7 @@
               "value": 24
             }
           ],
-          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Tables 28 and 30 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 18 to 24 by their age at payment (Table 28, each month's average of daily counts) times their mean gross monthly pay (Table 30) times 12, for each month of 2025, averaged (monthly_window_count_x_mean): the pay bill of employees aged 18 to 24 at an annual rate. The model sums employment_income, pay before benefits in kind as RTI's gross pay is, over its employees at the FRS interview aged 18 to 24 (employment_status FT_EMPLOYED or PT_EMPLOYED), the base of ons.paye_rti.employees_aged_18_to_24, which binds. A held-out check on the young pay behind the employer NICs relief for employees under 21 (PolicyEngine/microcosm#1663): with their count bound, the row reads the model's pay per young employee."
+          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Tables 28 and 30 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 18 to 24 by their age at payment (Table 28, each month's average of daily counts) times their mean gross monthly pay (Table 30) times 12, for each month of 2025, averaged (monthly_window_count_x_mean): the pay bill of employees aged 18 to 24 at an annual rate. The model sums employment_income, pay before benefits in kind as RTI's gross pay is, over the base of ons.paye_rti.employees_aged_18_to_24, which binds: its employees at the FRS interview aged 18 to 24 (employment_status FT_EMPLOYED or PT_EMPLOYED) and its dependent children of that age with pay (CHILD, from CHILD.CHEARNS), each in work. A held-out check on the young pay behind the employer NICs relief for employees under 21 (PolicyEngine/microcosm#1663): with their count bound, the row reads the model's pay per young employee."
         },
         "axiom": {
           "metric_name": "ons/paye_rti/pay_aged_18_to_24",

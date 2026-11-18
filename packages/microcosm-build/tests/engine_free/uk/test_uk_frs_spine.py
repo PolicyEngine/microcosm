@@ -392,6 +392,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "FSFVVAL": 1.0,
         "FSBVAL": 2.0,
         "HEARTVAL": 4.0,
+        "CHEARNS": 0.0,
     }
     return {
         "adult": [adult_2, adult_1],
@@ -5808,3 +5809,36 @@ def test_the_spine_carries_the_limiting_condition() -> None:
     from microcosm.build.uk_runtime.frs_spine import OUTPUT_COLUMNS
 
     assert FRS_CONDITION_LIMITS_COLUMN in OUTPUT_COLUMNS
+
+
+def test_a_dependent_childs_pay_is_its_chearns(tmp_path: Path) -> None:
+    # Vahid's review of PolicyEngine/microcosm#1663: a dependent aged 16 to 19
+    # in full-time non-advanced education sits on the child tab, whose pay is
+    # CHEARNS, never INEARNS.
+    tables = _fixture_tables()
+    tables["child"][0].update({"AGE": 17, "CHEARNS": 40.0})
+    plain = UKFRSSpineStageTransform(
+        tmp_path / "plain", stage=_write_fixture(tmp_path / "plain")
+    )(uk_frs_spine_seed_frame()).table("person")
+    paid = UKFRSSpineStageTransform(
+        tmp_path / "paid", stage=_write_fixture(tmp_path / "paid", tables)
+    )(uk_frs_spine_seed_frame()).table("person")
+
+    child = paid["is_hbai_dependent_child"].to_numpy(dtype=bool)
+    assert child.sum() == 1
+    assert paid.loc[child, "employment_income"].tolist() == [40.0 * 52]
+    assert plain.loc[child, "employment_income"].tolist() == [0.0]
+    # Adults keep their INEARNS pay.
+    assert (
+        paid.loc[~child, "employment_income"].tolist()
+        == plain.loc[~child, "employment_income"].tolist()
+    )
+
+
+def test_a_child_tab_without_chearns_is_refused(tmp_path: Path) -> None:
+    tables = _fixture_tables()
+    for child in tables["child"]:
+        child.pop("CHEARNS")
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match="CHEARNS"):
+        UKFRSSpineStageTransform(tmp_path, stage=stage)(uk_frs_spine_seed_frame())

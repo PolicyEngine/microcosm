@@ -867,7 +867,29 @@ def _assemble_frame(
     # (uk-data#523).
     pe_person["is_blind"] = _number(person, "spcreg1") == FRS_REGISTERED_YES
 
-    pe_person["employment_income"] = _positive(person, "inearns") * WEEKS_IN_YEAR
+    # A dependent child's pay is CHILD.CHEARNS, DWP's derived income from
+    # employment on the child tab (a spare-time job's pay plus any employment
+    # training amount), as ADULT.INEARNS is an adult's; HBAI's BUEARNS sums
+    # the two (FRS 2024-25 derived variables). Without it every dependent aged
+    # 16 to 19 in full-time non-advanced education read as unpaid, and PAYE
+    # RTI's young employees could never count them (Vahid's review of
+    # PolicyEngine/microcosm#1663, María's call of 2026-11-18).
+    # policyengine-uk counts a child's pay only where the household's income
+    # does: UC and the legacy means tests read the claimant's and partner's
+    # alone, and the employer's secondary rate is nil under 21.
+    if "chearns" not in frs["child"].columns:
+        raise KeyError(
+            "FRS child.tab has no CHEARNS: a dependent child's pay would read as none."
+        )
+    is_adult_record = pe_person["person_id"].isin(adult_ids).to_numpy()
+    pe_person["employment_income"] = (
+        np.where(
+            is_adult_record,
+            _positive(person, "inearns"),
+            _positive(person, "chearns"),
+        )
+        * WEEKS_IN_YEAR
+    )
     # SEINCAM2 is the self-employment income the respondent gives, a loss as a
     # negative amount. policyengine-uk takes profits in self_employment_income,
     # never below zero, and the year's losses in trading_loss as a positive

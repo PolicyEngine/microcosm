@@ -609,6 +609,9 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "FSBVAL": 2.0,
                     "HEARTVAL": 4.0,
                     "SPCREG1": 1 if household_id % 9 == 0 else 2,
+                    # A dependent child's pay, CHILD.CHEARNS (PolicyEngine/
+                    # microcosm#1663): a spare-time job in every fifth household.
+                    "CHEARNS": 15.0 if household_id % 5 == 0 else 0.0,
                 }
             )
         accounts.extend(
