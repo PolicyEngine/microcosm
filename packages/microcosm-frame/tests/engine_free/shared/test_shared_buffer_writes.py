@@ -1,7 +1,8 @@
 """A syntactic check for raw writes that pandas copy-on-write does not protect.
 
-:meth:`Frame.replace_tables` and :meth:`Frame.with_columns` build frames that
-share the memory of every unchanged column with their source frame
+:meth:`Frame.replace_tables`, :meth:`Frame.with_columns`,
+:meth:`Frame.with_weights`, :meth:`Frame.place` and :meth:`Frame.select` build
+frames that share the memory of unchanged columns with their source frame
 (:meth:`Frame._adopt`). pandas copy-on-write keeps a write made through pandas
 (``.loc``, column assignment, in-place methods) on one frame from reaching
 the other, but it does not see a raw write into the shared memory. Checked
