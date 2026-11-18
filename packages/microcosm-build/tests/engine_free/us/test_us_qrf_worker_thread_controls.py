@@ -9,9 +9,11 @@ machine (``joblib.cpu_count()``). Schema-2 worker bindings therefore keep
 and out of the semantic identity. Everything that compares a recorded worker
 with the live one reads only the semantic identity: loading a pool for
 release or scoring, resuming the primary-QRF checkpoint, the pool's
-checkpoint identity, and the spec engine's worker resolution. A pool built on
-an 18-CPU host therefore loads under the release tool's 16-CPU cap, and a
-checkpoint started under one pair of counts resumes under another.
+checkpoint identity, and the spec engine's worker resolution. A worker recorded
+with 18 prediction threads therefore matches one under the release tool's
+16-CPU cap, and a checkpoint started under one pair of counts resumes under
+another. The rest of the identity, such as the interpreter and the installed
+distributions, must still match.
 
 Schema-1 bindings, which kept the counts in
 ``semantic_identity.environment.semantic_controls``, still validate, so a pool
@@ -195,7 +197,7 @@ def test_thread_controls_leave_the_compared_worker_identity_unchanged(
         pytest.param(OVERRIDDEN, id="release-overrides-both-counts"),
     ),
 )
-def test_pool_recorded_on_another_host_loads_with_the_live_worker(
+def test_worker_recorded_under_other_thread_counts_matches_the_live_worker(
     monkeypatch: pytest.MonkeyPatch,
     release_setting: tuple[str | None, str | None, int],
 ) -> None:
@@ -211,7 +213,7 @@ def test_pool_recorded_on_another_host_loads_with_the_live_worker(
     )
 
     _validate_primary_config_against_live_worker(
-        recorded, boundary="pool load on another host"
+        recorded, boundary="pool load under other thread counts"
     )
 
 
@@ -261,7 +263,7 @@ def test_primary_qrf_checkpoint_resumes_under_other_thread_controls(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A checkpoint started on one host resumes on another, sidecar untouched.
+    """A checkpoint resumes under other thread counts, its sidecar untouched.
 
     The chain itself is stubbed, as in the relocated-resume test in
     ``test_us_stacked_spine.py``; this exercises the sidecar comparison.
@@ -357,7 +359,7 @@ def test_unset_prediction_workers_record_the_real_joblib_cpu_count(
     }
 
 
-def test_pool_recorded_under_a_larger_loky_cap_loads_under_a_smaller_one(
+def test_worker_recorded_under_a_larger_loky_cap_matches_under_a_smaller_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The release tool's ``LOKY_MAX_CPU_COUNT`` cap, with joblib unpatched."""
@@ -493,7 +495,7 @@ def test_schema_1_worker_records_still_validate(
     )
 
 
-def test_pool_recorded_with_a_schema_1_worker_is_refused_as_changed(
+def test_recorded_schema_1_worker_is_refused_as_changed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _apply_thread_setting(monkeypatch, BASE_HOST)

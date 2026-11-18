@@ -404,8 +404,8 @@ EXPECTED_HASHES = {
     # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
     # The QRF draw's default thread count, joblib.cpu_count() in place of
     # os.cpu_count() in microcosm.fit.qrf, moves both again; no draw changes.
-    "seed_map": "4d2f90795e43ba1ca1170b08c90d75d40d8bf1ee101210d7eba0771a5817fc1b",
-    "seed_protocol": "7324b71fd3a8349e51cf9ad6de5076288bccef678bd1fd39bdfa5ddf6f10197a",
+    "seed_map": "867b2ecfc84279744eced0ba7d70bbc55da99b30dcc39a4ea5f40f5198ff1132",
+    "seed_protocol": "f5ca111b8e17024e542cf959a65fd616328a1e28b81570acbe137ce632f351c1",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

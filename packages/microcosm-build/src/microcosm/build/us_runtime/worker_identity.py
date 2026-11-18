@@ -28,9 +28,9 @@ from packaging.utils import canonicalize_name
 #: ``audit_thread_controls``, outside the semantic identity that recorded-versus-
 #: live comparisons read. The counts change no imputed value (``microcosm-fit``'s
 #: ``test_qrf_worker_counts.py``), and an unset prediction-worker count follows
-#: the machine, so a pool built on one host stays comparable on another. The one
-#: exception is the frozen schema-4 record that the scoring-only relocation of a
-#: sealed pool compares field by field, counts included.
+#: the machine, so a different CPU count no longer makes a pool's worker differ.
+#: The one exception is the frozen schema-4 record that the scoring-only
+#: relocation of a sealed pool compares field by field, counts included.
 PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION = 2
 #: Schema 1 kept the counts in ``semantic_identity.environment.semantic_controls``.
 #: Those records still validate; they never equal a schema-2 identity.

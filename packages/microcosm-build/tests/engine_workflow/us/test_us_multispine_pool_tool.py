@@ -366,7 +366,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1585's us/gates.json row in country_package.json moves it.
             # The QRF draw's default thread count, joblib.cpu_count() in
             # microcosm.fit.qrf, moves it again.
-            "spec_sha256": "e087d0cc9e10df986d191814d3e8736b71a252390e6c88466346bc297ab785d4",
+            "spec_sha256": "949a51fca973a095b2d0752c147f02704f06d205343cbdfce964389a66c7ba20",
         },
     }
 

@@ -1460,7 +1460,8 @@ def _predict_workers() -> int:
     overrides it with a positive integer.
 
     Raises:
-        ValueError: If the override is set but not a positive integer.
+        ValueError: If the override is set but not a positive integer, or
+            :func:`default_predict_workers` fails with the override unset.
     """
     override = os.environ.get(_PREDICT_WORKERS_ENV)
     if override is None or not override.strip():

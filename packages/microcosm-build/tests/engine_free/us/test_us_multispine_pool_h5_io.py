@@ -1887,6 +1887,51 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     )
 
 
+def _load_pool_for_release(manifest_path: Path):
+    return load_authenticated_us_multispine_pool_for_release(
+        manifest_path,
+        allow_terminal_gate_failure=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "load_pool",
+    (
+        pytest.param(load_simulation_ready_us_multispine_pool, id="ready"),
+        pytest.param(_load_pool_for_release, id="release"),
+        pytest.param(load_authenticated_us_multispine_pool_for_scoring, id="scoring"),
+    ),
+)
+def test_stacked_pool_loads_under_other_qrf_thread_counts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    load_pool: Callable[[Path], tuple[Frame, dict[str, object], object]],
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "2")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "3")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    primary_producer = next(
+        row
+        for row in manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"][
+            "execution"
+        ]
+        if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
+    recorded_controls = primary_producer["available_input_receipts"][
+        "tax_unit.@primary_puf_execution_config"
+    ]["binding"]["qrf"]["worker_execution"]["audit_thread_controls"]
+    assert recorded_controls["POPULACE_FIT_N_JOBS"]["resolved"] == 2
+    assert recorded_controls["POPULACE_FIT_PREDICT_WORKERS"]["resolved"] == 3
+
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "5")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "9")
+    frame, _loaded_manifest, _authenticated_h5 = load_pool(manifest_path)
+
+    assert frame.n("household") == 3
+
+
 def test_ready_stacked_pool_loader_restores_sampled_rung_manifest(
     tmp_path: Path,
 ) -> None:
