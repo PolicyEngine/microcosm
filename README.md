@@ -172,6 +172,12 @@ python tools/build_us_fiscal_refresh_release.py \
 
 This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` in the staging repository.
+The build stops once its H5 and its own gates' verdicts are written, at
+`<out>/build_record.json`, so it can be evaluated first; nothing it writes is
+publishable. To publish it, certify it with
+`tools/certify_us_national_build.py <out>`, which runs the release's
+post-export checks and writes the manifests
+([Build, then certify](docs/us-release-build-rule.md#build-then-certify)).
 Nothing is published to `policyengine/populace-us`: the build is published
 only by the commands described in [Releasing & alerts](#releasing--alerts).
 
