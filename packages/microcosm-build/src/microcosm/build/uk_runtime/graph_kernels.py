@@ -2000,7 +2000,23 @@ class _FixtureTransformResolver:
             ) from error
 
 
-def _minimal_frame(context: KernelContext) -> Frame:
+def _minimal_frame(
+    context: KernelContext,
+    *,
+    mass_log: tuple[MassChangeRecord, ...] | None = None,
+    metadata: Mapping[str, object] | None = None,
+) -> Frame:
+    """The kernel's own Frame over its context's declared slices.
+
+    ``Frame`` copies each table it is given, so the context's frozen tables
+    go in as they are: a deep copy here first held one more copy of the
+    population at every hand-over, three at once beside the stored
+    population while the Frame was built (microcosm#931). The strata, one
+    person-level column, keep their copy. ``mass_log`` and ``metadata``
+    replace the stage defaults for a caller that brings its own, so the
+    spine gate kernel builds this one Frame rather than a second from it.
+    """
+
     missing = set(UK_NATIONAL_SCHEMA.entities) - context.tables.keys()
     if missing:
         raise ValueError(
@@ -2008,45 +2024,46 @@ def _minimal_frame(context: KernelContext) -> Frame:
         )
     if "household" not in context.weights:
         raise ValueError(f"UK stage {context.node.id!r} lacks household weights.")
-    mass_log: tuple[MassChangeRecord, ...] = ()
-    if context.params.get("stage") == "hmrc_spi_income_spine":
-        # KernelContext deliberately has no legacy Frame.mass_log channel.  The
-        # SPI income transform consumes only the immediately preceding support
-        # allocation reason, whose exact current-spine record is reconstructible
-        # from the conserved household total and reviewed public reason, the
-        # declared allocation's own sentence (microcosm#1069 c6).
-        from microcosm.build.country_spec import load_country_spec
+    if mass_log is None:
+        mass_log = ()
+        if context.params.get("stage") == "hmrc_spi_income_spine":
+            # KernelContext deliberately has no legacy Frame.mass_log channel.
+            # The SPI income transform consumes only the immediately preceding
+            # support allocation reason, whose exact current-spine record is
+            # reconstructible from the conserved household total and reviewed
+            # public reason, the declared allocation's own sentence
+            # (microcosm#1069 c6).
+            from microcosm.build.country_spec import load_country_spec
 
-        from .spi_spine import uk_spi_support_mass_change_reason
+            from .spi_spine import uk_spi_support_mass_change_reason
 
-        sources = load_country_spec("uk").sources
-        if sources is None:
-            raise ValueError("The committed UK country spec declares no sources.")
-        reason = uk_spi_support_mass_change_reason(
-            sources.stage_map()["spi_support_channel"]
-        )
-        total = context.weights["household"].total
-        mass_log = (
-            MassChangeRecord(
-                entity="household",
-                old_total=total,
-                new_total=total,
-                declared_factor=1.0,
-                reason=reason,
-            ),
-        )
-    # One copy of each input column, in the block layout copy(deep=True) gives,
-    # which Frame.adopt stores without copying again.
-    return Frame.adopt(
-        {
-            entity: copy_table(context.tables[entity])
-            for entity in UK_NATIONAL_SCHEMA.entities
-        },
+            sources = load_country_spec("uk").sources
+            if sources is None:
+                raise ValueError("The committed UK country spec declares no sources.")
+            reason = uk_spi_support_mass_change_reason(
+                sources.stage_map()["spi_support_channel"]
+            )
+            total = context.weights["household"].total
+            mass_log = (
+                MassChangeRecord(
+                    entity="household",
+                    old_total=total,
+                    new_total=total,
+                    declared_factor=1.0,
+                    reason=reason,
+                ),
+            )
+    return Frame(
+        {entity: context.tables[entity] for entity in UK_NATIONAL_SCHEMA.entities},
         UK_NATIONAL_SCHEMA,
         {"household": context.weights["household"]},
         copy_series(context.strata),
         mass_log=mass_log,
-        metadata={"time_period": str(context.params.get("time_period", "2024"))},
+        metadata=(
+            {"time_period": str(context.params.get("time_period", "2024"))}
+            if metadata is None
+            else metadata
+        ),
     )
 
 

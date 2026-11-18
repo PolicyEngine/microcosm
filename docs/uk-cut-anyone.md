@@ -525,12 +525,13 @@ the checkout's, so build the dense line at the spine's commit.
 
 **Cost.** No full-sample spine at 15 clones has run yet. The one-clone
 full-sample spine took 46 minutes, 21 GB of peak memory and a 15 GB
-checkpoint store (17 Nov), and its frame is about 1.4 GiB uncompressed; a
-10% sample at 15 clones peaked at 18 GiB (11 Nov). At 15 clones the frame
-is about 20 GiB, and the transferred gates hold about four copies of it.
-So expect about 80 to 110 GiB of peak memory (use a machine with 128 GiB or
-more), 6 to 14 hours, and about 300 GB of checkpoint store. The profile
-records the real figures.
+checkpoint store (17 Nov), and its frame measures 0.39 GiB in memory; a 10%
+sample at 15 clones peaked at 18 GiB, most of it the donor fits, which do
+not grow with the clones (11 Nov). At 15 clones the frame is about 6 GiB,
+and a stage holds about three copies of it: the stored population, the
+executor's frozen copy and the kernel's own frame. So expect about 30 to 40
+GiB of peak memory (64 GiB of RAM is comfortable), 6 to 14 hours, and about
+300 GB of checkpoint store. The profile records the real figures.
 
 ## Regions: the dense cut
 
