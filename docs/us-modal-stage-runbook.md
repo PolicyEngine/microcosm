@@ -395,6 +395,94 @@ that release's current build.
      Modal, 3 November 2026: the telemetry token"); it did not cover a
      container reaching the collector.
 
+## Thread variables
+
+The base command (`tools/build_us_puf_support_base.py`) and the local-area
+command (`tools/build_us_acs_multispine_base.py`, and
+`tools/_legacy/build_us_acs_multispine_base.py` when that file is run directly)
+set their OpenMP, BLAS and numexpr thread variables before numpy loads
+(`tools/us_build_thread_environment.py`). They do this only when started as
+commands, not when imported. A value already in the environment, from an
+operator, a plan or Modal, is kept. The commits pinned by the base and
+local-area plans in this runbook predate this step, so the tools at those
+commits leave the variables as they find them.
+
+| Variable | Value when unset |
+| --- | --- |
+| `OMP_NUM_THREADS` | `os.process_cpu_count()` |
+| `MKL_NUM_THREADS`, `BLIS_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS` | `OMP_NUM_THREADS` if it names a count, otherwise `os.process_cpu_count()` |
+| `OPENBLAS_NUM_THREADS` | `GOTO_NUM_THREADS` if it names a count, otherwise as above |
+| `NUMEXPR_NUM_THREADS` | `OMP_NUM_THREADS` if it names a count, otherwise `NUMEXPR_MAX_THREADS` if that does, otherwise the online CPUs up to 16 |
+
+If `os.process_cpu_count()` returns nothing and `OMP_NUM_THREADS` names no
+count, the commands set none of them.
+
+**These are the counts the libraries already use.** The step records the counts
+and fixes them before the libraries load; it does not limit them. OpenMP and
+BLAS have no upper limit here, unlike the release tool's limit of 16. They
+follow CPU affinity but not a CPU quota, so outside Modal, where nothing sets
+them from the quota, a container held to 2 CPUs by a quota can still start one
+BLAS thread per visible CPU. The commands do not set `LOKY_MAX_CPU_COUNT`,
+`POPULACE_FIT_N_JOBS` or `POPULACE_FIT_PREDICT_WORKERS`. With those unset, QRF
+fitting and drawing use `joblib.cpu_count()`, which does follow a quota. The
+release tool keeps its own settings: `min(os.cpu_count(), 16)` for
+`OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`,
+`NUMEXPR_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS` and `LOKY_MAX_CPU_COUNT`.
+
+**On Linux the BLAS thread count changes output bytes.** numpy's Linux wheels use
+OpenBLAS, which splits a large dot product between its threads, so the order of
+the additions, and with it the last bits of the sum, depends on the count.
+Setting only `OMP_NUM_THREADS` has the same effect, because OpenBLAS follows it.
+In Linux containers (x86-64 under emulation and arm64, 10 CPUs visible, numpy
+2.4.6), `np.dot` and `@` on vectors of 20,000 to 500,000 rows gave different
+results at 1, 2, 4, 8 and 10 threads, and `_project_weighted_sum_to_bounds` on
+150,000 rows wrote different bytes at 1, 2 and 4 threads than at 10. These were
+small synthetic checks, not full builds. The same checks on macOS, where numpy
+uses Accelerate, showed no difference. The affected operations reach:
+
+- the ESI premium stage (`esi_premiums.py`), which scales a person column by a
+  weighted total;
+- the PUF aggregate-record and source-AGI projections
+  (`_project_weighted_sum_to_bounds`), which write the projected amounts;
+- cross-fitted calibration of the QRF sign classifier (`microcosm.fit.qrf`),
+  which uses `w @ ...` on row-length vectors.
+
+So a Linux build's output already depends on the host's thread count, and it
+still does: two hosts with different counts can write different bytes. Keeping
+each count as it was keeps a given host's output as it was.
+
+**The sign classifier can use more threads.** With `OMP_NUM_THREADS` unset,
+scikit-learn uses physical cores; with it set, it uses that count. So on a host
+with more logical CPUs than physical cores, `HistGradientBoostingClassifier` now
+runs on all logical CPUs. Its probabilities were byte-identical at 1, 2 and 4
+OpenMP threads in the tests, which does not prove it for every input, and its
+run time may change.
+
+**When a change takes effect.**
+
+- *Base, OpenMP and BLAS variables and `NUMEXPR_NUM_THREADS`:* recorded in
+  `stage_run_context.json` under `thread_environment` and compared on resume. A
+  different value, including one that comes from a host with a different CPU
+  count, is refused, so a new value needs a new checkpoint directory.
+- *Base, `PYTHONHASHSEED`:* recorded and compared in the same way.
+- *Base, `POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS`:* recorded and
+  not compared. A new value applies from the next outer stage of a resumed run.
+- *Base runs started before this step:* they cannot resume after it. The run
+  configuration holds a digest that covers the tool's own file
+  (`builder_code_identity`), and the file changed.
+- *Local-area command:* it keeps no run configuration, so the values apply to the
+  process that was started.
+
+**On Modal.** A plan may set `OMP_NUM_THREADS`, `MKL_NUM_THREADS`,
+`OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS` and `BLIS_NUM_THREADS`. It may not
+set `VECLIB_MAXIMUM_THREADS`, `GOTO_NUM_THREADS` or `NUMEXPR_MAX_THREADS`. In the
+check-class container Modal set `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+`MKL_NUM_THREADS` and `BLIS_NUM_THREADS` to the class's CPU request; the commands
+then give `VECLIB_MAXIMUM_THREADS` and `NUMEXPR_NUM_THREADS` the same count. No
+record shows whether Modal does this in the `base` or `acs-staging` class. If it
+does not, the count is `os.process_cpu_count()` in that container, and a resumed
+base attempt on a host with a different count is refused.
+
 ## Resources and cost
 
 The heavy and light classes are sized from the #974 measured peaks
@@ -1163,7 +1251,8 @@ digests, settings, its code identity and the thread variables it sees) and
 refuses a resume whose config differs. Code newer than the pinned
 `4b57d15a2` that contains the QRF thread-count change records
 `POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS` without comparing
-them. Every path in the config is the same in
+them, and code that sets the OpenMP and BLAS variables itself compares the
+counts it set (see "Thread variables"). Every path in the config is the same in
 every attempt of the run, and so are the image, the plan's environment and
 the class, so a relaunch of the same plan should resume. If Modal gave the
 new container different compared thread variables, the tool would refuse,
@@ -1324,8 +1413,10 @@ python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \
 Two things are reported and never refused: the interpreter string
 (`python`) and every other `thread_environment` variable whose value
 differs (`thread_environment_differences`). The tool reads those variables
-from its environment, Modal sets some of them itself (see "Resources"), and
-whether they change the numbers has not been shown. The report says
+from its environment, and Modal sets some of them itself (see "Resources"). A
+difference in the BLAS or OpenMP counts can change output bytes on Linux (see
+"Thread variables"), so a reported difference is not evidence that the outputs
+agree. Only the checkpoint comparison below is. The report says
 `compared_outputs_match`, with `stages_compared` 2 of `stages_total` 24 and
 the 22 stages it did not compare (`stages_not_compared`).
 

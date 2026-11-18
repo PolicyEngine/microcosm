@@ -18,6 +18,16 @@ and a named ``--stage`` run by hand records that stage.
 
 from __future__ import annotations
 
+if __name__ == "__main__":
+    # OpenBLAS and OpenMP read these variables when they load, so this comes
+    # before numpy. It runs only for the command: tests and other tools import
+    # this file. Stage subprocesses inherit the values, and the run
+    # configuration records them (``_stage_run_config``). E402 is ignored for
+    # this file in pyproject for this block.
+    from us_build_thread_environment import set_build_thread_environment
+
+    set_build_thread_environment()
+
 import argparse
 import hashlib
 import json
@@ -1262,7 +1272,10 @@ def _pooled_income_years(args: argparse.Namespace) -> tuple[int, ...]:
 
 #: QRF thread counts the first run records and a resume does not compare: they
 #: change no imputed value. The BLAS and OpenMP thread counts and
-#: PYTHONHASHSEED in ``thread_environment`` stay compared.
+#: PYTHONHASHSEED in ``thread_environment`` stay compared: on Linux the OpenBLAS
+#: count changes output bytes, and the command fills those variables in from
+#: the host (``us_build_thread_environment``), so a resume on a host with a
+#: different CPU count is refused.
 _RESUME_IGNORED_RUN_CONFIG_PATHS = (
     ("thread_environment", "POPULACE_FIT_N_JOBS"),
     ("thread_environment", "POPULACE_FIT_PREDICT_WORKERS"),
