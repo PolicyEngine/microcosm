@@ -556,6 +556,75 @@ def test_the_target_surface_resolves_from_a_build_folder_release_manifest(
     assert probe_tool.resolve_target_surface(None, None, identity)["mode"] == "full"
 
 
+def test_the_target_surface_resolves_from_an_uncertified_builds_record(
+    probe_tool, tmp_path
+) -> None:
+    """A build not yet certified has no manifest; the probe reads its
+    selection from the build_record.json two levels above its release
+    directory (microcosm#1585 item 11, PR 4a). A flag still wins."""
+    selection = {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+    }
+    release_dir = tmp_path / "out" / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    assert probe_tool.reference_build_record(release_dir) is None
+    record_path = tmp_path / "out" / "build_record.json"
+    record_path.write_text(
+        json.dumps({"manifest": {"target_surface_selection": selection}})
+    )
+    assert probe_tool.reference_build_record(release_dir) == record_path.resolve()
+    record = json.loads(record_path.read_text())
+
+    assert probe_tool.resolve_target_surface(None, None, None, record) == {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+        "source": "reference build_record.json manifest.target_surface_selection",
+    }
+    full = {"manifest": {"target_surface_selection": None}}
+    assert probe_tool.resolve_target_surface(None, None, None, full)["mode"] == "full"
+    assert (
+        probe_tool.resolve_target_surface("full", None, None, record)["source"]
+        == "--target-surface"
+    )
+
+
+def test_a_failed_build_is_no_reference(probe_tool, builder, tmp_path, capsys) -> None:
+    """A failed build keeps its H5 to be evaluated, which the probe may score
+    as --export, but its release directory is refused as the reference
+    (review of #1672)."""
+    out = tmp_path / "out"
+    release_dir = out / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    (out / "build_record.json").write_text(
+        json.dumps(
+            {
+                "kind": builder.US_BUILD_RECORD_KIND,
+                "build": "populace-us-2024-failed",
+                "layout": {"release_dir": "releases/microcosm-us-2024-national"},
+                "settings": {"evidence_release": False},
+                "terminal_gate_failures": ["Input coverage failed: x"],
+            }
+        )
+    )
+    argv = [
+        "--export",
+        str(tmp_path / "sample.h5"),
+        "--out",
+        str(tmp_path / "probe"),
+        "--reference-release-dir",
+        str(release_dir),
+    ]
+
+    with pytest.raises(SystemExit):
+        probe_tool.main(argv)
+    assert (
+        f"--reference-release-dir {release_dir} belongs to build "
+        "populace-us-2024-failed" in capsys.readouterr().err
+    )
+    assert not (tmp_path / "probe").exists()
+
+
 def test_census_with_a_receipt_is_refused(
     probe_tool, builder, fake_reforms, chain, tmp_path
 ) -> None:

@@ -298,6 +298,12 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
     assert result["build"] == "populace-us-2024-k8-fixture"
     assert result["release_dir"] == str(release_dir)
     assert result["artifact_root"] == str(artifact_root)
+    # The build is not certified: the receipt carries the command that
+    # certifies it (microcosm#1585 item 11, PR 4a).
+    assert result["certified"] is False
+    assert result["certify_command"].endswith(
+        f"tools/certify_us_national_build.py {tmp_path / 'out'}"
+    )
     # The launcher neither publishes the build nor makes it current: it prints
     # the commands that do, and says what promoting does.
     assert result["automatic_publish"] is False
