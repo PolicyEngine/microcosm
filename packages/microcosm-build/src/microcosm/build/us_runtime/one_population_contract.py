@@ -51,23 +51,56 @@ What the later d2283 PRs owe this library:
   ``_asec_source_mask`` returns the stored-``asec`` rows.
 - PR 4 (prepare) fills on ACS rows every engine input outside
   :data:`RELEASE_WRITTEN_INPUTS`, ``takes_up_snap_if_eligible`` included
-  (the SNAP take-up gate misgrades an ACS null), and runs the reviewed
-  default fill on the joined frame so its manifest's row counts are the
-  frame's; reads the parent's applied tail donor ids from the export's
-  tax-unit columns (checked against the base manifest's
-  ``records[*].donor_source_id`` when the base run folder is at hand);
-  re-derives the CPS role record with ``with_us_spm_independence_role`` on
-  the selected CPS rows, in the joined frame's row order and dtypes (the
-  digest is dtype-sensitive); builds the selection keys with
-  :func:`cps_unit_ids`; builds ``staging_lineage`` from staging's output,
-  not from the ACS tables it passes; supplies :func:`absences` with the
-  reviewed default fill's manifest for the joined frame and the
-  ``zero_written`` receipts; and declares (or fills) each CPS-only register
-  entry the first live run of :func:`absences` lists, the US data owner
-  deciding.
+  (the SNAP take-up gate misgrades an ACS null). Lead call L1 moved ten
+  producer outputs off that list, because an engine pass loads each
+  before its producer writes it. Their fill sources: the three integer
+  recodes (``detailed_occupation_recode``, ``detailed_industry_recode``,
+  ``major_industry_recode``) come from staging, which writes them natively
+  from ``OCCP`` and ``INDP`` (``acs_inputs.ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS``);
+  any finite value serves for ``cps_race``, ``hourly_wage``,
+  ``fsla_overtime_premium``, ``selected_marketplace_plan_benchmark_ratio``
+  and ``other_health_insurance_premiums``, which their producers rewrite and
+  no earlier pass computes from; ``health_insurance_premiums`` and
+  ``is_self_employed`` need a reviewed source, since the ACA, Medicaid and
+  SNAP-state passes compute from them on ACS rows before their producer
+  runs and staging writes neither (which source is open). A null PR 4
+  leaves in an exempt boolean column must be NaN or None, never ``pd.NA``,
+  which the first engine pass refuses at load. PR 4 also fills the raw
+  ``PRDTRACE``, ``PRDTHSP``, ``POCCU2``, ``WEIND``, ``WEMIND`` and
+  ``WKSWORK`` on ACS rows (the ORG stage reads them and refuses incomplete
+  ``WEIND``, ``WEMIND`` or ``WKSWORK``; ``org_wages.py`` :590-655), and
+  writes the six :data:`PUF_TAIL_TAX_UNIT_COLUMNS` defaults on ACS tax
+  units (applied False, donor id -1), which R7 and R8 require.
+- PR 4 passes :func:`to_assembled_provenance` each household weight in its
+  table's row order. PR 1's ACS starting weights
+  (``StartingWeights.acs``) come in selection-rank order and staging's
+  household table in id order, so PR 4 reorders them by key first; the
+  contract cannot see a permutation (lead call L3's check).
+- PR 4 runs the reviewed default fill on the joined frame so its
+  manifest's row counts are the frame's; reads the parent's applied tail
+  donor ids from the export's tax-unit columns (checked against the base
+  manifest's ``records[*].donor_source_id`` when the base run folder is at
+  hand); re-derives the CPS role record with
+  ``with_us_spm_independence_role`` on the selected CPS rows, in the joined
+  frame's row order and dtypes (the digest is dtype-sensitive); builds the
+  selection keys with :func:`cps_unit_ids`; builds ``staging_lineage`` from
+  staging's output, not from the ACS tables it passes; supplies
+  :func:`absences` with the reviewed default fill's manifest for the
+  joined frame and the ``zero_written`` receipts; and declares (or fills)
+  each CPS-only register entry the first live run of :func:`absences`
+  lists, the US data owner deciding.
+- PR 4 reads the id dtypes of staging's real pooled tables, then tightens
+  :func:`_integral_ids`, which today passes object-held digit strings and
+  booleans through ``pd.to_numeric`` and refuses only a boolean dtype
+  (lead call L5).
 - PR 5 (the loader) recomputes the role record after the H5 load rather
   than trusting a pre-write digest, and joins the absences file to the
-  release's ``us_register_consistency_gate``.
+  release's ``us_register_consistency_gate``. The absences record names no
+  frame or H5 digest, so PR 5 binds it to its file by the run folder.
+- PR 5's continuity anchor compares the CPS row set and the native and
+  clone structure both ways against the parent export. Whether a clone
+  row's values cohere with its native row's is out of this library's
+  scope (lead call L6).
 
 Two upstream conditions: R4 (the ESI employer premium on every person)
 refuses every real child until d2283 PR 0 lands, and PR 4's CPS role
@@ -252,36 +285,52 @@ _LOCATION_CLONE_INDEX_SUFFIX = "_location_clone_index"
 #: institutional and 3 non-institutional group quarters).
 _ACS_HOUSEHOLD_TYPES = (1, 2, 3)
 
+#: The release's first engine pass, on every arm: the SSI December pass
+#: (``_ssi_person_uncapped_amount``). Like every pass built from the frame,
+#: it loads each frame column that is an engine variable, whether or not it
+#: computes anything from it.
+_SSI_DECEMBER_PASS = "tools/build_us_fiscal_refresh_release.py:14951"
+_NO_EARLIER_READER = (
+    "Earlier readers: none; no engine pass runs before this stage (the first, "
+    f"the SSI December pass, is at {_SSI_DECEMBER_PASS}) and no pool-arm stage "
+    "before it names the column"
+)
+#: How policyengine-core 3.32.5 (the lock's pin) loads a null boolean input:
+#: it casts with ``astype(bool)``, skipping the null refusal it applies to
+#: float and integer inputs (``holder.py`` :257, :276-291).
+_BOOLEAN_NULL_LOAD = (
+    "policyengine-core 3.32.5 loads a boolean NaN as True and a None as False "
+    "and refuses a pd.NA"
+)
+_LOADED_NOT_COMPUTED = (
+    f"Earlier readers: the SSI December pass ({_SSI_DECEMBER_PASS}) loads it but "
+    "computes nothing from it (it is outside uncapped_ssi's dependency "
+    f"closure); {_BOOLEAN_NULL_LOAD} (static reads of policyengine-us 2.2.1 and "
+    "policyengine-core 3.32.5, d2283 lead call L1's trace)"
+)
 _SCF_ASSETS_EVIDENCE = (
     "scf_wealth stage: with_us_scf_wealth_inputs re-imputes all three asset "
     "columns on every person when any value is not finite "
     "(U/scf_wealth.py:1031; pass-through only when assets and net worth both "
-    "carry signal, :1129; rewrite, :1149)"
+    f"carry signal, :1129; rewrite, :1149). {_NO_EARLIER_READER}"
 )
 _ORG_EVIDENCE = (
     "org_wages stage: with_us_org_wages_inputs re-imputes the family on every "
     "entry and passes through only when each stored output equals the "
     "recomputed one, which a null never does (U/org_wages.py:990, :998, "
-    ":1046); otherwise it writes every output on every person (:1050)"
-)
-_OTHER_HEALTH_INSURANCE_EVIDENCE = (
-    "other_health_insurance_premiums stage: "
-    "with_us_other_health_insurance_inputs raises if a stage output misses a "
-    "person (U/other_health_insurance.py:906) and writes it on every person "
-    "(:913-915)"
-)
-_ACA_EVIDENCE = (
-    "aca_marketplace_inputs stage: _with_aca_marketplace_source_outputs raises "
-    "if the output misses a tax unit and writes both columns on every tax unit "
-    "(tools/build_us_fiscal_refresh_release.py:4113, :4119)"
+    ":1046); otherwise it writes every output on every person (:1050). "
+    f"{_LOADED_NOT_COMPUTED}"
 )
 
 #: The engine inputs the release tool's always-on producers rewrite on every
-#: row, or refuse on a null, so prepare may leave them null on ACS rows (the
-#: null-input clause, R6, exempts them; d2283 Q1 (a)). Each entry is the
+#: row, or refuse on a null, before any release stage reads them on ACS rows,
+#: so prepare may leave them null there (the null-input clause, R6, exempts
+#: them; d2283 Q1 (a), narrowed by lead call L1 of 11-18). Each entry is the
 #: column and its evidence, re-read at this module's commit: the stage
 #: (whose ``us/source_stages.json`` ``outputs`` name the column; a test pins
-#: that) and the lines that rewrite every row or raise on a null.
+#: that), the lines that rewrite every row or raise on a null, and the
+#: release's earlier readers (an engine pass built from the frame before the
+#: producer), from L1's static trace of the release tool's pool arm.
 #:
 #: Left out, so prepare must fill them on ACS rows: producers that pass a
 #: frame through when the column carries signal after dropping nulls
@@ -297,6 +346,24 @@ _ACA_EVIDENCE = (
 #: grades that frame through ``to_numpy(dtype=bool)``
 #: (U/snap_take_up.py:319), which reads a NaN as take-up, a None as no
 #: take-up and refuses a ``pd.NA``: it misgrades ACS nulls.
+#:
+#: Also left out (lead call L1): ten producer outputs an engine pass loads
+#: before their producer writes them. policyengine-core 3.32.5 refuses a NaN
+#: or None in a float or integer input at load (``holder.py`` :257,
+#: :276-291, a static read), so a null in ``cps_race``, ``hourly_wage``,
+#: ``fsla_overtime_premium``, ``detailed_occupation_recode``,
+#: ``detailed_industry_recode``, ``major_industry_recode`` (org_wages,
+#: tools/build_us_fiscal_refresh_release.py:15189),
+#: ``selected_marketplace_plan_benchmark_ratio`` (aca_marketplace_inputs,
+#: :15217), ``other_health_insurance_premiums`` or
+#: ``health_insurance_premiums`` (other_health_insurance_premiums, :15308)
+#: stops the build at the SSI December pass (:14951). The ACA, Medicaid and
+#: SNAP-state passes (:15217, :15248, :15277) also compute from
+#: ``health_insurance_premiums`` and ``is_self_employed`` (the self-employed
+#: health insurance deduction into AGI and MAGI, and medical expenses), and
+#: a boolean null there reads silently as True or False. Staging writes the
+#: three integer recodes natively on ACS rows (U/acs_inputs.py:105-120,
+#: ``ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS``) and none of the other seven.
 RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
     {
         "bank_account_assets": _SCF_ASSETS_EVIDENCE,
@@ -305,62 +372,68 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
         "net_worth": (
             "scf_wealth stage: with_us_scf_wealth_inputs re-imputes net_worth "
             "on every household when any value is not finite "
-            "(U/scf_wealth.py:1048, :1129; rewrite, :1157)"
+            "(U/scf_wealth.py:1048, :1129; rewrite, :1157). "
+            f"{_NO_EARLIER_READER} (sipp_vehicles reads it later, "
+            "tools/build_us_fiscal_refresh_release.py:15071)"
         ),
         "meets_ssi_disability_criteria": (
             "ssi_disability_criteria stage: with_us_ssi_disability_criteria "
             "passes through only when every value is finite, 0/1 and equal to "
             "its prediction, else writes the prediction on every person "
-            "(U/ssi_disability_criteria.py:1160, :1167)"
+            "(U/ssi_disability_criteria.py:1160, :1167). "
+            f"{_NO_EARLIER_READER} (the SSI December pass computes from it, "
+            "after this stage)"
         ),
         "takes_up_head_start_if_eligible": (
             "sipp_head_start stage: with_us_sipp_head_start_input passes "
             "through only when every value is finite, 0/1 and equal to its "
             "prediction, else writes the prediction on every person "
-            "(U/sipp_head_start.py:740, :747)"
+            f"(U/sipp_head_start.py:740, :747). {_NO_EARLIER_READER}"
         ),
         "takes_up_ssi_if_eligible": (
             "ssi_take_up stage: with_us_ssi_take_up passes through only a "
             "boolean column with no null equal to its assignment, else writes "
             "the assignment on every person (U/ssi_take_up.py:1260-1261, "
-            ":1268)"
+            f":1268). {_LOADED_NOT_COMPUTED}; the pass's docstring says the "
+            "same (tools/build_us_fiscal_refresh_release.py:4253-4256)"
         ),
         "would_file_taxes_voluntarily": (
             "voluntary_filing_input stage: with_us_voluntary_filing_input "
             "passes through only when every value is finite, 0/1 and equal to "
             "its prediction, else writes the prediction on every tax unit "
-            "(U/voluntary_filing.py:934, :941)"
+            f"(U/voluntary_filing.py:934, :941). {_LOADED_NOT_COMPUTED}"
         ),
         **dict.fromkeys(
             (
-                "cps_race",
                 "is_hispanic",
-                "detailed_occupation_recode",
-                "detailed_industry_recode",
-                "major_industry_recode",
                 "worked_last_year",
                 "has_never_worked",
                 "is_military",
                 "is_computer_scientist",
                 "is_executive_administrative_professional",
                 "is_farmer_fisher",
-                "hourly_wage",
                 "is_paid_hourly",
                 "is_union_member_or_covered",
-                "fsla_overtime_premium",
             ),
             _ORG_EVIDENCE,
         ),
-        "takes_up_aca_if_eligible": _ACA_EVIDENCE,
-        "selected_marketplace_plan_benchmark_ratio": _ACA_EVIDENCE,
+        "takes_up_aca_if_eligible": (
+            "aca_marketplace_inputs stage: _with_aca_marketplace_source_outputs "
+            "raises if the output misses a tax unit and writes it on every tax "
+            "unit (tools/build_us_fiscal_refresh_release.py:4113, :4119). "
+            f"{_LOADED_NOT_COMPUTED}; the stage's own pass reads the potential "
+            "aca_ptc, not the take-up flag (:3907-3909)"
+        ),
         "takes_up_medicaid_if_eligible": (
             "medicaid_take_up stage: with_us_medicaid_take_up raises if any "
             "person is unassigned and writes every person "
-            "(U/medicaid_take_up.py:319, :323)"
+            f"(U/medicaid_take_up.py:319, :323). {_LOADED_NOT_COMPUTED}. The "
+            "ACA stage's pass (tools/build_us_fiscal_refresh_release.py:15217) "
+            "reads it only through medicaid_enrolled in pays_aca_premium's "
+            "ineligible-coverage sum, which also holds is_medicaid_eligible, "
+            "the variable medicaid_enrolled is defined for, so the flag cannot "
+            "change that pass's result (policyengine-us 2.2.1)"
         ),
-        "other_health_insurance_premiums": _OTHER_HEALTH_INSURANCE_EVIDENCE,
-        "health_insurance_premiums": _OTHER_HEALTH_INSURANCE_EVIDENCE,
-        "is_self_employed": _OTHER_HEALTH_INSURANCE_EVIDENCE,
     }
 )
 
@@ -467,7 +540,9 @@ RAW_COLUMN_READERS: Mapping[str, tuple[str, ...]] = MappingProxyType(
 #: The ACS RELSHIPP role rule and its SPM partition, as staging's receipt
 #: states them: copies of ``acs_inputs.ACS_SPM_ROLE_RULE`` and
 #: ``acs_inputs.ACS_SPM_ROLE_PARTITION``, which a test pins by reading that
-#: module's source (importing it loads the ACS transfer).
+#: module's source. The import would cost nothing extra (``us_runtime``'s
+#: ``__init__`` already imports ``acs_inputs`` through ``operator_boundary``);
+#: the copies stay by d2283 lead call L8.
 _ACS_SPM_ROLE_RULE = (
     "RELSHIPP == 20 OR RELSHIPP in {21, 23} OR RELSHIPP in {37, 38}, "
     "on the one-SPM-unit-per-household ACS partition"
@@ -1182,7 +1257,11 @@ def to_assembled_provenance(
             weights).
         acs_household_weights: One weight per row of
             ``acs_tables["household"]``, in its order; empty when no ACS
-            household is selected.
+            household is selected. PR 1's ``StartingWeights.acs`` comes in
+            selection-rank order and staging's household table in id order,
+            so the caller reorders the weights by key first: nothing here
+            ties a weight to its household, and no clause sees a permutation
+            (d2283 lead call L3's check).
         staging_lineage: Staging's (``SERIALNO``, ``SPORDER``) pairs for the
             persons of the selected ACS households, read from staging's
             output, not from ``acs_tables``. ``SPORDER`` may be an integral
@@ -1858,7 +1937,8 @@ def _tail_donor_set(parent_tail_donor_ids: object) -> frozenset[int]:
 
 
 def _require_parent_tail_donors(tax_unit: pd.DataFrame, parent: frozenset[int]) -> None:
-    """R8: the applied tail donor ids equal the parent's, each applied once."""
+    """R8: the applied tail donor ids equal the parent's, each applied once,
+    and no ACS tax unit applies one."""
 
     rule = "The tail donor set differs from the parent's"
     applied_values = tax_unit[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN]
@@ -1874,6 +1954,16 @@ def _require_parent_tail_donors(tax_unit: pd.DataFrame, parent: frozenset[int]) 
             f"values {applied_values[~is_flag].head(3).tolist()!r}."
         )
     applied = applied_values.astype(bool).to_numpy()
+    acs_applied = applied & (
+        tax_unit[support_channel_column("tax_unit")].eq(ACS_SUPPORT_CHANNEL).to_numpy()
+    )
+    if acs_applied.any():
+        raise OnePopulationContractError(
+            f"{rule}: {int(acs_applied.sum())} ACS tax unit(s) apply a tail "
+            "donor; the parent's tail draws apply only to CPS recipients, so "
+            f"every ACS tax unit holds {PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN!r} "
+            "False (d2283 lead call L4)."
+        )
     donors = _integral_ids(
         tax_unit.loc[applied, PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN],
         refusal=f"{rule}: applied donor ids must be integers",
@@ -1921,43 +2011,74 @@ def _declarations(declared_absences: object, *, name: str) -> Mapping[str, str]:
     return declared_absences
 
 
+def _origin_gap(
+    null: np.ndarray, rows: np.ndarray, other_rows: np.ndarray
+) -> np.ndarray | None:
+    """The rows of one origin a column lacks, when they make a gap.
+
+    The one gap predicate R10 and :func:`absences` share (d2283 lead call
+    L2): a column is a gap of an origin when it is null on some row of that
+    origin (``rows``) while some row of the other origin (``other_rows``)
+    holds a value. Returns the origin's null rows, or ``None`` when there is
+    no gap: no null on the origin's rows, or no value on the other origin's.
+    """
+
+    lacking = null & rows
+    if not lacking.any() or not (~null & other_rows).any():
+        return None
+    return lacking
+
+
+def _origin_rows(channels: Mapping[str, np.ndarray], origin: str) -> np.ndarray:
+    """The rows of ``origin``, from one mask per assembled channel."""
+
+    return np.logical_or.reduce([channels[name] for name in _ORIGIN_CHANNELS[origin]])
+
+
 def _require_declared_absences(
-    origins: Mapping[str, Mapping[str, pd.DataFrame]],
+    tables: Mapping[str, pd.DataFrame],
     engine: _EngineColumns,
     register: Mapping[str, str],
     declared: Mapping[str, str],
 ) -> None:
-    """R10: a register column CPS rows fill and ACS rows null is declared.
+    """R10: a register column ACS rows lack while CPS rows hold it is declared.
 
     Engine inputs at 2024 are R6's (it refuses any null), so this covers
-    model-named columns no engine variable names: register entries. It
-    fires only when every CPS row of the entity holds a value; :func:`absences`
-    fires when any row of the other origin does, so a register column partly
-    null on CPS rows and null on ACS rows passes here undeclared and refuses
-    there. A declaration this check does not use is ignored, as
-    :func:`absences` records it.
+    model-named columns no engine variable names: register entries. It uses
+    :func:`absences`' gap predicate (:func:`_origin_gap`): null on some ACS
+    row while some CPS row holds a value. So one declaration answers both
+    checks, and a column partly null on CPS rows still needs one. A column
+    null on every row of both origins is no gap. What still differs:
+    :func:`absences` also reads the reverse direction (CPS rows lacking a
+    column ACS rows hold) and every model-named column, where this check
+    reads register entries in the CPS-to-ACS direction only. A declaration
+    this check does not use is ignored, as :func:`absences` records it.
     """
 
     from microcosm.data.stored_inputs import is_model_named
 
     gaps: dict[str, str] = {}
     for entity in US_SCHEMA.entities:
-        cps = origins[_CPS][entity]
-        acs = origins[_ACS][entity]
-        if not len(cps) or not len(acs):
-            continue
-        for column in cps.columns:
+        table = tables[entity]
+        channels = _channel_masks(
+            table, entity, rule="A register column check needs every row's origin"
+        )
+        cps_rows, acs_rows = _origin_rows(channels, _CPS), _origin_rows(channels, _ACS)
+        for column in table.columns:
             if (
-                not is_model_named(column)
+                not isinstance(column, str)
+                or not is_model_named(column)
                 or column in engine.known
                 or column not in register
                 or column in RELEASE_WRITTEN_INPUTS
                 or column in declared
             ):
                 continue
-            acs_nulls = int(acs[column].isna().sum())
-            if acs_nulls and not cps[column].isna().any():
-                gaps[f"{entity}.{column}"] = f"{acs_nulls} of {len(acs)} ACS rows"
+            lacking = _origin_gap(table[column].isna().to_numpy(), acs_rows, cps_rows)
+            if lacking is not None:
+                gaps[f"{entity}.{column}"] = (
+                    f"{int(lacking.sum())} of {int(acs_rows.sum())} ACS rows"
+                )
     if gaps:
         raise OnePopulationContractError(
             "A model-named column filled on CPS rows is null on ACS rows without "
@@ -2032,16 +2153,19 @@ def require_one_population(
       units (the one-to-one rule of
       ``assert_puf_capital_gains_tail_survives_selection``). No weight is
       compared, so that function (whose weight check fires on the child's
-      new starting weights) is not used. Which tax units carry the applied
-      flags (CPS clone rows or ACS rows) is not checked.
+      new starting weights) is not used. No ACS tax unit applies a donor
+      (the parent's tail draws apply only to CPS recipients; d2283 lead
+      call L4); which CPS tax units carry the applied flags is not checked.
     - R10: a model-named register column (no engine variable; R6 owns
-      engine inputs) filled on every CPS row of its entity and null on some
-      ACS row, unless ``declared_absences`` names it. The release-written
-      list is the only exemption, never a stage's declared outputs whole.
-      A declaration R10 does not use is ignored, so the same mapping passes
-      :func:`absences`, which records it as unused or needless. R10 reads
-      "filled on CPS rows" as every row; :func:`absences` refuses a gap when
-      any CPS row holds a value, so it is the stricter of the two.
+      engine inputs) null on some ACS row while some CPS row of its entity
+      holds a value, unless ``declared_absences`` names it: the gap
+      predicate :func:`absences` uses (d2283 lead call L2), so one
+      declaration answers both. The release-written list is the only
+      exemption, never a stage's declared outputs whole. A declaration R10
+      does not use is ignored, so the same mapping passes :func:`absences`,
+      which records it as unused or needless. :func:`absences` also reads
+      the reverse direction and every model-named column, so it refuses
+      some frames R10 passes.
 
     Args:
         frame: The joined frame, built by :func:`to_assembled_provenance`.
@@ -2113,7 +2237,7 @@ def require_one_population(
     _require_filled_inputs(tables, engine.inputs)  # R6
     _require_tail_columns(tables["tax_unit"])  # R7
     _require_parent_tail_donors(tables["tax_unit"], parent_donors)  # R8
-    _require_declared_absences(origins, engine, register, declared)  # R10
+    _require_declared_absences(tables, engine, register, declared)  # R10
 
 
 # ------------------------------------------------------- the role record
@@ -2500,9 +2624,7 @@ class _EntityMass:
     total_weight: float
 
     def origin_rows(self, origin: str) -> np.ndarray:
-        return np.logical_or.reduce(
-            [self.channels[channel] for channel in _ORIGIN_CHANNELS[origin]]
-        )
+        return _origin_rows(self.channels, origin)
 
     def share(self, rows: np.ndarray) -> float | None:
         if not self.total_weight > 0:
@@ -2627,11 +2749,12 @@ def absences(
       owner's decision. Those kinds are tried in that order, so a
       declaration files only a gap no other kind covers. Any other such
       column refuses, all of them in one message: prepare must fill it or
-      its owner declare it. This is stricter than
-      :func:`require_one_population`'s R10, which asks for a declaration only
-      when a register column is filled on every CPS row of its entity and
-      null on some ACS row: a column partly null on CPS rows and null on ACS
-      rows passes R10 undeclared and refuses here.
+      its owner declare it. The gap is :func:`_origin_gap`, the predicate
+      :func:`require_one_population`'s R10 shares (d2283 lead call L2), so
+      one declaration answers both. This file is still the stricter of the
+      two: R10 reads only register entries, and only ACS rows lacking a
+      column CPS rows hold, where this reads every model-named column in
+      both directions.
     - "reviewed default fill": each fill of ``fill_manifest``, the reviewed
       default fill's manifest (``tools/build_us_acs_local_release.py``
       ``fill_reviewed_nulls``, :1151-1165), checked against the frame
@@ -2712,8 +2835,10 @@ def absences(
             if not null.any():
                 continue
             for origin, other in ((_CPS, _ACS), (_ACS, _CPS)):
-                lacking = null & mass.origin_rows(origin)
-                if not lacking.any() or not (~null & mass.origin_rows(other)).any():
+                lacking = _origin_gap(
+                    null, mass.origin_rows(origin), mass.origin_rows(other)
+                )
+                if lacking is None:
                     continue
                 gapped.add(column)
                 classified = _absence_kind(entity, column, origin, declared)

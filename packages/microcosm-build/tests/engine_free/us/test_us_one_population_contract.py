@@ -1725,6 +1725,24 @@ def _acs_null_on_cps(frame: Frame, entity: str, column: str, value) -> Frame:
     )
 
 
+#: The engine inputs d2283 lead call L1 (11-18) moved off the exempt list: a
+#: release engine pass built from the frame loads each before its producer
+#: writes it, so prepare fills it on ACS rows and R6 refuses its null. The
+#: last three are the integer recodes staging writes natively.
+_MOVED_OFF_THE_EXEMPT_LIST = (
+    "cps_race",
+    "hourly_wage",
+    "fsla_overtime_premium",
+    "selected_marketplace_plan_benchmark_ratio",
+    "other_health_insurance_premiums",
+    "health_insurance_premiums",
+    "is_self_employed",
+    "detailed_occupation_recode",
+    "detailed_industry_recode",
+    "major_industry_recode",
+)
+
+
 class TestRequireOnePopulation:
     @pytest.mark.parametrize("form", _FORMS)
     @pytest.mark.parametrize("seed", _SEEDS)
@@ -1923,6 +1941,24 @@ class TestRequireOnePopulation:
         ):
             _require(population, not_exempt)
 
+    @pytest.mark.parametrize("column", _MOVED_OFF_THE_EXEMPT_LIST)
+    def test_a_moved_input_null_on_an_acs_row_refuses(
+        self, population, assembled, column
+    ) -> None:
+        # d2283 lead call L1: each moved input is R6's on every row. The
+        # generator carries none of them, so each is added on its entity.
+        entity = lock_engine_inputs()[column]
+        value = True if column == "is_self_employed" else 1.0
+        filled = _with_column(assembled, entity, column, value)
+        _require(population, filled)
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                f"A null in an engine input at 2024: {{'{entity}.{column}': 1}}"
+            ),
+        ):
+            _require(population, _cell(filled, entity, column, None, origin="acs"))
+
     def test_arguments_are_type_checked(self, population, assembled) -> None:
         with pytest.raises(TypeError, match="frame must be a Frame"):
             _require(population, assembled.table("person"))
@@ -1962,9 +1998,22 @@ class TestExemptList:
     def test_each_entry_cites_its_lines(self) -> None:
         for column, evidence in RELEASE_WRITTEN_INPUTS.items():
             assert re.search(r"\w+\.py:\d+", evidence), column
+            # d2283 lead call L1: each entry states its earlier readers.
+            assert "Earlier readers: " in evidence, column
 
     def test_the_list_is_the_decided_list(self) -> None:
         outputs = self._stage_outputs()
+        org_bools = {
+            "is_hispanic",
+            "worked_last_year",
+            "has_never_worked",
+            "is_military",
+            "is_computer_scientist",
+            "is_executive_administrative_professional",
+            "is_farmer_fisher",
+            "is_paid_hourly",
+            "is_union_member_or_covered",
+        }
         assert set(RELEASE_WRITTEN_INPUTS) == {
             "bank_account_assets",
             "bond_assets",
@@ -1974,15 +2023,24 @@ class TestExemptList:
             "takes_up_head_start_if_eligible",
             "takes_up_ssi_if_eligible",
             "would_file_taxes_voluntarily",
-            *outputs["org_wages"],
-            *outputs["aca_marketplace_inputs"],
+            *org_bools,
+            "takes_up_aca_if_eligible",
             "takes_up_medicaid_if_eligible",
-            "other_health_insurance_premiums",
-            "health_insurance_premiums",
-            "is_self_employed",
         }
+        assert len(RELEASE_WRITTEN_INPUTS) == 19
         assert len(outputs["org_wages"]) == 15
+        moved = set(_MOVED_OFF_THE_EXEMPT_LIST)
+        assert set(outputs["org_wages"]) == org_bools | (
+            moved & set(outputs["org_wages"])
+        )
+        assert len(moved & set(outputs["org_wages"])) == 6
+        assert moved - set(outputs["org_wages"]) <= set(
+            outputs["aca_marketplace_inputs"]
+        ) | set(outputs["other_health_insurance_premiums"])
         not_exempt = {
+            # d2283 lead call L1: an engine pass loads each before its
+            # producer writes it.
+            *_MOVED_OFF_THE_EXEMPT_LIST,
             # SNAP take-up passes ACS nulls to a gate that misgrades them.
             "takes_up_snap_if_eligible",
             # Pass-through producers.
@@ -2021,7 +2079,8 @@ class TestExemptList:
 # column or the record, or change a household's key on every row, where no
 # single cell can break the clause (R1's assembled form, R2's digest and
 # orphaned clone key, R3, R9, R11, T1's presence, R4's presence, R5's age,
-# R7's presence, R8's twice-applied donor).
+# R6's moved input, R7's presence, R8's twice-applied and moved donors,
+# R10's column beside a CPS null).
 
 
 def _r1_not_assembled(p, f):
@@ -2338,6 +2397,13 @@ def _r6_null_is_female_on_a_tail_copy(p, f):
     return _cell(f, "person", "is_female", None, origin="cps", clone=2), {}
 
 
+def _r6_null_moved_premiums_on_acs(p, f):
+    # d2283 lead call L1 moved health_insurance_premiums off the exempt list
+    # (the ACA, Medicaid and SNAP-state passes read it before its producer).
+    filled = _with_column(f, "person", "health_insurance_premiums", 1.0)
+    return _cell(filled, "person", "health_insurance_premiums", None, origin="acs"), {}
+
+
 def _r7_null_tail_column(p, f):
     return _cell(
         f,
@@ -2414,8 +2480,34 @@ def _r8_applied_not_a_flag(p, f):
     ), {}
 
 
+def _r8_donor_moved_to_an_acs_unit(p, f):
+    # d2283 lead call L4: a parent donor moves from its CPS tax unit to an
+    # ACS one, so the id set and the one-to-one rule both still hold.
+    tables = _tables(f)
+    tax_unit = tables["tax_unit"]
+    applied = tax_unit[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN].to_numpy(dtype=bool)
+    cps_row = int(np.flatnonzero(applied)[0])
+    donor = tax_unit[PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN].iloc[cps_row]
+    _set(tax_unit, cps_row, PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN, False)
+    _set(tax_unit, cps_row, PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN, -1)
+    acs_row = _row(tax_unit, "tax_unit", "acs")
+    _set(tax_unit, acs_row, PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN, True)
+    _set(tax_unit, acs_row, PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN, donor)
+    return _rebuild(f, tables), {}
+
+
 def _r10_register_column_null_on_acs(p, f):
     return _cell(f, "person", "source_row_id", None, origin="acs"), {}
+
+
+def _r10_register_column_null_beside_a_cps_null(p, f):
+    # d2283 lead call L2: R10 shares absences' gap predicate, so one null on a
+    # CPS row no longer switches it off for a column ACS rows lack.
+    column = "cps_employment_income_last_year"
+    frame = _acs_null_on_cps(f, "person", column, 1.0)
+    frame = _cell(frame, "person", column, None, origin="cps")
+    register = {**US_STORED_NON_VARIABLE_COLUMNS, column: "test auxiliary column"}
+    return frame, {"register": register}
 
 
 _FRAME_REFUSALS = [
@@ -2589,6 +2681,10 @@ _FRAME_REFUSALS = [
         _r6_null_is_female_on_a_tail_copy,
         "A null in an engine input at 2024: {'person.is_female': 1}",
     ),
+    (
+        _r6_null_moved_premiums_on_acs,
+        "A null in an engine input at 2024: {'person.health_insurance_premiums': 1}",
+    ),
     # R7.
     (
         _r7_null_tail_column,
@@ -2624,11 +2720,21 @@ _FRAME_REFUSALS = [
         "The tail donor set differs from the parent's: "
         "'puf_capital_gains_tail_transfer_applied' holds non-flag values [2]",
     ),
+    (
+        _r8_donor_moved_to_an_acs_unit,
+        "The tail donor set differs from the parent's: 1 ACS tax unit(s) apply a "
+        "tail donor",
+    ),
     # R10.
     (
         _r10_register_column_null_on_acs,
         "A model-named column filled on CPS rows is null on ACS rows without a "
         "declared absence: {'person.source_row_id': '1 of",
+    ),
+    (
+        _r10_register_column_null_beside_a_cps_null,
+        "A model-named column filled on CPS rows is null on ACS rows without a "
+        "declared absence: {'person.cps_employment_income_last_year': '",
     ),
 ]
 
@@ -3904,6 +4010,55 @@ class TestOneDeclarationsMapping:
         assert kinds == {
             "reviewed default fill" if receipt == "fill_manifest" else "zero written"
         }
+
+    def test_one_declaration_answers_r10_and_absences(
+        self, population, assembled
+    ) -> None:
+        # d2283 lead call L2: R10 and absences share one gap predicate, so a
+        # register column null on every ACS row and on one CPS row refuses
+        # both undeclared, and one declaration passes both.
+        register = {**US_STORED_NON_VARIABLE_COLUMNS, _AUXILIARY: "auxiliary"}
+        frame = _acs_null_on_cps(assembled, "person", _AUXILIARY, 41_000.0)
+        frame = _cell(frame, "person", _AUXILIARY, None, origin="cps")
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "A model-named column filled on CPS rows is null on ACS rows "
+                f"without a declared absence: {{'person.{_AUXILIARY}': "
+            ),
+        ):
+            _require(population, frame, register=register)
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "A column one origin lacks has no absence kind: "
+                f"{{'person.{_AUXILIARY}': "
+            ),
+        ):
+            _absences(frame)
+        declared = {_AUXILIARY: _DECISION}
+        _require(population, frame, register=register, declared_absences=declared)
+        record = _absences(frame, declared=declared)
+        keyed = _keyed(record)
+        assert ("person", _AUXILIARY, "owner-declared", "ACS") in keyed
+        # The CPS null is no gap: no ACS row holds a value.
+        assert ("person", _AUXILIARY, "owner-declared", "CPS") not in keyed
+        assert record["unused_declarations"] == []
+        assert record["needless_declarations"] == []
+
+    def test_a_register_column_null_on_every_row_is_no_gap(
+        self, population, assembled
+    ) -> None:
+        # The shared predicate's other half: with no value on a CPS row there
+        # is no gap, so R10 and absences both pass it undeclared.
+        register = {**US_STORED_NON_VARIABLE_COLUMNS, _AUXILIARY: "auxiliary"}
+        index = assembled.table("person").index
+        frame = _with_column(
+            assembled, "person", _AUXILIARY, pd.Series(None, index=index, dtype=object)
+        )
+        _require(population, frame, register=register)
+        record = _absences(frame)
+        assert _AUXILIARY not in {column for (_, column, _, _) in _keyed(record)}
 
     def test_a_frame_with_no_acs_row_lists_every_declaration_as_unused(
         self, population
