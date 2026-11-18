@@ -204,13 +204,28 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert local.sipp_donor == Path("pu2023.csv")
 
 
-@pytest.mark.parametrize("staging_hours_pass", [True, False])
+@pytest.mark.parametrize(
+    ("staging_hours_pass", "esi_premiums"),
+    [(True, "green"), (False, "green"), (True, "red"), (True, "waived")],
+    ids=["green", "hours_red", "esi_red", "esi_waived"],
+)
 def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     staging_hours_pass: bool,
+    esi_premiums: str,
 ) -> None:
+    """``esi_premiums``: ``"red"`` has a red ESI anchor gate stop the build
+    before the H5 is written; ``"waived"`` is a diagnostic build
+    (``--allow-esi-premium-gaps``) whose donor the ESI qualifier refuses, so
+    the lane neither transfers nor owes the premium (microcosm#454)."""
+
     builder = _load_builder_module()
+    waived = esi_premiums == "waived"
+    waived_refusal = (
+        "Local ESI premium donor was built without the meps_esi_premiums stage "
+        "(invented)."
+    )
     manifest = _manifest()
     base = _frame()
     combined = _frame(spines=("asec_puf", "acs_2024_1yr"))
@@ -235,8 +250,12 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("person")["person_tax_unit_id"] = [1, 2]
     combined.table("person")["tax_unit_role_input"] = ["HEAD", "HEAD"]
     # microcosm#454: the lane transferred the ESI employer premium onto the
-    # ACS row, so the coverage check finds it complete there.
-    combined.table("person")["employer_sponsored_insurance_premiums"] = [9_000.0, 0.0]
+    # ACS row, so the coverage check finds it complete there. A waived build
+    # transferred nothing, so its ACS row carries no premium.
+    combined.table("person")["employer_sponsored_insurance_premiums"] = [
+        9_000.0,
+        np.nan if waived else 0.0,
+    ]
     # What the ACS local immigration stage returns (microcosm#1020): the
     # null audit, hours gate and export must all see this frame, not the
     # unlabelled pool.
@@ -366,12 +385,19 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                         "family": "benefit_participation",
                         "unmodeled_recipient_rows": 0,
                     },
-                    # The lane owes the ACS spine the employer premium too.
-                    {
-                        "column": "employer_sponsored_insurance_premiums",
-                        "family": "source_operator_esi_premiums",
-                        "unmodeled_recipient_rows": 0,
-                    },
+                    # The lane owes the ACS spine the employer premium too,
+                    # unless a diagnostic build waived its donor.
+                    *(
+                        []
+                        if waived
+                        else [
+                            {
+                                "column": "employer_sponsored_insurance_premiums",
+                                "family": "source_operator_esi_premiums",
+                                "unmodeled_recipient_rows": 0,
+                            }
+                        ]
+                    ),
                 ],
                 "acs_local_work_disability": work_disability_receipt,
                 "acs_local_income_transfer": income_receipt,
@@ -382,6 +408,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
 
     def fake_write(frame, path, *, period):
         captured["write"] = (frame, path, period)
+        order.append("write")
         path.write_bytes(b"combined-output")
 
     def fake_load_puma_ladder(path):
@@ -576,26 +603,46 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     def qualify_esi_premium_donor(frame):
         captured.setdefault("esi_premium_donors", []).append(frame)
         order.append("esi_premium_donor")
+        if waived:
+            raise ValueError(waived_refusal)
         return frame, {"donor_channel": "asec"}
+
+    signal_failures = ("invented: no ACS row carries the premium",) if waived else ()
+    anchor_failures = (
+        () if esi_premiums == "green" else ("invented: +20.0% from the anchor",)
+    )
 
     def staging_esi_premium_gates(frame, *, time_period):
         captured["staging_esi_premium_gates"] = (frame, time_period)
         order.append("esi_premium_gates")
         return (
-            GateResult(name="esi_premiums_signal", passed=True, failures=()),
+            GateResult(
+                name="esi_premiums_signal",
+                passed=not signal_failures,
+                failures=signal_failures,
+            ),
             GateResult(
                 name="esi_premiums_anchor",
-                passed=True,
-                failures=(),
+                passed=not anchor_failures,
+                failures=anchor_failures,
                 details={"relative_error": 0.0, "cross_check_ratio": float("nan")},
             ),
         )
+
+    real_coverage = builder._require_default_transfer_coverage
+
+    def recorded_coverage(result, donor, *, target_families=None):
+        captured["coverage_plan"] = target_families
+        return real_coverage(result, donor, target_families=target_families)
 
     monkeypatch.setattr(
         builder, "prepare_acs_local_esi_premium_donor", qualify_esi_premium_donor
     )
     monkeypatch.setattr(
         builder, "acs_local_esi_premium_gates", staging_esi_premium_gates
+    )
+    monkeypatch.setattr(
+        builder, "_require_default_transfer_coverage", recorded_coverage
     )
 
     arguments = [
@@ -622,6 +669,8 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "--geography-seed",
         "19",
     ]
+    if waived:
+        arguments.append("--allow-esi-premium-gaps")
     if not staging_hours_pass:
         with pytest.raises(
             SystemExit, match="Local staging hours gate failed.*asec_puf"
@@ -630,6 +679,24 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         assert captured["staging_hours_gate"] is True
         # The ESI gates grade the frame after the hours gate passes.
         assert "staging_esi_premium_gates" not in captured
+        assert "write" not in captured
+        assert not output_h5.exists()
+        assert not summary_path.exists()
+        return
+    if esi_premiums == "red":
+        # microcosm#454: a red ESI gate stops the build before the staging H5
+        # (or its summary) is written.
+        with pytest.raises(
+            SystemExit,
+            match=(
+                "Local staging ESI employer premium gates failed: "
+                "esi_premiums_anchor: invented: \\+20.0% from the anchor"
+            ),
+        ):
+            builder.main(arguments)
+        assert captured["staging_esi_premium_gates"][0] is ssi_filled
+        assert order[-1] == "esi_premium_gates"
+        assert "write" not in order
         assert "write" not in captured
         assert not output_h5.exists()
         assert not summary_path.exists()
@@ -649,8 +716,17 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # microcosm#454: the donor is qualified before the SIPP donor load and the
     # ACS fetch, and the same qualifier selects its rows when the transfer
     # runs. The gates grade the frame the H5 is written from: the one the SSI
-    # disability stage returned, the last stage that replaces the frame.
-    assert build_options.pop("esi_premium_donor_factory") is qualify_esi_premium_donor
+    # disability stage returned, the last stage that replaces the frame. A
+    # waived donor refusal leaves the transfer without the factory, and the
+    # coverage check does not owe the premium.
+    assert build_options.pop("esi_premium_donor_factory") is (
+        None if waived else qualify_esi_premium_donor
+    )
+    coverage_families = {
+        family for families in captured["coverage_plan"].values() for family in families
+    }
+    assert ("source_operator_esi_premiums" in coverage_families) is not waived
+    assert "benefit_participation" in coverage_families
     assert len(captured["esi_premium_donors"]) == 1
     assert captured["esi_premium_donors"][0] is base
     gated_frame, gated_period = captured["staging_esi_premium_gates"]
@@ -681,7 +757,8 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # stage runs after the income gate and before the input-null audit.
     # microcosm#1022: the native FS receipt anchor's gate grades the pooled
     # frame first, before any stage that replaces the frame. microcosm#454:
-    # the ESI premium donor is qualified first, and its gates run last.
+    # the ESI premium donor is qualified first, and its gates run last,
+    # before the H5 is written.
     assert order == [
         "esi_premium_donor",
         "sipp_load",
@@ -694,6 +771,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "ssi_disability_gate",
         "null_audit",
         "esi_premium_gates",
+        "write",
     ]
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -767,26 +845,27 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert self_employment["details"]["partnership_on_spouse_rows"] == 0
     assert self_employment["details"]["partnership_on_blank_semp_rows"] == 0
     assert self_employment["details"]["passive_without_line_32_rows"] == 0
+    # A waived build records its red verdicts and the refusal it waived.
     assert summary["local_esi_premiums"] == {
-        "enforced": True,
-        "transferred": True,
-        "donor_qualification_waived": None,
+        "enforced": not waived,
+        "transferred": not waived,
+        "donor_qualification_waived": waived_refusal if waived else None,
         "provenance": None,
         "signal_gate": {
             "name": "esi_premiums_signal",
-            "passed": True,
-            "failures": [],
+            "passed": not waived,
+            "failures": list(signal_failures),
             "details": {},
         },
         "anchor_gate": {
             "name": "esi_premiums_anchor",
-            "passed": True,
-            "failures": [],
+            "passed": not waived,
+            "failures": list(anchor_failures),
             # Strict JSON: a non-finite detail is written as null.
             "details": {"relative_error": 0.0, "cross_check_ratio": None},
         },
     }
-    assert summary["orchestration"]["allow_esi_premium_gaps"] is False
+    assert summary["orchestration"]["allow_esi_premium_gaps"] is waived
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {

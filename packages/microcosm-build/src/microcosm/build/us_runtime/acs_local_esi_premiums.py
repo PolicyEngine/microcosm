@@ -514,16 +514,16 @@ def acs_local_esi_premium_gates(
     The gates grade a pooled frame by row kind: the donor rows, which carry
     the raw ASEC fields, get the full MEPS-IC recomputation, and the ACS rows
     are compared with them (``allow_transferred_rows=True``; Route A's callers
-    keep the default, which refuses a transferred row). They run on one
-    narrow view; the verdicts are those of the full frame. The ACS local
-    release calls the two gates one by one, each beside its entry of the
-    gate battery's shadow (microcosm#1585 item 11).
+    keep the default, which refuses a transferred row). Each gate runs on its
+    own narrow view of the frame, with the same columns; the verdicts are
+    those of the full frame. The staging build calls this pair; the ACS local
+    release calls the two gates one by one, each beside its entry of the gate
+    battery's shadow (microcosm#1585 item 11).
     """
 
-    view = _gate_view(frame)
     return (
-        acs_local_esi_premium_signal_gate(view),
-        acs_local_esi_premium_anchor_gate(view, time_period=time_period),
+        acs_local_esi_premium_signal_gate(frame),
+        acs_local_esi_premium_anchor_gate(frame, time_period=time_period),
     )
 
 

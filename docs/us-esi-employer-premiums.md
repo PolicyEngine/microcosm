@@ -1,7 +1,9 @@
 # US employer-sponsored insurance premiums (#454)
 
-Status as of 2026-10-11. Code: `microcosm.build.us_runtime.esi_premiums`
-(stage `meps_esi_premiums`). Receipts: `experiments/us-esi-454/`.
+Status as of 2026-11-18. Code: `microcosm.build.us_runtime.esi_premiums`
+(stage `meps_esi_premiums`) and, for ACS local releases,
+`microcosm.build.us_runtime.acs_local_esi_premiums`. Receipts:
+`experiments/us-esi-454/`.
 
 ## What the stage produces
 
@@ -441,8 +443,10 @@ the same place.
 
 `us_esi_premiums_summary` and both gates take `allow_transferred_rows`,
 `False` by default. The lane passes `True` everywhere it grades: in the donor
-qualifier's signal gate and in `acs_local_esi_premium_gates`, which the
-staging build and finalize call. The anchor kernel applies the same rule
+qualifier's signal gate and in `acs_local_esi_premium_signal_gate` and
+`acs_local_esi_premium_anchor_gate`. The staging build calls the two through
+`acs_local_esi_premium_gates`; finalize calls them one by one, each beside its
+entry of the gate battery's shadow. The anchor kernel applies the same rule
 itself. The donor rows then get the full MEPS-IC recomputation, and the ACS
 rows are compared with them ("What the gates need", under "Gates", has the
 rule and its refusals).

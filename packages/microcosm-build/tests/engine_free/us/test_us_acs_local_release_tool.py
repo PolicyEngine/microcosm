@@ -8088,6 +8088,28 @@ def _with_acs_premium_scaled(frame, factor: float):
     )
 
 
+def _patch_esi_finalize(module, monkeypatch, args, frame) -> None:
+    """Finalize's collaborators with the real ESI premium gates, ``frame``
+    served only as the calibrated artifact: loading any other path fails."""
+
+    _patch_finalize_collaborators(module, monkeypatch, esi_premiums=False)
+
+    def calibrated_artifact_only(path, *_args, **_kwargs):
+        assert Path(path) == Path(args.out_h5), (
+            f"finalize loaded {path}, not the calibrated artifact {args.out_h5}"
+        )
+        return frame
+
+    monkeypatch.setattr(module, "_load_staging_frame", calibrated_artifact_only)
+
+
+def _run_esi_finalize(module, monkeypatch, args, frame):
+    _patch_esi_finalize(module, monkeypatch, args, frame)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    return str(exc.value), json.loads(args.gate_report.read_text())
+
+
 def test_finalize_grades_the_esi_premium_on_the_calibrated_artifact(
     tmp_path, monkeypatch, esi_lane_frame
 ) -> None:
@@ -8098,9 +8120,7 @@ def test_finalize_grades_the_esi_premium_on_the_calibrated_artifact(
     args = _finalize_args(module, tmp_path)
     artifact_sha = module._sha256(args.out_h5)
 
-    message, report = _run_finalize(
-        module, monkeypatch, args, esi_lane_frame, esi_premiums=False
-    )
+    message, report = _run_esi_finalize(module, monkeypatch, args, esi_lane_frame)
 
     gates = report["gates"]
     for name in module.ESI_PREMIUM_GATE_NAMES:
@@ -8134,9 +8154,7 @@ def test_finalize_hard_fails_on_a_red_esi_premium_gate(
     args = _finalize_args(module, tmp_path)
     frame = _with_acs_premium_scaled(esi_lane_frame, factor)
 
-    message, report = _run_finalize(
-        module, monkeypatch, args, frame, esi_premiums=False
-    )
+    message, report = _run_esi_finalize(module, monkeypatch, args, frame)
 
     red = "esi_premiums_signal" if factor == 0.0 else "esi_premiums_anchor"
     assert red in message
@@ -8155,9 +8173,7 @@ def test_finalize_records_a_waived_esi_premium_gate_without_failing_on_it(
     args.allow_esi_premium_gaps = True
     frame = _with_acs_premium_scaled(esi_lane_frame, 1.4)
 
-    message, report = _run_finalize(
-        module, monkeypatch, args, frame, esi_premiums=False
-    )
+    message, report = _run_esi_finalize(module, monkeypatch, args, frame)
 
     # Finalize still fails here on the fixture's other evidence, not on this.
     assert "esi_premiums" not in message
@@ -8213,6 +8229,61 @@ def test_the_gate_battery_grades_the_esi_premium_as_finalize_does(
         assert not us_esi_premiums_anchor_gate(frame, time_period=module.PERIOD).passed
 
 
+@pytest.mark.parametrize("factor", [1.0, 0.0, 1.4])
+def test_finalize_with_the_shadow_armed_records_the_esi_verdicts_it_enforces(
+    tmp_path, monkeypatch, esi_lane_frame, factor
+) -> None:
+    """A real build arms the gate battery's shadow (microcosm#1585 item 11),
+    which the test suite turns off. Armed, finalize still enforces the ESI
+    verdicts, and the shadow's us_local comparison records each ESI entry as
+    a match: the battery, given each site's evidence, grades as finalize
+    does, line for line."""
+
+    from microcosm.build.us_runtime.gate_shadow import shadow_file_paths
+    from test_support.microcosm_build.us_gate_shadow import arm_us_tool_gate_shadows
+
+    arm_us_tool_gate_shadows(monkeypatch)
+    module = _load_tool_module()
+    assert module.tool_gate_shadows_enabled()
+    args = _finalize_args(module, tmp_path)
+    _patch_esi_finalize(
+        module, monkeypatch, args, _with_acs_premium_scaled(esi_lane_frame, factor)
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        with module._local_gate_shadow_stage(args, "finalize"):
+            module.do_finalize(args)
+
+    message = str(exc.value)
+    gates = json.loads(args.gate_report.read_text())["gates"]
+    if factor == 1.0:
+        # Finalize fails on the fixture's other evidence, not on the premium.
+        assert "esi_premiums" not in message
+        assert all(gates[name]["passed"] for name in module.ESI_PREMIUM_GATE_NAMES)
+    else:
+        red = "esi_premiums_signal" if factor == 0.0 else "esi_premiums_anchor"
+        assert red in message
+        assert gates[red]["passed"] is False
+        assert gates[red]["enforced"] is True
+        assert gates["input_coverage"]["passed"] is False
+    _, comparison_path = shadow_file_paths(
+        module._local_gate_shadow_directory(args), "us_local"
+    )
+    entries = {
+        entry["id"]: entry
+        for entry in json.loads(comparison_path.read_text())["entries"]
+    }
+    for name in module.ESI_PREMIUM_GATE_NAMES:
+        entry = entries["us_local_" + name]
+        today = gates[name]
+        status = "passed" if today["passed"] else "failed"
+        assert entry["match"] is True, entry["difference"]
+        assert entry["legacy"]["status"] == status
+        assert entry["legacy"]["failures"] == today["failures"]
+        assert entry["battery"]["status"] == status, entry["battery"]
+        assert entry["battery"]["failures"] == today["failures"]
+
+
 def test_finalize_on_an_artifact_without_the_premium_is_red_on_both_gates(
     tmp_path, monkeypatch
 ) -> None:
@@ -8221,8 +8292,8 @@ def test_finalize_on_an_artifact_without_the_premium_is_red_on_both_gates(
     module = _load_tool_module()
     args = _finalize_args(module, tmp_path)
 
-    message, report = _run_finalize(
-        module, monkeypatch, args, _plausible_hours_frame(), esi_premiums=False
+    message, report = _run_esi_finalize(
+        module, monkeypatch, args, _plausible_hours_frame()
     )
 
     for name in module.ESI_PREMIUM_GATE_NAMES:
@@ -8340,8 +8411,11 @@ def test_the_esi_premium_waiver_is_off_by_default(tmp_path: Path) -> None:
 
 
 def test_the_staged_lane_frame_passes_the_null_refusal(esi_lane_frame) -> None:
-    """``fill_reviewed_nulls`` no longer refuses the lane: every row carries
-    the premium. The refusal runs before the engine is imported."""
+    """Every row of the staged lane frame carries the premium, so the
+    refusal ``fill_reviewed_nulls`` runs first
+    (``refuse_unassigned_us_esi_premiums``) passes it. This calls the refusal
+    alone; ``fill_reviewed_nulls`` itself needs the engine, and the
+    engine-contract test of this tool runs it on a lane frame."""
 
     from microcosm.build.us_runtime.esi_premiums import (
         refuse_unassigned_us_esi_premiums,

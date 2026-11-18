@@ -952,10 +952,13 @@ def refuse_unassigned_us_esi_premiums(frame: Frame, *, consumer: str) -> None:
     """Refuse a frame whose ESI employer premium input is null on some rows.
 
     A lineage that pools rows the stage never ran on (ACS-spine rows beside an
-    ASEC donor that carries the column) leaves it null there. Filling those
-    with the engine default would ship a column that is zero on part of the
-    population yet looks populated, and no anchor gate runs on that lineage, so
-    the consumer refuses instead.
+    ASEC donor that carries the column) leaves it null there unless something
+    assigns it. Filling those with the engine default would ship a column that
+    is zero on part of the population yet looks populated. The ACS local lane
+    transfers the premium onto its ACS rows and grades it with both ESI gates
+    (``acs_local_esi_premiums``), so on that lineage a null means an older
+    staging frame or one a diagnostic build waived (``--allow-esi-premium-gaps``).
+    The consumer refuses it, as the backstop.
     """
 
     person = frame.table("person")

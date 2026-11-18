@@ -901,7 +901,8 @@ def test_no_factory_leaves_the_orchestration_as_it_was() -> None:
 # --- Pass order: the ESI pass moves nothing but the premium -------------------
 
 #: A shared-transfer plan for the pass-order tests: a chained numeric family
-#: and a boolean family, fit on the PUF-detail role (the default channel) as
+#: and a boolean family on the person, and tax-unit and SPM-unit families as
+#: the declared plan has, fit on the PUF-detail role (the default channel) as
 #: the lane's shared transfer is. Without a plan the shared transfer fits
 #: nothing, and a differential over it would hold trivially.
 _SHARED_PLAN = {
@@ -912,10 +913,23 @@ _SHARED_PLAN = {
             "health_insurance_premiums_without_medicare_part_b",
         ),
         "pass_order_boolean": ("has_esi", "is_full_time_college_student"),
-    }
+    },
+    "tax_unit": {
+        "pass_order_tax_unit": (
+            "domestic_production_ald",
+            "health_savings_account_ald",
+        ),
+    },
+    "spm_unit": {
+        "pass_order_spm_numeric": ("spm_unit_pre_subsidy_childcare_expenses",),
+        "pass_order_spm_boolean": ("receives_snap",),
+    },
 }
 _SHARED_TARGETS = tuple(
-    target for targets in _SHARED_PLAN["person"].values() for target in targets
+    target
+    for families in _SHARED_PLAN.values()
+    for targets in families.values()
+    for target in targets
 )
 #: The real transfer, captured before any test wraps it in a recorder.
 _REAL_TRANSFER = acs_multispine.transfer_acs_inputs
@@ -926,7 +940,7 @@ def _with_shared_plan_columns(donor: Frame) -> Frame:
 
     index = np.arange(donor.n("person"))
     puf = donor.table("person")["person_support_clone_index"].eq(1).to_numpy()
-    return with_person_values(
+    frame = with_person_values(
         donor,
         {
             "bank_account_assets": np.where(puf, 40_000.0, 900.0) + 13.0 * (index % 37),
@@ -935,6 +949,26 @@ def _with_shared_plan_columns(donor: Frame) -> Frame:
             "has_esi": index % 4 < 2,
             "is_full_time_college_student": index % 7 == 0,
         },
+    )
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tax_unit = tables["tax_unit"].copy()
+    units = np.arange(len(tax_unit))
+    tax_unit["domestic_production_ald"] = np.where(
+        units % 5 == 0, 1_000.0 + 3.0 * units, 0.0
+    )
+    tax_unit["health_savings_account_ald"] = 50.0 * (units % 11)
+    spm_unit = tables["spm_unit"].copy()
+    units = np.arange(len(spm_unit))
+    spm_unit["spm_unit_pre_subsidy_childcare_expenses"] = np.where(
+        units % 6 == 0, 4_000.0 + units, 0.0
+    )
+    spm_unit["receives_snap"] = units % 7 == 0
+    tables.update(tax_unit=tax_unit, spm_unit=spm_unit)
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
     )
 
 
@@ -975,7 +1009,8 @@ def test_the_shared_transfer_draws_every_target_with_and_without_the_pass(
     pass_order,
 ) -> None:
     # The differential below is not vacuous: in both runs the shared transfer
-    # drew every target of its plan on all 280 ACS rows.
+    # drew every target of its plan, person, tax-unit and SPM-unit, on all
+    # 280 ACS rows (one person, tax unit and SPM unit per ACS household).
     for result in pass_order.values():
         drawn = {
             item["column"]: item
@@ -987,9 +1022,9 @@ def test_the_shared_transfer_draws_every_target_with_and_without_the_pass(
             assert item["donor_channel"] == "puf_tax_detail"
             assert item["imputed_recipient_rows"] == 280
             assert item["unmodeled_recipient_rows"] == 0
-        person = result.frame.table("person")
-        acs = ~donor_rows(result.frame)
-        assert person.loc[acs, list(_SHARED_TARGETS)].notna().all().all()
+        for entity, families in _SHARED_PLAN.items():
+            targets = [target for group in families.values() for target in group]
+            assert result.frame.table(entity)[targets].notna().all().all(), entity
 
 
 def test_the_esi_pass_moves_no_other_value_on_any_row(pass_order) -> None:

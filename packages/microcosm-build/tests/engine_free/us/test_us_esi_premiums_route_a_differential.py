@@ -33,12 +33,18 @@ Fixtures, by the branch the row rule takes:
   some raw fields null.
 * F4: ``PERIDNUM`` blank on a complete row. Main never reads it.
 * F5: a row with neither the raw fields nor ``PERIDNUM``.
+
+The last test checks, statically, that neither tool imports the ACS local
+lane's modules, which pass ``allow_transferred_rows=True``.
 """
 
 from __future__ import annotations
 
+import ast
+import importlib.util
 from collections.abc import Mapping
 from functools import cache
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -69,6 +75,7 @@ from test_support.microcosm_build.us_esi_premiums_frames import (
     with_scaled_premiums,
     without_person_columns,
 )
+from test_support.paths import REPOSITORY_ROOT
 
 _BLANK_IDS = [None, "", "   "]
 
@@ -396,3 +403,94 @@ def test_any_mix_of_rows_gets_mains_verdict(frame: Frame) -> None:
     """
 
     _mains_verdicts(frame)
+
+
+# --- Route A's tools never reach the ACS local lane ---------------------------
+
+#: The ACS local lane's modules, which grade with ``allow_transferred_rows=True``.
+_LANE_MODULES = (
+    "microcosm.build.us_runtime.acs_multispine",
+    "microcosm.build.us_runtime.acs_local_esi_premiums",
+)
+_ROUTE_A_TOOLS = (
+    "build_us_puf_support_base.py",
+    "build_us_fiscal_refresh_release.py",
+)
+
+
+@cache
+def _package_modules() -> dict[str, Path]:
+    """Every module under ``packages/*/src``, by its dotted name."""
+
+    modules: dict[str, Path] = {}
+    packages = REPOSITORY_ROOT / "packages"
+    for source in sorted(packages.glob("*/src/**/*.py")):
+        parts = source.relative_to(packages).parts[2:]
+        name = (
+            parts[:-1] if parts[-1] == "__init__.py" else (*parts[:-1], parts[-1][:-3])
+        )
+        modules[".".join(name)] = source
+    return modules
+
+
+def _static_imports(name: str | None, source: Path) -> set[str]:
+    """The package modules ``source`` imports anywhere in its body (a literal
+    ``import_module`` included), with every package initializer they run."""
+
+    modules = _package_modules()
+    package = name if source.name == "__init__.py" else (name or "").rpartition(".")[0]
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(source.read_bytes(), filename=str(source))):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = (
+                importlib.util.resolve_name(
+                    "." * node.level + (node.module or ""), package
+                )
+                if node.level
+                else node.module or ""
+            )
+            names = [base, *(f"{base}.{alias.name}" for alias in node.names)]
+        elif (
+            isinstance(node, ast.Call)
+            and getattr(node.func, "attr", getattr(node.func, "id", None))
+            == "import_module"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            names = [node.args[0].value]
+        else:
+            continue
+        for imported in names:
+            parts = imported.split(".")
+            found.update(
+                prefix
+                for prefix in (
+                    ".".join(parts[:end]) for end in range(1, len(parts) + 1)
+                )
+                if prefix in modules
+            )
+    return found
+
+
+@pytest.mark.parametrize("tool", _ROUTE_A_TOOLS)
+def test_route_as_tools_never_import_the_acs_local_lane(tool: str) -> None:
+    """Route A keeps the default keyword because its tools never reach the
+    lane's modules. Static: the transitive package imports of the tool, read
+    from the source (nothing is imported), package initializers included."""
+
+    modules = _package_modules()
+    closure: set[str] = set()
+    pending = list(_static_imports(None, REPOSITORY_ROOT / "tools" / tool))
+    while pending:
+        name = pending.pop()
+        if name not in closure:
+            closure.add(name)
+            pending.extend(_static_imports(name, modules[name]) - closure)
+
+    # Not vacuous: the tool reaches the stage and gates it grades with.
+    assert "microcosm.build.us_runtime.esi_premiums" in closure
+    assert len(closure) > 100
+    assert not set(_LANE_MODULES) & closure
