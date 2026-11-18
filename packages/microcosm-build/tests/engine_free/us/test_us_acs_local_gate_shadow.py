@@ -58,6 +58,8 @@ STAGE_ENTRIES = {
         "us_local_ssi_disability",
         "us_local_ssi_medicaid_take_up_finalize",
         "us_local_receipt_anchors",
+        "us_local_esi_premiums_signal",
+        "us_local_esi_premiums_anchor",
         "us_local_reviewed_fill_consumers_finalize",
         "us_local_district_ess_collapse",
     ),
@@ -127,6 +129,26 @@ def test_separate_stage_processes_add_up_to_one_finished_run(
     assert payload["phases_recorded"] == ["assembled", "terminal"]
     for stage in STAGE_ENTRIES:
         assert (acs_directory(args) / f"{stage}.observations.json").is_file()
+
+
+def test_the_esi_premium_waiver_is_recorded_on_its_two_entries(
+    tmp_path, monkeypatch, acs
+) -> None:
+    args = _args(tmp_path)
+    assert acs._local_gate_waivers(args) == {}
+    args.allow_esi_premium_gaps = True
+    waived = {
+        "us_local_esi_premiums_signal": ["--allow-esi-premium-gaps"],
+        "us_local_esi_premiums_anchor": ["--allow-esi-premium-gaps"],
+    }
+    assert acs._local_gate_waivers(args) == waived
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in STAGE_ENTRIES:
+        _run_stage(acs, args, stage)
+    payload = _comparison(args)
+    assert payload["run_completed"] is True
+    assert payload["verdict_difference"] is False
+    assert payload["waivers"] == waived
 
 
 def test_with_the_switch_off_a_stage_touches_no_shadow_file(

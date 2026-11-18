@@ -95,8 +95,10 @@ from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
     "ACS_LOCAL_ESI_PREMIUM_FAMILY",
+    "acs_local_esi_premium_anchor_gate",
     "acs_local_esi_premium_gate_payload",
     "acs_local_esi_premium_gates",
+    "acs_local_esi_premium_signal_gate",
     "acs_local_esi_premium_transfer_target_families",
     "prepare_acs_local_esi_premium_donor",
     "with_acs_local_esi_premium_anchor",
@@ -471,6 +473,39 @@ def with_acs_local_esi_premium_anchor(frame: Frame) -> tuple[Frame, dict[str, ob
     return result, receipt
 
 
+def _gate_view(frame: Frame) -> Frame:
+    return _narrow_view(
+        frame,
+        person_columns=_GATE_PERSON_COLUMNS,
+        household_columns=_GATE_HOUSEHOLD_COLUMNS,
+    )
+
+
+def acs_local_esi_premium_signal_gate(frame: Frame) -> GateResult:
+    """The ESI premium signal gate on a lane frame, graded by row kind.
+
+    The donor rows, which carry the raw ASEC fields, get the full MEPS-IC
+    recomputation, and the ACS rows are compared with them
+    (``allow_transferred_rows=True``; Route A's callers keep the default,
+    which refuses a transferred row). It runs on a narrow view; the verdict
+    is that of the full frame.
+    """
+
+    return us_esi_premiums_signal_gate(_gate_view(frame), allow_transferred_rows=True)
+
+
+def acs_local_esi_premium_anchor_gate(frame: Frame, *, time_period: int) -> GateResult:
+    """The ESI premium anchor gate on a lane frame, graded by row kind.
+
+    As :func:`acs_local_esi_premium_signal_gate`, for the anchor-universe
+    total against the anchor for ``time_period``.
+    """
+
+    return us_esi_premiums_anchor_gate(
+        _gate_view(frame), time_period=time_period, allow_transferred_rows=True
+    )
+
+
 def acs_local_esi_premium_gates(
     frame: Frame, *, time_period: int
 ) -> tuple[GateResult, GateResult]:
@@ -479,20 +514,16 @@ def acs_local_esi_premium_gates(
     The gates grade a pooled frame by row kind: the donor rows, which carry
     the raw ASEC fields, get the full MEPS-IC recomputation, and the ACS rows
     are compared with them (``allow_transferred_rows=True``; Route A's callers
-    keep the default, which refuses a transferred row). They run on a narrow
-    view; the verdicts are those of the full frame.
+    keep the default, which refuses a transferred row). They run on one
+    narrow view; the verdicts are those of the full frame. The ACS local
+    release calls the two gates one by one, each beside its entry of the
+    gate battery's shadow (microcosm#1585 item 11).
     """
 
-    view = _narrow_view(
-        frame,
-        person_columns=_GATE_PERSON_COLUMNS,
-        household_columns=_GATE_HOUSEHOLD_COLUMNS,
-    )
+    view = _gate_view(frame)
     return (
-        us_esi_premiums_signal_gate(view, allow_transferred_rows=True),
-        us_esi_premiums_anchor_gate(
-            view, time_period=time_period, allow_transferred_rows=True
-        ),
+        acs_local_esi_premium_signal_gate(view),
+        acs_local_esi_premium_anchor_gate(view, time_period=time_period),
     )
 
 

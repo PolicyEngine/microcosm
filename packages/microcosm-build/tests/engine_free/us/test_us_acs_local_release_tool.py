@@ -210,10 +210,16 @@ def _stub_esi_premium_gates(
 
     monkeypatch.setattr(
         module,
-        "acs_local_esi_premium_gates",
-        lambda frame, *, time_period: (
-            GateResult(name="esi_premiums_signal", passed=not signal, failures=signal),
-            GateResult(name="esi_premiums_anchor", passed=not anchor, failures=anchor),
+        "acs_local_esi_premium_signal_gate",
+        lambda frame: GateResult(
+            name="esi_premiums_signal", passed=not signal, failures=signal
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "acs_local_esi_premium_anchor_gate",
+        lambda frame, *, time_period: GateResult(
+            name="esi_premiums_anchor", passed=not anchor, failures=anchor
         ),
     )
 
@@ -8162,6 +8168,49 @@ def test_finalize_records_a_waived_esi_premium_gate_without_failing_on_it(
         "per unit of household mass" in failure for failure in anchor["failures"]
     )
     assert report["gates"]["input_coverage"]["passed"] is False
+
+
+@pytest.mark.parametrize("factor", [1.0, 0.0, 1.4])
+def test_the_gate_battery_grades_the_esi_premium_as_finalize_does(
+    esi_lane_frame, factor
+) -> None:
+    """The us_local ESI entries bind the lane's own gates, which grade by row
+    kind, so the shadow's verdict (microcosm#1585 item 11) is finalize's on a
+    lane frame: green on the fixture and red on the same lines when the ACS
+    premium is zeroed or scaled. The shared ESI checks, at their default,
+    refuse the lane frame, so binding them would be a verdict difference on
+    every local build."""
+
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.us_runtime.battery_bindings import us_gate_registry
+    from microcosm.build.us_runtime.esi_premiums import (
+        us_esi_premiums_anchor_gate,
+        us_esi_premiums_signal_gate,
+    )
+    from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+
+    module = _load_tool_module()
+    frame = _with_acs_premium_scaled(esi_lane_frame, factor)
+    binding = us_gate_registry("us_local", tool=vars(module))["stage_health"]
+    entries = {entry.id: entry for entry in us_scoped_gate_manifest("us_local").gates}
+    today = {
+        "us_local_esi_premiums_signal": module.acs_local_esi_premium_signal_gate(frame),
+        "us_local_esi_premiums_anchor": module.acs_local_esi_premium_anchor_gate(
+            frame, time_period=module.PERIOD
+        ),
+    }
+    context = EvidenceContext(frame=frame, artifacts={"time_period": module.PERIOD})
+    for entry_id, legacy in today.items():
+        battery = binding.evaluate(context, entries[entry_id].parameters)
+        assert battery.passed is legacy.passed, (entry_id, battery.failures)
+        assert tuple(battery.failures) == tuple(legacy.failures), entry_id
+    if factor != 1.0:
+        red = "signal" if factor == 0.0 else "anchor"
+        assert today[f"us_local_esi_premiums_{red}"].passed is False
+    else:
+        assert all(gate.passed for gate in today.values())
+        assert not us_esi_premiums_signal_gate(frame).passed
+        assert not us_esi_premiums_anchor_gate(frame, time_period=module.PERIOD).passed
 
 
 def test_finalize_on_an_artifact_without_the_premium_is_red_on_both_gates(

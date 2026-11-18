@@ -472,7 +472,11 @@ without refusing it, the failures and every recorded figure agree bit for bit.
   carries them as `esi_premiums_signal` and `esi_premiums_anchor`, each bound
   to the artifact's SHA-256, and either one red fails finalize once the report
   is written. The report's `input_coverage` entry used to be a fixed pass; it
-  now passes only if both gates do.
+  now passes only if both gates do. Each gate is also a `us_local` entry of
+  `us/gates.json` (`us_local_esi_premiums_signal`,
+  `us_local_esi_premiums_anchor`), bound to the lane's row-kind gates, so the
+  gate battery's shadow (microcosm#1585 item 11) evaluates it beside today's
+  call and compares the verdicts.
 - **Package.** A report without both verdicts, with a verdict bound to other
   bytes, or with a red verdict is refused before a release directory exists.
 - **`fill_reviewed_nulls`** still refuses a frame whose column is null on some

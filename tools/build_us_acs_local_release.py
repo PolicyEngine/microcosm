@@ -135,8 +135,9 @@ from microcosm.build.program_telemetry import program_telemetry
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_esi_premiums import (
+    acs_local_esi_premium_anchor_gate,
     acs_local_esi_premium_gate_payload,
-    acs_local_esi_premium_gates,
+    acs_local_esi_premium_signal_gate,
 )
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 from microcosm.build.us_runtime.acs_local_immigration import (
@@ -5895,8 +5896,19 @@ def do_finalize(args) -> None:
     # the calibrated bytes. The donor rows get the MEPS-IC recomputation, the
     # ACS rows are compared with them, and the anchor-universe total is held
     # to the stage's national anchor at the calibrated weights.
-    esi_signal_gate, esi_anchor_gate = acs_local_esi_premium_gates(
-        frame, time_period=PERIOD
+    esi_signal_gate = _shadow_local_frame_gate(
+        "us_local_esi_premiums_signal",
+        lambda frame=frame: acs_local_esi_premium_signal_gate(frame),
+        frame,
+    )
+    esi_anchor_gate = shadow_gate(
+        "us_local_esi_premiums_anchor",
+        lambda frame=frame: acs_local_esi_premium_anchor_gate(
+            frame, time_period=PERIOD
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame, artifacts={"time_period": PERIOD}
+        ),
     )
     del frame
     gc.collect()
@@ -7467,6 +7479,29 @@ def _local_stage_observations(args, stage: str) -> Path:
     return _local_gate_shadow_directory(args) / f"{stage}.observations.json"
 
 
+#: The --allow-* flags that waive one of this scope's entries today, by
+#: argparse destination: (destination, flag, entry ids). The shadow records
+#: them by entry id; the battery evaluates every entry as if unwaived.
+_LOCAL_GATE_WAIVERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "allow_esi_premium_gaps",
+        "--allow-esi-premium-gaps",
+        ("us_local_esi_premiums_signal", "us_local_esi_premiums_anchor"),
+    ),
+)
+
+
+def _local_gate_waivers(args) -> dict[str, list[str]]:
+    """The waivers this stage's flags apply, by entry id."""
+
+    waivers: dict[str, list[str]] = {}
+    for destination, flag, entry_ids in _LOCAL_GATE_WAIVERS:
+        if getattr(args, destination, False):
+            for entry_id in entry_ids:
+                waivers.setdefault(entry_id, []).append(flag)
+    return waivers
+
+
 def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
     gates = us_scoped_gate_manifest(US_LOCAL_GATE_SCOPE)
     report_path, comparison_path = shadow_file_paths(directory, US_LOCAL_GATE_SCOPE)
@@ -7477,6 +7512,7 @@ def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
         report_path=report_path,
         comparison_path=comparison_path,
         registry=us_gate_registry(US_LOCAL_GATE_SCOPE, tool=globals()),
+        waivers=_local_gate_waivers(args),
         overrides=us_flag_overrides(gates, us_gate_specs(US_LOCAL_GATE_SCOPE), args),
     )
 
