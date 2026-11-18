@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "Where tools/run_uk_cut.py fetches each input of a Microcosm UK national cut. This file says only where; every expected sha256 and size is read from the committed pins (uk/source_stages.json, uk/frs_release.json, uk/chronicle_feed.json), so a file is accepted only if it is byte-identical to what the build itself will check. A *_pin field reads its value from those pins instead: path_in_repo_pin chronicle_feed puts the Chronicle artifact under chronicle-uk/<the feed's source commit>, so it follows every re-pin, and members_pin conditioned_atomic_supports reads each member's sha256 and size from sources.yaml's conditioned atomic-area support register, the one the spine holds its supports to. revision null reads the repository's main branch, and every file is still verified against its pin (docs/uk-cut-anyone.md).",
+  "about": "Where tools/run_uk_cut.py fetches each input of a Microcosm UK national cut. This file says only where; every expected sha256 and size is read from the committed pins (uk/source_stages.json, uk/frs_release.json, uk/chronicle_feed.json), so a file is accepted only if it is byte-identical to what the build itself will check. A *_pin field reads its value from those pins instead: path_in_repo_pin chronicle_feed puts the Chronicle artifact under chronicle-uk/<the feed's source commit>, so it follows every re-pin, and members_pin conditioned_atomic_supports reads each member's sha256 and size from sources.yaml's conditioned atomic-area support register, the one the spine holds its supports to; path_in_repo_pin conditioned_atomic_supports puts them under atomic-area-supports/<the sha256 of those pins as canonical JSON>, so the path follows every re-pin of that register (run_uk_cut.py inputs prints it). revision null reads the repository's main branch, and every file is still verified against its pin (docs/uk-cut-anyone.md).",
   "sources": [
     {
       "key": "frs_2024_25",
@@ -143,10 +143,11 @@
     {
       "key": "atomic_area_supports",
       "kind": "hf_files",
-      "repo_id": null,
-      "repo_type": null,
+      "repo_id": "policyengine/microcosm-uk-build-inputs",
+      "repo_type": "dataset",
       "revision": null,
-      "path_in_repo": null,
+      "path_in_repo": "atomic-area-supports",
+      "path_in_repo_pin": "conditioned_atomic_supports",
       "members_pin": "conditioned_atomic_supports",
       "directory": "atomic_area_supports",
       "members": [
@@ -154,7 +155,7 @@
         "uk_scotland_output_area_2022_conditioned_support.npz",
         "uk_ni_data_zone_2021_conditioned_support.npz"
       ],
-      "upload_note": "The three conditioned atomic-area supports the spine's area stages draw on (microcosm#931), as tools/build_uk_conditioned_area_supports.py writes them (<source id>.npz). sources.yaml's conditioned register pins each one's sha256 and size, and the spine holds each file to it. No hosting location is named yet: until one is, fetch refuses this source unless the three files are already in the inputs' atomic_area_supports/ directory, where they are verified against their pins."
+      "upload_note": "The three conditioned atomic-area supports the spine's area stages draw on (microcosm#931), as tools/build_uk_conditioned_area_supports.py writes them (<source id>.npz), built from public statistics only. sources.yaml's conditioned register pins each one's sha256 and size, and the spine holds each file to it. Upload a re-pinned set to the path run_uk_cut.py inputs prints for this source; files already in the inputs' atomic_area_supports/ directory are verified against their pins and kept."
     }
   ]
 }
