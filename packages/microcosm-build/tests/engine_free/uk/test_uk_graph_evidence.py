@@ -777,3 +777,125 @@ def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypat
     # so its own code keys on it, not the hash both phases share.
     assert stochastic_assignment not in modules
     assert energy_pricing not in modules
+
+
+def _hand_over_context(households: int):
+    """A UK kernel's context as the executor hands it over: frozen slices of
+    an invented population, with its household weights and strata."""
+
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
+    from microcosm.frame import Frame, WeightKind, Weights
+    from microcosm.graph import executor
+
+    ids = np.arange(1, households + 1, dtype=np.int64)
+
+    def filler(entity: str) -> dict[str, np.ndarray]:
+        # Column names are unique across the entity tables (the flattening rule).
+        return {
+            f"{entity}_column_{index}": np.linspace(0.0, 1.0, households)
+            for index in range(40)
+        }
+
+    population = Frame(
+        {
+            "household": pd.DataFrame({"household_id": ids, **filler("household")}),
+            "benunit": pd.DataFrame({"benunit_id": ids}),
+            "person": pd.DataFrame(
+                {
+                    "person_id": ids * 10,
+                    "person_benunit_id": ids,
+                    "person_household_id": ids,
+                    **filler("person"),
+                }
+            ),
+        },
+        UK_NATIONAL_SCHEMA,
+        {"household": Weights(values=np.ones(households), kind=WeightKind.DESIGN)},
+    )
+    tables = {
+        entity: executor._freeze_frame(population.table(entity))
+        for entity in population.entities
+    }
+    return population, SimpleNamespace(
+        tables=tables,
+        weights={"household": population.weights_for("household")},
+        strata=population.strata.copy(),
+        params={"time_period": "2024"},
+        node=SimpleNamespace(id="spine.gates.transferred"),
+    )
+
+
+def test_a_kernel_frame_is_one_copy_of_its_context():
+    """_minimal_frame hands Frame the context's frozen tables and Frame makes
+    the one copy. It used to deep-copy them first, so building a kernel's
+    frame held two copies at once, three beside the stored population
+    (microcosm#931)."""
+
+    import tracemalloc
+
+    import numpy as np
+
+    from microcosm.build.uk_runtime import graph_kernels
+    from microcosm.frame import MassChangeRecord
+
+    population, context = _hand_over_context(20_000)
+    size = sum(
+        int(population.table(entity).memory_usage(index=False).sum())
+        for entity in population.entities
+    )
+    record = MassChangeRecord(
+        entity="household",
+        old_total=20_000.0,
+        new_total=20_000.0,
+        declared_factor=1.0,
+        reason="an invented reason",
+    )
+    gc.collect()
+    tracemalloc.start()
+    try:
+        frame = graph_kernels._minimal_frame(
+            context, mass_log=(record,), metadata={"time_period": "2025"}
+        )
+        held, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert held < 1.5 * size
+    assert peak < 1.5 * size
+    # The run's mass log and metadata replace the stage defaults, ...
+    assert frame.mass_log == (record,)
+    assert dict(frame.metadata) == {"time_period": "2025"}
+    assert frame.weighted_entities == ("household",)
+    # ... and the frame owns its tables: none of them is the context's.
+    for entity in frame.entities:
+        table = frame.table(entity)
+        for column in table.columns:
+            assert not np.shares_memory(
+                table[column].to_numpy(), context.tables[entity][column].to_numpy()
+            )
+    default = graph_kernels._minimal_frame(context)
+    assert default.mass_log == ()
+    assert dict(default.metadata) == {"time_period": "2024"}
+
+
+def test_the_spine_gate_kernel_builds_one_frame():
+    """The spine gate kernel's run builds its frame through one _minimal_frame
+    call that brings the run's mass log and metadata, and builds no second
+    Frame from it, which held one more copy of the population while the
+    gates ran (microcosm#931)."""
+
+    import ast
+    import inspect
+    import textwrap
+
+    from microcosm.build.uk_runtime.graph_evidence import UKSpineGateKernel
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(UKSpineGateKernel.run)))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    names = [ast.unparse(call.func) for call in calls]
+    assert names.count("_minimal_frame") == 1
+    assert "Frame" not in names
+    (minimal,) = [call for call in calls if ast.unparse(call.func) == "_minimal_frame"]
+    assert {keyword.arg for keyword in minimal.keywords} == {"mass_log", "metadata"}

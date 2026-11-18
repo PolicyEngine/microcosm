@@ -537,7 +537,7 @@ class UKSpineGateKernel(KernelBase):
         ).hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
-        from microcosm.frame import Frame, MassChangeRecord
+        from microcosm.frame import MassChangeRecord
 
         from .gate_phase_codes import require_current_phase_code
         from .graph_kernels import _minimal_frame
@@ -594,23 +594,17 @@ class UKSpineGateKernel(KernelBase):
             for stage in context.params["stage_names"]
         }
         evidence = spine_sidecar_evidence(artifacts)
-        minimal = _minimal_frame(context)
         root_context = artifacts["frs_spine"]["frame_context"]
         mass_records = [
             MassChangeRecord(**row)
             for document in artifacts.values()
             for row in document["frame_mass_log_append"]
         ]
-        frame = Frame(
-            {entity: minimal.table(entity) for entity in minimal.entities},
-            minimal.schema,
-            {
-                entity: minimal.weights_for(entity)
-                for entity in minimal.weighted_entities
-            },
-            minimal.strata,
-            mass_log=tuple(mass_records),
-            metadata=root_context["metadata"],
+        # One Frame carrying the run's mass log and metadata. A second Frame
+        # built from a first held one more copy of the whole population while
+        # the gates ran (microcosm#931).
+        frame = _minimal_frame(
+            context, mass_log=tuple(mass_records), metadata=root_context["metadata"]
         )
         report = evaluate_phase(
             self.gates,
