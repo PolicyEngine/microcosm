@@ -7004,9 +7004,11 @@ def _base_simulation_household_columns(
 def _record_engine_branches(simulation):
     """Retain branches created through get_branch until the batch is checked.
 
-    Core's clone copies instance attributes, including a wrapped get_branch.
-    Rebind that method to each child before it can create its own branches.
-    Retained branches are released even if a formula detached them.
+    Core's clone copies instance attributes, including a wrapped get_branch:
+    policyengine-core 3.32 copies the parent's bound wrapper as is, and 3.36
+    rebinds it to the copy. Either way, rebind the parent's original method
+    to each child before it can create its own branches. Retained branches
+    are released even if a formula detached them.
     """
 
     retained: list[object] = []
@@ -7015,10 +7017,10 @@ def _record_engine_branches(simulation):
 
     def get_branch(current, *args, **kwargs):
         branch = originals[id(current)][1](*args, **kwargs)
-        retain(branch)
+        retain(branch, parent=current)
         return branch
 
-    def retain(current):
+    def retain(current, parent=None):
         if current is None or id(current) in seen:
             return
         seen.add(id(current))
@@ -7027,19 +7029,26 @@ def _record_engine_branches(simulation):
         if callable(original):
             had_instance_method = "get_branch" in vars(current)
             if getattr(original, "__func__", None) is get_branch:
-                # clone copied the parent's bound wrapper; recover the
+                # clone carried the wrapper over, bound to the parent (core
+                # 3.32) or to this child (core 3.36); recover the parent's
                 # underlying method and bind it to the child.
-                _, parent_original, had_instance_method = originals[
-                    id(original.__self__)
-                ]
+                owner = original.__self__
+                source = owner if id(owner) in originals else parent
+                if source is None or id(source) not in originals:
+                    raise RuntimeError(
+                        "A simulation branch carries the target-materialization "
+                        "get_branch wrapper from a simulation that was not "
+                        "recorded; its original method cannot be recovered."
+                    )
+                _, parent_original, had_instance_method = originals[id(source)]
                 original = MethodType(parent_original.__func__, current)
             originals[id(current)] = (current, original, had_instance_method)
             current.get_branch = MethodType(get_branch, current)
         branches = getattr(current, "branches", None)
         if isinstance(branches, dict):
             for branch in tuple(branches.values()):
-                retain(branch)
-        retain(getattr(current, "baseline", None))
+                retain(branch, parent=current)
+        retain(getattr(current, "baseline", None), parent=current)
 
     retain(simulation)
     simulation._target_materialization_branches = retained
