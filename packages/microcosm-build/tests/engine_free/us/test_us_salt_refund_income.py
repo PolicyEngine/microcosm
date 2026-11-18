@@ -210,6 +210,8 @@ def test_shipped_neutralization_probe_binds_only_through_salt_refunds() -> None:
     assert probe.binding_inputs == ("salt_refund_income",)
     assert probe.period == 2024
     assert probe.effect_direction == "baseline_minus_reform"
-    assert probe.expected_sign == "negative"
-    assert probe.budget_measure == "state_income_tax"
+    # policyengine-us 2.145.3 counts the refund in federal gross income, so
+    # neutralizing it lowers income tax.
+    assert probe.expected_sign == "positive"
+    assert probe.budget_measure == "income_tax"
     assert probe.min_abs_effect == 1_000_000.0

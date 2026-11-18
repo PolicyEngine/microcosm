@@ -1046,8 +1046,10 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # that skipped the CPS-reported Social Security restoration on resume.
         # microcosm#1258 moves the identity again (the late schedule and the
         # remaining-stage manifest gain the S-corp transfer target); pool_h5
-        # and agreement stay unchanged.
-        "manifest": "bfaa7ffc709b68dbb7d05ee8f4c7e0600612f22ef21f3329784b782a9f59e812",
+        # and agreement stay unchanged. The policyengine-us 2.145.3 lock
+        # (microcosm#1676) moves it once more: the pool engine contracts are
+        # re-derived and the late schedule drops the retired mortgage leg.
+        "manifest": "4a29fc0f343f6ec3a12066b002f2d46deb3f914c5173cc68fb8652b908349cb8",
     }
 
 
