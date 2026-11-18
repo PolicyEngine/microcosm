@@ -51,8 +51,11 @@ build the certified default.
 
 A from-scratch attempt ran on main at `51c314382` on 15 and 16 September 2026
 and reached no release. The causes below were re-read on main at `d1196af10`.
-The engine lock that also blocked it is fixed: main resolves policyengine-us
-2.2.1, policyengine-core 3.32.5 and spm-calculator 1.0.0.
+The engine lock that also blocked it is fixed. Main resolved policyengine-us
+2.2.1, policyengine-core 3.32.5 and spm-calculator 1.0.0 from microcosm#936,
+and resolves policyengine-us 2.145.3, policyengine-core 3.36.1 and
+spm-calculator 1.1.0 for the next national build
+([runbook](us-national-build-runbook.md)).
 
 **16 November 2026:** all four causes are answered on the `--base-h5` arm,
 which route A (`tools/route_a/route_a.sh`) drives:
