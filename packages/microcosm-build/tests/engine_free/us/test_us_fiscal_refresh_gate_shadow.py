@@ -173,14 +173,11 @@ def test_main_finishes_the_shadow_a_build_armed(tmp_path, monkeypatch, release):
     assert payload["release_id"] == "microcosm-us-test"
 
 
-def test_each_release_keeps_its_own_shadow_files(tmp_path, release) -> None:
-    national = release._national_gate_shadow_directory(_args(tmp_path))
-    evidence = release._national_gate_shadow_directory(
-        _args(tmp_path, evidence_release=True)
-    )
-    shared = (tmp_path / "out").resolve() / GATE_BATTERY_SHADOW_DIRECTORY
-    assert national == shared / release.US_NATIONAL_RELEASE_ID
-    assert evidence == shared / release.US_EVIDENCE_RELEASE_ID
+def test_a_build_keeps_its_shadow_files_beside_its_outputs(tmp_path, release) -> None:
+    # A build has no tier (microcosm#1585 item 11), so its shadow is kept
+    # once, beside its outputs, as the other US tools keep theirs.
+    shadow = release._national_gate_shadow_directory(_args(tmp_path))
+    assert shadow == (tmp_path / "out").resolve() / GATE_BATTERY_SHADOW_DIRECTORY
 
 
 def test_a_verdict_difference_is_recorded_without_failing_a_finished_build(
@@ -363,7 +360,9 @@ def test_main_lets_the_shadow_write_only_after_the_certified_dir_refusal(
         if isinstance(node, ast.FunctionDef) and node.name == "_main"
     )
     statements = [ast.unparse(statement) for statement in main_fn.body]
-    refusal = statements.index("_refuse_certified_release_dir_reuse(release_dir)")
+    # The refusal checks both releases' directories under --out, since a build
+    # has no tier and is certified into either (microcosm#1585 item 11).
+    refusal = statements.index("_refuse_reusing_a_certified_build(release_root)")
     assert statements[refusal + 1] == "_release_national_gate_shadow_files()"
     starts = [
         index
@@ -397,7 +396,7 @@ def test_waivers_and_flag_overrides_are_recorded_by_entry(tmp_path, release):
         allow_esi_premium_gaps=True,
         input_mass_relative_tolerance=0.2,
     )
-    waivers = release._national_gate_waivers(args, gates)
+    waivers = release._national_gate_waivers(args)
     assert waivers["us_national_input_mass_reference"] == ["--allow-input-mass-drift"]
     assert waivers["us_national_esi_premiums_anchor"] == ["--allow-esi-premium-gaps"]
     assert "us_national_ecps_parity" not in waivers
@@ -409,11 +408,13 @@ def test_waivers_and_flag_overrides_are_recorded_by_entry(tmp_path, release):
             "us_national_export_input_mass",
         )
     }
-    evidence = release._national_gate_waivers(
-        _args(tmp_path, evidence_release=True), gates
-    )
-    assert evidence["us_national_release_gates"] == ["--evidence-release"]
-    assert "us_national_pregnancy" not in evidence
+    # A build has no tier, so no tier waives a terminal entry: the build
+    # records its terminal failures and refuses as the certified tier did
+    # (microcosm#1585 item 11). A dry run's --evidence-release preview waives
+    # nothing either.
+    preview = release._national_gate_waivers(_args(tmp_path, evidence_release=True))
+    assert "us_national_release_gates" not in preview
+    assert "us_national_pregnancy" not in preview
 
 
 def test_a_tail_register_that_never_loads_records_its_gate_not_run(
@@ -421,8 +422,7 @@ def test_a_tail_register_that_never_loads_records_its_gate_not_run(
 ) -> None:
     # Review of #1635: under earlier failures the degraded-mode handler
     # swallows a register that failed to load ahead of the gate's site, and
-    # the build goes on; a finished --evidence-release build then called the
-    # entry unwired.
+    # the build goes on; the finished build then called the entry unwired.
     release._start_national_gate_shadow(_args(tmp_path), release_id="microcosm-us-test")
     register = tmp_path / "qrf_tail_exclusions.json"
     register.write_text("[]")

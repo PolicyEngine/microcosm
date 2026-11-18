@@ -44,6 +44,12 @@ def _staging_undelivered(release_dir: Path) -> bool:
     no staging path are untouched, while an explicit ``enabled: false`` is a
     legitimate opt-out. A present but empty block, or an enabled run with no
     successful upload, records intended staging that never arrived.
+
+    A US national build is certified as a step of its own (microcosm#1585
+    item 11): the ``staging`` block is its certification's, and the build's
+    own rides inside it under ``build``. Both must have arrived or been
+    declared opted out, so a build whose own uploads never arrived is
+    refused as it was before the split, however its certification staged.
     """
     path = release_dir / "build_manifest.json"
     if not path.exists():
@@ -55,6 +61,17 @@ def _staging_undelivered(release_dir: Path) -> bool:
     if not isinstance(manifest, dict) or "staging" not in manifest:
         return False
     staging = manifest["staging"]
+    if not isinstance(staging, dict) or "build" not in staging:
+        return _staging_block_undelivered(staging)
+    certification = {key: value for key, value in staging.items() if key != "build"}
+    return _staging_block_undelivered(certification) or _staging_block_undelivered(
+        staging["build"]
+    )
+
+
+def _staging_block_undelivered(staging: object) -> bool:
+    """True if one staging block records intended staging that never arrived."""
+
     if not isinstance(staging, dict) or not staging:
         return True
     if "contract_version" in staging:
@@ -182,7 +199,9 @@ def publication_refusal(
     if not allow_missing_staging and _staging_undelivered(release_dir):
         return (
             "refusing to publish: this release's build_manifest records no "
-            "delivered staging telemetry, so the build never appeared on the "
+            "delivered staging telemetry for the build (for a build "
+            "certified separately: for its certification, or for the build "
+            "itself under staging.build), so the build never appeared on the "
             "staging dashboard and there is no pre-publication review of it. "
             "Either the staging destination was lost mid-build (uploads "
             "self-disable after repeated failures — check the build machine's "

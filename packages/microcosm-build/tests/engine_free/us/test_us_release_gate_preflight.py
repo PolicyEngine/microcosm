@@ -1025,6 +1025,58 @@ def test__cli__release_manifest_does_not_replace_required_static_inputs(
     assert "--selection-source-manifest" in stderr
 
 
+def test__cli__a_failed_build_is_no_export_input_mass_reference(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """A failed build keeps its H5, but no gate judges a build against it: the
+    preflight refuses it as its export input-mass reference, as the release
+    tool does (review of microcosm#1672, microcosm#1585 item 11). A green
+    build's H5 is read as before."""
+    cli = _load_preflight_cli()
+    out = tmp_path / "out"
+    reference = out / "artifacts" / "microcosm_us_2024.h5"
+    reference.parent.mkdir(parents=True)
+    reference.write_bytes(b"h5")
+    record = {
+        "kind": "microcosm_us_national_build_record",
+        "build": "populace-us-2024-failed",
+        "layout": {"build_dir": "build"},
+        "settings": {},
+        "terminal_gate_failures": ["Input coverage failed: x"],
+    }
+    (out / "build_record.json").write_text(json.dumps(record))
+    argv = [
+        "--base-h5",
+        str(tmp_path / "base.h5"),
+        "--new-lineage",
+        "--export-input-mass-reference-h5",
+        str(reference),
+    ]
+    reached: list[dict[str, object]] = []
+
+    def run_preflight(**kwargs):
+        reached.append(kwargs)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "run_preflight", run_preflight)
+    with pytest.raises(SystemExit) as error:
+        cli.main(argv)
+    assert error.value.code == 2
+    assert (
+        f"--export-input-mass-reference-h5 {reference} belongs to build "
+        "populace-us-2024-failed" in capsys.readouterr().err
+    )
+    assert reached == []
+
+    (out / "build_record.json").write_text(
+        json.dumps({**record, "terminal_gate_failures": []})
+    )
+    with pytest.raises(SystemExit) as error:
+        cli.main(argv)
+    assert error.value.code == 0
+    assert reached[0]["export_input_mass_reference_h5"] == reference
+
+
 @pytest.mark.parametrize(
     ("static_status", "expected_exit"),
     (("PASS", 0), ("AT_RISK", 2), ("FAIL", 1)),

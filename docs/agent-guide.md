@@ -380,11 +380,13 @@ through the emitter (`microcosm-publish-release-build`, from
 call to the same command with `--promote`, and withdrawing one is
 `microcosm-withdraw-release-build <repository> <release> <build>`, which sets
 its `withdrawn` flag through the same release writer. Each US builder writes its build to
-`releases/<release>/`. The national builder builds and stops at
-`<out>/build_record.json`, printing the command that certifies the build;
-`tools/certify_us_national_build.py` runs the release's post-export checks,
-writes the manifests and prints both commands (microcosm#1585 item 11). The
-ACS package stage prints both commands itself.
+`releases/<release>/`, except the national builder, whose build has no tier:
+it builds into `<out>/build/` and stops at `<out>/build_record.json`, printing
+the commands that certify the build. `tools/certify_us_national_build.py`
+chooses the tier (certified, or `--evidence-release`), runs the release's
+post-export checks, places the build in that tier's release directory, writes
+the manifests and prints both commands (microcosm#1585 item 11). The ACS
+package stage prints both commands itself.
 `tools/preflight_us_release_gates.py` runs the US national release checks that
 need no calibration on the base before a build, and again with the finished
 build's `--release-manifest`. The emitter changes
@@ -424,8 +426,9 @@ The versioned Route A driver is `tools/route_a/route_a.sh`; see its
 [runbook](../tools/route_a/README.md) for configuration, preserved admission
 and release gates, and the Modal-base hand-off. Its release stage enables
 staging telemetry by default, obtains the HF credential only in a runtime
-wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It looks for the
-build in `releases/microcosm-us-2024-national/`, runs only
+wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It certifies the
+build at the tier `ROUTE_A_CERTIFY_TIER` chooses and looks for it in that
+tier's `releases/<release>/`, runs only
 `microcosm-publish-release-build --preflight-only`, which checks the build
 offline, and leaves publication to Max.
 
@@ -472,7 +475,12 @@ certification.
 A US national build stops before its post-export checks; certify it with
 `tools/certify_us_national_build.py <out>` only when it is to be published
 (the release build rule's
-[Build, then certify](us-release-build-rule.md#build-then-certify)). To check
+[Build, then certify](us-release-build-rule.md#build-then-certify)). A build
+has no tier: certification chooses it, and `--evidence-release` with an owner
+for every failure certifies a build whose release gates failed. It may run at
+a later commit than the build's only when that commit changes nothing but
+tests, docs, changelog fragments and the standing evidence owners register
+(`us_runtime/data/evidence_failure_owners.json`). To check
 the post-export stages on a written export without certifying it,
 subsample it and probe it as
 [the release build rule](us-release-build-rule.md#probing-an-export-on-a-household-subsample)

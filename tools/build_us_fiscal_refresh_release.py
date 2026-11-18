@@ -5,19 +5,23 @@ starts from an existing Microcosm US H5, materializes the current structured
 fiscal target rows, recalibrates only the household weights, writes a fresh
 PolicyEngine-US H5, and emits the release contract files.
 
-Each run is one build of a release in ``policyengine/populace-us``
-(microcosm#1570): a certified or exact-k build of the national release,
-``microcosm-us-2024-national``, or an evidence-tier build of the evidence
-release, ``microcosm-us-2024-evidence``. The release directory is
-``<out>/releases/<release>/``.
+Each run is one build of the US national dataset (microcosm#1570), and a
+build has no tier (microcosm#1585 item 11): it writes its H5 and calibration
+weights to ``<out>/artifacts/`` and its own files (the diagnostics, the gate
+evidence) to ``<out>/build/``, whatever release certification later places
+it in.
 
 The run builds and stops (microcosm#1585 item 11, PR 4a): once the H5, the
 calibration weights, the diagnostics and the build's gate evidence are
-written, it writes ``<out>/build_record.json`` and prints the command that
-certifies the build, so the build can be evaluated first. Nothing it writes
-is publishable. ``tools/certify_us_national_build.py`` certifies it: the
-release's post-export checks on the written H5, then both manifests, which
-name the release and the build (the ``populace-us-2024-…`` build ID) in the
+written, it writes ``<out>/build_record.json`` and prints the commands that
+certify the build, so the build can be evaluated first. Nothing it writes
+is publishable. ``tools/certify_us_national_build.py`` certifies it and
+chooses its tier: certified, into the national release
+``microcosm-us-2024-national``, or, with ``--evidence-release``, evidence,
+into the evidence release ``microcosm-us-2024-evidence``. It runs the
+release's post-export checks on the written H5, places the build's files in
+``<out>/releases/<release>/``, then writes both manifests, which name the
+release and the build (the ``populace-us-2024-…`` build ID) in the
 build-folder layout, and the ``microcosm-publish-release-build`` commands
 that publish the build into its own folder of the release and then make it
 the release's current build.
@@ -50,6 +54,7 @@ import dataclasses
 import gc
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import math
 import platform
@@ -60,11 +65,13 @@ import subprocess
 import sys
 import time
 import tomllib
+import traceback
 import uuid
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
-from pathlib import Path
+from importlib.resources import files as package_files
+from pathlib import Path, PurePosixPath
 from types import MethodType, SimpleNamespace
 from typing import Any
 
@@ -77,7 +84,6 @@ from microcosm.build.calibration_epoch_telemetry import (
     calibration_epoch_stride,
     forwards_calibration_epoch,
 )
-from microcosm.build.country_spec import GatesManifest
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.gates import (
     GateResult,
@@ -1352,21 +1358,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help=(
-            "Output root: the H5 and calibration weights go in <out>/artifacts "
-            "and the release directory in <out>/releases/<release>, named "
-            "after the release the build belongs to (microcosm#1570). A "
-            "finished build's directory is never reused, so each build needs "
-            "its own --out."
+            "Output root: the H5 and calibration weights go in <out>/artifacts, "
+            "the build's diagnostics and gate evidence in <out>/build and its "
+            "record in <out>/build_record.json. A build has no tier "
+            "(microcosm#1585 item 11): certification places it in "
+            "<out>/releases/<release>, the release of the tier it chooses "
+            "(microcosm#1570). A finished build's directory is never reused, "
+            "so each build needs its own --out."
         ),
     )
     parser.add_argument(
         "--release-id",
         help=(
             "The build ID (populace-us-2024-...), the name of the build's own "
-            "folder in its release: microcosm-us-2024-national, or "
-            "microcosm-us-2024-evidence with --evidence-release. Defaults to "
-            "an ID made from the base dataset's digest, the commit and the "
-            "time."
+            "folder in its release. It carries no tier: certified into "
+            "microcosm-us-2024-national, the build keeps it; certified as "
+            "evidence into microcosm-us-2024-evidence, it gains an "
+            "'-evidence-' segment (microcosm#1585 item 11). Defaults to an ID "
+            "made from the base dataset's digest, the commit and the time."
         ),
     )
     parser.add_argument(
@@ -1518,35 +1527,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--evidence-release",
         action="store_true",
         help=(
-            "Build an EVIDENCE-tier release (microcosm#506): on terminal-gate "
-            "failure, continue to write the H5 and full manifests with the "
-            "recorded failures carried verbatim in the release manifest's "
-            "known_failures block (each with an owner issue), instead of "
-            "refusing to export. It does not bypass the release checks: the build "
-            "ID carries an "
-            "'-evidence-' segment, the build belongs to the evidence release "
-            "microcosm-us-2024-evidence (never the US default), the release "
-            "manifest declares the evidence "
-            "schema marker the certified contract structurally rejects, and a "
-            "run whose terminal gates all pass is refused under this flag "
-            "(rerun without it). Preflight and mid-build source-stage gates, "
-            "artifact-integrity assertions (e.g. --audit-export-targets), and "
-            "the dirty-worktree refusal still abort: the evidence tier "
-            "relaxes terminal gate verdicts, never artifact auditability. "
-            "Incompatible with --exact-k (an exact-k build is a build of the "
-            "national release under the certified contract)."
+            "With --dry-run-gates-report only: preview an evidence-tier "
+            "certification (microcosm#506), grading a certain failure whose "
+            "every release line an owner pattern matches as AT-RISK (OWNED). "
+            "A build has no tier (microcosm#1585 item 11): it records every "
+            "release-gate failure and writes its H5, and certification "
+            "chooses the tier after it (tools/certify_us_national_build.py "
+            "--evidence-release), so a build refuses this flag."
         ),
     )
     parser.add_argument(
         "--evidence-failure-owners",
         type=Path,
         help=(
+            "With --dry-run-gates-report --evidence-release only: the per-run "
             "JSON file mapping failure-substring patterns to owner issue refs "
             '(e.g. {"Input coverage failed:": "PolicyEngine/microcosm#368"}) '
-            "for --evidence-release. Checked ahead of the standing "
-            "US_EVIDENCE_FAILURE_OWNERS register; a recorded failure matching "
-            "neither refuses the evidence export — every shipped failure "
-            "needs an owner."
+            "the evidence certification would take, checked ahead of the "
+            "standing register (the US evidence_failure_owners.json)."
         ),
     )
     parser.add_argument(
@@ -1638,8 +1636,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "SSI take-up bands for ages 18-64 and 65+ (microcosm#566/#567), "
             "so a delivery miss there ships in the scorecard. The other arms "
             "count a miss of more than 5%% as a release-gate failure, which "
-            "fails the build unless the miss has an owner and "
-            "--evidence-release exports it. As of 2026-11-15, every US "
+            "fails the build; only an evidence-tier certification, with an "
+            "owner for the miss, can ship it. As of 2026-11-15, every US "
             "national calibration that PolicyEngine had tagged in "
             "policyengine/populace-us since 2026-07-01 came from this arm, "
             "and docs/us-release-build-rule.md lists them. A selection source "
@@ -2138,6 +2136,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     if args.evidence_failure_owners is not None and not args.evidence_release:
         parser.error("--evidence-failure-owners requires --evidence-release.")
+    if args.evidence_release and args.dry_run_gates_report is None:
+        parser.error(
+            "--evidence-release previews an evidence-tier certification in a "
+            "dry run (--dry-run-gates-report). A build has no tier "
+            "(microcosm#1585 item 11): build without it, then choose the tier "
+            "at certification: tools/certify_us_national_build.py <out> "
+            "--evidence-release [--evidence-failure-owners FILE]."
+        )
     if args.allow_gate_failed_base_pool and args.base_h5 is None:
         parser.error("--allow-gate-failed-base-pool requires --base-h5.")
     acs_archive_options = (
@@ -2259,7 +2265,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     except ValueError as error:
         parser.error(str(error))
-    for attribute, flag in _REFERENCE_H5_OPTIONS:
+    for attribute, flag in _REFERENCE_OPTIONS:
         path = getattr(args, attribute)
         failed = None if path is None else _failed_build_holding(path)
         if failed is not None:
@@ -2620,6 +2626,38 @@ def _write_reform_income_tax_cache(
     return digest, values_path
 
 
+def _finished_release_manifest(release_dir: Path) -> dict | None:
+    """``release_dir``'s release manifest, if a certification finished it.
+
+    Certification's last writes are the build-folder rewrite
+    (:func:`rewrite_release_dir`), which names the release and the build at
+    the top level of the release manifest and then of the build manifest.
+    Until both read and name the same build, a crash left the certification
+    part-written: it certifies nothing, and a rerun replaces both manifests
+    (review of #1681).
+    """
+
+    release_dir = Path(release_dir)
+    manifests = []
+    for name in ("release_manifest.json", "build_manifest.json"):
+        try:
+            manifest = json.loads((release_dir / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not (
+            isinstance(manifest, dict)
+            and manifest.get("release") == release_dir.name
+            and isinstance(manifest.get("build"), str)
+            and manifest["build"]
+        ):
+            return None
+        manifests.append(manifest)
+    release_manifest, build_manifest = manifests
+    if build_manifest["build"] != release_manifest["build"]:
+        return None
+    return release_manifest
+
+
 def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
     """Fail loud when --out points at a finished build's release directory.
 
@@ -2632,11 +2670,11 @@ def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
     or the directory removed deliberately.
     """
 
-    manifest_path = Path(release_dir) / "release_manifest.json"
-    if manifest_path.exists():
+    if _finished_release_manifest(release_dir) is not None:
         raise RuntimeError(
             f"Release directory {release_dir} already carries a certified "
-            "release (release_manifest.json present). Choose a new --out for "
+            "release (its release and build manifests name the build). Choose "
+            "a new --out for "
             "this build or deliberately remove the stale directory before "
             "rerunning."
         )
@@ -2646,12 +2684,16 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
     """Fail loud when --out holds a finished build that awaits certification.
 
     A build stops at its record (microcosm#1585 item 11, PR 4a), so its
-    directory carries no release manifest until certification writes one,
-    and :func:`_refuse_certified_release_dir_reuse` would let a rerun
-    overwrite it. A build whose release gates failed can never be certified,
-    so a rerun into its --out still replaces it, as it did before builds
-    wrote a record. A record of another schema is refused the same way, and
-    the refusal names the code that can certify it.
+    --out carries no release manifest until certification writes one, and
+    :func:`_refuse_reusing_a_certified_build` would let a rerun overwrite it.
+    A build whose release gates failed is not certified at the certified
+    tier, so a rerun into its --out still replaces it, as it did before
+    builds wrote a record. Certifying it at the evidence tier is a choice
+    made before such a rerun, and a build certified at either tier refuses
+    one. A record that does not read cannot be certified either, so its
+    --out is a failed build's too, as :func:`_failed_build_holding` counts
+    it. A record of another schema is refused, and the refusal names the
+    code that can certify it.
     """
 
     path = Path(release_root) / US_BUILD_RECORD_FILENAME
@@ -2660,8 +2702,8 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        payload = None
-    if _recorded_release_gate_failures(payload):
+        return
+    if _build_failed(payload):
         return
     awaiting = (
         f"{release_root} holds a finished build awaiting certification "
@@ -2683,21 +2725,54 @@ def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> No
     )
 
 
-def _recorded_release_gate_failures(payload: object) -> list[str]:
-    """The release-gate failures in a build record that refuse its build.
+def _build_failed(payload: object) -> bool:
+    """Whether a build record's release-gate failures make its build a failed one.
 
-    A build whose release gates fail records them and is never certified
-    (microcosm#1585 item 11, PR 4a). An evidence-tier build records the
-    failures its owners own and is certified with them, so none of its
-    failures refuse it. A payload that is not a build record has none.
+    A build has no tier (microcosm#1585 item 11), so a build that recorded
+    failures failed, whatever tier certifies it later. A schema 2 record's
+    build chose its tier, and an evidence-tier build's owned failures were
+    its certification's to ship, so they did not.
+    """
+
+    if not _recorded_release_gate_failures(payload):
+        return False
+    settings = payload.get("settings") if isinstance(payload, dict) else None
+    return not (isinstance(settings, dict) and settings.get("evidence_release") is True)
+
+
+def _build_certified_as_evidence(release_root: Path) -> bool:
+    """Whether the build in ``release_root`` is certified at the evidence tier.
+
+    An evidence-tier certification ships the build's failures as owned known
+    failures (microcosm#506), so the build is an evidence release, not a
+    failed build. Like the record's digest, this reads a file and stops a
+    mistake, not an edit, until certification signs (PR 4b).
+    """
+
+    manifest = _finished_release_manifest(
+        _certification_release_dir(release_root, evidence_release=True)
+    )
+    return (
+        manifest is not None
+        and manifest.get("tier") == "evidence"
+        and bool(manifest.get("known_failures"))
+    )
+
+
+def _recorded_release_gate_failures(payload: object) -> list[str]:
+    """The release-gate failures a build record carries.
+
+    A build whose release gates fail records them and is not certified at
+    the certified tier (microcosm#1585 item 11, PR 4a). A build has no tier:
+    only an evidence-tier certification, with an owner for each failure, can
+    ship them. A payload that is not a build record has none.
     """
 
     try:
         failures = payload["terminal_gate_failures"]
-        evidence_release = payload["settings"]["evidence_release"]
     except (KeyError, TypeError):
         return []
-    if evidence_release or not isinstance(failures, list):
+    if not isinstance(failures, list):
         return []
     return [str(line) for line in failures]
 
@@ -2710,14 +2785,17 @@ US_FAILED_BUILD_WEIGHT_EVIDENCE = (
     FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
 )
 
-#: The options whose H5 is the reference a gate judges this build against.
-#: A failed build's files are refused there. As a starting point (--base-h5,
-#: --selection-source-h5, --warm-start-calibration-npz) they are allowed:
-#: they can cut a rerun's time while its data is fixed, and the build's own
-#: gates judge its result.
-_REFERENCE_H5_OPTIONS = (
+#: The options whose file is a reference a gate judges this build against:
+#: the two input-mass references, and the incumbent diagnostics a critical
+#: target may improve on. A failed build's files are refused there, as the
+#: release-gate preflight refuses them as its export input-mass reference.
+#: As a starting point (--base-h5, --selection-source-h5,
+#: --warm-start-calibration-npz) they are allowed: they can cut a rerun's
+#: time while its data is fixed, and the build's own gates judge its result.
+_REFERENCE_OPTIONS = (
     ("input_mass_reference_h5", "--input-mass-reference-h5"),
     ("export_input_mass_reference_h5", "--export-input-mass-reference-h5"),
+    ("incumbent_diagnostics", "--incumbent-diagnostics"),
 )
 
 
@@ -2727,81 +2805,62 @@ def _failed_build_holding(path: Path) -> str | None:
     A build whose release gates fail still writes its H5, its calibration
     weights and its record, so it can be evaluated (microcosm#1585 item 11,
     PR 4a), and its files may start a later build. No gate judges against
-    it: a later build refuses its files as an input-mass reference, and the
-    post-export probe refuses its release directory as the reference. A
-    path belongs to the build whose record sits in the nearest directory
-    above it. That build failed if its record carries failures that refuse
-    it, or if its release directory holds the #568 weight evidence. Like the
+    it: a later build refuses its files as an input-mass reference or as the
+    incumbent diagnostics (:data:`_REFERENCE_OPTIONS`), the release-gate
+    preflight refuses them as its export input-mass reference, and the
+    post-export probe refuses its directories as the reference. A path
+    belongs to the build whose record sits in the nearest directory above
+    it. That build failed if its record carries release-gate failures
+    (:func:`_build_failed`), or if its own directory holds the #568 weight
+    evidence, unless an evidence-tier certification has made it an evidence
+    release. A record that does not read cannot be certified, so its build
+    counts as failed, as the --out refusal counts it
+    (:func:`_refuse_overwriting_a_build_awaiting_certification`). Like the
     record's digest, this stops a mistake, not an edit, until certification
     signs (PR 4b).
     """
 
     target = Path(path).resolve()
-    for release_root in target.parents:
+    for release_root in (target, *target.parents):
         record_path = release_root / US_BUILD_RECORD_FILENAME
         if not record_path.is_file():
             continue
         try:
             payload = json.loads(record_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            continue
+            return f"the build whose record {record_path} does not read"
         if not isinstance(payload, dict) or payload.get("kind") != US_BUILD_RECORD_KIND:
             continue
         build = f"build {payload.get('build')} ({record_path})"
-        failures = _recorded_release_gate_failures(payload)
-        if failures:
+        if _build_certified_as_evidence(release_root):
+            return None
+        if _build_failed(payload):
+            failures = _recorded_release_gate_failures(payload)
             return (
                 f"{build}, which failed {len(failures)} release gate(s) when it "
                 "was built"
             )
         try:
-            release_dir = release_root / payload["layout"]["release_dir"]
+            layout = payload["layout"]
+            # Schema 2 named the build's directory after its release.
+            build_dir = release_root / (
+                layout.get("build_dir") or layout["release_dir"]
+            )
         except (KeyError, TypeError):
             return None
         evidence = [
             name
             for name in US_FAILED_BUILD_WEIGHT_EVIDENCE
-            if (release_dir / name).exists()
+            if (build_dir / name).exists()
         ]
         if evidence:
             return (
-                f"{build}, whose release directory holds the weight evidence a "
-                f"build writes when its release gates fail ({', '.join(evidence)}; "
+                f"{build}, whose directory holds the weight evidence a build "
+                f"writes when its release gates fail ({', '.join(evidence)}; "
                 "microcosm#568)"
             )
         return None
     return None
-
-
-#: Files the release manifest declares whenever they exist, written only by
-#: a run that does not skip their check, with the option that skips it.
-_SKIPPABLE_CHECK_FILES = (
-    ("reform_validation.json", "skip_reform_validation", "--skip-reform-validation"),
-    ("demographics.json", "skip_demographics", "--skip-demographics"),
-)
-
-
-def _refuse_skipped_checks_left_files(release_dir: Path, args) -> None:
-    """Refuse a skipped check's file left in the release directory.
-
-    The directory is named after the build's release (microcosm#1570), so a
-    rerun into the same --out finds an earlier attempt's files, and the
-    release manifest declares these whenever they exist. A run that skips
-    the check never rewrites its file, so the earlier attempt's would be
-    published as this build's.
-    """
-
-    left = [
-        f"{name} ({option})"
-        for name, flag, option in _SKIPPABLE_CHECK_FILES
-        if getattr(args, flag, False) and (Path(release_dir) / name).exists()
-    ]
-    if left:
-        raise RuntimeError(
-            f"Release directory {release_dir} holds {', '.join(left)} from an "
-            "earlier attempt, which this run skips and so would not rewrite. "
-            "Remove those files or choose a new --out before rerunning."
-        )
 
 
 def _write_final_household_weight_evidence(
@@ -3548,8 +3607,64 @@ def _local_workspace_package_version(package: str) -> str:
     return version if isinstance(version, str) and version else "not-installed"
 
 
+def _repository_root() -> Path:
+    """The checkout this tool's code is in, where its git checks run.
+
+    A build and its certification check the commit and the work tree of the
+    code that runs, not of the current directory, so a tool run from
+    another checkout's directory cannot pass as that checkout's code (review
+    of #1681). The workspace packages must load from it too
+    (:func:`_packages_outside_the_checkout`).
+    """
+
+    return Path(__file__).resolve().parents[1]
+
+
+#: The workspace packages a build and its certification run. Every one
+#: reports the same version wherever it is installed from, so a version check
+#: cannot tell checkouts apart: each must load from this tool's checkout.
+_WORKSPACE_PACKAGES = (
+    "microcosm.build",
+    "microcosm.calibrate",
+    "microcosm.data",
+    "microcosm.diagnostics",
+    "microcosm.fit",
+    "microcosm.frame",
+    "microcosm.graph",
+)
+
+
+def _packages_outside_the_checkout() -> list[str]:
+    """The workspace packages that load from outside this tool's checkout."""
+
+    root = _repository_root().resolve()
+    outside = []
+    for name in _WORKSPACE_PACKAGES:
+        spec = importlib.util.find_spec(name)
+        origin = None if spec is None else spec.origin
+        if origin is None or root not in Path(origin).resolve().parents:
+            outside.append(f"{name} ({origin})")
+    return outside
+
+
+def _refuse_packages_from_another_checkout(action: str) -> None:
+    """Refuse to ``action`` with workspace packages from another tree."""
+
+    outside = _packages_outside_the_checkout()
+    if outside:
+        raise SystemExit(
+            f"Refusing to {action} with packages from outside this tool's "
+            f"checkout ({_repository_root()}): " + "; ".join(outside) + ". Run "
+            "it from a checkout whose own packages are installed (`uv sync "
+            "--all-packages` there), so the commit it records is the code that "
+            "ran."
+        )
+
+
 def _git_output(*args: str) -> str:
-    return subprocess.check_output(("git", *args), text=True).strip()
+    return subprocess.check_output(
+        ("git", "-C", str(_repository_root()), *args), text=True
+    ).strip()
 
 
 def _git_dirty() -> bool:
@@ -8875,7 +8990,7 @@ def _unmeasured_reason(error: Exception) -> str:
 #: not match the checked surface. Deliberately distinct from the standing
 #: evidence owner "QRF tail concentration failed:" (US_EVIDENCE_FAILURE_OWNERS):
 #: a register mismatch is an operator input error, not the #481/#487 tail
-#: defect, and --evidence-release refuses it outright.
+#: defect, and an evidence-tier certification refuses it outright.
 US_QRF_TAIL_REGISTER_MISMATCH_PREFIX = "QRF tail-concentration register mismatch:"
 
 
@@ -8913,20 +9028,28 @@ def _qrf_tail_register_failures(mismatch: Mapping[str, Sequence[str]]) -> list[s
 
 
 def _qrf_tail_register_evidence_refusal(
-    register_failures: Sequence[str],
+    failures: Sequence[str],
 ) -> RuntimeError | None:
-    """--evidence-release refusal for a register mismatch, owned or not.
+    """An evidence-tier certification's refusal of a register mismatch.
 
     A register mismatch is corrected in the register, never owned: the
     pre-batch raise this replaced refused every mode, so no per-run
     adjudication may carry a stale or unused entry into an evidence export.
+    The build records the mismatch with its other failures
+    (:data:`US_QRF_TAIL_REGISTER_MISMATCH_PREFIX`), and certification refuses
+    it whatever an owner pattern says (microcosm#1585 item 11).
     """
-    if not register_failures:
+    mismatches = [
+        line
+        for line in failures
+        if line.startswith(US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    ]
+    if not mismatches:
         return None
     return RuntimeError(
         "Evidence release refused: a QRF tail-concentration register "
         "mismatch cannot be owned; correct the register from "
-        "qrf_tail_concentration.json and rerun. " + "; ".join(register_failures)
+        "qrf_tail_concentration.json and rebuild. " + "; ".join(mismatches)
     )
 
 
@@ -9037,7 +9160,7 @@ def _record_qrf_tail_concentration_gate(
     and becomes one unowned failure line under earlier failures.
 
     Returns the register-mismatch failure lines (empty when the register
-    matches) so --evidence-release can refuse them.
+    matches); an evidence-tier certification refuses them by their prefix.
     """
     register_loaded = False
     try:
@@ -9071,15 +9194,15 @@ def _record_qrf_tail_concentration_gate(
         # Same degraded-mode contract as the coverage gate and as before this
         # refactor: with earlier failures on record, an evaluation crash
         # becomes one more line under the standing "QRF tail concentration
-        # failed:" prefix (so --evidence-release ownership is unchanged)
-        # instead of masking them. Only a register mismatch is refused
-        # outright; see _qrf_tail_register_evidence_refusal.
+        # failed:" prefix (so evidence-tier ownership is unchanged) instead
+        # of masking them. Only a register mismatch is refused outright; see
+        # _qrf_tail_register_evidence_refusal.
         if not terminal_gate_failures:
             raise
         if not register_loaded:
             # The gate never ran, so the gate battery's shadow (microcosm#1585
-            # item 11) records that, or a finished --evidence-release build
-            # would call the entry unwired.
+            # item 11) records that, or the finished build would call the
+            # entry unwired.
             shadow_not_run(
                 "us_national_qrf_tail_concentration",
                 "its reviewed-exclusions register did not load: "
@@ -11063,8 +11186,9 @@ def _gate_evidence_status(
 
     A missing verdict alone cannot tell a gate the operator skipped by flag
     (``skipped``: only --skip-reform-coverage-smoke can) from one whose
-    evaluation crashed under earlier failures on an evidence-tier run and so
-    wrote nothing (``not_evaluated``), or from a release built before gate
+    evaluation crashed under earlier failures, on a build certified at the
+    evidence tier, and so wrote nothing (``not_evaluated``), or from a
+    release built before gate
     evidence was bound at all. This block names which, in both manifests.
     """
     skipped = set(skipped_gates)
@@ -11489,6 +11613,7 @@ def _build_manifests(
     git_commit: str | None = None,
     built_at: str | None = None,
     runtime_versions: Mapping[str, str] | None = None,
+    certification: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -11629,6 +11754,10 @@ def _build_manifests(
             "git_commit": commit,
             "git_dirty": False,
         },
+        # The certification beside the build's code (microcosm#1585 item 11):
+        # the commit that certified it, which may follow the build's, and the
+        # tier it chose. Additive; the release contract reads ``code``.
+        **({"certification": dict(certification)} if certification is not None else {}),
         "runtime": runtime,
         "timing": timing_payload,
         "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
@@ -11878,6 +12007,11 @@ def _build_manifests(
         "build": {
             "build_id": release_id,
             "built_at": built_at,
+            **(
+                {"certification": dict(certification)}
+                if certification is not None
+                else {}
+            ),
             "built_with_core_package": {
                 "name": "policyengine-core",
                 "version": runtime["policyengine-core"],
@@ -12227,29 +12361,132 @@ def _fiscal_target_source_provenance(
     }
 
 
-#: Standing failure-pattern -> owner register for --evidence-release
-#: (microcosm#506). Only owner-adjudicated families belong here: the two dense
-#: blockers named in the #506 brief — the SOI Table 1.4 dollar blanket (the
-#: −30.2% capital-gain-distributions row, PUF donor uprating, #487) and the
-#: dense QRF tail-concentration set (bootstrap seed-lottery tail draws, #481,
-#: with the #487 uprating interaction). Any other recorded failure needs a
-#: per-run adjudication via --evidence-failure-owners; an unowned failure
-#: refuses the evidence export.
-US_EVIDENCE_FAILURE_OWNERS: tuple[tuple[str, str], ...] = (
-    (
-        "SOI Table 1.4 national dollar fit failed:",
-        "PolicyEngine/microcosm#487",
-    ),
-    (
-        "QRF tail concentration failed:",
-        "PolicyEngine/microcosm#481, PolicyEngine/microcosm#487",
-    ),
-)
-
 # Kept in lockstep with microcosm.data.contract._ISSUE_REF_RE; the evidence
 # publish contract re-validates every owner ref, so drift here fails at
 # publish rather than silently.
 _EVIDENCE_ISSUE_REF_RE = re.compile(r"#\d+|github\.com/\S+/(?:issues|pull)/\d+")
+
+#: The standing failure-pattern -> owner register of an evidence-tier
+#: certification (microcosm#506), a packaged US runtime data file rather than
+#: this tool's source, so that a sign-off changes that file alone and a build
+#: can be certified at the commit that makes it (microcosm#1585 item 11, as a
+#: UK cut is certified at its sign-off's head). It is not a country resource:
+#: no part of the US spec reads it, so a sign-off moves no spec digest. Only owner-adjudicated families
+#: belong there: the two dense blockers named in the #506 brief, the SOI
+#: Table 1.4 dollar blanket (#487) and the dense QRF tail-concentration set
+#: (#481, with the #487 uprating interaction). Any other recorded failure
+#: needs a per-run adjudication via --evidence-failure-owners; an unowned
+#: failure refuses the evidence certification.
+US_EVIDENCE_FAILURE_OWNERS_RESOURCE = "evidence_failure_owners.json"
+US_EVIDENCE_FAILURE_OWNERS_KIND = "us_evidence_failure_owners"
+#: The register's path in the repository, which a later certifying commit
+#: may change (:func:`_certification_may_change`).
+US_EVIDENCE_FAILURE_OWNERS_REGISTER = (
+    "packages/microcosm-build/src/microcosm/build/us_runtime/data/"
+    + US_EVIDENCE_FAILURE_OWNERS_RESOURCE
+)
+
+
+def _standing_evidence_failure_owners_file():
+    """The packaged standing owners register, as this checkout holds it."""
+
+    return package_files("microcosm.build.us_runtime.data").joinpath(
+        US_EVIDENCE_FAILURE_OWNERS_RESOURCE
+    )
+
+
+def _evidence_owner_pairs(
+    entries: Iterable[tuple[object, object]], *, source: str
+) -> tuple[tuple[str, str], ...]:
+    """Validated ``(pattern, owner)`` pairs: a pattern, and an issue owning it."""
+
+    pairs: list[tuple[str, str]] = []
+    for pattern, owner in entries:
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError(f"{source} has an empty pattern key.")
+        if not isinstance(owner, str) or not _EVIDENCE_ISSUE_REF_RE.search(owner):
+            raise ValueError(
+                f"{source} owner for pattern {pattern!r} must carry an issue "
+                f"reference (e.g. 'PolicyEngine/microcosm#487'), got {owner!r}."
+            )
+        pairs.append((pattern, owner))
+    return tuple(pairs)
+
+
+def _read_standing_evidence_failure_owners(text: str) -> tuple[tuple[str, str], ...]:
+    """The standing register's ``(pattern, owner)`` pairs, in its order."""
+
+    source = f"the US standing {US_EVIDENCE_FAILURE_OWNERS_RESOURCE} register"
+    payload = json.loads(text)
+    if (
+        not isinstance(payload, dict)
+        or payload.get("kind") != US_EVIDENCE_FAILURE_OWNERS_KIND
+        or payload.get("schema_version") != 1
+        or not isinstance(payload.get("owners"), list)
+    ):
+        raise ValueError(
+            f"{source} must be a schema 1 {US_EVIDENCE_FAILURE_OWNERS_KIND!r} "
+            "object with an 'owners' list."
+        )
+    entries = []
+    for entry in payload["owners"]:
+        if not isinstance(entry, dict) or not str(entry.get("reason") or "").strip():
+            raise ValueError(
+                f"{source}: each owner entry is an object with a pattern, an "
+                f"owner and the reason it is owned; got {entry!r}."
+            )
+        pattern = entry.get("pattern")
+        # A register-only commit can certify (microcosm#1585 item 11), so a
+        # standing pattern must name one gate's failure lines, as its prefix
+        # "<gate words> failed:" does; a short pattern would own every
+        # ownable failure (review of #1681).
+        if isinstance(pattern, str) and pattern.strip():
+            gate_words = pattern.removesuffix(" failed:").split()
+            names_a_gate = pattern.endswith(" failed:") and len(gate_words) >= 2
+        else:
+            names_a_gate = True  # _evidence_owner_pairs refuses it as empty
+        if not names_a_gate:
+            raise ValueError(
+                f"{source}: standing pattern {pattern!r} must be a gate's "
+                "failure prefix, at least two words then ' failed:', so it owns "
+                "that gate's failures alone."
+            )
+        entries.append((pattern, entry.get("owner")))
+    return _evidence_owner_pairs(entries, source=source)
+
+
+_STANDING_EVIDENCE_FAILURE_OWNERS_BYTES = (
+    _standing_evidence_failure_owners_file().read_bytes()
+)
+#: The standing register, as this checkout packages it, read once, and the
+#: digest of the bytes it was read from, which an evidence certification
+#: records (review of #1681).
+US_EVIDENCE_FAILURE_OWNERS: tuple[tuple[str, str], ...] = (
+    _read_standing_evidence_failure_owners(
+        _STANDING_EVIDENCE_FAILURE_OWNERS_BYTES.decode("utf-8")
+    )
+)
+US_EVIDENCE_FAILURE_OWNERS_SHA256 = hashlib.sha256(
+    _STANDING_EVIDENCE_FAILURE_OWNERS_BYTES
+).hexdigest()
+
+
+def _read_evidence_failure_owners_file(
+    path: Path,
+) -> tuple[tuple[tuple[str, str], ...], str]:
+    """A per-run owners file's pairs, and the digest of the bytes they came
+    from, so a certification records the file that decided ownership."""
+    data = Path(path).read_bytes()
+    payload = json.loads(data)
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"--evidence-failure-owners {path} must be a JSON object of "
+            "failure-substring pattern -> owner issue ref."
+        )
+    pairs = _evidence_owner_pairs(
+        payload.items(), source=f"--evidence-failure-owners {path}"
+    )
+    return pairs, hashlib.sha256(data).hexdigest()
 
 
 def _load_evidence_failure_owner_patterns(
@@ -12257,26 +12494,9 @@ def _load_evidence_failure_owner_patterns(
 ) -> tuple[tuple[str, str], ...]:
     """Failure-pattern -> owner pairs: per-run adjudications first, then the
     standing register, so a run-specific entry can sharpen a standing owner."""
-    per_run: list[tuple[str, str]] = []
+    per_run: tuple[tuple[str, str], ...] = ()
     if path is not None:
-        payload = json.loads(path.read_text())
-        if not isinstance(payload, dict):
-            raise ValueError(
-                f"--evidence-failure-owners {path} must be a JSON object of "
-                "failure-substring pattern -> owner issue ref."
-            )
-        for pattern, owner in payload.items():
-            if not isinstance(pattern, str) or not pattern.strip():
-                raise ValueError(
-                    f"--evidence-failure-owners {path} has an empty pattern key."
-                )
-            if not isinstance(owner, str) or not _EVIDENCE_ISSUE_REF_RE.search(owner):
-                raise ValueError(
-                    f"--evidence-failure-owners {path} owner for pattern "
-                    f"{pattern!r} must carry an issue reference (e.g. "
-                    f"'PolicyEngine/microcosm#487'), got {owner!r}."
-                )
-            per_run.append((pattern, owner))
+        per_run, _ = _read_evidence_failure_owners_file(path)
     return (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
 
 
@@ -12352,19 +12572,14 @@ def _default_release_id(
 ) -> str:
     """The auto-generated build ID for a run without --release-id.
 
-    Exact-k builds carry the k segment; evidence-tier builds carry the
-    ``evidence`` segment (microcosm#506) so the tier is visible in every
-    build folder's path; certified national builds keep the historical shape.
-    The release each one belongs to is :func:`_release_for_build`.
+    Exact-k builds carry the k segment; every other build keeps the
+    historical shape. A build has no tier (microcosm#1585 item 11): an
+    evidence-tier certification mints the ID it publishes the build under
+    from this one (:func:`_evidence_build_id`).
     """
     if args.exact_k is not None:
         return (
             f"populace-us-2024-k{args.exact_k}-{digest}-{commit}-"
-            f"{build_timestamp:%Y%m%dT%H%M%SZ}"
-        )
-    if args.evidence_release:
-        return (
-            f"populace-us-2024-evidence-{digest}-{commit}-"
             f"{build_timestamp:%Y%m%dT%H%M%SZ}"
         )
     return f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
@@ -12389,15 +12604,54 @@ def _telemetry_run_id(args: argparse.Namespace, *, timestamp: datetime) -> str:
     )
 
 
-def _release_for_build(args: argparse.Namespace) -> str:
-    """The release a run's build belongs to (microcosm#1570).
+#: The releases certification places a national build in (microcosm#1570):
+#: the national release, the repository's default, at the certified tier, and
+#: the evidence release, never the default, at the evidence tier
+#: (microcosm#506). A build belongs to neither until it is certified
+#: (microcosm#1585 item 11).
+US_CERTIFICATION_RELEASES = (US_NATIONAL_RELEASE_ID, US_EVIDENCE_RELEASE_ID)
+#: The build's own directory under ``--out``: its calibration diagnostics,
+#: its SSI take-up measurement, the gate evidence it wrote and, for a build
+#: whose release gates fail, its #568 weight evidence. A build has no tier, so
+#: it writes no release directory: certification copies these files into
+#: ``<out>/releases/<release>/`` for the tier it chooses.
+US_BUILD_FILES_DIRECTORY = "build"
 
-    Certified and exact-k builds are builds of the national release, the
-    repository's default; evidence-tier builds are builds of the evidence
-    release, which is never the default. The release directory is named
-    after it.
+
+def _certification_release_dir(release_root: Path, *, evidence_release: bool) -> Path:
+    """Where certification places a build: its tier's release directory."""
+
+    release = US_EVIDENCE_RELEASE_ID if evidence_release else US_NATIONAL_RELEASE_ID
+    return Path(release_root) / "releases" / release
+
+
+def _refuse_reusing_a_certified_build(release_root: Path) -> None:
+    """Refuse an ``--out`` whose build is certified, at either tier.
+
+    A build is certified once, into the release of the tier certification
+    chose (:data:`US_CERTIFICATION_RELEASES`), and a certified build is never
+    changed: a build into its ``--out``, or a second certification, is
+    refused while either release directory carries a release manifest.
     """
-    return US_EVIDENCE_RELEASE_ID if args.evidence_release else US_NATIONAL_RELEASE_ID
+
+    for release in US_CERTIFICATION_RELEASES:
+        _refuse_certified_release_dir_reuse(Path(release_root) / "releases" / release)
+
+
+def _evidence_build_id(build: str) -> str:
+    """The ID an evidence-tier certification publishes ``build`` under.
+
+    A build ID carries no tier (microcosm#1585 item 11), and the evidence
+    contract requires the ``-evidence-`` segment in the ID of every evidence
+    build, so the tier is visible in each build folder's path (microcosm#506).
+    The segment follows the ``populace-us-2024-`` prefix, the shape evidence
+    builds always had, or else ``populace-us-``.
+    """
+
+    for prefix in (f"populace-us-{PERIOD}-", "populace-us-"):
+        if build.startswith(prefix):
+            return f"{prefix}evidence-{build[len(prefix) :]}"
+    raise ValueError(f"{build!r} is not a US build ID (populace-us-...).")
 
 
 def _promotion_note(release: str) -> str:
@@ -12443,37 +12697,32 @@ def _finish_build_folder_release(
     )
 
 
-def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
+def _assert_us_release_id(release_id: str) -> None:
     """Check the build ID ``--release-id`` gives, or the default one.
 
-    The ID names the build, not its release, and keeps the rules it had
-    before microcosm#1570: the US prefix, and the ``-evidence-`` segment
-    exactly for evidence-tier builds.
+    The ID names the build, not its release, and keeps the US prefix it had
+    before microcosm#1570. A build has no tier (microcosm#1585 item 11), so
+    its ID never carries the ``-evidence-`` segment: an evidence-tier
+    certification adds it (:func:`_evidence_build_id`).
     """
     if release_id in US_RELEASES:
         raise ValueError(
             f"{release_id!r} is a release, not a build: --release-id gives the "
-            "build ID (populace-us-2024-...), and the build is published into "
-            f"its release, {US_NATIONAL_RELEASE_ID!r} or, with "
-            f"--evidence-release, {US_EVIDENCE_RELEASE_ID!r}."
+            "build ID (populace-us-2024-...), and certification publishes the "
+            f"build into its tier's release, {US_NATIONAL_RELEASE_ID!r} or "
+            f"{US_EVIDENCE_RELEASE_ID!r}."
         )
     if not release_id.startswith("populace-us-"):
         raise ValueError(
             "US fiscal refresh release ids must start with 'populace-us-' so "
             "the US release contract requires source coverage diagnostics."
         )
-    if evidence_release and EVIDENCE_RELEASE_ID_SEGMENT not in release_id:
-        raise ValueError(
-            "--evidence-release ids must carry the "
-            f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment (e.g. "
-            "populace-us-2024-evidence-<sha>-<date>) so the tier is visible "
-            "in every build folder's path."
-        )
-    if not evidence_release and EVIDENCE_RELEASE_ID_SEGMENT in release_id:
+    if EVIDENCE_RELEASE_ID_SEGMENT in release_id:
         raise ValueError(
             f"release ids containing {EVIDENCE_RELEASE_ID_SEGMENT!r} are "
-            "reserved for --evidence-release builds; a certified build must "
-            "not squat the evidence namespace."
+            "reserved for the builds an evidence-tier certification publishes; "
+            "a build has no tier, and certification mints its evidence ID "
+            "(microcosm#1585 item 11)."
         )
 
 
@@ -12978,9 +13227,11 @@ class _ReleaseDryRun:
         if self.args.evidence_release:
             print(
                 "\n--evidence-release: a certain failure whose every release line "
-                "an owner pattern matches is reported AT-RISK (OWNED), since the "
-                "evidence tier ships it as a known failure; any unowned line "
-                "refuses the export."
+                "an owner pattern matches is reported AT-RISK (OWNED), since an "
+                "evidence-tier certification of the build would ship it as a "
+                "known failure; any unowned line would refuse that "
+                "certification. The build itself has no tier: it records every "
+                "failure and writes its H5."
             )
         print(f"\nWrote the dry-run report to {self.report_path}")
         return report.exit_code
@@ -13096,13 +13347,15 @@ def _release_dry_run_checks(
     export is this frame with calibrated household weights; on the L0 path it
     is a household selection of it. See
     :mod:`microcosm.build.us_runtime.release_gate_dry_run` for what is certain.
-    Under ``--evidence-release`` each certain failure is graded against the
-    owner patterns with the terminal batch's own rule (:func:`_evidence_owner`).
+    Under ``--evidence-release``, a preview of an evidence-tier certification
+    (a build has no tier, microcosm#1585 item 11), each certain failure is
+    graded against the owner patterns with certification's own rule
+    (:func:`_evidence_owner`).
     """
 
     checks: list[CheckResult] = []
-    # The exact lines the release would append for each check's certain
-    # failures, for the evidence tier's owner check.
+    # The exact lines the build would record for each check's certain
+    # failures, for the evidence certification's owner check.
     release_lines: dict[str, list[str]] = {}
 
     def owner_of(line: str) -> str | None:
@@ -13385,9 +13638,9 @@ def _release_dry_run_checks(
     run("spm_composition", spm_composition)
     run("zero_support_preview", zero_support)
     if args.evidence_release:
-        # With no earlier terminal failure on record, the release raises at the
-        # first failing one of these gates before the solve, outside the
-        # evidence batch, so no owner converts that refusal.
+        # With no earlier terminal failure on record, the build raises at the
+        # first failing one of these gates before the solve, so there is no
+        # build for a certification to own that refusal in.
         refused_before_solve: set[str] = set()
         if not early_terminal_gate_failures:
             if (
@@ -13406,8 +13659,8 @@ def _release_dry_run_checks(
                 details={
                     **dict(check.details),
                     "evidence_ownership": (
-                        "not ownable: the release refuses it before the solve, "
-                        "outside the evidence batch"
+                        "not ownable: the build refuses it before the solve, "
+                        "so no build is left to certify"
                     ),
                 },
             )
@@ -13594,24 +13847,46 @@ def _is_release_refusal(error: BaseException) -> bool:
     return isinstance(error, Exception)
 
 
-#: The build record a build leaves beside ``artifacts/`` and ``releases/``
+#: The exit status of a build that failed release gates once its H5 and its
+#: record are written (microcosm#1585 item 11). A build has no tier, so such
+#: a build may still be certified at the evidence tier; a driver tells it
+#: from a refusal or a crash, which exit 1, and keeps it rather than
+#: building again.
+US_BUILD_FAILED_RELEASE_GATES_EXIT = 3
+
+
+class _BuildFailedReleaseGatesError(RuntimeError):
+    """A finished build's refusal: its record carries release-gate failures.
+
+    Raised once the H5, the calibration weights and the record are written;
+    run as a script, the build then exits
+    :data:`US_BUILD_FAILED_RELEASE_GATES_EXIT`.
+    """
+
+
+#: The build record a build leaves beside ``artifacts/`` and ``build/``
 #: (microcosm#1585 item 11, PR 4a). The build ends once its H5, calibration
 #: weights, diagnostics and gate evidence are written; certification is a
 #: separate step (``tools/certify_us_national_build.py``) that runs the
-#: release's post-export checks from this record and writes the manifests the
-#: publisher requires.
+#: release's post-export checks from this record, places the build in the
+#: release of the tier it chooses and writes the manifests the publisher
+#: requires.
 US_BUILD_RECORD_FILENAME = "build_record.json"
 US_BUILD_RECORD_KIND = "microcosm_us_national_build_record"
 #: Schema 2 added the build's provenance (``built_at``, ``runtime``), its
-#: staging settings and the record's own digest (``record_sha256``). A record
-#: of another schema is certified with the code that built it.
-US_BUILD_RECORD_SCHEMA_VERSION = 2
+#: staging settings and the record's own digest (``record_sha256``). Schema 3
+#: dropped the tier: a build has no release, no ``evidence_release`` setting
+#: and no owner patterns, and its own directory is ``layout.build_dir``; it
+#: lists the failures of the written H5's own checks apart, as
+#: ``artifact_integrity_failures`` (microcosm#1585 item 11). A record of
+#: another schema is certified with the code that built it.
+US_BUILD_RECORD_SCHEMA_VERSION = 3
 #: The options of the build that its post-export checks read. Certification
 #: takes them from the record, never from its own command line, so a build is
-#: certified exactly as it was configured.
+#: certified exactly as it was configured. The tier is certification's own
+#: option.
 US_BUILD_RECORD_SETTINGS = (
     "allow_reform_coverage_smoke_failures",
-    "evidence_release",
     "maximum_microsim_batch_size",
     "scf_education_debt",
     "skip_demographics",
@@ -13759,9 +14034,9 @@ def _us_build_record(
     built_at: str,
     runtime: Mapping[str, str],
     args: argparse.Namespace,
-    evidence_failure_owner_patterns: Sequence[tuple[str, str]],
     terminal_gate_failures: Sequence[str],
     n_households: int,
+    artifact_integrity_failures: Sequence[str] = (),
     result,
     post_export_scoring_plan: _PostExportScoringPlan,
     release_gate_failures: Sequence[str] | None,
@@ -13841,7 +14116,6 @@ def _us_build_record(
     return {
         "schema_version": US_BUILD_RECORD_SCHEMA_VERSION,
         "kind": US_BUILD_RECORD_KIND,
-        "release": release_dir.name,
         "build": release_id,
         "code": {"repository": "PolicyEngine/microcosm", "git_commit": commit},
         # The manifests' built_at and built-with packages: the time the build
@@ -13849,7 +14123,7 @@ def _us_build_record(
         "built_at": built_at,
         "runtime": dict(runtime),
         "layout": {
-            "release_dir": relative(release_dir),
+            "build_dir": relative(release_dir),
             "artifact_root": relative(artifact_root),
             "dataset_key": dataset_key,
             "dataset_filename": dataset_filename,
@@ -13861,10 +14135,10 @@ def _us_build_record(
             for role, path in files.items()
         },
         "settings": {name: getattr(args, name) for name in US_BUILD_RECORD_SETTINGS},
-        "evidence_failure_owner_patterns": [
-            [pattern, owner] for pattern, owner in evidence_failure_owner_patterns
-        ],
         "terminal_gate_failures": list(terminal_gate_failures),
+        # The ones the written H5 failed in its own checks, which no tier
+        # certifies; each is also among terminal_gate_failures.
+        "artifact_integrity_failures": list(artifact_integrity_failures),
         "n_households": int(n_households),
         # The calibration fit as the reform-validation consumer reads it: each
         # target's name, final estimate and target value, in solve order.
@@ -13969,7 +14243,9 @@ class _USBuildRecord:
     """A finished build, read back from its :data:`US_BUILD_RECORD_FILENAME`.
 
     Paths are relative to the record's directory, so a build folder moved to
-    another machine certifies in place. (A plain class, for the reason
+    another machine certifies in place. ``build_dir`` holds the build's own
+    files; certification copies them into the release directory of the tier
+    it chooses (microcosm#1585 item 11). (A plain class, for the reason
     :class:`_RecordedCalibrationResult` gives.)
     """
 
@@ -13978,25 +14254,23 @@ class _USBuildRecord:
         self.payload = payload
         self.release_root = release_root
         self.build = str(payload["build"])
-        self.release = str(payload["release"])
         self.commit = str(payload["code"]["git_commit"])
         self.built_at = str(payload["built_at"])
         self.runtime = {
             str(name): str(version) for name, version in payload["runtime"].items()
         }
-        self.release_dir = release_root / layout["release_dir"]
+        self.build_dir = release_root / layout["build_dir"]
         self.artifact_root = release_root / layout["artifact_root"]
         self.dataset_key = str(layout["dataset_key"])
         self.dataset_filename = str(layout["dataset_filename"])
         self.calibration_key = str(layout["calibration_key"])
         self.calibration_filename = str(layout["calibration_filename"])
         self.settings = dict(payload["settings"])
-        self.evidence_failure_owner_patterns = tuple(
-            (str(pattern), str(owner))
-            for pattern, owner in payload["evidence_failure_owner_patterns"]
-        )
         self.terminal_gate_failures = tuple(
             str(line) for line in payload["terminal_gate_failures"]
+        )
+        self.artifact_integrity_failures = tuple(
+            str(line) for line in payload["artifact_integrity_failures"]
         )
         self.n_households = int(payload["n_households"])
         self.timing = dict(payload["timing"])
@@ -14006,9 +14280,14 @@ class _USBuildRecord:
         self.source_coverage = dict(payload["source_coverage"])
         self.take_up = dict(payload["take_up"])
 
-    def certify_args(self) -> argparse.Namespace:
-        """The build's options its post-export checks read."""
-        return argparse.Namespace(**self.settings)
+    def certify_args(self, *, evidence_release: bool) -> argparse.Namespace:
+        """The build's options its post-export checks read, with the tier
+        certification chose."""
+        return argparse.Namespace(**self.settings, evidence_release=evidence_release)
+
+    def exact_k(self) -> bool:
+        """Whether the build is an exact-k ladder build of the national release."""
+        return self.manifest_inputs.get("exact_k_ladder") is not None
 
     def post_export_scoring_plan(
         self, args: argparse.Namespace, *, result
@@ -14043,12 +14322,13 @@ class _USBuildRecord:
     def registry_summary(self) -> _RecordedTargetRegistry:
         return _RecordedTargetRegistry(**self.manifest_inputs["registry"])
 
-    def diagnostics_outcome(self) -> DiagnosticsWriteOutcome:
+    def diagnostics_outcome(self, release_dir: Path) -> DiagnosticsWriteOutcome:
+        """The diagnostics outcome, its file at ``release_dir`` once placed there."""
         recorded = dict(self.manifest_inputs["diagnostics_outcome"])
         if recorded["status"] == "available":
             return DiagnosticsWriteSuccess(
                 status="available",
-                path=self.release_dir / "calibration_diagnostics.json",
+                path=Path(release_dir) / "calibration_diagnostics.json",
                 schema_version=recorded["schema_version"],
                 sha256=recorded["sha256"],
             )
@@ -14109,7 +14389,7 @@ def _read_us_build_record(path: Path) -> _USBuildRecord:
     # A file certification would read that the build did not write: the
     # manifests would bind it with no digest the build recorded.
     for role, file_path in _us_build_files_certification_reads(
-        release_root / payload["layout"]["release_dir"],
+        release_root / payload["layout"]["build_dir"],
         scf_education_debt=bool(payload["settings"]["scf_education_debt"]),
     ).items():
         if role not in payload["files"] and file_path.is_file():
@@ -14144,17 +14424,50 @@ def _certify_parser() -> argparse.ArgumentParser:
         description=(
             "Certify a finished US national build: run the release's "
             "post-export checks (the reform-coverage smoke, reform validation, "
-            "demographics and the holdouts) on its written H5 and write the "
-            "manifests that microcosm-publish-release-build requires. The "
-            "build is the --out directory of "
-            "tools/build_us_fiscal_refresh_release.py, which holds "
-            f"{US_BUILD_RECORD_FILENAME}."
+            "demographics and the holdouts) on its written H5, place the build "
+            "in the release of the tier chosen here and write the manifests "
+            "that microcosm-publish-release-build requires. The build is the "
+            "--out directory of tools/build_us_fiscal_refresh_release.py, "
+            f"which holds {US_BUILD_RECORD_FILENAME}. A build has no tier "
+            "(microcosm#1585 item 11): the certified tier is the default, and "
+            "--evidence-release chooses the evidence tier."
         ),
     )
     parser.add_argument(
         "build_dir",
         type=Path,
         help=f"The build's --out directory, holding {US_BUILD_RECORD_FILENAME}.",
+    )
+    parser.add_argument(
+        "--evidence-release",
+        action="store_true",
+        help=(
+            "Certify at the EVIDENCE tier (microcosm#506), into the evidence "
+            f"release {US_EVIDENCE_RELEASE_ID} (never the US default), under "
+            "the build ID with an '-evidence-' segment added. Every failure "
+            "the build recorded or certification finds must match an owner "
+            "pattern, from --evidence-failure-owners first, then the standing "
+            "register (the US evidence_failure_owners.json), and rides the "
+            "release manifest's known_failures block; at least one must "
+            "exist, since a build that passes every gate belongs on the "
+            "certified tier. A QRF tail-concentration register mismatch is "
+            "never owned, and an --exact-k build is a build of the national "
+            "release, never evidence. Without this flag the build is "
+            f"certified into the national release {US_NATIONAL_RELEASE_ID}, "
+            "which refuses any failure."
+        ),
+    )
+    parser.add_argument(
+        "--evidence-failure-owners",
+        type=Path,
+        help=(
+            "With --evidence-release: a JSON file mapping failure-substring "
+            "patterns to owner issue refs (e.g. "
+            '{"Input coverage failed:": "PolicyEngine/microcosm#368"}), '
+            "checked ahead of the standing register; a failure matching "
+            "neither refuses the certification, since every shipped failure "
+            "needs an owner."
+        ),
     )
     parser.add_argument(
         "--no-staging",
@@ -14190,6 +14503,7 @@ def _certify_progress(
     args: argparse.Namespace,
     *,
     record: _USBuildRecord,
+    build: str,
     run_id: str,
     emitter: LocalTelemetryEmitter,
 ) -> _BuildProgress:
@@ -14204,6 +14518,7 @@ def _certify_progress(
     opts certification out where the build staged too, as a build may opt
     out: the publisher accepts a stated opt-out, and the reason says the
     build staged, so the manifest shows that its certification did not.
+    ``build`` is the ID certification publishes the build under.
     """
 
     settings = record.staging_settings
@@ -14235,7 +14550,7 @@ def _certify_progress(
             staging_upload_interval_seconds=settings["upload_interval_seconds"],
         ),
         release_root=record.release_root,
-        release_id=record.build,
+        release_id=build,
         run_id=run_id,
         emitter=emitter,
         epoch_every=CALIBRATION_EPOCH_EVERY,
@@ -14265,44 +14580,323 @@ def _refuse_reopening_the_builds_staging_run(
         )
 
 
-def certify_main(argv: Sequence[str] | None = None) -> None:
-    """Certify a finished build from its record (microcosm#1585 item 11, PR 4a).
+def _certification_may_change(path: str) -> bool:
+    """Whether a commit after a build's may change ``path`` and certify it.
 
-    Certification runs at the commit the build was built at, from a clean
+    A UK cut is certified at its sign-off's head, where only gate-only
+    registers changed (microcosm#1301, ``UK_GATE_ONLY_RESOURCES``). A US
+    build may be certified at a descendant of its commit that changes only
+    what certification never runs (microcosm#1585 item 11): tests and their
+    helpers (``packages/*/tests/``, ``test_support/``, the root
+    ``conftest.py``), docs (``docs/``, ``LICENSE``, and Markdown or
+    reStructuredText outside the packages' sources), changelog fragments
+    (``changelog.d/``), and the standing evidence owners register
+    (:data:`US_EVIDENCE_FAILURE_OWNERS_REGISTER`), the US sign-off, which an
+    evidence-tier certification reads at the certifying commit.
+    """
+
+    posix = PurePosixPath(path)
+    parts = posix.parts
+    if not parts:
+        return False
+    if path in {US_EVIDENCE_FAILURE_OWNERS_REGISTER, "conftest.py", "LICENSE"}:
+        return True
+    if parts[0] in {"docs", "changelog.d", "test_support"}:
+        return True
+    if len(parts) >= 3 and parts[0] == "packages" and parts[2] == "tests":
+        return True
+    in_package_source = len(parts) >= 3 and parts[0] == "packages" and parts[2] == "src"
+    return posix.suffix.lower() in {".md", ".rst"} and not in_package_source
+
+
+def _git_commit_exists(commit: str) -> bool:
+    return (
+        subprocess.run(
+            (
+                "git",
+                "-C",
+                str(_repository_root()),
+                "cat-file",
+                "-e",
+                f"{commit}^{{commit}}",
+            ),
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def _certifying_commit(record: _USBuildRecord) -> tuple[str, list[str]]:
+    """The commit certification runs at, and what changed since the build's.
+
+    The build's own commit, or a descendant of it whose every change since
+    is one :func:`_certification_may_change` allows (microcosm#1585 item 11).
+    Anything else is refused, naming the paths, so the checks and the
+    manifests stay the code the build was built with.
+    """
+
+    head = _git_output("rev-parse", "HEAD")
+    if head == record.commit:
+        return head, []
+    if not _git_commit_exists(record.commit):
+        raise SystemExit(
+            f"Build {record.build} was built at {record.commit}, which this "
+            f"checkout does not have; fetch it, so certification at {head} can "
+            "check what changed since the build."
+        )
+    root = str(_repository_root())
+    descends = (
+        subprocess.run(
+            ("git", "-C", root, "merge-base", "--is-ancestor", record.commit, head),
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+    if not descends:
+        raise SystemExit(
+            f"Build {record.build} was built at {record.commit}; certify it "
+            f"from a checkout of that commit or of a descendant of it, not "
+            f"{head}, which does not descend from it."
+        )
+    changed = [
+        path
+        for path in subprocess.check_output(
+            (
+                "git",
+                "-C",
+                root,
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                record.commit,
+                head,
+            ),
+            text=True,
+        ).split("\0")
+        if path
+    ]
+    refused = sorted(path for path in changed if not _certification_may_change(path))
+    if refused:
+        raise SystemExit(
+            f"Build {record.build} was built at {record.commit}. {head} descends "
+            "from it, but changes more than tests, docs, changelog fragments "
+            f"and the evidence owners register ({US_EVIDENCE_FAILURE_OWNERS_REGISTER}), "
+            "so it would certify the build with code it was not built with: "
+            + ", ".join(refused)
+            + ". Certify it from a checkout of its commit, or of one that "
+            "changes only those."
+        )
+    return head, sorted(changed)
+
+
+def _refuse_an_unowned_evidence_certification(
+    failures: Sequence[str], owner_patterns: Sequence[tuple[str, str]]
+) -> None:
+    """Refuse an evidence-tier certification some failure would refuse anyway.
+
+    Run on the build's recorded failures before certification scores
+    anything, so a QRF tail register mismatch, which no owner may own, or an
+    unowned failure is refused in seconds rather than after the scoring. The
+    mismatch comes first: an owner would not let it ship.
+    """
+
+    refusal = _qrf_tail_register_evidence_refusal(failures)
+    if refusal is not None:
+        raise SystemExit(str(refusal))
+    try:
+        _evidence_known_failures(failures, owner_patterns)
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from error
+
+
+class _Certification:
+    """What certification chose and where it runs (microcosm#1585 item 11).
+
+    The tier and its owner patterns; the release directory it places the
+    build in and the ID it publishes the build under; and the commit it
+    certifies at, with the paths changed since the build's. (A plain class,
+    for the reason :class:`_RecordedCalibrationResult` gives.)
+    """
+
+    def __init__(
+        self,
+        *,
+        evidence_release: bool,
+        owner_patterns: Sequence[tuple[str, str]],
+        owners_file: Path | None,
+        owners_file_sha256: str | None,
+        release_dir: Path,
+        build: str,
+        commit: str,
+        changed_since_build: Sequence[str],
+    ) -> None:
+        self.evidence_release = bool(evidence_release)
+        self.owner_patterns = tuple(owner_patterns)
+        self.owners_file = owners_file
+        self.owners_file_sha256 = owners_file_sha256
+        self.release_dir = Path(release_dir)
+        self.build = build
+        self.commit = commit
+        self.changed_since_build = tuple(changed_since_build)
+
+    def manifest_block(self, record: _USBuildRecord) -> dict[str, object]:
+        """Both manifests' ``certification`` block, beside the build's ``code``.
+
+        The manifests' ``code`` is the build's commit, as the release
+        contract reads it; this records the commit that certified it, what
+        changed between the two, the tier, and the record certified.
+        """
+
+        block: dict[str, object] = {
+            "tier": "evidence" if self.evidence_release else "certified",
+            "code": {
+                "repository": "PolicyEngine/microcosm",
+                "git_commit": self.commit,
+                "git_dirty": False,
+            },
+            "build_commit": record.commit,
+            "changed_since_build": list(self.changed_since_build),
+            "build_record": {
+                "build": record.build,
+                "sha256": record.payload["record_sha256"],
+            },
+        }
+        if self.evidence_release:
+            # The digests of the bytes that decided ownership, taken when they
+            # were read: the standing register at import, the per-run file
+            # before any scoring (review of #1681).
+            block["evidence_failure_owners"] = {
+                "standing_register": {
+                    "path": US_EVIDENCE_FAILURE_OWNERS_REGISTER,
+                    "sha256": US_EVIDENCE_FAILURE_OWNERS_SHA256,
+                },
+                "per_run_file_sha256": self.owners_file_sha256,
+            }
+        return block
+
+
+def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) -> None:
+    """Copy the build's own files into ``release_dir``, its tier's release directory.
+
+    A build has no tier, so its files are in its own directory
+    (``layout.build_dir``, microcosm#1585 item 11). Certification copies each
+    one the record pins there into the release directory of the tier it
+    chose, checking the copy against the record's digest, and writes its
+    own files beside them. The record is never edited, and the build's
+    #568 weight evidence is never copied: the H5 carries the weights. A
+    rerun after a failed certification first removes every file this
+    certification would copy or write, so none of an earlier attempt's
+    survives.
+    """
+
+    release_dir.mkdir(parents=True, exist_ok=True)
+    for name in {
+        # Part-written by an earlier attempt: a finished one is refused
+        # before placement (_refuse_reusing_a_certified_build).
+        "release_manifest.json",
+        *US_CERTIFICATION_OUTPUT_FILES,
+        *US_RELEASE_GATE_EVIDENCE_FILES.values(),
+        *US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.values(),
+        *US_FAILED_BUILD_WEIGHT_EVIDENCE,
+        "calibration_diagnostics.json",
+        "us_ssi_take_up.json",
+    }:
+        (release_dir / name).unlink(missing_ok=True)
+    build_dir = record.build_dir.resolve()
+    for role, pinned in record.payload["files"].items():
+        source = (record.release_root / pinned["path"]).resolve()
+        if source.parent != build_dir:
+            # The H5 and the calibration weights stay in artifacts/, which
+            # the publish command names as the artifact root.
+            continue
+        target = release_dir / source.name
+        shutil.copyfile(source, target)
+        copied = _sha256(target)
+        if copied != pinned["sha256"]:
+            raise RuntimeError(
+                f"Build {record.build}: its {role} file copied to {target} hashes "
+                f"to {copied}, not the {pinned['sha256']} the build recorded."
+            )
+
+
+def certify_main(argv: Sequence[str] | None = None) -> None:
+    """Certify a finished build from its record (microcosm#1585 item 11).
+
+    A build has no tier: certification chooses it. The certified tier, the
+    default, places the build in the national release and refuses a build
+    that recorded release-gate failures or holds the #568 weight evidence.
+    ``--evidence-release`` places it in the evidence release under its
+    evidence ID, and needs an owner for every failure, at least one failure,
+    and a build that is not exact-k. Certification runs at the commit the
+    build was built at, or at a descendant that changes only what
+    certification never runs (:func:`_certifying_commit`), from a clean
     worktree (the build directory aside), with the packages the build was
     built with, so the checks and the manifests are the build's own code and
-    score the H5 on the versions its manifests name. A build whose release
-    directory already carries a release manifest is refused: a certified
-    build is never changed. Certification opens its own staging run where
-    the build staged (:func:`_certify_progress`) and marks it failed if it
-    does not finish.
+    score the H5 on the versions its manifests name. A build certified at
+    either tier is refused: a certified build is never changed.
+    Certification opens its own staging run where the build staged
+    (:func:`_certify_progress`) and marks it failed if it does not finish.
     """
 
     global _ACTIVE_EMITTER
-    args = _certify_parser().parse_args(argv)
+    parser = _certify_parser()
+    args = parser.parse_args(argv)
+    if args.evidence_failure_owners is not None and not args.evidence_release:
+        parser.error("--evidence-failure-owners requires --evidence-release.")
     record = _read_us_build_record(args.build_dir / US_BUILD_RECORD_FILENAME)
     _refuse_reopening_the_builds_staging_run(args, record)
     failures = _recorded_release_gate_failures(record.payload)
-    if failures:
+    owner_patterns: tuple[tuple[str, str], ...] = ()
+    owners_file_sha256: str | None = None
+    if record.artifact_integrity_failures:
         raise SystemExit(
-            f"Build {record.build} failed {len(failures)} release gate(s) when "
-            "it was built, so it cannot be certified: " + "; ".join(failures)
+            f"Build {record.build}: its written H5 failed its own checks, which "
+            "no tier certifies, since the evidence tier relaxes gate verdicts, "
+            "never the written artifact's (microcosm#506): "
+            + "; ".join(record.artifact_integrity_failures)
+            + ". Build it again."
         )
-    # Only a build whose release gates failed writes the #568 weight
-    # evidence (a green build removes any it finds), so its presence refuses
-    # the build whatever its record says.
-    weight_evidence = [
-        name
-        for name in US_FAILED_BUILD_WEIGHT_EVIDENCE
-        if (record.release_dir / name).exists()
-    ]
-    if weight_evidence:
-        raise SystemExit(
-            f"Build {record.build}: its release directory holds the weight "
-            f"evidence a build writes when its release gates fail "
-            f"({', '.join(weight_evidence)}, microcosm#568), so it cannot be "
-            "certified."
-        )
+    if args.evidence_release:
+        if record.exact_k():
+            raise SystemExit(
+                f"Build {record.build} is an --exact-k build, a build of the "
+                f"national release under the certified contract; the evidence "
+                "tier (microcosm#506) covers the national artifact only. "
+                "Certify it without --evidence-release."
+            )
+        per_run: tuple[tuple[str, str], ...] = ()
+        if args.evidence_failure_owners is not None:
+            per_run, owners_file_sha256 = _read_evidence_failure_owners_file(
+                args.evidence_failure_owners
+            )
+        owner_patterns = (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
+        _refuse_an_unowned_evidence_certification(failures, owner_patterns)
+    else:
+        if failures:
+            raise SystemExit(
+                f"Build {record.build} failed {len(failures)} release gate(s) "
+                "when it was built, so it cannot be certified at the certified "
+                "tier; with an owner for each failure, --evidence-release "
+                "certifies it at the evidence tier: " + "; ".join(failures)
+            )
+        # Only a build whose release gates failed writes the #568 weight
+        # evidence (a green build removes any it finds), so its presence
+        # refuses the build at the certified tier whatever its record says.
+        weight_evidence = [
+            name
+            for name in US_FAILED_BUILD_WEIGHT_EVIDENCE
+            if (record.build_dir / name).exists()
+        ]
+        if weight_evidence:
+            raise SystemExit(
+                f"Build {record.build}: its directory holds the weight evidence "
+                f"a build writes when its release gates fail "
+                f"({', '.join(weight_evidence)}, microcosm#568), so it cannot be "
+                "certified at the certified tier."
+            )
     dirty = _git_dirty_paths(excluding=record.release_root)
     if dirty:
         raise SystemExit(
@@ -14310,12 +14904,8 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
             + "; ".join(dirty[:5])
             + ("; ..." if len(dirty) > 5 else "")
         )
-    head = _git_output("rev-parse", "HEAD")
-    if head != record.commit:
-        raise SystemExit(
-            f"Build {record.build} was built at {record.commit}; certify it "
-            f"from a checkout of that commit, not {head}."
-        )
+    _refuse_packages_from_another_checkout("certify a build")
+    head, changed_since_build = _certifying_commit(record)
     runtime = _runtime_versions()
     mismatched = sorted(
         name
@@ -14330,9 +14920,22 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
             + ", ".join(f"{name} {runtime.get(name)}" for name in mismatched)
             + ", so its checks run on the versions its manifests name."
         )
-    _refuse_certified_release_dir_reuse(record.release_dir)
-    for name in US_CERTIFICATION_OUTPUT_FILES:
-        (record.release_dir / name).unlink(missing_ok=True)
+    _refuse_reusing_a_certified_build(record.release_root)
+    certification = _Certification(
+        evidence_release=args.evidence_release,
+        owner_patterns=owner_patterns,
+        owners_file=args.evidence_failure_owners,
+        owners_file_sha256=owners_file_sha256,
+        release_dir=_certification_release_dir(
+            record.release_root, evidence_release=args.evidence_release
+        ),
+        build=(
+            _evidence_build_id(record.build) if args.evidence_release else record.build
+        ),
+        commit=head,
+        changed_since_build=changed_since_build,
+    )
+    _place_build_for_certification(record, certification.release_dir)
     run_id = args.staging_run_id or (
         f"{record.staging.get('run_id') or record.build}-certify"
     )
@@ -14341,15 +14944,19 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
         country_code="US",
         pipeline="us_fiscal_refresh",
         candidate_id=record.build,
-        release_id=record.build,
+        release_id=certification.build,
         run_kind="certification",
     )
     telemetry: _BuildProgress | None = None
     try:
         telemetry = _certify_progress(
-            args, record=record, run_id=run_id, emitter=_ACTIVE_EMITTER
+            args,
+            record=record,
+            build=certification.build,
+            run_id=run_id,
+            emitter=_ACTIVE_EMITTER,
         )
-        _certify_us_build(record, telemetry=telemetry)
+        _certify_us_build(record, certification=certification, telemetry=telemetry)
     except BaseException as error:
         try:
             if telemetry is not None:
@@ -14366,8 +14973,13 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
         raise
 
 
-def _certify_command(release_root: Path) -> str:
-    """The command that certifies the build in ``release_root``."""
+def _certify_command(release_root: Path, *, evidence_release: bool = False) -> str:
+    """The command that certifies the build in ``release_root``.
+
+    The certified tier by default, placing the build in the national release;
+    with ``evidence_release``, the evidence tier, placing it in the evidence
+    release (microcosm#1585 item 11).
+    """
     return shlex.join(
         [
             "uv",
@@ -14376,6 +14988,7 @@ def _certify_command(release_root: Path) -> str:
             "python",
             "tools/certify_us_national_build.py",
             str(release_root),
+            *(["--evidence-release"] if evidence_release else []),
         ]
     )
 
@@ -14384,37 +14997,45 @@ def _print_built_result(
     *,
     build: str,
     release_root: Path,
-    release_dir: Path,
+    build_dir: Path,
     artifact_root: Path,
     build_record: Path,
     release_gate_failures: Sequence[str] = (),
 ) -> None:
-    """Print the finished build and the command that certifies it.
+    """Print the finished build and the commands that certify it.
 
     A build that failed a release gate is printed too, so its H5 can be
-    evaluated, with the failures that stop certification.
+    evaluated, with the failures that stop its certification at the
+    certified tier.
 
     A build is not publishable until it is certified: certification runs the
-    release's post-export checks on the written H5 and writes the manifests
-    ``microcosm-publish-release-build`` requires (microcosm#1585 item 11, PR
-    4a).
+    release's post-export checks on the written H5, places the build in the
+    release of the tier it chooses and writes the manifests
+    ``microcosm-publish-release-build`` requires (microcosm#1585 item 11). A
+    build has no tier, so both commands are printed.
     """
     print(
         json.dumps(
             {
-                "release": release_dir.name,
                 "build": build,
                 "certified": False,
-                "certifiable": not release_gate_failures,
+                "certifiable_as_certified": not release_gate_failures,
                 "release_gate_failures": list(release_gate_failures),
                 "build_record": str(build_record),
-                "release_dir": str(release_dir),
+                "build_dir": str(build_dir),
                 "artifact_root": str(artifact_root),
                 "certify_command": _certify_command(release_root),
+                "evidence_certify_command": _certify_command(
+                    release_root, evidence_release=True
+                ),
                 "next": (
                     "The build is written and checked; it is not publishable "
-                    "until certify_command has run the release's post-export "
-                    "checks and written its manifests."
+                    "until it is certified. certify_command certifies it for "
+                    "the national release and refuses a build with release-gate "
+                    "failures. evidence_certify_command certifies it for the "
+                    "evidence release instead, once every failure has an "
+                    "owner, in --evidence-failure-owners FILE or the standing "
+                    "register."
                 ),
             },
             indent=2,
@@ -14465,9 +15086,9 @@ _NATIONAL_GATE_WAIVERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 
 
 def _national_gate_shadow_directory(args: argparse.Namespace) -> Path:
-    """``<out>/gate_battery_shadow/<release>``: beside the outputs, never in a
-    release directory, and one per release, since the national and evidence
-    releases can share an ``--out``.
+    """``<out>/gate_battery_shadow``: beside the build's outputs, never in a
+    release directory, as for the other US tools. A build has no tier
+    (microcosm#1585 item 11), so its shadow is not kept per release.
 
     A dry run writes no output directory, so its shadow goes beside its
     report instead.
@@ -14476,26 +15097,22 @@ def _national_gate_shadow_directory(args: argparse.Namespace) -> Path:
     if args.dry_run_gates_report is not None:
         report = Path(args.dry_run_gates_report).resolve()
         return report.parent / f"{report.stem}.{GATE_BATTERY_SHADOW_DIRECTORY}"
-    return (
-        Path(args.out).resolve()
-        / GATE_BATTERY_SHADOW_DIRECTORY
-        / _release_for_build(args)
-    )
+    return Path(args.out).resolve() / GATE_BATTERY_SHADOW_DIRECTORY
 
 
-def _national_gate_waivers(
-    args: argparse.Namespace, gates: GatesManifest
-) -> dict[str, list[str]]:
+def _national_gate_waivers(args: argparse.Namespace) -> dict[str, list[str]]:
+    """The entries each waiver flag of this run waives.
+
+    A build has no tier (microcosm#1585 item 11): its terminal failures are
+    recorded and refuse it as the certified tier's did, whatever tier its
+    certification later chooses, so no tier waives an entry.
+    """
+
     waivers: dict[str, list[str]] = {}
     for destination, flag, entry_ids in _NATIONAL_GATE_WAIVERS:
         if getattr(args, destination, False):
             for entry_id in entry_ids:
                 waivers.setdefault(entry_id, []).append(flag)
-    if getattr(args, "evidence_release", False):
-        # The evidence tier owns its terminal failures instead of raising.
-        for entry in gates.gates:
-            if entry.phase == "terminal":
-                waivers.setdefault(entry.id, []).append("--evidence-release")
     return waivers
 
 
@@ -14524,7 +15141,7 @@ def _start_national_gate_shadow(args: argparse.Namespace, *, release_id: str) ->
         report_path=report,
         comparison_path=comparison,
         registry=us_gate_registry(US_NATIONAL_GATE_SCOPE, tool=globals()),
-        waivers=_national_gate_waivers(args, gates),
+        waivers=_national_gate_waivers(args),
         overrides=us_flag_overrides(gates, us_gate_specs(US_NATIONAL_GATE_SCOPE), args),
         hold_files=args.dry_run_gates_report is None,
     )
@@ -14940,10 +15557,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     dry_run = _ReleaseDryRun.start(args, argv)
     if dry_run is None and _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
-    # Loaded (and validated) up front so a malformed owners file dies in
-    # seconds, not after the multi-hour build. The flag-combination rules
-    # (--evidence-failure-owners requires the tier flag; --exact-k is
-    # incompatible with it) live in _parse_args with the other combos.
+    if dry_run is None:
+        _refuse_packages_from_another_checkout("build a release")
+    # A build has no tier (microcosm#1585 item 11): only a dry run takes
+    # --evidence-release, to preview an evidence certification's owners
+    # (_parse_args refuses it on a build). Loaded up front so a malformed
+    # owners file dies in seconds.
     evidence_failure_owner_patterns = (
         _load_evidence_failure_owner_patterns(args.evidence_failure_owners)
         if args.evidence_release
@@ -14952,15 +15571,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     timing: dict[str, float] = {}
 
     # microcosm#568 round 4: refuse certified-dir reuse before ANY side
-    # effect, including the base download and cache writes below. The
-    # release directory is named after the build's release (microcosm#1570),
-    # so it is known here whether or not --release-id gives the build ID.
-    _refuse_certified_release_dir_reuse(
-        args.out.resolve() / "releases" / _release_for_build(args)
-    )
-    _refuse_skipped_checks_left_files(
-        args.out.resolve() / "releases" / _release_for_build(args), args
-    )
+    # effect, including the base download and cache writes below. A build is
+    # certified into the release of the tier its certification chose, so
+    # both release directories are checked, whether or not --release-id
+    # gives the build ID.
+    _refuse_reusing_a_certified_build(args.out.resolve())
     if dry_run is None:
         # A build stops at its record (microcosm#1585 item 11, PR 4a), so an
         # --out awaiting certification carries no release manifest yet.
@@ -15040,7 +15655,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         commit=commit,
         build_timestamp=build_timestamp,
     )
-    _assert_us_release_id(release_id, evidence_release=args.evidence_release)
+    _assert_us_release_id(release_id)
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
     _start_national_gate_shadow(args, release_id=release_id)
@@ -15286,11 +15901,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     active_target_registry = TargetRegistry(target_specs, country="us")
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
-    release_dir = release_root / "releases" / _release_for_build(args)
+    # The build's own directory (microcosm#1585 item 11): a build has no tier,
+    # so it writes no release directory; certification places these files in
+    # the release of the tier it chooses. The name stays release_dir below,
+    # where every build file is written.
+    release_dir = release_root / US_BUILD_FILES_DIRECTORY
     # Unconditional refusal BEFORE any output-directory creation: a hostile
     # --checkpoint-root beneath releases/<release> must not mutate a certified
     # directory before the raise (microcosm#568 round 4).
-    _refuse_certified_release_dir_reuse(release_dir)
+    _refuse_reusing_a_certified_build(release_root)
     _release_national_gate_shadow_files()
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
@@ -18243,13 +18862,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # before the NPZ write, instead of after them.
     #
     # It rides the batch like every other pre-export gate, which also means
-    # --evidence-release can convert it into an owned known failure and export
-    # anyway (microcosm#506) — the conversion contract
-    # test_evidence_mode_conversion_is_pinned_structurally enforces on every
-    # terminal raise past the accumulator. Such an export still cannot be
-    # SPM-measured, so reform validation below reaches the engine's own
-    # refusal; that is the declared, owner-checked, manifest-recorded choice an
-    # evidence release makes about any pre-export gate, not a hole here.
+    # an evidence-tier certification can ship it as an owned known failure
+    # (microcosm#506): the build records it with the others and writes its
+    # H5. Such an export still cannot be SPM-measured, so reform validation in
+    # certification reaches the engine's own refusal; that is the declared,
+    # owner-checked, manifest-recorded choice an evidence release makes about
+    # any pre-export gate, not a hole here.
     spm_composition_failures, export_frame_spm_composition = shadow_value(
         "us_national_spm_composition",
         lambda: _spm_composition_gate_failures(export_frame, stage="export frame"),
@@ -18627,7 +19245,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # top-k weighted-mass share. A per-run register that does not match the
     # checked surface is a batched failure (never an early raise), so the
     # measured tail evidence and the #568 weight sidecar survive it.
-    qrf_tail_register_failures = _record_qrf_tail_concentration_gate(
+    # A register mismatch is recorded like any other terminal failure; an
+    # evidence-tier certification refuses to own it (microcosm#1585 item 11).
+    _record_qrf_tail_concentration_gate(
         export_frame,
         base_frame=base_frame,
         exclusions_path=args.qrf_tail_concentration_exclusions,
@@ -18642,86 +19262,41 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # at this point, so one failed
     # run reports every failing pre-export group at once (Build M attempts 9
     # and 10 each burned a ~2h run to surface one of these groups serially).
-    # The reform-coverage smoke and take-up contract keep their own raises
-    # below: each already evaluates and reports its full failure set
-    # internally, and both require the written H5 / export artifacts that a
-    # gate-failed run must not produce.
     # A failed release gate no longer withholds a build's H5 (microcosm#1585
     # item 11, PR 4a): a build is evaluated before anyone certifies it. Its
-    # failures ride the build record, certification refuses the build while
-    # they stand, and the build exits non-zero once its record is written.
+    # failures ride the build record, and the build exits non-zero once its
+    # record is written. A build has no tier: certification refuses it at the
+    # certified tier while its failures stand, and only an evidence-tier
+    # certification, which needs an owner for every failure, can ship them.
     build_refusal: RuntimeError | None = None
     if terminal_gate_failures:
-        # Evidence tier (microcosm#506): owners are resolved NOW so an
-        # unowned failure refuses the export before the H5 and manifest work
-        # below. A refused evidence attempt then falls through to the SAME
-        # failed-run path as a certified gate failure — #568 weight-evidence
-        # sidecar included — so no failed run ever loses its record-level
-        # weight evidence.
-        evidence_refusal: RuntimeError | None = None
-        if args.evidence_release:
-            try:
-                _evidence_known_failures(
-                    terminal_gate_failures, evidence_failure_owner_patterns
-                )
-            except RuntimeError as error:
-                evidence_refusal = error
-            if evidence_refusal is None:
-                evidence_refusal = _qrf_tail_register_evidence_refusal(
-                    qrf_tail_register_failures
-                )
-        if not args.evidence_release or evidence_refusal is not None:
-            # Gate-failure path ONLY (microcosm#568 review): a batched
-            # pre-export failure mints no H5, so the exact calibrated weight
-            # vector — with the ordered household ids it aligns to, bound to
-            # the target-frame identity — is persisted here as the run's only
-            # record-level weight evidence. Green runs never write these files
-            # (the certified H5 carries the weights); late gates (reform
-            # smoke, take-up contract) raise after the H5 write, so their
-            # failed runs retain weights in the written dataset itself.
-            _write_final_household_weight_evidence(
-                release_dir,
-                export_frame,
-                identity=target_frame_checkpoint_identity,
-            )
-            terminal_batch_telemetry.stage(
-                "release_gates",
-                status="failed",
-                message="Release gates failed (batched pre-export report).",
-                failures=terminal_gate_failures,
-                force_upload=True,
-            )
-            if evidence_refusal is not None:
-                raise evidence_refusal
-            build_refusal = RuntimeError(
-                "Release gates failed: " + "; ".join(terminal_gate_failures)
-            )
-        # The owned failures ride into the release manifest's known_failures
-        # block instead of aborting the export; the H5 written below carries
-        # the calibrated weights, so the sidecar is not written on this path.
-        # Failures appended AFTER this point (a _TerminalBatchProgress crash
-        # line, the smoke/take-up/coverage recordings) are owner-checked at
-        # their own append sites and again before the manifest write; if one
-        # is unowned the run dies post-H5 — weights retained in the written
-        # dataset, per the #568 doctrine for late-gate failures — and no
-        # manifest is minted.
-        else:
-            terminal_batch_telemetry.stage(
-                "release_gates",
-                status="failed",
-                message=(
-                    "Release gates failed; --evidence-release continues to "
-                    "export with the failures recorded (microcosm#506)."
-                ),
-                failures=terminal_gate_failures,
-                force_upload=True,
-            )
+        # Gate-failure path ONLY (microcosm#568 review): the exact calibrated
+        # weight vector — with the ordered household ids it aligns to, bound
+        # to the target-frame identity — is persisted here as the run's
+        # record-level weight evidence. Green runs never write these files
+        # (the H5 carries the weights), and certification never copies them
+        # into a release directory.
+        _write_final_household_weight_evidence(
+            release_dir,
+            export_frame,
+            identity=target_frame_checkpoint_identity,
+        )
+        terminal_batch_telemetry.stage(
+            "release_gates",
+            status="failed",
+            message="Release gates failed (batched pre-export report).",
+            failures=terminal_gate_failures,
+            force_upload=True,
+        )
+        build_refusal = _BuildFailedReleaseGatesError(
+            "Release gates failed: " + "; ".join(terminal_gate_failures)
+        )
     # A green run must not inherit a prior failed attempt's weight evidence
     # (microcosm#568 round 2): with --out/--release-id reuse, stale evidence
-    # files would coexist with a certified release whose manifest knows
-    # nothing about them. The batched gates have passed (or --evidence-release
-    # is recording their failures), so any evidence present here belongs to a
-    # superseded attempt — remove it before the release artifacts are written.
+    # files would coexist with a green build whose record knows nothing about
+    # them. The batched gates have passed, so any evidence present here
+    # belongs to a superseded attempt — remove it before the build's
+    # artifacts are written.
     if build_refusal is None:
         for stale_evidence in (
             release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
@@ -18729,6 +19304,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
         ):
             stale_evidence.unlink(missing_ok=True)
+    # What the written file fails, its stored-input premise and the export
+    # audit below, is recorded with the release-gate failures, on a green
+    # build too, so its H5 never stands without a record that marks it
+    # failed (review of #1672). No tier certifies it: the evidence tier
+    # relaxes gate verdicts, never the written artifact's own checks
+    # (microcosm#506), so the record lists these apart.
+    artifact_integrity_failures: list[str] = []
+    # A failed build's --out may be built into again, so its build may have
+    # been certified as evidence since this build started: its H5 and record
+    # are then a certified build's, never to be overwritten (review of #1681).
+    _refuse_reusing_a_certified_build(release_root)
     dataset_path = artifact_root / dataset_filename
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
@@ -18756,11 +19342,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         ),
     )
     if stored_input_premise_failure is not None:
-        if build_refusal is None:
-            raise RuntimeError(stored_input_premise_failure)
-        # A failed build still ends at its record (microcosm#1585 item 11,
-        # PR 4a): what its written file fails joins its release gate failures
-        # instead of replacing them.
+        artifact_integrity_failures.append(stored_input_premise_failure)
         terminal_gate_failures.append(stored_input_premise_failure)
     # microcosm#1047/#1647: before anything binds the file's sha256, carry the
     # base's household-location rule onto it (root attributes only; no
@@ -18785,11 +19367,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 maximum_microsim_batch_size=args.maximum_microsim_batch_size,
             )
         except Exception as error:
-            if build_refusal is None:
-                raise
-            terminal_gate_failures.append(
-                f"Export audit failed: {type(error).__name__}: {error}"
-            )
+            audit_failure = f"Export audit failed: {type(error).__name__}: {error}"
+            artifact_integrity_failures.append(audit_failure)
+            terminal_gate_failures.append(audit_failure)
 
     if telemetry is not None:
         telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
@@ -18801,10 +19381,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         release_root / f"base_{base_h5.name}",
         authenticated_pool_h5=authenticated_pool_h5,
     )
-    if build_refusal is not None:
+    if build_refusal is not None or artifact_integrity_failures:
         # The refusal names every failure the record carries, those found
-        # after the H5 write included.
-        build_refusal = RuntimeError(
+        # after the H5 write included. A build whose written file failed its
+        # own checks exits as a refusal (exit 1), not with
+        # US_BUILD_FAILED_RELEASE_GATES_EXIT: no tier certifies it, so a
+        # driver must not keep it for certification.
+        refusal = (
+            RuntimeError
+            if artifact_integrity_failures
+            else _BuildFailedReleaseGatesError
+        )
+        build_refusal = refusal(
             "Release gates failed: " + "; ".join(terminal_gate_failures)
         )
     timing["build_seconds"] = time.perf_counter() - build_started
@@ -18823,8 +19411,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             built_at=datetime.now(UTC).isoformat(),
             runtime=_runtime_versions(),
             args=args,
-            evidence_failure_owner_patterns=evidence_failure_owner_patterns,
             terminal_gate_failures=terminal_gate_failures,
+            artifact_integrity_failures=artifact_integrity_failures,
             n_households=int(export_frame.n("household")),
             result=result,
             post_export_scoring_plan=post_export_scoring_plan,
@@ -18888,7 +19476,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     _print_built_result(
         build=release_id,
         release_root=release_root,
-        release_dir=release_dir,
+        build_dir=release_dir,
         artifact_root=artifact_root,
         build_record=build_record_path,
         release_gate_failures=terminal_gate_failures if build_refusal else (),
@@ -18898,7 +19486,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
 
 
 def _certify_us_build(
-    record: _USBuildRecord, *, telemetry: _BuildProgress | None = None
+    record: _USBuildRecord,
+    *,
+    certification: _Certification,
+    telemetry: _BuildProgress | None = None,
 ) -> None:
     """Run a finished build's post-export checks and write its manifests.
 
@@ -18911,20 +19502,23 @@ def _certify_us_build(
     (microcosm#1585 item 11, PR 4a). Every input is the record, or a file
     whose digest the record pins: nothing is read from the build's process.
     The manifests' provenance (the commit, ``built_at`` and the built-with
-    packages) is the build's, from the record.
+    packages) is the build's, from the record. A build has no tier:
+    ``certification`` is the tier certification chose, the release directory
+    it placed the build's files in and the ID it publishes the build under,
+    and both manifests record it beside the build's provenance.
     """
 
     certify_started = time.perf_counter()
-    args = record.certify_args()
-    release_id = record.build
-    release_dir = record.release_dir
+    args = record.certify_args(evidence_release=certification.evidence_release)
+    release_id = certification.build
+    release_dir = certification.release_dir
     artifact_root = record.artifact_root
     dataset_key = record.dataset_key
     dataset_filename = record.dataset_filename
     calibration_key = record.calibration_key
     calibration_filename = record.calibration_filename
     dataset_path = artifact_root / dataset_filename
-    evidence_failure_owner_patterns = record.evidence_failure_owner_patterns
+    evidence_failure_owner_patterns = certification.owner_patterns
     terminal_gate_failures = list(record.terminal_gate_failures)
     timing = dict(record.timing)
     result = record.calibration_result()
@@ -18965,7 +19559,7 @@ def _certify_us_build(
     acs_predictor_join_receipt = inputs["acs_predictor_join"]
     export_input_mass_reference = inputs["export_input_mass_reference"]
     calibration_runtime = inputs["calibration_runtime"]
-    diagnostics_outcome = record.diagnostics_outcome()
+    diagnostics_outcome = record.diagnostics_outcome(release_dir)
     scf_wealth_signal = inputs["scf_wealth_signal"]
     source_coverage = record.source_coverage
     congressional_district_vintage_crosswalk_metadata = source_coverage[
@@ -19286,7 +19880,7 @@ def _certify_us_build(
         if not terminal_gate_failures:
             raise RuntimeError(
                 "Evidence release refused: every terminal gate passed. This "
-                "artifact qualifies for the certified path — rerun without "
+                "build qualifies for the certified tier — certify it without "
                 "--evidence-release (the flag cannot mint a certified-shape "
                 "manifest, and an evidence manifest with no known failures "
                 "is invalid by contract)."
@@ -19350,6 +19944,7 @@ def _certify_us_build(
         git_commit=record.commit,
         built_at=record.built_at,
         runtime_versions=record.runtime,
+        certification=certification.manifest_block(record),
     )
     # Both manifests name the release and this build, in the build-folder
     # layout, before telemetry attaches them; the directory must then pass
@@ -19376,5 +19971,17 @@ def _certify_us_build(
     )
 
 
+def _run_as_script() -> None:
+    """Run the build as a command: a build that failed release gates once its
+    record is written exits :data:`US_BUILD_FAILED_RELEASE_GATES_EXIT`, with
+    its refusal printed as Python prints any other."""
+
+    try:
+        main()
+    except _BuildFailedReleaseGatesError:
+        traceback.print_exc()
+        raise SystemExit(US_BUILD_FAILED_RELEASE_GATES_EXIT) from None
+
+
 if __name__ == "__main__":
-    main()
+    _run_as_script()
