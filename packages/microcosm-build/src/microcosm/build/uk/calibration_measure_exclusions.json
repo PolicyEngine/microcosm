@@ -1290,21 +1290,12 @@
     },
     {
       "name": "ons.paye_rti.employees_aged_0_to_17",
-      "reason": "Diagnostic, not a weight question: PAYE RTI's payrolled employees by age monitor the employee base of the employer NICs relief for employees under 21, whose 2024-25 outturn the build matches within 4 percent at 2024-25 rules (B1 of the November event-data plan's PR3, microcosm#1095). The model counts anyone with employment income in the year against a monthly average, so the rows read high by job turnover and are not bound as they stand.",
-      "tracking": "microcosm#1095",
+      "reason": "A check, not a weight question: PAYE RTI's payrolled employees aged 0 to 17 against the model's employees at the FRS interview (employment_status FT_EMPLOYED or PT_EMPLOYED; PolicyEngine/microcosm#1663). The FRS records few jobs held by under-18s, most of whom are dependent children whose own work it barely asks about, so the model's count sits far below RTI's and no reweighting of its few records could close it. The row monitors the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095). Its sibling at 18 to 24 binds.",
+      "tracking": "PolicyEngine/microcosm#1663",
       "approved_by": "juaristi22",
-      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (María's signature of 2026-11-11).",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-11"
-    },
-    {
-      "name": "ons.paye_rti.employees_aged_18_to_24",
-      "reason": "Diagnostic, not a weight question: PAYE RTI's payrolled employees by age monitor the employee base of the employer NICs relief for employees under 21, whose 2024-25 outturn the build matches within 4 percent at 2024-25 rules (B1 of the November event-data plan's PR3, microcosm#1095). The model counts anyone with employment income in the year against a monthly average, so the rows read high by job turnover and are not bound as they stand.",
-      "tracking": "microcosm#1095",
-      "approved_by": "juaristi22",
-      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (María's signature of 2026-11-11).",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-11"
+      "adjudication": "María's go of 2026-11-18 on the Milburn review's gaps (\"lets start UC parts 1-2 but also the wider fixes you noted above\"; \"they can all go into 1663\"), on the fix put to her as: count employees at interview, which matches RTI's monthly count, and bind 18 to 24. This row, 0 to 17, stays held out as the check.",
+      "approved_on": "2026-11-18",
+      "expires_on": "2027-02-18"
     },
     {
       "name": "dwp.uc.people_aged_16_to_21_no_work_requirements",

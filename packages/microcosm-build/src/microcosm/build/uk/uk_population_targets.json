@@ -49734,9 +49734,11 @@
         "concept": "uk.person.count",
         "filters": [
           {
-            "concept": "uk.income.employment.amount",
-            "operator": ">",
-            "value": 0
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed"
+            ]
           },
           {
             "concept": "uk.demographics.age",
@@ -49753,9 +49755,11 @@
           "value_variable": "person_count",
           "filters": [
             {
-              "variable": "employment_income",
-              "operator": ">",
-              "value": 0
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED"
+              ]
             },
             {
               "variable": "age",
@@ -49763,7 +49767,7 @@
               "value": 17
             }
           ],
-          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Table 28 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 0 to 17 by their age at payment, each month's average of daily counts, averaged over the twelve months of 2025. The model counts the people aged 0 to 17 with positive employment_income in the year, which includes anyone paid in only part of it, so it reads above a monthly average by the turnover of young people's jobs. A measured diagnostic of the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095): at 2024-25 rules the build's relief sits 3.5 percent under HMRC's outturn, so the base is not bound (María, 2026-11-11). The table publishes no split at 21."
+          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Table 28 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 0 to 17 by their age at payment, each month's average of daily counts, averaged over the twelve months of 2025. The model counts the people aged 0 to 17 with positive employment_income in the year, which includes anyone paid in only part of it, so it reads above a monthly average by the turnover of young people's jobs. A measured diagnostic of the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095): at 2024-25 rules the build's relief sits 3.5 percent under HMRC's outturn, so the base is not bound (María, 2026-11-11). The table publishes no split at 21. Since PolicyEngine/microcosm#1663 (María's go of 2026-11-18), the model's count is its employees at the FRS interview (employment_status FT_EMPLOYED or PT_EMPLOYED), a point-in-time stock like RTI's daily-average monthly count, in place of anyone with employment income in the year. On the November builds the count at interview read at least as high as the annual count, so the job turnover the row was held out for does not show, and the shortfall against RTI is the data's."
         },
         "axiom": {
           "metric_name": "ons/paye_rti/employees_aged_0_to_17",
@@ -49819,9 +49823,11 @@
         "concept": "uk.person.count",
         "filters": [
           {
-            "concept": "uk.income.employment.amount",
-            "operator": ">",
-            "value": 0
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed"
+            ]
           },
           {
             "concept": "uk.demographics.age",
@@ -49843,9 +49849,11 @@
           "value_variable": "person_count",
           "filters": [
             {
-              "variable": "employment_income",
-              "operator": ">",
-              "value": 0
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED"
+              ]
             },
             {
               "variable": "age",
@@ -49858,7 +49866,7 @@
               "value": 24
             }
           ],
-          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Table 28 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 18 to 24 by their age at payment, each month's average of daily counts, averaged over the twelve months of 2025. The model counts the people aged 18 to 24 with positive employment_income in the year, which includes anyone paid in only part of it, so it reads above a monthly average by the turnover of young people's jobs. A measured diagnostic of the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095): at 2024-25 rules the build's relief sits 3.5 percent under HMRC's outturn, so the base is not bound (María, 2026-11-11). The table publishes no split at 21."
+          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Table 28 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 18 to 24 by their age at payment, each month's average of daily counts, averaged over the twelve months of 2025. The model counts the people aged 18 to 24 with positive employment_income in the year, which includes anyone paid in only part of it, so it reads above a monthly average by the turnover of young people's jobs. A measured diagnostic of the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095): at 2024-25 rules the build's relief sits 3.5 percent under HMRC's outturn, so the base is not bound (María, 2026-11-11). The table publishes no split at 21. Since PolicyEngine/microcosm#1663 (María's go of 2026-11-18), the model's count is its employees at the FRS interview (employment_status FT_EMPLOYED or PT_EMPLOYED), a point-in-time stock like RTI's daily-average monthly count, in place of anyone with employment income in the year. On the November builds the count at interview read at least as high as the annual count, so the job turnover the row was held out for does not show, and the shortfall against RTI is the data's."
         },
         "axiom": {
           "metric_name": "ons/paye_rti/employees_aged_18_to_24",
