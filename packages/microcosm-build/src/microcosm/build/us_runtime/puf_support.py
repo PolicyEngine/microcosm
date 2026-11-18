@@ -2547,7 +2547,14 @@ def _clone_preassembled_entity_table(
     schema: EntitySchema,
     id_multiplier: int,
 ) -> pd.DataFrame:
-    """Clone one preassembled entity table while preserving source provenance."""
+    """Clone one preassembled entity table while preserving source provenance.
+
+    Person references go through the remapper on both arms, as in
+    :func:`_clone_entity_table`, so both concatenate as exact int64. Assembly
+    pads a reference one spine lacks as float64 with NaN; a float64 native
+    arm would promote the remapped PUF-arm ids to float64, which rounds them
+    once they pass 2**53 (``10**16 + 1`` names person ``10**16``).
+    """
 
     id_columns = _entity_id_columns(schema, entity)
     reference_columns = _person_reference_columns(table, schema=schema, entity=entity)
@@ -2564,6 +2571,11 @@ def _clone_preassembled_entity_table(
             id_multiplier=id_multiplier,
         )
     for column in reference_columns:
+        native[column] = _remap_person_reference_ids(
+            native[column].to_numpy(),
+            clone_index=0,
+            id_multiplier=id_multiplier,
+        )
         detail[column] = _remap_person_reference_ids(
             detail[column].to_numpy(),
             clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
@@ -2652,9 +2664,9 @@ def _remap_person_reference_ids(
 
     ``0`` means "no such person" on these columns, so it must not be shifted
     into ``clone_index * id_multiplier`` — a valid-looking id naming a
-    stranger. A missing value (a row, such as a preassembled PUF tax-detail
-    person, that never had a parent pointer to resolve) is that same
-    "unknown" and is written as ``0``.
+    stranger. A missing value (a row that never had a parent pointer to
+    resolve, such as one from a spine assembly padded because it lacks the
+    column) is that same "unknown" and is written as ``0``, on either arm.
     """
 
     known = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0)

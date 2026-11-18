@@ -363,7 +363,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
             # microcosm#1641 moves it again: docstring and comment wording in
             # solve and ssi_take_up, and the calibration contract's renamed modes.
-            "spec_sha256": "372858d059a129d7b3bcbd7ac2dbdc314742345bd35aaff8d53943e737c98f84",
+            # microcosm#1665's exact int64 person references in puf_support's
+            # preassembled clone move it through puf_support's attested bytes.
+            "spec_sha256": "8bf505375c4ccd614dbb4e7abab39bb0b1a54d319795876daac9cf1d4f3a00ce",
         },
     }
 
@@ -1179,11 +1181,13 @@ def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
     assert "checkpoint base identity is stale" in capsys.readouterr().out
 
 
-def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
+@pytest.mark.parametrize("legacy_envelope", (6, 7))
+def test_pool_envelope_preserves_stacked_bank_identity_but_rejects_older_envelopes(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    legacy_envelope: int,
 ) -> None:
     __import__("policyengine_us")
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
@@ -1212,7 +1216,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         legacy.setattr(
             pool_tool,
             "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
-            6,
+            legacy_envelope,
         )
         assert identity() == current_identity
         legacy_store = pool_tool._PoolStageCheckpointStore(
@@ -1233,7 +1237,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
         )
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert identity() == current_identity
     current_store = pool_tool._PoolStageCheckpointStore(
         checkpoint_root,

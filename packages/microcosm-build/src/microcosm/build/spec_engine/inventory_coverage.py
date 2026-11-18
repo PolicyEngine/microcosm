@@ -402,8 +402,11 @@ EXPECTED_HASHES = {
     # microcosm#1641 moves both again: it rewords docstrings and a comment in
     # solve and the delivery gate's docstring in ssi_take_up, which now names
     # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
-    "seed_map": "d756dc67535c04788e605bedb4cd6721cf715e5f5ce4be73d9b27420a61b3d50",
-    "seed_protocol": "2c57cbfb9dd0f132f9b5751eb8bc303f4b7e37430cd5e0b155aac0b0b8eaa42e",
+    # microcosm#1665 moves both again: puf_support's preassembled clone sends
+    # the native arm's person references through the remapper, so they stay
+    # exact int64; no draw, RNG rule or QRF target changes.
+    "seed_map": "7f2d2d0630f2822d65881a7f9fa0aa327cfc7be2eac9a114dc4dac2394f90274",
+    "seed_protocol": "f2e2a99d9ff89937df64af9156fbcc16fc127cd6273c7323f313ff3a3ac14373",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
