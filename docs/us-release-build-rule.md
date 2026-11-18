@@ -157,8 +157,9 @@ A US national build and its certification are two steps (microcosm#1585 item
   staged (the build's run id with `-certify` appended, to the build's staging
   repository), so the post-export verdicts and the manifests reach the staging
   dashboard, and a failed certification marks that run failed. The build
-  manifest's `staging` block, which the publisher checks, is certification's,
-  with the build's inside it under `build`. A build that did not stage is
+  manifest's `staging` block is certification's, with the build's inside it
+  under `build`, and the publisher checks both, so a build whose own uploads
+  never arrived is refused however its certification staged. A build that did not stage is
   certified without staging, and `--no-staging` opts certification out where
   the build staged too, as a build may opt out; the block's reason then says
   the build staged. Certification refuses a `--staging-run-id` that names the
