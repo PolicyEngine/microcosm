@@ -866,6 +866,11 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "guarantee_credit",
         "household_num_benunits",
         "housing_benefit",
+        # Engine-computed at the calibration period: the RTI rows' measure since
+        # PolicyEngine/microcosm#1663 counts people in work, a policyengine-uk
+        # formula of the stored hours and employment and self-employment
+        # income; no stage stores a copy.
+        "in_work",
         "income_tax",
         # PR2's diagnostics (8 Nov 2026). Y4's UC people: the benefit unit's
         # head or partner, a role no uprating moves. Y3's NEET proxy: the FRS
@@ -927,6 +932,10 @@ REVIEWED_PLAIN_COLUMN_POPULATION_VARIABLES = frozenset(
         "uc_childcare_element",
         "uc_deductions",
         "uc_housing_costs_element",
+        # The young LCWRA row (part 3 of PolicyEngine/microcosm#1663): the WRA
+        # flag the uc_limited_capability stage stores over policyengine-uk's
+        # proxy, which nothing uprates, the same in every period.
+        "uc_limited_capability_for_WRA",
         # Engine-computed at the calibration period: B5's UC conditionality
         # groups (microcosm#1095) read policyengine-uk's work-related
         # requirement group apart from earnings, a formula of the stored
