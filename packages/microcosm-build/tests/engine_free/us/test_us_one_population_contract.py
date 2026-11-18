@@ -3653,7 +3653,14 @@ _X5_WRITERS = frozenset(
 
 @pytest.fixture(scope="module")
 def readers():
-    return reader_population()
+    # pytest counts a fixture's error as a marked test's expected failure
+    # when its type matches ``raises``; the builder's self-checks raise
+    # AssertionError, so re-raise them as an error the four strict xfails
+    # (raises=AssertionError) report rather than absorb.
+    try:
+        return reader_population()
+    except AssertionError as exc:
+        raise RuntimeError(f"The X5 reader frame is broken: {exc}") from exc
 
 
 def _x5_statistics(result: object) -> object:
