@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import functools
 import importlib.util
 import inspect
@@ -11,6 +12,7 @@ import re
 import shlex
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1386,13 +1388,17 @@ def test_release_checks_self_employment_wherever_it_loads_staging() -> None:
     module = _load_tool_module()
 
     for stage in (module.do_materialize, module._write_calibrated_artifact):
-        lines = [line.strip() for line in inspect.getsource(stage).splitlines()]
+        # Each check may run inside the lambda its gate battery shadow site
+        # evaluates at once (microcosm#1585 item 11), so the statements are
+        # compared, not the lines.
+        (function,) = ast.parse(textwrap.dedent(inspect.getsource(stage))).body
+        statements = [ast.unparse(statement) for statement in function.body]
         hours = next(
             index
-            for index, line in enumerate(lines)
-            if line.startswith("_require_local_hours(frame")
+            for index, statement in enumerate(statements)
+            if "_require_local_hours(frame" in statement
         )
-        assert lines[hours + 1] == "_require_acs_self_employment_identity(frame)"
+        assert "_require_acs_self_employment_identity(frame)" in statements[hours + 1]
 
 
 def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:

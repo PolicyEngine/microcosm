@@ -39,7 +39,7 @@ All machine locations come from the settings file:
 | `CHAIN_ROOT`, `CHAIN_LOG` | Previous overnight chain's supervisor run parent and chain log |
 | `DISK_PATH` | Filesystem checked by the driver's free-space wait |
 | `UV`, `PYTHON` | uv executable and engine-free interpreter for the static parser check |
-| `STORAGE`, `EDU` | Processed ASEC/PUF/ACS inputs and the three ASEC education person archives |
+| `STORAGE`, `EDU` | Processed ASEC/PUF/ACS inputs and the pooled years' three ASEC Census person archives (see "ASEC pool") |
 | `FEED`, `LADDER`, `SSI`, `SCF` | Pinned Ledger feed, block ladder, SSI prior basis and SCF summary extract |
 | `AGENT_SECRET` | Credential helper executable used by the release wrapper |
 | `EXPORT_MASS_REF_H5`, `QRF_TAIL_EXCLUSIONS` | Export-mass reference and optional tail exclusion register |
@@ -52,6 +52,33 @@ the build commit; with gate preflights enabled it must be on a remote branch.
 The static release flag check
 reads `add_argument` declarations without importing the release tool, including
 flags in `RELEASE_EXTRA_ARGS`.
+
+## ASEC pool
+
+The base pools main's default ASEC years,
+`asec_sources.ASEC_DEFAULT_POOL_INCOME_YEARS`: income years 2023-2025 (ASEC
+2024-2026), passed newest first. Max moved Route A to this pool from the first
+certified build after November 2026 (d2603, 7 November 2026). `STORAGE` holds
+`census_cps_2025.h5`, `census_cps_2024.h5` and `census_cps_2023.h5`, and `EDU`
+holds `asecpub26csv.zip`, `asecpub25csv.zip` and `asecpub24csv.zip`.
+`tools/fetch_us_asec_sources.py` resolves each H5 against its pin and prints
+its path; copy or link the file into `STORAGE` under its own name.
+`fetch_asec_education_assistance_source(year, cache_dir=EDU)` downloads an
+archive into `EDU`, verifies it and extracts its person file there.
+`--resolve` hashes them all. The base also reads the LKWEEKS sidecar, the
+income-2022 archive `asecpub23csv.zip`, in every mode. The driver passes no
+path for it: the prefetch stage fills the fetcher's cache,
+`~/.cache/microcosm/cps/asec_2023/`, and the base checks the pin there.
+
+The driver writes each year and pin out. Its build-commit check refuses a
+commit whose `asec_sources.py` or `education_assistance_source.py` lacks one of
+them. `test_route_a_asec_pool.py` fails when the pooled years leave the
+default pool or a pin leaves its registry, so the PR that pins a newer year
+moves Route A too. Builds through the November 2026 certified build pooled
+2022-2024. Each keeps the driver of its own commit, and main keeps their Modal
+registrations, so their plans still validate.
+
+## Resolving
 
 `--resolve` (also `--dry-run`) fetches refs, hashes registered inputs, writes
 `inputs.resolved.json`, reports commit blockers and launches no stages. It exits
@@ -98,6 +125,29 @@ first and set what its blockers name:
   so is a floor file without an `X.Y.Z` release, because the release refuses
   both. The driver exports both settings when the settings file sets them.
   Publisher preflight starts no emitter.
+- **Location rule.** `LOCATION_RULE` sets how the base locates households
+  (microcosm#1047, #696).
+  - `legacy`, the default, keeps the published run's command: a congressional
+    district drawn from SOI return counts, then a block within it.
+  - `block_v1` draws one 2020 census block per household within its CPS ASEC
+    source geography, and takes every other geography from that block. The
+    base then drops `--ledger-facts`, `--assign-congressional-districts` and
+    `--congressional-district-seed`, and passes
+    `--location-rule block_v1 --location-seed 0`. `--resolve` also checks that
+    the base tool at the commit declares those two flags.
+  - The driver refuses any other value. `block_v1` needs a block ladder that
+    carries each block's PUMA (see **Block ladder**).
+  - `block_v1` is for a base that the driver builds itself. The Modal base
+    registration keeps the legacy location flags, so a Modal base is always a
+    `legacy` base (see "Modal base hand-off").
+- **Block ladder.** `LADDER_SHA` and `LADDER_BYTES` default to the published
+  run's ladder (d713, rebuilt at microcosm#1072). A build with another ladder
+  sets `LADDER`, `LADDER_SHA` and `LADDER_BYTES` together.
+  - Under `block_v1`, `verify_inputs` also lists the ladder's arrays with
+    `PYTHON`. It refuses a ladder without the per-block `puma` array that
+    `load_us_location_ladder` requires, and names a file it cannot read.
+  - `tools/build_us_block_ladder_artifact.py` on main writes that array.
+    Rebuild the ladder with it and set the three settings to the new file.
 
 The example retains the historical d122 dense whole-base national/state
 settings, batch size 2000, export-mass reference and d490 tail register from the
@@ -107,10 +157,11 @@ release-defeating, selection, evidence, exact-k, staging and driver-owned
 overrides listed in `refuse_bad_release_args`, including `--flag=value` forms.
 Use `ROUTE_A_STAGING=0` to opt out; `--no-staging` in extra arguments is refused.
 
-The next base uses the d713 CT-fixed ladder at
+By default the base uses the d713 CT-fixed ladder at
 `$PE/_build_artifacts/us-ct-cbsa/us_block_ladder_2020.npz`, verified against
-sha256 `6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233`
-and 18,991,218 bytes. Use a fresh `RUN_ROOT` for that attempt: an existing
+`LADDER_SHA` (default
+`6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233`) and
+`LADDER_BYTES` (default 18,991,218). Use a fresh `RUN_ROOT` for that attempt: an existing
 `base-sup/ACCEPTED` skips the base stage. Merely pointing `LADDER` at new bytes
 does not rebuild a previously accepted base.
 
@@ -231,6 +282,11 @@ copies with `verify-receipt --prefix base-out --strict`, writes `base.sha256`,
 moves old local checkpoints aside, stores the receipt/comparison/run-context
 evidence in `base-sup`, and writes `ACCEPTED` last. Set that block's `RUN` to
 `$RUN_ROOT/run-<12-character-build-commit>` before rerunning this driver.
+
+A Modal base is a `legacy` base. Its registration passes the legacy location
+flags, and no plan can pass `--location-rule`. Do not hand a Modal base to a
+run with `LOCATION_RULE=block_v1`. The driver skips a base stage that is
+already accepted, so the release would use the `legacy` base.
 
 The committed Modal example plan and local reference target the historical
 `4b57d15a2` base and its `7ba39b95…` ladder. They do not qualify a new CT-fixed

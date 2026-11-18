@@ -1,5 +1,14 @@
 # Route A rerun on 18 October 2026 (d1386)
 
+> **7 November 2026 (d2603).** Max moved Route A to main's default ASEC pool,
+> income years 2023-2025, from the first certified build after November 2026.
+> `docs/us-modal-stage-route-a-rerun-base-plan.json` now holds that build's
+> template (registration `us-puf-support-base-income-2023-2025`), and
+> `tools/route_a/route_a.sh` pools those years. This record describes the
+> 18 October rerun, which pooled 2022-2024. To repeat it, use the template and
+> driver as they stood at `9b7a4544b` (`git show 9b7a4544b:<path>`); main
+> keeps the `us-puf-support-base-rerun` registration they name.
+
 Prepared on 15 October against `origin/main`
 `412f916536b66577e4e0b42c707285085df7c302`. Nothing in this preparation
 launched a build or called Modal. The 18 October start did not happen; Max
@@ -29,7 +38,7 @@ editing the template. All eleven inputs use the runbook's
 | Block ladder | d713 CT-fixed `6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233`, 18,991,218 bytes; replaces `7ba39b95…` |
 | ASEC H5s, income years 2024/2023/2022 | Same pins as the historical plan, in that order |
 | ASEC education, income years 2022/2023/2024 | Same three archive pins; the first also seeds the unemployment-weeks cache |
-| ASEC 2025 | Main added it to general defaults; Route A explicitly supplies 2024/2023/2022, so no fourth source is added |
+| ASEC 2025 | Main added it to general defaults. This rerun's driver named 2024/2023/2022, so the pin left the rerun's pool alone. The pull request that pinned 2025 called Route A "not affected"; that held only for drivers that name 2022-2024. Since d2603 Route A pools 2025/2024/2023 (see the note at the top) |
 | Processed PUF, TY2015 raw PUF, ACS 2022 | Same pins as the historical plan |
 | Base feed | Retains `consumer_facts_us_c5e5bf8.jsonl`, SHA `b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801` |
 | Release feed | Main repinned under #940 to `consumer_facts_us_51aa40f.jsonl`, SHA `965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac`, 169,038,757 bytes, 40,178 rows; the machine file was verified |
