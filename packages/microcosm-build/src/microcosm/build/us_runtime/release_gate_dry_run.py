@@ -135,18 +135,15 @@ __all__ = [
     "tail_share_classes",
 ]
 
-#: How far calibration may raise a column's top-k weighted-mass share before
-#: the release's verdict. Zero since 17 Nov 2026: the release's tail gate now
-#: decides at base (pre-calibration) weights and only reports the calibrated
-#: share, so the staged frame's share is the release's own verdict. (The
-#: largest rise measured on route A run 310842b986d7 was +0.299,
-#: ``alimony_income``; an operator who wants the old at-risk net can pass
-#: ``--dry-run-tail-share-rise-margin 0.35``.)
-DEFAULT_TAIL_SHARE_RISE_MARGIN = 0.0
+#: How far calibration may raise a column's top-k weighted-mass share. The
+#: largest rise measured on route A run 310842b986d7 was +0.299
+#: (``alimony_income``), and the d177 register's largest was +0.29. 0.35
+#: covers both.
+DEFAULT_TAIL_SHARE_RISE_MARGIN = 0.35
 
-#: How far calibration may lower a top-k share before the release's verdict.
-#: Zero for the same reason (run 310842b986d7's only fall was -0.033).
-DEFAULT_TAIL_SHARE_FALL_MARGIN = 0.0
+#: How far calibration may lower a top-k share. Run 310842b986d7's only fall
+#: was -0.033 (``partnership_income``). 0.05 covers it.
+DEFAULT_TAIL_SHARE_FALL_MARGIN = 0.05
 
 #: How close to the export input-mass band edge (in relative-drift units) an
 #: in-band column must sit at base weights to be flagged. Measured drift moves
@@ -155,10 +152,10 @@ DEFAULT_TAIL_SHARE_FALL_MARGIN = 0.0
 DEFAULT_MASS_DRIFT_MARGIN = 0.10
 
 #: L0 path only: how far an L0 selection and refit may raise or lower a top-k
-#: share before the release's verdict. Zero since 17 Nov 2026: on both paths
-#: the release's tail gate decides on its base frame at pre-calibration
-#: weights, which is the staged frame the dry run grades.
-DEFAULT_L0_TAIL_SHARE_MARGIN = 0.0
+#: share. Nothing has measured it (every measured shift is from full-pool runs),
+#: so the default admits any share: on the L0 path no checked column's share
+#: verdict is certain until an operator with L0 evidence narrows it.
+DEFAULT_L0_TAIL_SHARE_MARGIN = 1.0
 
 #: L0 path only: how far a column's record nonzero share may move under the
 #: solve's household selection. A conservative default, not a measurement.

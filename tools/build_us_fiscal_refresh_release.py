@@ -12974,14 +12974,20 @@ def _release_dry_run_checks(
                 f"{US_QRF_TAIL_CONCENTRATION_TOP_K} weighted records carry"
             )
 
+        # The release decides this gate on its base frame at pre-calibration
+        # weights (17 Nov 2026), which is the frame graded here, on both
+        # calibration paths: neither the solve nor an L0 selection can move
+        # its verdict, so no tail-share shift applies.
         return qrf_tail_register_check(
             qrf_outputs=sorted(_qrf_imputed_source_outputs()),
             register=register,
             surface=surface,
             gate_details=gate.details,
             release_lines_at_base_weights=[*gate_lines, *register_lines],
-            support_fixed=support_fixed,
-            margins=margins,
+            support_fixed=True,
+            margins=dataclasses.replace(
+                margins, tail_share_rise=0.0, tail_share_fall=0.0
+            ),
             allow_concentration=args.allow_qrf_tail_concentration,
             register_source=_dry_run_register_source(path),
             evidence_owner=tail_owner if args.evidence_release else None,
