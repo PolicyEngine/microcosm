@@ -478,6 +478,7 @@
       "dwp.uc.people_aged_16_to_21_no_work_requirements": "dwp.universal_credit",
       "dwp.uc.people_aged_16_to_21_other_regimes": "dwp.universal_credit",
       "dwp.uc.people_aged_16_to_24": "dwp.universal_credit",
+      "dwp.uc.people_aged_16_to_24_lcwra_element": "dwp.universal_credit",
       "dwp.uc.people_aged_22_to_24": "dwp.universal_credit",
       "dwp.uc.people_aged_22_to_24_no_work_requirements": "dwp.universal_credit",
       "dwp.uc.people_aged_22_to_24_other_regimes": "dwp.universal_credit",
@@ -1067,6 +1068,7 @@
       "dwp.uc.people_aged_16_to_21_no_work_requirements": "Universal Credit people aged 16 to 21, no work requirements",
       "dwp.uc.people_aged_16_to_21_other_regimes": "Universal Credit people aged 16 to 21, other conditionality regimes",
       "dwp.uc.people_aged_16_to_24": "Universal Credit people aged 16 to 24",
+      "dwp.uc.people_aged_16_to_24_lcwra_element": "Universal Credit people aged 16 to 24 with the LCWRA element, England and Wales",
       "dwp.uc.people_aged_22_to_24": "Universal Credit people aged 22 to 24",
       "dwp.uc.people_aged_22_to_24_no_work_requirements": "Universal Credit people aged 22 to 24, no work requirements",
       "dwp.uc.people_aged_22_to_24_other_regimes": "Universal Credit people aged 22 to 24, other conditionality regimes",
@@ -27421,6 +27423,34 @@
           }
         }
       ]
+    },
+    {
+      "name": "dwp.uc.people_aged_16_to_24_lcwra_element",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_caseload_count",
+        "entity_name": "person",
+        "geography_id": "K04000001",
+        "dimension_values": {
+          "age_band": "16_to_24",
+          "health_and_disability_benefit": "uc_health_lcwra"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "caseload_2024",
+          "2025": "caseload_2025"
+        },
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_16_to_24_lcwra_element",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_16_to_24_lcwra_element",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "dwp.uc.people_aged_16_to_21",

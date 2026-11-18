@@ -1096,7 +1096,8 @@
       "scotgov.carer_support_payment.in_payment_scotland": "No incumbent target: uk-data binds no Social Security Scotland caseload row. Its ADP and Carer Support Payment caseloads (PolicyEngine/chronicle#420 item 7) join as measured diagnostics (B10 of the November event-data plan's PR3).",
       "ons.paye_rti.pay_aged_18_to_24": "No incumbent target: uk-data binds no PAYE RTI row. ONS and HMRC's payrolled employees and their mean pay by age (PolicyEngine/chronicle#420 item 4) join as a held-out pay check (PolicyEngine/microcosm#1663).",
       "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced": "No incumbent target: uk-data binds no PIP row by age or award. DWP's PIP cases with entitlement by award and age (PolicyEngine/chronicle#420 item 6) join as a held-out check on the young award mix (PolicyEngine/microcosm#1663).",
-      "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": "No incumbent target: uk-data binds no PIP row by age or award. DWP's PIP cases with entitlement by award and age (PolicyEngine/chronicle#420 item 6) join as a held-out check on the young award mix (PolicyEngine/microcosm#1663)."
+      "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": "No incumbent target: uk-data binds no PIP row by age or award. DWP's PIP cases with entitlement by award and age (PolicyEngine/chronicle#420 item 6) join as a held-out check on the young award mix (PolicyEngine/microcosm#1663).",
+      "dwp.uc.people_aged_16_to_24_lcwra_element": "No incumbent target: uk-data binds no UC row by age and capability. DWP's young people with the UC health element (Young people and work: interim report, Table 28; PolicyEngine/chronicle#443) bind with part 3 of PolicyEngine/microcosm#1663."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1421,6 +1422,7 @@
       "dwp.uc.households_childcare_element",
       "dwp.uc.households_with_deduction",
       "dwp.uc.people_aged_16_to_24",
+      "dwp.uc.people_aged_16_to_24_lcwra_element",
       "dwp.uc.people_aged_16_to_21",
       "dwp.uc.people_aged_22_to_24",
       "dwp.uc.people_aged_16_to_21_no_work_requirements",
@@ -21105,6 +21107,139 @@
           }
         }
       ]
+    },
+    {
+      "target_id": "dwp.uc.people_aged_16_to_24_lcwra_element",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.lcwra_element.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.claimant_or_partner",
+            "equals": true
+          },
+          {
+            "concept": "uk.benefits.universal_credit.limited_capability_for_work_related_activity",
+            "equals": true
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 24
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "wales"
+            ]
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/uc/people_aged_16_to_24_lcwra_element",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_LCWRA_element",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "is_claimant_or_partner",
+              "equals": true
+            },
+            {
+              "variable": "uc_limited_capability_for_WRA",
+              "equals": true
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 24
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP, Young people and work: interim report, analytical annex data tables, Table 28 (PolicyEngine/chronicle#443): people aged 16 to 24 in England and Wales in receipt of the Universal Credit health element (UCH-LCWRA, 'claimants in receipt of the limited capability to work element ... offered to claimants receiving a LCWRA WCA outcome'), rounded to the nearest 1,000, in financial years 2024-25 (outturn) and 2025-26 (DWP's projection, which the annex calls an indication only). Bound at the calendar-2025 window, three twelfths of 2024-25 and nine twelfths of 2025-26 (calendar_year_window), María's rule of 2026-09-22 for fiscal-year facts. The model counts claimants and partners aged 16 to 24 holding uc_limited_capability_for_WRA in benefit units paid Universal Credit with the LCWRA element, in England and Wales. Part 3 of PolicyEngine/microcosm#1663 (María's go of 2026-11-18): with uc_take_up's young LCWRA fit, which aims at the same count on the spine's design weights, it holds young people with the element to DWP's count, which the bound LCWRA households row would otherwise raise."
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/people_aged_16_to_24_lcwra_element",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_caseload_count",
+        "entity_name": "person",
+        "geography_id": "K04000001",
+        "dimension_values": {
+          "age_band": "16_to_24",
+          "health_and_disability_benefit": "uc_health_lcwra"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "caseload_2024",
+          "2025": "caseload_2025"
+        }
+      },
+      "category_id": "dwp.universal_credit",
+      "label": "Universal Credit people aged 16 to 24 with the LCWRA element, England and Wales",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "dwp.uc.people_aged_16_to_21",

@@ -170,6 +170,8 @@ __all__ = [
     "UC_TAKE_UP_AGE_RESOURCE",
     "UC_TAKE_UP_LCWRA_RECORD_SETS",
     "UC_TAKE_UP_LCWRA_RESOURCE",
+    "UC_TAKE_UP_YOUNG_LCWRA_RECORD_SETS",
+    "UC_TAKE_UP_YOUNG_LCWRA_RESOURCE",
     "UC_TAKE_UP_ENTITLEMENT_VARIABLES",
     "UC_TAKE_UP_MINIMUM_POOL_SOURCES",
     "UC_TAKE_UP_OPERATION_KIND",
@@ -182,6 +184,7 @@ __all__ = [
     "assign_award_band_take_up",
     "load_uc_award_band_targets",
     "load_uc_lcwra_households_target",
+    "load_uc_young_lcwra_people_target",
     "load_uc_young_people_target",
     "redraw_uc_take_up",
     "uc_award_band_targets_from_rows",
@@ -189,6 +192,7 @@ __all__ = [
     "uc_award_bands",
     "uc_family_types",
     "uc_take_up_operation_parameters",
+    "uc_young_lcwra_people_target_from_rows",
     "uc_young_people_target_from_rows",
     "working_age_housing_benefit_receipt",
 ]
@@ -374,6 +378,44 @@ UC_TAKE_UP_LCWRA_FIT = (
 #: The stage passes no young count until Chronicle carries the fact
 #: (PolicyEngine/chronicle#442), and without one the redraw is unchanged.
 UC_TAKE_UP_LCWRA_FLAG = "uc_limited_capability_for_WRA"
+#: The young LCWRA fit's count (part 3 of PolicyEngine/microcosm#1663): DWP's
+#: Young people and work interim report, analytical annex Table 28, people
+#: aged 16 to 24 in England and Wales with the UC health element (LCWRA), by
+#: financial year (PolicyEngine/chronicle#443). The calibration year's count is
+#: the calendar-2025 window, three twelfths of 2024-25 (outturn) and nine of
+#: 2025-26 (DWP's projection), María's rule of 2026-09-22 for fiscal-year facts,
+#: as the bound dwp.uc.people_aged_16_to_24_lcwra_element row compiles it.
+UC_TAKE_UP_YOUNG_LCWRA_RESOURCE = "dwp_uc_young_lcwra_people_facts.json"
+UC_TAKE_UP_YOUNG_LCWRA_RECORD_SETS: tuple[str, ...] = (
+    "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
+    "dwp.young_people_work_interim_2026.table_28.caseload.fy2025",
+)
+#: Each opening year's share of calendar 2025.
+UC_TAKE_UP_YOUNG_LCWRA_WINDOW: tuple[tuple[int, float], ...] = (
+    (2024, 3 / 12),
+    (2025, 9 / 12),
+)
+_YOUNG_LCWRA_CONCEPT = "dwp.benefit_caseload_count"
+_YOUNG_LCWRA_GEOGRAPHY = "K04000001"
+_YOUNG_LCWRA_BENEFIT_DIMENSION = "health_and_disability_benefit"
+_YOUNG_LCWRA_BENEFIT = "uc_health_lcwra"
+_YOUNG_LCWRA_AGE_DIMENSION = "age_band"
+_YOUNG_LCWRA_AGE_BAND = "16_to_24"
+#: The count's geography: England and Wales's households' regions.
+UC_TAKE_UP_YOUNG_LCWRA_REGIONS = frozenset(
+    {
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "LONDON",
+        "SOUTH_EAST",
+        "SOUTH_WEST",
+        "WALES",
+    }
+)
 UC_TAKE_UP_YOUNG_LCWRA_PEOPLE = (
     "claimants and partners aged 16 to 24 (is_claimant_or_partner, at the "
     "stored survey-year age) whom uc_limited_capability gives the LCWRA flag "
@@ -629,6 +671,63 @@ def load_uc_lcwra_households_target() -> float:
     )
 
 
+def uc_young_lcwra_people_target_from_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> float:
+    """DWP's people aged 16 to 24 with the UC health element, England and Wales.
+
+    Table 28's UC health caseload in each financial year of the window, weighed
+    by its share of calendar 2025 (``UC_TAKE_UP_YOUNG_LCWRA_WINDOW``): the value
+    the ``dwp.uc.people_aged_16_to_24_lcwra_element`` row compiles from the same
+    facts.
+    """
+
+    counts: dict[int, float] = {}
+    for row in rows:
+        if row.get("concept") != _YOUNG_LCWRA_CONCEPT:
+            continue
+        dimensions = row.get("dimensions") or {}
+        if str(dimensions.get(_YOUNG_LCWRA_BENEFIT_DIMENSION)) != _YOUNG_LCWRA_BENEFIT:
+            continue
+        if str(dimensions.get(_YOUNG_LCWRA_AGE_DIMENSION)) != _YOUNG_LCWRA_AGE_BAND:
+            continue
+        if (row.get("geography") or {}).get("id") != _YOUNG_LCWRA_GEOGRAPHY:
+            raise ValueError(
+                "Young LCWRA facts must be England and Wales's; found "
+                f"{(row.get('geography') or {}).get('id')!r}."
+            )
+        period = row.get("period") or {}
+        if period.get("type") != "fiscal_year":
+            raise ValueError(
+                f"Young LCWRA facts must be fiscal years; found {period.get('type')!r}."
+            )
+        year = int(period.get("value"))
+        if year in counts:
+            raise ValueError(f"Young LCWRA facts repeat the year opening in {year}.")
+        counts[year] = float(row["value"])
+    window = dict(UC_TAKE_UP_YOUNG_LCWRA_WINDOW)
+    if set(counts) != set(window):
+        raise ValueError(
+            "Young LCWRA facts must give England and Wales's UC health caseload "
+            f"in the years opening {sorted(window)}; found {sorted(counts)}."
+        )
+    return float(sum(counts[year] * share for year, share in window.items()))
+
+
+def vendored_young_lcwra_rows() -> list[Mapping[str, Any]]:
+    """The committed vendored Table 28 rows the young LCWRA fit reads."""
+
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    return list(vendored_rows(UC_TAKE_UP_YOUNG_LCWRA_RESOURCE))
+
+
+def load_uc_young_lcwra_people_target() -> float:
+    """The young LCWRA fit's count from the committed vendored resource."""
+
+    return uc_young_lcwra_people_target_from_rows(vendored_young_lcwra_rows())
+
+
 def _odds_scaled(rate: float, theta: float) -> float:
     """The rate whose odds are ``theta`` times ``rate``'s."""
 
@@ -865,6 +964,7 @@ def assign_award_band_take_up(
     lcwra_target: float | None = None,
     young_lcwra_people: np.ndarray | None = None,
     young_lcwra_target: float | None = None,
+    young_lcwra_scope: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Reporters claim; drawn units claim at their pool's residual rate.
 
@@ -879,7 +979,10 @@ def assign_award_band_take_up(
     ``young_lcwra_target`` (DWP's count of them), which need both other fits,
     the young LCWRA fit (``UC_TAKE_UP_YOUNG_LCWRA_FIT``) gives the drawn units
     with such people a third ratio in place of the LCWRA fit's. Without them
-    the redraw is the two fits' alone.
+    the redraw is the two fits' alone. ``young_lcwra_scope`` marks the units in
+    the count's geography (DWP's count is England and Wales's): the ratio is
+    solved on their young people with the element alone and applies to every
+    such unit in Great Britain. Without it the count is Great Britain's.
 
     With ``young_people`` (each unit's claimants and partners aged 16 to 24)
     and ``young_target`` (DWP's count of them), the age fit splits each pool's
@@ -978,6 +1081,14 @@ def assign_award_band_take_up(
             )
         if not (np.isfinite(young_lcwra_target) and young_lcwra_target > 0.0):
             raise ValueError("The young LCWRA fit's count must be positive and finite.")
+    if young_lcwra_scope is not None:
+        if young_lcwra_people is None:
+            raise ValueError("young_lcwra_scope needs the young LCWRA fit.")
+        young_lcwra_scope = np.asarray(young_lcwra_scope)
+        if young_lcwra_scope.shape != shape or young_lcwra_scope.dtype != bool:
+            raise ValueError(
+                "UC take-up young_lcwra_scope must be one flag per benefit unit."
+            )
     unknown = sorted(set(family) - {name for name, _ in UC_FAMILY_TYPES})
     if unknown:
         raise ValueError(f"UC take-up family types are unknown: {unknown}.")
@@ -1189,6 +1300,10 @@ def assign_award_band_take_up(
     young_lcwra_weight = weights * (
         young_lcwra_people if young_lcwra_people is not None else 0.0
     )
+    if young_lcwra_scope is not None:
+        # Only the count's geography's young people with the element count
+        # towards DWP's count; the ratio still applies to every such unit.
+        young_lcwra_weight = np.where(young_lcwra_scope, young_lcwra_weight, 0.0)
 
     def young_lcwra_claims(claims: np.ndarray) -> float:
         expected = np.where(drawable, claims.astype(np.float64), fixed)
@@ -1527,8 +1642,10 @@ def redraw_uc_take_up(
     whose award would include it (``UC_TAKE_UP_LCWRA_UNITS``). The stage always
     passes both. With ``young_lcwra_target``, DWP's count of young people with
     the element, which needs both others, the young LCWRA fit runs on each
-    unit's ``UC_TAKE_UP_YOUNG_LCWRA_PEOPLE``; the stage passes none until
-    Chronicle carries the fact (PolicyEngine/chronicle#442).
+    unit's ``UC_TAKE_UP_YOUNG_LCWRA_PEOPLE``, its ratio solved on England and
+    Wales's units, whose count DWP's is, and applied to every such unit in
+    Great Britain. The stage passes it since part 3 of
+    PolicyEngine/microcosm#1663, from DWP's Table 28 (PolicyEngine/chronicle#443).
     """
 
     validate_uk_national_frame(frame)
@@ -1646,6 +1763,10 @@ def redraw_uc_take_up(
     if regions.isna().any():
         raise ValueError("Every benefit unit's household must carry a region.")
     great_britain = regions.astype(str).ne(_OUTSIDE_SOLVE_REGION).to_numpy(dtype=bool)
+    # DWP's young LCWRA count is England and Wales's (Table 28).
+    england_and_wales = (
+        regions.astype(str).isin(UC_TAKE_UP_YOUNG_LCWRA_REGIONS).to_numpy(dtype=bool)
+    )
     source_ids = record_source_households(
         {"person": person, "benunit": benunit, "household": household},
         "benunit",
@@ -1740,7 +1861,15 @@ def redraw_uc_take_up(
         lcwra_target=lcwra_target,
         young_lcwra_people=young_lcwra_people,
         young_lcwra_target=young_lcwra_target,
+        young_lcwra_scope=(
+            england_and_wales if young_lcwra_people is not None else None
+        ),
     )
+    if "young_lcwra_fit" in receipt:
+        receipt["young_lcwra_fit"]["count_geography"] = (
+            f"England and Wales ({_YOUNG_LCWRA_GEOGRAPHY}); the ratio applies in "
+            "Great Britain"
+        )
     kept_off = esa_kept & stored & great_britain
     esa_kept_receipt = {
         "scope": "great_britain",
@@ -1903,6 +2032,21 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
             },
         ),
         (
+            "verify_vendored_fact_resource",
+            {
+                "artifact_role": "uc_young_lcwra_people_facts",
+                "resource": UC_TAKE_UP_YOUNG_LCWRA_RESOURCE,
+                "feed_pin": "chronicle_feed.json",
+                "record_sets": list(UC_TAKE_UP_YOUNG_LCWRA_RECORD_SETS),
+                "source_vintage": "financial years 2024-25 and 2025-26",
+                "mapped_build_period": 2025,
+                "period_mapping": "calendar_year_window_of_fiscal_years",
+                "require_before_source_read": True,
+                "runtime_sha256_required": True,
+                "fail_on_mismatch": True,
+            },
+        ),
+        (
             "materialize_rules_engine_predictors",
             {
                 "predictors": list(UC_TAKE_UP_ENTITLEMENT_VARIABLES),
@@ -2027,6 +2171,9 @@ class UKUCTakeUpStageTransform:
     #: DWP's paid Universal Credit households with the LCWRA element; read
     #: from the vendored facts when not given.
     lcwra_target: float | None = field(default=None, repr=False)
+    #: DWP's people aged 16 to 24 with the UC health element in England and
+    #: Wales; read from the vendored facts when not given.
+    young_lcwra_target: float | None = field(default=None, repr=False)
     last_result: UKUCTakeUpResult | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
@@ -2061,6 +2208,11 @@ class UKUCTakeUpStageTransform:
                 self.lcwra_target
                 if self.lcwra_target is not None
                 else load_uc_lcwra_households_target()
+            ),
+            young_lcwra_target=(
+                self.young_lcwra_target
+                if self.young_lcwra_target is not None
+                else load_uc_young_lcwra_people_target()
             ),
         )
         object.__setattr__(self, "last_result", result)

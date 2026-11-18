@@ -1,11 +1,11 @@
 {
- "compiled_count": 1713,
+ "compiled_count": 1714,
  "counts_by_kind": {
   "calibration_drift": 564,
   "fixture_only": 44,
-  "ledger_only": 1120
+  "ledger_only": 1121
  },
- "difference_count": 1728,
+ "difference_count": 1729,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -1929,6 +1929,13 @@
    "kind": "ledger_only",
    "ledger_value": 762585.25,
    "name": "dwp.uc.people_aged_16_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 176000.0,
+   "name": "dwp.uc.people_aged_16_to_24_lcwra_element",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

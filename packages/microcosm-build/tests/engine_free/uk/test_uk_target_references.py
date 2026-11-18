@@ -143,8 +143,9 @@ _TEST_PATHS = paths_for("microcosm-build")
 # to 24 on a quarterly window (Y3), all held out of the solve;
 # PolicyEngine/microcosm#1663: RTI's pay of employees aged 18 to 24 and
 # England's PIP cases aged 16 to 24 at each component's enhanced rate, three
-# checks held out of the solve
-ACTIVE_REFERENCE_COUNT = 1713
+# checks held out of the solve, and DWP's young people with the UC health
+# element in England and Wales (Table 28), bound
+ACTIVE_REFERENCE_COUNT = 1714
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 

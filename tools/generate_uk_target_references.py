@@ -685,9 +685,14 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
         declared = target.get("value_operation")
         if declared is not None:
             operations[target_id] = str(declared)
+        # A UC row averages its monthly Stat-Xplore cells over the calendar
+        # year unless it declares an explicit window: a monthly one, or the
+        # calendar-2025 window of fiscal-year facts (DWP's young people with
+        # the UC health element by financial year, PolicyEngine/microcosm#1663).
         if (
             target.get("family") == "dwp_universal_credit"
             and declared not in MONTHLY_WINDOW_OPERATIONS
+            and declared != "calendar_year_window"
         ):
             operations[target_id] = "calendar_year_average"
     return operations

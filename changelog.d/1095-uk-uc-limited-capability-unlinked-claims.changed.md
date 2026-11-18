@@ -20,5 +20,10 @@ Universal Credit claims without a linked DWP record now take an imputed limited 
 **The take-up redraw** can hold young people with the element to a count of their own (`uc_take_up`, PolicyEngine/microcosm#1663).
 - With a young count, the drawn units in which a young claimant or partner would hold the element claim at a third odds ratio, in place of the LCWRA fit's.
 - It is solved in turn with the age fit's ratio and the LCWRA fit's.
-- The stage passes no young count until Chronicle carries the fact (PolicyEngine/chronicle#442). Until then the redraw is unchanged.
+- The count is DWP's (Young people and work: interim report, Table 28; PolicyEngine/chronicle#443): people aged 16 to 24 in England and Wales with the UC health element.
+  - Its calendar-2025 window is three twelfths of 2024-25 (outturn) and nine of 2025-26 (DWP's projection), María's rule of 22 September 2026 for fiscal-year facts. That makes 176,000.
+  - The ratio is solved on England and Wales's units and applies to every such unit in Great Britain.
+  - The stage reads the count from the vendored `dwp_uc_young_lcwra_people_facts.json`.
+- The same count binds in the calibration as `dwp.uc.people_aged_16_to_24_lcwra_element`, so the bound LCWRA households row can no longer raise young claims on its own.
+  - The UK reference generator now lets a Universal Credit row declare the fiscal-year `calendar_year_window`, in place of the monthly calendar-year average every other UC row takes.
 - The receipt's LCWRA fit now records the joint solve's rounds against its cap, whether the ratios' logs settled within the tolerance, and whether its last round left every unit's claim as the round before did. A solve can stop on the cap while one log still moves inside a stretch of equal claims.

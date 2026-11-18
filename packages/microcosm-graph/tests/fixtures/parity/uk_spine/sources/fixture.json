@@ -8070,6 +8070,13 @@
           "resource": "dwp_uc_lcwra_households_facts.json",
           "role": "uc_lcwra_households_facts",
           "runtime_sha256_required": true
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "dwp_uc_young_lcwra_people_facts.json",
+          "role": "uc_young_lcwra_people_facts",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "benunit",
@@ -8142,6 +8149,22 @@
           "resource": "dwp_uc_lcwra_households_facts.json",
           "runtime_sha256_required": true,
           "source_vintage": "January to December 2025"
+        },
+        {
+          "artifact_role": "uc_young_lcwra_people_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2025,
+          "period_mapping": "calendar_year_window_of_fiscal_years",
+          "record_sets": [
+            "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
+            "dwp.young_people_work_interim_2026.table_28.caseload.fy2025"
+          ],
+          "require_before_source_read": true,
+          "resource": "dwp_uc_young_lcwra_people_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "financial years 2024-25 and 2025-26"
         },
         {
           "consumed_only": true,
