@@ -22,11 +22,18 @@ pinned to its stages' declared outputs; and a ``weeks_worked``-like column
 Phase 3 covers ``combined_spm_role_record`` (the record passes the real SPM
 role gate on the generated population in both forms; one refusal per check,
 a digest-only mismatch included), ``absences`` and ``write_absences`` (both
-directions, rows and shares by channel, the five kinds, the raw columns'
+directions, rows and shares by channel, the six kinds, the raw columns'
 readers pinned to the predictor join, the fill manifest checked against the
 frame, deterministic JSON), X2 (N-2's kinds on a generated population with
 an injected register) and X7 (group quarters add nothing to household-type
 targets, skipped until PolicyEngine/microcosm#1610's materializer imports).
+
+The lead's 11-18 calls: (a) the six ACS-native ``acs_*`` amounts CPS rows
+lack are "origin-native", with the names pinned to the operator boundary's
+contract by reading its source; (b) one declarations mapping passes
+``require_one_population`` and ``absences``, which records stale and
+needless declarations instead of refusing them; (c) the refusals phase 3
+left untested each have a case.
 
 Phase 4 covers X5, the whole-frame differential: on an ASEC-only population
 (Route A's labels: ``asec`` clone 0, ``puf_tax_detail`` clones), each
@@ -2769,7 +2776,8 @@ _ROLE_RECORD_REFUSALS = [
             staging_role_receipt(f),
             f,
         ),
-        "The CPS role record does not match the frame's CPS rows: {'persons_joined'",
+        "The CPS role record does not match the frame's CPS rows: {'persons_joined': "
+        "{'record': 1, 'frame': ",
     ),
     (
         "units",
@@ -2835,6 +2843,58 @@ _ROLE_RECORD_REFUSALS = [
         "The SPM role record needs a non-null boolean 'is_spm_independent_minor_role'",
     ),
     (
+        "missing age",
+        lambda f: (
+            cps_role_record(f),
+            staging_role_receipt(f),
+            _without_column(f, "person", "age"),
+        ),
+        "The SPM role record needs 'age' on the person table",
+    ),
+    (
+        "integer role",
+        lambda f: (
+            cps_role_record(f),
+            staging_role_receipt(f),
+            _with_column(
+                f, "person", SPM_ROLE, f.table("person")[SPM_ROLE].astype(np.int64)
+            ),
+        ),
+        "The SPM role record needs a non-null boolean 'is_spm_independent_minor_role' "
+        "on every person; 0 null(s), inferred type 'integer'",
+    ),
+    (
+        "unknown person channel",
+        lambda f: (
+            cps_role_record(f),
+            staging_role_receipt(f),
+            _cell(f, "person", "person_support_channel", "acs", origin="acs"),
+        ),
+        "The SPM role record needs every row's origin: 'person_support_channel' "
+        "must hold one of ['asec', 'puf_tax_detail', 'acs_2024_1yr'] on every row; "
+        "it holds [\"'acs'\"]",
+    ),
+    (
+        "null spm unit channel",
+        lambda f: (
+            cps_role_record(f),
+            staging_role_receipt(f),
+            _cell(f, "spm_unit", "spm_unit_support_channel", None, origin="acs"),
+        ),
+        "The SPM role record needs every row's origin: 'spm_unit_support_channel' "
+        "must hold one of",
+    ),
+    (
+        "channel column missing",
+        lambda f: (
+            cps_role_record(f),
+            staging_role_receipt(f),
+            _without_column(f, "spm_unit", "spm_unit_support_channel"),
+        ),
+        "The SPM role record needs every row's origin: the 'spm_unit' table lacks "
+        "'spm_unit_support_channel'",
+    ),
+    (
         "receipt keys",
         lambda f: (
             cps_role_record(f),
@@ -2872,6 +2932,11 @@ def test_the_role_record_refuses_with_its_own_message(
 ) -> None:
     with pytest.raises(OnePopulationContractError, match=re.escape(message)):
         combined_spm_role_record(*inputs(assembled))
+
+
+def test_the_role_record_refusal_messages_are_distinct() -> None:
+    messages = [message for _, _, message in _ROLE_RECORD_REFUSALS]
+    assert len(set(messages)) == len(messages)
 
 
 def test_the_role_records_refusals_are_live_against_the_gate(assembled) -> None:
@@ -3071,6 +3136,7 @@ class TestAbsences:
             "raw source column",
             "reviewed default fill",
             "zero written",
+            "origin-native",
         )
 
     def test_a_reviewed_default_fill_over_every_acs_row(self, assembled) -> None:
@@ -3302,24 +3368,32 @@ _ABSENCE_REFUSALS = [
         "zero_written",
     ),
     (
-        "declared release-written",
-        lambda f: {"declared": {"takes_up_ssi_if_eligible": "decision"}},
-        "A declared absence needs no owner's decision for ['takes_up_ssi_if_eligible']",
-    ),
-    (
-        "declared raw",
-        lambda f: {"declared": {"SSI_VAL": "decision"}},
-        "A declared absence needs no owner's decision for ['SSI_VAL']",
-    ),
-    (
-        "declared stale",
-        lambda f: {"declared": {"tip_income": "decision"}},
-        "A declared absence names a column no origin lacks: ['tip_income']",
-    ),
-    (
         "declared empty",
         lambda f: {"declared": {"parent_1_id": " "}},
         "A declared absence needs its owner's decision; 'parent_1_id' has none",
+    ),
+    (
+        "unknown channel",
+        lambda f: {
+            "frame": _cell(f, "family", "family_support_channel", "acs", origin="acs")
+        },
+        "The absences file needs every row's origin: 'family_support_channel' must "
+        "hold one of",
+    ),
+    (
+        "null channel",
+        lambda f: {
+            "frame": _cell(f, "person", "person_support_channel", None, origin="cps")
+        },
+        "The absences file needs every row's origin: 'person_support_channel' must "
+        "hold one of ['asec', 'puf_tax_detail', 'acs_2024_1yr'] on every row; it "
+        "holds ['None']",
+    ),
+    (
+        "channel column missing",
+        lambda f: {"frame": _without_column(f, "tax_unit", "tax_unit_support_channel")},
+        "The absences file needs every row's origin: the 'tax_unit' table lacks "
+        "'tax_unit_support_channel'",
     ),
     (
         "undeclared",
@@ -3328,22 +3402,12 @@ _ABSENCE_REFUSALS = [
         "{'tax_unit.filing_status_input': 'null on",
     ),
     (
+        # ACS rows carry a PUMA, CPS rows none: not one of the six
+        # origin-native amounts, so it refuses until filled or declared.
         "undeclared reverse",
-        lambda f: {
-            "frame": _with_column(
-                f,
-                "person",
-                "acs_social_security_income",
-                pd.Series(
-                    np.where(
-                        _origin_mask(f.table("person"), "person", "acs"), 1.0, None
-                    ),
-                    dtype=object,
-                ),
-            )
-        },
+        lambda f: {"frame": _acs_only(f, "household", "puma_geoid", "0600101")},
         "A column one origin lacks has no absence kind: "
-        "{'person.acs_social_security_income': 'null on",
+        "{'household.puma_geoid': 'null on",
     ),
 ]
 
@@ -3378,19 +3442,463 @@ def test_every_kindless_column_is_listed_in_one_refusal(assembled) -> None:
     # lists them all at once.
     frame = _acs_null_on_cps(assembled, "person", "parent_1_id", 3)
     acs = _origin_mask(frame.table("person"), "person", "acs")
-    frame = _with_column(
-        frame,
-        "person",
-        "acs_social_security_income",
-        pd.Series(np.where(acs, 1.0, None), dtype=object),
+    frame = _acs_only(frame, "household", "puma_geoid", "0600101")
+    cps_households = int(
+        (~_origin_mask(frame.table("household"), "household", "acs")).sum()
     )
     with pytest.raises(OnePopulationContractError) as raised:
         _absences(frame)
     message = str(raised.value)
     assert f"'person.parent_1_id': 'null on {int(acs.sum())} ACS row(s)'" in message
-    assert (
-        f"'person.acs_social_security_income': 'null on {int((~acs).sum())} CPS row(s)'"
-    ) in message
+    assert (f"'household.puma_geoid': 'null on {cps_households} CPS row(s)'") in message
+
+
+# ------- lead call (a), 11-18: ACS-native amounts CPS rows lack by origin
+
+
+def _acs_only(frame: Frame, entity: str, column: str, value) -> Frame:
+    """``column`` holding ``value`` on ACS rows and null on CPS rows."""
+
+    table = frame.table(entity)
+    acs = _origin_mask(table, entity, "acs")
+    return _with_column(
+        frame,
+        entity,
+        column,
+        pd.Series(np.where(acs, value, None), index=table.index, dtype=object),
+    )
+
+
+def _with_acs_native_amounts(frame: Frame) -> Frame:
+    for column, (entity, _) in contract.ACS_NATIVE_AMOUNTS.items():
+        frame = _acs_only(frame, entity, column, 120.0)
+    return frame
+
+
+def _module_assignment(path: Path, name: str) -> ast.expr:
+    """The value assigned to ``name`` at the top level of ``path``'s source."""
+
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        targets = (
+            [node.target]
+            if isinstance(node, ast.AnnAssign)
+            else node.targets
+            if isinstance(node, ast.Assign)
+            else []
+        )
+        if [getattr(target, "id", None) for target in targets] == [name]:
+            return node.value
+    raise AssertionError(f"{path.name} assigns no {name}.")
+
+
+_U = Path(contract.__file__).parent
+
+
+class TestOriginNativeAmounts:
+    """The six ACS-native ``acs_*`` amounts CPS rows lack need no decision."""
+
+    def test_they_are_origin_native_on_cps_rows(self, population, assembled) -> None:
+        frame = _with_acs_native_amounts(assembled)
+        record = _absences(frame)
+        keyed = _keyed(record)
+        assert "origin-native" in record["kinds"]
+        for column, (entity, readers) in contract.ACS_NATIVE_AMOUNTS.items():
+            entry = keyed[(entity, column, "origin-native", "CPS")]
+            cps = ~_origin_mask(frame.table(entity), entity, "acs")
+            assert entry["rows"] == entry["origin_rows"] == int(cps.sum())
+            assert entry["entity_weight_share"] == pytest.approx(
+                _share(frame, entity, cps)
+            )
+            assert "_ACS_NATIVE_INPUT_CONTRACTS" in entry["evidence"]
+            assert entry["readers"] == list(readers)
+            assert entry["detail"] == {}
+        # No declaration is needed, and the contract passes the same frame.
+        assert record["needless_declarations"] == []
+        _require(population, frame)
+
+    def test_the_transfer_reads_the_three_combined_amounts(self) -> None:
+        # acs_transfer._RECIPIENT_COMBINED_SOURCES, read from its source.
+        sources = _module_assignment(
+            _U / "acs_transfer.py", "_RECIPIENT_COMBINED_SOURCES"
+        )
+        assert isinstance(sources, ast.Dict)
+        read = {value.value for value in sources.values}
+        assert read == {
+            column
+            for column, (_, readers) in contract.ACS_NATIVE_AMOUNTS.items()
+            if readers
+        }
+        assert all(
+            "acs_transfer" in reader
+            for _, readers in contract.ACS_NATIVE_AMOUNTS.values()
+            for reader in readers
+        )
+
+    def test_the_names_are_the_operator_boundary_contracts(self) -> None:
+        # Read from operator_boundary's source: importing it loads the ACS
+        # transfer, and with it microcosm.fit.
+        contracts = _module_assignment(
+            _U / "operator_boundary.py", "_ACS_NATIVE_INPUT_CONTRACTS"
+        )
+        assert isinstance(contracts, ast.Dict)
+        literal = {
+            key.value: value.elts[0].value
+            for key, value in zip(contracts.keys, contracts.values, strict=True)
+            if key is not None
+        }
+        spreads = [
+            value
+            for key, value in zip(contracts.keys, contracts.values, strict=True)
+            if key is None
+        ]
+        spread_sources = {
+            generator.iter.func.value.id
+            if isinstance(generator.iter, ast.Call)
+            else generator.iter.id
+            for spread in spreads
+            for generator in spread.generators
+        }
+        assert spread_sources == {
+            "ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS",
+            "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+        }
+        work = ast.literal_eval(
+            _module_assignment(
+                _U / "acs_inputs.py", "ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS"
+            )
+        )
+        parents = ast.literal_eval(
+            _module_assignment(
+                _U / "acs_inputs.py", "ACS_UNRESOLVED_PARENT_ID_MAPPINGS"
+            )
+        )
+        spread_outputs = set(work) | {output for output, _ in parents}
+        assert not {name for name in spread_outputs if name.startswith("acs_")}
+        amounts = {
+            column: entity
+            for column, entity in literal.items()
+            if column.startswith("acs_")
+        }
+        assert len(amounts) == 6
+        assert {
+            column: entity
+            for column, (entity, _) in contract.ACS_NATIVE_AMOUNTS.items()
+        } == amounts
+        # The register files each as an ACS-native amount, not a model input.
+        for column in amounts:
+            assert "not a model input" in US_STORED_NON_VARIABLE_COLUMNS[column]
+
+    def test_the_reverse_direction_still_refuses(self, assembled) -> None:
+        frame = _acs_null_on_cps(assembled, "person", "acs_social_security_income", 1.0)
+        n_acs = int(_origin_mask(frame.table("person"), "person", "acs").sum())
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "A column one origin lacks has no absence kind: "
+                f"{{'person.acs_social_security_income': 'null on {n_acs} ACS row(s)'}}"
+            ),
+        ):
+            _absences(frame)
+        decision = "US data owner: decided for this test"
+        record = _absences(frame, declared={"acs_social_security_income": decision})
+        entry = _keyed(record)[
+            ("person", "acs_social_security_income", "owner-declared", "ACS")
+        ]
+        assert entry["detail"] == {"decision": decision}
+
+    @pytest.mark.parametrize(
+        ("entity", "column"),
+        [
+            # A model-named column outside the six.
+            ("person", "parent_1_id"),
+            # One of the six, on an entity its contract does not name.
+            ("person", "acs_monthly_gross_rent"),
+        ],
+    )
+    def test_any_other_column_cps_rows_lack_refuses(
+        self, assembled, entity, column
+    ) -> None:
+        frame = _acs_only(assembled, entity, column, 3.0)
+        n_cps = int((~_origin_mask(frame.table(entity), entity, "acs")).sum())
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "A column one origin lacks has no absence kind: "
+                f"{{'{entity}.{column}': 'null on {n_cps} CPS row(s)'}}"
+            ),
+        ):
+            _absences(frame)
+
+
+# --------- lead call (b), 11-18: one declarations mapping for R10 and absences
+
+
+_DECISION = "US data owner: decided for this test"
+
+
+class TestOneDeclarationsMapping:
+    def test_stale_and_needless_declarations_are_recorded(
+        self, population, assembled
+    ) -> None:
+        register = {**US_STORED_NON_VARIABLE_COLUMNS, _AUXILIARY: "auxiliary"}
+        frame = _acs_null_on_cps(assembled, "person", _AUXILIARY, 41_000.0)
+        declared = {
+            _AUXILIARY: f"{_DECISION} (used)",
+            # Stale: no origin lacks it (staging filled it, say).
+            "parent_1_id": f"{_DECISION} (stale)",
+            # Needless: release-written, and a raw source column.
+            "takes_up_ssi_if_eligible": f"{_DECISION} (release-written)",
+            "SSI_VAL": f"{_DECISION} (raw)",
+        }
+        _require(population, frame, register=register, declared_absences=declared)
+        record = _absences(frame, declared=declared)
+        assert record["unused_declarations"] == [
+            {"column": "parent_1_id", "decision": declared["parent_1_id"]}
+        ]
+        assert record["needless_declarations"] == [
+            {"column": "SSI_VAL", "decision": declared["SSI_VAL"]},
+            {
+                "column": "takes_up_ssi_if_eligible",
+                "decision": declared["takes_up_ssi_if_eligible"],
+            },
+        ]
+        keyed = _keyed(record)
+        assert ("person", _AUXILIARY, "owner-declared", "ACS") in keyed
+        # The needless ones keep the kinds they need no decision for.
+        assert ("person", "SSI_VAL", "raw source column", "ACS") in keyed
+        assert ("person", "takes_up_ssi_if_eligible", "release-written", "ACS") in (
+            keyed
+        )
+        assert "owner-declared" not in {
+            kind for (_, column, kind, _) in keyed if column != _AUXILIARY
+        }
+
+    def test_a_declaration_an_origin_native_gap_needs_not_is_needless(
+        self, assembled
+    ) -> None:
+        frame = _with_acs_native_amounts(assembled)
+        declared = {"acs_social_security_income": _DECISION}
+        record = _absences(frame, declared=declared)
+        assert record["needless_declarations"] == [
+            {"column": "acs_social_security_income", "decision": _DECISION}
+        ]
+        assert record["unused_declarations"] == []
+        assert (
+            "person",
+            "acs_social_security_income",
+            "origin-native",
+            "CPS",
+        ) in _keyed(record)
+
+    def test_a_frame_with_no_acs_row_lists_every_declaration_as_unused(
+        self, population
+    ) -> None:
+        empty_acs = {
+            entity: population.acs_tables[entity].iloc[:0]
+            for entity in US_SCHEMA.entities
+        }
+        frame = to_assembled_provenance(
+            population.cps_tables,
+            empty_acs,
+            cps_household_weights=population.cps_household_weights,
+            acs_household_weights=np.array([]),
+            staging_lineage=frozenset(),
+        )
+        manifest = dataclasses.replace(
+            selection_manifest(population),
+            n_acs=0,
+            selected_acs_keys_sha256=selection.keys_sha256(()),
+        )
+        declared = {
+            column: f"{_DECISION} ({column})"
+            for column in ("parent_2_id", "parent_1_id", _AUXILIARY)
+        }
+        _require(
+            population,
+            frame,
+            manifest=manifest,
+            staging_lineage=frozenset(),
+            declared_absences=declared,
+        )
+        record = _absences(frame, declared=declared)
+        assert record["unused_declarations"] == [
+            {"column": column, "decision": declared[column]}
+            for column in sorted(declared)
+        ]
+        assert record["needless_declarations"] == []
+        assert record["entries"] == []
+
+
+# ------ lead call (c), 11-18: each public function's type and schema refusals
+
+
+def _foreign_schema_frame() -> Frame:
+    """A valid frame in a schema other than the US one."""
+
+    from microcosm.frame import EntitySchema, Weights
+
+    return Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": [0, 1], "person_household_id": [1, 1]}
+            ),
+            "household": pd.DataFrame({"household_id": [1]}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.array([1.0]), WeightKind.DESIGN)},
+    )
+
+
+def _rewrite_with(p, **overrides) -> Frame:
+    kwargs = {
+        "cps_tables": p.cps_tables,
+        "acs_tables": p.acs_tables,
+        "cps_household_weights": p.cps_household_weights,
+        "acs_household_weights": p.acs_household_weights,
+        "staging_lineage": staging_lineage(p),
+        **overrides,
+    }
+    return to_assembled_provenance(
+        kwargs.pop("cps_tables"), kwargs.pop("acs_tables"), **kwargs
+    )
+
+
+def _absences_with(f, **overrides) -> dict:
+    kwargs = {
+        "fill_manifest": fill_manifest(),
+        "zero_written": {},
+        "declared": {},
+        **overrides,
+    }
+    return absences(kwargs.pop("frame", f), **kwargs)
+
+
+_TYPE_REFUSALS = [
+    (
+        "rewrite cps tables",
+        lambda p, f: _rewrite_with(p, cps_tables=list(p.cps_tables.values())),
+        "CPS tables must be a mapping of entity to table, got list.",
+    ),
+    (
+        "rewrite acs table",
+        lambda p, f: _rewrite_with(
+            p, acs_tables={**p.acs_tables, "person": p.acs_tables["person"].to_dict()}
+        ),
+        "ACS 'person' table must be a DataFrame, got dict.",
+    ),
+    (
+        "rewrite staging lineage",
+        lambda p, f: _rewrite_with(p, staging_lineage="2024HU0000001"),
+        "staging_lineage must be a collection of (SERIALNO, SPORDER) pairs, got str.",
+    ),
+    (
+        "require staging lineage",
+        lambda p, f: _require(p, f, staging_lineage=5),
+        "staging_lineage must be a collection of (SERIALNO, SPORDER) pairs, got int.",
+    ),
+    (
+        "role record frame",
+        lambda p, f: combined_spm_role_record(
+            cps_role_record(f), staging_role_receipt(f), f.table("person")
+        ),
+        "frame must be a Frame, got DataFrame.",
+    ),
+    (
+        "role record cps record",
+        lambda p, f: combined_spm_role_record(
+            list(cps_role_record(f)), staging_role_receipt(f), f
+        ),
+        "cps_record must be a mapping, got list.",
+    ),
+    (
+        "role record receipt",
+        lambda p, f: combined_spm_role_record(cps_role_record(f), None, f),
+        "staging_receipt must be a mapping, got NoneType.",
+    ),
+    (
+        "absences frame",
+        lambda p, f: _absences_with(f, frame=f.table("person")),
+        "frame must be a Frame, got DataFrame.",
+    ),
+    (
+        "absences fill manifest",
+        lambda p, f: _absences_with(f, fill_manifest=[]),
+        "fill_manifest must be the reviewed default fill's manifest mapping, got list.",
+    ),
+    (
+        "absences zero written",
+        lambda p, f: _absences_with(f, zero_written=["tip_income"]),
+        "zero_written must map each column to the receipt that records its written "
+        "zeros, got list.",
+    ),
+    (
+        "absences zero written receipt",
+        lambda p, f: _absences_with(f, zero_written={"tip_income": 1}),
+        "zero_written must map str columns to str receipts, got 'tip_income': 1.",
+    ),
+    (
+        "absences declared",
+        lambda p, f: _absences_with(f, declared=["parent_1_id"]),
+        "declared must map each column to its owner's decision, got list.",
+    ),
+    (
+        "absences declared decision",
+        lambda p, f: _absences_with(f, declared={"parent_1_id": 1}),
+        "declared must map str columns to str decisions, got 'parent_1_id': 1.",
+    ),
+    (
+        "write absences",
+        lambda p, f: write_absences(list(_absences(f)), Path("no-such-directory")),
+        "record must be a mapping, got list.",
+    ),
+    (
+        "cps unit ids",
+        lambda p, f: cps_unit_ids(p.cps_tables["person"].to_dict()),
+        "person must be a DataFrame, got dict.",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("case", "call", "message"),
+    _TYPE_REFUSALS,
+    ids=[case for case, _, _ in _TYPE_REFUSALS],
+)
+def test_each_public_function_refuses_a_wrong_type(
+    population, assembled, case, call, message
+) -> None:
+    with pytest.raises(TypeError, match=re.escape(message)):
+        call(population, assembled)
+
+
+@pytest.mark.parametrize(
+    ("case", "call", "message"),
+    [
+        (
+            "require",
+            lambda p: require_one_population(
+                _foreign_schema_frame(),
+                selection_manifest(p),
+                parent_tail_donor_ids=frozenset(),
+            ),
+            "Incomplete assembled provenance: the frame must use the US schema.",
+        ),
+        (
+            "role record",
+            lambda p: combined_spm_role_record({}, {}, _foreign_schema_frame()),
+            "The SPM role record needs a frame in the US schema.",
+        ),
+        (
+            "absences",
+            lambda p: _absences_with(None, frame=_foreign_schema_frame()),
+            "The absences file needs a frame in the US schema.",
+        ),
+    ],
+    ids=["require", "role record", "absences"],
+)
+def test_a_frame_in_another_schema_refuses(population, case, call, message) -> None:
+    with pytest.raises(OnePopulationContractError, match=re.escape(message)):
+        call(population)
 
 
 # ------------------------- phase 3: X2, N-2's kinds on a generated population
@@ -3405,7 +3913,8 @@ def test_n2_kinds_on_a_generated_population(population, assembled) -> None:
     The SSI take-up column (a Q1-exempt producer output) and ``SSI_VAL`` (an
     upper-case raw column), both null on every ACS row, pass the contract
     and appear in the absences file with their kinds; so do a reviewed
-    default fill and a written zero.
+    default fill, a written zero and an ACS-native amount CPS rows lack
+    (origin-native).
     """
 
     register = {
@@ -3434,6 +3943,7 @@ def test_n2_kinds_on_a_generated_population(population, assembled) -> None:
         _absences(frame)
 
     declared = {_AUXILIARY: "US data owner: ACS rows carry no prior-year wage"}
+    frame = _acs_only(frame, "person", "acs_social_security_income", 900.0)
     _require(population, frame, register=register, declared_absences=declared)
     record = _absences(
         frame,
@@ -3450,7 +3960,8 @@ def test_n2_kinds_on_a_generated_population(population, assembled) -> None:
         ("tip_income", "reviewed default fill"),
         ("employer_sponsored_insurance_premiums", "zero written"),
     } <= kinds
-    assert {kind for _, kind in kinds} == set(ABSENCE_KINDS)
+    assert ("person", "acs_social_security_income", "origin-native", "CPS") in keyed
+    assert {kind for (_, _, kind, _) in keyed} == set(ABSENCE_KINDS)
     for column in (_AUXILIARY, "takes_up_ssi_if_eligible", "SSI_VAL"):
         entry = next(
             entry

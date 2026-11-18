@@ -131,6 +131,7 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 __all__ = [
     "ABSENCES_FILENAME",
     "ABSENCE_KINDS",
+    "ACS_NATIVE_AMOUNTS",
     "ACS_SUPPORT_CHANNEL",
     "ASSEMBLED_CHANNELS",
     "CPS_SPINE_TAG",
@@ -363,16 +364,57 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
 #: of a null, reviewed by staging's ``reviewed_engine_input_nulls`` register
 #: (``tools/_legacy/build_us_acs_multispine_base.py``, summary key at
 #: :2099, built at :2336-2392); "zero written" a zero staging wrote in place
-#: of a measure, reviewed by the receipt the caller cites.
+#: of a measure, reviewed by the receipt the caller cites; "origin-native" a
+#: column of :data:`ACS_NATIVE_AMOUNTS` CPS rows lack (d2283 lead call (a),
+#: 11-18).
 ABSENCE_KINDS = (
     "owner-declared",
     "release-written",
     "raw source column",
     "reviewed default fill",
     "zero written",
+    "origin-native",
 )
-_OWNER_DECLARED, _RELEASE_WRITTEN, _RAW_SOURCE, _DEFAULT_FILL, _ZERO_WRITTEN = (
-    ABSENCE_KINDS
+(
+    _OWNER_DECLARED,
+    _RELEASE_WRITTEN,
+    _RAW_SOURCE,
+    _DEFAULT_FILL,
+    _ZERO_WRITTEN,
+    _ORIGIN_NATIVE,
+) = ABSENCE_KINDS
+
+_ACS_TRANSFER_READER = (
+    "acs_transfer (a recipient-side predictor, read on ACS rows only; "
+    "acs_transfer._RECIPIENT_COMBINED_SOURCES)"
+)
+
+#: The six ACS-native reported amounts, each with its entity and the
+#: release's readers: the ``acs_*`` keys of
+#: ``operator_boundary._ACS_NATIVE_INPUT_CONTRACTS``. A test pins the two by
+#: reading that module's source, since importing it loads the ACS transfer
+#: and ``microcosm.fit``. Staging maps them from ACS source columns on ACS
+#: rows only, and the stored-input register files each as "not a model
+#: input", so CPS rows lack them by origin: :func:`absences` files that as
+#: "origin-native", with no owner's decision. The ACS transfer reads the
+#: three combined amounts as recipient-side predictors on ACS rows; no
+#: release producer reads the three housing amounts, which are source
+#: lineage the native-input receipt records.
+ACS_NATIVE_AMOUNTS: Mapping[str, tuple[str, tuple[str, ...]]] = MappingProxyType(
+    {
+        "acs_social_security_income": ("person", (_ACS_TRANSFER_READER,)),
+        "acs_retirement_income": ("person", (_ACS_TRANSFER_READER,)),
+        "acs_interest_dividend_rental_income": ("person", (_ACS_TRANSFER_READER,)),
+        "acs_monthly_contract_rent": ("household", ()),
+        "acs_monthly_gross_rent": ("household", ()),
+        "acs_annual_property_tax": ("household", ()),
+    }
+)
+_ORIGIN_NATIVE_EVIDENCE = (
+    "an ACS-native reported amount, not a model input "
+    "(operator_boundary._ACS_NATIVE_INPUT_CONTRACTS; the stored-input "
+    "register's acs_ entries): staging maps it from ACS source columns on ACS "
+    "rows only, so CPS rows lack it by origin"
 )
 
 _HOUSEHOLD_TYPE_READER = "household_type (#1610's household-type materializer)"
@@ -1807,18 +1849,20 @@ def _require_parent_tail_donors(tax_unit: pd.DataFrame, parent: frozenset[int]) 
         )
 
 
-def _declarations(declared_absences: object) -> Mapping[str, str]:
+def _declarations(declared_absences: object, *, name: str) -> Mapping[str, str]:
+    """The owner's declarations, checked; ``name`` is the caller's argument."""
+
     if declared_absences is None:
         return {}
     if not isinstance(declared_absences, Mapping):
         raise TypeError(
-            "declared_absences must map each column to its owner's decision, got "
+            f"{name} must map each column to its owner's decision, got "
             f"{type(declared_absences).__name__}."
         )
     for column, decision in declared_absences.items():
         if not isinstance(column, str) or not isinstance(decision, str):
             raise TypeError(
-                "declared_absences must map str columns to str decisions, got "
+                f"{name} must map str columns to str decisions, got "
                 f"{column!r}: {decision!r}."
             )
         if not decision.strip():
@@ -1837,7 +1881,12 @@ def _require_declared_absences(
     """R10: a register column CPS rows fill and ACS rows null is declared.
 
     Engine inputs at 2024 are R6's (it refuses any null), so this covers
-    model-named columns no engine variable names: register entries.
+    model-named columns no engine variable names: register entries. It
+    fires only when every CPS row of the entity holds a value; :func:`absences`
+    fires when any row of the other origin does, so a register column partly
+    null on CPS rows and null on ACS rows passes here undeclared and refuses
+    there. A declaration this check does not use is ignored, as
+    :func:`absences` records it.
     """
 
     from microcosm.data.stored_inputs import is_model_named
@@ -1936,6 +1985,10 @@ def require_one_population(
       engine inputs) filled on every CPS row of its entity and null on some
       ACS row, unless ``declared_absences`` names it. The release-written
       list is the only exemption, never a stage's declared outputs whole.
+      A declaration R10 does not use is ignored, so the same mapping passes
+      :func:`absences`, which records it as unused or needless. R10 reads
+      "filled on CPS rows" as every row; :func:`absences` refuses a gap when
+      any CPS row holds a value, so it is the stricter of the two.
 
     Args:
         frame: The joined frame, built by :func:`to_assembled_provenance`.
@@ -1943,7 +1996,8 @@ def require_one_population(
         parent_tail_donor_ids: The parent export's applied capital-gains tail
             donor ids (PR 4 reads them from the export's tax-unit columns).
         declared_absences: Column to the owner's decision, for each register
-            column ACS rows lack by decision.
+            column ACS rows lack by decision: the mapping :func:`absences`
+            takes as ``declared``.
         staging_lineage: Staging's (``SERIALNO``, ``SPORDER``) pairs for the
             selected ACS persons; ``None`` checks the lineage's form only.
         variable_index: The engine's variable classes at 2024. ``None`` uses
@@ -1968,7 +2022,7 @@ def require_one_population(
             f"manifest must be a SelectionManifest, got {type(manifest).__name__}."
         )
     parent_donors = _tail_donor_set(parent_tail_donor_ids)
-    declared = _declarations(declared_absences)
+    declared = _declarations(declared_absences, name="declared_absences")
     staging = None if staging_lineage is None else _lineage_pairs(staging_lineage)
     if register is None:
         from microcosm.data.stored_inputs import US_STORED_NON_VARIABLE_COLUMNS
@@ -2455,9 +2509,14 @@ def _entry(
 
 
 def _absence_kind(
-    column: str, declared: Mapping[str, str]
+    entity: str, column: str, origin: str, declared: Mapping[str, str]
 ) -> tuple[str, str, tuple[str, ...], dict[str, object]] | None:
-    """The kind of a column one origin lacks, or ``None`` if it has none."""
+    """The kind of a column ``origin``'s rows lack, or ``None`` if it has none.
+
+    A kind that needs no decision (release-written, raw source column,
+    origin-native) wins over a declaration, which files only a gap no such
+    kind covers.
+    """
 
     from microcosm.data.stored_inputs import is_model_named
 
@@ -2471,6 +2530,9 @@ def _absence_kind(
             else "no release reader is listed in RAW_COLUMN_READERS"
         )
         return (_RAW_SOURCE, evidence, readers, {})
+    native = ACS_NATIVE_AMOUNTS.get(column)
+    if origin == _CPS and native is not None and native[0] == entity:
+        return (_ORIGIN_NATIVE, _ORIGIN_NATIVE_EVIDENCE, native[1], {})
     if column in declared:
         return (
             _OWNER_DECLARED,
@@ -2505,10 +2567,18 @@ def absences(
       :data:`RELEASE_WRITTEN_INPUTS`, "raw source column" if it is not
       model-named (the entry names the release's readers from
       :data:`RAW_COLUMN_READERS`, so the predictor-join columns and #1610's
-      four household-type columns are never filed as harmless), and
-      "owner-declared" if ``declared`` names it, with the owner's decision.
-      Any other such column refuses: prepare must fill it or its owner
-      declare it.
+      four household-type columns are never filed as harmless),
+      "origin-native" if CPS rows lack one of :data:`ACS_NATIVE_AMOUNTS` on
+      its own entity (the entry names the ACS transfer where it reads the
+      amount), and "owner-declared" if ``declared`` names it, with the
+      owner's decision. Those kinds are tried in that order, so a
+      declaration files only a gap no other kind covers. Any other such
+      column refuses, all of them in one message: prepare must fill it or
+      its owner declare it. This is stricter than
+      :func:`require_one_population`'s R10, which asks for a declaration only
+      when a register column is filled on every CPS row of its entity and
+      null on some ACS row: a column partly null on CPS rows and null on ACS
+      rows passes R10 undeclared and refuses here.
     - "reviewed default fill": each fill of ``fill_manifest``, the reviewed
       default fill's manifest (``tools/build_us_acs_local_release.py``
       ``fill_reviewed_nulls``, :1151-1165), checked against the frame
@@ -2521,19 +2591,29 @@ def absences(
       receipt recording staging's written zeros. Its rows are the ACS rows
       holding zero, an upper bound: a measured zero is not told apart.
 
-    A column named by more than one of ``declared``, ``fill_manifest`` and
-    ``zero_written``, a declaration for a release-written or raw column (it
-    needs no decision) and a declaration no absence uses refuse.
+    ``declared`` is the mapping :func:`require_one_population` takes, so a declaration this frame does not use is recorded, never
+    refused (d2283 lead call (b), 11-18): ``needless_declarations`` lists
+    each declared column that needs no decision here (release-written, not
+    model-named, or whose every gap on this frame took a kind that needs
+    none, such as an origin-native amount), and ``unused_declarations``
+    each other declared column no origin lacks on this frame (a stale
+    declaration; on a frame with no ACS row, every such declaration). Each
+    list holds ``{"column", "decision"}`` entries sorted by column. A
+    declaration for an engine input is filed like any other, although
+    :func:`require_one_population`'s R6 refuses that input's nulls on the
+    same frame whatever is declared. A column named by more than one of
+    ``declared``, ``fill_manifest`` and ``zero_written`` still refuses.
 
     Args:
         frame: The joined frame after prepare's fill.
         fill_manifest: The reviewed default fill's manifest for this frame.
         zero_written: Column to the receipt recording its written zeros.
-        declared: Column to its owner's decision, for each model-named
-            column one origin lacks by decision.
+        declared: Column to its owner's decision, the mapping
+            :func:`require_one_population` takes as ``declared_absences``.
 
     Returns:
-        The absences record: plain builtins, entries sorted.
+        The absences record: plain builtins, entries and both declaration
+        lists sorted.
 
     Raises:
         OnePopulationContractError: If an input does not describe the frame,
@@ -2547,7 +2627,7 @@ def absences(
         raise OnePopulationContractError(
             "The absences file needs a frame in the US schema."
         )
-    declared = _declarations(declared)
+    declared = _declarations(declared, name="declared")
     zero_written = _zero_written_columns(zero_written)
     tables = _frame_tables(frame)
     fills = _fills(fill_manifest, tables)
@@ -2566,25 +2646,13 @@ def absences(
                     f"An absence has one kind: {both} are named by both {first} "
                     f"and {second}."
                 )
-    from microcosm.data.stored_inputs import is_model_named
-
-    needless = sorted(
-        column
-        for column in declared
-        if column in RELEASE_WRITTEN_INPUTS or not is_model_named(column)
-    )
-    if needless:
-        raise OnePopulationContractError(
-            f"A declared absence needs no owner's decision for {needless}: they "
-            "are release-written or raw source columns."
-        )
-
     masses = {
         entity: _entity_mass(frame, entity, tables[entity])
         for entity in US_SCHEMA.entities
     }
     entries: list[dict[str, object]] = []
     used: set[str] = set()
+    gapped: set[str] = set()
     gaps: dict[str, str] = {}
     for entity in US_SCHEMA.entities:
         table, mass = tables[entity], masses[entity]
@@ -2598,7 +2666,8 @@ def absences(
                 lacking = null & mass.origin_rows(origin)
                 if not lacking.any() or not (~null & mass.origin_rows(other)).any():
                     continue
-                classified = _absence_kind(column, declared)
+                gapped.add(column)
+                classified = _absence_kind(entity, column, origin, declared)
                 if classified is None:
                     gaps[f"{entity}.{column}"] = (
                         f"null on {int(lacking.sum())} {origin} row(s)"
@@ -2627,11 +2696,16 @@ def absences(
             "values in it, so prepare must fill it or its owner must declare "
             "the absence with a decision."
         )
-    stale = sorted(set(declared) - used)
-    if stale:
-        raise OnePopulationContractError(
-            f"A declared absence names a column no origin lacks: {stale}."
-        )
+    from microcosm.data.stored_inputs import is_model_named
+
+    needless = sorted(
+        column
+        for column in set(declared) - used
+        if column in gapped
+        or column in RELEASE_WRITTEN_INPUTS
+        or not is_model_named(column)
+    )
+    unused = sorted(set(declared) - used - set(needless))
 
     for fill in fills:
         entity, column = str(fill["entity"]), str(fill["column"])
@@ -2740,6 +2814,12 @@ def absences(
         },
         "fill_manifest_period": _plain(fill_manifest["period"]),
         "entries": entries,
+        "unused_declarations": [
+            {"column": column, "decision": declared[column]} for column in unused
+        ],
+        "needless_declarations": [
+            {"column": column, "decision": declared[column]} for column in needless
+        ],
     }
 
 
