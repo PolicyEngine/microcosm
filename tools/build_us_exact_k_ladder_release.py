@@ -475,9 +475,10 @@ def launch(
     """Validate pins, build through the house release path, and write a receipt.
 
     The release tool builds and stops (microcosm#1585 item 11, PR 4a), so the
-    receipt names the build and its release, the national one, and carries
-    the command that certifies the build, then the commands that publish it
-    and make it current. The launcher runs none of them.
+    receipt names the build, its own directory and the release certification
+    places it in, the national one, since an exact-k build is never evidence.
+    It carries the command that certifies the build, then the commands that
+    publish it and make it current. The launcher runs none of them.
     """
 
     config = _read_config(config_path)
@@ -503,6 +504,8 @@ def launch(
     result: dict[str, object] = {
         "release": US_NATIONAL_RELEASE_ID,
         "build": config.release_id,
+        "build_dir": str(resolved_out / fiscal_release.US_BUILD_FILES_DIRECTORY),
+        # Where certification places the build (microcosm#1585 item 11).
         "release_dir": str(release_dir),
         "artifact_root": str(artifact_root),
         "k": k,
