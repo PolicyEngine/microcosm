@@ -380,8 +380,11 @@ through the emitter (`microcosm-publish-release-build`, from
 call to the same command with `--promote`, and withdrawing one is
 `microcosm-withdraw-release-build <repository> <release> <build>`, which sets
 its `withdrawn` flag through the same release writer. Each US builder writes its build to
-`releases/<release>/`; the national builder and the ACS package stage also
-print both commands.
+`releases/<release>/`. The national builder builds and stops at
+`<out>/build_record.json`, printing the command that certifies the build;
+`tools/certify_us_national_build.py` runs the release's post-export checks,
+writes the manifests and prints both commands (microcosm#1585 item 11). The
+ACS package stage prints both commands itself.
 `tools/preflight_us_release_gates.py` runs the US national release checks that
 need no calibration on the base before a build, and again with the finished
 build's `--release-manifest`. The emitter changes
@@ -466,7 +469,11 @@ Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
 certification.
-To check the post-export stages on a written export without a full rerun,
+A US national build stops before its post-export checks; certify it with
+`tools/certify_us_national_build.py <out>` only when it is to be published
+(the release build rule's
+[Build, then certify](us-release-build-rule.md#build-then-certify)). To check
+the post-export stages on a written export without certifying it,
 subsample it and probe it as
 [the release build rule](us-release-build-rule.md#probing-an-export-on-a-household-subsample)
 describes (`tools/sample_us_export_households.py`,

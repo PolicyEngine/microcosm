@@ -3,11 +3,18 @@
 # --base-h5 release candidate on the committed labelled Ledger feed, then the
 # release-gate preflight and the publisher's offline --preflight-only check.
 #
-# Builds a release candidate, runs offline preflights, and leaves publication
-# to Max. Release staging telemetry is enabled unless ROUTE_A_STAGING=0.
+# Builds the base and the release's build, and stops there: the build is
+# written, checked by its own gates and recorded, and nothing is publishable.
+# --certify (or ROUTE_A_CERTIFY=1) on the same RUN_ROOT then certifies that
+# build (the release's post-export checks and its manifests,
+# tools/certify_us_national_build.py), runs the offline preflights, and leaves
+# publication to Max (microcosm#1585 item 11, PR 4a). Release and certification
+# staging telemetry is enabled unless ROUTE_A_STAGING=0.
 #
-# Usage: ./route_a.sh [--resolve]
+# Usage: ./route_a.sh [--resolve|--certify]
 # --resolve fetches refs, hashes inputs, and checks commit pins; no stages run.
+# --certify runs every stage, certification included; accepted stages are
+# skipped, so after a build it certifies that build.
 # Settings come from ROUTE_A_ENV, defaulting to route_a.env beside this script.
 # Accepted stages are skipped on restart. Live supervisors are waited for;
 # failed attempts are moved aside. Releases use fresh IDs and shared caches.
@@ -22,11 +29,13 @@ TOKEN_WRAPPER=$SCRIPT_DIR/with_hf_token.sh
 GIB=1073741824
 
 MODE=run
+CERTIFY_FLAG=0
 case "${1:-}" in
   --resolve|--dry-run) MODE=resolve ;;
+  --certify) CERTIFY_FLAG=1 ;;
   "") ;;
   -h|--help) sed -n '2,/^set +x$/p' "$0"; exit 0 ;;
-  *) echo "usage: $0 [--resolve]" >&2; exit 64 ;;
+  *) echo "usage: $0 [--resolve|--certify]" >&2; exit 64 ;;
 esac
 
 [ -f "$ROUTE_A_ENV" ] || { echo "missing settings: $ROUTE_A_ENV (copy route_a.env.example)" >&2; exit 64; }
@@ -39,6 +48,9 @@ esac
 : "${LADDER:?set LADDER}" "${SSI:?set SSI}" "${SCF:?set SCF}"
 : "${AGENT_SECRET:?set AGENT_SECRET}" "${ROUTE_A_STAGING=1}" "${RELEASE_RAM_GIB:=50}"
 case "$ROUTE_A_STAGING" in 0|1) ;; *) echo "ROUTE_A_STAGING must be 0 or 1" >&2; exit 64 ;; esac
+: "${ROUTE_A_CERTIFY=0}"
+[ "$CERTIFY_FLAG" = 1 ] && ROUTE_A_CERTIFY=1
+case "$ROUTE_A_CERTIFY" in 0|1) ;; *) echo "ROUTE_A_CERTIFY must be 0 or 1" >&2; exit 64 ;; esac
 mkdir -p "$RUN_ROOT"
 LOG=$RUN_ROOT/route_a.log
 : "${COMMIT:=}" "${REQUIRE_ON_MAIN:=1}" "${REQUIRE_SPM_ROLE:=1}" "${PREFLIGHT_COMMIT:=}"
@@ -416,6 +428,26 @@ release_command() {
     ${staging[@]+"${staging[@]}"} ${extra[@]+"${extra[@]}"})
 }
 
+certify_command() {
+  # Certification stages where its build staged, in a run of its own, so it
+  # needs the release stage's staging credential. Without staging it runs as
+  # the release stage does: online, without the HF tokens (microcosm#1585
+  # item 11, PR 4a).
+  local -a staging=() launcher=()
+  case "${ROUTE_A_STAGING-1}" in
+  0)
+    staging=(--no-staging)
+    launcher=(/usr/bin/env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u HUGGINGFACE_HUB_TOKEN -u HUGGING_FACE_TOKEN_MAX)
+    ;;
+  1)
+    launcher=("$TOKEN_WRAPPER" "$AGENT_SECRET")
+    ;;
+  *) fail "ROUTE_A_STAGING must be 0 or 1" ;;
+  esac
+  CERTIFY_ARGV=("${launcher[@]}" "$W/.venv/bin/python" -B tools/certify_us_national_build.py
+    "$REL_OUT" ${staging[@]+"${staging[@]}"})
+}
+
 # ---------------------------------------------------------------------------
 # Dry run.
 # ---------------------------------------------------------------------------
@@ -457,7 +489,18 @@ log "route A driver start (pid $$)"
 C=$(git -C "$MAIN" rev-parse --verify --quiet "$COMMIT^{commit}") || fail "COMMIT $COMMIT not found after git fetch origin"
 PC=$(git -C "$MAIN" rev-parse --verify --quiet "${PREFLIGHT_COMMIT:-$C}^{commit}") || fail "PREFLIGHT_COMMIT $PREFLIGHT_COMMIT not found"
 refuse_bad_release_args
-verify_inputs
+# Certifying an accepted build reads none of the raw inputs, which the build
+# verified when it ran, so they are not hashed again (microcosm#1585 item 11,
+# PR 4a).
+CERTIFY_ONLY=0
+if [ "$ROUTE_A_CERTIFY" = 1 ] && [ -f "$RUN_ROOT/run-${C:0:12}/release-sup/ACCEPTED" ]; then
+  CERTIFY_ONLY=1
+fi
+if [ "$CERTIFY_ONLY" = 1 ]; then
+  log "inputs: not hashed again; the build at ${C:0:12} is accepted and certification reads none of them"
+else
+  verify_inputs
+fi
 check_commit "$C" "$PC"
 report_resolution "$C"
 [ ${#INPUT_PROBLEMS[@]} = 0 ] || fail "input problems (see above)"
@@ -535,8 +578,10 @@ else
     *) log "overnight chain process gone without CHAIN DONE or FAIL; proceeding" ;;
   esac
 fi
-verify_inputs
-[ ${#INPUT_PROBLEMS[@]} = 0 ] || { report_resolution "$C"; fail "inputs changed while waiting"; }
+if [ "$CERTIFY_ONLY" != 1 ]; then
+  verify_inputs
+  [ ${#INPUT_PROBLEMS[@]} = 0 ] || { report_resolution "$C"; fail "inputs changed while waiting"; }
+fi
 
 # --- helpers for supervised stages ---
 avail_ram_bytes() { "$PY" -c 'import psutil; print(psutil.virtual_memory().available)'; }
@@ -754,9 +799,54 @@ RID=$("$PY" -c 'import json,sys; a=json.load(open(sys.argv[1]))["argv"]; print(a
   || fail "cannot read the release id from release-sup/COMMAND.json"
 REL_OUT=$RUN/release-out/$RID
 # A national run writes its build into the national release's directory;
-# $RID is the build ID (microcosm#1570).
+# $RID is the build ID (microcosm#1570). The release tool builds and stops:
+# its build record is what certification reads (microcosm#1585 item 11, PR 4a).
 REL_DIR=$REL_OUT/releases/microcosm-us-2024-national
-[ -f "$REL_DIR/release_manifest.json" ] || fail "release accepted but $REL_DIR/release_manifest.json is missing"
+[ -f "$REL_OUT/build_record.json" ] || fail "release accepted but $REL_OUT/build_record.json is missing"
+log "build $RID at $REL_OUT"
+
+# --- 6b. Certification, only when asked (--certify or ROUTE_A_CERTIFY=1): the
+# release's post-export checks on the written H5 and the manifests publication
+# requires. Without it the run hands the build over and stops. ---
+if [ "$ROUTE_A_CERTIFY" != 1 ]; then
+  "$PY" - "$RUN_ROOT/ROUTE_A_BUILT.json" "$C" "$PEUS" "$BASE_H5" "$BASE_SHA" "$RID" "$REL_OUT" \
+    "$(cat "$RUN/preflight-base-sup/ACCEPTED" 2>/dev/null || echo BLOCKED)" <<'EOF'
+import json, sys
+(out, commit, peus, base_h5, base_sha, rid, rel_out, pfb) = sys.argv[1:]
+json.dump({
+    "state": "built",
+    "certified": False,
+    "published": False,
+    "build_commit": commit,
+    "policyengine_us": peus,
+    "base_h5": base_h5,
+    "base_sha256": base_sha,
+    "release_id": rid,
+    "build_dir": rel_out,
+    "build_record": rel_out + "/build_record.json",
+    "preflight_base": pfb,
+    "next": (
+        "The build is written and checked by its own gates; it is not "
+        "publishable. To certify it, rerun this driver with --certify on the "
+        "same RUN_ROOT, or run tools/certify_us_national_build.py on build_dir."
+    ),
+}, open(out, "w"), indent=1)
+EOF
+  if [ "$PF_BLOCKED" = 1 ]; then
+    log "ROUTE A BUILT, BLOCKED: build $RID at $REL_OUT; the release-gate preflight needs the new-lineage mode; not certified; nothing published"
+    exit 4
+  fi
+  log "ROUTE A BUILT: build $RID at $REL_OUT; not certified (rerun with --certify to certify it); nothing published"
+  exit 0
+fi
+wait_prior_supervisor certify
+if ! stage_done certify; then
+  certify_command
+  write_config certify 110 "$RELEASE_RAM_GIB" 45 "${CERTIFY_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- \
+    "${CERTIFY_ARGV[@]}"
+  run_stage certify 0 "$RELEASE_RAM_GIB" 45 "Certification scores the written H5; free disk beside the build."
+fi
+[ -f "$REL_DIR/release_manifest.json" ] || fail "certify accepted but $REL_DIR/release_manifest.json is missing"
 log "release candidate $RID at $REL_DIR"
 
 # --- 7. Release-gate preflight against the built release manifest. ---

@@ -3063,19 +3063,33 @@ def resolve_target_surface(
     flag: str | None,
     dropped: int | None,
     release_manifest: Mapping[str, Any] | None,
+    build_record: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The build's target surface: the flag, else the reference release
-    manifest's ``target_surface_selection``, else ``full``.
+    manifest's ``target_surface_selection``, else, for a build not yet
+    certified, its ``build_record.json``'s, else ``full``.
 
     A manifest in the build-folder layout (microcosm#1570) names its build in
     ``build`` and records the selection at its top level; one in the tagged
-    layout records it in its ``build`` object.
+    layout records it in its ``build`` object. A build that has not been
+    certified has no manifest; its record carries the selection under
+    ``manifest`` (microcosm#1585 item 11, PR 4a).
     """
     build = None if release_manifest is None else release_manifest.get("build")
     tagged = isinstance(build, Mapping)
     details = build if tagged else release_manifest or {}
     selection = details.get("target_surface_selection")
     field = "build.target_surface_selection" if tagged else "target_surface_selection"
+    source = f"reference release_manifest.json {field}"
+    if release_manifest is None and build_record is not None:
+        selection = (build_record.get("manifest") or {}).get("target_surface_selection")
+        source = "reference build_record.json manifest.target_surface_selection"
+        if not selection and flag is None:
+            return {
+                "mode": "full",
+                "dropped_congressional_district_targets": dropped,
+                "source": source,
+            }
     if flag is not None:
         return {
             "mode": flag,
@@ -3090,7 +3104,7 @@ def resolve_target_surface(
                 if dropped is not None
                 else selection.get("dropped_congressional_district_targets")
             ),
-            "source": f"reference release_manifest.json {field}",
+            "source": source,
         }
     return {
         "mode": "full",
@@ -3115,6 +3129,18 @@ def reference_paths(
 
 def _read_json(path: Path | None):
     return None if path is None else json.loads(Path(path).read_text())
+
+
+def reference_build_record(release_dir: Path | None) -> Path | None:
+    """The record of the build whose release directory is the reference.
+
+    A build writes ``build_record.json`` in its ``--out`` directory, two
+    levels above ``releases/<release>/`` (microcosm#1585 item 11, PR 4a).
+    """
+    if release_dir is None:
+        return None
+    candidate = Path(release_dir).resolve().parent.parent / "build_record.json"
+    return candidate if candidate.is_file() else None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -3157,7 +3183,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="a full-size build's release directory (releases/<release>/, or "
         "an older build's releases/<build id>/): "
         "defaults --reference-smoke, --reference-validation, "
-        "--reference-build-manifest and --calibration-diagnostics to its files",
+        "--reference-build-manifest and --calibration-diagnostics to its files. "
+        "A build not yet certified works too: its target surface then comes "
+        "from the build_record.json in its --out directory. A build whose "
+        "release gates failed is refused",
     )
     parser.add_argument(
         "--reference-smoke",
@@ -3212,6 +3241,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="rows per chunked source read (default: sized from 128 MiB)",
     )
     args = parser.parse_args(argv)
+    if args.reference_release_dir is not None:
+        # A failed build keeps its H5 to be evaluated, which the probe may
+        # score as --export, but it is no reference (microcosm#1585 item 11).
+        failed = load_builder()._failed_build_holding(args.reference_release_dir)
+        if failed is not None:
+            parser.error(
+                f"--reference-release-dir {args.reference_release_dir} belongs "
+                f"to {failed}. A failed build can be scored as --export, but "
+                "not taken as the reference."
+            )
 
     receipt_path = args.sample_receipt
     if receipt_path is None:
@@ -3229,6 +3268,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.target_surface,
         args.dropped_congressional_district_targets,
         _read_json(references["release_manifest"]),
+        _read_json(reference_build_record(args.reference_release_dir)),
     )
     register = None
     if args.qrf_tail_register is not None:
