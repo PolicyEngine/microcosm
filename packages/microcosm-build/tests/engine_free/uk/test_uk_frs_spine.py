@@ -58,6 +58,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
+    FRS_CONDITION_LIMITS_COLUMN,
     FRS_SPINE_TABLES,
     FRS_UC_CARER_ELEMENT_COLUMN,
     FRS_UC_LCW_STATUS_COLUMN,
@@ -75,6 +76,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     completed_months,
     frs_care_recipients,
     frs_claimant_or_partner,
+    frs_condition_limits_activities,
     frs_council_tax_band,
     frs_dwp_carer_care_hours,
     frs_lcwra_proxy,
@@ -290,6 +292,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TOTHOURS": 40,
         # HOURTOT 5 = 35-49 hours of care a week (#882).
         "HOURTOT": 5,
+        # No long-standing illness, so CONDIT is blank (PolicyEngine/microcosm#1663).
+        "HEALTH1": 2,
+        "CONDIT": "",
         "HRPID": 1,
         "UPERSON": 1,
         # #791 household grid: the HRP carries a blank relhrp and the parent
@@ -1436,7 +1441,9 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     or UPERSON, which place a person in their benefit unit: a child raised to
     UPERSON 1 would head the unit beside its adult head, which the spine
     refuses. Nor are the household codes mapped through their data
-    dictionary, which refuse a raised code outside it (uk-data#636).
+    dictionary, which refuse a raised code outside it (uk-data#636), nor
+    ADULT's HEALTH1 and CONDIT, refused the same way (PolicyEngine/
+    microcosm#1663).
     """
 
     tables = _fixture_tables()
@@ -1455,6 +1462,8 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
             "GVTREGNO",
             "PTENTYP2",
             "TYPEACC",
+            "HEALTH1",
+            "CONDIT",
         }
     ]
     copies: dict[str, list[dict[str, object]]] = {table: [] for table in tables}
@@ -5768,3 +5777,34 @@ def test_a_spine_build_that_must_send_telemetry_stops_before_any_input_without_a
 
     assert raised.value.reason == "command_not_found"
     assert sorted(path.name for path in tmp_path.iterdir()) == ["raw"]
+
+
+def test_the_limiting_condition_carrier_reads_health1_and_condit() -> None:
+    """ADULT.CONDIT's three codes, NO_CONDITION and NOT_ASKED (PolicyEngine/microcosm#1663)."""
+
+    person = pd.DataFrame({"health1": [1, 1, 1, 2, 0], "condit": [1, 2, 3, 0, 0]})
+    adult = np.array([True, True, True, True, False])
+
+    assert frs_condition_limits_activities(person, adult).tolist() == [
+        "A_LOT",
+        "A_LITTLE",
+        "NOT_AT_ALL",
+        "NO_CONDITION",
+        "NOT_ASKED",
+    ]
+    with pytest.raises(KeyError, match="CONDIT"):
+        frs_condition_limits_activities(person[["health1"]], adult)
+    with pytest.raises(ValueError, match="HEALTH1 outside"):
+        frs_condition_limits_activities(person.assign(health1=[1, 1, 1, 3, 0]), adult)
+    with pytest.raises(ValueError, match="codes 1 to 3"):
+        frs_condition_limits_activities(person.assign(condit=[1, 2, 0, 0, 0]), adult)
+    with pytest.raises(ValueError, match="without a long-standing"):
+        frs_condition_limits_activities(person.assign(condit=[1, 2, 3, 1, 0]), adult)
+    with pytest.raises(ValueError, match="align"):
+        frs_condition_limits_activities(person, adult[:-1])
+
+
+def test_the_spine_carries_the_limiting_condition() -> None:
+    from microcosm.build.uk_runtime.frs_spine import OUTPUT_COLUMNS
+
+    assert FRS_CONDITION_LIMITS_COLUMN in OUTPUT_COLUMNS

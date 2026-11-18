@@ -39,11 +39,18 @@ ESA, and young claimants above all: the Milburn review's benchmarks
 (PolicyEngine/uk-milburn-review-dashboard#1). The imputation:
 
 * a claim's cell is its youngest claimant's age band
-  (``UC_LIMITED_CAPABILITY_AGE_BANDS``) and whether the proxy flags any of its
-  claimants;
+  (``UC_LIMITED_CAPABILITY_AGE_BANDS``), whether the proxy flags any of its
+  claimants and, on María's go of 18 November 2026, whether any claimant's
+  long-standing illness limits their day-to-day activities a lot
+  (``UC_LIMITED_CAPABILITY_CONDITION``, frs_spine's ADULT.CONDIT carrier). On
+  linked FRS 2024-25 claims DWP's LCWRA status is far commoner where such a
+  condition is reported, whether or not the proxy flags the claim, so without
+  it a drawn claim with no disability benefit took the element at its whole
+  group's rate, condition or not;
 * the cell's rate is the share of linked claims in it with DWP's LCWRA status,
   at the stage's household weights; a cell with fewer than three distinct
-  source households takes its proxy group's rate over every age;
+  source households takes its proxy and condition group's rate over every
+  age, then its proxy group's;
 * a claim draws LCWRA when its identity-keyed uniform falls below the rate,
   and NONE otherwise, and the linked rules then apply with the claim's first
   claimant in place of the UC row's person. Linked claims have too few LCW
@@ -66,6 +73,10 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.build.uk_runtime.frs_spine import (
+    FRS_CONDITION_LIMITS_CODES,
+    FRS_CONDITION_LIMITS_COLUMN,
+    FRS_CONDITION_NONE,
+    FRS_CONDITION_NOT_ASKED,
     FRS_UC_LCW_NOT_LINKED,
     FRS_UC_LCW_STATUS_CODES,
     FRS_UC_LCW_STATUS_COLUMN,
@@ -121,6 +132,17 @@ UC_LIMITED_CAPABILITY_AGE_BANDS: tuple[tuple[str, int, int | None], ...] = (
     ("25_to_49", max(UC_TAKE_UP_YOUNG_AGES) + 1, 49),
     ("50_and_over", 50, None),
 )
+#: The imputation's third cell dimension: whether any of a claim's claimants
+#: reports a long-standing illness that limits their day-to-day activities a
+#: lot (frs_spine's ADULT.CONDIT carrier, code 1; PolicyEngine/microcosm#1663).
+UC_LIMITED_CAPABILITY_CONDITION = FRS_CONDITION_LIMITS_COLUMN
+UC_LIMITED_CAPABILITY_CONDITION_CELL = FRS_CONDITION_LIMITS_CODES[1]
+_CONDITION_LABELS = (
+    *FRS_CONDITION_LIMITS_CODES.values(),
+    FRS_CONDITION_NONE,
+    FRS_CONDITION_NOT_ASKED,
+)
+_CONDITION_SIDES = ("limits_a_lot", "no_limit_a_lot")
 UC_LIMITED_CAPABILITY_SEED = 0
 UC_LIMITED_CAPABILITY_SALT = "frs_uc_lcw_status_imputed"
 #: The frame holds survey-year values, and the flags are stored as survey-year
@@ -150,13 +172,16 @@ UC_LIMITED_CAPABILITY_IMPUTATION_RULE = (
     "status: LCWRA when its identity-keyed uniform falls below its cell's "
     "rate, NONE otherwise, and then the linked rules with the claim's first "
     "claimant in place of the UC row's person. A cell is the youngest "
-    "claimant's age band and whether the proxy flags any claimant; its rate is "
-    "the share of linked claims in it with DWP's LCWRA status, at the stage's "
-    "household weights, counting only linked claims in which no claimant has "
-    "their own ESA award: a claim with one keeps the proxy rather than "
-    "drawing, so the rates are measured on the kind of claim that draws. A "
-    "cell with fewer than three distinct source households takes its proxy "
-    "group's rate over every age, and a group with fewer keeps the proxy."
+    "claimant's age band, whether the proxy flags any claimant, and whether "
+    "any claimant's long-standing illness limits their day-to-day activities "
+    "a lot (frs_spine's ADULT.CONDIT carrier); its rate is the share of "
+    "linked claims in it with DWP's LCWRA status, at the stage's household "
+    "weights, counting only linked claims in which no claimant has their own "
+    "ESA award: a claim with one keeps the proxy rather than drawing, so the "
+    "rates are measured on the kind of claim that draws. A cell with fewer "
+    "than three distinct source households takes its proxy and condition "
+    "group's rate over every age, then its proxy group's over every age, and "
+    "a group with fewer keeps the proxy."
 )
 UC_LIMITED_CAPABILITY_SCOPE = (
     "SPI rows, and claims in which a claimant has their own ESA award, keep "
@@ -224,6 +249,8 @@ def uc_limited_capability_operation_parameters() -> tuple[
                     {"band": name, "low": low, "high": high}
                     for name, low, high in UC_LIMITED_CAPABILITY_AGE_BANDS
                 ],
+                "condition": UC_LIMITED_CAPABILITY_CONDITION,
+                "condition_cell": UC_LIMITED_CAPABILITY_CONDITION_CELL,
                 "seed": UC_LIMITED_CAPABILITY_SEED,
                 "salt": UC_LIMITED_CAPABILITY_SALT,
                 "rule": UC_LIMITED_CAPABILITY_RULE,
@@ -368,6 +395,21 @@ def assign_uc_limited_capability(
     )
     if np.isnan(age).any():
         raise ValueError(f"person.{UC_LIMITED_CAPABILITY_AGE} has missing values.")
+    if UC_LIMITED_CAPABILITY_CONDITION not in person.columns:
+        raise KeyError(
+            f"person.{UC_LIMITED_CAPABILITY_CONDITION} is missing; frs_spine "
+            "carries ADULT.CONDIT, which the imputation's cells read."
+        )
+    condition = (
+        person[UC_LIMITED_CAPABILITY_CONDITION].astype(str).to_numpy(dtype=object)
+    )
+    unknown_conditions = sorted(set(condition) - set(_CONDITION_LABELS))
+    if unknown_conditions:
+        raise ValueError(
+            f"{UC_LIMITED_CAPABILITY_CONDITION} values outside the labels: "
+            f"{unknown_conditions}."
+        )
+    limits_a_lot = condition == UC_LIMITED_CAPABILITY_CONDITION_CELL
 
     wra = proxy_wra.copy()
     lcw = proxy_lcw.copy()
@@ -432,7 +474,8 @@ def assign_uc_limited_capability(
 
     # The imputation's rates, from the linked claims at the stage's household
     # weights: each claim counts once, at its UC row's person, in the cell of
-    # its youngest claimant's age band and of the proxy's view of its claimants.
+    # its youngest claimant's age band, of the proxy's view of its claimants and
+    # of whether any claimant's condition limits their activities a lot.
     def band_of(rows: list[int]) -> str:
         youngest = float(age[rows].min())
         for name, _low, high in UC_LIMITED_CAPABILITY_AGE_BANDS:
@@ -445,20 +488,30 @@ def assign_uc_limited_capability(
             "proxy_flags" if any(proxy_wra[row] for row in rows) else "proxy_does_not"
         )
 
+    def condition_side(rows: list[int]) -> str:
+        return "limits_a_lot" if limits_a_lot[rows].any() else "no_limit_a_lot"
+
     sides = ("proxy_flags", "proxy_does_not")
+    conditions = _CONDITION_SIDES
     bands = tuple(name for name, _low, _high in UC_LIMITED_CAPABILITY_AGE_BANDS)
-    cell_rows: dict[tuple[str, str], list[int]] = {
-        (band, side): [] for band in bands for side in sides
+    cell_rows: dict[tuple[str, str, str], list[int]] = {
+        (band, side, cond): []
+        for band in bands
+        for side in sides
+        for cond in conditions
     }
     # A linked claim in which a claimant has their own ESA award stays out of
     # the rates: a claim like it keeps the proxy instead of drawing, so a rate
     # measured on it would speak for claims that never draw from it. The
     # receipt gives these claims' own rate beside each cell's, to show the gap.
-    own_esa_rows: dict[tuple[str, str], list[int]] = {
-        (band, side): [] for band in bands for side in sides
+    own_esa_rows: dict[tuple[str, str, str], list[int]] = {
+        (band, side, cond): []
+        for band in bands
+        for side in sides
+        for cond in conditions
     }
     for carrier_row, rows in linked_claims:
-        key = (band_of(rows), proxy_side(rows))
+        key = (band_of(rows), proxy_side(rows), condition_side(rows))
         if own_esa[rows].any():
             own_esa_rows[key].append(carrier_row)
         else:
@@ -489,29 +542,54 @@ def assign_uc_limited_capability(
         return (rate if usable else None), entry
 
     def over_every_age(
-        by_cell: dict[tuple[str, str], list[int]], side: str
+        by_cell: dict[tuple[str, str, str], list[int]],
+        side: str,
+        cond: str | None = None,
     ) -> list[int]:
-        return [row for band in bands for row in by_cell[(band, side)]]
+        return [
+            row
+            for band in bands
+            for each in conditions
+            if cond is None or each == cond
+            for row in by_cell[(band, side, each)]
+        ]
 
     pooled = {side: measured_rate(over_every_age(cell_rows, side)) for side in sides}
     for side in sides:
         pooled[side][1]["own_esa_award_claims"] = measured_rate(
             over_every_age(own_esa_rows, side)
         )[1]
-    rates: dict[tuple[str, str], float | None] = {}
-    cells: dict[str, dict[str, object]] = {}
+    pooled_by_condition = {
+        (side, cond): measured_rate(over_every_age(cell_rows, side, cond))
+        for side in sides
+        for cond in conditions
+    }
+    for (side, cond), (_rate, entry) in pooled_by_condition.items():
+        entry["own_esa_award_claims"] = measured_rate(
+            over_every_age(own_esa_rows, side, cond)
+        )[1]
+    rates: dict[tuple[str, str, str], float | None] = {}
+    cells: dict[str, dict[str, dict[str, object]]] = {}
     for band in bands:
         cells[band] = {}
         for side in sides:
-            rate, entry = measured_rate(cell_rows[(band, side)])
-            if rate is None:
-                rate = pooled[side][0]
-                entry["source"] = "pooled" if rate is not None else "proxy_kept"
-            else:
-                entry["source"] = "cell"
-            entry["own_esa_award_claims"] = measured_rate(own_esa_rows[(band, side)])[1]
-            rates[(band, side)] = rate
-            cells[band][side] = entry
+            cells[band][side] = {}
+            for cond in conditions:
+                rate, entry = measured_rate(cell_rows[(band, side, cond)])
+                if rate is not None:
+                    entry["source"] = "cell"
+                else:
+                    rate = pooled_by_condition[(side, cond)][0]
+                    if rate is not None:
+                        entry["source"] = "pooled_by_condition"
+                    else:
+                        rate = pooled[side][0]
+                        entry["source"] = "pooled" if rate is not None else "proxy_kept"
+                entry["own_esa_award_claims"] = measured_rate(
+                    own_esa_rows[(band, side, cond)]
+                )[1]
+                rates[(band, side, cond)] = rate
+                cells[band][side][cond] = entry
 
     # The imputed claims: every other benefit unit with a claimant outside the
     # SPI rows whose claimants hold no ESA award of their own, in benefit unit
@@ -542,7 +620,7 @@ def assign_uc_limited_capability(
         salt=UC_LIMITED_CAPABILITY_SALT,
     )
     for (_unit, rows), uniform in zip(candidates, uniforms, strict=True):
-        rate = rates[(band_of(rows), proxy_side(rows))]
+        rate = rates[(band_of(rows), proxy_side(rows), condition_side(rows))]
         if rate is None:
             kept["no_rate"].append(rows[0])
             continue
@@ -591,6 +669,12 @@ def assign_uc_limited_capability(
             "rule": UC_LIMITED_CAPABILITY_IMPUTATION_RULE,
             "cells": cells,
             "pooled": {side: entry for side, (_rate, entry) in pooled.items()},
+            "pooled_by_condition": {
+                side: {
+                    cond: pooled_by_condition[(side, cond)][1] for cond in conditions
+                }
+                for side in sides
+            },
             "claims": rounded_count(sum(len(rows) for rows in statuses.values())),
             "claims_support": support_band(
                 distinct_count(

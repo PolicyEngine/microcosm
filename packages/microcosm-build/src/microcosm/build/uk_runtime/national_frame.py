@@ -741,6 +741,10 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # (frs_spine.FRS_UC_LCW_STATUS_COLUMN) the uc_limited_capability stage
         # reads (microcosm#1095, Y1); it is no engine input.
         "frs_uc_lcw_status",
+        # The limiting condition carrier (frs_spine.FRS_CONDITION_LIMITS_COLUMN)
+        # the uc_limited_capability stage's imputation cells read
+        # (PolicyEngine/microcosm#1663); it is no engine input.
+        "frs_condition_limits_activities",
         # The admin UC carer element carrier (frs_spine.FRS_UC_CARER_ELEMENT_COLUMN)
         # frs_disability checks the carer link against (microcosm#1095, A3 (f));
         # it is no engine input.

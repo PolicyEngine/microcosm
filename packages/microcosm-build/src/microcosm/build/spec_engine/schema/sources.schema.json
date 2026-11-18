@@ -7034,6 +7034,8 @@
       "linked_scope",
       "age",
       "age_bands",
+      "condition",
+      "condition_cell",
       "seed",
       "salt",
       "rule",
@@ -7107,6 +7109,12 @@
          }
         }
        }
+      },
+      "condition": {
+       "type": "string"
+      },
+      "condition_cell": {
+       "type": "string"
       },
       "seed": {
        "type": "integer"

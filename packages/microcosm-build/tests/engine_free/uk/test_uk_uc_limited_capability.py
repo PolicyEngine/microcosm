@@ -1,4 +1,4 @@
-"""The UC limited capability stage (microcosm#1095, Y1 of the November event-data plan)."""
+"""The UC limited capability stage (microcosm#1095, Y1 of the November event-data plan; PolicyEngine/microcosm#1663)."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ from microcosm.build.uk_runtime.uc_limited_capability import (
     UC_LIMITED_CAPABILITY_AGE,
     UC_LIMITED_CAPABILITY_CARER,
     UC_LIMITED_CAPABILITY_CLAIMANT,
+    UC_LIMITED_CAPABILITY_CONDITION,
+    UC_LIMITED_CAPABILITY_CONDITION_CELL,
     UC_LIMITED_CAPABILITY_ENGINE_VARIABLES,
     UC_LIMITED_CAPABILITY_ESA,
     UC_LIMITED_CAPABILITY_MASS_CHANGE_REASON,
@@ -64,6 +66,8 @@ def _frame(
     carrier: bool = True,
     ages=None,
     age_column: bool = True,
+    conditions=None,
+    condition_column: bool = True,
 ):
     count = len(people)
     person = pd.DataFrame(
@@ -77,6 +81,10 @@ def _frame(
         person[UC_LIMITED_CAPABILITY_AGE] = ages if ages is not None else [30] * count
     if carrier:
         person[FRS_UC_LCW_STATUS_COLUMN] = [row[2] for row in people]
+    if condition_column:
+        person[UC_LIMITED_CAPABILITY_CONDITION] = (
+            conditions if conditions is not None else ["NO_CONDITION"] * count
+        )
     households = sorted({row[1] for row in people})
     spi = {row[1]: row[3] for row in people}
     household = pd.DataFrame(
@@ -225,6 +233,15 @@ def test_the_stage_refuses_what_it_cannot_read() -> None:
         assign_uc_limited_capability(
             _frame(age_column=False), engine_answers=_answers()
         )
+    with pytest.raises(KeyError, match=UC_LIMITED_CAPABILITY_CONDITION):
+        assign_uc_limited_capability(
+            _frame(condition_column=False), engine_answers=_answers()
+        )
+    with pytest.raises(ValueError, match="outside the labels"):
+        assign_uc_limited_capability(
+            _frame(conditions=["SOMETIMES"] + ["NO_CONDITION"] * (len(_PEOPLE) - 1)),
+            engine_answers=_answers(),
+        )
     with pytest.raises(ValueError, match="missing values"):
         assign_uc_limited_capability(
             _frame(ages=[30] * (len(_PEOPLE) - 1) + [None]), engine_answers=_answers()
@@ -314,7 +331,7 @@ def test_unlinked_claims_draw_their_cells_linked_rate() -> None:
         assert not person.loc[unit, UC_LCW]
     imputation = result.evidence()["imputation"]
     cells = imputation["cells"]
-    assert cells["16_to_24"]["proxy_flags"] == {
+    assert cells["16_to_24"]["proxy_flags"]["no_limit_a_lot"] == {
         "linked_claims": "3-9",
         "support": "3-9",
         "rate": 0.5,
@@ -322,11 +339,17 @@ def test_unlinked_claims_draw_their_cells_linked_rate() -> None:
         "own_esa_award_claims": {"linked_claims": 0, "support": 0, "rate": "withheld"},
     }
     # One linked claim is LCWRA: the rate is drawn at but never printed.
-    assert cells["16_to_24"]["proxy_does_not"]["rate"] == "withheld"
-    assert cells["16_to_24"]["proxy_does_not"]["source"] == "cell"
-    # No linked claim is 50 or over: both sides take their group's rate.
-    assert cells["50_and_over"]["proxy_flags"]["source"] == "pooled"
-    assert cells["50_and_over"]["proxy_does_not"]["source"] == "pooled"
+    assert cells["16_to_24"]["proxy_does_not"]["no_limit_a_lot"]["rate"] == "withheld"
+    assert cells["16_to_24"]["proxy_does_not"]["no_limit_a_lot"]["source"] == "cell"
+    # No linked claim is 50 or over: both sides take their condition group's
+    # rate over every age, and no linked claim reports a condition that
+    # limits activities a lot, so those cells take their proxy group's.
+    for side in ("proxy_flags", "proxy_does_not"):
+        assert cells["50_and_over"][side]["no_limit_a_lot"]["source"] == (
+            "pooled_by_condition"
+        )
+        for band in ("16_to_24", "25_to_49", "50_and_over"):
+            assert cells[band][side]["limits_a_lot"]["source"] == "pooled"
     # 45 imputed claims, rounded to the nearest ten as every receipt count is.
     assert imputation["claims"] == 50
     assert imputation["kept_the_proxy"] == {"own_esa_award": 0, "spi": 0, "no_rate": 0}
@@ -362,7 +385,9 @@ def test_linked_claims_with_their_own_esa_award_stay_out_of_the_rates() -> None:
     # The linked claims with their own award still take DWP's status.
     assert person.loc[[1, 2, 3], UC_LCWRA].all()
     assert not person.loc[[4, 5, 6], UC_LCWRA].any()
-    assert result.evidence()["imputation"]["cells"]["25_to_49"]["proxy_flags"] == {
+    assert result.evidence()["imputation"]["cells"]["25_to_49"]["proxy_flags"][
+        "no_limit_a_lot"
+    ] == {
         "linked_claims": "3-9",
         "support": "3-9",
         "rate": 0.333,
@@ -400,8 +425,8 @@ def test_a_cell_under_three_households_draws_at_its_groups_rate_over_every_age()
         assert person.loc[unit, UC_LCWRA] == (_uniform(unit) < 0.4)
         assert person.loc[unit, UC_LCW] == (_uniform(unit) < 0.4)
     imputation = result.evidence()["imputation"]
-    over_fifty = imputation["cells"]["50_and_over"]["proxy_flags"]
-    assert over_fifty["source"] == "pooled"
+    over_fifty = imputation["cells"]["50_and_over"]["proxy_flags"]["no_limit_a_lot"]
+    assert over_fifty["source"] == "pooled_by_condition"
     assert over_fifty["support"] == "<3"
     assert over_fifty["rate"] == "withheld"
     assert imputation["pooled"]["proxy_flags"] == {
@@ -410,6 +435,12 @@ def test_a_cell_under_three_households_draws_at_its_groups_rate_over_every_age()
         "rate": 0.4,
         "own_esa_award_claims": {"linked_claims": 0, "support": 0, "rate": "withheld"},
     }
+    # Every linked claim is on the no-condition side, so its group over every
+    # age gives the same rate.
+    assert (
+        imputation["pooled_by_condition"]["proxy_flags"]["no_limit_a_lot"]
+        == (imputation["pooled"]["proxy_flags"])
+    )
 
 
 def test_claims_with_their_own_esa_award_keep_the_proxy() -> None:
@@ -446,7 +477,8 @@ def test_without_linked_claims_every_claim_keeps_the_proxy() -> None:
     assert {
         entry["source"]
         for band in imputation["cells"].values()
-        for entry in band.values()
+        for side in band.values()
+        for entry in side.values()
     } == {"proxy_kept"}
 
 
@@ -471,3 +503,80 @@ def test_imputed_lcwra_goes_to_the_first_claimant_or_a_carers_partner() -> None:
     branches = result.evidence()["imputation"]["branches"]
     assert branches["lcwra_given_to_the_first_claimant"] == "<3"
     assert branches["lcwra_given_to_the_partner_of_a_carer"] == "<3"
+
+
+def test_the_cells_split_on_a_condition_that_limits_activities_a_lot() -> None:
+    a_lot = UC_LIMITED_CAPABILITY_CONDITION_CELL
+    people = [
+        # Young linked claims the proxy misses. With a condition that limits
+        # activities a lot: two of three LCWRA.
+        *[_single(unit, "LCWRA", False) for unit in (1, 2)],
+        _single(3, "NONE", False),
+        # Without one: none of six.
+        *[_single(unit, "NONE", False) for unit in range(4, 10)],
+        # Unlinked young claims the proxy misses, on either side.
+        *[_single(unit, "NOT_LINKED", False) for unit in range(100, 130)],
+        *[_single(unit, "NOT_LINKED", False) for unit in range(200, 230)],
+    ]
+    conditions = (
+        [a_lot] * 3
+        + ["NOT_AT_ALL", "A_LITTLE", "NO_CONDITION"] * 2
+        + [a_lot] * 30
+        + ["NO_CONDITION"] * 30
+    )
+    result = assign_uc_limited_capability(
+        _frame(people, ages=[20] * len(people), conditions=conditions),
+        engine_answers=_answers(people),
+    )
+    person = result.frame.table("person").set_index("person_benunit_id")
+
+    # Pooled over the condition the rate would be two of nine; split, a claim
+    # with the condition draws at two thirds and one without it never draws.
+    assert any(2 / 9 <= _uniform(unit) < 2 / 3 for unit in range(100, 130))
+    for unit in range(100, 130):
+        assert person.loc[unit, UC_LCWRA] == (_uniform(unit) < 2 / 3)
+    assert not person.loc[list(range(200, 230)), UC_LCWRA].any()
+    cells = result.evidence()["imputation"]["cells"]["16_to_24"]["proxy_does_not"]
+    assert cells["limits_a_lot"]["source"] == "cell"
+    assert cells["limits_a_lot"]["rate"] == "withheld"  # one NONE household
+    assert cells["no_limit_a_lot"]["source"] == "cell"
+    assert cells["no_limit_a_lot"]["rate"] == "withheld"  # no LCWRA household
+
+
+def test_a_cell_under_three_households_takes_its_condition_groups_rate() -> None:
+    a_lot = UC_LIMITED_CAPABILITY_CONDITION_CELL
+    people = [
+        # Linked claims aged 25 to 49 the proxy flags, with the condition: a
+        # third LCWRA; without it, all NONE.
+        _single(1, "LCWRA", True),
+        *[_single(unit, "NONE", True) for unit in (2, 3)],
+        *[_single(unit, "NONE", True) for unit in (4, 5, 6)],
+        # One young linked claim the proxy flags, with the condition: its cell
+        # rests on one household.
+        _single(7, "NONE", True),
+        # Unlinked young claims the proxy flags, with the condition.
+        *[_single(unit, "NOT_LINKED", True) for unit in range(100, 140)],
+    ]
+    ages = [40] * 6 + [20] + [20] * 40
+    conditions = [a_lot] * 3 + ["NO_CONDITION"] * 3 + [a_lot] + [a_lot] * 40
+    unlinked = range(100, 140)
+    # Over every age, one of the four linked claims with the condition is
+    # LCWRA; over the whole proxy group, one of seven.
+    assert any(1 / 7 <= _uniform(unit) < 1 / 4 for unit in unlinked)
+    result = assign_uc_limited_capability(
+        _frame(people, ages=ages, conditions=conditions),
+        engine_answers=_answers(people),
+    )
+    person = result.frame.table("person").set_index("person_benunit_id")
+
+    for unit in unlinked:
+        assert person.loc[unit, UC_LCWRA] == (_uniform(unit) < 1 / 4)
+    imputation = result.evidence()["imputation"]
+    young = imputation["cells"]["16_to_24"]["proxy_flags"]["limits_a_lot"]
+    assert young["source"] == "pooled_by_condition"
+    assert young["support"] == "<3"
+    assert young["rate"] == "withheld"
+    assert (
+        imputation["pooled_by_condition"]["proxy_flags"]["limits_a_lot"]["support"]
+        == "3-9"
+    )
