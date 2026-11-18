@@ -1764,8 +1764,9 @@ budget: when its last slice ends at least 600 s before the budget does, the
 allowance the estimate keeps for the comparison and scorecards. The
 watcher's budget runs from `started-at`, written before `modal run`, so the
 container's start and staging come out of it too: with 300 s of those, the
-f = 1, T = 300 s run below is stopped at 1,200 s although it fits the
-runner's budget (`projection-grid-pre-tool-300.txt`). Let f be Modal's time
+f = 1, T = 300 s run below gets `NO-GO` at 1,200 s, and the watcher stops
+it a poll later at the earliest, although it fits the runner's budget
+(`projection-grid-pre-tool-300.txt`). Let f be Modal's time
 per slice over the Mac's:
 
 - at f up to 1, if a worker starts in 300 s or less;
@@ -1938,15 +1939,26 @@ as soon as that pool's other lines do; a lost worker-start line, which the
 parent's later lines cannot reveal, shows up as `log_gap` once the rebuild
 no longer fits the log: it starts a slice after it ends, meets a submit
 that took no token and started no worker it can see, or counts starts it
-cannot explain (no intact simulated log does any of these). A restarted
-stream that does not replay leaves a stretch no stream covers, reported as
-`stream_holes`, and raises its own alarm, once. A slice line lost there
-reads as a straggler before any `log_gap` shows, so after a hole the
-verdict is `WAIT` while a slice that began before the hole ended has no
-line (`hole_suspects`); a slice that is really running clears it when its
-line arrives, a lost one becomes `log_gap` when the parent takes its
-result. A start line lost there leaves the rebuild a worker short and its
-start cost off, which makes the estimate read late, the false-stop
+cannot explain (no intact simulated log does any of these). A stream
+restarted after the last one ended, if it does not replay, leaves a
+stretch no stream covers (unless it loses only part of one second's lines,
+below), which the projection reports as `stream_holes` and the watcher
+alarms on, once. The restart before acting on a `NO-GO` keeps the old
+stream running until the next poll, so a restart of a stream that had not
+hung leaves no such stretch (below). A slice line lost in a hole reads as
+a straggler before any `log_gap` shows, so after a hole the projection
+gives `WAIT` while a slice that began before the hole ended has no line
+(`hole_suspects`); a slice still running clears it when its line arrives,
+a lost one becomes `log_gap` when the parent takes its result. A
+restart that loses only some of one second's lines, while lines on both
+sides of the loss share that second, leaves no such stretch: the
+projection marks a hole only where a stream's first record comes after the
+second the earlier streams reached. No hold then applies, and a lost slice
+line reads as a straggler until the parent's receive line shows the gap;
+until then the estimate can give a false `NO-GO` with no damage flag
+(`docs/evidence/us-h2h-speed/README.md`, lost lines, gives a simulated
+case). A start line lost in a hole leaves the rebuild a worker short and
+its start cost off, which makes the estimate read late, the false-stop
 direction, until the rebuild needs the missing worker and shows `log_gap`.
 In a pool with fewer slices than two per worker it may never need it, and
 it places that worker's slices on another, so the pool's measured slice
@@ -1961,13 +1973,14 @@ the candidate's estimate reads its timing (its start cost, pace or
 first-slice extra, or its departures from the prior for a chunk the
 candidate has not measured). A stall still stops the run. A newest stream
 with nothing in it yet beside an earlier one with records may be a hole that has not ended: the estimate and
-the stall check wait for its first record (`newest_stream_empty`). A
-stream that begins in the very second the earlier ones reached and repeats
-records from it is reported as `restart_overlaps`; each record there is
-counted once, so that second may be short. The projection reads
-`app-2.log` before `app-10.log`. `log_gap` raises a separate alarm, once,
-so a lost line found after a hole is still reported. The runner prints its
-`BUDGET:` line just
+the stall check wait for its first record (`newest_stream_empty`). The
+projection reports a stream that begins in the very second the earlier
+ones reached and repeats records from it as `restart_overlaps`, and counts
+each record there once, so that second may come up short. It does not
+report one that repeats none, having lost lines from that second (above).
+It reads `app-2.log` before `app-10.log`. `log_gap` raises a separate
+alarm, once, so the watcher still reports a lost line found after a hole.
+The runner prints its `BUDGET:` line just
 before it starts the tool, every time, so streams with scorer lines but no
 `BUDGET:` line began late or lost it and may have missed a shorter budget:
 that is `log_gap` too (`"runner"`). An `ATTEMPTS:` line, printed before
@@ -1997,24 +2010,28 @@ It answers one of three verdicts:
   streams began late (no `BUDGET:` line), when it is `GO` only once the candidate has scored every slice
   (stopping then would throw the scores away) but a `NO-GO` against the
   shortest budget seen still holds. The watcher raises `ALARM` once when
-  either happens, or on `stream_holes`; after lost slice or opening lines,
-  and after lost worker-start lines while the `starts_unconfirmed` hold
-  applies, only the stall check and the runner's budget can end the run
-  early. A lost incumbent start can leave no `log_gap`, so once its hold
-  lifts a time `NO-GO` can end the run again. In the simulated search
-  (`docs/evidence/us-h2h-speed/lost-lines.txt`), at the polls it judged
-  after lost stretches (up to 1,200 s after the last) and after restarts
-  inside one second (the next three 600 s polls), no lost stretch gave
-  `NO-GO` where the intact log gave none for runs with 265 s to spare, and
-  none moved the estimate later at polls that hold did not cover; a hold
-  can last past those polls. A restart that split one second's lines
-  between streams, losing nothing, did move it up to 24 s later, the
-  largest seen and not a bound. Otherwise a restart cost the early stop,
-  not a wrong one: one that lost nothing while the incumbent's workers were
-  still starting delayed a `NO-GO` by up to 8,400 s ($21.39); logs with
-  lost lines gave `WAIT` at many polls where the intact log gave `NO-GO`
-  (the search did not measure how long that delays a stop), and at some
-  polls read early enough to give `GO` where the intact log gave `NO-GO`.
+  either happens, or on `stream_holes`; once `log_gap` shows lost slice or
+  opening lines, and after lost worker-start lines while the
+  `starts_unconfirmed` hold applies, only the stall check and the runner's
+  budget can end the run early. A lost incumbent start can leave no
+  `log_gap`, so once its hold lifts a time `NO-GO` can end the run again.
+  The simulated search (`docs/evidence/us-h2h-speed/lost-lines.txt`)
+  removes whole seconds of the log, and its restarts inside one second lose
+  no lines, so it does not cover a restart that loses part of one second's
+  lines, which can give a false `NO-GO` to a run that fits (above). At the
+  polls it judged after lost stretches (up to 1,200 s after the last) and
+  after restarts inside one second (the next three 600 s polls), no lost
+  stretch gave `NO-GO` where the intact log gave none for runs with 265 s
+  to spare, and none moved the estimate later at polls that hold did not
+  cover; a hold can last past those polls. A restart that split one
+  second's lines between streams, losing nothing, did move it up to 24 s
+  later, the largest seen and not a bound. Otherwise the restarts searched
+  cost the early stop, not a wrong one: one that lost nothing while the
+  incumbent's workers were still starting delayed a `NO-GO` by up to
+  8,400 s ($21.39); logs with lost stretches gave `WAIT` at many polls
+  where the intact log gave `NO-GO` (the search did not measure how long
+  that delays a stop), and at some polls read early enough to give `GO`
+  where the intact log gave `NO-GO`.
 - `NO-GO` when the estimated end is past the tool's budget, or the log has
   stalled. The budget is the plan's 14,505 s from `started-at`, or less
   when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A
@@ -2023,7 +2040,8 @@ It answers one of three verdicts:
   arrives.
 - `GO` otherwise.
 
-How the estimate has done so far:
+How the estimate has done so far (the estimate gives `NO-GO` at the times
+below; the watcher stops the app a poll later at the earliest):
 
 - On the one real pool log (three workers, Mac), it came 0.4% to 10% early.
   The worst poll came while chunk 5 slowed within itself (slices 1 to 12 at
@@ -2047,8 +2065,8 @@ How the estimate has done so far:
   pooled ratio.
 - "Fits" keeps the 600 s allowance after the last slice. That allowance is
   unmeasured for the candidate (the measured 12 s tail is the
-  incumbent's), so a run whose last slice ends less than 600 s before the
-  budget is stopped though it would very likely complete: f = 2,
+  incumbent's), so the watcher stops a run whose last slice ends less than
+  600 s before the budget, though it would very likely complete: f = 2,
   T = 175 s (last slice at 13,941 s) gets `NO-GO` at 1,200 s ($3.06).
 - No simulated run that fits got a `NO-GO` in the grid that starts the
   tool at `started-at`. With 300 s before the tool starts, the f = 1,
@@ -2058,13 +2076,26 @@ How the estimate has done so far:
   departure's share of the scoring still ahead: with chunk 1 at 1.1 times
   the prior, late by up to a tenth of it. A run that fits with less spare
   than that can be stopped, and a stop cannot be taken back.
+- The grid also gives every worker start one cost, and with uneven start
+  costs the estimate can give `NO-GO` to a run that fits, with no line
+  lost. In the simulated d844 shape with a 320 s first start and 200 s for
+  each of the rest, the last slice plus the 600 s allowance ends at
+  11,309 s (`docs/evidence/us-h2h-speed/lost-lines.txt`). With an 11,574 s
+  budget (265 s to spare), the whole log, polled every 5 s, gives `NO-GO`
+  from +670 to +1,780 s (11,839 s at +1,200 s) and again from +3,975 to
+  +4,770 s, with no damage flag. So the watcher stops the run at most of
+  its poll phases (inferred from its rule): one that polls at +900 and
+  +1,500 s stops it, and one that polls at +1,200 and +1,800 s does not
+  (`docs/evidence/us-h2h-speed/README.md`, lost lines, gives the count).
+  Nothing has measured how much worker start-up varies on Modal.
 
 Memory is reported in each verdict but never judged; the class limit and
 the scorer's 20 GiB guard bound it. The estimate is not a bound either: the
 class timeout and the runner's budget bound the spend.
 
-On `NO-GO` the watcher runs `modal app stop`, confirms the stop in
-`modal app list`, and retries up to `WATCH_STOP_TRIES` times (default 5).
+On a `NO-GO` that comes through a restart of the stream (below), the
+watcher runs `modal app stop`, confirms the stop in `modal app list`, and
+retries up to `WATCH_STOP_TRIES` times (default 5).
 Every poll and action goes to `go-no-go.log`. Its exit codes:
 
 - 0: the app is no longer running and the watcher did not stop it: it
@@ -2106,16 +2137,55 @@ a launchd job does not survive a reboot. Whoever launches the run checks
 A `modal app logs` stream can hang while its process lives on: the
 modal 1.3 client sets no deadline or keepalive on it (read from its source;
 not seen to happen). A hung stream reads as a scorer that has gone quiet,
-which the time rule or the stall check would stop. So before acting on a
-`NO-GO` the watcher checks that the newest stream's file grew since the
-last poll; if not, it restarts the stream, once until the file grows again,
-and leaves the verdict to the next poll. It also does not act on a `NO-GO`
-read from a stream started less than `WATCH_SETTLE` seconds (120) earlier,
-which may still be replaying an old stretch. A run that really has stopped
-printing is then stopped a poll later, about $1.53 more. The watcher's
-other Modal calls (`app list`, `app stop`) and the projection have no
-timeouts, so a hung one would freeze its loop, leaving only the runner's
-budget to end the run; none has been seen to hang.
+which the time rule or the stall check would stop. It can hang after its
+file grew earlier in the same poll interval, so growth since the last poll
+does not show that the stream still delivers: in the simulated d844 shape at
+f = 1, T = 300 s, a stream that grows after the +11,400 s poll and hangs at
++11,580 s gives `NO-GO` at +12,000 s, estimating 14,925 s, where the whole
+log gives `GO` at 14,240 s. So the watcher never acts on the first `NO-GO`
+after a `GO` or `WAIT`, or after the watcher starts: it starts a new
+stream, whether or not the file grew, and leaves the verdict to the next
+poll. A `NO-GO` that comes through that restart stops the app. One run of
+`NO-GO`s gets one restart; the next `GO` or `WAIT` re-arms it, and a poll
+with no verdict does not. The old stream runs on beside the new one until
+the next poll has projected both, and the watcher then ends it. So a
+restart of a stream that had not hung leaves no hole, even when the new
+stream does not replay what the app printed before it. The watcher
+also does not act on a `NO-GO` read from a stream that started less than
+`WATCH_SETTLE` seconds (120) earlier, which may still be replaying an old
+stretch.
+
+Every stop therefore comes at least a poll after the first `NO-GO`, about
+$1.53 more than the grid's times above, and later when a `GO` or `WAIT`
+falls between `NO-GO`s, since each one re-arms the restart. In a model of
+the watcher's poll loop over the projection (simulated, in PR #1190's
+review record), the restart moved the stop by at most 600 s in 44 d844
+runs that overrun (16 against the plan's 14,505 s, 14 against budgets
+600 s short of the true end and 14 against 1,800 s short) and by
+up to 2,400 s ($6.11) in 78 runs of seed 3's random pools against budgets
+600 s short; in two of those the runner's budget ended the run less than a
+poll after the first `NO-GO`. With 265 s to spare, the modelled watcher
+stopped 3 of 92 runs that fit, where one that acts on the first `NO-GO`
+stopped 11.
+
+When the old stream had hung, only a new stream that replays carries what
+the app printed after the hang. One that does not leaves a hole from the
+hang to its first record, and the holds above can keep a time `NO-GO` as
+`WAIT`: in the lossless search, a restart that lost nothing while the
+incumbent's workers were still starting delayed a `NO-GO` by up to
+8,400 s ($21.39). A new stream that does not replay also holds the
+estimate and the stall check until it delivers a record, so when the
+scorer itself has stopped printing, only the runner's budget ends the run.
+Nobody has run two `modal app logs` streams of one app at once, as each
+restart does for one poll interval. If Modal refuses the second, the new
+stream ends at once, and so do the watcher's restarts of it while the old
+one runs (`go-no-go.log` notes each end). The empty newest file then gives
+`WAIT` (`newest_stream_empty`), which re-arms the restart, so each `NO-GO`
+restarts again and only the runner's budget ends a run that overruns
+(inferred from the code). The watcher's other Modal calls (`app list`,
+`app stop`), the projection, and its wait for an ended stream's process to
+exit have no timeouts, so a hung one would freeze its loop, leaving only
+the runner's budget to end the run; nobody has seen one hang.
 
 It detects and uses Modal CLI 1.4's `--follow` and 1.4.2's `--yes`. Its
 tests run it against a fake `modal` only: never test its stop on a live

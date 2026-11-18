@@ -47,11 +47,20 @@
 #
 # Before acting on a NO-GO the watcher checks that the log it read is
 # current. A stream started less than WATCH_SETTLE seconds earlier may still
-# be replaying, so the files hold an old stretch of the log; and a stream
-# whose file has not grown since the last poll may have hung while its
-# process lives on, which `kill -0` cannot see (review r6). Either way it
-# notes why and lets the next poll decide; for a file that has not grown it
-# first restarts the stream, once until the file grows again.
+# be replaying, so the files hold an old stretch of the log: it notes that
+# and lets the next poll decide. A stream can also hang while its process
+# lives on, which `kill -0` cannot see (review r6), and it can do so after
+# its file grew earlier in the same poll interval, so growth since the last
+# poll does not show the stream is current (review r7). So the first NO-GO
+# after a GO or WAIT, or after the watcher starts, is never acted on: the
+# watcher starts a new stream and lets the next poll decide, and a NO-GO
+# that comes through that restart stops the app. One run of NO-GOs gets one
+# such restart; the next GO or WAIT re-arms it. The old stream runs beside
+# the new one until the next poll has projected both, then ends. Ended at
+# the restart, it would leave a hole whenever the new stream does not
+# replay what the app printed before it, and the hole's holds would give
+# WAITs that re-arm the restart, so each NO-GO would restart again and a
+# run that overruns might never be stopped (review r8, simulated).
 set -uo pipefail
 
 if [ $# -lt 3 ] || [ $# -gt 4 ]; then
@@ -331,7 +340,12 @@ gap_alarmed=0
 hole_alarmed=0
 LAST_FILE=
 LAST_SIZE=0
-STALE_RESTARTED=0
+# 1 once this run of NO-GOs has had its restart; a GO or WAIT clears it.
+REFRESHED=0
+# The stream that restart replaced, until the next poll has projected it.
+REPLACED=
+# If the watcher ends first (the app finished), the replaced stream ends too.
+trap 'if [ -n "${REPLACED:-}" ]; then kill "$REPLACED" 2>/dev/null; fi' EXIT
 while true; do
   RESTARTED=0
   waited=0
@@ -345,12 +359,18 @@ while true; do
   check_stream at-poll
   project "$DIR"/app-*.log
   NEWEST=$DIR/app-$STREAMS.log
+  # Growth only words the note below: a stream can hang after it grew.
   GREW=0
   if [ "$NEWEST" = "$LAST_FILE" ] && [ "$(size_of "$NEWEST")" -gt "$LAST_SIZE" ]; then
     GREW=1
-    STALE_RESTARTED=0
   fi
   note "rc=$RC verdict=$VERDICT $(printf '%s' "$OUT" | tr -d '\n')"
+  if [ -n "$REPLACED" ]; then
+    kill "$REPLACED" 2>/dev/null
+    wait "$REPLACED" 2>/dev/null
+    REPLACED=
+    note "ended the log stream the last restart replaced, once this poll had projected it beside the new one"
+  fi
   if [ "$GAP" = gap ] && [ "$gap_alarmed" -eq 0 ]; then
     gap_alarmed=1
     alarm "the log streams lost lines or began late (log_gap in go-no-go.log): after a late start the estimate gives no GO, after lost slice, opening or worker-start lines no estimate at all; with restart_overlaps in the report the gap may instead come from a restart that repeated a second's records, which are counted once; the stall check and the runner's budget still bound the run"
@@ -363,12 +383,18 @@ while true; do
     AGE=$(( $(date +%s) - STREAM_SINCE ))
     if [ "$AGE" -lt "$SETTLE" ]; then
       note "NO-GO not acted on: the log stream started ${AGE}s ago and may still be replaying, so the files can hold an old stretch of the log; the next poll decides"
-    elif [ "$GREW" -eq 0 ] && [ "$STALE_RESTARTED" -eq 0 ]; then
-      note "NO-GO not acted on: $NEWEST has not grown since the last poll, so its stream may have hung; restarting it, and the next poll decides"
-      kill "$STREAM" 2>/dev/null
-      wait "$STREAM" 2>/dev/null
-      STALE_RESTARTED=1
-      stream
+    elif [ "$REFRESHED" -eq 0 ]; then
+      if [ "$GREW" -eq 0 ]; then
+        why="$NEWEST has not grown since the last poll, so its stream may have hung"
+      else
+        why="$NEWEST grew since the last poll, but its stream may have hung after it grew"
+      fi
+      note "NO-GO not acted on: $why; restarting it, once until a GO or WAIT, with the old stream left running until the next poll, which decides"
+      old=$STREAM
+      REFRESHED=1
+      # Only a new stream that started replaces the old one; otherwise the
+      # old one stays the stream the watcher checks.
+      if stream; then REPLACED=$old; fi
     else
       if stop_app; then exit 3; fi
       exit 5
@@ -389,6 +415,7 @@ while true; do
     fi
   else
     failures=0
+    REFRESHED=0
   fi
   LAST_FILE=$DIR/app-$STREAMS.log
   LAST_SIZE=$(size_of "$LAST_FILE")

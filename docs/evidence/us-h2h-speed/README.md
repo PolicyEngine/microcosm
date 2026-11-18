@@ -157,8 +157,12 @@ pool simulator (`test_support/microcosm_build/h2h_pool_sim.py`).
   also gives them. The incumbent's tail took 12 s on the Mac; the
   candidate's is not timed, though the scorer's code suggests it is short.
   So a run whose last slice ends less than 600 s before the budget counts
-  as not fitting and is stopped, though it would very likely complete:
-  f = 2, T = 175 s (last slice at 13,941 s) gets NO-GO at 1,200 s ($3.06).
+  as not fitting, and the watcher stops it though it would very likely
+  complete: f = 2, T = 175 s (last slice at 13,941 s) gets NO-GO at
+  1,200 s ($3.06).
+- The estimate gives its first NO-GO at the grid's times; the watcher stops
+  the app a poll later at the earliest (`docs/us-modal-stage-runbook.md`,
+  the watcher's hang rule).
 - Output: `projection-grid.txt`; `projection-grid-chunk5-1.5.txt`, with
   chunk 5 a further 1.5 times slower than the prior says for both artifacts;
   `projection-grid-candidate-chunk5-{1.2,1.3,1.5}.txt`, with only the
@@ -242,13 +246,17 @@ moves no verdict.
 
 ## Lost log lines (simulated, not measurements)
 
-`scripts/lost_lines.py` damages simulated logs the ways a restarted log
-stream can, reads the pieces as the watcher's streams, and compares the
-projection's verdict and estimate with the intact log's at the same poll.
-Output: `lost-lines.txt`; its header gives each section's command. The
-property tests draw intact logs only (one stream, or the same log replayed
-whole by a second); named examples in the projection's tests and this
-offline search cover lost lines.
+`scripts/lost_lines.py` damages simulated logs in some of the ways a
+restarted log stream can: it removes stretches of whole seconds, or splits
+the log there with nothing lost, and it restarts a stream inside one second
+without losing a line. It reads the pieces as the watcher's streams and
+compares the projection's verdict and estimate with the intact log's at the
+same poll. It never loses part of one second's lines; that loss can give a
+false NO-GO (below). Output: `lost-lines.txt`; its header gives each
+section's command. The property tests draw intact logs only (one stream, or
+the same log replayed whole by a second); named examples in the
+projection's tests and this offline search cover the lost lines they
+construct.
 
 The cut and boundary searches judge each poll at two budgets per shape:
 one 265 s past the true end (the last slice plus the estimate's 600 s
@@ -293,7 +301,14 @@ differs from the derived one.
   polls read up to 3,300 s late. With a 320 s first start cost and 200 s
   for the rest, the intact log itself gives NO-GO at 7,102 polls under the
   fitting budget, which leaves 265 s to spare: the estimate's own error,
-  not the damage's.
+  not the damage's. For example, against that 11,574 s budget (the true
+  end, 11,309 s, plus 265 s) and polled every 5 s, the intact log gives
+  NO-GO from +670 to +1,780 s (11,839 s at +1,200 s) and again from +3,975
+  to +4,770 s, and GO between and after, with no damage flag. Polling
+  every 600 s, the watcher would stop that run between +1,270 and +1,780 s
+  at 103 of the 120 poll phases on a 5 s grid (inferred from its rule; the
+  projection gave the verdicts). It stops the run when it polls at +900
+  and +1,500 s, say, and not when it polls at +1,200 and +1,800 s.
   The grid above gives every run one start cost, so it does not test this
   shape. Under the overrunning budget, damaged logs give GO where the
   intact log gives NO-GO at 3,004 polls (f = 3, T = 100 s) and 816 (f = 1,
@@ -374,20 +389,59 @@ differs from the derived one.
   misdated slices. The 24 s is the largest excess at the three polls
   searched after each split, not a bound: a run whose intact estimate had
   less spare than that at such a poll would get a false NO-GO there.
-- At the polls searched, the cost is a late or missed stop, not a false
-  one, except that a restart splitting one second's lines can read 24 s
-  late (above). A lost slice line becomes a log gap once the parent takes
-  its result, and a log gap holds WAIT for the rest of the run. A lost
-  start holds a time NO-GO as WAIT while its pool is short of starts: the
-  candidate's for the rest of its pool, the incumbent's until its release
-  and then while the candidate's estimate still uses the incumbent's
-  timing. The rebuild shows a log gap once it needs the missing worker,
-  which in a pool with fewer slices than two per worker it may never do. A
-  restart that loses nothing holds the same way, delaying a NO-GO by up to
-  8,400 s ($21.39) here. The runner's budget bounds every case: 14,505 s,
-  $36.94 at the class's list price.
-- Not covered: a stream that drops lines without ending; Modal's own log
-  streams (whether a restart replays has not been tried).
+- Not searched: a restart that loses part of one second's lines. The
+  projection marks a hole only where a stream's first record comes after
+  the second the earlier streams reached (`_stream_holes` compares
+  `first > reach`), so when lines on both sides of the loss share that
+  second, no hole forms and no hold applies. A lost slice line then reads
+  as a straggler until the parent's receive line for it shows a log gap,
+  and until then the estimate can give a false NO-GO with no damage flag.
+  For example, take seed 3's pool 7 (`random_pools(3)` in
+  `scripts/lost_lines.py`: 11 workers; incumbent chunks of 7 slices at 90,
+  213 and 212 s; candidate chunks of 80 at 255, 286 and 217 s; start costs
+  221, 325 and 369 s; first-slice extra 183 s; the run's own times as the
+  prior). A restart in the 08:34:57Z second (+2,097 s) that loses one line,
+  the incumbent's chunk 2 slice 3/7, keeps its neighbours, slices 2/7 and
+  4/7, which share that stamp. Polled at +2,400 s, the intact log
+  estimates 11,535.2 s and the damaged one 11,718.2 s, with no flag; the
+  last slice ends at 11,078 s, and with the 600 s allowance at 11,678 s.
+  Against an 11,700 s budget the damaged log gives NO-GO there and the
+  intact one GO, though the intact log gives NO-GO itself from +2,895 to
+  +3,110 s (up to 11,704.0 s, likely from its uneven start costs;
+  inferred). Against 11,710 s, polled every 5 s through the candidate's
+  last slice, the intact log never gives NO-GO and the damaged one gives
+  it from +2,255 to +2,460 s; from +2,495 s the receive line shows the gap,
+  and the log gap holds WAIT. The cut search removes whole seconds and the
+  boundary arms lose no lines, so neither covers this case.
+  The watcher stops the app only on a NO-GO that comes a poll after the
+  restart an earlier NO-GO set off (`docs/us-modal-stage-runbook.md`), and
+  this false NO-GO lasts 205 s, less than a poll. So at 11,710 s the
+  watcher does not stop the run: its next poll comes after +2,495 s, when
+  a restart that replays has put the lost line back (GO) or one that does
+  not leaves the log gap (WAIT). At 11,700 s a restart that replays puts
+  the line back, and a next poll inside the intact log's own NO-GO stretch
+  stops the run (34 of the 42 restart times on the 5 s grid). The watcher
+  could stop a run that fits on a false NO-GO that lasts longer than a
+  poll. These watcher outcomes come from its rule applied to the
+  projection's verdicts, not from a run of it, and nothing has searched
+  for longer false NO-GOs.
+- At the polls searched, the damage searched costs a late or missed stop,
+  not a false one, except that a restart splitting one second's lines can
+  read 24 s late (above). Losing part of one second's lines, which the
+  search never does, can give a false NO-GO (above). A lost slice line
+  becomes a log gap once the parent takes its result, and a log gap holds
+  WAIT for the rest of the run. A lost start holds a time NO-GO as WAIT
+  while its pool has logged fewer starts than workers: the candidate's for
+  the rest of its pool, the incumbent's until its release and then while
+  the candidate's estimate still uses the incumbent's timing. The rebuild
+  shows a log gap once it needs the missing worker, which in a pool with
+  fewer slices than two per worker it may never do. A restart that loses
+  nothing holds the same way, delaying a NO-GO by up to 8,400 s ($21.39)
+  here. The runner's budget bounds every case: 14,505 s, $36.94 at the
+  class's list price.
+- Not covered: a restart that loses part of one second's lines (above); a
+  stream that drops lines without ending; Modal's own log streams (nobody
+  has tried whether a restart replays, or two streams of one app at once).
 
 What this rests on:
 
