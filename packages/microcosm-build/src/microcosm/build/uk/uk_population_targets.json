@@ -1093,7 +1093,10 @@
       "dwp.uc.people_aged_22_to_24_no_work_requirements": "No incumbent target: uk-data binds no UC row by conditionality regime. DWP's people on Universal Credit by conditionality group (PolicyEngine/chronicle#420 item 3) join as a measured diagnostic (B5 of the November event-data plan's PR3).",
       "dwp.uc.people_aged_22_to_24_other_regimes": "No incumbent target: uk-data binds no UC row by conditionality regime. DWP's people on Universal Credit by conditionality group (PolicyEngine/chronicle#420 item 3) join as a measured diagnostic (B5 of the November event-data plan's PR3).",
       "scotgov.adp.caseload_scotland": "No incumbent target: uk-data binds no Social Security Scotland caseload row. Its ADP and Carer Support Payment caseloads (PolicyEngine/chronicle#420 item 7) join as measured diagnostics (B10 of the November event-data plan's PR3).",
-      "scotgov.carer_support_payment.in_payment_scotland": "No incumbent target: uk-data binds no Social Security Scotland caseload row. Its ADP and Carer Support Payment caseloads (PolicyEngine/chronicle#420 item 7) join as measured diagnostics (B10 of the November event-data plan's PR3)."
+      "scotgov.carer_support_payment.in_payment_scotland": "No incumbent target: uk-data binds no Social Security Scotland caseload row. Its ADP and Carer Support Payment caseloads (PolicyEngine/chronicle#420 item 7) join as measured diagnostics (B10 of the November event-data plan's PR3).",
+      "ons.paye_rti.pay_aged_18_to_24": "No incumbent target: uk-data binds no PAYE RTI row. ONS and HMRC's payrolled employees and their mean pay by age (PolicyEngine/chronicle#420 item 4) join as a held-out pay check (PolicyEngine/microcosm#1663).",
+      "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced": "No incumbent target: uk-data binds no PIP row by age or award. DWP's PIP cases with entitlement by award and age (PolicyEngine/chronicle#420 item 6) join as a held-out check on the young award mix (PolicyEngine/microcosm#1663).",
+      "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": "No incumbent target: uk-data binds no PIP row by age or award. DWP's PIP cases with entitlement by award and age (PolicyEngine/chronicle#420 item 6) join as a held-out check on the young award mix (PolicyEngine/microcosm#1663)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1562,6 +1565,8 @@
       "dwp.pip.cases_england_aged_70_to_74",
       "dwp.pip.cases_england_aged_75_and_over",
       "dwp.pip.cases_england_aged_16_to_24",
+      "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced",
+      "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced",
       "dwp.pip.cases_england_aged_25_to_34",
       "dwp.pip.cases_england_aged_35_to_49",
       "dwp.pip.cases_england_aged_50_to_64",
@@ -1722,7 +1727,8 @@
       "ons.occupation.male_elementary_administration_and_service",
       "ons.neet.people_aged_16_to_24",
       "ons.paye_rti.employees_aged_0_to_17",
-      "ons.paye_rti.employees_aged_18_to_24"
+      "ons.paye_rti.employees_aged_18_to_24",
+      "ons.paye_rti.pay_aged_18_to_24"
     ]
   },
   "profile_parity": {
@@ -35533,6 +35539,284 @@
       ]
     },
     {
+      "target_id": "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced",
+      "family": "dwp_pip",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pip.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.pip.daily_living_award",
+            "equals": "enhanced"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 24
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/pip/cases_england_aged_16_to_24_daily_living_enhanced",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "pip",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "pip_dl_category",
+              "operator": "==",
+              "value": "ENHANCED"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 24
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore PIP cases with entitlement (PIP_Monthly_new; PolicyEngine/chronicle#420 item 6): PIP cases in England aged 16 to 24 at the caseload date with the daily living component at enhanced (DWP's 'Daily Living - Enhanced'), every award of the other component, the sum of the published bands 16-19 and 20-24 at each quarter-end inside calendar 2025 (January, April, July, October), averaged. The model counts people aged 16 to 24 with a PIP award (pip above zero) and the enhanced daily living category (pip_dl_category). A held-out check on the award mix at the ages whose PIP binds by band (PolicyEngine/microcosm#1663). It is an award-by-age cross: its cell and its complement in the bound bands (the standard and nil awards) each rest on three or more survey households, where the crosses that do not keep P3's rows to single breakdowns (María, 2026-11-08)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pip/cases_england_aged_16_to_24_daily_living_enhanced",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "16-19",
+            "20-24"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001"
+      },
+      "category_id": "dwp.pip",
+      "label": "PIP cases with entitlement, England, aged 16 to 24, daily living enhanced",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "Daily Living - Enhanced",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "16-19"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "Daily Living - Enhanced",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "20-24"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced",
+      "family": "dwp_pip",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pip.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.pip.mobility_award",
+            "equals": "enhanced"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 16
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 24
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/pip/cases_england_aged_16_to_24_mobility_enhanced",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "pip",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "pip_m_category",
+              "operator": "==",
+              "value": "ENHANCED"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 16
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 24
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore PIP cases with entitlement (PIP_Monthly_new; PolicyEngine/chronicle#420 item 6): PIP cases in England aged 16 to 24 at the caseload date with the mobility component at enhanced (DWP's 'Mobility Award - Enhanced'), every award of the other component, the sum of the published bands 16-19 and 20-24 at each quarter-end inside calendar 2025 (January, April, July, October), averaged. The model counts people aged 16 to 24 with a PIP award (pip above zero) and the enhanced mobility category (pip_m_category). A held-out check on the award mix at the ages whose PIP binds by band (PolicyEngine/microcosm#1663). It is an award-by-age cross: its cell and its complement in the bound bands (the standard and nil awards) each rest on three or more survey households, where the crosses that do not keep P3's rows to single breakdowns (María, 2026-11-08)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pip/cases_england_aged_16_to_24_mobility_enhanced",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced",
+          "age_bands_and_single_year": [
+            "16-19",
+            "20-24"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001"
+      },
+      "category_id": "dwp.pip",
+      "label": "PIP cases with entitlement, England, aged 16 to 24, mobility enhanced",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "Mobility Award - Enhanced",
+            "age_bands_and_single_year": "16-19"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "Mobility Award - Enhanced",
+            "age_bands_and_single_year": "20-24"
+          }
+        }
+      ]
+    },
+    {
       "target_id": "dwp.pip.cases_england_aged_25_to_34",
       "family": "dwp_pip",
       "geography_levels": [
@@ -49909,6 +50193,122 @@
       "label": "Payrolled employees aged 18 to 24 (PAYE RTI)",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "ons.paye_rti.pay_aged_18_to_24",
+      "family": "ons_employment",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.employment.amount",
+        "filters": [
+          {
+            "concept": "uk.employment.status",
+            "in": [
+              "ft_employed",
+              "pt_employed"
+            ]
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 18
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 24
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "ons/paye_rti/pay_aged_18_to_24",
+          "value_variable": "employment_income",
+          "filters": [
+            {
+              "variable": "employment_status",
+              "in": [
+                "FT_EMPLOYED",
+                "PT_EMPLOYED"
+              ]
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 18
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 24
+            }
+          ],
+          "notes": "ONS and HMRC Earnings and employment from PAYE Real Time Information, UK, not seasonally adjusted, October 2026 edition, Tables 28 and 30 (PolicyEngine/chronicle#420 item 4): payrolled employees aged 18 to 24 by their age at payment (Table 28, each month's average of daily counts) times their mean gross monthly pay (Table 30) times 12, for each month of 2025, averaged (monthly_window_count_x_mean): the pay bill of employees aged 18 to 24 at an annual rate. The model sums employment_income, pay before benefits in kind as RTI's gross pay is, over its employees at the FRS interview aged 18 to 24 (employment_status FT_EMPLOYED or PT_EMPLOYED), the base of ons.paye_rti.employees_aged_18_to_24, which binds. A held-out check on the young pay behind the employer NICs relief for employees under 21 (PolicyEngine/microcosm#1663): with their count bound, the row reads the model's pay per young employee."
+        },
+        "axiom": {
+          "metric_name": "ons/paye_rti/pay_aged_18_to_24",
+          "status": "pending",
+          "value_rule": "uk.income.employment.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": [
+          "ons.paye_rti_payrolled_employees",
+          "ons.paye_rti_mean_monthly_pay"
+        ],
+        "source_measure_id": [
+          "employees_18_to_24",
+          "mean_pay_18_to_24"
+        ],
+        "groupby_dimension": "ons.paye_rti_month",
+        "dimensions": [
+          "age_band",
+          "seasonal_adjustment"
+        ],
+        "dimension_values": {
+          "age_band": "18_to_24",
+          "seasonal_adjustment": "not_seasonally_adjusted"
+        },
+        "entity_name": "person",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "category_id": "ons.employment",
+      "label": "Pay of payrolled employees aged 18 to 24 (PAYE RTI)",
+      "value_operation": "monthly_window_count_x_mean",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "role": "count",
+          "concept": "ons.paye_rti_payrolled_employees"
+        },
+        {
+          "role": "mean",
+          "concept": "ons.paye_rti_mean_monthly_pay",
+          "period_factor": 12
+        }
+      ]
     },
     {
       "target_id": "hmrc.self_employment_income.amount",

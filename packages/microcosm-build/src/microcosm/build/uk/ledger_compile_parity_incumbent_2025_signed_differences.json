@@ -1,11 +1,11 @@
 {
- "compiled_count": 1710,
+ "compiled_count": 1713,
  "counts_by_kind": {
   "calibration_drift": 564,
   "fixture_only": 44,
-  "ledger_only": 1117
+  "ledger_only": 1120
  },
- "difference_count": 1725,
+ "difference_count": 1728,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -851,6 +851,20 @@
    "kind": "ledger_only",
    "ledger_value": 384149.5,
    "name": "dwp.pip.cases_england_aged_16_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 302776.25,
+   "name": "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 239924.0,
+   "name": "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -7823,6 +7837,13 @@
    "kind": "ledger_only",
    "ledger_value": 3441394.4166666665,
    "name": "ons.paye_rti.employees_aged_18_to_24",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 75853593264.0,
+   "name": "ons.paye_rti.pay_aged_18_to_24",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

@@ -282,8 +282,11 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # HMRC's Scottish NSND income tax outturn and taxpayers for 2024-25, two
     # more (S4). PR3 adds B1's two PAYE RTI payrolled employee rows (0 to 17
     # and 18 to 24), held as measured diagnostics, and B2's five broad England
-    # PIP age bands, bound (María's call of 2026-11-11).
-    assert len(resource["targets"]) == 653
+    # PIP age bands, bound (María's call of 2026-11-11). PolicyEngine/microcosm#1663
+    # adds RTI's pay of employees aged 18 to 24 and England's PIP cases aged 16
+    # to 24 at each component's enhanced rate, three rows held out as checks
+    # (María's go of 2026-11-18).
+    assert len(resource["targets"]) == 656
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -297,10 +300,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 591
+    assert len(registry_scope) == 594
     assert len(profile_scope) == 62
-    assert target_ids[:591] == registry_scope
-    assert target_ids[591:] == profile_scope
+    assert target_ids[:594] == registry_scope
+    assert target_ids[594:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -337,9 +340,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     # of the November event-data plan moves the two
     # incumbent 20_24 sex bands from mapped to excluded, and its eighteen single
     # years 16 to 24 have no uk-data metric, in place of the four 16-17 and
-    # 18-19 rows (microcosm#1095).
+    # 18-19 rows (microcosm#1095). PolicyEngine/microcosm#1663's RTI pay row and
+    # two England PIP award-by-age rows have no uk-data metric either.
     assert len(mapped_target_ids) == 183
-    assert len(unmapped_declarations) == 408
+    assert len(unmapped_declarations) == 411
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -864,7 +868,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 653
+    assert len(target_ids) == 656
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -1367,7 +1371,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 653
+    assert len(targets) == 656
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets

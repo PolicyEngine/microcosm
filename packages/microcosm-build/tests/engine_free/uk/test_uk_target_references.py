@@ -140,8 +140,11 @@ _TEST_PATHS = paths_for("microcosm-build")
 # (S4), measured diagnostics; and PR2's lane Q diagnostics: DWP's people on
 # UC aged 16 to 24, 16 to 21 and 22 to 24 (Y4), 94 DWP PIP cases rows for
 # England, Wales and the English regions (P3), and ONS's NEET people aged 16
-# to 24 on a quarterly window (Y3), all held out of the solve
-ACTIVE_REFERENCE_COUNT = 1710
+# to 24 on a quarterly window (Y3), all held out of the solve;
+# PolicyEngine/microcosm#1663: RTI's pay of employees aged 18 to 24 and
+# England's PIP cases aged 16 to 24 at each component's enhanced rate, three
+# checks held out of the solve
+ACTIVE_REFERENCE_COUNT = 1713
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -1200,8 +1203,10 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         return {**regions, **nations}[area]
 
     pip_ids = {target_id for target_id in pins if target_id.startswith("dwp.pip.")}
-    # P3's 94 rows and B2's five broad England bands (microcosm#1095 PR3).
-    assert len(pip_ids) == 99
+    # P3's 94 rows and B2's five broad England bands (microcosm#1095 PR3), and
+    # England's 16 to 24 cases at each component's enhanced rate
+    # (PolicyEngine/microcosm#1663).
+    assert len(pip_ids) == 101
     assert all(target_id.startswith("dwp.pip.cases_") for target_id in pip_ids)
     assert {target_id: pins[target_id]["geography_id"] for target_id in pip_ids} == {
         target_id: pip_area(target_id) for target_id in pip_ids
