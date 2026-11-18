@@ -59,12 +59,20 @@ What the later d2283 PRs owe this library:
   re-derives the CPS role record with ``with_us_spm_independence_role`` on
   the selected CPS rows, in the joined frame's row order and dtypes (the
   digest is dtype-sensitive); builds the selection keys with
-  :func:`cps_unit_ids`; and declares (or fills) each CPS-only register
+  :func:`cps_unit_ids`; builds ``staging_lineage`` from staging's output,
+  not from the ACS tables it passes; supplies :func:`absences` with the
+  reviewed default fill's manifest for the joined frame and the
+  ``zero_written`` receipts; and declares (or fills) each CPS-only register
   entry the first live run of :func:`absences` lists, the US data owner
   deciding.
 - PR 5 (the loader) recomputes the role record after the H5 load rather
   than trusting a pre-write digest, and joins the absences file to the
   release's ``us_register_consistency_gate``.
+
+Two upstream conditions: R4 (the ESI employer premium on every person)
+refuses every real child until d2283 PR 0 lands, and PR 4's CPS role
+record re-derivation (d2283 Q6 (a)) needs spike step 0 to find the raw
+ASEC role inputs on the export; if they are absent, Q6 reopens.
 
 The module certifies no numbers: no build calls it yet.
 """
@@ -253,7 +261,7 @@ _SCF_ASSETS_EVIDENCE = (
 _ORG_EVIDENCE = (
     "org_wages stage: with_us_org_wages_inputs re-imputes the family on every "
     "entry and passes through only when each stored output equals the "
-    "recomputed one, which a null never does (U/org_wages.py:990, :965, "
+    "recomputed one, which a null never does (U/org_wages.py:990, :998, "
     ":1046); otherwise it writes every output on every person (:1050)"
 )
 _OTHER_HEALTH_INSURANCE_EVIDENCE = (
@@ -456,6 +464,16 @@ RAW_COLUMN_READERS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     }
 )
 
+#: The ACS RELSHIPP role rule and its SPM partition, as staging's receipt
+#: states them: copies of ``acs_inputs.ACS_SPM_ROLE_RULE`` and
+#: ``acs_inputs.ACS_SPM_ROLE_PARTITION``, which a test pins by reading that
+#: module's source (importing it loads the ACS transfer).
+_ACS_SPM_ROLE_RULE = (
+    "RELSHIPP == 20 OR RELSHIPP in {21, 23} OR RELSHIPP in {37, 38}, "
+    "on the one-SPM-unit-per-household ACS partition"
+)
+_ACS_SPM_ROLE_PARTITION = "household (ACS PUMS carries no SPM_ID)"
+
 #: The keys staging's ACS role receipt carries
 #: (``acs_inputs.with_acs_spm_independence_role``, :478-511; a test pins the
 #: two), and the values that identify it as the ACS RELSHIPP rule's.
@@ -486,6 +504,8 @@ _ACS_ROLE_RECEIPT_IDENTITY: Mapping[str, object] = MappingProxyType(
         "column": NATIVE_SPM_ROLE,
         "entity": US_SCHEMA.person_entity,
         "source_columns": ["RELSHIPP"],
+        "rule": _ACS_SPM_ROLE_RULE,
+        "partition": _ACS_SPM_ROLE_PARTITION,
         "asec_rule": SPM_ROLE_RULE,
         "adult_rule": SPM_ADULT_RULE,
         "provenance": "acs_2024_1yr_native",
@@ -573,7 +593,10 @@ def _integral_ids(series: pd.Series, *, refusal: str) -> np.ndarray:
 
     Integer dtypes pass as they are; float and object values must be finite,
     integral and inside int64 (staging's pooled form turns an origin's
-    integer column into float64 when the other origin lacks it).
+    integer column into float64 when the other origin lacks it). Object
+    values go through ``pd.to_numeric``, so digit strings (``"601"``,
+    ``"6.0"``) and booleans held in an object column pass as their numbers;
+    only a boolean dtype refuses.
     """
 
     if pd.api.types.is_bool_dtype(series.dtype):
@@ -1045,17 +1068,27 @@ def _require_acs_lineage(
         )
     if staging is None:
         return
-    selected = frozenset(
-        zip(lineage["serial"].tolist(), lineage["sporder"].tolist(), strict=True)
+    _require_staging_lineage(
+        frozenset(
+            zip(lineage["serial"].tolist(), lineage["sporder"].tolist(), strict=True)
+        ),
+        staging,
     )
+
+
+def _require_staging_lineage(
+    selected: frozenset[tuple[str, int]], staging: frozenset[tuple[str, int]]
+) -> None:
+    """P7's last rule: the selected ACS persons' pairs are staging's."""
+
     if selected != staging:
         missing = sorted(staging - selected)
         extra = sorted(selected - staging)
         raise OnePopulationContractError(
-            f"{rule}: the selected ACS persons' ({_SERIALNO}, {_SPORDER}) set "
-            f"differs from staging's for the selected households; {len(missing)} "
-            f"missing (such as {missing[:3]}), {len(extra)} extra (such as "
-            f"{extra[:3]})."
+            f"ACS lineage does not survive: the selected ACS persons' "
+            f"({_SERIALNO}, {_SPORDER}) set differs from staging's for the "
+            f"selected households; {len(missing)} missing (such as "
+            f"{missing[:3]}), {len(extra)} extra (such as {extra[:3]})."
         )
 
 
@@ -1405,7 +1438,7 @@ def _require_assembled_columns(tables: Mapping[str, pd.DataFrame]) -> None:
         unknown = _unexpected(table[channel], ASSEMBLED_CHANNELS)
         if unknown:
             raise OnePopulationContractError(
-                f"Rows must carry one of the assembled channels "
+                f"{rule}: rows must carry one of the assembled channels "
                 f"{list(ASSEMBLED_CHANNELS)}; {channel!r} holds {unknown[:5]}."
             )
 
@@ -1569,6 +1602,9 @@ def _require_provenance(
     acs = origins[_ACS]
     if len(acs["household"]) or len(acs[US_SCHEMA.person_entity]):
         _require_acs_lineage(acs, staging)
+    elif staging is not None:
+        # No ACS row to read, but staging's lineage still has to match.
+        _require_staging_lineage(frozenset(), staging)
     _require_assembly_record(frame)
     return origins
 
@@ -1626,7 +1662,12 @@ def _require_selected_keys(
 
     cps = origins[_CPS]
     if len(cps[US_SCHEMA.person_entity]):
-        units = cps_unit_ids(cps[US_SCHEMA.person_entity])
+        try:
+            units = cps_unit_ids(cps[US_SCHEMA.person_entity])
+        except OnePopulationContractError as exc:
+            raise OnePopulationContractError(
+                f"A CPS key without exactly one native row: {exc}"
+            ) from exc
     else:
         units = pd.DataFrame(
             {"income_year": [], "unit_id": [], "key": []},
@@ -1817,7 +1858,7 @@ def _tail_donor_set(parent_tail_donor_ids: object) -> frozenset[int]:
 
 
 def _require_parent_tail_donors(tax_unit: pd.DataFrame, parent: frozenset[int]) -> None:
-    """R8: the applied tail donor ids equal the parent's, as a set."""
+    """R8: the applied tail donor ids equal the parent's, each applied once."""
 
     rule = "The tail donor set differs from the parent's"
     applied_values = tax_unit[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN]
@@ -1837,6 +1878,14 @@ def _require_parent_tail_donors(tax_unit: pd.DataFrame, parent: frozenset[int]) 
         tax_unit.loc[applied, PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN],
         refusal=f"{rule}: applied donor ids must be integers",
     )
+    repeated = pd.Series(donors).duplicated(keep=False).to_numpy()
+    if repeated.any():
+        raise OnePopulationContractError(
+            f"{rule}: donor id(s) {sorted(set(donors[repeated].tolist()))[:5]} are "
+            "applied on more than one tax unit; each parent donor applies to one "
+            "tax unit (the one-to-one rule "
+            "assert_puf_capital_gains_tail_survives_selection keeps)."
+        )
     found = frozenset(int(value) for value in donors.tolist())
     if found != parent:
         missing = sorted(parent - found)
@@ -1940,7 +1989,8 @@ def require_one_population(
       one id offset from the native id, tag ``acs_2024_1yr``); a non-null
       spine tag on every row; P6b (ids and memberships within an origin); P6
       (no repeated (source id, rank)); P7 (the ACS rows' ``SERIALNO`` and
-      ``SPORDER`` lineage, against ``staging_lineage`` when given); and the
+      ``SPORDER`` lineage, against ``staging_lineage`` when given, which on
+      a frame with no ACS row must then be empty); and the
       clone-0 spine assembly record declaring the three channels, checked by
       :func:`~microcosm.build.us_runtime.support_provenance.validate_assembly_provenance`.
     - R11, more than one location: no table carries a
@@ -1978,9 +2028,12 @@ def require_one_population(
     - R7: the six :data:`PUF_TAIL_TAX_UNIT_COLUMNS` on every tax unit, never
       null.
     - R8: the ids of the tail donors applied on the frame's tax units equal
-      ``parent_tail_donor_ids`` as a set. No weight is compared, so
-      ``assert_puf_capital_gains_tail_survives_selection`` (whose weight check
-      fires on the child's new starting weights) is not used.
+      ``parent_tail_donor_ids`` as a set, and no donor is applied on two tax
+      units (the one-to-one rule of
+      ``assert_puf_capital_gains_tail_survives_selection``). No weight is
+      compared, so that function (whose weight check fires on the child's
+      new starting weights) is not used. Which tax units carry the applied
+      flags (CPS clone rows or ACS rows) is not checked.
     - R10: a model-named register column (no engine variable; R6 owns
       engine inputs) filled on every CPS row of its entity and null on some
       ACS row, unless ``declared_absences`` names it. The release-written
@@ -2212,8 +2265,8 @@ def combined_spm_role_record(
       (``acs_inputs.with_acs_spm_independence_role``, :478-511). It counts
       every staged ACS person, not the selection, so it is checked for its
       keys, for the RELSHIPP rule's identity (column, entity, source column,
-      ASEC and adult rules, provenance) and for counts at least the selected
-      ACS rows', never for equality.
+      the ACS rule and its partition, the ASEC and adult rules, provenance)
+      and for counts at least the selected ACS rows', never for equality.
     - The frame's role must come from its source column (``role_source ==
       "source_column"`` under
       :func:`~microcosm.build.us_runtime.spm_composition.spm_independence_role`),

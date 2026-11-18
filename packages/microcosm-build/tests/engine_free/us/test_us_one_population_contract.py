@@ -1220,6 +1220,18 @@ def _weights_misaligned(p):
     return {"acs_weights": p.acs_household_weights[:-1]}
 
 
+def _cps_weight_negative(p):
+    weights = np.array(p.cps_household_weights, dtype=np.float64)
+    weights[0] = -1.0
+    return {"cps_weights": weights}
+
+
+def _acs_weight_not_finite(p):
+    weights = np.array(p.acs_household_weights, dtype=np.float64)
+    weights[0] = np.nan
+    return {"acs_weights": weights}
+
+
 def _ids_collide_across_origins(p):
     # Staged on another donor: staging gave the ACS tax units no offset, so
     # their native ids sit on the export's.
@@ -1382,6 +1394,8 @@ _REFUSALS = [
         _weights_misaligned,
         "ACS household weights must align with the ACS household table",
     ),
+    (_cps_weight_negative, "CPS household weights must be finite and non-negative."),
+    (_acs_weight_not_finite, "ACS household weights must be finite and non-negative."),
     # P6b: frame ids and memberships across origins.
     (
         _ids_collide_across_origins,
@@ -1742,6 +1756,36 @@ class TestRequireOnePopulation:
         assert "SERIALNO" not in frame.table("household")
         _require(population, frame, manifest=manifest, staging_lineage=frozenset())
 
+    def test_a_frame_with_no_acs_row_still_checks_staging_lineage(
+        self, population
+    ) -> None:
+        empty_acs = {
+            entity: population.acs_tables[entity].iloc[:0]
+            for entity in US_SCHEMA.entities
+        }
+        frame = to_assembled_provenance(
+            population.cps_tables,
+            empty_acs,
+            cps_household_weights=population.cps_household_weights,
+            acs_household_weights=np.array([]),
+            staging_lineage=frozenset(),
+        )
+        manifest = dataclasses.replace(
+            selection_manifest(population),
+            n_acs=0,
+            selected_acs_keys_sha256=selection.keys_sha256(()),
+        )
+        lineage = staging_lineage(population)
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "ACS lineage does not survive: the selected ACS persons' (SERIALNO, "
+                "SPORDER) set differs from staging's for the selected households; "
+                f"{len(lineage)} missing"
+            ),
+        ):
+            _require(population, frame, manifest=manifest, staging_lineage=lineage)
+
     def test_the_default_index_is_built_at_call_time(
         self, population, assembled, monkeypatch
     ) -> None:
@@ -1974,8 +2018,10 @@ class TestExemptList:
 # X1: one or more corruptions per clause. Each takes the population and its
 # valid assembled frame and returns the corrupted frame and any argument
 # overrides. All but a few change one cell; the exceptions add or drop a
-# column or the record, where no single cell can break the clause (R1's
-# assembled form, R3, R9, R11, R4's presence, R5's age, R7's presence).
+# column or the record, or change a household's key on every row, where no
+# single cell can break the clause (R1's assembled form, R2's digest and
+# orphaned clone key, R3, R9, R11, T1's presence, R4's presence, R5's age,
+# R7's presence, R8's twice-applied donor).
 
 
 def _r1_not_assembled(p, f):
@@ -2178,6 +2224,33 @@ def _r2_two_native_rows_share_a_key(p, f):
     return _rebuild(f, tables), {}
 
 
+def _r2_cps_key_substituted(p, f):
+    # A native household and its clones take a new, unused H_IDNUM: the
+    # counts by income year hold, only the digest moves.
+    tables = _tables(f)
+    person = tables["person"]
+    old = person["PERIDNUM"].iloc[_row(person, "person", "cps", clone=0)][:20]
+    new = ("1" if old[0] != "1" else "2") + old[1:]
+    assert not person["PERIDNUM"].str.startswith(new, na=False).any()
+    hit = person["PERIDNUM"].str.startswith(old, na=False).to_numpy(dtype=bool)
+    person.loc[hit, "PERIDNUM"] = [new + v[20:] for v in person.loc[hit, "PERIDNUM"]]
+    return _rebuild(f, tables), {}
+
+
+def _r2_orphaned_clone_key(p, f):
+    # A clone-1 household's persons take a key no clone-0 household has.
+    tables = _tables(f)
+    person = tables["person"]
+    row = _row(person, "person", "cps", clone=1)
+    hit = (
+        person["person_household_id"] == person["person_household_id"].iloc[row]
+    ).to_numpy()
+    old = person["PERIDNUM"].iloc[row][:20]
+    new = ("1" if old[0] != "1" else "2") + old[1:]
+    person.loc[hit, "PERIDNUM"] = [new + v[20:] for v in person.loc[hit, "PERIDNUM"]]
+    return _rebuild(f, tables), {}
+
+
 def _r2_acs_household_not_selected(p, f):
     return _cell(f, "household", "SERIALNO", "2024HU9999999", origin="acs"), {}
 
@@ -2213,6 +2286,14 @@ def _t1_typehugq_out_of_domain(p, f):
 
 def _t1_typehugq_null(p, f):
     return _cell(f, "household", "TYPEHUGQ", None, origin="acs"), {}
+
+
+def _t1_typehugq_missing(p, f):
+    return _without_column(f, "household", "TYPEHUGQ"), {}
+
+
+def _t1_typehugq_boolean(p, f):
+    return _cell(f, "household", "TYPEHUGQ", True, origin="acs"), {}
 
 
 def _r3_computed_column(p, f):
@@ -2299,6 +2380,40 @@ def _r8_unapplied_unit_applies(p, f):
     ), {}
 
 
+def _r8_parent_donor_unapplied(p, f):
+    applied = f.table("tax_unit")[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN].to_numpy(
+        dtype=bool
+    )
+    return _cell(
+        f,
+        "tax_unit",
+        PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+        False,
+        origin="cps",
+        where=applied,
+    ), {}
+
+
+def _r8_donor_applied_twice(p, f):
+    # A second CPS tax unit applies a parent donor: the id set holds.
+    tables = _tables(f)
+    tax_unit = tables["tax_unit"]
+    applied = tax_unit[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN].to_numpy(dtype=bool)
+    donor = tax_unit[PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN].iloc[
+        int(np.flatnonzero(applied)[0])
+    ]
+    row = _row(tax_unit, "tax_unit", "cps", where=~applied)
+    _set(tax_unit, row, PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN, True)
+    _set(tax_unit, row, PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN, donor)
+    return _rebuild(f, tables), {}
+
+
+def _r8_applied_not_a_flag(p, f):
+    return _cell(
+        f, "tax_unit", PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN, 2, origin="acs"
+    ), {}
+
+
 def _r10_register_column_null_on_acs(p, f):
     return _cell(f, "person", "source_row_id", None, origin="acs"), {}
 
@@ -2320,7 +2435,11 @@ _FRAME_REFUSALS = [
         _r1_null_spine_source,
         "Incomplete assembled provenance: 'spm_unit_spine_source_id' has 1 null",
     ),
-    (_r1_unknown_channel, "Rows must carry one of the assembled channels"),
+    (
+        _r1_unknown_channel,
+        "Incomplete assembled provenance: rows must carry one of the assembled "
+        "channels",
+    ),
     (
         _r1_record_missing,
         "Incomplete assembled provenance: one-population provenance: "
@@ -2385,11 +2504,26 @@ _FRAME_REFUSALS = [
     # R11.
     (_r11_location_clone_column, "A household with more than one location"),
     # R2.
-    (_r2_peridnum_disagrees, "CPS unit ids: persons of one household disagree"),
+    (
+        _r2_peridnum_disagrees,
+        "A CPS key without exactly one native row: CPS unit ids: persons of one "
+        "household disagree",
+    ),
     (
         _r2_two_native_rows_share_a_key,
         "A CPS key without exactly one native row: 1 key(s) have more than one "
         "clone-0 household",
+    ),
+    (
+        _r2_orphaned_clone_key,
+        "A CPS key without exactly one native row: 1 clone household key(s) have "
+        "no clone-0 household",
+    ),
+    (
+        _r2_cps_key_substituted,
+        "CPS keys do not match the selection manifest: the frame's clone-0 "
+        "households give (count, by income year, digest) (24, ((2023, 12), "
+        "(2024, 12)), '",
     ),
     (
         _r2_acs_household_not_selected,
@@ -2419,6 +2553,12 @@ _FRAME_REFUSALS = [
         "TYPEHUGQ must be 1, 2 or 3 on every ACS household",
     ),
     (_t1_typehugq_null, "1 ACS household(s) hold [nan]"),
+    (
+        _t1_typehugq_missing,
+        "on every ACS household (#1610's household materializer "
+        "reads it to leave group quarters out); the household table lacks it.",
+    ),
+    (_t1_typehugq_boolean, "1 ACS household(s) hold [True]"),
     # R3.
     (_r3_computed_column, "A column the engine computes at 2024 is stored: ['snap']"),
     (
@@ -2468,6 +2608,21 @@ _FRAME_REFUSALS = [
         _r8_unapplied_unit_applies,
         "The tail donor set differs from the parent's: 0 parent donor(s) missing "
         "(such as []) and 1 donor(s) the parent never applied (such as [-1])",
+    ),
+    (
+        _r8_parent_donor_unapplied,
+        "The tail donor set differs from the parent's: 1 parent donor(s) missing "
+        "(such as [7000000]) and 0 donor(s) the parent never applied",
+    ),
+    (
+        _r8_donor_applied_twice,
+        "The tail donor set differs from the parent's: donor id(s) [7000000] are "
+        "applied on more than one tax unit",
+    ),
+    (
+        _r8_applied_not_a_flag,
+        "The tail donor set differs from the parent's: "
+        "'puf_capital_gains_tail_transfer_applied' holds non-flag values [2]",
     ),
     # R10.
     (
@@ -2746,6 +2901,16 @@ class TestCombinedSpmRoleRecord:
         assert record["origins"]["ACS"]["persons"] == 0
         assert record["persons_joined"] == record["origins"]["CPS"]["persons"]
 
+    def test_the_receipt_rule_and_partition_are_staging_constants(self) -> None:
+        # Read from acs_inputs' source: importing it loads the ACS transfer.
+        source = _U / "acs_inputs.py"
+        for constant, key in (
+            ("ACS_SPM_ROLE_RULE", "rule"),
+            ("ACS_SPM_ROLE_PARTITION", "partition"),
+        ):
+            value = ast.literal_eval(_module_assignment(source, constant))
+            assert contract._ACS_ROLE_RECEIPT_IDENTITY[key] == value, constant
+
     def test_the_receipt_keys_are_staging_receipts(self) -> None:
         # The dict acs_inputs.with_acs_spm_independence_role assigns to
         # ``provenance`` (U/acs_inputs.py:478-511).
@@ -2914,6 +3079,28 @@ _ROLE_RECORD_REFUSALS = [
         "{'provenance': 'asec'}",
     ),
     (
+        "receipt rule",
+        lambda f: (
+            cps_role_record(f),
+            {
+                **staging_role_receipt(f),
+                "rule": staging_role_receipt(f)["rule"] + " OR RELSHIPP == 22",
+            },
+            f,
+        ),
+        "Staging's ACS role receipt is not the ACS RELSHIPP role rule's: {'rule': ",
+    ),
+    (
+        "receipt partition",
+        lambda f: (
+            cps_role_record(f),
+            {**staging_role_receipt(f), "partition": "spm_unit"},
+            f,
+        ),
+        "Staging's ACS role receipt is not the ACS RELSHIPP role rule's: "
+        "{'partition': 'spm_unit'}",
+    ),
+    (
         "receipt coverage",
         lambda f: (cps_role_record(f), staging_role_receipt(f, staged_beyond=-1), f),
         "Staging's ACS role receipt covers fewer rows than the frame's ACS rows: "
@@ -3071,6 +3258,17 @@ class TestAbsences:
             weights = assembled.resolve_weights(entity).values
             assert len(weights) == assembled.n(entity)
             assert np.isfinite(weights).all() and weights.sum() > 0
+
+    def test_a_column_null_on_every_row_is_no_absence(self, assembled) -> None:
+        # Neither origin holds a value, so neither lacks it relative to the
+        # other: no entry and no refusal, although parent_1_id is model-named.
+        frame = _with_column(
+            assembled,
+            "person",
+            "parent_1_id",
+            pd.Series(None, index=assembled.table("person").index, dtype=object),
+        )
+        assert set(_keyed(_absences(frame))) == _GENERATED_ABSENCES
 
     def test_typehugq_is_not_filed_as_harmless(self, assembled) -> None:
         typehugq = _keyed(_absences(assembled))[
