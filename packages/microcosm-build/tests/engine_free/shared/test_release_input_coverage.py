@@ -1279,7 +1279,7 @@ class TestShippedManifest:
         assert probe.parameter_changes == {}
         assert probe.list_edits == {
             _ALD_DEDUCTIONS: ListParameterEdit(
-                _TAX_YEAR_2024, remove=("educator_expense",)
+                _TAX_YEAR_2024, remove=("educator_expense_ald",)
             )
         }
 

@@ -52,6 +52,7 @@ from pathlib import Path
 
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    REFERENCE_ECPS_RETIRED_LAYERS,
     US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION,
     project_ecps_parity_known_gap_names,
 )
@@ -1024,19 +1025,21 @@ REFORM_COVERAGE_PROBES = [
         "name": "State and local tax refund income neutralization",
         "parameter_changes": {},
         "neutralized_variable": "salt_refund_income",
-        "budget_measure": "state_income_tax",
+        "budget_measure": "income_tax",
         "period": 2024,
         "effect_direction": "baseline_minus_reform",
-        "expected_sign": "negative",
+        "expected_sign": "positive",
         "binding_inputs": ["salt_refund_income"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "PolicyEngine-US 2.2.1 includes salt_refund_income in the "
-            "South Carolina, Idaho, and West Virginia subtraction lists. "
-            "Neutralizing only that leaf removes the state subtraction and "
-            "raises state income tax, so baseline-minus-reform state income "
-            "tax must be negative. Without the restored E00700 input the "
-            "neutralization is a structural zero."
+            "PolicyEngine-US 2.145.3 counts salt_refund_income in federal "
+            "gross income (gov.irs.gross_income.sources). Neutralizing only "
+            "that leaf lowers adjusted gross income and income tax, so "
+            "baseline-minus-reform income tax must be positive. (The 2.2.1 "
+            "probe measured state income tax through three state subtraction "
+            "lists; about 29 state lists now read the leaf, in both "
+            "directions, so that sign is no longer fixed.) Without the "
+            "restored E00700 input the neutralization is a structural zero."
         ),
         "issue": "PolicyEngine/microcosm#38",
     },
@@ -1211,7 +1214,7 @@ REFORM_COVERAGE_PROBES = [
         "list_edits": {
             "gov.irs.ald.deductions": {
                 "period": "2024-01-01.2024-12-31",
-                "remove": ["educator_expense"],
+                "remove": ["educator_expense_ald"],
             }
         },
         "budget_measure": "income_tax",
@@ -1221,9 +1224,11 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["educator_expense"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "Removing only educator_expense from the above-the-line deduction "
-            "source list raises taxable income and must increase income tax for "
-            "some filers. Without the restored PUF E03220 leaf, abolition is a "
+            "Removing only educator_expense_ald (the capped deduction built "
+            "from the educator_expense input; policyengine-us lists it in the "
+            "above-the-line deduction sources in place of the raw input) "
+            "raises taxable income and must increase income tax for some "
+            "filers. Without the restored PUF E03220 leaf, abolition is a "
             "structural zero."
         ),
         "issue": "PolicyEngine/microcosm#32",
@@ -1530,11 +1535,13 @@ def build_manifest() -> dict:
     # retired WIC name. Its layers and the known-gap register names both
     # resolve through the runtime rename register the parity gate uses, so a
     # gap filed under a historical spelling is excluded, and guarded, as the
-    # live column the gate exempts.
+    # live column the gate exempts. A layer whose engine input the pinned
+    # engine retired (REFERENCE_ECPS_RETIRED_LAYERS) is not a requirement; its
+    # live successor is required in its place.
     populated_layers = {
         REFERENCE_ECPS_LAYER_RENAMES.get(name, name)
         for name, share in parity["nonzero_shares"].items()
-        if float(share) > 0.0
+        if float(share) > 0.0 and name not in REFERENCE_ECPS_RETIRED_LAYERS
     } | set(POST_REFERENCE_ECPS_REQUIRED_INPUTS)
     gap_register_names = project_ecps_parity_known_gap_names(register_gaps)
     known_gaps = {

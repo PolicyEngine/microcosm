@@ -1190,6 +1190,16 @@ columns:
     nullable: false
     domain: puf_tax_itemization
     public_stability: internal
+- key: person.takes_up_ak_permanent_fund_dividend_if_eligible
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: take_up_rate_unsourced
+    public_stability: internal
 - key: person.takes_up_basic_health_program_if_eligible
   contract:
     entity: person
@@ -1201,6 +1211,16 @@ columns:
     domain: take_up_rate_unsourced
     public_stability: internal
 - key: person.takes_up_chip_if_eligible
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: take_up_rate_unsourced
+    public_stability: internal
+- key: person.takes_up_csfp_if_eligible
   contract:
     entity: person
     dtype: bool
@@ -1249,6 +1269,16 @@ columns:
     vintage: vintage:target_2024
     nullable: false
     domain: source_operator_medicare_take_up
+    public_stability: internal
+- key: person.takes_up_medicare_part_d_if_eligible
+  contract:
+    entity: person
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: take_up_rate_unsourced
     public_stability: internal
 - key: person.takes_up_ssi_if_eligible
   contract:
@@ -1560,6 +1590,16 @@ columns:
     nullable: false
     domain: benefit_participation
     public_stability: internal
+- key: spm_unit.takes_up_school_meals_if_eligible
+  contract:
+    entity: spm_unit
+    dtype: bool
+    unit: boolean
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: take_up_rate_unsourced
+    public_stability: internal
 - key: spm_unit.takes_up_snap_if_eligible
   contract:
     entity: spm_unit
@@ -1610,16 +1650,6 @@ columns:
     nullable: false
     domain: puf_tax_itemization
     public_stability: internal
-- key: tax_unit.first_home_mortgage_interest
-  contract:
-    entity: tax_unit
-    dtype: float64
-    unit: usd
-    definition_period: year
-    vintage: vintage:target_2024
-    nullable: false
-    domain: puf_tax_itemization
-    public_stability: internal
 - key: tax_unit.first_home_mortgage_origination_year
   contract:
     entity: tax_unit
@@ -1641,16 +1671,6 @@ columns:
     domain: puf_tax_itemization
     public_stability: internal
 - key: tax_unit.second_home_mortgage_balance
-  contract:
-    entity: tax_unit
-    dtype: float64
-    unit: usd
-    definition_period: year
-    vintage: vintage:target_2024
-    nullable: false
-    domain: primary_puf_qrf_nontransfer
-    public_stability: internal
-- key: tax_unit.second_home_mortgage_interest
   contract:
     entity: tax_unit
     dtype: float64

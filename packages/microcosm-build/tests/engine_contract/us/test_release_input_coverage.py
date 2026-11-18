@@ -475,8 +475,8 @@ _STALE_LIST_EDITS = [
     ),
     (
         "domestic_production_ald_reactivation",
-        {"add": ("educator_expense",)},
-        r"adds \['educator_expense'\], which the baseline already has",
+        {"add": ("educator_expense_ald",)},
+        r"adds \['educator_expense_ald'\], which the baseline already has",
     ),
     (
         "educator_expense_ald_abolition",

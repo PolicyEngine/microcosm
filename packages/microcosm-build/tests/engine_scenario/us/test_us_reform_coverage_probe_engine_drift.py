@@ -31,7 +31,10 @@ These tests pin, against the installed engine:
   already differs from the baseline it was resolved against;
 - an edit that starts on or before a list's first breakpoint at the
   constructor's first reform pass is refused, at resolution and at apply time,
-  because the engine backdates that first value after applying reforms;
+  because it would become the first value, which the engine backdates.
+  PolicyEngine-US 2.145.3 backdates every parameter to 2015 before it applies
+  reforms (2.2.1 did so after), so that breakpoint is 2015-01-01 or earlier
+  for every list, and an edit after it holds only inside its period;
 - edits that no longer fit the engine fail loudly, and the pure resolver agrees
   with the list the engine-applied reform holds (a differential property);
 - each source/deduction probe moves only its own leaf on a household that also
@@ -50,7 +53,6 @@ from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 from microcosm.build.us_runtime.release_input_coverage import (
     ListParameterEdit,
     ReformCoverageProbe,
-    list_parameter_baseline,
     resolve_list_parameter_edit,
     resolve_probe_parameter_changes,
     us_release_reform_coverage_probes,
@@ -66,7 +68,7 @@ _REMOVED_ITEM = {
     "child_support_expense_snap_deduction_abolition": "snap_child_support_deduction",
     "disability_benefits_snap_exclusion": "disability_benefits",
     "workers_compensation_snap_exclusion": "workers_compensation",
-    "educator_expense_ald_abolition": "educator_expense",
+    "educator_expense_ald_abolition": "educator_expense_ald",
     "alimony_expense_ald_abolition": "alimony_expense_ald",
     "niit_passive_pass_through_exclusion": "passive_partnership_s_corp_income",
 }
@@ -404,23 +406,21 @@ def test_overlapping_different_edit_is_refused_at_the_first_stretch_it_changed(
         second(first(system))
 
 
-@pytest.mark.parametrize(
-    "period",
-    ["2015-01-01.2015-12-31", "2017-01-01.2017-12-31", "2018-01-01.2018-12-31"],
-)
-def test_edit_reaching_a_backdated_first_value_is_refused(period: str) -> None:
-    # Sol review of microcosm#1197, finding 2: CountryTaxBenefitSystem applies
-    # reforms before it backdates each parameter's first value (to 2015 in
-    # PolicyEngine-US 2.2.1). The QBI income definition first appears on
-    # 2018-01-01 at that first pass, so an edit starting on or before it would
-    # become the first value and be backdated outside its period. Resolution
-    # refuses it before any system is built.
-    assert coverage_module._installed_parameter_stages()[0][_QBI] == "2018-01-01"
+def test_edit_reaching_a_backdated_first_value_is_refused() -> None:
+    # Sol review of microcosm#1197, finding 2: an edit that starts on or before
+    # a list's first breakpoint at the constructor's first reform pass would
+    # become the first value and be backdated outside its period. The QBI
+    # income definition is first dated 2018-01-01, but PolicyEngine-US
+    # 2.145.3 backdates it to 2015-01-01 before that pass (2.2.1 applied
+    # reforms first, so 2017 and 2018 edits were refused there). Resolution
+    # refuses an edit starting on that breakpoint before any system is built.
+    assert coverage_module._installed_parameter_stages()[0][_QBI] == "2015-01-01"
     probe = _probe_with_edit(
-        _QBI, ListParameterEdit(period, remove=("farm_rent_income",))
+        _QBI,
+        ListParameterEdit("2015-01-01.2015-12-31", remove=("farm_rent_income",)),
     )
     refusal = (
-        r"starts on or before 2018-01-01, the list's first breakpoint when "
+        r"starts on or before 2015-01-01, the list's first breakpoint when "
         r"the installed engine first applies reforms"
     )
 
@@ -435,25 +435,23 @@ def test_edit_reaching_a_backdated_first_value_is_refused(period: str) -> None:
 def test_constructors_refuse_an_edit_that_reaches_the_first_value(
     system, monkeypatch
 ) -> None:
-    # The apply-time check holds even when a resolver reads only the finished
-    # tree, where 2017 is defined (backdated): the reform applies to the
-    # finished system, but both constructors refuse it at their first pass
-    # rather than let backdating carry the edited list back to 2015.
+    # The apply-time check holds on its own: with a resolver that reads the
+    # finished tree's list and skips the first-breakpoint refusal, both
+    # constructors still refuse an edit that starts on the list's first
+    # breakpoint at their first reform pass (2015-01-01 on PolicyEngine-US
+    # 2.145.3) rather than let it become the backdated first value.
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
     monkeypatch.setattr(
         smoke_module,
         "installed_list_parameter_baseline",
-        lambda path, edit: list_parameter_baseline(system.parameters, path, edit),
+        lambda path, edit: list(system.parameters.get_child(path)(edit.start)),
     )
-    edit = ListParameterEdit("2017-01-01.2017-12-31", remove=("farm_rent_income",))
+    edit = ListParameterEdit("2015-01-01.2015-12-31", remove=("farm_rent_income",))
     reform = _build_reform(_probe_with_edit(_QBI, edit))
-    _assert_edit_holds_only_inside_its_period(
-        system, reform(system), _QBI, edit, reform.resolved_list_edits[_QBI]
-    )
 
     refusal = (
-        r"starts on or before 2018-01-01, the list's first breakpoint in the "
+        r"starts on or before 2015-01-01, the list's first breakpoint in the "
         r"tree it is read from"
     )
     with pytest.raises(ValueError, match=refusal):
@@ -465,14 +463,17 @@ def test_constructors_refuse_an_edit_that_reaches_the_first_value(
         )
 
 
+@pytest.mark.parametrize("period", ["2017-01-01.2017-12-31", "2019-01-01.2019-12-31"])
 def test_edit_after_a_backdated_first_value_holds_only_inside_its_period(
-    system,
+    system, period: str
 ) -> None:
     # Past the first breakpoint both constructors apply the edit to the same
     # baseline it resolved on, and the backdated years keep that baseline.
+    # 2017 is before the list's own first date (2018), inside the years
+    # PolicyEngine-US 2.145.3 backdates before it applies reforms.
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    edit = ListParameterEdit("2019-01-01.2019-12-31", remove=("farm_rent_income",))
+    edit = ListParameterEdit(period, remove=("farm_rent_income",))
     reform = _build_reform(_probe_with_edit(_QBI, edit))
     resolved = reform.resolved_list_edits[_QBI]
     simulation = Simulation(
@@ -498,11 +499,11 @@ def test_unchanged_list_at_a_breakpoint_does_not_split_an_edit(system) -> None:
     parameter = system.parameters.get_child(_ALD)
     assert "2026-01-01" in {str(value.instant_str) for value in parameter.values_list}
     assert parameter("2025-01-01") == parameter("2026-01-01")
-    edit = ListParameterEdit("2025-01-01.2026-12-31", remove=("educator_expense",))
+    edit = ListParameterEdit("2025-01-01.2026-12-31", remove=("educator_expense_ald",))
 
     resolved = resolve_probe_parameter_changes(_probe_with_edit(_ALD, edit))
     assert resolved[_ALD][edit.period] == [
-        item for item in parameter("2025-01-01") if item != "educator_expense"
+        item for item in parameter("2025-01-01") if item != "educator_expense_ald"
     ]
 
 
@@ -521,7 +522,9 @@ def test_unchanged_list_at_a_breakpoint_does_not_split_an_edit(system) -> None:
         ),
         (
             "gov.irs.ald.deductions",
-            ListParameterEdit("2017-01-01.2018-12-31", remove=("educator_expense",)),
+            ListParameterEdit(
+                "2017-01-01.2018-12-31", remove=("educator_expense_ald",)
+            ),
             r"the list changes at 2018-01-01",
         ),
         (

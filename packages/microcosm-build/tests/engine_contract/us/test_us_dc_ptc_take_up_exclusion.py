@@ -50,10 +50,10 @@ def test_sha_locked_artifact_schemas_match_the_recorded_absence() -> None:
         )
 
 
-def test_policyengine_2_2_1_requires_a_tax_unit_year_boolean() -> None:
+def test_policyengine_2_145_3_requires_a_tax_unit_year_boolean() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variable = CountryTaxBenefitSystem().variables["takes_up_dc_ptc"]
     assert variable.is_input_variable()
     assert variable.entity.key == "tax_unit"

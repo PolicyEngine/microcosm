@@ -272,14 +272,14 @@ programs:
   variable: takes_up_medicare_part_d_if_eligible
   ownership: engine
   documentation:
-    consumed_via: medicare_part_d_enrolled (adds), gated by medicare_enrolled; it feeds medicare_cost and
-      income_adjusted_part_d_premium_surcharge
+    consumed_via: medicare_part_d_enrolled (adds), gated by medicare_enrolled; it feeds medicare_cost
+      and income_adjusted_part_d_premium_surcharge
     followup: No locked source measures Part D enrollment (the ASEC has no Part D item). CMS publishes
       Part D enrollment counts, so a count-calibrated stage anchored on Medicare enrollment is the route
       to seeding it.
-    notes: New after policyengine-us 2.2.1. Left at the engine default (every Medicare enrollee takes up
-      Part D), which keeps the Part D income-related premium charged to every enrollee above the
-      thresholds, as policyengine-us 2.2.1 did.
+    notes: New after policyengine-us 2.2.1. Left at the engine default (every Medicare enrollee takes
+      up Part D), which keeps the Part D income-related premium charged to every enrollee above the thresholds,
+      as policyengine-us 2.2.1 did.
   pipeline:
   - kind: engine_default
     operation_id: legacy_seeded_input_default
@@ -469,8 +469,7 @@ programs:
   variable: takes_up_csfp_if_eligible
   ownership: engine
   documentation:
-    consumed_via: commodity_supplemental_food_program, gated by
-      commodity_supplemental_food_program_eligible
+    consumed_via: commodity_supplemental_food_program, gated by commodity_supplemental_food_program_eligible
     followup: USDA FNS publishes CSFP participation counts by state, so a count-calibrated stage is the
       route to seeding it.
     notes: New after policyengine-us 2.2.1, which paid CSFP to every eligible person. Left at the engine
@@ -489,10 +488,10 @@ programs:
   ownership: engine
   documentation:
     consumed_via: free_school_meals (defined_for), reduced_price_school_meals and school_meal_net_subsidy
-    followup: USDA FNS publishes free and reduced-price school meal participation counts, so a
-      count-calibrated stage is the route to seeding it.
-    notes: New after policyengine-us 2.2.1, which gave school meals to every eligible unit's K-12
-      children. Left at the engine default, which keeps that.
+    followup: USDA FNS publishes free and reduced-price school meal participation counts, so a count-calibrated
+      stage is the route to seeding it.
+    notes: New after policyengine-us 2.2.1, which gave school meals to every eligible unit's K-12 children.
+      Left at the engine default, which keeps that.
   pipeline:
   - kind: engine_default
     operation_id: legacy_seeded_input_default
@@ -623,13 +622,12 @@ programs:
   variable: takes_up_ak_permanent_fund_dividend_if_eligible
   ownership: engine
   documentation:
-    consumed_via: ak_permanent_fund_dividend and ak_energy_relief, gated by
-      ak_permanent_fund_dividend_eligible
+    consumed_via: ak_permanent_fund_dividend and ak_energy_relief, gated by ak_permanent_fund_dividend_eligible
     followup: The Alaska Department of Revenue publishes the number of dividends paid each year, so a
       count-calibrated stage is the route to seeding it.
-    notes: New after policyengine-us 2.2.1, together with a new eligibility formula
-      (ak_permanent_fund_dividend_eligible). Left at the engine default, so every eligible Alaska resident
-      is paid, which is closest to policyengine-us 2.2.1.
+    notes: New after policyengine-us 2.2.1, together with a new eligibility formula (ak_permanent_fund_dividend_eligible).
+      Left at the engine default, so every eligible Alaska resident is paid, which is closest to policyengine-us
+      2.2.1.
   pipeline:
   - kind: engine_default
     operation_id: legacy_seeded_input_default

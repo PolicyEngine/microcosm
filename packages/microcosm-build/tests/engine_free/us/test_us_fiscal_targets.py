@@ -1288,10 +1288,11 @@ def test_locked_policyengine_us_pin_guards_the_obbba_window_premise() -> None:
     # mandatory CI through — so pin it here. Bumping the engine must move
     # this pin in the same change, after re-running
     # test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists in
-    # a [us]-extra environment to re-verify the TY2025-TY2028 window.
+    # a [us]-extra environment to re-verify the TY2025-TY2028 window
+    # (re-verified on policyengine-us 2.145.3 on 2026-11-17).
     lock_text = (_TEST_PATHS.repository / "uv.lock").read_text()
     versions = re.findall(r'name = "policyengine-us"\nversion = "([^"]+)"', lock_text)
-    assert versions == ["2.2.1"], versions
+    assert versions == ["2.145.3"], versions
 
 
 def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
