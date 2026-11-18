@@ -23,11 +23,6 @@ Peak memory is read as follows:
 - Linux: the peak resident set size (``ru_maxrss``). Pages swapped out under
   memory pressure are not counted, so measure on a machine with free memory.
 
-The parent checks each child's result before reporting it, and refuses one
-that is malformed or describes a different run, so the other measurement
-still reports. Two results must share their platform record and fit
-settings.
-
 Growth can also read a little low when the fit reuses memory that the process
 already used, and so already counted in its peak, before the fit started. That
 matters only for small fits.
@@ -106,7 +101,6 @@ import gc
 import hashlib
 import importlib.metadata
 import json
-import math
 import os
 import platform
 import resource
@@ -127,58 +121,6 @@ SHAPES = ("wage", "near-discrete")
 DEFAULT_TREES = {"wage": 100, "near-discrete": 32}
 DEFAULT_ROWS = {"wage": 10_000, "near-discrete": 10_000}
 DEFAULT_ROWS_IN_WIDEST_LEAF = 250
-#: Fields the parent reads from every child result.
-REQUIRED_RESULT_FIELDS = frozenset(
-    {
-        "implementation",
-        "class",
-        "leaf_array_shape",
-        "leaf_array_dtype",
-        "leaf_array_bytes",
-        "leaf_array_sha256",
-        "memory_measure",
-        "peak_bytes_after_fit",
-        "fit_peak_growth_bytes",
-        "peak_resident_set_bytes_before_fit",
-        "peak_resident_set_bytes_after_fit",
-        "fit_seconds",
-        "shape",
-        "rows",
-        "trees",
-        "rows_in_widest_leaf",
-        "seed",
-        "n_jobs",
-        "trees_at_once",
-        "max_samples_leaf",
-        "environment",
-    }
-)
-#: Required result fields that hold a number.
-NUMERIC_RESULT_FIELDS = frozenset(
-    {
-        "leaf_array_bytes",
-        "peak_bytes_after_fit",
-        "fit_peak_growth_bytes",
-        "peak_resident_set_bytes_before_fit",
-        "peak_resident_set_bytes_after_fit",
-        "fit_seconds",
-        "rows",
-        "trees",
-        "seed",
-        "n_jobs",
-        "trees_at_once",
-    }
-)
-#: Fields of a result's ``environment`` that the report reads.
-REQUIRED_ENVIRONMENT_FIELDS = frozenset(
-    {
-        "platform",
-        "cpu_count",
-        "page_size_bytes",
-        "transparent_huge_pages",
-        "numpy_requests_huge_pages",
-    }
-)
 #: Marks the child's result line on standard output.
 RESULT_PREFIX = "measure_qrf_leaf_memory result: "
 #: scikit-learn accepts integer seeds below 2**32.
@@ -460,142 +402,6 @@ def _child_command(arguments: argparse.Namespace, implementation: str) -> list[s
     return command
 
 
-def _null_fields(arguments: argparse.Namespace) -> set[str]:
-    """Return the result fields that must be null for this run's options.
-
-    Every other required field must hold a value.
-    """
-    null = set()
-    if arguments.no_digest:
-        null.add("leaf_array_sha256")
-    if arguments.shape == "wage":
-        null.add("max_samples_leaf")  # the wage forest has no cap
-    else:
-        null.add("rows_in_widest_leaf")
-    return null
-
-
-def _is_number(value: object) -> bool:
-    """Whether ``value`` is a finite int or float that fits in 64 bits."""
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return False
-    if isinstance(value, float):
-        return math.isfinite(value)
-    return abs(value) < 2**63
-
-
-def _result_problems(
-    result: dict[str, object], arguments: argparse.Namespace, implementation: str
-) -> list[str]:
-    """Describe what makes a child's result unusable; empty if nothing does."""
-    must_be_null = _null_fields(arguments)
-    present = REQUIRED_RESULT_FIELDS & set(result)
-    problems = []
-    missing = sorted(REQUIRED_RESULT_FIELDS - set(result))
-    if missing:
-        problems.append("missing " + ", ".join(missing))
-    null = sorted(field for field in present - must_be_null if result[field] is None)
-    if null:
-        problems.append("null " + ", ".join(null))
-    not_null = sorted(
-        field for field in present & must_be_null if result[field] is not None
-    )
-    if not_null:
-        problems.append("should be null for these options: " + ", ".join(not_null))
-    numeric = NUMERIC_RESULT_FIELDS | {"rows_in_widest_leaf", "max_samples_leaf"}
-    not_numbers = sorted(
-        field
-        for field in (present & numeric) - must_be_null
-        if result[field] is not None and not _is_number(result[field])
-    )
-    if not_numbers:
-        problems.append("not a finite number within 64 bits: " + ", ".join(not_numbers))
-    if result.get("implementation", implementation) != implementation:
-        problems.append(f"implementation is not {implementation!r}")
-    if (
-        result.get("class", EXPECTED_CLASSES[implementation])
-        != (EXPECTED_CLASSES[implementation])
-    ):
-        problems.append(f"class is not {EXPECTED_CLASSES[implementation]}")
-    measure = result.get("memory_measure", "resident_set")
-    if not isinstance(measure, str) or measure not in {
-        "physical_footprint",
-        "resident_set",
-    }:
-        problems.append("memory_measure is not a known measure")
-    # The result must describe the run the parent asked for.
-    requested = {
-        "shape": arguments.shape,
-        "rows": arguments.rows,
-        "trees": arguments.trees,
-        "seed": arguments.seed,
-    }
-    if arguments.shape == "wage":
-        requested["rows_in_widest_leaf"] = arguments.rows_in_widest_leaf
-    different = sorted(
-        field
-        for field, value in requested.items()
-        if field in result and result[field] is not None and result[field] != value
-    )
-    if different:
-        problems.append("differs from the requested run: " + ", ".join(different))
-    digest = result.get("leaf_array_sha256")
-    if digest is not None and not (
-        isinstance(digest, str)
-        and len(digest) == 64
-        and all(character in "0123456789abcdef" for character in digest)
-    ):
-        problems.append("leaf_array_sha256 is not a SHA-256 digest")
-    shape = result.get("leaf_array_shape")
-    if shape is not None and not (
-        isinstance(shape, list)
-        and len(shape) == 4
-        and all(
-            isinstance(size, int) and not isinstance(size, bool) and size >= 0
-            for size in shape
-        )
-    ):
-        problems.append("leaf_array_shape is not four non-negative integers")
-    elif (
-        shape is not None
-        and result.get("leaf_array_dtype") == "int64"
-        and isinstance(result.get("leaf_array_bytes"), int)
-        and result["leaf_array_bytes"] != math.prod(shape) * 8
-    ):
-        problems.append("leaf_array_bytes does not match leaf_array_shape")
-    if result.get("leaf_array_dtype", "int64") != "int64":
-        problems.append("leaf_array_dtype is not int64")
-    environment = result.get("environment")
-    if environment is not None:
-        if not isinstance(environment, dict):
-            problems.append("environment is not an object")
-        else:
-            lacking = sorted(REQUIRED_ENVIRONMENT_FIELDS - set(environment))
-            if lacking:
-                problems.append("environment missing " + ", ".join(lacking))
-            if not isinstance(environment.get("platform", ""), str):
-                problems.append("environment platform is not text")
-            if not _is_number(environment.get("page_size_bytes", 0)):
-                problems.append("environment page_size_bytes is not a number")
-            cpu_count = environment.get("cpu_count")
-            if cpu_count is not None and not _is_number(cpu_count):
-                problems.append("environment cpu_count is not a number")
-    return problems
-
-
-def _finite_float(text: str) -> float:
-    """Parse a JSON number, refusing one too large for a float (``1e400``)."""
-    value = float(text)
-    if not math.isfinite(value):
-        raise ValueError(f"{text} does not fit in a float")
-    return value
-
-
-def _refuse_constant(name: str) -> object:
-    """Refuse ``NaN`` and ``Infinity``, which Python's json reads but JSON lacks."""
-    raise ValueError(f"{name} is not standard JSON")
-
-
 def _signal_name(number: int) -> str | None:
     try:
         return signal.Signals(number).name
@@ -652,56 +458,7 @@ def _run_child(
             f"the {implementation} measurement exited without printing a result"
         )
         return None, failure
-    try:
-        result = json.loads(
-            marked[-1], parse_constant=_refuse_constant, parse_float=_finite_float
-        )
-    except (ValueError, RecursionError):
-        result = None
-    if not isinstance(result, dict):
-        failure["message"] = (
-            f"the {implementation} measurement printed a result that is not a "
-            "standard JSON object"
-        )
-        return None, failure
-    try:
-        problems = _result_problems(result, arguments, implementation)
-        if not problems:
-            # Formatting the result alone shows the report can print it.
-            _report([result], [], None)
-            # And that --json can write it as standard JSON in valid UTF-8
-            # (this refuses lone surrogates and nesting json cannot write).
-            json.dumps(result, allow_nan=False, ensure_ascii=False).encode("utf-8")
-    except Exception as error:  # a malformed result must not stop the other run
-        problems = [f"it could not be read ({type(error).__name__}: {error})"]
-    if problems:
-        failure["message"] = (
-            f"the {implementation} measurement's result is unusable: "
-            + "; ".join(problems)
-        )
-        return None, failure
-    return result, None
-
-
-#: Result fields that two measurements of one run must share.
-SHARED_RESULT_FIELDS = (
-    "environment",
-    "n_jobs",
-    "trees_at_once",
-    "max_samples_leaf",
-    "memory_measure",
-)
-
-
-def _disagreements(results: list[dict[str, object]]) -> list[str]:
-    """Return the shared fields on which two results differ."""
-    if len(results) != 2:
-        return []
-    return [
-        field
-        for field in SHARED_RESULT_FIELDS
-        if results[0].get(field) != results[1].get(field)
-    ]
+    return json.loads(marked[-1]), None
 
 
 def _identical(results: list[dict[str, object]]) -> bool | None:
@@ -896,19 +653,6 @@ def main(argv: list[str] | None = None) -> int:
             failures.append(failure)
         else:
             results.append(result)
-    disagreeing = _disagreements(results)
-    if disagreeing:
-        failures.append(
-            {
-                "implementation": "both",
-                "exit_code": None,
-                "signal_number": None,
-                "signal": None,
-                "message": "the two measurements disagree on "
-                + ", ".join(disagreeing)
-                + ", so they ran under different settings",
-            }
-        )
     identical = _identical(results)
     if arguments.json:
         print(
@@ -932,15 +676,10 @@ def main(argv: list[str] | None = None) -> int:
                     "leaf_arrays_identical": identical,
                 },
                 indent=2,
-                allow_nan=False,
             )
         )
     else:
-        report = _report(results, failures, identical)
-        # Escape anything the terminal's encoding cannot show, such as a lone
-        # surrogate in a malformed field, instead of failing to print.
-        encoding = sys.stdout.encoding or "utf-8"
-        print(report.encode(encoding, "backslashreplace").decode(encoding))
+        print(_report(results, failures, identical))
     return 1 if failures or identical is False else 0
 
 
