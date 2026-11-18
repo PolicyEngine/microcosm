@@ -53,6 +53,12 @@ requires_pytables = pytest.mark.skipif(
 #: fixture below replaces them, for the tests that pin the contract itself.
 _REAL_REQUIRE_H5_STORED_INPUTS = stored_inputs.require_h5_stored_inputs
 #: A policyengine-us stand-in for the package stage's stored-input contract.
+#: Until the reviewed-fill register's re-review (microcosm#1675), the lane's
+#: tests model a release on the register's reviewed engine, policyengine-us
+#: 2.2.1 (``_REVIEWED_ENGINE`` below), so the stand-in keeps that label. The
+#: stored-input register follows the locked engine, 2.145.3, which defines
+#: tax_unit_role_input as an input (policyengine-us#9617), so the stand-in
+#: defines it too.
 _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
     label="policyengine-us 2.2.1",
     variables=frozenset(
@@ -80,11 +86,7 @@ _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
             "partnership_income",
             "s_corp_income",
             "passive_partnership_s_corp_income",
-            # The stored-input register follows the locked engine, which
-            # defines the tax-unit role as an input (policyengine-us#9617), so
-            # the stand-in defines it too. Its label stays the reviewed-fill
-            # register's engine until that register's re-review
-            # (microcosm#1675).
+            # Defined by the locked engine (see above).
             "tax_unit_role_input",
             *US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
         }
