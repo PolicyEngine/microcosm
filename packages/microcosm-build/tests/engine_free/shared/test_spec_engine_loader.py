@@ -32,8 +32,9 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # kernels' bytes too.
     # microcosm#1641's docstring and comment wording in solve and ssi_take_up
     # moves it again.
+    # The TY2023 IRS district source selector updates the attested sampling kernel.
     assert first.spec_sha256 == (
-        "cb9742d5089eddb8783ee1cb890206b33a35efe5ff572656dbd58a1b95ea1e28"
+        "0946e0fa730386fafaf3de0c8c53d42138c00d9cd74922d6234987aecd33fd50"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
