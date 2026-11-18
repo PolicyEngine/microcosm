@@ -1391,7 +1391,9 @@ LINEAGE=./modal-runs/$R/compare-lineage.json
     --reference docs/us-modal-stage-route-a-base-local-reference.json \
     --run-context "$CONTEXT" > "$LINEAGE"
   mkdir -p "$RUN/base-out"
-  cp -p ./modal-runs/$R/state/base-out/* "$RUN/base-out/"
+  # -R: the base writes its gate-shadow files in base-out/gate_battery_shadow/,
+  # and the receipt lists them with the rest of base-out.
+  cp -pR ./modal-runs/$R/state/base-out/* "$RUN/base-out/"
   # The copies, in place, against the receipt (COMPLETED only, nothing extra).
   python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
     --state-root "$RUN" --prefix base-out --strict
