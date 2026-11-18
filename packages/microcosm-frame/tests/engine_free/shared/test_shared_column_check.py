@@ -59,6 +59,7 @@ def _source_frame() -> Frame:
             "born_month": pd.period_range("2000-01", periods=_PERSON_COUNT, freq="M"),
             "rare_count": pd.arrays.SparseArray([0, 1, 0, 2]),
             "size_band": pd.Categorical([10, 20, 10, 20]),
+            "rare_block": pd.arrays.SparseArray([0, 1, 1, 0], kind="block"),
         }
     )
     household = pd.DataFrame(
@@ -176,6 +177,14 @@ def _mark_a_value_missing(column: pd.Series) -> None:
     column.array._mask[0] = True
 
 
+def _hide_a_stored_false(column: pd.Series) -> None:
+    column.array._mask[1] = True
+
+
+def _move_a_sparse_block(column: pd.Series) -> None:
+    column.array.sp_index.blocs[0] = 0
+
+
 _RAW_WRITES: dict[str, tuple[str, Callable[[pd.Series], None]]] = {
     "to_numpy on Int64": ("count_complete", _write_through_to_numpy),
     "to_numpy on Float64": ("amount_complete", _write_through_to_numpy),
@@ -194,6 +203,8 @@ _RAW_WRITES: dict[str, tuple[str, Callable[[pd.Series], None]]] = {
     "sparse positions": ("rare_count", _move_a_sparse_value),
     "category values": ("size_band", _change_a_category),
     "mask of Int64": ("count_complete", _mark_a_value_missing),
+    "mask over a stored false": ("flag_complete", _hide_a_stored_false),
+    "sparse block positions": ("rare_block", _move_a_sparse_block),
 }
 
 
@@ -310,12 +321,47 @@ def test_the_constructor_still_reports_a_table_that_is_not_a_dataframe() -> None
     source = _source_frame()
     _reweighted(source)
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="no attribute 'columns'"):
         Frame(
-            {"person": "not a table", "household": source.table("household")},
+            {
+                "person": source.table("person")["person_id"],
+                "household": source.table("household"),
+            },
             source.schema,
             {"household": source.weights_for("household")},
         )
+
+
+def test_the_constructor_still_reports_strata_that_are_not_a_series() -> None:
+    source = _source_frame()
+    _reweighted(source)
+
+    with pytest.raises(TypeError, match="strata must be a pandas Series"):
+        Frame(
+            {entity: source.table(entity) for entity in source.entities},
+            source.schema,
+            {"household": source.weights_for("household")},
+            strata="not a series",
+        )
+
+
+def test_columns_sharing_values_under_different_masks_are_kept_apart() -> None:
+    values = np.array([1, 2, 3], dtype="int64")
+    table = pd.DataFrame(
+        {
+            "first_hidden": pd.arrays.IntegerArray(
+                values, np.array([True, False, False]), copy=False
+            ),
+            "last_hidden": pd.arrays.IntegerArray(
+                values, np.array([False, False, True]), copy=False
+            ),
+        },
+        copy=False,
+    )
+
+    shared_columns_module.record_shared_columns({"person": table})
+
+    check_shared_columns({"person": table})
 
 
 def test_every_changed_column_is_named_at_once() -> None:

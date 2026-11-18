@@ -1031,11 +1031,12 @@ def uk_release_export_frame(frame: Frame) -> Frame:
     carries none. The identifiers leave inside the 32-bit range the engine
     stores, with the build identifiers beside them (microcosm#1194,
     :func:`uk_release_identifier_tables`). A frame that already left passes
-    unchanged.
+    unchanged. The tables are copied below, so shared columns are checked first.
     """
 
     from .geography_ladder import export_area_code_columns
 
+    frame.check_shared_columns()
     tables: dict[str, pd.DataFrame] = {}
     changed = False
     for entity in ("person", "benunit", "household"):

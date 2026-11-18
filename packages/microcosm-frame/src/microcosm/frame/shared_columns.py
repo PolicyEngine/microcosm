@@ -146,10 +146,13 @@ def _column_buffers(column: pd.Series | pd.Index) -> tuple[_StoredArray, ...]:
     if isinstance(values, _DATETIME_LIKE_ARRAY_TYPES):
         return (_StoredArray(values.asi8),)
     if isinstance(values, pd.arrays.SparseArray):
-        return (
-            _StoredArray(values.sp_values),
-            _StoredArray(values.sp_index.to_int_index().indices),
+        sparse_index = values.sp_index
+        positions = (
+            (sparse_index.blocs, sparse_index.blengths)
+            if values.kind == "block"
+            else (sparse_index.indices,)
         )
+        return (_StoredArray(values.sp_values), *map(_StoredArray, positions))
     return ()
 
 

@@ -143,7 +143,7 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "_column_buffers",
         "pandas-private-attribute",
         "values._data",
-        "d2bfbc85dac5",
+        "64ca7d79dc01",
     ): (
         "Read only, so the shared-column check can hash a nullable column's "
         "values. pandas has no public access to them when values are missing."
@@ -153,7 +153,7 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "_column_buffers",
         "pandas-private-attribute",
         "values._mask",
-        "d2bfbc85dac5",
+        "64ca7d79dc01",
     ): (
         "Read only, so the shared-column check can hash a nullable column's "
         "missing-value mask. pandas exposes only a copy of it."

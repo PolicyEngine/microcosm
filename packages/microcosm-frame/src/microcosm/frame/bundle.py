@@ -121,8 +121,7 @@ class Frame:
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
         # The deep copies made below could not show an earlier raw write.
-        if isinstance(tables, Mapping):
-            check_shared_columns(tables, strata=strata)
+        check_shared_columns(tables, strata=strata)
         self._assemble(
             tables,
             schema,
@@ -1010,7 +1009,9 @@ class Frame:
         pandas to either side never reaches the other. Each frame still holds
         its own DataFrame objects, so the caller may go on writing to the
         DataFrames it passed. Raw writes into the shared memory are not
-        protected (see :meth:`_adopt`). Weights, strata, the mass log and
+        protected (see :meth:`_adopt`). A replacement's columns are recorded
+        for :meth:`check_shared_columns` only once a later operation shares
+        them. Weights, strata, the mass log and
         metadata are carried unchanged. When copy-on-write is off, every
         table is deep-copied instead.
 
