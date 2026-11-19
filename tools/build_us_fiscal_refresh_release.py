@@ -15611,9 +15611,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # expensive calibration so a stale contract cannot silently narrow coverage.
     assert_release_input_coverage_manifest_current()
     # The check resolves the probes' list edits on a reformed PolicyEngine-US
-    # system that the module caches for the process. Nothing reads it again
-    # before the reform-coverage smoke, which builds it again, so it is not
-    # kept through the source stages and the calibration.
+    # system that the module caches for the process. Nothing in the build reads
+    # it again (the reform-coverage smoke, its other reader, runs at
+    # certification, in its own process), so it is not kept through the source
+    # stages and the calibration.
     clear_installed_list_parameter_baseline_cache()
     # Preflight (microcosm#377): no column may be required-to-signal by one
     # register (seeded/count-calibrated take-up, health nonconstant, coverage
