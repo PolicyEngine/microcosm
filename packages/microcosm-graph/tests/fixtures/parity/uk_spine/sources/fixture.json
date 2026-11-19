@@ -1983,6 +1983,17 @@
         {
           "format": "tab",
           "kind": "licensed_microdata",
+          "locator": "child.tab",
+          "role": "frs_table",
+          "runtime_sha256_required": true,
+          "sha256": "44c3cb2900b70e15828a8bb021be463ac69ebd079aadd28f3eabd56aa139499b",
+          "size_bytes": 2330,
+          "table": "child",
+          "vintage": "synthetic-h2"
+        },
+        {
+          "format": "tab",
+          "kind": "licensed_microdata",
           "locator": "benefits.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
@@ -2063,9 +2074,10 @@
               "spi_concept": "INCPBEN"
             },
             "hmrc_spi_pay": {
-              "formula": "max(0, ADULT.INEARNS) * 52",
+              "formula": "max(0, ADULT.INEARNS) * 52 on the adult tab, max(0, CHILD.CHEARNS) * 52 on the child tab",
               "raw_sources": [
-                "ADULT.INEARNS"
+                "ADULT.INEARNS",
+                "CHILD.CHEARNS"
               ],
               "scope": "full",
               "spi_concept": "PAY"
@@ -2135,7 +2147,7 @@
         "employer_pension_contributions"
       ],
       "rewrites": [],
-      "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab, child.tab and benefits.tab, caller-supplied local input",
       "stage": "frs_hmrc_spine_leaves",
       "survey": "Family Resources Survey 2024-25"
     },
@@ -6991,7 +7003,7 @@
           ],
           "preserve_asked_rows": true,
           "seed": 42,
-          "target_population": "salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people not asked who have no employment income are set to zero",
+          "target_population": "salary_sacrifice_asked != 1 and employment_income > 0 and not is_hbai_dependent_child, frame-wide; people not asked who have no employment income, and dependent children not asked, are set to zero",
           "targets": [
             "pension_contributions_via_salary_sacrifice"
           ],
