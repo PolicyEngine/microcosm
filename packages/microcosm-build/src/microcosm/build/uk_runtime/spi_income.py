@@ -1692,8 +1692,8 @@ def impute_uk_spi_income_support(
     assert_analogue_map_covers(SPI_INCOME_QRF_OUTPUT_COLUMNS)
     reference_weights = training_weights.loc[reference_people]
     reference_targets = list(analogue_targets(SPI_INCOME_QRF_OUTPUT_COLUMNS))
-    # One entry per fold; the fold's forests are freed once it has located its
-    # recipients.
+    # One entry per fold that has recipients; the fold's forests are freed once
+    # it has located them.
     reference_evidence: list[_FitGateEvidence] = []
 
     def fit_reference(encoded: pd.DataFrame, observed: pd.DataFrame):

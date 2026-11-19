@@ -31,6 +31,7 @@ import weakref
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from importlib.metadata import version
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
@@ -64,6 +65,14 @@ from test_support.microcosm_build.uk_spi_income import _write_donor
 
 SPI_FOREST_SEED = 9
 SPI_FOREST_TREES = 3
+#: The libraries that compute the draws, whose versions the digests depend on.
+SPI_FOREST_DRAW_LIBRARIES = (
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "quantile-forest",
+)
 _HOUSEHOLDS = 200
 _HOUSEHOLDS_COPIED_TO_SPI = 40
 _DONOR_ROWS = 400
@@ -265,11 +274,23 @@ def run_spi_forest_scenario(
 
 
 @dataclass(frozen=True)
+class RecordedStage2Start:
+    """The model settings and inputs one ``start_chain`` call received."""
+
+    seed: int
+    n_estimators: int
+    gate_calibration: str
+    predictors: tuple[str, ...]
+    targets: tuple[str, ...]
+    groups: np.ndarray
+
+
+@dataclass(frozen=True)
 class RecordedStage2Step:
     """What one ``fit_draw_next`` call received, and the draw it returned."""
 
     target: str
-    recipient_index: pd.Index
+    recipient_predictors: pd.DataFrame
     prior_draws: pd.DataFrame
     quantiles: np.ndarray
     sign_uniforms: np.ndarray
@@ -285,19 +306,18 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
     draws its target from that fit, through the function
     ``predict_from_uniforms`` draws each target with. A run with this class
     computes what the stage computed when it fitted stage 2 whole and held
-    every model until it returned, given the inputs the stage passes here;
-    :attr:`chain_targets`, :attr:`chain_groups` and :attr:`steps` record those
-    inputs so a test can check them.
+    every model until it returned, given the settings and inputs the stage
+    passes here; :attr:`chain_starts` and :attr:`steps` record those so a test
+    can check them.
     """
 
     kept_fits: ClassVar[list[object]] = []
-    chain_targets: ClassVar[list[tuple[str, ...]]] = []
-    chain_groups: ClassVar[list[np.ndarray]] = []
+    chain_starts: ClassVar[list[RecordedStage2Start]] = []
     steps: ClassVar[list[RecordedStage2Step]] = []
 
     @classmethod
     def forget_recorded(cls) -> None:
-        for recorded in (cls.kept_fits, cls.chain_targets, cls.chain_groups, cls.steps):
+        for recorded in (cls.kept_fits, cls.chain_starts, cls.steps):
             recorded.clear()
 
     def fit(self, *args: object, **kwargs: object) -> object:
@@ -314,8 +334,16 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
         weights: object,
         groups: object = None,
     ) -> object:
-        self.chain_targets.append(tuple(targets))
-        self.chain_groups.append(np.array(groups, copy=True))
+        self.chain_starts.append(
+            RecordedStage2Start(
+                seed=self.seed,
+                n_estimators=self.n_estimators,
+                gate_calibration=self.gate_calibration,
+                predictors=tuple(predictors),
+                targets=tuple(targets),
+                groups=np.array(groups, copy=True),
+            )
+        )
         self._every_target_fit = self.fit(
             frame_or_df, predictors, targets, weights=weights, groups=groups
         )
@@ -347,7 +375,7 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
         self.steps.append(
             RecordedStage2Step(
                 target=target,
-                recipient_index=recipient_predictors.index.copy(),
+                recipient_predictors=recipient_predictors.copy(deep=True),
                 prior_draws=raw_prior_draws.copy(deep=True),
                 quantiles=np.array(quantiles, copy=True),
                 sign_uniforms=np.array(sign_uniforms, copy=True),
@@ -689,8 +717,12 @@ def print_spi_forest_digests() -> None:
         ):
             result = run_spi_forest_scenario(scenario, Path(directory), monkeypatch)
         digests[scenario] = spi_frozen_digests(result)
-    here = [platform.system(), platform.machine()]
-    print(json.dumps({"platform": here, "digests": digests}, indent=1))
+    recording = {
+        "platform": [platform.system(), platform.machine()],
+        "versions": {name: version(name) for name in SPI_FOREST_DRAW_LIBRARIES},
+        "digests": digests,
+    }
+    print(json.dumps(recording, indent=1))
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

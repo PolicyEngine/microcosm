@@ -58,7 +58,6 @@ from microcosm.build.uk_runtime.qrf_gates import (
     pooled_gate_outcomes,
 )
 from microcosm.build.uk_runtime.spi_income import (
-    _STAGE2_SALT_NAMES,
     FRS_ONLY_FIT_NAME,
     SPI_DONOR_FIT_NAME,
     SPI_MINIMUM_RECIPIENT_AGE,
@@ -72,6 +71,7 @@ from microcosm.build.uk_runtime.spi_rank_transport import (
 )
 from microcosm.build.uk_runtime.spi_support import (
     BASE_FRS_SUPPORT_CHANNEL,
+    FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
@@ -83,9 +83,11 @@ from test_support.microcosm_build.uk_spi_forest_release import (
     SPI_FOREST_ALL_SCENARIOS,
     SPI_FOREST_SCENARIOS,
     SPI_FOREST_SEED,
+    SPI_FOREST_TREES,
     STAGE1_FIT,
     STAGE2_FIT,
     FitEveryTargetFirstQRF,
+    RecordedStage2Start,
     RecordedStage2Step,
     SPIForestLifetimes,
     fitted_target_parts,
@@ -122,6 +124,13 @@ _ORIGIN_MAIN_DIGESTS: dict[tuple[str, str], dict[str, dict[str, str]]] = {
             "receipts": "d1103a63326a13d88981e9188b48162b62c7ad75cea2be459ef93a837bf6777c",
         },
     },
+}
+
+#: The stage-2 uniform salts as released, written out so that a change to the
+#: stage's constants, which would redraw every row, fails here.
+_STAGE2_FIT_NAME_AS_RELEASED = "uk_frs_only_spi_fill"
+_STAGE2_SALT_NAMES_AS_RELEASED = {
+    "individual_savings_account_interest_income": "tax_free_savings_income"
 }
 
 #: Versions of the libraries that compute the draws, on both recordings.
@@ -194,8 +203,7 @@ def tracked_run(tmp_path_factory) -> Callable[[str], _TrackedRun]:
 class _ReferenceRun:
     result: UKSPIIncomeImputationResult
     kept_fits: list[object]
-    chain_targets: list[tuple[str, ...]]
-    chain_groups: list[np.ndarray]
+    chain_starts: list[RecordedStage2Start]
     steps: list[RecordedStage2Step]
 
 
@@ -219,8 +227,7 @@ def reference_run(tmp_path_factory) -> Callable[[str], _ReferenceRun]:
             runs[scenario] = _ReferenceRun(
                 result,
                 list(FitEveryTargetFirstQRF.kept_fits),
-                list(FitEveryTargetFirstQRF.chain_targets),
-                list(FitEveryTargetFirstQRF.chain_groups),
+                list(FitEveryTargetFirstQRF.chain_starts),
                 list(FitEveryTargetFirstQRF.steps),
             )
             FitEveryTargetFirstQRF.forget_recorded()
@@ -311,43 +318,90 @@ def test_receipts_equal_what_the_kept_models_report(scenario, reference_run) -> 
 
 
 @pytest.mark.parametrize("scenario", SPI_FOREST_ALL_SCENARIOS)
-def test_stage2_steps_get_the_inputs_of_the_whole_fit_and_draw(
+def test_stage2_chain_gets_the_settings_and_inputs_of_the_whole_fit_and_draw(
     scenario, reference_run
 ) -> None:
-    """Targets, rows, uniforms, fold groups and prior draws, target by target."""
+    """Model settings, targets, rows, predictors, uniforms, groups and prior draws.
+
+    The expected values are written out from what the stage passed to one fit
+    over every target and one ``predict_from_uniforms``. The income predictors
+    of the drawn rows hold stage-1 draws, which vary by platform, so only the
+    byte tests cover their values.
+    """
 
     run = reference_run(scenario)
-    person = spi_forest_support().person
+    options = SPI_FOREST_ALL_SCENARIOS[scenario]
+    support = spi_forest_support()
+    person = support.person
     channel = person[support_channel_column("person")]
     base_rows = channel == BASE_FRS_SUPPORT_CHANNEL
     drawn_rows = (channel == SPI_SYNTHETIC_SUPPORT_CHANNEL) & person["age"].ge(
         SPI_MINIMUM_RECIPIENT_AGE
     )
+    drawn_people = person.loc[drawn_rows]
+    drawn_regions = drawn_people["person_household_id"].map(
+        support.household.set_index("household_id")["region"]
+    )
+    genders = sorted(person["gender"].unique())
+    regions = sorted(support.household["region"].unique())
     expected_targets = tuple(
         column
         for column in FRS_ONLY_SPI_FILL_PERSON_COLUMNS
         if column not in SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS
     )
+    expected_predictors = tuple(
+        sorted(
+            [
+                "age",
+                *FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
+                *(f"gender_{gender}" for gender in genders),
+                *(f"region_{region}" for region in regions),
+                *(
+                    ["state_pension_receipt"]
+                    if options.get("condition_on_state_pension_receipt")
+                    else []
+                ),
+            ]
+        )
+    )
     expected_groups = person.loc[base_rows, "person_household_id"].to_numpy()
     record_keys = integer_record_keys(
-        person.loc[drawn_rows, "person_id"].to_numpy(),
-        label="SPI stage-2 person_id",
+        drawn_people["person_id"].to_numpy(), label="SPI stage-2 person_id"
     )
     stage2_seed = SPI_FOREST_SEED + 1
 
-    assert run.chain_targets == [expected_targets]
-    np.testing.assert_array_equal(run.chain_groups[0], expected_groups)
+    assert len(run.chain_starts) == 1
+    start = run.chain_starts[0]
+    assert start.seed == stage2_seed
+    assert start.n_estimators == SPI_FOREST_TREES
+    assert start.gate_calibration == options.get(
+        "stage2_gate_calibration", UK_DEFAULT_GATE_CALIBRATION
+    )
+    assert start.predictors == expected_predictors
+    assert start.targets == expected_targets
+    np.testing.assert_array_equal(start.groups, expected_groups)
     assert tuple(step.target for step in run.steps) == expected_targets
     for position, step in enumerate(run.steps):
-        salt_name = _STAGE2_SALT_NAMES.get(step.target, step.target)
-        assert step.recipient_index.equals(person.index[drawn_rows])
+        salt_name = _STAGE2_SALT_NAMES_AS_RELEASED.get(step.target, step.target)
+        recipients = step.recipient_predictors
+        assert recipients.index.equals(drawn_people.index)
+        assert tuple(recipients.columns) == expected_predictors
+        np.testing.assert_array_equal(recipients["age"], drawn_people["age"])
+        for gender in genders:
+            np.testing.assert_array_equal(
+                recipients[f"gender_{gender}"], drawn_people["gender"].eq(gender)
+            )
+        for region in regions:
+            np.testing.assert_array_equal(
+                recipients[f"region_{region}"], drawn_regions.eq(region)
+            )
         np.testing.assert_array_equal(step.groups, expected_groups)
         np.testing.assert_array_equal(
             step.quantiles,
             stable_identity_uniforms(
                 record_keys,
                 seed=stage2_seed,
-                salt=f"{FRS_ONLY_FIT_NAME}:{salt_name}",
+                salt=f"{_STAGE2_FIT_NAME_AS_RELEASED}:{salt_name}",
             ),
         )
         np.testing.assert_array_equal(
@@ -355,7 +409,7 @@ def test_stage2_steps_get_the_inputs_of_the_whole_fit_and_draw(
             stable_identity_uniforms(
                 record_keys,
                 seed=stage2_seed,
-                salt=f"{FRS_ONLY_FIT_NAME}:{salt_name}:sign",
+                salt=f"{_STAGE2_FIT_NAME_AS_RELEASED}:{salt_name}:sign",
             ),
         )
         assert list(step.prior_draws.columns) == list(expected_targets[:position])
