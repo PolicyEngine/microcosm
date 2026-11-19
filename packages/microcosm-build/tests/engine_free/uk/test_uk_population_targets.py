@@ -53,6 +53,10 @@ PROJECTION_FAMILIES = {
     "hmrc_itl_savings_rate",
     "dwp_benefit_expenditure",
 }
+# Rows outside PROJECTION_FAMILIES that read a source projection. DWP's Table 28
+# gives 2025-26 as its projection, and the young LCWRA row's calendar-2025
+# window takes nine twelfths of it (PolicyEngine/microcosm#1663).
+PROJECTION_TARGET_IDS = {"dwp.uc.people_aged_16_to_24_lcwra_element"}
 NATIONAL_SELECTOR_KEYS = {
     "aggregate_fact_key",
     "source_name",
@@ -916,12 +920,19 @@ def test_uk_population_targets_declare_selector_vocabularies_and_bindings() -> N
         else:  # pragma: no cover - partition test proves this cannot happen.
             raise AssertionError(f"unscoped target {target_id}")
 
-        if target["family"] in PROJECTION_FAMILIES:
+        if (
+            target["family"] in PROJECTION_FAMILIES
+            or target_id in PROJECTION_TARGET_IDS
+        ):
             assert target.get("assertion_policy") == "allow_source_projection", (
                 target_id
             )
         else:
             assert "assertion_policy" not in target, target_id
+
+    assert PROJECTION_TARGET_IDS <= {
+        target["target_id"] for target in resource["targets"]
+    }
 
     # A metric name is bound once, except by nation-scoped local families
     # whose GSS prefixes are disjoint (microcosm#929: the council-tax bands
