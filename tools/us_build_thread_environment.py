@@ -9,8 +9,10 @@ in ``FILLED_VARIABLES`` that is unset or blank. A variable that already has a
 value keeps it.
 
 Without the setting, the base, ACS staging and ACS local-release commands set
-nothing, and each library chooses its own count as it always has. The release
-tool passes its own default instead, ``min(os.cpu_count(), 16)``.
+nothing, and each library chooses its own count as it always has, until the
+ACS local-release command imports the release tool. The release tool passes
+its own default instead, ``min(os.cpu_count(), 16)``, and also applies it when
+imported.
 
 On Linux the OpenBLAS thread count can change output bytes: OpenBLAS splits a
 large dot product between its threads, and the order of the additions moves
@@ -77,8 +79,13 @@ def thread_setting(environment: Mapping[str, str] = os.environ) -> int | None:
     value = environment.get(THREAD_SETTING, "")
     if value == "":
         return None
-    if value.isascii() and value.isdigit() and int(value) > 0:
-        return int(value)
+    if value.isascii() and value.isdigit():
+        try:
+            count = int(value)
+        except ValueError:  # longer than int() will parse
+            count = 0
+        if count > 0:
+            return count
     raise ValueError(
         f"{THREAD_SETTING} must be a positive whole number of threads, got {value!r}"
     )
@@ -92,9 +99,10 @@ def set_build_thread_environment(
     """Copy the thread setting, or ``default_count``, into each unset variable.
 
     With neither, nothing changes. A variable in ``FILLED_VARIABLES`` that
-    already has a value keeps it. A blank value counts as unset for the thread
-    setting, which libraries also read as unset. ``default_count`` keeps a blank
-    value, as the release tool's default always has.
+    already has a value keeps it. The thread setting also replaces a blank
+    value: most libraries ignore one, and joblib fails on a blank
+    ``LOKY_MAX_CPU_COUNT``. ``default_count`` keeps a blank value, as the release
+    tool's default always has.
     """
 
     count = thread_setting(environment)

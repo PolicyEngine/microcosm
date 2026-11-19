@@ -187,8 +187,14 @@ def _thread_setting_problem(value: str) -> str | None:
     A blank value means unset, as it does to the tools.
     """
 
-    if value == "" or (value.isascii() and value.isdigit() and int(value) > 0):
+    if value == "":
         return None
+    if value.isascii() and value.isdigit():
+        try:
+            if int(value) > 0:
+                return None
+        except ValueError:  # longer than int() will parse
+            pass
     return (
         f"env {THREAD_SETTING_ENV!r} must be a positive whole number of threads, "
         f"got {value!r}"

@@ -503,10 +503,13 @@ values do not depend on those counts.
   `blas_threads_in_use`: each loaded BLAS library with the thread count it uses
   once numpy has loaded, as `threadpoolctl` reads it from the library. That count
   does not come from the environment. threadpoolctl does not report Accelerate,
-  so where numpy uses Accelerate, as on macOS, the list is empty.
+  so where numpy and scipy use Accelerate, as on Apple-silicon Macs, the list is
+  empty.
 - *A resume of the base command* compares all of these except
   `POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS`, and refuses a
-  difference, so a new thread setting needs a new checkpoint directory. Because
+  difference, so a new thread setting needs a new checkpoint directory. Values
+  are compared as written: `007` and `7`, or a blank and an unset variable,
+  differ. Because
   `blas_threads_in_use` is compared, a resume is also refused on a host where
   OpenBLAS would use a different count. Before, with the variables unset on both
   hosts, the configurations matched.
@@ -517,7 +520,11 @@ values do not depend on those counts.
   `OMP_NUM_THREADS` is unset, `LOKY_MAX_CPU_COUNT` also limits the sign
   classifier's OpenMP count (see "Without the setting").
 - *The helper's own file* is not in the digest of the tool's code
-  (`builder_code_identity`), but the values it sets are recorded and compared.
+  (`builder_code_identity`), but the values it sets are recorded and compared,
+  except `LOKY_MAX_CPU_COUNT` and `NUMEXPR_MAX_THREADS`. Those two set only
+  thread counts: numexpr's maximum, the QRF pools' size, which no imputed value
+  depends on, and, while `OMP_NUM_THREADS` is unset, the sign classifier's
+  OpenMP count (see above).
 - *Base runs started before this change:* they cannot resume after it. The run
   configuration holds a digest that covers the tool's own file
   (`builder_code_identity`), and the file changed.
@@ -536,7 +543,7 @@ allowlist accepts `MICROCOSM_*` names, and it may set `OMP_NUM_THREADS`,
 `docs/evidence/us-release-reimputation-1191/receipts/build_environment.base_0fb05b67.release_417d23ae.json`).
 Because a value already set is kept, a plan's `MICROCOSM_THREADS` does not
 replace those four. It fills only `VECLIB_MAXIMUM_THREADS`, `NUMEXPR_NUM_THREADS`
-and `LOKY_MAX_CPU_COUNT`. To change the BLAS and OpenMP counts on Modal, a plan
+and `LOKY_MAX_CPU_COUNT`, and `NUMEXPR_MAX_THREADS` above 64. To change the BLAS and OpenMP counts on Modal, a plan
 sets those variables directly, as before; torch follows `MKL_NUM_THREADS` before
 `OMP_NUM_THREADS`, so changing only the latter leaves torch at Modal's value. No
 record shows what Modal sets in the `acs-staging` class. The tools at `4b57d15a2`
@@ -1478,8 +1485,8 @@ from its environment, and Modal sets some of them itself (see "Resources").
 Code that records `blas_threads_in_use` reads that one from the loaded BLAS
 libraries instead. These differences are reported and not refused, although a
 different BLAS or OpenMP count can change output bytes on Linux (see "Thread
-variables"). `blas_threads_in_use` is an empty list for a run where numpy uses
-Accelerate, as on macOS, and is absent from a reference made with code that does
+variables"). `blas_threads_in_use` is an empty list for a run where numpy and scipy use
+Accelerate, as on Apple-silicon Macs, and is absent from a reference made with code that does
 not record it, such as `4b57d15a2`. Only the checkpoint digests compared above
 show that outputs agree. The report says
 `compared_outputs_match`, with `stages_compared` 2 of `stages_total` 24 and

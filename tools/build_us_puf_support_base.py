@@ -29,8 +29,8 @@ if __name__ == "__main__":
     # file. The helper is loaded from this file's folder, which is not on the
     # import path under ``python -m`` or ``python -P``. Stage subprocesses
     # inherit the values, and the run configuration records them, except
-    # LOKY_MAX_CPU_COUNT (``_stage_run_config``). E402 is ignored for this
-    # file in pyproject for this block.
+    # LOKY_MAX_CPU_COUNT and NUMEXPR_MAX_THREADS (``_stage_run_config``). E402
+    # is ignored for this file in pyproject for this block.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from us_build_thread_environment import set_build_thread_environment
 
@@ -1295,7 +1295,8 @@ def _blas_threads_in_use() -> list[list[object]]:
     threadpoolctl reads the counts from the libraries themselves, so this holds
     whatever chose them: a thread variable, ``MICROCOSM_THREADS`` or, with
     neither, the CPUs OpenBLAS found on the host. It does not report Apple's
-    Accelerate, so on macOS the list is empty.
+    Accelerate, so where numpy and scipy use Accelerate, as on Apple-silicon
+    Macs, the list is empty.
     """
 
     return sorted(
