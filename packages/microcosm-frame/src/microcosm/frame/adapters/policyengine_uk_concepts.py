@@ -206,8 +206,8 @@ UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {
         "which graduates become new borrowers is random with respect to "
         "everything the file records beyond their education, age and region, "
         "and the same in every year. The survey year's loans, which the "
-        "student_loans stage writes, do not move (microcosm#1095; for María's "
-        "signature)."
+        "student_loans stage writes, do not move (microcosm#1095; María's "
+        "signature of 19 November 2026, pending review)."
     ),
 }
 
@@ -275,7 +275,7 @@ _UK_LEFT_EDUCATION_ROUTES_AT_DEFAULT = (
     "benefit and Council Tax Reduction young persons that follow its "
     "conditions, are understated for the weeks the terminal date or the "
     "extension would have kept them; Child Tax Credit closed on 5 April 2025 "
-    "(microcosm#1095; for María's signature)."
+    "(microcosm#1095; María's signature of 19 November 2026, pending review)."
 )
 _UK_LHA_PLACEMENTS_AT_DEFAULT = (
     "Four size-criteria and family inputs (policyengine-uk 2.178.7): a child "
@@ -295,7 +295,7 @@ _UK_LHA_PLACEMENTS_AT_DEFAULT = (
     "bedroom, so the Universal Credit housing element and Housing Benefit are "
     "understated for them. adopter_is_foster_parent_or_close_relative "
     "changes nothing while is_placed_for_adoption is False (microcosm#1095; "
-    "for María's signature)."
+    "María's signature of 19 November 2026, pending review)."
 )
 
 
@@ -333,7 +333,7 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "weights moves with how it reweights recent claims; a unit that has "
         "the element only in a later year, such as one moved off "
         "income-related ESA, is assigned at random, as the engine's own draw "
-        "assigns every unit (microcosm#1095; for María's signature)."
+        "assigns every unit (microcosm#1095; María's signature of 19 November 2026, pending review)."
     ),
     "owned_company_capital": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
     "owned_company_holding_value": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
@@ -594,7 +594,7 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "lose PIP is random with respect to everything the file records and "
         "changes with the file's row order, while the share removed follows "
         "the scenario's on average. The baseline does not read it "
-        "(microcosm#1095; for María's signature)."
+        "(microcosm#1095; María's signature of 19 November 2026, pending review)."
     ),
     "housing_benefit_report_is_rate_rebate_only": (
         "Whether a Northern Ireland Housing Benefit report covers only a rate "
@@ -608,8 +608,8 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "person there whose own report is only a rate rebate, the engine reads "
         "the award as still running on the first day of a Universal Credit "
         "award, which can change whether that young person counts as a "
-        "qualifying young person on that day (microcosm#1095; for María's "
-        "signature)."
+        "qualifying young person on that day (microcosm#1095; María's "
+        "signature of 19 November 2026, pending review)."
     ),
 }
 
