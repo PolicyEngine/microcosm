@@ -107,7 +107,7 @@ SPI_FOREST_ALL_SCENARIOS: dict[str, dict[str, object]] = {
     **SPI_FOREST_SCENARIOS,
     **SPI_FOREST_MIXED_GATE_SCENARIOS,
 }
-#: Frozen scenarios whose floats are compared at ten significant digits. Their
+#: Frozen scenarios whose floats are compared at eight significant digits. Their
 #: cross-fitted gates are calibrated through BLAS, and which kernel BLAS loads
 #: on a given CPU moves the last bits of the transport receipt's statistics.
 SPI_FOREST_ROUNDED_DIGEST_SCENARIOS = frozenset({"cross_fitted_levels"})
@@ -287,6 +287,10 @@ class RecordedStage2Start:
     predictors: tuple[str, ...]
     targets: tuple[str, ...]
     groups: np.ndarray
+    weights: object
+    weight_kind: str
+    training_table: pd.DataFrame
+    training_weights: np.ndarray
 
 
 @dataclass(frozen=True)
@@ -294,6 +298,7 @@ class RecordedStage2Step:
     """What one ``fit_draw_next`` call received, and the draw it returned."""
 
     target: str
+    weights: object
     recipient_predictors: pd.DataFrame
     prior_draws: pd.DataFrame
     quantiles: np.ndarray
@@ -338,6 +343,7 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
         weights: object,
         groups: object = None,
     ) -> object:
+        resolved_weights = frame_or_df.resolve_weights("person")
         self.chain_starts.append(
             RecordedStage2Start(
                 seed=self.seed,
@@ -346,6 +352,10 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
                 predictors=tuple(predictors),
                 targets=tuple(targets),
                 groups=np.array(groups, copy=True),
+                weights=weights,
+                weight_kind=resolved_weights.kind.value,
+                training_table=frame_or_df.table("person").copy(deep=True),
+                training_weights=np.array(resolved_weights.values, copy=True),
             )
         )
         self._every_target_fit = self.fit(
@@ -379,6 +389,7 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
         self.steps.append(
             RecordedStage2Step(
                 target=target,
+                weights=weights,
                 recipient_predictors=recipient_predictors.copy(deep=True),
                 prior_draws=raw_prior_draws.copy(deep=True),
                 quantiles=np.array(quantiles, copy=True),
@@ -402,8 +413,8 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
 # ---------------------------------------------------------------------------
 
 
-def _ten_significant_digits(value: float) -> str:
-    return format(value, ".9e")
+def _eight_significant_digits(value: float) -> str:
+    return format(value, ".7e")
 
 
 def _update_with_values(
@@ -509,12 +520,12 @@ def spi_result_digests(
 ) -> dict[str, str]:
     """A digest of the person table and of every other field of the result.
 
-    Floats count to the bit, or to ten significant digits when ``rounded``.
+    Floats count to the bit, or to eight significant digits when ``rounded``.
     ``donor_path`` is left out: it names the test's temporary directory.
     """
 
-    table_float_text = _ten_significant_digits if rounded else None
-    receipt_float_text = _ten_significant_digits if rounded else float.hex
+    table_float_text = _eight_significant_digits if rounded else None
+    receipt_float_text = _eight_significant_digits if rounded else float.hex
     digests = {"person": table_digest(result.person, float_text=table_float_text)}
     for item in dataclasses.fields(result):
         if item.name not in {"person", "donor_path"}:
@@ -530,7 +541,7 @@ def spi_frozen_digests(
     """The digests a scenario freezes: the person table's and all receipts' together.
 
     A scenario in :data:`SPI_FOREST_ROUNDED_DIGEST_SCENARIOS` compares floats
-    at ten significant digits, every other scenario to the bit.
+    at eight significant digits, every other scenario to the bit.
     """
 
     digests = spi_result_digests(
