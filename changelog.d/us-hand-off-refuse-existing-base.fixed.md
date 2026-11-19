@@ -1,0 +1,1 @@
+The 18 October rerun record's Modal base hand-off block refuses a run directory that already has `base-out` or `base-sup`. Its guard joined two `test` commands with `&&`, and `set -e` does not stop a block when the first command of such a list fails, so an existing `base-out` passed the guard and the block went on to copy into it.

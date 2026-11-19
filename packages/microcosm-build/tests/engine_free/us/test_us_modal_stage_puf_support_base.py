@@ -2556,6 +2556,54 @@ def test_the_hand_off_never_overwrites_a_base(tmp_path: Path) -> None:
     assert not (modal_run / "compare-lineage.json").exists()
 
 
+RERUN_RECORD = ROOT / "docs" / "us-route-a-rerun-20261018.md"
+
+
+def _rerun_record_guard() -> str:
+    """What the 18 October record's hand-off block runs before its first
+    tool call, verbatim: the refusal of a run directory that has a base."""
+
+    text = RERUN_RECORD.read_text()
+    opening = "RUN=$RUN_ROOT/run-${C:0:12}\n(\n  set -euo pipefail\n"
+    assert text.count(opening) == 1
+    start = text.index(opening) + len(opening)
+    end = text.index("  python3 tools/modal_us_stage_plan.py verify-receipt", start)
+    guard = text[start:end]
+    assert guard.strip()
+    return guard
+
+
+@pytest.mark.parametrize(
+    ("existing", "reached"),
+    [
+        ((), True),
+        # base-out alone: under `set -e`, `test A && test B` does not stop the
+        # block when the first test fails.
+        (("base-out",), False),
+        (("base-sup",), False),
+        (("base-out", "base-sup"), False),
+    ],
+)
+def test_the_rerun_record_s_hand_off_never_overwrites_a_base(
+    tmp_path: Path, existing: tuple[str, ...], reached: bool
+) -> None:
+    run = tmp_path / "route-a-run"
+    run.mkdir()
+    for name in existing:
+        (run / name).mkdir()
+    script = f"(\n  set -euo pipefail\n{_rerun_record_guard()}  echo REACHED\n)\n"
+    proc = subprocess.run(
+        ["bash", "-c", script],
+        env={**os.environ, "RUN": str(run)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ("REACHED" in proc.stdout) is reached, proc.stderr
+    assert (proc.returncode == 0) is reached
+    assert sorted(path.name for path in run.iterdir()) == sorted(existing)
+
+
 def test_the_runbook_names_every_registered_tool() -> None:
     text = RUNBOOK.read_text()
     intro = text[: text.index("Two files do the work")]
