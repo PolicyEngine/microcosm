@@ -178,14 +178,14 @@ publication and the Hugging Face module's collector submissions alike.
 The minimum is 0.17.0, the newest release on 2026-11-19. 0.17.0 includes
 `parent_build_manifest.json` and `reform_validation.json`, which a release
 publication hands over under the roles `parent_build_manifest` and
-`reform_validation`, in the build's `calibration-diagnostics` submission to
-the collector, so the collector receives them for a build whose calibration
-tree it first builds from that submission. 0.16.0 leaves both out. The
-minimum before it, 0.16.0, from 2026-11-16, added collector provenance on a
-promotion or withdrawal: once the change lands,
-it submits `releases.json` at the commit its receipt reports (for a change
-that writes nothing, the commit that last changed the file), and the
-collector points the country's latest calibration tree at its default
+`reform_validation` when the release has them (only some US releases do), in
+the build's `calibration-diagnostics` submission to the collector, so the
+collector receives them for a build whose calibration tree it first builds
+from that submission. 0.16.0 leaves both out. The minimum before it, 0.16.0,
+from 2026-11-16, added collector provenance on a promotion or withdrawal: once
+the change lands, it submits `releases.json` at the commit its receipt reports
+(for a change that writes nothing, the commit that last changed the file), and
+the collector points the country's latest calibration tree at its default
 release's current build when it has that build's tree. 0.15.0 accepts that
 provenance but drops it, so it would submit no `releases.json`. The minimum
 before that, 0.15.0, from 2026-11-13, added the Hugging Face module's setting
@@ -195,18 +195,17 @@ release publication, which it submits after the release commit, and a
 `skipped` collector receipt with an error code when it refuses its collector
 settings. An emitter before 0.15.0 accepts the setting but drops a
 publication's provenance, so it would submit no release. The minimum before
-that, 0.14.0, added the build machine's readings to each
-heartbeat, the sleeps the machine took, a description of the machine in the
-run's first event, each stage's awake and asleep time at its end, and a
-counter one level above a stage's progress, which the US fiscal refresh's
-post-export scoring sends as the reform pass each scoring batch belongs to
-(the interface's `OuterProgress`, from 0.14.0). 0.13.0 added
-`microcosm-emitter status`, which the US Modal stage runner runs after each
-stage to record how many telemetry events the stage's emitter left
-undelivered; builds require the same release as the Modal image so that it
-is written once. Practically no machine ran the separately installed
-emitter on any of these dates, so refusing 0.11.9 to 0.16.0 cost nothing;
-the minimum before those, 0.11.9, came from the
+that, 0.14.0, added the build machine's readings to each heartbeat, the sleeps
+the machine took, a description of the machine in the run's first event, each
+stage's awake and asleep time at its end, and a counter one level above a
+stage's progress, which the US fiscal refresh's post-export scoring sends as
+the reform pass each scoring batch belongs to (the interface's
+`OuterProgress`, from 0.14.0). 0.13.0 added `microcosm-emitter status`, which
+the US Modal stage runner runs after each stage to record how many telemetry
+events the stage's emitter left undelivered; builds require the same release
+as the Modal image so that it is written once. Practically no machine ran the
+separately installed emitter on any of these dates, so refusing 0.11.9 to
+0.16.0 cost nothing; the minimum before those, 0.11.9, came from the
 collector's hostname, for which 0.10.0 would have been enough. A refused
 emitter does cost the build:
 

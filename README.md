@@ -77,8 +77,9 @@ starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
 start one older than 0.17.0. That release includes
 `parent_build_manifest.json` and `reform_validation.json`, which a release
-publication hands over, in the build's `calibration-diagnostics` submission
-to the collector; 0.16.0 leaves both out. 0.16.0 added collector provenance
+publication hands over when the release has them (only some US releases do),
+in the build's `calibration-diagnostics` submission to the collector; 0.16.0
+leaves both out. 0.16.0 added collector provenance
 on a promotion or withdrawal, so the emitter submits the `releases.json` the
 change wrote once it lands; 0.15.0 accepts that provenance but drops it.
 0.15.0 added the setting that switches the Hugging Face module's collector
@@ -102,8 +103,7 @@ collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
 collector's hostname, which stays the same. 0.13.0, 0.14.0, 0.15.0, 0.16.0
 and 0.17.0 were each the newest release when practically no machine ran the
-emitter yet, so
-requiring them cost nothing (see
+emitter yet, so requiring them cost nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
 upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.17.0'`,
