@@ -243,27 +243,35 @@ def _single_top_level_release(function: ast.FunctionDef, name: str) -> int:
     return function.body.index(released)
 
 
-#: A module-level function or class of the release tool, by name.
-_ToolDefinitions = dict[str, ast.FunctionDef | ast.ClassDef]
+#: A module-level function, class or variable of the release tool, by name,
+#: with the statement that defines it.
+_ToolDefinitions = dict[str, ast.stmt]
 
 
 def _tool_definitions(builder) -> _ToolDefinitions:
+    """The release tool's module-level definitions, with file line numbers."""
     tool = ast.parse(Path(builder.__file__).read_text())
-    return {
-        node.name: node
-        for node in tool.body
-        if isinstance(node, (ast.FunctionDef, ast.ClassDef))
-    }
+    definitions: _ToolDefinitions = {}
+    for node in tool.body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            definitions[node.name] = node
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            # A variable such as a table of functions brings in what it names.
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    definitions[target.id] = node
+    return definitions
 
 
 def _tool_definitions_reached(
     definitions: _ToolDefinitions, names: set[str]
 ) -> set[str]:
-    """``names`` and every tool function or class they name, transitively.
+    """``names`` and every tool definition they name, transitively.
 
     A definition counts whether it is called or used as a value, such as a
     function put in a mapping of consumers and called through it later. A
-    class brings in all its methods.
+    class brings in all its methods, and a variable what its value names.
     """
     reached: set[str] = set()
     frontier = list(names)
@@ -841,14 +849,18 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     # name, reads ``.matrix`` or calls ``.estimates``. The calibrate package's
     # readers run on a dropped matrix in this module's output tests and in the
     # calibrate package's tests.
-    dropped_line = main.body[matrix_dropped].lineno
     definitions = _tool_definitions(builder)
-    later_statements = main.body[matrix_dropped + 1 :]
+    # The same statements as main's, with file line numbers.
+    assert (
+        ast.unparse(definitions["_main"].body[matrix_dropped])
+        == (statements[matrix_dropped])
+    )
+    later_statements = definitions["_main"].body[matrix_dropped + 1 :]
     receivers = {
         call.func.id
-        for call in ast.walk(main)
+        for statement in later_statements
+        for call in ast.walk(statement)
         if isinstance(call, ast.Call)
-        and call.lineno > dropped_line
         and isinstance(call.func, ast.Name)
         and call.func.id in definitions
         # Passed the result itself or any part of it, such as result.problem.
@@ -875,23 +887,42 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
         ),
     )
     assert receivers <= reached
+    trees: dict[str, list[ast.AST]] = {"_main": later_statements}
+    for name in reached - {"_main"}:
+        trees[name] = [definitions[name]]
     later_nodes = [
-        node for statement in later_statements for node in ast.walk(statement)
+        (name, node)
+        for name, roots in trees.items()
+        for root in roots
+        for node in ast.walk(root)
     ]
-    for name in sorted(reached - {"_main"}):
-        later_nodes.extend(ast.walk(definitions[name]))
-    assert [
-        f"{node.lineno}: {ast.unparse(node)}"
-        for node in later_nodes
-        if (isinstance(node, ast.Attribute) and node.attr in {"matrix", "estimates"})
-        or (
-            isinstance(node, ast.Call)
-            and _called_name(node) == "getattr"
-            and len(node.args) >= 2
-            and isinstance(node.args[1], ast.Constant)
-            and node.args[1].value in {"matrix", "estimates"}
+    # The placeholder keeps the matrix's shape and nonzero count.
+    size_reads = {
+        id(node.value)
+        for _, node in later_nodes
+        if isinstance(node, ast.Attribute) and node.attr in {"shape", "nnz"}
+    }
+    assert (
+        sorted(
+            f"{name}, line {node.lineno}: {ast.unparse(node)}"
+            for name, node in later_nodes
+            if (
+                isinstance(node, ast.Attribute)
+                and (
+                    node.attr == "estimates"
+                    or (node.attr == "matrix" and id(node) not in size_reads)
+                )
+            )
+            or (
+                isinstance(node, ast.Call)
+                and _called_name(node) == "getattr"
+                and len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value in {"matrix", "estimates"}
+            )
         )
-    ] == []
+        == []
+    )
 
 
 def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> None:
@@ -906,7 +937,6 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     # the definitions those name. The reform-coverage smoke, the cache's next
     # real reader, runs at certification, in its own process; the build
     # reaches it only through the scoring plan's request-recording run.
-    cleared_line = main.body[check + 1].lineno
     fillers = {
         "assert_release_input_coverage_manifest_current",
         "resolve_probe_parameter_changes",
@@ -917,7 +947,9 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
         "_build_reform",
     }
     definitions = _tool_definitions(builder)
-    later_statements = [node for node in main.body if node.lineno > cleared_line]
+    # The same statements as main's, with file line numbers.
+    assert ast.unparse(definitions["_main"].body[check + 1]) == statements[check + 1]
+    later_statements = definitions["_main"].body[check + 2 :]
     reached = _tool_definitions_reached(
         definitions,
         set().union(
@@ -941,22 +973,30 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
             )
         }
 
-    # Called by name or through a module attribute.
+    # Named by itself or through a module attribute, called or passed on (as
+    # to functools.partial or a shadow-gate lambda).
     assert sorted(
-        (name, _called_name(node))
+        (name, node.id if isinstance(node, ast.Name) else node.attr)
         for name, roots in trees.items()
         for root in roots
         for node in ast.walk(root)
-        if isinstance(node, ast.Call) and _called_name(node) in fillers
+        if (isinstance(node, ast.Name) and node.id in fillers)
+        or (isinstance(node, ast.Attribute) and node.attr in fillers)
     ) == [("_reform_coverage_smoke_consumer", "us_reform_coverage_smoke_gate")]
     # That consumer is reached only as one of the scoring plan's consumers,
     # which the plan runs before export recording requests only, building no
     # reform (test_us_post_export_scoring.py::
-    # test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine). The
-    # function that scores a consumer for real runs at certification.
+    # test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine).
+    # Scoring a consumer for real needs the scorer, which only certification
+    # opens; a build function that names the consumers for another reason,
+    # such as listing their names, passes as long as it opens no scorer.
     assert named_by("_reform_coverage_smoke_consumer") == {"_post_export_consumers"}
-    assert named_by("_post_export_consumers") == {"_record_post_export_scoring_plan"}
-    assert "_score_post_export_consumer" not in reached
+    assert {
+        "_score_post_export_consumer",
+        "_open_post_export_scorer",
+        "_HouseholdBatchedPostExportScorer",
+        "_BatchedPostExportReform",
+    } & reached == set()
 
 
 def test_main_export_statements_leave_only_the_matrix_shape_and_nonzero_count(
