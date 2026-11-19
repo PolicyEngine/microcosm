@@ -11,13 +11,25 @@ fixed seeds once with one fit job and one prediction worker, then again with
 several of either, and require the float64 bytes of every draw to be equal.
 Each run records the thread pool the draw used, so a draw that silently ran
 on one thread fails, and the ``n_jobs`` each forest was configured with.
+
+Forests with a leaf-size cap (``max_samples_leaf``) keep a seeded subsample of
+each larger leaf, taken with Python's global :mod:`random`: for each tree in
+turn, the fit seeds it with the tree's seed and shuffles that tree's leaves.
+Their tests also record that every leaf was subsampled, on the thread that
+called the fit, and show that keeping other samples changes the draw, so equal
+bytes are not vacuous.
 """
 
 from __future__ import annotations
 
+import collections
+import functools
 import os
+import random
+import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 import joblib
 import numpy as np
@@ -27,6 +39,7 @@ import pytest
 from microcosm.fit import QRF, Regime, RegimeGatedQRF
 from microcosm.fit import qrf as qrf_module
 from microcosm.fit.qrf import _fit_n_jobs, _predict_workers
+from microcosm.frame import Frame
 
 PREDICT_WORKERS_ENV = "POPULACE_FIT_PREDICT_WORKERS"
 FIT_JOBS_ENV = "POPULACE_FIT_N_JOBS"
@@ -166,14 +179,19 @@ class _PoolRecorder:
         return RecordingThreadPoolExecutor
 
 
-def _forest_fit_jobs(target_models: dict) -> list[int]:
-    """The ``n_jobs`` of every forest in a fitted model's targets."""
+def _fitted_forests(target_models: dict) -> list:
+    """Every forest of a fitted model's targets, in target order."""
     return [
-        forest.model.n_jobs
+        forest
         for target_model in target_models.values()
         for forest in (target_model.positive, target_model.negative)
         if forest is not None
     ]
+
+
+def _forest_fit_jobs(target_models: dict) -> list[int]:
+    """The ``n_jobs`` of every forest in a fitted model's targets."""
+    return [forest.model.n_jobs for forest in _fitted_forests(target_models)]
 
 
 def _run_under(
@@ -369,6 +387,264 @@ def test_chain_changing_fit_jobs_between_steps_draws_the_same_bytes(
 
     _assert_byte_identical(unchanged_draws, changed_draws)
     assert changed_state.to_dict() == unchanged_state.to_dict()
+
+
+# ----------------------------------------------------------------------------
+# Capped leaves: the seeded leaf subsample ignores thread counts
+# ----------------------------------------------------------------------------
+
+#: The cap of the explicit-cap case. Its two features take six combinations of
+#: values, so each tree's leaves hold about 200 bootstrap rows of mixed target
+#: values, and every leaf is subsampled to 5.
+EXPLICIT_LEAF_CAP = 5
+
+#: Donor rows of the near-discrete case. Its one feature takes two values, so
+#: each tree's leaves hold about 6,000 bootstrap rows, more than the automatic
+#: cap of ``_DISCRETE_Y_LEAF_BOUND`` (4,096) that a near-discrete target gets.
+NEAR_DISCRETE_DONOR_ROWS = 12_000
+
+#: Distinct target values of the near-discrete case.
+NEAR_DISCRETE_VALUE_COUNT = 24
+
+
+@dataclass(frozen=True)
+class _CappedLeafCase:
+    """Donors, recipients and settings for one capped-leaf fit and draw."""
+
+    donor_columns: dict[str, np.ndarray]
+    donor_weights: np.ndarray
+    recipients: pd.DataFrame
+    features: list[str]
+    #: What the case passes to :class:`QRF` (``None`` lets the fit choose).
+    configured_leaf_cap: int | None
+    #: The cap the forest must end up with.
+    expected_leaf_cap: int
+
+
+def _explicit_cap_case(seed: int) -> _CappedLeafCase:
+    """A continuous positive target with ``max_samples_leaf`` set to 5."""
+    rng = np.random.default_rng(seed)
+    three_value_feature = rng.integers(0, 3, DONOR_ROWS).astype(np.float64)
+    two_value_feature = rng.integers(0, 2, DONOR_ROWS).astype(np.float64)
+    value = np.exp(
+        1.0
+        + 0.5 * three_value_feature
+        - 0.3 * two_value_feature
+        + rng.normal(0.0, 0.6, DONOR_ROWS)
+    )
+    recipient_rng = np.random.default_rng(seed + 2)
+    recipients = pd.DataFrame(
+        {
+            "three_value_feature": recipient_rng.integers(0, 3, RECIPIENT_ROWS).astype(
+                np.float64
+            ),
+            "two_value_feature": recipient_rng.integers(0, 2, RECIPIENT_ROWS).astype(
+                np.float64
+            ),
+        },
+        index=pd.RangeIndex(10_000, 10_000 + RECIPIENT_ROWS),
+    )
+    return _CappedLeafCase(
+        donor_columns={
+            "three_value_feature": three_value_feature,
+            "two_value_feature": two_value_feature,
+            "value": value,
+        },
+        donor_weights=np.random.default_rng(seed + 1).uniform(0.5, 4.0, DONOR_ROWS),
+        recipients=recipients,
+        features=["three_value_feature", "two_value_feature"],
+        configured_leaf_cap=EXPLICIT_LEAF_CAP,
+        expected_leaf_cap=EXPLICIT_LEAF_CAP,
+    )
+
+
+def _near_discrete_case(seed: int) -> _CappedLeafCase:
+    """A target with 24 values, which the fit caps at 4,096 per leaf itself.
+
+    The fit applies that cap to a target with 2 to ``_DISCRETE_Y_UNIQUE_MAX``
+    (32) distinct values. With only a few values, keeping other leaf samples
+    moved few draws (5 of 1,001 rows with three values); with 24 it moves 86.
+    """
+    rng = np.random.default_rng(seed)
+    two_value_feature = rng.integers(0, 2, NEAR_DISCRETE_DONOR_ROWS).astype(np.float64)
+    target_values = np.arange(1.0, NEAR_DISCRETE_VALUE_COUNT + 1.0)
+    rising_weights = np.linspace(1.0, 3.0, NEAR_DISCRETE_VALUE_COUNT)
+    value_where_feature_is_zero = rng.choice(
+        target_values, size=NEAR_DISCRETE_DONOR_ROWS
+    )
+    value_where_feature_is_one = rng.choice(
+        target_values,
+        size=NEAR_DISCRETE_DONOR_ROWS,
+        p=rising_weights / rising_weights.sum(),
+    )
+    value = np.where(
+        two_value_feature == 0.0,
+        value_where_feature_is_zero,
+        value_where_feature_is_one,
+    )
+    recipient_feature = np.random.default_rng(seed + 2).integers(0, 2, RECIPIENT_ROWS)
+    recipients = pd.DataFrame(
+        {"two_value_feature": recipient_feature.astype(np.float64)},
+        index=pd.RangeIndex(10_000, 10_000 + RECIPIENT_ROWS),
+    )
+    return _CappedLeafCase(
+        donor_columns={"two_value_feature": two_value_feature, "value": value},
+        donor_weights=np.random.default_rng(seed + 1).uniform(
+            0.5, 4.0, NEAR_DISCRETE_DONOR_ROWS
+        ),
+        recipients=recipients,
+        features=["two_value_feature"],
+        configured_leaf_cap=None,
+        expected_leaf_cap=qrf_module._DISCRETE_Y_LEAF_BOUND,
+    )
+
+
+CAPPED_LEAF_CASES = (
+    pytest.param(_explicit_cap_case, id="explicit_cap"),
+    pytest.param(_near_discrete_case, id="near_discrete_automatic_cap"),
+)
+
+
+def _capped_leaf_fit_and_draw(
+    case: _CappedLeafCase,
+    frame: Frame,
+    *,
+    keep_other_samples: bool = False,
+) -> tuple[dict[str, np.ndarray], list[int]]:
+    """Fit and draw one capped-leaf case, recording the leaf-subsample calls.
+
+    For each tree in turn, the fit seeds the global :mod:`random` once with the
+    tree's seed, then subsamples each leaf longer than the cap by calling
+    :func:`random.shuffle` on the leaf's sample list and keeping the first
+    ``cap`` entries, so each leaf's shuffle continues the random stream the
+    previous one left. The fit runs with both functions wrapped, and the run
+    fails unless:
+
+    - each tree was seeded once with its own seed, and that seed was followed
+      by exactly one shuffle per leaf of that tree before the next seed. So
+      every leaf was subsampled and no tree's shuffles were mixed into another
+      tree's; the order of the trees is not checked, since it changes nothing;
+    - every call ran on the thread that called the fit. Worker threads sharing
+      the global :mod:`random` could interleave the trees' calls, and in these
+      small fixtures a tree's calls usually finish before a thread switch, so
+      the recorded seeds and shuffles alone would rarely show it.
+
+    With ``keep_other_samples`` the shuffle wrapper also reverses each shuffled
+    list, so the fit keeps a different subsample.
+    """
+    # [seed, shuffles made after that seed and before the next one], in call
+    # order. A shuffle before any seed is recorded under the seed ``None``.
+    shuffles_after_each_seed: list[list] = []
+    subsample_threads: set[int] = set()
+    original_seed = random.seed
+    original_shuffle = random.shuffle
+
+    def recording_seed(seed_value, *args, **kwargs) -> None:
+        original_seed(seed_value, *args, **kwargs)
+        shuffles_after_each_seed.append([seed_value, 0])
+        subsample_threads.add(threading.get_ident())
+
+    def recording_shuffle(samples, *args, **kwargs) -> None:
+        original_shuffle(samples, *args, **kwargs)
+        if keep_other_samples:
+            samples[:] = samples[::-1]
+        if not shuffles_after_each_seed:
+            shuffles_after_each_seed.append([None, 0])
+        shuffles_after_each_seed[-1][1] += 1
+        subsample_threads.add(threading.get_ident())
+
+    fitting_thread = threading.get_ident()
+    with pytest.MonkeyPatch.context() as fit_patch:
+        fit_patch.setattr(random, "seed", recording_seed)
+        fit_patch.setattr(random, "shuffle", recording_shuffle)
+        fitted = QRF(
+            n_estimators=N_ESTIMATORS,
+            seed=47,
+            max_samples_leaf=case.configured_leaf_cap,
+        ).fit(frame, case.features, ["value"])
+
+    assert fitted.regimes() == {"value": Regime.POSITIVE_ONLY}
+    forests = _fitted_forests(fitted._target_models)
+    assert {forest.model.max_samples_leaf for forest in forests} == {
+        case.expected_leaf_cap
+    }
+    seed_and_leaf_count_per_tree = collections.Counter(
+        (tree.random_state, tree.tree_.n_leaves)
+        for forest in forests
+        for tree in forest.model.estimators_
+    )
+    recorded_seed_and_shuffle_counts = collections.Counter(
+        (seed_value, shuffle_count)
+        for seed_value, shuffle_count in shuffles_after_each_seed
+    )
+    assert recorded_seed_and_shuffle_counts == seed_and_leaf_count_per_tree, (
+        "the leaf subsample did not seed each tree once and then shuffle each "
+        "of that tree's leaves before seeding another tree"
+    )
+    assert subsample_threads == {fitting_thread}, (
+        "the leaf subsample ran on another thread than the one that called the fit"
+    )
+    draws = fitted.predict(case.recipients)
+    return (
+        {"value": draws["value"].to_numpy()},
+        _forest_fit_jobs(fitted._target_models),
+    )
+
+
+@pytest.mark.parametrize("setting", COMPARED_SETTINGS)
+@pytest.mark.parametrize("build_case", CAPPED_LEAF_CASES)
+def test_capped_leaf_draws_are_byte_identical_across_thread_counts(
+    build_case: Callable[[int], _CappedLeafCase],
+    setting: tuple[str, str],
+    make_person_frame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forests that subsample their leaves draw the same bytes at any count."""
+    case = build_case(seed=15)
+    frame = make_person_frame(case.donor_columns, case.donor_weights)
+
+    def run() -> tuple[dict[str, np.ndarray], list[int]]:
+        return _capped_leaf_fit_and_draw(case, frame)
+
+    serial = _run_under(monkeypatch, SERIAL, run)
+    _assert_byte_identical(serial, _run_under(monkeypatch, setting, run))
+
+
+@pytest.mark.parametrize("build_case", CAPPED_LEAF_CASES)
+def test_capped_leaf_draws_change_when_other_leaf_samples_are_kept(
+    build_case: Callable[[int], _CappedLeafCase],
+    make_person_frame,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The capped-leaf draws depend on which samples each leaf keeps.
+
+    So if a thread count changed the subsample, the byte comparison above would
+    fail rather than pass on draws that ignore the subsample.
+    """
+    case = build_case(seed=15)
+    frame = make_person_frame(case.donor_columns, case.donor_weights)
+
+    def run_keeping(
+        *, other_samples: bool
+    ) -> Callable[[], tuple[dict[str, np.ndarray], list[int]]]:
+        return functools.partial(
+            _capped_leaf_fit_and_draw,
+            case,
+            frame,
+            keep_other_samples=other_samples,
+        )
+
+    seeded_subsample_draws = _run_under(
+        monkeypatch, SERIAL, run_keeping(other_samples=False)
+    )
+    other_subsample_draws = _run_under(
+        monkeypatch, SERIAL, run_keeping(other_samples=True)
+    )
+
+    assert (
+        other_subsample_draws["value"].tobytes()
+        != seeded_subsample_draws["value"].tobytes()
+    )
 
 
 def test_unset_prediction_workers_size_the_draw_pool_from_joblib(
