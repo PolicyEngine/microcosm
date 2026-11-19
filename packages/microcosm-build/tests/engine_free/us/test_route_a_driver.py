@@ -1295,7 +1295,12 @@ def test_the_stop_before_release_sits_after_the_release_config_and_before_its_ru
     stop = source.index(
         'if [ "$STOP_BEFORE_RELEASE" = 1 ] && ! stage_done release; then'
     )
-    run = source.index('run_stage release 0 "$RELEASE_RAM_GIB" 45')
+    # The release stage also accepts a build that failed its release gates
+    # (exit 3, microcosm#1585 item 11), which certification can only ship as
+    # evidence.
+    run = source.index(
+        'run_stage release "0 $BUILT_FAILED_GATES_RC" "$RELEASE_RAM_GIB" 45'
+    )
     assert config < stop < run
 
 
