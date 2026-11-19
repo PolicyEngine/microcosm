@@ -91,7 +91,8 @@ Copy `tools/route_a/route_a.env.example` to `tools/route_a/route_a.env`, set the
 machine paths, then set these:
 
 ```bash
-COMMIT=<the main commit that carries this runbook>
+COMMIT=<the full SHA María names: #1676's head>
+REQUIRE_ON_MAIN=0            # the build comes from #1676's own tree, before it merges
 LOCATION_RULE=block_v1
 LADDER=<path>/us_block_ladder_2020.npz
 LADDER_SHA=528085de8b4a9ba3ba3f25e841158c8f2807e790f00bf084ba5dc4378a7d1217
@@ -111,6 +112,14 @@ RELEASE_EXTRA_ARGS="--maximum-microsim-batch-size 2000 --target-surface national
 
 Why each one differs from the example:
 
+- `COMMIT` and `REQUIRE_ON_MAIN=0`: the release build rule asks a pull request
+  that changes how the dataset is built for a from-scratch build and
+  certification receipt from its own tree before it merges, so this build
+  runs at #1676's head, which is pushed but not yet on `main`. Set the full
+  SHA María names, so the branch moving on cannot change what is built;
+  certification runs at that commit too. A later fix to code means a new
+  build at the new head (step 7), and #1676 then merges with a merge commit,
+  so the built commit lands in `main`'s history.
 - `block_v1` and the F18 ladder: ruled for this build (#1047, #1559). The release
   copies the base's `populace_location_rule` onto the national H5, so the county
   line can use it as a `block_v1` donor.
