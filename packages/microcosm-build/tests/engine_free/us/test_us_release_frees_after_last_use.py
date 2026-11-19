@@ -118,8 +118,9 @@ def _holds_a_freed_object(node: ast.AST) -> bool:
         return any(_holds_a_freed_object(value) for value in node.values)
     if isinstance(node, ast.Lambda):
         # A default argument lives as long as the lambda does, so the lambda
-        # counts as holding it wherever it is kept; one passed straight to a
-        # call is gone when the call returns.
+        # counts as holding it wherever it is kept. One passed straight to a
+        # call that keeps nothing of it, as shadow_gate keeps only the
+        # verdict, is freed when the call returns.
         return any(
             default is not None and _holds_a_freed_object(default)
             for default in (*node.args.defaults, *node.args.kw_defaults)
@@ -242,13 +243,27 @@ def _single_top_level_release(function: ast.FunctionDef, name: str) -> int:
     return function.body.index(released)
 
 
-def _tool_functions_reached(
-    functions: dict[str, ast.FunctionDef], names: set[str]
-) -> set[str]:
-    """``names`` and every tool function they name, transitively.
+#: A module-level function or class of the release tool, by name.
+_ToolDefinitions = dict[str, ast.FunctionDef | ast.ClassDef]
 
-    A function counts whether it is called or used as a value, such as one put
-    in a mapping of consumers and called through it later.
+
+def _tool_definitions(builder) -> _ToolDefinitions:
+    tool = ast.parse(Path(builder.__file__).read_text())
+    return {
+        node.name: node
+        for node in tool.body
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef))
+    }
+
+
+def _tool_definitions_reached(
+    definitions: _ToolDefinitions, names: set[str]
+) -> set[str]:
+    """``names`` and every tool function or class they name, transitively.
+
+    A definition counts whether it is called or used as a value, such as a
+    function put in a mapping of consumers and called through it later. A
+    class brings in all its methods.
     """
     reached: set[str] = set()
     frontier = list(names)
@@ -257,19 +272,17 @@ def _tool_functions_reached(
         if name in reached:
             continue
         reached.add(name)
-        frontier.extend(_tool_functions_named(functions[name], functions))
+        frontier.extend(_tool_definitions_named(definitions[name], definitions))
     return reached
 
 
-def _tool_functions_named(
-    tree: ast.AST, functions: dict[str, ast.FunctionDef]
-) -> set[str]:
+def _tool_definitions_named(tree: ast.AST, definitions: _ToolDefinitions) -> set[str]:
     return {
         node.id
         for node in ast.walk(tree)
         if isinstance(node, ast.Name)
         and isinstance(node.ctx, ast.Load)
-        and node.id in functions
+        and node.id in definitions
     }
 
 
@@ -323,11 +336,21 @@ def test_the_alias_check_sees_each_way_of_keeping_an_object() -> None:
         "kept = frozenset({release_engine})",
         "kept: object = base_frame",
         "if (kept := base_frame) is not None:\n    pass",
+        "kept = {'frame': base_frame}",
+        "frames.add(base_frame)",
+        "frames.extend([base_frame])",
+        "frames.insert(0, base_frame)",
+        "cache.setdefault('frame', base_frame)",
+        "cache.update(frame=base_frame)",
+        "kept = lambda *, frame=base_frame: frame",
+        "kept = ladder_outcome.result.refit",
+        "kept = result.selection",
     )
     harmless = (
         "total = base_frame.n('household')",
         "loss = result.final_loss",
-        # A lambda passed straight to a call is freed when the call returns.
+        # shadow_gate keeps only the verdict, so its lambda is freed when it
+        # returns.
         "shadow_gate('x', lambda frame=base_frame: gate(frame), context)",
         "kept = copy.copy(settings)",
         "setattr(holder, 'frame', other_frame)",
@@ -702,7 +725,7 @@ def test_the_shadow_records_an_export_check_error(
     failure line; on an otherwise-clean run it propagates. The shadow records
     a check that raised once, as the same verdict as today's, and a reference
     that did not load as a check that did not run only when the build goes
-    on; a build that stops leaves the entry unreached."""
+    on: a build that stops there leaves the entry unreached."""
     error_type, error = _EXPORT_CHECK_ERRORS[failing]
     frames = {"export": _LargeObject(), "base": _LargeObject()}
     stand_in = _ReferenceCheckStandIn(
@@ -814,22 +837,20 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     assert max(calibration_calls) < main.body[matrix_dropped].lineno
     # After the drop, no tool code that can reach the calibration result reads
     # a matrix's entries: neither _main's later statements nor any tool
-    # function they pass result or ladder_outcome to, followed through the
-    # tool's own calls, reads ``.matrix`` or calls ``.estimates``. The
-    # calibrate package's readers run on a dropped matrix in this module's
-    # output tests and in the calibrate package's tests.
+    # function or class they name, followed through the definitions those
+    # name, reads ``.matrix`` or calls ``.estimates``. The calibrate package's
+    # readers run on a dropped matrix in this module's output tests and in the
+    # calibrate package's tests.
     dropped_line = main.body[matrix_dropped].lineno
-    tool = ast.parse(Path(builder.__file__).read_text())
-    functions = {
-        node.name: node for node in tool.body if isinstance(node, ast.FunctionDef)
-    }
+    definitions = _tool_definitions(builder)
+    later_statements = main.body[matrix_dropped + 1 :]
     receivers = {
         call.func.id
         for call in ast.walk(main)
         if isinstance(call, ast.Call)
         and call.lineno > dropped_line
         and isinstance(call.func, ast.Name)
-        and call.func.id in functions
+        and call.func.id in definitions
         # Passed the result itself or any part of it, such as result.problem.
         and any(
             isinstance(name, ast.Name) and name.id in {"result", "ladder_outcome"}
@@ -844,12 +865,21 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
         "_us_build_record",
         "_assert_export_matches_calibration",
     } <= receivers
-    reached = _tool_functions_reached(functions, receivers)
+    reached = _tool_definitions_reached(
+        definitions,
+        set().union(
+            *(
+                _tool_definitions_named(statement, definitions)
+                for statement in later_statements
+            )
+        ),
+    )
+    assert receivers <= reached
     later_nodes = [
-        node for node in ast.walk(main) if getattr(node, "lineno", 0) > dropped_line
+        node for statement in later_statements for node in ast.walk(statement)
     ]
     for name in sorted(reached - {"_main"}):
-        later_nodes.extend(ast.walk(functions[name]))
+        later_nodes.extend(ast.walk(definitions[name]))
     assert [
         f"{node.lineno}: {ast.unparse(node)}"
         for node in later_nodes
@@ -872,9 +902,10 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     assert statements[check + 1] == "clear_installed_list_parameter_baseline_cache()"
     assert statements.count("clear_installed_list_parameter_baseline_cache()") == 1
     # Nothing in the build fills the cache again: neither _main's later
-    # statements nor the tool functions they call, followed through the
-    # tool's own calls. The reform-coverage smoke, the next reader, runs at
-    # certification, in its own process.
+    # statements nor any tool function or class they name, followed through
+    # the definitions those name. The reform-coverage smoke, the cache's next
+    # real reader, runs at certification, in its own process; the build
+    # reaches it only through the scoring plan's request-recording run.
     cleared_line = main.body[check + 1].lineno
     fillers = {
         "assert_release_input_coverage_manifest_current",
@@ -885,47 +916,47 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
         "us_reform_coverage_smoke_gate",
         "_build_reform",
     }
-    tool = ast.parse(Path(builder.__file__).read_text())
-    functions = {
-        node.name: node for node in tool.body if isinstance(node, ast.FunctionDef)
-    }
+    definitions = _tool_definitions(builder)
     later_statements = [node for node in main.body if node.lineno > cleared_line]
-    reached = _tool_functions_reached(
-        functions,
+    reached = _tool_definitions_reached(
+        definitions,
         set().union(
             *(
-                _tool_functions_named(statement, functions)
+                _tool_definitions_named(statement, definitions)
                 for statement in later_statements
             )
         ),
     )
-    calls = [
-        ("_main", call)
-        for statement in later_statements
-        for call in ast.walk(statement)
-        if isinstance(call, ast.Call)
-    ]
-    for name in sorted(reached - {"_main"}):
-        calls.extend(
-            (name, call)
-            for call in ast.walk(functions[name])
-            if isinstance(call, ast.Call)
-        )
-    # Called by name or through a module attribute. The one call expected is
-    # the reform-coverage smoke as the post-export scoring plan runs it before
-    # export, recording requests only, which builds no reform
-    # (test_us_post_export_scoring.py::
-    # test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine).
-    assert [
-        (function, ast.unparse(call))
-        for function, call in calls
-        if _called_name(call) in fillers
-    ] == [
-        (
-            "_reform_coverage_smoke_consumer",
-            "us_reform_coverage_smoke_gate(simulate=simulate, period=PERIOD)",
-        )
-    ]
+    trees: dict[str, list[ast.AST]] = {"_main": later_statements}
+    for name in reached - {"_main"}:
+        trees[name] = [definitions[name]]
+
+    def named_by(target: str) -> set[str]:
+        """The reached code that names ``target``."""
+        return {
+            name
+            for name, roots in trees.items()
+            if any(
+                target in _tool_definitions_named(root, definitions) for root in roots
+            )
+        }
+
+    # Called by name or through a module attribute.
+    assert sorted(
+        (name, _called_name(node))
+        for name, roots in trees.items()
+        for root in roots
+        for node in ast.walk(root)
+        if isinstance(node, ast.Call) and _called_name(node) in fillers
+    ) == [("_reform_coverage_smoke_consumer", "us_reform_coverage_smoke_gate")]
+    # That consumer is reached only as one of the scoring plan's consumers,
+    # which the plan runs before export recording requests only, building no
+    # reform (test_us_post_export_scoring.py::
+    # test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine). The
+    # function that scores a consumer for real runs at certification.
+    assert named_by("_reform_coverage_smoke_consumer") == {"_post_export_consumers"}
+    assert named_by("_post_export_consumers") == {"_record_post_export_scoring_plan"}
+    assert "_score_post_export_consumer" not in reached
 
 
 def test_main_export_statements_leave_only_the_matrix_shape_and_nonzero_count(
