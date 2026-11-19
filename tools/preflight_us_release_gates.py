@@ -450,6 +450,20 @@ def main(argv: list[str] | None = None) -> int:
     # fails closed rather than skipping a check nobody named.
     parser = _parser(selection_source_required=_NEW_LINEAGE_FLAG not in arguments)
     args = parser.parse_args(arguments)
+    if args.export_input_mass_reference_h5 is not None:
+        # A failed build's H5 is no reference a gate judges against, here as
+        # in the release tool (microcosm#1585 item 11). The preflight loads
+        # the release tool for this check's register anyway.
+        import build_us_fiscal_refresh_release as release_tool
+
+        failed = release_tool._failed_build_holding(args.export_input_mass_reference_h5)
+        if failed is not None:
+            parser.error(
+                "--export-input-mass-reference-h5 "
+                f"{args.export_input_mass_reference_h5} belongs to {failed}. A "
+                "failed build is never the reference a gate judges a build "
+                "against."
+            )
     if args.new_lineage and args.selection_source_manifest is not None:
         parser.error(
             f"argument {_NEW_LINEAGE_FLAG}: not allowed with argument "

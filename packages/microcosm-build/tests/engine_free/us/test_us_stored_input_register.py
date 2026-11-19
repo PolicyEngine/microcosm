@@ -473,12 +473,13 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
         ),
         "post-write abort",
     )
-    # A green build aborts on the written file's premise; a build whose
-    # release gates failed records it with them instead, so its record is
-    # still written and the refusal names it (microcosm#1585 item 11, PR 4a).
+    # Green build or not, the written file's premise failure is recorded with
+    # the release-gate failures, so the record is still written, marks the
+    # H5 failed and the refusal names it (microcosm#1585 item 11, PR 4a; review
+    # of #1672). It is listed apart as well, since no tier certifies it.
     assert not body[abort].orelse
     assert [ast.unparse(statement) for statement in body[abort].body] == [
-        f"if build_refusal is None:\n    raise RuntimeError({premise_name})",
+        f"artifact_integrity_failures.append({premise_name})",
         f"terminal_gate_failures.append({premise_name})",
     ]
     scorer = position(
