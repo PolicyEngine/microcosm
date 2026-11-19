@@ -243,9 +243,9 @@ def _single_top_level_release(function: ast.FunctionDef, name: str) -> int:
     return function.body.index(released)
 
 
-#: A module-level function, class or variable of the release tool, by name,
-#: with the statement that defines it.
-_ToolDefinitions = dict[str, ast.stmt]
+#: The release tool's module-level functions, classes and variables, by name,
+#: each with every statement that defines or rebinds it, in source order.
+_ToolDefinitions = dict[str, list[ast.stmt]]
 
 
 def _tool_definitions(builder) -> _ToolDefinitions:
@@ -254,14 +254,22 @@ def _tool_definitions(builder) -> _ToolDefinitions:
     definitions: _ToolDefinitions = {}
     for node in tool.body:
         if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            definitions[node.name] = node
+            definitions.setdefault(node.name, []).append(node)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             # A variable such as a table of functions brings in what it names.
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             for target in targets:
                 if isinstance(target, ast.Name):
-                    definitions[target.id] = node
+                    definitions.setdefault(target.id, []).append(node)
     return definitions
+
+
+def _tool_main(definitions: _ToolDefinitions) -> ast.FunctionDef:
+    """``_main`` as the file defines it, with file line numbers."""
+    (main,) = [
+        node for node in definitions["_main"] if isinstance(node, ast.FunctionDef)
+    ]
+    return main
 
 
 def _tool_definitions_reached(
@@ -272,6 +280,8 @@ def _tool_definitions_reached(
     A definition counts whether it is called or used as a value, such as a
     function put in a mapping of consumers and called through it later. A
     class brings in all its methods, and a variable what its value names.
+    A name used only in a type annotation is not followed: an annotation
+    runs nothing.
     """
     reached: set[str] = set()
     frontier = list(names)
@@ -280,14 +290,28 @@ def _tool_definitions_reached(
         if name in reached:
             continue
         reached.add(name)
-        frontier.extend(_tool_definitions_named(definitions[name], definitions))
+        for statement in definitions[name]:
+            frontier.extend(_tool_definitions_named(statement, definitions))
     return reached
+
+
+def _walk_without_annotations(tree: ast.AST):
+    """``ast.walk``, skipping argument, return and variable annotations."""
+    pending = [tree]
+    while pending:
+        node = pending.pop()
+        yield node
+        for field, value in ast.iter_fields(node):
+            if field in {"annotation", "returns"}:
+                continue
+            children = value if isinstance(value, list) else [value]
+            pending.extend(child for child in children if isinstance(child, ast.AST))
 
 
 def _tool_definitions_named(tree: ast.AST, definitions: _ToolDefinitions) -> set[str]:
     return {
         node.id
-        for node in ast.walk(tree)
+        for node in _walk_without_annotations(tree)
         if isinstance(node, ast.Name)
         and isinstance(node.ctx, ast.Load)
         and node.id in definitions
@@ -852,10 +876,10 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     definitions = _tool_definitions(builder)
     # The same statements as main's, with file line numbers.
     assert (
-        ast.unparse(definitions["_main"].body[matrix_dropped])
+        ast.unparse(_tool_main(definitions).body[matrix_dropped])
         == (statements[matrix_dropped])
     )
-    later_statements = definitions["_main"].body[matrix_dropped + 1 :]
+    later_statements = _tool_main(definitions).body[matrix_dropped + 1 :]
     receivers = {
         call.func.id
         for statement in later_statements
@@ -889,7 +913,7 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     assert receivers <= reached
     trees: dict[str, list[ast.AST]] = {"_main": later_statements}
     for name in reached - {"_main"}:
-        trees[name] = [definitions[name]]
+        trees[name] = list(definitions[name])
     later_nodes = [
         (name, node)
         for name, roots in trees.items()
@@ -948,8 +972,9 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     }
     definitions = _tool_definitions(builder)
     # The same statements as main's, with file line numbers.
-    assert ast.unparse(definitions["_main"].body[check + 1]) == statements[check + 1]
-    later_statements = definitions["_main"].body[check + 2 :]
+    main_in_file = _tool_main(definitions)
+    assert ast.unparse(main_in_file.body[check + 1]) == statements[check + 1]
+    later_statements = main_in_file.body[check + 2 :]
     reached = _tool_definitions_reached(
         definitions,
         set().union(
@@ -961,7 +986,7 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     )
     trees: dict[str, list[ast.AST]] = {"_main": later_statements}
     for name in reached - {"_main"}:
-        trees[name] = [definitions[name]]
+        trees[name] = list(definitions[name])
 
     def named_by(target: str) -> set[str]:
         """The reached code that names ``target``."""
@@ -987,16 +1012,20 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     # which the plan runs before export recording requests only, building no
     # reform (test_us_post_export_scoring.py::
     # test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine).
-    # Scoring a consumer for real needs the scorer, which only certification
-    # opens; a build function that names the consumers for another reason,
-    # such as listing their names, passes as long as it opens no scorer.
+    # The consumers run for real only at certification. A new build function
+    # that names _post_export_consumers fails here until it is read: if it
+    # only lists the consumers (their names, say) and calls none, add it to
+    # the set below.
     assert named_by("_reform_coverage_smoke_consumer") == {"_post_export_consumers"}
-    assert {
+    assert named_by("_post_export_consumers") == {"_record_post_export_scoring_plan"}
+    real_scorers = {
         "_score_post_export_consumer",
         "_open_post_export_scorer",
         "_HouseholdBatchedPostExportScorer",
         "_BatchedPostExportReform",
-    } & reached == set()
+    }
+    assert real_scorers <= definitions.keys()
+    assert real_scorers & reached == set()
 
 
 def test_main_export_statements_leave_only_the_matrix_shape_and_nonzero_count(
