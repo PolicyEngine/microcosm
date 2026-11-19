@@ -479,7 +479,9 @@ A US national build stops before its post-export checks; certify it with
 has no tier: certification chooses it, and `--evidence-release` with an owner
 for every failure certifies a build whose release gates failed. It may run at
 a later commit than the build's only when that commit changes nothing but
-tests, docs, changelog fragments and the standing evidence owners register
+tests and their helpers (the root `conftest.py` included), docs (`docs/`,
+`LICENSE`, and Markdown or reStructuredText outside the packages' sources),
+changelog fragments and the standing evidence owners register
 (`us_runtime/data/evidence_failure_owners.json`). To check
 the post-export stages on a written export without certifying it,
 subsample it and probe it as

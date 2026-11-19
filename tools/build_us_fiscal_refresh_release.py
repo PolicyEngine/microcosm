@@ -2273,6 +2273,19 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                 f"{flag} {path} belongs to {failed}. A failed build is never "
                 "the reference a gate judges this build against."
             )
+    # Without an export input-mass reference, the export input-mass gate
+    # judges the export against the base frame (_export_input_mass_gate), so
+    # a failed build's H5 starts a build only beside one (review of #1681).
+    if args.base_h5 is not None and args.export_input_mass_reference_h5 is None:
+        failed = _failed_build_holding(args.base_h5)
+        if failed is not None:
+            parser.error(
+                f"--base-h5 {args.base_h5} belongs to {failed}. Without "
+                "--export-input-mass-reference-h5 the export input-mass gate "
+                "judges this build against its base, and a failed build is "
+                "never the reference a gate judges a build against: pass the "
+                "reference too."
+            )
     return args
 
 
@@ -2792,11 +2805,93 @@ US_FAILED_BUILD_WEIGHT_EVIDENCE = (
 #: As a starting point (--base-h5, --selection-source-h5,
 #: --warm-start-calibration-npz) they are allowed: they can cut a rerun's
 #: time while its data is fixed, and the build's own gates judge its result.
+#: A failed build's H5 starts a build as --base-h5 only beside an
+#: --export-input-mass-reference-h5, since without one the export input-mass
+#: gate judges the export against its base (review of #1681).
 _REFERENCE_OPTIONS = (
     ("input_mass_reference_h5", "--input-mass-reference-h5"),
     ("export_input_mass_reference_h5", "--export-input-mass-reference-h5"),
     ("incumbent_diagnostics", "--incumbent-diagnostics"),
 )
+
+#: Written in a build's --out just before its H5, and removed once its
+#: record is written. A build that stopped between the two, at a full disk
+#: during the calibration NPZ write or the base copy for example, leaves an
+#: H5 no record pins, and this file marks it as no reference
+#: (:func:`_failed_build_holding`, review of #1681).
+US_BUILD_INCOMPLETE_FILENAME = "build_incomplete.json"
+US_BUILD_INCOMPLETE_KIND = "microcosm_us_national_build_incomplete"
+
+#: Where certification adds the gate failures it finds (the reform-coverage
+#: smoke, source coverage, a stale count-calibrated take-up column), beside
+#: the build's record, at either tier. A build that passed its own release
+#: gates and then failed certification's is no reference either
+#: (:func:`_failed_build_holding`, review of #1681).
+US_CERTIFICATION_FAILURES_FILENAME = "certification_failures.json"
+US_CERTIFICATION_FAILURES_KIND = "microcosm_us_certification_failures"
+
+
+def _recorded_certification_failures(release_root: Path) -> list[str] | None:
+    """The gate failures certifications of the build in ``release_root`` found.
+
+    None when no certification recorded any. A register that does not read
+    counts as one failure, as a record that does not read counts its build
+    as failed.
+    """
+
+    path = Path(release_root) / US_CERTIFICATION_FAILURES_FILENAME
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        attempts = payload["attempts"]
+        failures = [
+            str(failure) for attempt in attempts for failure in attempt["failures"]
+        ]
+    except (OSError, ValueError, KeyError, TypeError):
+        return [f"{path} does not read"]
+    return failures
+
+
+def _mark_build_incomplete(release_root: Path, *, build: str) -> Path:
+    """Write :data:`US_BUILD_INCOMPLETE_FILENAME` in the build's --out.
+
+    The build writes it just before its H5 and removes it once its record is
+    written, so an H5 no record pins is never taken for a finished build's.
+    """
+
+    path = Path(release_root) / US_BUILD_INCOMPLETE_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staged = path.with_name(f".{path.name}.tmp")
+    staged.write_text(
+        json.dumps(
+            {
+                "kind": US_BUILD_INCOMPLETE_KIND,
+                "build": build,
+                "writing_since": datetime.now(UTC).isoformat(),
+                "note": (
+                    "The build writes this before its H5 and removes it once "
+                    f"its {US_BUILD_RECORD_FILENAME} is written. Left here, the "
+                    "build stopped in between: its H5 is no build's, and no "
+                    "gate takes it as a reference."
+                ),
+            },
+            indent=1,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    staged.replace(path)
+    return path
+
+
+def _build_certified_at_the_certified_tier(release_root: Path) -> bool:
+    """Whether a certification finished the build into the national release."""
+
+    manifest = _finished_release_manifest(
+        _certification_release_dir(release_root, evidence_release=False)
+    )
+    return manifest is not None and manifest.get("tier") != "evidence"
 
 
 def _failed_build_holding(path: Path) -> str | None:
@@ -2806,24 +2901,34 @@ def _failed_build_holding(path: Path) -> str | None:
     weights and its record, so it can be evaluated (microcosm#1585 item 11,
     PR 4a), and its files may start a later build. No gate judges against
     it: a later build refuses its files as an input-mass reference or as the
-    incumbent diagnostics (:data:`_REFERENCE_OPTIONS`), the release-gate
+    incumbent diagnostics (:data:`_REFERENCE_OPTIONS`), and its H5 as its
+    --base-h5 without an export input-mass reference, the release-gate
     preflight refuses them as its export input-mass reference, and the
     post-export probe refuses its directories as the reference. A path
     belongs to the build whose record sits in the nearest directory above
     it. That build failed if its record carries release-gate failures
-    (:func:`_build_failed`), or if its own directory holds the #568 weight
-    evidence, unless an evidence-tier certification has made it an evidence
-    release. A record that does not read cannot be certified, so its build
-    counts as failed, as the --out refusal counts it
-    (:func:`_refuse_overwriting_a_build_awaiting_certification`). Like the
-    record's digest, this stops a mistake, not an edit, until certification
-    signs (PR 4b).
+    (:func:`_build_failed`), if a certification of it found gates failing
+    (:data:`US_CERTIFICATION_FAILURES_FILENAME`) and none has certified it,
+    or if its own directory holds the #568 weight evidence, unless an
+    evidence-tier certification has made it an evidence release. A record
+    that does not read cannot be certified, so its build counts as failed,
+    as the --out refusal counts it
+    (:func:`_refuse_overwriting_a_build_awaiting_certification`), and so
+    does a build that wrote its H5 and stopped before its record
+    (:data:`US_BUILD_INCOMPLETE_FILENAME`). Like the record's digest, this
+    stops a mistake, not an edit, until certification signs (PR 4b).
     """
 
     target = Path(path).resolve()
     for release_root in (target, *target.parents):
         record_path = release_root / US_BUILD_RECORD_FILENAME
         if not record_path.is_file():
+            incomplete = release_root / US_BUILD_INCOMPLETE_FILENAME
+            if incomplete.is_file():
+                return (
+                    f"the build in {release_root}, which stopped before writing "
+                    f"its record ({incomplete})"
+                )
             continue
         try:
             payload = json.loads(record_path.read_text(encoding="utf-8"))
@@ -2839,6 +2944,15 @@ def _failed_build_holding(path: Path) -> str | None:
             return (
                 f"{build}, which failed {len(failures)} release gate(s) when it "
                 "was built"
+            )
+        certification_failures = _recorded_certification_failures(release_root)
+        if certification_failures is not None and not (
+            _build_certified_at_the_certified_tier(release_root)
+        ):
+            return (
+                f"{build}, which failed {len(certification_failures)} gate(s) "
+                "of its certification "
+                f"({release_root / US_CERTIFICATION_FAILURES_FILENAME})"
             )
         try:
             layout = payload["layout"]
@@ -12439,7 +12553,9 @@ def _read_standing_evidence_failure_owners(text: str) -> tuple[tuple[str, str], 
         # A register-only commit can certify (microcosm#1585 item 11), so a
         # standing pattern must name one gate's failure lines, as its prefix
         # "<gate words> failed:" does; a short pattern would own every
-        # ownable failure (review of #1681).
+        # ownable failure (review of #1681). It matches only at the start
+        # of a failure line (_evidence_owner), so a pattern that ends a
+        # longer prefix, such as "input signal failed:", owns nothing.
         if isinstance(pattern, str) and pattern.strip():
             gate_words = pattern.removesuffix(" failed:").split()
             names_a_gate = pattern.endswith(" failed:") and len(gate_words) >= 2
@@ -12504,10 +12620,26 @@ def _evidence_owner(
     failure: str,
     owner_patterns: Sequence[tuple[str, str]],
 ) -> str | None:
-    """The owner of one recorded failure line: the first pattern it contains."""
+    """The owner of one recorded failure line: the first pattern it matches.
 
+    A per-run pattern matches anywhere in the line. A pattern the standing
+    register holds names one gate's failure prefix, and a gate's failure
+    lines start with it, so it matches only there: anywhere in the line,
+    ``input signal failed:`` would own every gate whose prefix ends in those
+    words (review of #1681).
+    """
+
+    standing = {pattern for pattern, _owner in US_EVIDENCE_FAILURE_OWNERS}
     return next(
-        (owner for pattern, owner in owner_patterns if pattern in failure),
+        (
+            owner
+            for pattern, owner in owner_patterns
+            if (
+                failure.startswith(pattern)
+                if pattern in standing
+                else pattern in failure
+            )
+        ),
         None,
     )
 
@@ -12518,9 +12650,11 @@ def _evidence_known_failures(
 ) -> list[dict[str, str]]:
     """Recorded gate failures -> owned known_failures entries, verbatim.
 
-    Every failure string must match an owner pattern (substring, first match
-    wins); an unowned failure refuses the evidence export — the tier ships
-    failures only when somewhere is accountable for fixing them.
+    Every failure string must match an owner pattern (a per-run pattern
+    anywhere in it, a standing one at its start; first match wins,
+    :func:`_evidence_owner`); an unowned failure refuses the evidence
+    export — the tier ships failures only when somewhere is accountable for
+    fixing them.
     """
     entries: list[dict[str, str]] = []
     unowned: list[str] = []
@@ -19316,6 +19450,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # are then a certified build's, never to be overwritten (review of #1681).
     _refuse_reusing_a_certified_build(release_root)
     dataset_path = artifact_root / dataset_filename
+    # Until the record below pins the H5, this marks it as no build's
+    # reference: a build that stops in between leaves both (review of #1681).
+    _mark_build_incomplete(release_root, build=release_id)
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
     # the batched pre-export raise so a gate-failed run never produces it.
@@ -19469,6 +19606,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             },
         ),
     )
+    # The record pins the H5 now, so the build is complete.
+    (release_root / US_BUILD_INCOMPLETE_FILENAME).unlink(missing_ok=True)
     if telemetry is not None:
         telemetry.attach_artifact("build_record", build_record_path)
         if build_refusal is None:
@@ -19483,6 +19622,55 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if build_refusal is not None:
         raise build_refusal
+
+
+def _record_certification_failures(
+    record: _USBuildRecord,
+    certification: _Certification,
+    failures: Sequence[str],
+) -> Path:
+    """Add the gate failures one certification found to the build's register.
+
+    :data:`US_CERTIFICATION_FAILURES_FILENAME` sits beside the build record,
+    which never changes once written, and gains one attempt per
+    certification that finds gates failing, at either tier. Written before
+    the certified tier refuses, or the evidence tier checks owners, so the
+    build is no reference while no certification has shipped it
+    (:func:`_failed_build_holding`, review of #1681).
+    """
+
+    path = Path(record.release_root) / US_CERTIFICATION_FAILURES_FILENAME
+    attempts: list[object] = []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict) and isinstance(payload.get("attempts"), list):
+            attempts = list(payload["attempts"])
+    except (OSError, ValueError):
+        pass
+    attempts.append(
+        {
+            "tier": "evidence" if certification.evidence_release else "certified",
+            "commit": certification.commit,
+            "recorded_at": datetime.now(UTC).isoformat(),
+            "failures": [str(failure) for failure in failures],
+        }
+    )
+    staged = path.with_name(f".{path.name}.tmp")
+    staged.write_text(
+        json.dumps(
+            {
+                "kind": US_CERTIFICATION_FAILURES_KIND,
+                "schema_version": 1,
+                "build": record.build,
+                "attempts": attempts,
+            },
+            indent=1,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    staged.replace(path)
+    return path
 
 
 def _certify_us_build(
@@ -19645,6 +19833,9 @@ def _certify_us_build(
                 f"Reform coverage smoke failed: {failure}"
                 for failure in reform_coverage_smoke_gate.failures
             ]
+            # At either tier, so the build is no reference unless a
+            # certification ships it (review of #1681).
+            _record_certification_failures(record, certification, smoke_failures)
             if not args.evidence_release:
                 raise RuntimeError("Release gates failed: " + "; ".join(smoke_failures))
             # Evidence tier: the smoke verdict joins the recorded terminal
@@ -19788,27 +19979,43 @@ def _certify_us_build(
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
-    if args.evidence_release:
-        # The certified path surfaces a failed source-coverage gate at publish
-        # (the contract requires gate.passed); the evidence contract relaxes
-        # that verdict but BINDS gate.failures into known_failures — so an
-        # evidence build must record them here, owner-checked immediately, or
-        # its manifest would be unpublishable by construction.
-        coverage_gate = coverage.get("gate") or {}
-        coverage_gate_failures = [
-            f"Source coverage failed: {failure}"
-            for failure in (coverage_gate.get("failures") or ())
-        ]
-        if coverage_gate_failures:
-            terminal_gate_failures.extend(coverage_gate_failures)
-            _evidence_known_failures(
-                terminal_gate_failures, evidence_failure_owner_patterns
-            )
     if telemetry is not None:
         telemetry.attach_artifact(
             "us_source_coverage",
             release_dir / "us_source_coverage.json",
         )
+    # The publisher's certified contract requires gate.passed, so the
+    # certified tier refuses a failed gate here, as it refuses a failed
+    # smoke, before either manifest is written: manifests the contract
+    # refuses later would leave the build certified, unpublishable and unable
+    # to change tier (review of #1681). The evidence contract relaxes that
+    # verdict but binds gate.failures into known_failures, so the evidence
+    # tier records them, owner-checked immediately, or its manifest would be
+    # unpublishable by construction.
+    coverage_gate = coverage.get("gate") or {}
+    coverage_gate_failures = [
+        f"Source coverage failed: {failure}"
+        for failure in (coverage_gate.get("failures") or ())
+    ]
+    if coverage_gate_failures:
+        if telemetry is not None:
+            telemetry.stage(
+                "source_coverage",
+                status="failed",
+                message="Source coverage gate failed.",
+                failures=coverage_gate_failures,
+                force_upload=True,
+            )
+        _record_certification_failures(record, certification, coverage_gate_failures)
+        if not args.evidence_release:
+            raise RuntimeError(
+                "Release gates failed: " + "; ".join(coverage_gate_failures)
+            )
+        terminal_gate_failures.extend(coverage_gate_failures)
+        _evidence_known_failures(
+            terminal_gate_failures, evidence_failure_owner_patterns
+        )
+    if telemetry is not None:
         telemetry.stage(
             "take_up_participation",
             message="Writing take-up participation diagnostics.",
@@ -19844,6 +20051,9 @@ def _certify_us_build(
             "count-calibrated take-up column(s) "
             f"{stale_count_calibrated} ship at the engine default on the "
             "export frame despite the stage having run."
+        )
+        _record_certification_failures(
+            record, certification, [stale_count_calibrated_failure]
         )
         if not args.evidence_release:
             raise RuntimeError(
