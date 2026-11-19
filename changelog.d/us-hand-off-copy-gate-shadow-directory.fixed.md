@@ -1,0 +1,1 @@
+The Modal base hand-off blocks (step 7 of the Modal stage runbook, and the 18 October rerun record) copy `base-out` with `-R`. Since microcosm#1635 a base writes its gate-shadow files in `base-out/gate_battery_shadow/`, and the receipt lists them: a copy of the files alone exits 1 on that directory and ends the block before `verify-receipt`.

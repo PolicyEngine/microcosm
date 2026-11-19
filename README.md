@@ -172,6 +172,13 @@ python tools/build_us_fiscal_refresh_release.py \
 
 This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` in the staging repository.
+The build stops once its H5 and its own gates' verdicts are written, at
+`<out>/build_record.json`, so it can be evaluated first; nothing it writes is
+publishable. To publish it, certify it with
+`tools/certify_us_national_build.py <out>`, which chooses its tier (certified,
+or `--evidence-release`), runs the release's post-export checks and writes the
+manifests
+([Build, then certify](docs/us-release-build-rule.md#build-then-certify)).
 Nothing is published to `policyengine/populace-us`: the build is published
 only by the commands described in [Releasing & alerts](#releasing--alerts).
 
@@ -325,8 +332,8 @@ never as a release refusal. The checks:
   `--evidence-release`, `owned`), and every verdict the solve could still
   reach. A register file that does not load is a certain failure here: the
   release reads it only at its terminal gates. Under `--evidence-release` it
-  is AT-RISK when an owner matches the release's degraded-mode line, because
-  with other terminal failures on record the release ships it.
+  is AT-RISK when an owner matches the build's degraded-mode line, because
+  with other terminal failures on record an evidence certification ships it.
 - **`export_input_mass`** runs the export input-mass gate with the staged
   frame standing in for the export. It classifies the
   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
@@ -350,13 +357,15 @@ never as a release refusal. The checks:
   and again on the export. Neither reads weights, so on the full-pool path the
   re-grade repeats the staged verdict. On the L0 path it can flip, and the
   check flags each signal a selection could empty.
-- Under `--evidence-release`, a certain failure whose every release line
-  matches an owner pattern (the release's own matching rule) becomes AT-RISK,
-  marked OWNED, because the evidence tier ships it as a known failure. Any
-  unowned line still refuses. The exception is the input-mass-reference,
-  degenerate-input and eCPS gates when no earlier terminal failure is on
-  record: the release raises on them before the solve, outside the evidence
-  batch, so they stay certain failures.
+- `--evidence-release` previews an evidence-tier certification: a build has
+  no tier, and certification chooses it after the build (microcosm#1585 item
+  11), so the flag is a dry run's only. Under it, a certain failure whose
+  every release line matches an owner pattern (certification's own matching
+  rule) becomes AT-RISK, marked OWNED, because an evidence certification
+  ships it as a known failure. Any unowned line still refuses. The exception
+  is the input-mass-reference, degenerate-input and eCPS gates when no
+  earlier terminal failure is on record: the build raises on them before the
+  solve, so no build is left to certify, and they stay certain failures.
 - **`not_previewable`** lists every gate that depends on the solve, on target
   materialization or on the written H5, so the report never implies coverage
   it lacks.
@@ -841,7 +850,7 @@ schema rule. A local-annual build carries its base local build's gate, which
 must certify that build's H5, so its base must have been packaged with the
 check. So publishing one again means rebuilding or re-packaging it, which runs
 the check. An
-evidence-tier run that ships a stored-input refusal needs a per-run
+evidence-tier certification that ships a stored-input refusal needs a per-run
 `--evidence-failure-owners` entry naming its owner; the standing owner register
 covers none.
 
@@ -867,10 +876,11 @@ declaring a range.
 
 US exact-k ladder builds are builds of the national release. Run
 `tools/build_us_exact_k_ladder_release.py`. It runs the national builder,
-which writes the build to `<out>/releases/microcosm-us-2024-national/`, and
-records in `package_result.json` the release, the build, the release
-directory, `publish_command`, `promote_command` and `promotion`, a sentence
-saying that promoting makes the build the US default. The launcher runs
+which writes the build's own files to `<out>/build/`, and records in
+`package_result.json` the release, the build, its directory, the release
+directory certification places it in, `<out>/releases/microcosm-us-2024-national/`,
+the command that certifies it, `publish_command`, `promote_command` and
+`promotion`, a sentence saying that promoting makes the build the US default. The launcher runs
 neither command (`automatic_publish: false`, `makes_current: false`), and it
 forces `--no-staging`, so the build sends no staging run files.
 `publish_command` lists the build in the national release without making it
@@ -879,12 +889,14 @@ with `microcosm.data.load("us", build="<build>")`.
 
 Evidence-tier builds (microcosm#506) are builds of their own release,
 `microcosm-us-2024-evidence`: the best available artifact when the release's
-validation checks failed, built with
-`tools/build_us_fiscal_refresh_release.py --evidence-release`, which records
-every failed check with an owner issue in the release manifest's
-`known_failures` block, or refuses. The builder writes the build to
-`<out>/releases/microcosm-us-2024-evidence/` and prints the same two
-commands. `microcosm-publish-release-build` checks a build of that release
+validation checks failed. A build has no tier (microcosm#1585 item 11):
+`tools/certify_us_national_build.py <out> --evidence-release` certifies a
+finished build at the evidence tier, recording every failed check with an
+owner issue, from `--evidence-failure-owners` or the standing register
+(`us_runtime/data/evidence_failure_owners.json`), in the release manifest's
+`known_failures` block, or refuses. It places the build in
+`<out>/releases/microcosm-us-2024-evidence/`, under its build ID with an
+`-evidence-` segment, and prints the same two commands. `microcosm-publish-release-build` checks a build of that release
 with the evidence contract, which refuses a build in the certified shape; the
 certified contract refuses the evidence shape, so an evidence build can't be
 published into the national release. The evidence release is never the

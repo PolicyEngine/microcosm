@@ -14,6 +14,15 @@ large enough to change how the dataset is built carries a from-scratch build and
 certification receipt from its own tree before it merges. Main carries the same
 build as a standing check afterwards.
 
+Since a build and its certification are two steps
+([Build, then certify](#build-then-certify)), a receipt and the standing check
+need both halves: the build from raw sources, its certification, and the two
+preflights on the certified build, the release-gate preflight on its release
+manifest and the publisher's `--preflight-only` check. A Route A run without
+`--certify` stops at `ROUTE_A_BUILT.json`, before the post-export checks and
+those two preflights, so it shows the build half only. The same run continued
+with `route_a.sh --certify` on its `RUN_ROOT` makes the receipt.
+
 A dataset earns default status separately, by beating the incumbent. The rule
 main enforces is microcosm#578's: the candidate beats the incumbent on the
 frozen comparison register, both rescored on it, with strict improvement
@@ -40,12 +49,167 @@ frozen register, and says it beats it on held-out cells only once a national
 holdout exists and has run.
 
 Publication stays a human step. Since the US repository's switch to
-`releases.json`, the release tool writes each build to
-`<out>/releases/microcosm-us-2024-national/` and prints two commands:
-`microcosm-publish-release-build` publishes the build into its own folder of
-the national release without making it current, and the same command with
-`--promote` makes it the release's current build. Only that promotion makes a
-build the certified default.
+`releases.json`, each build is published into its own folder of a release.
+The release tool builds into `<out>/build/` and stops; the certification step
+below places the build in `<out>/releases/microcosm-us-2024-national/` (or, at
+the evidence tier, `microcosm-us-2024-evidence/`), writes the manifests and
+prints two commands: `microcosm-publish-release-build` publishes the build
+into its own folder of that release without making it current, and the same
+command with `--promote` makes it the release's current build. Only that
+promotion, in the national release, makes a build the certified default.
+
+## Build, then certify
+
+A US national build and its certification are two steps (microcosm#1585 item
+11, PR 4a), as they are for a UK national cut.
+
+- **The build** (`tools/build_us_fiscal_refresh_release.py`) runs every input
+  stage and the gate after it, the pre-solve gates, target compilation, the
+  solve, the terminal gates and the H5 write, then writes the calibration NPZ
+  and, when asked, runs the export audit. It writes `<out>/build_record.json`
+  and stops, printing the commands that certify it. Nothing it writes is
+  publishable: its own directory, `<out>/build/`, holds the calibration
+  diagnostics and the gate evidence, but no manifest, and the H5 and the
+  calibration weights are in `<out>/artifacts/`.
+- **Certification** (`tools/certify_us_national_build.py <out>`) runs from the
+  record: the reform-coverage smoke, reform validation, demographics and the
+  holdouts on the written H5, then source coverage and take-up participation,
+  then both manifests. It needs the build's directory, a checkout of the
+  build's commit (or of a later commit, as below), the packages the build ran
+  on and, where the build staged, its staging credential; it needs none of the
+  build's raw inputs.
+- **The tier** (microcosm#1585 item 11). A build is just a build, with no
+  tier: its ID never carries the `-evidence-` segment, and it records every
+  release-gate failure and writes its H5 and record. Certification chooses the
+  tier after it:
+  - **Certified**, the default, copies the build's own files into
+    `<out>/releases/microcosm-us-2024-national/` and refuses any recorded
+    failure, any failure it finds (the smoke, source coverage, a stale
+    count-calibrated take-up column), and a build whose directory holds the
+    #568 weight evidence.
+  - **Evidence** (`--evidence-release`, microcosm#506) copies them into
+    `<out>/releases/microcosm-us-2024-evidence/`, never the US default, and
+    publishes the build under its ID with the `-evidence-` segment after
+    `populace-us-2024-`. Every failure, the build's and certification's, must
+    match an owner pattern, from `--evidence-failure-owners FILE` first, then
+    the standing register
+    (`packages/microcosm-build/src/microcosm/build/us_runtime/data/evidence_failure_owners.json`),
+    and rides the release manifest's `known_failures`. Since a commit that
+    changes only the register may certify, each standing pattern must be one
+    gate's failure prefix, at least two words and then ` failed:`, and the
+    digest certification records for each owners file is of the bytes it
+    decided ownership from. At least one failure
+    must exist, a QRF tail-concentration register mismatch is never owned, and
+    an `--exact-k` build, a build of the national release, is never evidence.
+    The recorded failures are owner-checked before any scoring, so an unowned
+    one is refused in seconds.
+  - Copying keeps the record as it was: its digest and its paths, relative to
+    `--out`, still name the build's own files. Each copy is checked against
+    the record's digest, and the #568 weight evidence is never copied. A build
+    certified at either tier is never certified again.
+  - A dry run (`--dry-run-gates-report`) still takes `--evidence-release` and
+    `--evidence-failure-owners`, to preview what an evidence certification
+    would make of its certain failures; a build refuses both.
+- **A later commit** (microcosm#1585 item 11, as a UK cut is certified at its
+  sign-off's head). Certification may run at a descendant of the build's
+  commit whose diff since touches only tests (`packages/*/tests/`,
+  `test_support/`, the root `conftest.py`), docs (`docs/`, `LICENSE`, and
+  Markdown outside the packages' sources), changelog fragments (`changelog.d/`)
+  and the standing evidence owners register, which is the US sign-off: a new
+  owner there lets a failed build be certified as evidence without a rebuild.
+  Any other change is refused, naming its paths. Both manifests keep the
+  build's commit in `code`, which the release contract reads, and gain an
+  additive `certification` block beside it: the tier, the certifying commit
+  (`certification.code.git_commit`), the paths changed since the build's,
+  the build record's ID and digest and, at the evidence tier, the digests of
+  the owner registers it read.
+- **Why.** On the 30 September and 24 October Route A builds, the work after
+  calibration took 28.3 h of 33.0 h and 52.8 h of 56.5 h
+  (`timing.elapsed_through_calibration_seconds` against
+  `timing.total_build_seconds`). Most of it is the post-export scoring: 41
+  smoke and 55 validation reform passes, each over 177 household batches. A
+  build made to test a change no longer pays for them, and a build that proves
+  itself is certified as it stands, without a rebuild.
+- **The record** pins by sha256 every file of the build that certification
+  reads: the H5, the calibration weights, the diagnostics, the SSI take-up
+  measurement and the gate evidence the build wrote (and, for an
+  `--scf-education-debt` build, its fit tables). Its paths are relative to
+  itself, so a build directory moved to another machine certifies in place. It
+  holds the build's provenance (its commit, the time it finished and the
+  packages that built it), which the manifests carry as the build's, the
+  options the checks read, the 13 gate verdicts the manifests carry, the
+  release gate summary, the calibration losses and in-sample fit, the
+  post-export scoring plan, the source-coverage and take-up receipts, and
+  where the build staged. It carries a digest of itself (`record_sha256`), so
+  an edit after the build is refused; anyone who recomputes the digest can
+  still change it, until certification signs (PR 4b). Certification rebuilds
+  the scoring plan and refuses one that differs from the recorded plan.
+  Schema 3 has no tier: no release, no `evidence_release` setting and no owner
+  patterns, and the build's own directory is `layout.build_dir`.
+- **Refusals.** Certification refuses a record of another schema, naming the
+  commit that built it, whose code can certify it; a record whose files
+  changed after the build, or a file it would read that appeared after the
+  build; a checkout at a commit that is neither the build's nor a descendant
+  changing only what the rule above allows, or with changes outside the build
+  directory; packages other than the ones the build was built with (`runtime`
+  in the record), since the manifests name those as the build's; and a build
+  already certified at either tier. The checkout checked is the tool's own,
+  whatever the current directory, and the workspace packages must load from
+  it: they all report one version wherever they are installed from, so only
+  their location tells checkouts apart. A build counts as certified once both
+  manifests name it, the last write certification makes in the release
+  directory, so a certification that stopped before then certifies nothing
+  and may be rerun. A build refuses an `--out` that holds a build awaiting
+  certification or a certified build, and checks for a certified one again
+  just before it writes the H5; a failed build's `--out` may be built into
+  again, so a failed build meant for an evidence certification should be
+  certified before anything else is built there.
+- **Staging.** Certification opens a staging run of its own where its build
+  staged (the build's run id with `-certify` appended, to the build's staging
+  repository), so the post-export verdicts and the manifests reach the staging
+  dashboard, and a failed certification marks that run failed. The build
+  manifest's `staging` block is certification's, with the build's inside it
+  under `build`, and the publisher checks both, so a build whose own uploads
+  never arrived is refused however its certification staged. A build that did not stage is
+  certified without staging, and `--no-staging` opts certification out where
+  the build staged too, as a build may opt out; the block's reason then says
+  the build staged. Certification refuses a `--staging-run-id` that names the
+  build or its staging run, whose files a reopened run would start afresh.
+- **A failed release gate.** A build whose terminal gates fail still writes
+  its H5, its calibration weights, its #568 weight evidence and its record,
+  so it can be evaluated, and exits with the same "Release gates failed" error
+  once its record is written, with exit status 3, so a driver can tell it from
+  a refusal or a crash and keep it. Certification at the certified tier
+  refuses a record that carries release-gate failures and any build whose
+  directory holds the #568 weight evidence, which only a failed build writes;
+  the evidence tier certifies it once each failure has an owner. Until then
+  no gate judges against it: a later build refuses any file under its
+  `--out` as an input-mass reference or as its `--incumbent-diagnostics`, the
+  release-gate preflight refuses it as its `--export-input-mass-reference-h5`,
+  and the post-export probe refuses its directories as the reference. A
+  record that does not read counts as a failed build's, both there and for
+  the `--out` refusal. Its files may still start a later build, as its base,
+  selection source or warm start, since that build's own gates judge the
+  result, and the probe may score its H5. Input gates still stop the build
+  where they fail.
+- **What the written file fails.** A written-file stored-input failure or an
+  export-audit error after the H5 write is recorded with the release-gate
+  failures, on a green build too, so the H5 never stands without a record
+  marking it failed, and the record also lists these apart
+  (`artifact_integrity_failures`). No tier certifies such a build: the
+  evidence tier relaxes gate verdicts, never the written artifact's own
+  checks. It exits 1, as a refusal, so a driver does not keep it for
+  certification.
+- **Timing.** Both manifests' `timing` blocks carry `build_seconds` and
+  `certify_seconds`; `total_build_seconds` is their sum.
+- **Drivers.** Route A (`tools/route_a/route_a.sh`) stops after the build with
+  `ROUTE_A_BUILT.json`; `route_a.sh --certify` on the same `RUN_ROOT` certifies
+  that build at the tier `ROUTE_A_CERTIFY_TIER` chooses (`certified` or
+  `evidence`, with `ROUTE_A_EVIDENCE_FAILURE_OWNERS`), without hashing its raw
+  inputs again, and runs the release-gate and publisher preflights. Its release
+  stage accepts a build that failed its release gates (exit 3), which only the
+  evidence tier certifies. The exact-k ladder launcher's receipt carries the
+  command that certifies its build into the national release.
 
 ## What stands between main and that build
 
@@ -382,8 +546,10 @@ uv run --no-sync python tools/probe_us_post_export.py \
 ```
 
 A national build made since the US switch writes its export as
-`artifacts/microcosm_us_2024.h5` and its release directory as
-`releases/microcosm-us-2024-national/`. An earlier build's export is
+`artifacts/microcosm_us_2024.h5`, and certification places it in
+`releases/microcosm-us-2024-national/` (or, at the evidence tier,
+`releases/microcosm-us-2024-evidence/`); before certification its own files
+are in `build/`. An earlier build's export is
 `populace_us_2024.h5` and its release directory `releases/<build id>/`; both
 tools take either. The sample keeps the export's file name unless
 `--dataset-filename` gives another.
@@ -448,7 +614,10 @@ all 8 authoritative smoke verdicts agree with the full-size build.
 
 `--reference-release-dir` points at a full-size build's release directory:
 `releases/microcosm-us-2024-national/` for a build made since the US switch,
-or `releases/<build id>/` for an earlier one. The probe reads the target
+or `releases/<build id>/` for an earlier one. A build that has not been
+certified works too, given as its own `build/` directory: it has no
+manifests, so the probe reads its target surface from the `build_record.json`
+in its `--out` directory. The probe reads the target
 surface selection from the release manifest's top level in the first case and
 from its `build` object in the second, and says which field it read. It
 supplies the build's target surface, QRF register and calibration fit (so
