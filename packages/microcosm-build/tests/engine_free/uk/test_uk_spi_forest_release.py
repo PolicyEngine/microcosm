@@ -21,7 +21,10 @@ Two kinds of comparison:
   natively, and Linux x86_64 (CI's platform) under Docker emulation on Apple
   silicon. They are checked only where the platform and the versions of the
   libraries that compute the draws match the recording; elsewhere those tests
-  skip.
+  skip. The in-sample scenario's digests are exact to the bit. The cross-fitted
+  scenario's compare floats at ten significant digits, because its gates are
+  calibrated through BLAS and the kernel BLAS loads on a given CPU moves the
+  last bits of the transport receipt; the same-run comparison stays exact.
 
 A change that is meant to move these outputs records new digests from its own
 code on each platform with
@@ -110,8 +113,8 @@ _ORIGIN_MAIN_DIGESTS: dict[tuple[str, str], dict[str, dict[str, str]]] = {
             "receipts": "1250371e2c3c3fe425c9497dbeedc09fd6046ffcf532d7f05e7f9a3e950d2280",
         },
         "cross_fitted_levels": {
-            "person": "e938490d187e48bfc2b5f676598d58f898d6d97c71c5f439303a2ca8e64e9760",
-            "receipts": "aca65550fc5502afb03d78a784018f62dce6d41aa2ed0e5b676e576630caaf3b",
+            "person": "af8c58d7b9aa6492ecdb263562a49211fb275bcd77deee5dec43a60875317478",
+            "receipts": "d2e66e45974308791d55de6b2223f4505151c1a4ad00efe526b475ac12c10337",
         },
     },
     ("Linux", "x86_64"): {
@@ -120,8 +123,8 @@ _ORIGIN_MAIN_DIGESTS: dict[tuple[str, str], dict[str, dict[str, str]]] = {
             "receipts": "a6e3f464f10b7c037b908d75a39274f94e253df612b8a99eaa11bf6746cb547e",
         },
         "cross_fitted_levels": {
-            "person": "db4b50143da3dc3927f6de08d6efe51f57dfa9ad2e87c8c65b47d07abfb448be",
-            "receipts": "d1103a63326a13d88981e9188b48162b62c7ad75cea2be459ef93a837bf6777c",
+            "person": "995653c540826dceec157eb1c2fa618e1d29b75ae7856965fe1e957d200331ec",
+            "receipts": "b801ed247ea3c15c53fb8690c7ac1beb7b2437ea27a3c749bf0f79be1f04a61a",
         },
     },
 }
@@ -245,7 +248,7 @@ def reference_run(tmp_path_factory) -> Callable[[str], _ReferenceRun]:
 def test_output_and_receipts_reproduce_origin_main_bytes(scenario, tracked_run) -> None:
     expected = _origin_main_digests(scenario)
 
-    assert spi_frozen_digests(tracked_run(scenario).result) == expected
+    assert spi_frozen_digests(scenario, tracked_run(scenario).result) == expected
 
 
 @pytest.mark.parametrize("scenario", SPI_FOREST_SCENARIOS)

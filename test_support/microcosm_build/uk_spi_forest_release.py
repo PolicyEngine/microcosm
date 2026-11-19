@@ -107,6 +107,10 @@ SPI_FOREST_ALL_SCENARIOS: dict[str, dict[str, object]] = {
     **SPI_FOREST_SCENARIOS,
     **SPI_FOREST_MIXED_GATE_SCENARIOS,
 }
+#: Frozen scenarios whose floats are compared at ten significant digits. Their
+#: cross-fitted gates are calibrated through BLAS, and which kernel BLAS loads
+#: on a given CPU moves the last bits of the transport receipt's statistics.
+SPI_FOREST_ROUNDED_DIGEST_SCENARIOS = frozenset({"cross_fitted_levels"})
 
 
 def _zero_inflated_amounts(generator: np.random.Generator, position: int) -> np.ndarray:
@@ -119,7 +123,7 @@ def _zero_inflated_amounts(generator: np.random.Generator, position: int) -> np.
 
 
 def spi_forest_support() -> UKSPISupportResult:
-    """FRS people in one-person households, half of them copied to the SPI channel."""
+    """FRS people in one-person households, a fifth copied to the SPI channel."""
 
     generator = np.random.default_rng(_SUPPORT_SEED)
     household_ids = np.arange(1, _HOUSEHOLDS + 1, dtype="int64")
@@ -398,91 +402,140 @@ class FitEveryTargetFirstQRF(RegimeGatedQRF):
 # ---------------------------------------------------------------------------
 
 
-def _update_with_values(digest, label: object, values: pd.Index | pd.Series) -> None:
+def _ten_significant_digits(value: float) -> str:
+    return format(value, ".9e")
+
+
+def _update_with_values(
+    digest,
+    label: object,
+    values: pd.Index | pd.Series,
+    *,
+    float_text: Callable[[float], str] | None,
+) -> None:
     digest.update(repr(label).encode("utf-8"))
     digest.update(str(values.dtype).encode("utf-8"))
-    if isinstance(values.dtype, np.dtype) and values.dtype.kind in "biuf":
+    is_numpy = isinstance(values.dtype, np.dtype)
+    if float_text is not None and is_numpy and values.dtype.kind == "f":
+        texts = [float_text(value) for value in values.to_numpy().tolist()]
+        digest.update(repr(texts).encode("utf-8"))
+    elif is_numpy and values.dtype.kind in "biuf":
         digest.update(np.ascontiguousarray(values.to_numpy()).tobytes())
     else:
         digest.update(repr(list(values)).encode("utf-8"))
 
 
-def table_digest(table: pd.DataFrame) -> str:
-    """SHA-256 of a table's index and columns: names, dtypes and exact values.
+def table_digest(
+    table: pd.DataFrame, *, float_text: Callable[[float], str] | None = None
+) -> str:
+    """SHA-256 of a table's index and columns: names, dtypes and values.
 
     Boolean and numeric columns contribute their raw bytes, so a float that
     moves in its last bit, or a ``-0.0`` for a ``0.0``, changes the digest.
-    Every other column contributes the ``repr`` of its values.
+    With ``float_text``, float columns contribute that text of each value
+    instead. Every other column contributes the ``repr`` of its values.
     """
 
     digest = hashlib.sha256()
-    _update_with_values(digest, ("index", tuple(table.index.names)), table.index)
+    _update_with_values(
+        digest,
+        ("index", tuple(table.index.names)),
+        table.index,
+        float_text=float_text,
+    )
     for column in table.columns:
-        _update_with_values(digest, column, table[column])
+        _update_with_values(digest, column, table[column], float_text=float_text)
     return digest.hexdigest()
 
 
-def _exact_receipt_value(value: object) -> object:
-    """A JSON form of a receipt value that keeps types, order and every float bit."""
+def _receipt_value(value: object, float_text: Callable[[float], str]) -> object:
+    """A JSON form of a receipt value that keeps types and order.
+
+    Each float is written by ``float_text``.
+    """
 
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {
             "dataclass": type(value).__name__,
             "fields": [
-                [item.name, _exact_receipt_value(getattr(value, item.name))]
+                [item.name, _receipt_value(getattr(value, item.name), float_text)]
                 for item in dataclasses.fields(value)
             ],
         }
     if isinstance(value, Mapping):
         return {
             "mapping": [
-                [_exact_receipt_value(key), _exact_receipt_value(item)]
+                [_receipt_value(key, float_text), _receipt_value(item, float_text)]
                 for key, item in value.items()
             ]
         }
     if isinstance(value, list | tuple):
         return {
-            type(value).__name__: [_exact_receipt_value(item) for item in value],
+            type(value).__name__: [_receipt_value(item, float_text) for item in value],
         }
     if isinstance(value, np.ndarray):
         return {
             "array": str(value.dtype),
-            "shape": list(value.shape),
-            "bytes": np.ascontiguousarray(value).tobytes().hex(),
+            "values": _receipt_value(value.tolist(), float_text),
         }
     if isinstance(value, np.generic):
-        return {"numpy": str(value.dtype), "bytes": value.tobytes().hex()}
+        return {
+            "numpy": str(value.dtype),
+            "value": _receipt_value(value.item(), float_text),
+        }
     if isinstance(value, float):
-        return {"float": value.hex()}
+        return {"float": float_text(value)}
     if value is None or isinstance(value, bool | int | str):
         return value
     return {"repr": type(value).__name__, "value": repr(value)}
 
 
-def receipt_digest(value: object) -> str:
-    """SHA-256 of one receipt, sensitive to key order, types and float bits."""
+def receipt_digest(
+    value: object, *, float_text: Callable[[float], str] = float.hex
+) -> str:
+    """SHA-256 of one receipt, sensitive to key order, types and float text.
 
-    text = json.dumps(_exact_receipt_value(value), separators=(",", ":"))
+    The default text is the float's exact hexadecimal form.
+    """
+
+    text = json.dumps(_receipt_value(value, float_text), separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def spi_result_digests(result: UKSPIIncomeImputationResult) -> dict[str, str]:
+def spi_result_digests(
+    result: UKSPIIncomeImputationResult,
+    *,
+    rounded: bool = False,
+) -> dict[str, str]:
     """A digest of the person table and of every other field of the result.
 
+    Floats count to the bit, or to ten significant digits when ``rounded``.
     ``donor_path`` is left out: it names the test's temporary directory.
     """
 
-    digests = {"person": table_digest(result.person)}
+    table_float_text = _ten_significant_digits if rounded else None
+    receipt_float_text = _ten_significant_digits if rounded else float.hex
+    digests = {"person": table_digest(result.person, float_text=table_float_text)}
     for item in dataclasses.fields(result):
         if item.name not in {"person", "donor_path"}:
-            digests[item.name] = receipt_digest(getattr(result, item.name))
+            digests[item.name] = receipt_digest(
+                getattr(result, item.name), float_text=receipt_float_text
+            )
     return digests
 
 
-def spi_frozen_digests(result: UKSPIIncomeImputationResult) -> dict[str, str]:
-    """The person table's digest and one digest over every receipt's."""
+def spi_frozen_digests(
+    scenario: str, result: UKSPIIncomeImputationResult
+) -> dict[str, str]:
+    """The digests a scenario freezes: the person table's and all receipts' together.
 
-    digests = spi_result_digests(result)
+    A scenario in :data:`SPI_FOREST_ROUNDED_DIGEST_SCENARIOS` compares floats
+    at ten significant digits, every other scenario to the bit.
+    """
+
+    digests = spi_result_digests(
+        result, rounded=scenario in SPI_FOREST_ROUNDED_DIGEST_SCENARIOS
+    )
     person = digests.pop("person")
     text = json.dumps(digests, separators=(",", ":"))
     return {
@@ -716,7 +769,7 @@ def print_spi_forest_digests() -> None:
             tempfile.TemporaryDirectory() as directory,
         ):
             result = run_spi_forest_scenario(scenario, Path(directory), monkeypatch)
-        digests[scenario] = spi_frozen_digests(result)
+        digests[scenario] = spi_frozen_digests(scenario, result)
     recording = {
         "platform": [platform.system(), platform.machine()],
         "versions": {name: version(name) for name in SPI_FOREST_DRAW_LIBRARIES},
