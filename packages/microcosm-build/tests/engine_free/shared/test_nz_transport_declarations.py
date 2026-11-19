@@ -676,22 +676,74 @@ _BRIDGE_AND_REGION = {
 }
 
 
-def _nz_composition_spec_and_config():
-    """Supply synthetic engine refs and CREATE's inventory.
+# D4 (d3058): CREATE's inventory on the pinned donor, as the transport store
+# records it. prepare_create_outputs declares every non-structural column of
+# the CREATE frame with its dtype (transport/cli.py), and
+# prepare_transport_build passes all of them as create_outputs.
+_CREATE_INVENTORY = (
+    paths_for("microcosm-build").tests
+    / "fixtures/nz/create_inventory_populace_us_48b9d479.json"
+)
+# The graph reads these, and CREATE on the pinned donor does not give them yet.
+# d3058 rules 2, 4 and 5 stage them in the donor reader; that change must
+# refresh the fixture from its CREATE probe and empty this mapping.
+_AWAITING_DONOR_STAGING = {
+    ("household", "tenure"): "string",
+    ("person", "enrolled_full_time"): "bool",
+    ("person", "legal_marital_status"): "string",
+}
 
-    The packaged graph declares every money producer, and the packaged
-    bindings carry the engine pins, so the compiler checks the complete
-    packaged node and population structure with no synthetic node or pin. The
-    synthetic engine refs certify no runtime result. CREATE's inventory holds
-    canonical concepts and unit outputs only: no bridge or region column
-    enters as a root.
+
+@cache
+def _real_create_inventory():
+    rows = json.loads(_CREATE_INVENTORY.read_bytes())["columns"]
+    inventory = {(row["entity"], row["column"]): row["dtype"] for row in rows}
+    assert len(inventory) == len(rows), "a CREATE inventory column repeats"
+    return inventory
+
+
+def _canonical_dtypes():
+    """Each carried concept's column dtype, as CREATE would declare it."""
+    from microcosm.frame.concepts import CONCEPTS, TransportRule
+
+    kinds = {"int": "int64", "float": "float64", "bool": "bool", "str": "string"}
+    return {
+        (item.entity, item.name): "Int64" if item.nullable else kinds[item.dtype]
+        for item in CONCEPTS
+        if item.transport is not TransportRule.DROP
+    }
+
+
+def _structural_and_unit_columns(spec):
+    """CREATE's structural ids and memberships, and its non-concept outputs."""
+    from microcosm.frame import EntitySchema
+    from microcosm.frame.unit_construction import BenefitUnitRule
+
+    rule = BenefitUnitRule.from_spec(spec["resources"]["benefit_unit_rule"])
+    schema = EntitySchema(group_entities=("household", rule.entity))
+    automatic = {
+        (schema.person_entity, schema.person_id_column),
+        *(
+            (schema.person_entity, schema.membership_column(group))
+            for group in schema.group_entities
+        ),
+        *((group, schema.id_column(group)) for group in schema.group_entities),
+    }
+    unit = {
+        ("household", "donor_support_stratum"): "string",
+        (rule.entity, rule.household_column): "int64",
+        (rule.entity, rule.head_column): "int64",
+        (rule.entity, rule.source_household_column): "string",
+    }
+    return automatic, unit
+
+
+def _nz_root_reads(spec):
+    """The columns the instantiated rows read and no node produces.
+
+    CLI preparation excludes the structural columns and frame projection
+    carries them, so a node must not name them as reads that need an owner.
     """
-    from microcosm.graph import Owned
-
-    spec = _spec()
-    resources = spec["resources"]
-    compose.validate_transport_activation(spec)
-
     rows = _instantiated_nz_rows(spec)
     produced = {
         (output["entity"], output["column"])
@@ -706,39 +758,30 @@ def _nz_composition_spec_and_config():
         for column in item["columns"]
     } - produced
     assert needed.isdisjoint(_BRIDGE_AND_REGION), sorted(needed & _BRIDGE_AND_REGION)
-    from microcosm.frame import EntitySchema
-    from microcosm.frame.concepts import CONCEPTS, TransportRule
-    from microcosm.frame.unit_construction import BenefitUnitRule
+    automatic, _ = _structural_and_unit_columns(spec)
+    return needed - automatic
 
-    kinds = {"int": "int64", "float": "float64", "bool": "bool", "str": "string"}
-    inventory = {
-        (item.entity, item.name): "Int64" if item.nullable else kinds[item.dtype]
-        for item in CONCEPTS
-        if item.transport is not TransportRule.DROP
-    }
-    rule = BenefitUnitRule.from_spec(resources["benefit_unit_rule"])
-    schema = EntitySchema(group_entities=("household", rule.entity))
-    automatic = {
-        (schema.person_entity, schema.person_id_column),
-        *(
-            (schema.person_entity, schema.membership_column(group))
-            for group in schema.group_entities
-        ),
-        *((group, schema.id_column(group)) for group in schema.group_entities),
-    }
-    # CLI preparation excludes these columns; frame projection carries them.
-    # A node must not name them as data reads that require a column owner.
-    needed -= automatic
-    inventory.update(
-        {
-            ("household", "donor_support_stratum"): "string",
-            (rule.entity, rule.household_column): "int64",
-            (rule.entity, rule.head_column): "int64",
-            (rule.entity, rule.source_household_column): "string",
-        }
-    )
+
+def _nz_composition_spec_and_config():
+    """Supply synthetic engine refs and CREATE's real inventory.
+
+    The packaged graph declares every money producer, and the packaged
+    bindings carry the engine pins, so the compiler checks the complete
+    packaged node and population structure with no synthetic node or pin. The
+    synthetic engine refs certify no runtime result. CREATE's outputs are the
+    inventory the pinned donor gave, plus the columns awaiting donor staging
+    at their concept dtypes. No bridge or region column enters as a root.
+    """
+    from microcosm.graph import Owned
+
+    spec = _spec()
+    resources = spec["resources"]
+    compose.validate_transport_activation(spec)
+    needed = _nz_root_reads(spec)
+    inventory = {**_real_create_inventory(), **_AWAITING_DONOR_STAGING}
     assert needed <= inventory.keys(), (
-        "The declaration reads donor columns outside the canonical concepts and actual CREATE/unit outputs",
+        "The declaration reads donor columns that neither the real CREATE "
+        "inventory nor the declared staging gap holds",
         sorted(needed - inventory.keys()),
     )
     config = compose.TransportGraphConfig(
@@ -747,11 +790,109 @@ def _nz_composition_spec_and_config():
             for row in resources["axiom_rules_bindings"]["bindings"]
         },
         create_outputs=tuple(
-            Owned(entity, column, inventory[entity, column])
-            for entity, column in sorted(needed)
+            Owned(entity, column, dtype)
+            for (entity, column), dtype in sorted(inventory.items())
         ),
     )
     return spec, config
+
+
+def test_nz_reads_exactly_the_real_create_inventory_and_the_declared_staging_gap():
+    """D4: the graph's donor roots, checked against the pinned donor's CREATE.
+
+    Attempt 7 refused at graph compile on columns CREATE never gave, because
+    the inventory above used to be built from the graph's own reads. Compile
+    names only the first unowned read (graph decl.py reader_of), so the gap is
+    pinned here as an exact set.
+    """
+    real = _real_create_inventory()
+    assert real.keys().isdisjoint(_AWAITING_DONOR_STAGING)
+    assert _nz_root_reads(_spec()) - real.keys() == set(_AWAITING_DONOR_STAGING)
+
+
+def test_the_staging_gap_declares_the_canonical_concept_dtypes():
+    canonical = _canonical_dtypes()
+    assert _AWAITING_DONOR_STAGING == {
+        key: canonical[key] for key in _AWAITING_DONOR_STAGING
+    }
+
+
+def test_every_real_create_column_is_a_canonical_concept_or_unit_output():
+    canonical = _canonical_dtypes()
+    _, unit = _structural_and_unit_columns(_spec())
+    real = _real_create_inventory()
+    assert real.keys() <= canonical.keys() | unit.keys(), sorted(
+        real.keys() - canonical.keys() - unit.keys()
+    )
+    assert {key: real[key] for key in unit} == unit
+    # The one dtype gap: the concept schema says the reference person is never
+    # null, but CREATE emits nullable Int64. Graph compile checks dtypes on
+    # rewrites, row masks and the mass partition (microcosm.graph.decl), and
+    # the NZ graph compiles with this gap; a new gap fails here.
+    assert {
+        key for key in real.keys() & canonical.keys() if real[key] != canonical[key]
+    } == {("household", "reference_person_id")}
+
+
+def test_the_create_inventory_fixture_is_the_pinned_donors_stored_payload():
+    """A donor re-pin or a CREATE change must refresh the fixture."""
+    provenance = json.loads(
+        _CREATE_INVENTORY.with_name(
+            _CREATE_INVENTORY.name + ".provenance.json"
+        ).read_text()
+    )
+    assert (
+        sha256(_CREATE_INVENTORY.read_bytes()).hexdigest()
+        == provenance["payload_sha256"]
+    )
+    spec = _spec()
+    donor = spec["resources"]["transport_inputs"]["donor"]
+    fields = ("sha256", "size_bytes", "revision")
+    assert {key: provenance["donor"][key] for key in fields} == {
+        key: donor[key] for key in fields
+    }
+    (create,) = (
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row.get("structural") == "create"
+    )
+    assert create["kernel"] == provenance["create_kernel"]
+
+
+def test_nz_refuses_the_real_inventory_alone_at_graph_compile():
+    """Without the staged columns, NZ cannot compose on the pinned donor."""
+    import dataclasses
+
+    from microcosm.graph import GraphError
+
+    spec, config = _nz_composition_spec_and_config()
+    real = dataclasses.replace(
+        config,
+        create_outputs=tuple(
+            owned
+            for owned in config.create_outputs
+            if (owned.entity, owned.column) not in _AWAITING_DONOR_STAGING
+        ),
+    )
+    missing = "|".join(
+        re.escape(f"{entity}.{column}") for entity, column in _AWAITING_DONOR_STAGING
+    )
+    with pytest.raises(GraphError, match=rf"reads ({missing}), which no node owns"):
+        compose.compose_transport_graph(spec, real)
+
+
+def test_nz_checkpoints_keep_the_gate_report_before_export():
+    """d3058: a run that export.prepare refuses still writes the gate closure.
+
+    Extension checkpoints write their manifests before export.prepare runs
+    (transport/cli.py). entitlement.py appends the cell diagnostics collector
+    after the declared entries.
+    """
+    assert compose.transport_endpoints(_spec())["checkpoints"] == (
+        "nz.as.bands",
+        "nz.gates.terminal",
+        "nz.as.bands.cell_diagnostics",
+    )
 
 
 def test_nz_terminal_filter_keeps_the_skeletons_predecessors_and_ancestry():

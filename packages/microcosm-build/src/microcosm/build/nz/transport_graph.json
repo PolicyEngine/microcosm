@@ -444,7 +444,6 @@
           "entity": "household",
           "columns": [
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax"
           ]
         }
@@ -506,12 +505,6 @@
         },
         {
           "entity": "household",
-          "column": "mortgage_principal",
-          "dtype": "float64",
-          "rewrite": true
-        },
-        {
-          "entity": "household",
           "column": "property_tax",
           "dtype": "float64",
           "rewrite": true
@@ -559,11 +552,6 @@
         {
           "entity": "household",
           "column": "mortgage_interest_cents",
-          "dtype": "int64"
-        },
-        {
-          "entity": "household",
-          "column": "mortgage_principal_cents",
           "dtype": "int64"
         },
         {
@@ -763,7 +751,6 @@
             "tenure",
             "rent",
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax"
           ]
         }
@@ -3823,7 +3810,6 @@
             "tenure",
             "rent",
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax",
             "as_area",
             "as_area_alt"
@@ -4186,7 +4172,6 @@
           "entity": "household",
           "columns": [
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax",
             "tenure"
           ]
@@ -4464,7 +4449,6 @@
           "columns": [
             "household_region_code",
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax",
             "rent",
             "tenure"
@@ -4886,7 +4870,6 @@
             "donor_support_stratum",
             "household_region_code",
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax",
             "rent",
             "source_household_id",
@@ -5159,7 +5142,6 @@
             "donor_support_stratum",
             "household_region_code",
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax",
             "rent",
             "source_household_id",
