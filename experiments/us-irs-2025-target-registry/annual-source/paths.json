@@ -1,0 +1,19 @@
+{
+  "annual_sha256": "2fe8de04c0ec03d58c800e9df01cff30e20cb652d7672fa6d7876427827cf04c",
+  "base": "c020783da1621b032467f36bf688d597cdd5604c",
+  "overrides": {
+    "db/data/irs_soi/ira_contributions/23in05ira.xlsx": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+    "db/data/irs_soi/ira_contributions/23in06ira.xlsx": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+    "db/data/irs_soi/ira_contributions/manifest_roth_2023_source_package.yaml": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+    "db/data/irs_soi/ira_contributions/manifest_traditional_2023_source_package.yaml": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+    "db/data/irs_soi/state_2023/23in54us.xlsx": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+    "db/data/irs_soi/state_2023/manifest.yaml": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+    "packages/irs_soi/historic_table_2_2023/source_package.yaml": "f55ae34915e52601f25a039e7888b9d027f5b5c4",
+    "packages/irs_soi/historic_table_2_state_agi_2023/source_package.yaml": "f55ae34915e52601f25a039e7888b9d027f5b5c4",
+    "packages/irs_soi/historic_table_2_state_broad_2023/source_package.yaml": "f55ae34915e52601f25a039e7888b9d027f5b5c4",
+    "packages/irs_soi/historic_table_2_state_eitc_2023/source_package.yaml": "f55ae34915e52601f25a039e7888b9d027f5b5c4",
+    "packages/irs_soi/ira_roth_contributions_2023/source_package.yaml": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+    "packages/irs_soi/ira_traditional_contributions_2023/source_package.yaml": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1",
+    "packages/irs_soi/state_2023/source_package.yaml": "3185d8762eb6dcda8d588b729ecd5aa6d7f84ec1"
+  }
+}

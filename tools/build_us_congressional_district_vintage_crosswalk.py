@@ -57,13 +57,12 @@ from microcosm.build.us_runtime.congressional_district_vintage_crosswalk import 
     build_cd_vintage_crosswalk_rows,
 )
 
-SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE = "117th_congress"
-
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build the 117th->119th CD vintage crosswalk CSV artifact."
     )
+    parser.add_argument("--source-congress", type=int, choices=(117, 118), default=117)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument(
         "--cd-plan-registry",
@@ -104,6 +103,7 @@ def _sha256(path: Path) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
+    source_plan = f"{args.source_congress}th_congress"
     selected = (
         {value.strip() for value in args.states.split(",")} if args.states else None
     )
@@ -113,11 +113,13 @@ def main(argv: list[str] | None = None) -> None:
         if unknown:
             raise SystemExit(f"Unknown state FIPS in --states: {sorted(unknown)}")
     selected_fips = {int(fips) for fips, _, _ in states}
-    _log(f"Building CD117->CD119 crosswalk for {len(states)} state(s)")
+    _log(
+        f"Building CD{args.source_congress}->CD119 crosswalk for {len(states)} state(s)"
+    )
 
     registry = load_pinned_us_cd_plan_registry(args.cd_plan_registry)
     for plan in (
-        SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE,
+        source_plan,
         CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     ):
         if plan not in registry.plans:
@@ -128,7 +130,7 @@ def main(argv: list[str] | None = None) -> None:
         block: f"{district % 100:02d}"
         for block, district, keep in zip(
             blocks,
-            registry.plans[SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE].tolist(),
+            registry.plans[source_plan].tolist(),
             in_scope,
             strict=True,
         )
@@ -156,6 +158,7 @@ def main(argv: list[str] | None = None) -> None:
         old_cd_by_block=old_cd_by_block,
         current_cd_by_block=current_cd_by_block,
         block_population=block_population,
+        source_prefix=f"500{args.source_congress % 100}00US",
     )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -175,22 +178,25 @@ def main(argv: list[str] | None = None) -> None:
             writer.writerow(row)
     crosswalk_sha256 = _sha256(args.out)
 
-    source_spec = registry.plan_sources[SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE]
+    source_spec = registry.plan_sources[source_plan]
     provenance = {
         "schema_version": 1,
         "kind": "us_congressional_district_vintage_crosswalk",
-        "source_geography_vintage": SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE,
+        "source_geography_vintage": source_plan,
         "target_geography_vintage": CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
         "block_vintage": registry.metadata["block_vintage"],
         "crosswalk_sha256": crosswalk_sha256,
         "method": (
-            "Population-weighted overlay of the 117th and 119th plans of the US "
+            f"Population-weighted overlay of the {args.source_congress}th and 119th plans of the US "
             "block -> congressional-district plan registry on 2020 tabulation "
             "blocks, weighted by 2020 P.L. 94-171 block populations. Each old "
             "district's population is redistributed across current districts; "
-            "totals conserve by construction. The registry's 117th plan is the "
-            "2020 BAF CD layer except North Carolina, carried from its 2019 plan "
-            "(see known_deviations)."
+            "totals conserve by construction."
+            + (
+                " The registry's 117th plan is the 2020 BAF CD layer except North Carolina, carried from its 2019 plan (see known_deviations)."
+                if args.source_congress == 117
+                else " See the registry for source plan definitions."
+            )
         ),
         "sources": {
             "cd_plan_registry": {
@@ -201,7 +207,7 @@ def main(argv: list[str] | None = None) -> None:
                     f"{US_CD_PLAN_REGISTRY_PROVENANCE_RESOURCE}"
                 ),
                 "plans": [
-                    SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE,
+                    source_plan,
                     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
                 ],
             }

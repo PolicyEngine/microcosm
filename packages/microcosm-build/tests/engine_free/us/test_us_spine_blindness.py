@@ -348,6 +348,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # column and remains subject to the all-runtime source-identity scan.
         "esi_premiums.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
+        # Compare national Chronicle processing-week facts, without accessing
+        # household records or applying a population treatment.
+        "filing_season.py",
         "fiscal_targets.py",
         # Federal Student Aid portfolio targets (microcosm#1074): compiles FSA
         # facts into target specs and sums the stored person balances for

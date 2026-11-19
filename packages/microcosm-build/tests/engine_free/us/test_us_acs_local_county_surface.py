@@ -304,6 +304,44 @@ def test_county_population_spec_carries_county_hierarchy() -> None:
     assert record["county_fips"] == "01001"
 
 
+def test_county_shares_follow_latest_complete_period_within_target_year():
+    parents = [_state_spec(), _state_spec("adjusted_gross_income", 250.0)]
+    counties = {1001: 50.0, 1003: 50.0}
+
+    def row(year, code, measure, value):
+        fact = _fact(code, measure, value)
+        fact["period"]["value"] = year
+        fact["layout"]["record_set_id"] = f"irs_soi.ty{year}.county_totals"
+        return fact
+
+    facts = [
+        row(2022, code, measure, 100.0)
+        for measure in ("return_count", "adjusted_gross_income")
+        for code in ("01001", "01003")
+    ] + [
+        row(2023, "01001", "return_count", 1.0),
+        row(2023, "01003", "return_count", 3.0),
+        row(2023, "01001", "adjusted_gross_income", 1.0),
+        row(2025, "01001", "return_count", 5.0),
+        row(2025, "01003", "return_count", 5.0),
+    ]
+    surface = _county().state_county_soi_surface(parents, facts, counties)
+    blocks = {b["concept"]: b for b in surface.receipt["blocks"]}
+    assert blocks["return_count"]["county_source_year"] == 2023
+    assert blocks["adjusted_gross_income"]["county_source_year"] == 2022
+    assert blocks["adjusted_gross_income"]["skipped_incomplete_years"] == [2023]
+    values = {
+        (spec.metadata["source_measure_id"], spec.metadata["county_fips"]): spec.value
+        for spec in surface.specs
+    }
+    assert values == {
+        ("return_count", "01001"): 25,
+        ("return_count", "01003"): 75,
+        ("adjusted_gross_income", "01001"): 125,
+        ("adjusted_gross_income", "01003"): 125,
+    }
+
+
 def test_county_soi_reconciles_only_existing_broad_state_concepts() -> None:
     parents = [
         _state_spec(),
@@ -398,6 +436,29 @@ def test_state_county_requires_both_concepts_and_parents_in_every_state(
         _county().state_county_soi_surface(
             parents, facts, {1001: 50.0, 1003: 50.0, 6001: 100.0}
         )
+
+
+def test_combined_county_receipt_tracks_each_used_source_vintage():
+    parents, facts = [], []
+    for measure, year in (("return_count", 2022), ("adjusted_gross_income", 2023)):
+        parents.append(_state_spec(measure, state="15"))
+        fact = _fact("15009", measure, 1.0)
+        fact["period"]["value"] = year
+        fact["source"] = {
+            "url": f"https://www.irs.gov/pub/irs-soi/{str(year)[2:]}incyallnoagi.csv"
+        }
+        facts.append(fact)
+    surface = _county().state_county_soi_surface(parents, facts, {15005: 1, 15009: 99})
+    cells = surface.receipt["combined_cells"]
+    assert [cell["concepts"] for cell in cells] == [
+        ["return_count|2022"],
+        ["adjusted_gross_income|2023"],
+    ]
+    assert cells[0]["source"].endswith("22incydocguide.docx")
+    assert cells[1]["source"] == facts[1]["source"]["url"]
+    assert {cell["basis"] for cell in cells} == {
+        spec.metadata["state_county_cell_basis"] for spec in surface.specs
+    }
 
 
 def test_kalawao_without_its_declared_host_still_refuses_with_the_missing_code() -> (

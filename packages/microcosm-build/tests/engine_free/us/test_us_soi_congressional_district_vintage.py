@@ -661,6 +661,50 @@ def test_exact_district_pins_name_the_pinned_feed_scope_district_file() -> None:
     assert package_ids <= set(hard_target_package_aliases())
 
 
+def test_ty2023_districts_select_one_compatible_source_and_conserve_returns():
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        CROSSWALK_118_119_RESOURCE,
+        SOI_CD_2023_RECORD_SET,
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+        translate_congressional_district_facts_to_current_vintage,
+    )
+
+    path = default_congressional_district_vintage_crosswalk_path()
+    old = _cd_fact(CD_2022, "return_count", 123)
+    new = _cd_fact(
+        SOI_CD_2023_RECORD_SET, "return_count", 160, geography_id="5001800US1501"
+    )
+    new["geography"]["vintage"] = "118th_congress"
+    new_walk = load_congressional_district_vintage_crosswalk(
+        path.with_name(CROSSWALK_118_119_RESOURCE)
+    )
+    for walk, record_set, value in (
+        (load_congressional_district_vintage_crosswalk(path), CD_2022, 123),
+        (new_walk, SOI_CD_2023_RECORD_SET, 160),
+    ):
+        converted = translate_congressional_district_facts_to_current_vintage(
+            [new, old], walk
+        )
+        assert {f["layout"]["record_set_id"] for f in converted} == {record_set}
+        assert sum(f["value"] for f in converted) == pytest.approx(value)
+        dist = congressional_district_distribution_from_ledger_facts(converted)
+        assert dist.sampling_weight.sum() == pytest.approx(value)
+        registry = compile_us_fiscal_target_registry(
+            [*packaged_reference_facts(), old, new],
+            congressional_district_vintage_crosswalk=walk,
+            allow_unaged_dollar_targets=True,
+        )
+        district_specs = [
+            s for s in registry.specs if s.metadata.get("congressional_district_geoid")
+        ]
+        assert sum(s.value for s in district_specs) == pytest.approx(value)
+    with pytest.raises(ValueError, match="118th-to-119th"):
+        compile_us_fiscal_target_registry(
+            [*packaged_reference_facts(), new], allow_unaged_dollar_targets=True
+        )
+
+
 def test_household_district_distribution_refuses_another_district_file() -> None:
     """The household CD sampling distribution reads exactly the pinned district
     file, so a feed carrying only another vintage fails loudly rather than
@@ -677,6 +721,29 @@ def test_household_district_distribution_refuses_another_district_file() -> None
         ]
     )
     assert distribution["sampling_weight"].tolist() == [100_000]
+
+
+def test_corrected_2022_period_supersedes_legacy_copy():
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        SOI_CD_2022_CORRECTED_RECORD_SET,
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+        translate_congressional_district_facts_to_current_vintage,
+    )
+
+    facts = [
+        _cd_fact(CD_2022, "return_count", 130),
+        _cd_fact(SOI_CD_2022_CORRECTED_RECORD_SET, "return_count", 125),
+    ]
+    walk = load_congressional_district_vintage_crosswalk(
+        default_congressional_district_vintage_crosswalk_path()
+    )
+    converted = translate_congressional_district_facts_to_current_vintage(facts, walk)
+    assert {fact["layout"]["record_set_id"] for fact in converted} == {
+        SOI_CD_2022_CORRECTED_RECORD_SET
+    }
+    weights = congressional_district_distribution_from_ledger_facts(converted)
+    assert weights["sampling_weight"].sum() == pytest.approx(125)
 
 
 # --- the pinned feed (skipped where it is absent, as in CI) ----------------

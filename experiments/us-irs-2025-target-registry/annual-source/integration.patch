@@ -1,0 +1,253 @@
+--- a/chronicle/source_package.py
++++ b/chronicle/source_package.py
+@@ -1057,6 +1057,12 @@
+         "slc/student_loan_repayments_wales_2025"
+     ),
+     "slc-student-support-england-2025": Path("slc/student_support_england_2025"),
++    "soi-historic-table-2-2023": Path("irs_soi/historic_table_2_2023"),
++    "soi-historic-table-2-state-broad-2023": Path("irs_soi/historic_table_2_state_broad_2023"),
++    "soi-historic-table-2-state-eitc-2023": Path("irs_soi/historic_table_2_state_eitc_2023"),
++    "soi-ira-roth-contributions-2023": Path("irs_soi/ira_roth_contributions_2023"),
++    "soi-ira-traditional-contributions-2023": Path("irs_soi/ira_traditional_contributions_2023"),
++    "soi-state-2023": Path("irs_soi/state_2023"),
+     "soi-table-1-1": Path("irs_soi/table_1_1"),
+     "soi-table-1-2": Path("irs_soi/table_1_2"),
+     "soi-table-1-3": Path("irs_soi/table_1_3"),
+--- a/chronicle/sources/cells.py
++++ b/chronicle/sources/cells.py
+@@ -18,6 +18,7 @@
+ from zipfile import ZipFile
+
+ import openpyxl
++from openpyxl.cell.cell import MergedCell
+ import xlrd
+
+ from chronicle.epoch import EMIT_EPOCH, HASH_DOMAINS, Epoch, hash_domain
+@@ -190,8 +191,9 @@
+         if sheets and sheet.title not in sheets:
+             continue
+         formula_sheet = formula_workbook[sheet.title]
+-        for row_index in range(1, sheet.max_row + 1):
+-            for column_index in range(1, sheet.max_column + 1):
++        max_row, max_column = _xlsx_used_range_bounds(sheet)
++        for row_index in range(1, max_row + 1):
++            for column_index in range(1, max_column + 1):
+                 cell = sheet.cell(row=row_index, column=column_index)
+                 formula_cell = formula_sheet.cell(
+                     row=row_index,
+@@ -292,6 +294,48 @@
+     finally:
+         value_workbook.close()
+         formula_workbook.close()
++
++
++# The last column (XFD) and row an .xlsx worksheet can address.
++_XLSX_MAX_COLUMN = 16_384
++_XLSX_MAX_ROW = 1_048_576
++
++
++def _xlsx_used_range_bounds(sheet: Any) -> tuple[int, int]:
++    """Return the (max_row, max_column) of a worksheet's used range.
++
++    This is openpyxl's ``(sheet.max_row, sheet.max_column)`` unless the sheet
++    has a merged range that runs to the worksheet edge. openpyxl fills every
++    position of a merged range with a ``MergedCell`` placeholder, so one
++    footnote row merged across the whole sheet width (``A179:XFD179`` in the
++    IRS's TY2023 ``23in54us.xlsx``) stretches ``max_column`` to 16,384 and the
++    used range to about 70 million empty cells. Such an edge-to-edge range is
++    sheet-width formatting, not table extent: its placeholders do not widen
++    the bounds, while its anchor cell and every other cell still do. Sheets
++    without one keep openpyxl's bounds exactly.
++    """
++    edge_ranges = [
++        cell_range
++        for cell_range in sheet.merged_cells.ranges
++        if cell_range.max_col >= _XLSX_MAX_COLUMN or cell_range.max_row >= _XLSX_MAX_ROW
++    ]
++    if not edge_ranges:
++        return sheet.max_row, sheet.max_column
++
++    def edge_placeholder(row_index: int, column_index: int, cell: Any) -> bool:
++        return isinstance(cell, MergedCell) and any(
++            cell_range.min_row <= row_index <= cell_range.max_row
++            and cell_range.min_col <= column_index <= cell_range.max_col
++            for cell_range in edge_ranges
++        )
++
++    max_row = max_column = 1
++    for (row_index, column_index), cell in sheet._cells.items():
++        if edge_placeholder(row_index, column_index, cell):
++            continue
++        max_row = max(max_row, row_index)
++        max_column = max(max_column, column_index)
++    return max_row, max_column
+
+
+ def source_cells_from_ods(
+--- a/packages/irs_soi/historic_table_2_2023/source_package.yaml
++++ b/packages/irs_soi/historic_table_2_2023/source_package.yaml
+@@ -73,7 +73,7 @@
+     groupby_dimension: us:statutes/26/62#adjusted_gross_income
+     rows:
+       - value_id: all
+-        label: All returns
++        label: All returns, total
+         ordinal: 0
+         row_number: 2
+         expected_row_header_column: B
+@@ -611,11 +611,11 @@
+         value_scale: 1000
+
+       - measure_id: net_capital_gains_returns
+-        label: Returns with taxable net capital gains
++        label: Returns with net capital gain (less loss)
+         ordinal: 27
+         column: AK
+         source_column_id: N01000
+-        concept: irs_soi.returns_with_taxable_net_capital_gains
++        concept: irs_soi.returns_with_form_1040_capital_gain_or_loss
+         unit: count
+         aggregation: sum
+         expected_cell_type: number
+@@ -623,11 +623,11 @@
+         expected_column_header: N01000
+
+       - measure_id: net_capital_gains_amount
+-        label: Taxable net capital gains
++        label: Net capital gain (less loss)
+         ordinal: 28
+         column: AL
+         source_column_id: A01000
+-        concept: irs_soi.taxable_net_capital_gains
++        concept: irs_soi.form_1040_capital_gain_or_loss
+         unit: usd
+         aggregation: sum
+         expected_cell_type: number
+--- a/packages/irs_soi/historic_table_2_state_broad_2023/source_package.yaml
++++ b/packages/irs_soi/historic_table_2_state_broad_2023/source_package.yaml
+@@ -368,22 +368,22 @@
+     expected_column_header: A00900
+     value_scale: 1000
+   - measure_id: net_capital_gains_returns
+-    label: Returns with taxable net capital gains
++    label: Returns with net capital gain (less loss)
+     ordinal: 17
+     column: AK
+     source_column_id: N01000
+-    concept: irs_soi.returns_with_taxable_net_capital_gains
++    concept: irs_soi.returns_with_form_1040_capital_gain_or_loss
+     unit: count
+     aggregation: sum
+     expected_cell_type: number
+     expected_column_header_row: 1
+     expected_column_header: N01000
+   - measure_id: net_capital_gains_amount
+-    label: Taxable net capital gains
++    label: Net capital gain (less loss)
+     ordinal: 18
+     column: AL
+     source_column_id: A01000
+-    concept: irs_soi.taxable_net_capital_gains
++    concept: irs_soi.form_1040_capital_gain_or_loss
+     unit: usd
+     aggregation: sum
+     expected_cell_type: number
+@@ -781,6 +781,98 @@
+     expected_column_header_row: 1
+     expected_column_header: A11070
+     value_scale: 1000
++  - measure_id: taxable_state_local_income_tax_refunds_returns
++    label: Returns with taxable refunds of state and local income taxes
++    ordinal: 53
++    column: AG
++    source_column_id: N00700
++    concept: irs_soi.returns_with_taxable_state_local_income_tax_refunds
++    unit: count
++    aggregation: sum
++    expected_cell_type: number
++    expected_column_header_row: 1
++    expected_column_header: N00700
++  - measure_id: taxable_state_local_income_tax_refunds_amount
++    label: Taxable refunds of state and local income taxes
++    ordinal: 54
++    column: AH
++    source_column_id: A00700
++    concept: irs_soi.taxable_state_local_income_tax_refunds
++    unit: usd
++    aggregation: sum
++    expected_cell_type: number
++    expected_column_header_row: 1
++    expected_column_header: A00700
++    value_scale: 1000
++  - measure_id: taxes_paid_deduction_returns
++    label: Returns with taxes paid deduction
++    ordinal: 55
++    column: CD
++    source_column_id: N18300
++    concept: irs_soi.returns_with_taxes_paid_deduction
++    unit: count
++    aggregation: sum
++    expected_cell_type: number
++    expected_column_header_row: 1
++    expected_column_header: N18300
++  - measure_id: taxes_paid_deduction_amount
++    label: Taxes paid deduction amount
++    ordinal: 56
++    column: CE
++    source_column_id: A18300
++    concept: irs_soi.taxes_paid_deduction
++    unit: usd
++    aggregation: sum
++    expected_cell_type: number
++    expected_column_header_row: 1
++    expected_column_header: A18300
++    value_scale: 1000
++  - measure_id: mortgage_interest_paid_returns
++    label: Returns with home mortgage interest paid to financial institutions
++    ordinal: 57
++    column: CH
++    source_column_id: N19300
++    concept: irs_soi.returns_with_home_mortgage_interest_paid_to_financial_institutions
++    unit: count
++    aggregation: sum
++    expected_cell_type: number
++    expected_column_header_row: 1
++    expected_column_header: N19300
++  - measure_id: mortgage_interest_paid_amount
++    label: Home mortgage interest paid to financial institutions amount
++    ordinal: 58
++    column: CI
++    source_column_id: A19300
++    concept: irs_soi.home_mortgage_interest_paid_to_financial_institutions
++    unit: usd
++    aggregation: sum
++    expected_cell_type: number
++    expected_column_header_row: 1
++    expected_column_header: A19300
++    value_scale: 1000
++  - measure_id: charitable_returns
++    label: Returns with contributions deduction
++    ordinal: 59
++    column: CP
++    source_column_id: N19700
++    concept: irs_soi.returns_with_contributions_deduction
++    unit: count
++    aggregation: sum
++    expected_cell_type: number
++    expected_column_header_row: 1
++    expected_column_header: N19700
++  - measure_id: charitable_amount
++    label: Contributions deduction amount
++    ordinal: 60
++    column: CQ
++    source_column_id: A19700
++    concept: irs_soi.contributions_deduction
++    unit: usd
++    aggregation: sum
++    expected_cell_type: number
++    expected_column_header_row: 1
++    expected_column_header: A19700
++    value_scale: 1000
+ - record_set_id: irs_soi.ty2023.historic_table_2.state_broad.ak
+   provenance_class: administrative
+   record_set_spec_id: irs_soi.historic_table_2.state_broad_totals.v1

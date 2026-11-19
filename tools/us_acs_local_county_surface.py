@@ -75,6 +75,15 @@ def _concatenate(parts, dtype):
     )
 
 
+def _combined_cell_basis(year):
+    if year == 2022:
+        return SOI_COMBINED_CELL_BASIS
+    return (
+        f"IRS SOI county TY{year} omits the county. The declared combined "
+        "cell uses its host county's published share."
+    )
+
+
 def _codes(values, *, column: str) -> np.ndarray:
     numeric = pd.to_numeric(pd.Series(values), errors="raise").to_numpy(float)
     if not np.isfinite(numeric).all() or (numeric != np.floor(numeric)).any():
@@ -429,11 +438,7 @@ def state_county_soi_surface(
             continue
         metadata = spec.metadata
         state = int(metadata["state_fips"])
-        key = (
-            state,
-            metadata.get("source_measure_id"),
-            str(metadata.get("source_period", "")),
-        )
+        key = (state, metadata.get("source_measure_id"))
         if key[1] not in COUNTY_SOI_REQUIRED_MEASURES and key[1] not in {
             block[1] for block in blocks
         }:
@@ -454,26 +459,44 @@ def state_county_soi_surface(
                 )
     specs, receipts, merges = [], [], defaultdict(list)
     for key, parent in sorted(parents.items()):
-        state, measure, period = key
+        state, measure = key
         expected = {
             int(code) for code in county_populations if int(code) // 1000 == state
         }
-        block = blocks.get(key, {})
-        absent = expected - block.keys()
-        merged = {
-            code: combined[code]
-            for code in absent
-            if code in combined
-            and combined[code] in block
-            and combined[code] in expected
-        }
-        missing, extra = (
-            sorted(absent - merged.keys()),
-            sorted(block.keys() - expected),
+        # The state control can come from a different source year. Select a
+        # single county distribution available by the calibration period.
+        candidates = sorted(
+            (
+                int(year)
+                for st, ms, year in blocks
+                if (st, ms) == key and int(year) <= int(parent.period)
+            ),
+            reverse=True,
         )
-        if not expected or missing or extra:
+        skipped_years = []
+        missing, extra = sorted(expected), []
+        for year in candidates:
+            period = str(year)
+            block = blocks[state, measure, period]
+            absent = expected - block.keys()
+            merged = {
+                code: combined[code]
+                for code in absent
+                if code in combined
+                and combined[code] in expected
+                and combined[code] in block
+            }
+            missing, extra = (
+                sorted(absent - merged.keys()),
+                sorted(block.keys() - expected),
+            )
+            if expected and not missing and not extra:
+                break
+            skipped_years.append(year)
+        else:
             raise ValueError(
-                f"Incomplete county SOI block state={state:02d}, concept={measure}, period={period}; "
+                f"Incomplete county SOI block state={state:02d}, concept={measure}, "
+                f"eligible periods={candidates}; "
                 f"missing={[f'{code:05d}' for code in missing]}, unexpected={[f'{code:05d}' for code in extra]}. "
                 "County facts, ladder and county column must use matching boundaries; "
                 "only a declared combined SOI cell may cover an absent county."
@@ -481,7 +504,14 @@ def state_county_soi_surface(
         members = {code: [code] for code in sorted(block)}
         for code, host in sorted(merged.items()):
             members[host].append(code)
-            merges[(host, code)].append(f"{measure}|{period}")
+            host_fact = block[host][1]
+            source = (
+                "https://www.irs.gov/pub/irs-soi/22incydocguide.docx"
+                if year == 2022
+                else host_fact.get("source", {}).get("url")
+                or host_fact["layout"]["record_set_id"]
+            )
+            merges[(host, code, year, source)].append(f"{measure}|{period}")
         total = math.fsum(value for value, _fact in block.values())
         if total <= 0:
             raise ValueError(
@@ -520,6 +550,7 @@ def state_county_soi_surface(
                 "county_fips": county,
                 "county_label": str(fact["geography"].get("name", county)),
                 "state_county_parent_target_name": parent.name,
+                "state_county_source_period": period,
                 "state_county_share": str(share),
                 "state_county_source_value": str(raw),
                 "county_population": str(
@@ -531,7 +562,7 @@ def state_county_soi_surface(
                 metadata["state_county_cell_members"] = ",".join(
                     f"{member:05d}" for member in cell
                 )
-                metadata["state_county_cell_basis"] = SOI_COMBINED_CELL_BASIS
+                metadata["state_county_cell_basis"] = _combined_cell_basis(year)
             specs.append(
                 dataclasses.replace(
                     parent,
@@ -549,6 +580,8 @@ def state_county_soi_surface(
                 "state_fips": f"{state:02d}",
                 "concept": measure,
                 "parent": parent.name,
+                "county_source_year": year,
+                "skipped_incomplete_years": skipped_years,
                 "counties": len(expected),
                 "cells": len(codes),
                 "share_sum": math.fsum(shares),
@@ -573,12 +606,12 @@ def state_county_soi_surface(
                     "host": f"{host:05d}",
                     "absent_from_soi": f"{absent:05d}",
                     "concepts": sorted(concepts),
-                    "basis": SOI_COMBINED_CELL_BASIS,
-                    "source": "https://www.irs.gov/pub/irs-soi/22incydocguide.docx",
+                    "basis": _combined_cell_basis(year),
+                    "source": source,
                     "own_rows_kept": "ladder population, ACS households and "
                     "ACS validation rows stay per county",
                 }
-                for (host, absent), concepts in sorted(merges.items())
+                for (host, absent, year, source), concepts in sorted(merges.items())
             ],
             "new_engine_columns": 0,
             "basis": "state target x county fact / state sum of county facts",

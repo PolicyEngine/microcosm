@@ -27,6 +27,8 @@ from microcosm.build.ledger_targets import (
     hierarchy_seed_from_catalog,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
+    SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
+    select_irs_district_source,
     translate_congressional_district_facts_to_current_vintage,
 )
 from microcosm.build.us_runtime.fsa_student_loan_targets import (
@@ -1043,6 +1045,29 @@ def _load_us_fiscal_target_manifest() -> dict[str, Any]:
     return payload
 
 
+# These four reviewed November series already control the TY2024 EITC surface.
+# Every other processed-through-week observation belongs to a partial cohort.
+_WEEK47_EITC_RECORD_SETS = frozenset(
+    f"irs_soi.ty2024.filing_season_week47.{population}.{measure}"
+    for population in ("eitc_all_returns", "eitc_by_agi")
+    for measure in ("amount", "count")
+)
+
+
+def _partial_filing_season_fact(fact: object) -> bool:
+    if _source_name(fact) != "irs_soi":
+        return False
+    record_set = _str_at(fact, "layout", "record_set_id")
+    if record_set in _WEEK47_EITC_RECORD_SETS:
+        return False
+    dimensions = _dimensions(fact)
+    return (
+        ".filing_season_week" in record_set
+        or "processing_cutoff" in dimensions
+        or "filing_season_week" in dimensions
+    )
+
+
 def compile_us_fiscal_target_registry(
     facts: object,
     *,
@@ -1080,11 +1105,22 @@ def compile_us_fiscal_target_registry(
             so the release tool sets this with ``--scf-education-debt``;
             otherwise the facts are inert.
     """
-    materialized_facts = tuple(facts)
+    # Keep partial-year counts and amounts out of both direct targets and the
+    # controls that rebase or age annual targets.
+    materialized_facts = tuple(
+        fact for fact in facts if not _partial_filing_season_fact(fact)
+    )
     if congressional_district_vintage_crosswalk is not None:
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
             materialized_facts,
             congressional_district_vintage_crosswalk,
+            target_period=target_period,
+        )
+    else:
+        materialized_facts = select_irs_district_source(
+            materialized_facts,
+            source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
+            target_period=target_period,
         )
     student_loan_plan = (
         plan_fsa_student_loan_targets(materialized_facts, target_period=target_period)
@@ -1189,15 +1225,25 @@ def us_fiscal_target_exclusion_receipt(
         materialized_facts = translate_congressional_district_facts_to_current_vintage(
             materialized_facts,
             congressional_district_vintage_crosswalk,
+            target_period=target_period,
+        )
+    else:
+        materialized_facts = select_irs_district_source(
+            materialized_facts,
+            source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
+            target_period=target_period,
         )
     reviewed: set[str] = set()
     all_vintage: set[str] = set()
     m_chip: set[str] = set()
+    filing_season: set[str] = set()
     for fact in materialized_facts:
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             continue
-        if _is_all_vintage_support_exclusion(source_record_id):
+        if _partial_filing_season_fact(fact):
+            filing_season.add(source_record_id)
+        elif _is_all_vintage_support_exclusion(source_record_id):
             all_vintage.add(source_record_id)
         elif source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
             reviewed.add(source_record_id)
@@ -1210,13 +1256,29 @@ def us_fiscal_target_exclusion_receipt(
     selected_ids = [
         source_record_id
         for source_record_id, _ in _latest_dynamic_target_references(
-            materialized_facts, target_period=target_period
+            (
+                fact
+                for fact in materialized_facts
+                if not _partial_filing_season_fact(fact)
+            ),
+            target_period=target_period,
         )
     ]
     allowed = _check_exclusion_vintage_scope(selected_ids)
     return {
         "target_period": str(target_period),
         "rules": {
+            **(
+                {
+                    "partial_filing_season": {
+                        "action": "dropped",
+                        "scope": "returns processed through an IRS filing-season cutoff",
+                        "source_record_ids": sorted(filing_season),
+                    }
+                }
+                if filing_season
+                else {}
+            ),
             "reviewed_exclusion": {
                 "action": "dropped",
                 "scope": "exact source_record_id",

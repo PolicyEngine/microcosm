@@ -1,0 +1,340 @@
+{
+  "block_vintage": "2020_tabulation_blocks",
+  "crosswalk_sha256": "e3b65d94af3752b7dab0158b4fbffd0b6bf80396f1f26d5c6d11b48a5d1659fa",
+  "diagnostics": {
+    "basis": "block_population",
+    "cross_state_population": 0,
+    "row_count": 559,
+    "source_district_count": 436,
+    "state_conservation": {
+      "01": {
+        "assigned_population": 5024279,
+        "state_population": 5024279,
+        "unmatched_population": 0
+      },
+      "02": {
+        "assigned_population": 733391,
+        "state_population": 733391,
+        "unmatched_population": 0
+      },
+      "04": {
+        "assigned_population": 7151502,
+        "state_population": 7151502,
+        "unmatched_population": 0
+      },
+      "05": {
+        "assigned_population": 3011524,
+        "state_population": 3011524,
+        "unmatched_population": 0
+      },
+      "06": {
+        "assigned_population": 39538223,
+        "state_population": 39538223,
+        "unmatched_population": 0
+      },
+      "08": {
+        "assigned_population": 5773714,
+        "state_population": 5773714,
+        "unmatched_population": 0
+      },
+      "09": {
+        "assigned_population": 3605944,
+        "state_population": 3605944,
+        "unmatched_population": 0
+      },
+      "10": {
+        "assigned_population": 989948,
+        "state_population": 989948,
+        "unmatched_population": 0
+      },
+      "11": {
+        "assigned_population": 689545,
+        "state_population": 689545,
+        "unmatched_population": 0
+      },
+      "12": {
+        "assigned_population": 21538187,
+        "state_population": 21538187,
+        "unmatched_population": 0
+      },
+      "13": {
+        "assigned_population": 10711908,
+        "state_population": 10711908,
+        "unmatched_population": 0
+      },
+      "15": {
+        "assigned_population": 1455271,
+        "state_population": 1455271,
+        "unmatched_population": 0
+      },
+      "16": {
+        "assigned_population": 1839106,
+        "state_population": 1839106,
+        "unmatched_population": 0
+      },
+      "17": {
+        "assigned_population": 12812508,
+        "state_population": 12812508,
+        "unmatched_population": 0
+      },
+      "18": {
+        "assigned_population": 6785528,
+        "state_population": 6785528,
+        "unmatched_population": 0
+      },
+      "19": {
+        "assigned_population": 3190369,
+        "state_population": 3190369,
+        "unmatched_population": 0
+      },
+      "20": {
+        "assigned_population": 2937880,
+        "state_population": 2937880,
+        "unmatched_population": 0
+      },
+      "21": {
+        "assigned_population": 4505836,
+        "state_population": 4505836,
+        "unmatched_population": 0
+      },
+      "22": {
+        "assigned_population": 4657757,
+        "state_population": 4657757,
+        "unmatched_population": 0
+      },
+      "23": {
+        "assigned_population": 1362359,
+        "state_population": 1362359,
+        "unmatched_population": 0
+      },
+      "24": {
+        "assigned_population": 6177224,
+        "state_population": 6177224,
+        "unmatched_population": 0
+      },
+      "25": {
+        "assigned_population": 7029917,
+        "state_population": 7029917,
+        "unmatched_population": 0
+      },
+      "26": {
+        "assigned_population": 10077331,
+        "state_population": 10077331,
+        "unmatched_population": 0
+      },
+      "27": {
+        "assigned_population": 5706494,
+        "state_population": 5706494,
+        "unmatched_population": 0
+      },
+      "28": {
+        "assigned_population": 2961279,
+        "state_population": 2961279,
+        "unmatched_population": 0
+      },
+      "29": {
+        "assigned_population": 6154913,
+        "state_population": 6154913,
+        "unmatched_population": 0
+      },
+      "30": {
+        "assigned_population": 1084225,
+        "state_population": 1084225,
+        "unmatched_population": 0
+      },
+      "31": {
+        "assigned_population": 1961504,
+        "state_population": 1961504,
+        "unmatched_population": 0
+      },
+      "32": {
+        "assigned_population": 3104614,
+        "state_population": 3104614,
+        "unmatched_population": 0
+      },
+      "33": {
+        "assigned_population": 1377529,
+        "state_population": 1377529,
+        "unmatched_population": 0
+      },
+      "34": {
+        "assigned_population": 9288994,
+        "state_population": 9288994,
+        "unmatched_population": 0
+      },
+      "35": {
+        "assigned_population": 2117522,
+        "state_population": 2117522,
+        "unmatched_population": 0
+      },
+      "36": {
+        "assigned_population": 20201249,
+        "state_population": 20201249,
+        "unmatched_population": 0
+      },
+      "37": {
+        "assigned_population": 10439388,
+        "state_population": 10439388,
+        "unmatched_population": 0
+      },
+      "38": {
+        "assigned_population": 779094,
+        "state_population": 779094,
+        "unmatched_population": 0
+      },
+      "39": {
+        "assigned_population": 11799448,
+        "state_population": 11799448,
+        "unmatched_population": 0
+      },
+      "40": {
+        "assigned_population": 3959353,
+        "state_population": 3959353,
+        "unmatched_population": 0
+      },
+      "41": {
+        "assigned_population": 4237256,
+        "state_population": 4237256,
+        "unmatched_population": 0
+      },
+      "42": {
+        "assigned_population": 13002700,
+        "state_population": 13002700,
+        "unmatched_population": 0
+      },
+      "44": {
+        "assigned_population": 1097379,
+        "state_population": 1097379,
+        "unmatched_population": 0
+      },
+      "45": {
+        "assigned_population": 5118425,
+        "state_population": 5118425,
+        "unmatched_population": 0
+      },
+      "46": {
+        "assigned_population": 886667,
+        "state_population": 886667,
+        "unmatched_population": 0
+      },
+      "47": {
+        "assigned_population": 6910840,
+        "state_population": 6910840,
+        "unmatched_population": 0
+      },
+      "48": {
+        "assigned_population": 29145505,
+        "state_population": 29145505,
+        "unmatched_population": 0
+      },
+      "49": {
+        "assigned_population": 3271616,
+        "state_population": 3271616,
+        "unmatched_population": 0
+      },
+      "50": {
+        "assigned_population": 643077,
+        "state_population": 643077,
+        "unmatched_population": 0
+      },
+      "51": {
+        "assigned_population": 8631393,
+        "state_population": 8631393,
+        "unmatched_population": 0
+      },
+      "53": {
+        "assigned_population": 7705281,
+        "state_population": 7705281,
+        "unmatched_population": 0
+      },
+      "54": {
+        "assigned_population": 1793716,
+        "state_population": 1793716,
+        "unmatched_population": 0
+      },
+      "55": {
+        "assigned_population": 5893718,
+        "state_population": 5893718,
+        "unmatched_population": 0
+      },
+      "56": {
+        "assigned_population": 576851,
+        "state_population": 576851,
+        "unmatched_population": 0
+      }
+    },
+    "target_district_count": 436,
+    "unmatched_population_no_current_district": 0,
+    "unmatched_population_no_old_district": 0
+  },
+  "kind": "us_congressional_district_vintage_crosswalk",
+  "known_deviations": {},
+  "method": "Population-weighted overlay of the 118th and 119th plans of the US block -> congressional-district plan registry on 2020 tabulation blocks, weighted by 2020 P.L. 94-171 block populations. Each old district's population is redistributed across current districts; totals conserve by construction. See the registry for source plan definitions.",
+  "schema_version": 1,
+  "source_geography_vintage": "118th_congress",
+  "sources": {
+    "cd_plan_registry": {
+      "artifact": "us_cd_plan_registry_2020.npz",
+      "plans": [
+        "118th_congress",
+        "119th_congress"
+      ],
+      "receipt": "microcosm.build.us_runtime/us_cd_plan_registry.provenance.json",
+      "sha256": "6b16fc2141060be312eae6ac5e5bd6b2985e45816bcfcab8024f7488be75168f"
+    }
+  },
+  "states": [
+    "01",
+    "02",
+    "04",
+    "05",
+    "06",
+    "08",
+    "09",
+    "10",
+    "11",
+    "12",
+    "13",
+    "15",
+    "16",
+    "17",
+    "18",
+    "19",
+    "20",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "26",
+    "27",
+    "28",
+    "29",
+    "30",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "36",
+    "37",
+    "38",
+    "39",
+    "40",
+    "41",
+    "42",
+    "44",
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51",
+    "53",
+    "54",
+    "55",
+    "56"
+  ],
+  "target_geography_vintage": "119th_congress"
+}

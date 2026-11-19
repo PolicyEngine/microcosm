@@ -753,6 +753,33 @@ def _bridge_surface(ratios, at_large=None):
     )
 
 
+@pytest.mark.parametrize("measure", sorted(_CD.STATE_CD_DEFECTIVE_CD_FILE_MEASURES))
+@pytest.mark.parametrize("source_year", [2022, 2023])
+def test_state_cd_checks_wrong_columns_by_source_file(measure, source_year):
+    specs, crosswalk = _bridge_world({"15": 1.0}, {})
+    rows = []
+    for spec in specs:
+        if spec.metadata["source_measure_id"] != "return_count":
+            continue
+        metadata = {**spec.metadata, "source_measure_id": measure}
+        if _CD.is_cd_file_spec(spec):
+            metadata["ledger_layout_record_set_spec_id"] = (
+                f"irs_soi.congressional_district_{source_year}.all_returns.v1"
+            )
+        rows.append(dataclasses.replace(spec, metadata=metadata))
+    surface = _CD.state_cd_soi_surface(
+        rows,
+        state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+        crosswalk=crosswalk,
+    )
+    children = [
+        spec.value
+        for spec in surface.specs
+        if _CD.geography_level(spec) == "congressional_district"
+    ]
+    assert children == ([40.0, 60.0] if source_year == 2023 else [])
+
+
 def _bound(surface, state, measure, level):
     return [
         spec.name

@@ -19,6 +19,13 @@ from microcosm.calibrate.geography_constants import (
 )
 
 SOURCE_CONGRESSIONAL_DISTRICT_PREFIX = "5001700US"
+CONGRESS_118_PREFIX = "5001800US"
+SOI_CD_2023_RECORD_SET = "irs_soi.ty2023.congressional_district_2023.all_returns"
+SOI_CD_2022_RECORD_SET = "irs_soi.ty2023.congressional_district_2022.all_returns"
+SOI_CD_2022_CORRECTED_RECORD_SET = (
+    "irs_soi.ty2022.congressional_district_2022.all_returns"
+)
+CROSSWALK_118_119_RESOURCE = "congressional_district_vintage_crosswalk_118_119.csv"
 CURRENT_CONGRESSIONAL_DISTRICT_PREFIX = "5001900US"
 CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE = "119th_congress"
 #: The Congress whose plan ``CURRENT_CONGRESSIONAL_DISTRICT_PREFIX`` identifies,
@@ -66,26 +73,19 @@ def load_congressional_district_vintage_crosswalk(path: str | Path) -> pd.DataFr
                         f"expected object, got {type(row).__name__}."
                     )
                 rows.append(dict(row))
-        return _prepare_crosswalk(
-            rows,
-            source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
-            target_prefix=CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
-        )
-    if source.suffix == ".json":
-        payload = json.loads(source.read_text())
-        if not isinstance(payload, list):
+    elif source.suffix == ".json":
+        rows = json.loads(source.read_text())
+        if not isinstance(rows, list):
             raise ValueError("CD vintage crosswalk JSON artifact must be an array.")
-        return _prepare_crosswalk(
-            payload,
-            source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
-            target_prefix=CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
-        )
+    else:
+        rows = pd.read_csv(source)
     prepared = _prepare_crosswalk(
-        pd.read_csv(source),
-        source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
+        rows,
+        source_prefix=None,
         target_prefix=CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
     )
-    if source == default_congressional_district_vintage_crosswalk_path():
+    default = default_congressional_district_vintage_crosswalk_path()
+    if source in {default, default.with_name(CROSSWALK_118_119_RESOURCE)}:
         validate_packaged_congressional_district_vintage_crosswalk(prepared)
     return prepared
 
@@ -154,9 +154,7 @@ def validate_packaged_congressional_district_vintage_crosswalk(
             "Packaged CD vintage crosswalk must carry the pair_population "
             "provenance column."
         )
-    source_geoids = prepared["source_geography_id"].str.removeprefix(
-        SOURCE_CONGRESSIONAL_DISTRICT_PREFIX
-    )
+    source_geoids = prepared["source_geography_id"].str[-4:]
     target_geoids = prepared["target_geography_id"].str.removeprefix(
         CURRENT_CONGRESSIONAL_DISTRICT_PREFIX
     )
@@ -217,11 +215,48 @@ def validate_packaged_congressional_district_vintage_crosswalk(
         )
 
 
+def select_irs_district_source(facts, *, source_prefix: str, target_period: int | str):
+    """Use one IRS district file whose source boundaries match the crosswalk.
+
+    The incumbent feed stamps the 2022 file TY2023. Its table identity, not the
+    period stamp, distinguishes it from true TY2023. Both files contain state
+    and US totals as well as district rows, so select the whole file together.
+    """
+    # Newer Chronicle feeds correct the original one-year TY2022 stamp error.
+    old = {SOI_CD_2022_RECORD_SET, SOI_CD_2022_CORRECTED_RECORD_SET}
+    new = SOI_CD_2023_RECORD_SET
+    materialized = tuple(facts)
+    ids = {_mapping_at(fact, "layout").get("record_set_id") for fact in materialized}
+    excluded = set()
+    if SOI_CD_2022_CORRECTED_RECORD_SET in ids:
+        excluded.add(SOI_CD_2022_RECORD_SET)
+    if new not in ids:
+        if not excluded:
+            return materialized
+    elif source_prefix == CONGRESS_118_PREFIX and int(target_period) >= 2023:
+        excluded = old
+    elif source_prefix == SOURCE_CONGRESSIONAL_DISTRICT_PREFIX and not old.isdisjoint(
+        ids
+    ):
+        excluded.add(new)
+    else:
+        raise ValueError(
+            "No IRS district file matches the supplied source-plan crosswalk and tax year. "
+            "The TY2023 district file requires the 118th-to-119th crosswalk."
+        )
+    return tuple(
+        fact
+        for fact in materialized
+        if _mapping_at(fact, "layout").get("record_set_id") not in excluded
+    )
+
+
 def translate_congressional_district_facts_to_current_vintage(
     facts: Iterable[Mapping[str, Any]],
     crosswalk: pd.DataFrame | Iterable[Mapping[str, Any]],
     *,
-    source_prefix: str = SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
+    source_prefix: str | None = None,
+    target_period: int | str = 2024,
     target_prefix: str = CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
     target_vintage: str = CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     crosswalk_basis: str = "population",
@@ -240,7 +275,10 @@ def translate_congressional_district_facts_to_current_vintage(
         source_prefix=source_prefix,
         target_prefix=target_prefix,
     )
-    materialized_facts = tuple(facts)
+    source_prefix = prepared_crosswalk.attrs["source_prefix"]
+    materialized_facts = select_irs_district_source(
+        facts, source_prefix=source_prefix, target_period=target_period
+    )
     materialized_facts = _with_state_total_proxy_source_districts(
         materialized_facts,
         prepared_crosswalk=prepared_crosswalk,
@@ -513,7 +551,7 @@ def _is_period_token(value: str) -> bool:
 def _prepare_crosswalk(
     crosswalk: pd.DataFrame | Iterable[Mapping[str, Any]],
     *,
-    source_prefix: str,
+    source_prefix: str | None,
     target_prefix: str,
 ) -> pd.DataFrame:
     frame = (
@@ -531,6 +569,14 @@ def _prepare_crosswalk(
     prepared = frame.loc[:, columns].copy()
     prepared["source_geography_id"] = prepared["source_geography_id"].map(str)
     prepared["target_geography_id"] = prepared["target_geography_id"].map(str)
+    if source_prefix is None:
+        source_ids = prepared["source_geography_id"]
+        source_prefix = (
+            CONGRESS_118_PREFIX
+            if len(source_ids) and source_ids.str.startswith(CONGRESS_118_PREFIX).all()
+            else SOURCE_CONGRESSIONAL_DISTRICT_PREFIX
+        )
+    prepared.attrs["source_prefix"] = source_prefix
     bad_source = prepared[
         ~prepared["source_geography_id"].str.startswith(source_prefix, na=False)
     ]
