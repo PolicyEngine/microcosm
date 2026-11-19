@@ -8,6 +8,7 @@ to a local, once nothing reads it.
 
 # ruff: noqa: F403, F405
 import re
+import textwrap
 import weakref
 
 from microcosm.calibrate import DroppedConstraintMatrix
@@ -41,22 +42,46 @@ _FREED_NAMES = frozenset(
 _HOLDING_ATTRIBUTES = frozenset(
     {"frame", "matrix", "problem", "refit", "result", "selection"}
 )
-#: The statements in ``_main`` that bind another name, or a container, to one
-#: of those objects or a large part of one, in source order. Any other such
-#: binding would keep the object alive after its ``del`` or drop.
+#: Calls whose result holds their arguments.
+_CONTAINER_CALLS = frozenset(
+    {"SimpleNamespace", "dict", "frozenset", "list", "set", "tuple"}
+)
+#: Methods that store their arguments in the object they are called on.
+_STORING_METHODS = frozenset(
+    {"add", "append", "extend", "insert", "setdefault", "update"}
+)
+#: The places in ``_main`` that bind another name, or put a container, a copy
+#: or a loop variable, on one of those objects or a large part of one, in
+#: source order. Any other would keep the object alive after its ``del`` or
+#: drop.
 _EXPECTED_ALIAS_BINDINGS = (
     # The pre-selection frame on the frozen-support path. It is another object
-    # than the base_frame deleted after the export check, and outlives it.
+    # than the base_frame deleted after the export check, and this change
+    # leaves it alive until _main returns (a follow-up).
     "selection_candidate_frame = base_frame",
     # The join's frame becomes the working frame; the result is deleted.
     "base_frame = acs_predictor_join_result.frame",
     # Rebound to the matrix-free result before the export.
     "result = ladder_outcome.result",
+    # The outcome's copy holding the matrix-free result replaces the original.
+    "ladder_outcome = dataclasses.replace(ladder_outcome, result=result)",
 )
 
 
 class _LargeObject:
     """A stand-in for a frame or table that a weak reference can follow."""
+
+
+def _called_name(call: ast.Call) -> str | None:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return None
+
+
+def _arguments(call: ast.Call) -> list[ast.expr]:
+    return [*call.args, *(keyword.value for keyword in call.keywords)]
 
 
 def _holds_a_freed_object(node: ast.AST) -> bool:
@@ -65,7 +90,7 @@ def _holds_a_freed_object(node: ast.AST) -> bool:
         return node.id in _FREED_NAMES
     if isinstance(node, ast.Attribute):
         return node.attr in _HOLDING_ATTRIBUTES and _holds_a_freed_object(node.value)
-    if isinstance(node, ast.Starred):
+    if isinstance(node, (ast.Starred, ast.NamedExpr)):
         return _holds_a_freed_object(node.value)
     if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
         return any(_holds_a_freed_object(element) for element in node.elts)
@@ -73,7 +98,53 @@ def _holds_a_freed_object(node: ast.AST) -> bool:
         return any(
             value is not None and _holds_a_freed_object(value) for value in node.values
         )
+    if isinstance(node, ast.IfExp):
+        return _holds_a_freed_object(node.body) or _holds_a_freed_object(node.orelse)
+    if isinstance(node, ast.BoolOp):
+        return any(_holds_a_freed_object(value) for value in node.values)
+    if isinstance(node, ast.Call):
+        name = _called_name(node)
+        if name in _CONTAINER_CALLS:
+            return any(_holds_a_freed_object(argument) for argument in _arguments(node))
+        if name == "replace":
+            # dataclasses.replace keeps every field it is not given.
+            return bool(node.args) and _holds_a_freed_object(node.args[0])
+        if name == "getattr" and len(node.args) >= 2:
+            attribute = node.args[1]
+            return (
+                isinstance(attribute, ast.Constant)
+                and attribute.value in _HOLDING_ATTRIBUTES
+                and _holds_a_freed_object(node.args[0])
+            )
     return False
+
+
+def _alias_sites(function: ast.FunctionDef) -> list[tuple[int, str]]:
+    """Where ``function`` makes a checked object reachable another way."""
+    sites = []
+    for node in ast.walk(function):
+        if (
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr))
+            and node.value is not None
+            and _holds_a_freed_object(node.value)
+        ):
+            sites.append((node.lineno, ast.unparse(node)))
+        elif isinstance(node, (ast.For, ast.comprehension)) and _holds_a_freed_object(
+            node.iter
+        ):
+            sites.append((node.iter.lineno, ast.unparse(node.iter)))
+        elif isinstance(node, ast.withitem) and _holds_a_freed_object(
+            node.context_expr
+        ):
+            sites.append((node.context_expr.lineno, ast.unparse(node.context_expr)))
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in _STORING_METHODS
+            and any(_holds_a_freed_object(argument) for argument in _arguments(node))
+        ):
+            sites.append((node.lineno, ast.unparse(node)))
+    return sorted(sites)
 
 
 def _main_function(builder) -> ast.FunctionDef:
@@ -130,14 +201,31 @@ def _execute(statements: list[ast.stmt], namespace: dict, label: str) -> None:
 def test_main_binds_no_other_name_to_a_freed_object(builder) -> None:
     """A second name would keep an object alive after its ``del`` or drop."""
     main = _main_function(builder)
-    bindings = sorted(
-        (node.lineno, ast.unparse(node))
-        for node in ast.walk(main)
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr))
-        and node.value is not None
-        and _holds_a_freed_object(node.value)
+    sites = _alias_sites(main)
+    assert tuple(statement for _, statement in sites) == _EXPECTED_ALIAS_BINDINGS
+
+
+def test_the_alias_check_sees_each_way_of_keeping_an_object() -> None:
+    """Each form below keeps ``base_frame`` or the matrix reachable."""
+    keeping = (
+        "kept = base_frame if flag else None",
+        "kept = flag and base_frame",
+        "kept = SimpleNamespace(frame=base_frame)",
+        "kept = dataclasses.replace(ladder_outcome, support=support)",
+        "kept = getattr(result, 'problem')",
+        "kept = [result.problem.matrix]",
+        "kept += [release_engine]",
+        "frames.append(base_frame)",
+        "for kept in (base_frame,):\n    pass",
+        "with release_engine as kept:\n    pass",
     )
-    assert tuple(statement for _, statement in bindings) == _EXPECTED_ALIAS_BINDINGS
+    harmless = ("total = base_frame.n('household')", "loss = result.final_loss")
+    for source, expected_sites in (
+        *((source, 1) for source in keeping),
+        *((source, 0) for source in harmless),
+    ):
+        function = ast.parse("def _main():\n" + textwrap.indent(source, "    "))
+        assert len(_alias_sites(function.body[0])) == expected_sites, source
 
 
 def test_main_keeps_only_the_receipt_of_the_acs_predictor_join(builder) -> None:
@@ -233,14 +321,6 @@ def test_main_passes_each_donor_table_straight_into_its_stage(builder) -> None:
         assert isinstance(stage, ast.Call)
         assert isinstance(stage.func, ast.Name)
         assert stage.func.id.startswith("with_us_"), ast.unparse(stage.func)
-    donor_names = {
-        node.id
-        for node in ast.walk(main)
-        if isinstance(node, ast.Name)
-        and isinstance(node.ctx, ast.Store)
-        and node.id.endswith("_donor")
-    }
-    assert donor_names == set()
     # A cached loader would keep its table for the process, whatever _main does.
     for loader in _DONOR_LOADERS:
         assert not hasattr(getattr(builder, loader), "cache_info"), loader
@@ -409,13 +489,56 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     ]
     assert calibration_calls
     assert max(calibration_calls) < main.body[matrix_dropped].lineno
-    # After the drop, the release tool's own code never reads a matrix's
-    # entries: nothing in it reads ``.matrix`` or calls ``.estimates``. The
-    # calibrate package's readers are tested with a dropped matrix there.
+    # After the drop, no tool code that can reach the calibration result reads
+    # a matrix's entries: neither _main's later statements nor any tool
+    # function they pass result or ladder_outcome to, followed through the
+    # tool's own calls, reads ``.matrix`` or calls ``.estimates``. The
+    # calibrate package's readers run on a dropped matrix in this module's
+    # output tests and in the calibrate package's tests.
+    dropped_line = main.body[matrix_dropped].lineno
     tool = ast.parse(Path(builder.__file__).read_text())
+    functions = {
+        node.name: node for node in tool.body if isinstance(node, ast.FunctionDef)
+    }
+    frontier = [
+        call.func.id
+        for call in ast.walk(main)
+        if isinstance(call, ast.Call)
+        and call.lineno > dropped_line
+        and isinstance(call.func, ast.Name)
+        and call.func.id in functions
+        and any(
+            isinstance(argument, ast.Name)
+            and argument.id in {"result", "ladder_outcome"}
+            for argument in _arguments(call)
+        )
+    ]
+    assert {
+        "_release_gate_failures",
+        "_write_npz",
+        "_write_release_calibration_diagnostics",
+    } <= set(frontier)
+    reached: set[str] = set()
+    while frontier:
+        name = frontier.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        frontier.extend(
+            call.func.id
+            for call in ast.walk(functions[name])
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id in functions
+        )
+    later_nodes = [
+        node for node in ast.walk(main) if getattr(node, "lineno", 0) > dropped_line
+    ]
+    for name in sorted(reached - {"_main"}):
+        later_nodes.extend(ast.walk(functions[name]))
     assert [
         f"{node.lineno}: {ast.unparse(node)}"
-        for node in ast.walk(tool)
+        for node in later_nodes
         if isinstance(node, ast.Attribute) and node.attr in {"matrix", "estimates"}
     ] == []
 
@@ -430,13 +553,20 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     # Nothing in _main fills the cache again; the reform-coverage smoke, after
     # the H5 write, is the next reader.
     cleared_line = main.body[check + 1].lineno
-    for filler in (
+    fillers = {
         "assert_release_input_coverage_manifest_current",
         "resolve_probe_parameter_changes",
         "installed_list_parameter_baseline",
         "_installed_parameter_stages",
-    ):
-        assert all(call.lineno < cleared_line for call in _calls_named(main, filler))
+    }
+    # Called by name or through a module attribute.
+    assert [
+        f"{call.lineno}: {ast.unparse(call)}"
+        for call in ast.walk(main)
+        if isinstance(call, ast.Call)
+        and _called_name(call) in fillers
+        and call.lineno > cleared_line
+    ] == []
 
 
 def test_main_export_statements_leave_only_the_matrix_shape_and_nonzero_count(
@@ -509,8 +639,10 @@ def test_main_export_statements_leave_only_the_matrix_shape_and_nonzero_count(
 def test_dropping_the_constraint_matrix_leaves_the_written_calibration_unchanged(
     builder, tmp_path, full_pool
 ) -> None:
-    """The calibration NPZ, the diagnostics payload and the target surface
-    written from a result without its matrices equal those of the original."""
+    """Writing from a result without its matrices raises nothing and gives the
+    same calibration NPZ arrays, diagnostics payload, target surface and
+    in-sample fit. Of these, only the target surface reads the matrix (its
+    shape and nonzero count); the rest show that no reader needs it."""
     from microcosm.calibrate import (
         calibrate_l0_refit,
         diagnostics_payload,

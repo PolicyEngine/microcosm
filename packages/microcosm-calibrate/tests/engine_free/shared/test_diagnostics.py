@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from scipy import sparse
 
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION,
@@ -1225,9 +1226,10 @@ def test_payload_census_from_a_real_solve(feasible_frame) -> None:
     json.dumps(payload, allow_nan=False)
 
 
-def _l0_refit_result(feasible_frame):
-    frame, truths = feasible_frame()
-    targets = TargetSet(
+def _sparse_targets(truths) -> TargetSet:
+    """Income on every household and renters on about a third of them, so the
+    constraint matrix stores fewer entries than it has cells."""
+    return TargetSet(
         (
             Target(
                 name="income",
@@ -1236,16 +1238,35 @@ def _l0_refit_result(feasible_frame):
                 measure="income",
             ),
             Target(
-                name="population",
+                name="renters",
                 entity="household",
-                value=truths["population"],
-                measure="household_count",
+                value=truths["renters"] * 1.1,
+                measure="is_renter",
             ),
         )
     )
+
+
+def _sparse_result(feasible_frame):
+    frame, truths = feasible_frame()
+    return calibrate(frame, _sparse_targets(truths), epochs=20, seed=0)
+
+
+def _l0_refit_result(feasible_frame):
+    frame, truths = feasible_frame()
     return calibrate_l0_refit(
-        frame, targets, epochs=40, seed=0, l0_lambda=0.003, mass="conserve"
+        frame,
+        _sparse_targets(truths),
+        epochs=40,
+        seed=0,
+        l0_lambda=0.003,
+        mass="conserve",
     )
+
+
+def _assert_sparse(matrix) -> None:
+    rows, columns = matrix.shape
+    assert 0 < matrix.nnz < rows * columns
 
 
 def _matrix_references(problem) -> list[weakref.ref]:
@@ -1263,10 +1284,10 @@ def test_dropping_the_constraint_matrix_keeps_its_shape_and_nonzero_count(
     feasible_frame,
 ) -> None:
     """The matrix is freed; the target surface and the payload are unchanged."""
-    result = _result(feasible_frame, epochs=20)
+    result = _sparse_result(feasible_frame)
+    _assert_sparse(result.problem.matrix)
     shape = tuple(result.problem.matrix.shape)
     nonzero_count = int(result.problem.matrix.nnz)
-    assert nonzero_count > 0
     surface = target_surface_payload(result)
     payload = diagnostics_payload(result)
     references = _matrix_references(result.problem)
@@ -1293,6 +1314,10 @@ def test_dropping_an_l0_refit_result_drops_the_selection_matrix_too(
 ) -> None:
     """Under L0 selection the selection's full-frame matrix is freed as well."""
     result = _l0_refit_result(feasible_frame)
+    _assert_sparse(result.selection.problem.matrix)
+    _assert_sparse(result.refit.problem.matrix)
+    refit_shape = tuple(result.refit.problem.matrix.shape)
+    refit_nonzero_count = int(result.refit.problem.matrix.nnz)
     selection_shape = tuple(result.selection.problem.matrix.shape)
     selection_nonzero_count = int(result.selection.problem.matrix.nnz)
     surface = target_surface_payload(result)
@@ -1309,6 +1334,8 @@ def test_dropping_an_l0_refit_result_drops_the_selection_matrix_too(
     assert [reference() for reference in references] == [None] * len(references)
     assert dropped.selection.problem.matrix.shape == selection_shape
     assert dropped.selection.problem.matrix.nnz == selection_nonzero_count
+    assert dropped.refit.problem.matrix.shape == refit_shape
+    assert dropped.refit.problem.matrix.nnz == refit_nonzero_count
     assert target_surface_payload(dropped) == surface
     assert diagnostics_payload(dropped) == payload
 
@@ -1337,10 +1364,30 @@ def test_a_dropped_constraint_matrix_refuses_every_use_that_needs_its_entries(
         np.asarray(matrix)
     with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
         len(matrix)
-    # Encoding the problem for an artifact needs every entry.
-    with pytest.raises(ValueError) as encoding_error:
+    # Encoding the problem for an artifact needs every entry. SciPy reports
+    # the refusal as its own error raised from this one.
+    with pytest.raises(
+        (ConstraintMatrixDroppedError, TypeError, ValueError)
+    ) as encoding_error:
         encode_problem(dropped.problem, entity_ids=list(range(len(weights))))
-    assert isinstance(encoding_error.value.__cause__, ConstraintMatrixDroppedError)
+    assert isinstance(encoding_error.value, ConstraintMatrixDroppedError) or isinstance(
+        encoding_error.value.__cause__, ConstraintMatrixDroppedError
+    )
+
+
+def test_a_dropped_matrix_keeps_the_stored_entry_count() -> None:
+    """``nnz`` is the stored-entry count the target surface records, explicit
+    zeros included, not the count of nonzero values or of cells."""
+    matrix = sparse.csr_array(
+        (np.array([1.0, 0.0, 2.0]), np.array([0, 2, 1]), np.array([0, 2, 3])),
+        shape=(2, 4),
+    )
+    assert (matrix.nnz, matrix.count_nonzero()) == (3, 2)
+
+    dropped = DroppedConstraintMatrix.of(matrix)
+
+    assert (dropped.shape, dropped.nnz) == ((2, 4), 3)
+    assert DroppedConstraintMatrix.of(dropped) is dropped
 
 
 def test_dropping_the_constraint_matrix_returns_other_objects_unchanged() -> None:
