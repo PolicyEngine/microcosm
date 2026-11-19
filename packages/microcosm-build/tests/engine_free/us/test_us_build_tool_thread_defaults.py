@@ -20,6 +20,7 @@ import sys
 from collections.abc import Mapping
 from types import ModuleType
 
+import joblib
 import pytest
 
 from test_support.paths import paths_for
@@ -177,7 +178,7 @@ def test_variables_already_set_are_kept(helper: ModuleType) -> None:
 
 
 def test_a_blank_thread_variable_is_filled(helper: ModuleType) -> None:
-    """Libraries read a blank thread variable as unset."""
+    """Most libraries ignore a blank thread variable; joblib fails on one."""
 
     environment = _filled(helper, {THREAD_SETTING: "4", OPENMP: ""})
 
@@ -185,7 +186,18 @@ def test_a_blank_thread_variable_is_filled(helper: ModuleType) -> None:
 
 
 @pytest.mark.parametrize(
-    "configured", ("0", "-1", "+4", "4,2", " 3 ", "4.0", "many", "٣")
+    "configured",
+    (
+        "0",
+        "-1",
+        "+4",
+        "4,2",
+        " 3 ",
+        "4.0",
+        "many",
+        "٣",
+        pytest.param("9" * 5000, id="longer_than_int_parses"),
+    ),
 )
 def test_a_thread_setting_that_is_not_a_positive_count_is_refused(
     helper: ModuleType, configured: str
@@ -439,7 +451,7 @@ print(
 
 
 @pytest.mark.skipif(
-    (os.process_cpu_count() or 1) < 2,
+    joblib.cpu_count() < 2,
     reason="OpenBLAS and joblib use no more threads than the CPUs available",
 )
 def test_the_thread_setting_reaches_every_library() -> None:
