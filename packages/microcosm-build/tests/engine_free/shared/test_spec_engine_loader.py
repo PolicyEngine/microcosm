@@ -33,7 +33,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # microcosm#1641's docstring and comment wording in solve and ssi_take_up
     # moves it again.
     assert first.spec_sha256 == (
-        "cb9742d5089eddb8783ee1cb890206b33a35efe5ff572656dbd58a1b95ea1e28"
+        "6b63d32abf751ab6832c4244fc2fa6d54d26936b87096c29102a5570f4ca0774"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
