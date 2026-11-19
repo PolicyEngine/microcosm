@@ -341,8 +341,11 @@ def test_stage2_chain_gets_the_settings_and_inputs_of_the_whole_fit_and_draw(
 
     The expected values are written out from what the stage passed to one fit
     over every target and one ``predict_from_uniforms``. The income predictors
-    of the drawn rows hold stage-1 draws, which vary by platform, so only the
-    byte tests cover their values.
+    of the drawn rows hold stage-1 draws, which vary by platform, so
+    ``test_stage2_reads_stage1_incomes_and_its_draws_reach_the_person_table``
+    checks their values against the returned person table instead. The one
+    the stage rewrites after stage 2, ``self_employment_income``, is covered
+    only by the byte tests.
     """
 
     run = reference_run(scenario)
