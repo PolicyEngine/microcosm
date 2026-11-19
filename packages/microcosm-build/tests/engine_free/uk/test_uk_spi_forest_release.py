@@ -187,6 +187,10 @@ def _origin_main_digests(scenario: str) -> dict[str, str]:
 class _TrackedRun:
     result: UKSPIIncomeImputationResult
     lifetimes: SPIForestLifetimes
+    #: What was alive of each fit once the stage returned, read while the
+    #: garbage collector was still off, so a model held only by a reference
+    #: cycle counts as alive.
+    alive_after_stage: tuple[tuple, ...]
 
 
 @pytest.fixture(scope="module")
@@ -209,7 +213,12 @@ def tracked_run(tmp_path_factory) -> Callable[[str], _TrackedRun]:
                 ) as lifetimes,
             ):
                 result = run_spi_forest_scenario(scenario, directory, monkeypatch)
-            runs[scenario] = _TrackedRun(result, lifetimes)
+                alive_after_stage = tuple(
+                    alive
+                    for fit in (STAGE1_FIT, REFERENCE_FIT, STAGE2_FIT)
+                    for alive in lifetimes.alive(fit)
+                )
+            runs[scenario] = _TrackedRun(result, lifetimes, alive_after_stage)
         return runs[scenario]
 
     return run
@@ -345,7 +354,7 @@ def test_stage2_chain_gets_the_settings_and_inputs_of_the_whole_fit_and_draw(
     ``test_stage2_reads_stage1_incomes_and_its_draws_reach_the_person_table``
     checks their values against the returned person table instead. The one
     the stage rewrites after stage 2, ``self_employment_income``, is covered
-    only by the byte tests.
+    only by the frozen-digest tests, where they run.
     """
 
     run = reference_run(scenario)
@@ -557,10 +566,9 @@ def test_each_fit_starts_after_the_models_it_replaces_are_dead(
 
 @pytest.mark.parametrize("scenario", SPI_FOREST_SCENARIOS)
 def test_no_fitted_model_outlives_the_stage(scenario, tracked_run) -> None:
-    lifetimes = tracked_run(scenario).lifetimes
+    """Nothing of any fit is alive once the stage returns, cycles included."""
 
-    for fit in (STAGE1_FIT, REFERENCE_FIT, STAGE2_FIT):
-        assert lifetimes.alive(fit) == []
+    assert tracked_run(scenario).alive_after_stage == ()
 
 
 def _fitted_forest_target(gate_calibration: str) -> object:
