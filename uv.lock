@@ -974,7 +974,7 @@ requires-dist = [
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
-    { name = "quantile-forest", specifier = ">=1.4.2" },
+    { name = "quantile-forest", specifier = "==1.4.2" },
     { name = "scikit-learn", specifier = ">=1.5" },
 ]
 

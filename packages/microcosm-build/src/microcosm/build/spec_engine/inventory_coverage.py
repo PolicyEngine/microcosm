@@ -414,8 +414,11 @@ EXPECTED_HASHES = {
     # microcosm#1641 moves both again: it rewords docstrings and a comment in
     # solve and the delivery gate's docstring in ssi_take_up, which now names
     # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
-    "seed_map": "ecee028549c18bfd82a705fea001898f6417fbc4b8335bc2d3d39023eec075ff",
-    "seed_protocol": "ee5ea0223aef229a3dd31508c028e0ca13bd623a944611cac7bdfe2a15900718",
+    # The in-place QRF leaf array in microcosm.fit.qrf (#1682) moves both again
+    # on top of the engine refresh (#1676): the forests' leaf arrays are
+    # byte-identical, and no draw changes.
+    "seed_map": "9be0442207d685d3b99508c4ec4e447d1c83cd4d41d2457480bf306ea0491e37",
+    "seed_protocol": "a6f203aca42c6749ee435b9f2f0b24aa86fc4104492f30b956bae2b79e698c4e",
     "source_manifest": "777ba41a83bf75ee00937f694a08208e93dcd7c91c9d096d316affd67d424267",
     "take_up": "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c",
     "tail": "f7f8282d48dbf1e01016cd551f5a0de289911140048d20812c920ace0d092936",
