@@ -30,23 +30,24 @@ policyengine-us 2.2.1 sets a column as an input only if its name is a model vari
 | Read by the model | 198 | 153 person, 19 household, 14 tax_unit, 10 spm_unit, 1 family, 1 marital_unit |
 | Raw CPS ASEC fields | 162 | Uppercase, under their Census names: 161 person and household `H_TENURE`. Null on ACS rows, except eight (below). |
 | Raw ACS 2024 PUMS fields | 51 | Uppercase; null on donor rows. `ST` is the Census `STATE` and `ACS_MIL` the Census `MIL`. Listed below. |
-| Build identifiers | 29 | For each of the six tables, `{table}_source_id`, `{table}_support_channel`, `{table}_support_clone_index` and `{table}_spine`; plus `source_year`, `source_household_id`, `source_person_id`, `source_row_id` and the uppercase `CENSUS_TAX_ID`. `household_spine` is `acs_2024_1yr` for ACS households and `asec_puf` for donor households. |
+| Build identifiers | 29 | For each of the six tables, `{table}_source_id`, `{table}_support_channel`, `{table}_support_clone_index` and `{table}_spine`; plus `source_year`, `source_household_id`, `source_person_id`, `source_row_id` and `CENSUS_TAX_ID` (see below). `household_spine` is `acs_2024_1yr` for ACS households and `asec_puf` for donor households. |
 | Derived columns | 12 | `county_fips_2023`, `puma_geoid`, `acs_social_security_income`, `acs_retirement_income`, `acs_interest_dividend_rental_income`, `acs_monthly_contract_rent`, `acs_monthly_gross_rent`, `acs_annual_property_tax`, `tax_unit_role_input`, `filing_status_input`, `parent_1_id`, `parent_2_id` |
 
 The 51 ACS fields are, for persons, `SPORDER`, `ADJINC`, `PWGTP`, `AGEP`, `CIT`, `COW`, `DDRS`, `DEAR`, `DEYE`, `DOUT`, `DPHY`, `DREM`, `HINS3`, `HINS4`, `HINS5`, `HINS6`, `HINS7`, `INTP`, `MAR`, `ACS_MIL`, `OIP`, `PAP`, `RELSHIPP`, `RETP`, `SCHG`, `SEMP`, `SEX`, `SSIP`, `SSP`, `WAGP`, `WKHP`, `WKL`, `WKWN`, `YOEP`, `ESR`, `INDP`, `OCCP`, `POBP` and `FWKHP`, and for households `SERIALNO`, `ST`, `PUMA`, `NP`, `ADJHSG`, `TEN`, `RNTP`, `GRNTP`, `TAXAMT`, `TYPEHUGQ`, `FS` and `VEH`.
 
-Three more points:
+Four more points:
 
 - Eight CPS ASEC names have no nulls: `PH_SEQ`, `A_LINENO`, `A_AGE`, `A_MARITL`, `A_SPOUSE`, `PEPAR1`, `PEPAR2` and `A_EXPRRP`. On ACS rows the build fills them from ACS fields so that it can form tax units.
 - The model reads raw survey values only under its own names. On ACS rows, for example, `employment_income_before_lsr` is `WAGP` times `ADJINC`.
 - The model reads `county_fips` (2020 counties). It does not read `county_fips_2023`.
+- Two CPS ASEC names do not always hold the Census value. `A_EXPRRP` (relationship to the reference person) is the Census value only for donors from income year 2024; for income years 2022 and 2023, the donor build derived it from line, spouse and parent numbers. `TAX_ID` may hold the tax unit that PolicyEngine's CPS extractor built: the extractor copies the Census `TAX_ID` into `CENSUS_TAX_ID` and then overwrites `TAX_ID`. `CENSUS_TAX_ID` is filled only for income-year 2024 donors. That `TAX_ID` was overwritten in this file is an inference from the extractor's code; we have not compared values.
 
 ### Removed columns, the rename and the dtype changes
 
 These compare the file with the sample column list sent with the County Files agreement.
 
 - `has_marketplace_health_coverage` and `weeks_worked`: policyengine-us 2.2.1 has a formula for each, and the release leaves out any column the model can compute with a formula in some year. It keeps id columns, and inputs that policyengine-us says the data must supply even though it has a fallback formula, such as `is_spm_independent_minor_role`. The formula for `has_marketplace_health_coverage` returns `has_marketplace_health_coverage_at_interview`, which the file keeps. The formula for `weeks_worked` applies from 2025.
-- `medicare_part_b_premiums`, the CPS ASEC Part B premium (`PEMCPREM`): policyengine-us 2.2.1 has no variable by this name, so the release no longer stores it. It held values for the 166,321 donor persons only.
+- `medicare_part_b_premiums`, a stored Medicare Part B premium: policyengine-us 2.2.1 has no variable by this name and computes the Part B premium itself (`medicare_part_b_premium`), so the release no longer stores it. It held values for the 166,321 donor persons only.
 - 128 dtype changes are int64 to float64: 127 person columns and household `H_TENURE`. All are CPS ASEC fields with no value on ACS rows. An int64 column cannot hold a missing value, so when the build stacks donor and ACS rows, pandas stores these columns as float64. Only the storage type changes. The sample file had no ACS rows.
 - The other six are columns that are null on ACS rows, where the release fills the model's default, 0, and stores the model's type, int64 or float64: household `household_vehicles_owned` (int32 to int64) and `household_vehicles_value` (float32 to float64); person `cps_race` (int16 to int64), `fsla_overtime_premium` (float32 to float64) and `treasury_tipped_occupation_code` (int16 to int64); and tax_unit `second_home_mortgage_origination_year` (float64 to int64).
 
