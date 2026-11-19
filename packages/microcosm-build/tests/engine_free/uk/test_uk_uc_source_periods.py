@@ -450,11 +450,24 @@ def test_generator_preserves_observation_basis_and_explicit_months():
 
 def test_shipped_uc_monthly_references_preserve_each_declared_window():
     references = load_country_spec("uk").target_references
-    monthly = [
+    universal_credit = [
         reference
         for reference in references
         if reference.family == "dwp_universal_credit"
     ]
+    # Part 3 of PolicyEngine/microcosm#1663: DWP's young people with the UC
+    # health element (Table 28) is a window of two financial years, not a
+    # monthly Stat-Xplore series, and declares no source months.
+    fiscal = [
+        reference
+        for reference in universal_credit
+        if reference.value_operation == "calendar_year_window"
+    ]
+    assert [reference.name for reference in fiscal] == [
+        "dwp.uc.people_aged_16_to_24_lcwra_element"
+    ]
+    assert EXPECTED_SOURCE_MONTHS not in fiscal[0].metadata
+    monthly = [reference for reference in universal_credit if reference not in fiscal]
     # microcosm#1095: less the five-or-more-children count, a diagnostic; plus
     # Y4's three people-by-age rows (8 Nov 2026) and B5's four rows by
     # conditionality group (PR3, 12 Nov 2026), held out of the solve.
