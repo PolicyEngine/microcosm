@@ -371,9 +371,12 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
     failures join ``terminal_gate_failures`` unconditionally (statements of
     ``_main``'s own body, under no ``if``, loop or ``try``), before the
     batched raise's ``if terminal_gate_failures:`` block. The H5 write comes
-    after that block; the post-write check and its unconditional
-    ``raise RuntimeError`` come right after the write and before the
-    post-export scorer opens. The behaviour of both aborts is pinned through
+    after that block; the post-write check and its ``raise RuntimeError``
+    (on a green build; a failed build records the failure with its release
+    gate failures) come right after the write and before the build record,
+    the only way into certification, where the post-export scorer opens
+    (microcosm#1585 item 11, PR 4a). The behaviour of both aborts is
+    pinned through
     ``_main`` itself by the ``stored_input_*`` modes of
     ``test_main_writes_diagnostics_before_post_calibration_gate_failure``."""
 
@@ -470,12 +473,26 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
         ),
         "post-write abort",
     )
-    assert len(body[abort].body) == 1 and not body[abort].orelse
-    assert ast.unparse(body[abort].body[0]) == (f"raise RuntimeError({premise_name})")
+    # Green build or not, the written file's premise failure is recorded with
+    # the release-gate failures, so the record is still written, marks the
+    # H5 failed and the refusal names it (microcosm#1585 item 11, PR 4a; review
+    # of #1672). It is listed apart as well, since no tier certifies it.
+    assert not body[abort].orelse
+    assert [ast.unparse(statement) for statement in body[abort].body] == [
+        f"artifact_integrity_failures.append({premise_name})",
+        f"terminal_gate_failures.append({premise_name})",
+    ]
     scorer = position(
-        lambda node: assigned_from(node, "_open_post_export_scorer"),
-        "post-export scorer",
+        lambda node: assigned_from(node, "_write_us_build_record"),
+        "build record",
     )
+    assert not any(calls(node, "_open_post_export_scorer") for node in body)
+    certify = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_certify_us_build"
+    )
+    assert calls(certify, "_open_post_export_scorer")
 
     assert gate < joined < batched < write < premise < abort < scorer
     assert premise == write + 1 and abort == premise + 1

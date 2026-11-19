@@ -60,6 +60,7 @@
       "frs_company_car_fuel_code": "int64",
       "frs_company_car_price_band": "int64",
       "frs_company_car_private_fuel": "bool",
+      "frs_condition_limits_activities": "string",
       "frs_uc_carer_element": "string",
       "frs_uc_lcw_status": "string",
       "gender": "string",

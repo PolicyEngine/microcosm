@@ -2370,6 +2370,14 @@ def test_the_app_s_write_probe_times_a_committed_copy_and_cleans_up(
 
 RUNBOOK = ROOT / "docs" / "us-modal-stage-runbook.md"
 RUN_ID = "route-a-base-4b57d15a287c"
+#: Where the base tool writes its gate-shadow files, under its ``--out``
+#: (``GATE_BATTERY_SHADOW_DIRECTORY`` and the two file suffixes in
+#: ``microcosm.build.us_runtime.gate_shadow``, for the ``us_base`` scope).
+GATE_SHADOW_DIRECTORY = "gate_battery_shadow"
+GATE_SHADOW_FILES = (
+    "us_base.gate_battery_shadow_comparison.json",
+    "us_base.gate_battery_shadow_report.json",
+)
 
 
 def _hand_off_block() -> str:
@@ -2383,9 +2391,19 @@ def _hand_off_block() -> str:
     return block.replace("RUN=<Route A run directory>\n", 'RUN="$HANDOFF_RUN"\n')
 
 
-def _hand_off(tmp_path: Path, *, config: dict | None = None, run: Path | None = None):
+def _hand_off(
+    tmp_path: Path,
+    *,
+    config: dict | None = None,
+    run: Path | None = None,
+    gate_shadow: bool = False,
+):
     """Run step 7 against a Modal run of the committed plan and a Route A
-    run directory holding the failed local run's checkpoints."""
+    run directory holding the failed local run's checkpoints.
+
+    ``gate_shadow`` gives the Modal run the directory a base writes its
+    gate-shadow files in (microcosm#1635), which its receipt then lists.
+    """
 
     checkout = tmp_path / "checkout"
     checkout.mkdir()
@@ -2396,6 +2414,11 @@ def _hand_off(tmp_path: Path, *, config: dict | None = None, run: Path | None = 
     base_out.mkdir(parents=True)
     (base_out / plan_lib.PUF_SUPPORT_BASE_ARTIFACT).write_bytes(b"\x89HDF base")
     (base_out / "base_populace_us_2024_puf_support.summary.json").write_text("{}")
+    if gate_shadow:
+        shadow = base_out / GATE_SHADOW_DIRECTORY
+        shadow.mkdir()
+        for name in GATE_SHADOW_FILES:
+            (shadow / name).write_text("{}")
     reference = _reference()
     context = {
         "pipeline_sha256": reference["pipeline_sha256"],
@@ -2484,6 +2507,19 @@ def test_the_hand_off_runs_compare_lineage_and_keeps_its_report(
     assert (run / "base.sha256").read_text() == f"{digest}  {h5}\n"
     assert not (run / "base-checkpoints").exists()
     assert len(list(run.glob("base-checkpoints.local-*"))) == 1
+
+
+def test_the_hand_off_copies_the_base_s_gate_shadow_directory(
+    tmp_path: Path,
+) -> None:
+    # The receipt lists every file under base-out, the gate-shadow files in
+    # their directory included, so the copy has to bring the directory: a
+    # copy of the files alone exits 1 on it and ends the block.
+    proc, run, _ = _hand_off(tmp_path, gate_shadow=True)
+    assert proc.returncode == 0, proc.stderr
+    shadow = run / "base-out" / GATE_SHADOW_DIRECTORY
+    assert sorted(path.name for path in shadow.iterdir()) == list(GATE_SHADOW_FILES)
+    assert (run / "base-sup" / "ACCEPTED").is_file()
 
 
 @pytest.mark.parametrize("seed", ["12345", None])

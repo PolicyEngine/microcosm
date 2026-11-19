@@ -3,11 +3,21 @@
 # --base-h5 release candidate on the committed labelled Ledger feed, then the
 # release-gate preflight and the publisher's offline --preflight-only check.
 #
-# Builds a release candidate, runs offline preflights, and leaves publication
-# to Max. Release staging telemetry is enabled unless ROUTE_A_STAGING=0.
+# Builds the base and the release's build, and stops there: the build is
+# written, checked by its own gates and recorded, and nothing is publishable.
+# A build has no tier. --certify (or ROUTE_A_CERTIFY=1) on the same RUN_ROOT
+# then certifies that build at the tier ROUTE_A_CERTIFY_TIER chooses (the
+# release's post-export checks and its manifests,
+# tools/certify_us_national_build.py), runs the offline preflights, and leaves
+# publication to Max (microcosm#1585 item 11). A build that failed its release
+# gates is kept, and only ROUTE_A_CERTIFY_TIER=evidence, with an owner for each
+# failure, certifies it. Release and certification staging telemetry is
+# enabled unless ROUTE_A_STAGING=0.
 #
-# Usage: ./route_a.sh [--resolve]
+# Usage: ./route_a.sh [--resolve|--certify]
 # --resolve fetches refs, hashes inputs, and checks commit pins; no stages run.
+# --certify runs every stage, certification included; accepted stages are
+# skipped, so after a build it certifies that build.
 # Settings come from ROUTE_A_ENV, defaulting to route_a.env beside this script.
 # Accepted stages are skipped on restart. Live supervisors are waited for;
 # failed attempts are moved aside. Releases use fresh IDs and shared caches.
@@ -22,11 +32,13 @@ TOKEN_WRAPPER=$SCRIPT_DIR/with_hf_token.sh
 GIB=1073741824
 
 MODE=run
+CERTIFY_FLAG=0
 case "${1:-}" in
   --resolve|--dry-run) MODE=resolve ;;
+  --certify) CERTIFY_FLAG=1 ;;
   "") ;;
   -h|--help) sed -n '2,/^set +x$/p' "$0"; exit 0 ;;
-  *) echo "usage: $0 [--resolve]" >&2; exit 64 ;;
+  *) echo "usage: $0 [--resolve|--certify]" >&2; exit 64 ;;
 esac
 
 [ -f "$ROUTE_A_ENV" ] || { echo "missing settings: $ROUTE_A_ENV (copy route_a.env.example)" >&2; exit 64; }
@@ -39,6 +51,19 @@ esac
 : "${LADDER:?set LADDER}" "${SSI:?set SSI}" "${SCF:?set SCF}"
 : "${AGENT_SECRET:?set AGENT_SECRET}" "${ROUTE_A_STAGING=1}" "${RELEASE_RAM_GIB:=50}"
 case "$ROUTE_A_STAGING" in 0|1) ;; *) echo "ROUTE_A_STAGING must be 0 or 1" >&2; exit 64 ;; esac
+: "${ROUTE_A_CERTIFY=0}"
+[ "$CERTIFY_FLAG" = 1 ] && ROUTE_A_CERTIFY=1
+case "$ROUTE_A_CERTIFY" in 0|1) ;; *) echo "ROUTE_A_CERTIFY must be 0 or 1" >&2; exit 64 ;; esac
+# The tier certification chooses (microcosm#1585 item 11): certified, into the
+# national release, or evidence, into the evidence release, with the per-run
+# owners file ROUTE_A_EVIDENCE_FAILURE_OWNERS (an absolute path) checked ahead
+# of the standing register.
+: "${ROUTE_A_CERTIFY_TIER=certified}" "${ROUTE_A_EVIDENCE_FAILURE_OWNERS=}"
+case "$ROUTE_A_CERTIFY_TIER" in certified|evidence) ;; *) echo "ROUTE_A_CERTIFY_TIER must be certified or evidence" >&2; exit 64 ;; esac
+if [ -n "$ROUTE_A_EVIDENCE_FAILURE_OWNERS" ]; then
+  [ "$ROUTE_A_CERTIFY_TIER" = evidence ] || { echo "ROUTE_A_EVIDENCE_FAILURE_OWNERS needs ROUTE_A_CERTIFY_TIER=evidence" >&2; exit 64; }
+  case "$ROUTE_A_EVIDENCE_FAILURE_OWNERS" in /*) ;; *) echo "ROUTE_A_EVIDENCE_FAILURE_OWNERS must be an absolute path" >&2; exit 64 ;; esac
+fi
 mkdir -p "$RUN_ROOT"
 LOG=$RUN_ROOT/route_a.log
 : "${COMMIT:=}" "${REQUIRE_ON_MAIN:=1}" "${REQUIRE_SPM_ROLE:=1}" "${PREFLIGHT_COMMIT:=}"
@@ -128,6 +153,19 @@ for extra in $RELEASE_EXTRA_ARGS; do
   case "$extra" in --*) RELEASE_FLAGS="$RELEASE_FLAGS ${extra%%=*}" ;; esac
 done
 PREFLIGHT_FLAGS="--base-h5 --ledger-facts --ledger-facts-sha256 --release-manifest --json-out"
+# The flags certify_command passes beside the build directory, which the
+# certification parser (_certify_parser) at the build commit must declare.
+CERTIFY_FLAGS=
+[ "$ROUTE_A_STAGING" = 0 ] && CERTIFY_FLAGS="--no-staging"
+if [ "$ROUTE_A_CERTIFY_TIER" = evidence ]; then
+  CERTIFY_FLAGS="$CERTIFY_FLAGS --evidence-release"
+  [ -n "$ROUTE_A_EVIDENCE_FAILURE_OWNERS" ] && CERTIFY_FLAGS="$CERTIFY_FLAGS --evidence-failure-owners"
+fi
+# The release tool's exit status for a build that failed release gates once
+# its H5 and record were written (US_BUILD_FAILED_RELEASE_GATES_EXIT): the
+# release stage accepts it, so the build is kept for evaluation and for an
+# evidence-tier certification rather than built again.
+BUILT_FAILED_GATES_RC=3
 
 input_rows() {
   cat <<EOF
@@ -290,6 +328,15 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
   else
     COMMIT_BLOCKERS+=("release parser at $full does not declare every driver flag")
   fi
+  # shellcheck disable=SC2086 # flags are a whitespace-separated option list
+  if [ "$ROUTE_A_CERTIFY" = 1 ] && [ -n "$CERTIFY_FLAGS" ]; then
+    if git -C "$MAIN" show "$full:tools/build_us_fiscal_refresh_release.py" | \
+        "$PYTHON" "$SCRIPT_DIR/check_flags.py" --in-function _certify_parser $CERTIFY_FLAGS; then
+      COMMIT_NOTES+=("certification parser at $full declares every flag the driver passes ($ROUTE_A_CERTIFY_TIER tier)")
+    else
+      COMMIT_BLOCKERS+=("certification parser at $full does not declare every flag the $ROUTE_A_CERTIFY_TIER tier passes")
+    fi
+  fi
   if git -C "$MAIN" cat-file -e "$full:$SPM_ROLE_REL" 2>/dev/null; then
     COMMIT_NOTES+=("SPM independence role stage (#959) present at $full")
   elif [ "$REQUIRE_SPM_ROLE" = 1 ]; then
@@ -406,6 +453,34 @@ release_command() {
     ${staging[@]+"${staging[@]}"} ${extra[@]+"${extra[@]}"})
 }
 
+certify_command() {
+  # Certification stages where its build staged, in a run of its own, so it
+  # needs the release stage's staging credential. Without staging it runs as
+  # the release stage does: online, without the HF tokens (microcosm#1585
+  # item 11, PR 4a). ROUTE_A_CERTIFY_TIER chooses the tier.
+  local -a staging=() launcher=() tier=()
+  case "${ROUTE_A_STAGING-1}" in
+  0)
+    staging=(--no-staging)
+    launcher=(/usr/bin/env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u HUGGINGFACE_HUB_TOKEN -u HUGGING_FACE_TOKEN_MAX)
+    ;;
+  1)
+    launcher=("$TOKEN_WRAPPER" "$AGENT_SECRET")
+    ;;
+  *) fail "ROUTE_A_STAGING must be 0 or 1" ;;
+  esac
+  case "${ROUTE_A_CERTIFY_TIER-certified}" in
+  certified) ;;
+  evidence)
+    tier=(--evidence-release)
+    [ -n "${ROUTE_A_EVIDENCE_FAILURE_OWNERS-}" ] && tier+=(--evidence-failure-owners "$ROUTE_A_EVIDENCE_FAILURE_OWNERS")
+    ;;
+  *) fail "ROUTE_A_CERTIFY_TIER must be certified or evidence" ;;
+  esac
+  CERTIFY_ARGV=("${launcher[@]}" "$W/.venv/bin/python" -B tools/certify_us_national_build.py
+    "$REL_OUT" ${staging[@]+"${staging[@]}"} ${tier[@]+"${tier[@]}"})
+}
+
 # ---------------------------------------------------------------------------
 # Dry run.
 # ---------------------------------------------------------------------------
@@ -447,7 +522,18 @@ log "route A driver start (pid $$)"
 C=$(git -C "$MAIN" rev-parse --verify --quiet "$COMMIT^{commit}") || fail "COMMIT $COMMIT not found after git fetch origin"
 PC=$(git -C "$MAIN" rev-parse --verify --quiet "${PREFLIGHT_COMMIT:-$C}^{commit}") || fail "PREFLIGHT_COMMIT $PREFLIGHT_COMMIT not found"
 refuse_bad_release_args
-verify_inputs
+# Certifying an accepted build reads none of the raw inputs, which the build
+# verified when it ran, so they are not hashed again (microcosm#1585 item 11,
+# PR 4a).
+CERTIFY_ONLY=0
+if [ "$ROUTE_A_CERTIFY" = 1 ] && [ -f "$RUN_ROOT/run-${C:0:12}/release-sup/ACCEPTED" ]; then
+  CERTIFY_ONLY=1
+fi
+if [ "$CERTIFY_ONLY" = 1 ]; then
+  log "inputs: not hashed again; the build at ${C:0:12} is accepted and certification reads none of them"
+else
+  verify_inputs
+fi
 check_commit "$C" "$PC"
 report_resolution "$C"
 [ ${#INPUT_PROBLEMS[@]} = 0 ] || fail "input problems (see above)"
@@ -525,8 +611,10 @@ else
     *) log "overnight chain process gone without CHAIN DONE or FAIL; proceeding" ;;
   esac
 fi
-verify_inputs
-[ ${#INPUT_PROBLEMS[@]} = 0 ] || { report_resolution "$C"; fail "inputs changed while waiting"; }
+if [ "$CERTIFY_ONLY" != 1 ]; then
+  verify_inputs
+  [ ${#INPUT_PROBLEMS[@]} = 0 ] || { report_resolution "$C"; fail "inputs changed while waiting"; }
+fi
 
 # --- helpers for supervised stages ---
 avail_ram_bytes() { "$PY" -c 'import psutil; print(psutil.virtual_memory().available)'; }
@@ -725,23 +813,107 @@ refuse_bad_release_args
 stage_done prefetch || run_stage prefetch 0 12 26
 REL_CKPT=$RUN/release-checkpoints
 wait_prior_supervisor release
-if ! stage_done release && ! result_accepted "$RUN/release-sup" 0 >/dev/null; then
+if ! stage_done release && ! result_accepted "$RUN/release-sup" "0 $BUILT_FAILED_GATES_RC" >/dev/null; then
   RID=populace-us-2024-${BASE_SHA:0:7}-${C:0:12}-$(date -u +%Y%m%dT%H%M%SZ)
   REL_OUT=$RUN/release-out/$RID
   release_command
   write_config release 110 "$RELEASE_RAM_GIB" 45 "${RELEASE_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- "${RELEASE_ARGV[@]}"
 fi
 if ! stage_done release; then
-  run_stage release 0 "$RELEASE_RAM_GIB" 45 "Set PRUNE_BASE_CHECKPOINTS=1 in route_a.env to reclaim the base's frame checkpoints."
+  run_stage release "0 $BUILT_FAILED_GATES_RC" "$RELEASE_RAM_GIB" 45 "Set PRUNE_BASE_CHECKPOINTS=1 in route_a.env to reclaim the base's frame checkpoints."
 fi
 RID=$("$PY" -c 'import json,sys; a=json.load(open(sys.argv[1]))["argv"]; print(a[a.index("--release-id")+1])' "$RUN/release-sup/COMMAND.json") \
   || fail "cannot read the release id from release-sup/COMMAND.json"
 REL_OUT=$RUN/release-out/$RID
-# A national run writes its build into the national release's directory;
-# $RID is the build ID (microcosm#1570).
-REL_DIR=$REL_OUT/releases/microcosm-us-2024-national
-[ -f "$REL_DIR/release_manifest.json" ] || fail "release accepted but $REL_DIR/release_manifest.json is missing"
-log "release candidate $RID at $REL_DIR"
+# The release tool builds and stops: its build record is what certification
+# reads (microcosm#1585 item 11, PR 4a). A build has no tier, so it writes its
+# own files to $REL_OUT/build; certification places them in the release
+# directory of the tier it chooses, the national release's or the evidence
+# release's, and $RID is the build ID (microcosm#1570).
+[ -f "$REL_OUT/build_record.json" ] || fail "release accepted but $REL_OUT/build_record.json is missing"
+REL_RC=$(sed -n 's/^returncode=\(-\{0,1\}[0-9]*\) .*/\1/p' "$RUN/release-sup/ACCEPTED")
+BUILD_FAILED_GATES=0
+[ "$REL_RC" = "$BUILT_FAILED_GATES_RC" ] && BUILD_FAILED_GATES=1
+if [ "$ROUTE_A_CERTIFY_TIER" = evidence ]; then
+  REL_RELEASE=microcosm-us-2024-evidence
+else
+  REL_RELEASE=microcosm-us-2024-national
+fi
+REL_DIR=$REL_OUT/releases/$REL_RELEASE
+if [ "$BUILD_FAILED_GATES" = 1 ]; then
+  log "build $RID at $REL_OUT failed its release gates (exit $REL_RC); its H5 and record are kept, and only an evidence-tier certification can ship the failures (see $REL_OUT/build_record.json)"
+else
+  log "build $RID at $REL_OUT"
+fi
+
+# --- 6b. Certification, only when asked (--certify or ROUTE_A_CERTIFY=1): the
+# release's post-export checks on the written H5 and the manifests publication
+# requires. Without it the run hands the build over and stops. ---
+if [ "$ROUTE_A_CERTIFY" != 1 ]; then
+  "$PY" - "$RUN_ROOT/ROUTE_A_BUILT.json" "$C" "$PEUS" "$BASE_H5" "$BASE_SHA" "$RID" "$REL_OUT" \
+    "$(cat "$RUN/preflight-base-sup/ACCEPTED" 2>/dev/null || echo BLOCKED)" "$BUILD_FAILED_GATES" <<'EOF'
+import json, sys
+(out, commit, peus, base_h5, base_sha, rid, rel_out, pfb, failed) = sys.argv[1:]
+failed = failed == "1"
+json.dump({
+    "state": "built",
+    "certified": False,
+    "published": False,
+    "build_commit": commit,
+    "policyengine_us": peus,
+    "base_h5": base_h5,
+    "base_sha256": base_sha,
+    "release_id": rid,
+    "build_dir": rel_out,
+    "build_record": rel_out + "/build_record.json",
+    "release_gates_failed": failed,
+    "preflight_base": pfb,
+    "next": (
+        "The build failed its release gates, which build_record.json lists; "
+        "its H5 and record are kept, so it can be evaluated. A build has no "
+        "tier, and only an evidence-tier certification can ship its failures: "
+        "rerun this driver with --certify and ROUTE_A_CERTIFY_TIER=evidence on "
+        "the same RUN_ROOT once each failure has an owner "
+        "(ROUTE_A_EVIDENCE_FAILURE_OWNERS, or the standing register)."
+        if failed
+        else "The build is written and checked by its own gates; it is not "
+        "publishable. A build has no tier: to certify it, rerun this driver "
+        "with --certify on the same RUN_ROOT (ROUTE_A_CERTIFY_TIER chooses the "
+        "tier), or run tools/certify_us_national_build.py on build_dir."
+    ),
+}, open(out, "w"), indent=1)
+EOF
+  if [ "$BUILD_FAILED_GATES" = 1 ]; then
+    log "ROUTE A BUILT, RELEASE GATES FAILED: build $RID at $REL_OUT; kept; certifiable only at the evidence tier; nothing published"
+    exit 3
+  fi
+  if [ "$PF_BLOCKED" = 1 ]; then
+    log "ROUTE A BUILT, BLOCKED: build $RID at $REL_OUT; the release-gate preflight needs the new-lineage mode; not certified; nothing published"
+    exit 4
+  fi
+  log "ROUTE A BUILT: build $RID at $REL_OUT; not certified (rerun with --certify to certify it); nothing published"
+  exit 0
+fi
+if [ "$BUILD_FAILED_GATES" = 1 ] && [ "$ROUTE_A_CERTIFY_TIER" != evidence ]; then
+  fail "build $RID failed its release gates, so certification refuses it at the certified tier; set ROUTE_A_CERTIFY_TIER=evidence (with ROUTE_A_EVIDENCE_FAILURE_OWNERS for failures the standing register does not own) to certify it at the evidence tier, or build again"
+fi
+if [ -n "$ROUTE_A_EVIDENCE_FAILURE_OWNERS" ]; then
+  [ -f "$ROUTE_A_EVIDENCE_FAILURE_OWNERS" ] || fail "ROUTE_A_EVIDENCE_FAILURE_OWNERS $ROUTE_A_EVIDENCE_FAILURE_OWNERS is not a file"
+  OWNERS_SHA=$(sha_of "$ROUTE_A_EVIDENCE_FAILURE_OWNERS") || fail "could not read $ROUTE_A_EVIDENCE_FAILURE_OWNERS to hash it"
+  log "certification owners file $ROUTE_A_EVIDENCE_FAILURE_OWNERS sha256 $OWNERS_SHA"
+fi
+wait_prior_supervisor certify
+if ! stage_done certify; then
+  certify_command
+  write_config certify 110 "$RELEASE_RAM_GIB" 45 "${CERTIFY_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- \
+    "${CERTIFY_ARGV[@]}"
+  run_stage certify 0 "$RELEASE_RAM_GIB" 45 "Certification scores the written H5; free disk beside the build."
+fi
+[ -f "$REL_DIR/release_manifest.json" ] || fail "certify accepted but $REL_DIR/release_manifest.json is missing ($ROUTE_A_CERTIFY_TIER tier)"
+# The build is certified now, so the build-only hand-off an earlier run
+# without --certify left no longer holds, whatever the preflights find.
+rm -f "$RUN_ROOT/ROUTE_A_BUILT.json"
+log "release candidate $RID at $REL_DIR ($ROUTE_A_CERTIFY_TIER tier)"
 
 # --- 7. Release-gate preflight against the built release manifest. ---
 if [ "$PF_BLOCKED" = 1 ]; then
@@ -780,9 +952,13 @@ if [ "$PF_BLOCKED" = 0 ]; then
   PFB=$(cat "$RUN/preflight-base-sup/ACCEPTED"); PFR=$(cat "$RUN/preflight-release-sup/ACCEPTED")
 fi
 "$PY" - "$OUTF" "$STATE" "$C" "$PC" "$PEUS" "$BASE_H5" "$BASE_SHA" "$RID" "$REL_DIR" "$REL_OUT/artifacts" \
-  "$PFB" "$PFR" "$PUB_VERDICT" <<'EOF'
-import json, shlex, sys
-(out, state, commit, pcommit, peus, base_h5, base_sha, rid, rel_dir, art, pfb, pfr, pub) = sys.argv[1:]
+  "$PFB" "$PFR" "$PUB_VERDICT" "$ROUTE_A_CERTIFY_TIER" <<'EOF'
+import json, os, shlex, sys
+(out, state, commit, pcommit, peus, base_h5, base_sha, rid, rel_dir, art, pfb, pfr, pub, tier) = sys.argv[1:]
+# The build certification published: the build ID, with an -evidence- segment
+# at the evidence tier (microcosm#1585 item 11).
+published = json.load(open(os.path.join(rel_dir, "release_manifest.json"))).get("build")
+release = os.path.basename(rel_dir)
 json.dump({
     "state": state,
     "published": False,
@@ -792,6 +968,9 @@ json.dump({
     "base_h5": base_h5,
     "base_sha256": base_sha,
     "release_id": rid,
+    "tier": tier,
+    "release": release,
+    "build": published,
     "release_dir": rel_dir,
     "artifact_root": art,
     "preflight_base": pfb,
@@ -801,8 +980,9 @@ json.dump({
     "promote_command": shlex.join(["uv", "run", "microcosm-publish-release-build", rel_dir, "--repo-id", "policyengine/populace-us", "--promote"]),
     "next": (
         "Publication is Max's call: publish_command publishes the build into "
-        "its folder of the national release, and promote_command then makes "
-        "it the release's current build."
+        f"its folder of {release}, the "
+        + ("evidence release, never the US default" if tier == "evidence" else "national release")
+        + ", and promote_command then makes it the release's current build."
     ),
 }, open(out, "w"), indent=1)
 EOF
@@ -810,4 +990,8 @@ if [ "$STATE" = blocked ]; then
   log "ROUTE A BLOCKED: base and release candidate built, release-gate preflight needs the new-lineage mode; nothing published"
   exit 4
 fi
-log "ROUTE A DONE: release candidate $RID passed the release tool's gates and both preflights; nothing published (Max's call)"
+if [ "$ROUTE_A_CERTIFY_TIER" = evidence ]; then
+  log "ROUTE A DONE: release candidate $RID certified at the evidence tier, its failures owned, and checked by both preflights; nothing published (Max's call)"
+else
+  log "ROUTE A DONE: release candidate $RID passed the release tool's gates and both preflights; nothing published (Max's call)"
+fi
