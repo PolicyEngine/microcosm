@@ -2,8 +2,8 @@
 
 ``_main`` is one long function, so a local it never deletes stays alive until
 the run ends. These tests read the function's syntax tree, and execute slices
-of its statements, to check that each large object is deleted, or never bound
-to a local, once nothing reads it.
+of its statements, to check that each large object is deleted, rebound to
+``None``, or never bound to a local, once nothing reads it.
 """
 
 # ruff: noqa: F403, F405
@@ -11,7 +11,10 @@ import re
 import textwrap
 import weakref
 
+from microcosm.build.gate_battery import GateStatus
+from microcosm.build.us_runtime.gate_shadow import current_gate_shadow
 from microcosm.calibrate import DroppedConstraintMatrix
+from test_support.microcosm_build.us_gate_shadow import arm_us_tool_gate_shadows
 from test_support.microcosm_build.us_post_export_scoring import *
 
 #: The nine donor-table loaders ``_main`` calls, one per imputation stage.
@@ -52,11 +55,11 @@ _STORING_METHODS = frozenset(
 )
 #: The places in ``_main`` that bind another name, or put a container, a copy
 #: or a loop variable, on one of those objects or a large part of one, in
-#: source order. Any other would keep the object alive after its ``del`` or
-#: drop.
+#: source order. Any other would keep the object alive after ``_main`` frees
+#: it.
 _EXPECTED_ALIAS_BINDINGS = (
     # The pre-selection frame on the frozen-support path. It is another object
-    # than the base_frame deleted after the export check, and this change
+    # than the base_frame released after the export check, and this change
     # leaves it alive until _main returns (a follow-up).
     "selection_candidate_frame = base_frame",
     # The join's frame becomes the working frame; the result is deleted.
@@ -181,6 +184,24 @@ def _single_top_level_delete(function: ast.FunctionDef, name: str) -> int:
     # A top-level statement runs on every path that reaches it, not only
     # inside one branch.
     return function.body.index(deleted)
+
+
+def _single_top_level_release(function: ast.FunctionDef, name: str) -> int:
+    """The index in ``_main``'s body of its one ``<name> = None`` statement.
+
+    ``_main`` frees an object that a shadow-gate lambda reads by rebinding its
+    name to ``None``, because ruff reports a lambda's read of a name deleted
+    later in the function as a read of an undefined name.
+    """
+    assert _deletes(function, name) == []
+    (released,) = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign) and ast.unparse(node) == f"{name} = None"
+    ]
+    # A top-level statement runs on every path that reaches it, not only
+    # inside one branch.
+    return function.body.index(released)
 
 
 def _calls_named(tree: ast.AST, name: str) -> list[ast.Call]:
@@ -327,22 +348,23 @@ def test_main_passes_each_donor_table_straight_into_its_stage(builder) -> None:
 
 
 def test_main_frees_base_frame_after_the_export_input_mass_check(builder) -> None:
-    """``del base_frame`` follows the check that reads it last."""
+    """``base_frame = None`` follows the check that reads it last."""
     main = _main_function(builder)
-    deleted_at = _single_top_level_delete(main, "base_frame")
-    deleted_line = main.body[deleted_at].lineno
-    check = main.body[deleted_at - 1]
-    assert isinstance(check, ast.Try)
-    assert _calls_named(check, "_export_input_mass_gate_with_reference_h5")
-    assert max(_name_lines(main, "base_frame", ast.Load)) < deleted_line
-    assert max(_name_lines(main, "base_frame", ast.Store)) < deleted_line
+    released_at = _single_top_level_release(main, "base_frame")
+    released_line = main.body[released_at].lineno
+    check = main.body[released_at - 1]
+    assert isinstance(check, ast.Assign)
+    assert _calls_named(check, "_record_export_input_mass_gate")
+    # Every read, the shadow-gate lambdas' included, comes before the release.
+    assert max(_name_lines(main, "base_frame", ast.Load)) < released_line
+    assert max(_name_lines(main, "base_frame", ast.Store)) == released_line
     (write,) = [
         node.lineno
         for node in ast.walk(main)
         if isinstance(node, ast.Call)
         and getattr(node.func, "attr", None) == "write_dataset"
     ]
-    assert deleted_line < write
+    assert released_line < write
 
 
 def test_main_leaves_the_export_reference_frame_to_its_check(builder) -> None:
@@ -353,31 +375,38 @@ def test_main_leaves_the_export_reference_frame_to_its_check(builder) -> None:
         node.id for node in ast.walk(main) if isinstance(node, ast.Name)
     }
     assert _calls_named(main, "_export_input_mass_gate") == []
-    (call,) = _calls_named(main, "_export_input_mass_gate_with_reference_h5")
+    (call,) = _calls_named(main, "_record_export_input_mass_gate")
     keywords = {keyword.arg: ast.unparse(keyword.value) for keyword in call.keywords}
-    assert keywords["reference_h5"] == "args.export_input_mass_reference_h5"
-    assert keywords["reference_name"] == "export_reference_name"
-
-
-def _check_options(builder) -> dict[str, object]:
-    return {
-        "relative_tolerance": 0.05,
-        "minimum_reference_total": 1.0,
-        "reference_name": "reference_populace_us_2024.h5",
-        "reviewed_exclusions": builder.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+    assert keywords == {
+        "reference_h5": "args.export_input_mass_reference_h5",
+        "reference_name": "export_reference_name",
+        "reference_record": "export_input_mass_reference",
+        "relative_tolerance": "args.input_mass_relative_tolerance",
+        "minimum_reference_total": "args.input_mass_minimum_reference_total",
+        "terminal_gate_failures": "terminal_gate_failures",
     }
 
 
-def test_the_export_input_mass_check_frees_its_reference_when_it_returns(
-    builder, monkeypatch
-) -> None:
-    """The check loads the reference itself and holds it only while it runs."""
+#: The result name ``_export_input_mass_gate`` gives, which the gate battery's
+#: binding renames to the entry's declared gate.
+_EXPORT_CHECK_RESULT_NAME = "input_mass_parity"
+#: The options ``_main`` passes the export check, which passes them on to
+#: ``_export_input_mass_gate``.
+_CHECK_OPTIONS = {
+    "relative_tolerance": 0.5,
+    "minimum_reference_total": 1.0,
+    "reference_name": "reference_populace_us_2024.h5",
+}
+
+
+def _fake_reference_check(builder, monkeypatch, export_frame, base_frame, verdict):
+    """Stand in ``load_us_frame`` and ``_export_input_mass_gate``.
+
+    Returns the loads, as each path with a weak reference to its frame, and
+    each call of the gate, with ``reference`` saying which frame it got.
+    """
     loaded: list[tuple[Path, weakref.ref]] = []
     gate_calls: list[dict[str, object]] = []
-    export_frame, base_frame = _LargeObject(), _LargeObject()
-    verdict = builder.GateResult(
-        name="export_input_mass_parity", passed=True, details={"checked": True}
-    )
 
     def load_us_frame(path):
         reference = _LargeObject()
@@ -399,50 +428,147 @@ def test_the_export_input_mass_check_frees_its_reference_when_it_returns(
 
     monkeypatch.setattr(builder, "load_us_frame", load_us_frame)
     monkeypatch.setattr(builder, "_export_input_mass_gate", gate)
-    reference_h5 = Path("reference_populace_us_2024.h5")
+    return loaded, gate_calls
 
-    returned = builder._export_input_mass_gate_with_reference_h5(
-        export_frame, base_frame, reference_h5=reference_h5, **_check_options(builder)
+
+def test_the_export_input_mass_check_frees_its_reference_when_it_returns(
+    builder, monkeypatch, tmp_path
+) -> None:
+    """The check loads the reference itself and holds it only while it runs,
+    whether it returns, raises, or records its error under earlier failures."""
+    export_frame, base_frame = _LargeObject(), _LargeObject()
+    verdict = builder.GateResult(
+        name=_EXPORT_CHECK_RESULT_NAME, passed=True, details={"checked": True}
     )
+    loaded, gate_calls = _fake_reference_check(
+        builder, monkeypatch, export_frame, base_frame, verdict
+    )
+    reference_h5 = tmp_path / "reference_populace_us_2024.h5"
+    reference_h5.write_bytes(b"reference bytes")
+    gate_options = {
+        **_CHECK_OPTIONS,
+        "reviewed_exclusions": builder.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+    }
+
+    def check(reference_h5, *, failures, **overrides):
+        record: dict[str, object] = {"sha256": None}
+        returned = builder._record_export_input_mass_gate(
+            export_frame,
+            base_frame,
+            reference_h5=reference_h5,
+            reference_record=record,
+            terminal_gate_failures=failures,
+            **{**_CHECK_OPTIONS, **overrides},
+        )
+        return returned, record
+
+    returned, record = check(reference_h5, failures=[])
     assert returned is verdict
+    assert record["sha256"] == builder._sha256(reference_h5)
     ((loaded_path, reference),) = loaded
     assert loaded_path == reference_h5
-    assert gate_calls[0] == {"reference": "loaded", **_check_options(builder)}
+    assert gate_calls[0] == {"reference": "loaded", **gate_options}
     gc.collect()
     assert reference() is None
 
-    # A check that raises frees its reference once the error is handled.
-    failing = {**_check_options(builder), "relative_tolerance": -1.0}
+    # A check that raises on an otherwise-clean run frees its reference once
+    # the error is handled.
     with pytest.raises(RuntimeError, match="the gate failed") as raised:
-        builder._export_input_mass_gate_with_reference_h5(
-            export_frame, base_frame, reference_h5=reference_h5, **failing
-        )
+        check(reference_h5, failures=[], relative_tolerance=-1.0)
     # The traceback holds the check's frame, and so the reference, until the
-    # error is released, as _main's except clause does at its end.
+    # error is released.
     del raised
     gc.collect()
     assert len(loaded) == 2 and gate_calls[1]["reference"] == "loaded"
     assert loaded[1][1]() is None
 
+    # Under earlier failures the error becomes one more failure line, and the
+    # reference is freed when the check returns.
+    failures = ["an earlier gate failed"]
+    returned, _ = check(reference_h5, failures=failures, relative_tolerance=-1.0)
+    assert returned is None
+    assert failures == [
+        "an earlier gate failed",
+        "Input mass parity failed: evaluation error under earlier gate failures: "
+        "RuntimeError: the gate failed",
+    ]
+    gc.collect()
+    assert len(loaded) == 3 and loaded[2][1]() is None
+
     # Without a reference H5 the check compares against base_frame and loads
     # nothing.
-    assert (
-        builder._export_input_mass_gate_with_reference_h5(
-            export_frame, base_frame, reference_h5=None, **_check_options(builder)
-        )
-        is verdict
-    )
-    assert len(loaded) == 2
+    returned, record = check(None, failures=[])
+    assert returned is verdict and record["sha256"] is None
+    assert len(loaded) == 3
     assert gate_calls[-1]["reference"] is None
 
 
+def test_the_shadow_sees_the_export_reference_and_does_not_keep_it(
+    builder, monkeypatch, tmp_path
+) -> None:
+    """Every real run arms the gate battery's shadow, which evaluates the same
+    check on an evidence context holding the loaded reference. The reference
+    is still freed when the check returns."""
+    arm_us_tool_gate_shadows(monkeypatch)
+    export_frame, base_frame = _LargeObject(), _LargeObject()
+    verdict = builder.GateResult(
+        name=_EXPORT_CHECK_RESULT_NAME, passed=True, details={"checked": True}
+    )
+    loaded, gate_calls = _fake_reference_check(
+        builder, monkeypatch, export_frame, base_frame, verdict
+    )
+    reference_h5 = tmp_path / "reference_populace_us_2024.h5"
+    reference_h5.write_bytes(b"reference bytes")
+    args = SimpleNamespace(
+        out=tmp_path / "out",
+        dry_run_gates_report=None,
+        allow_input_mass_drift=False,
+        allow_ecps_parity_gaps=False,
+        allow_input_coverage_gaps=False,
+        allow_esi_premium_gaps=False,
+        allow_unpinned_feed=False,
+        allow_qrf_tail_concentration=False,
+        evidence_release=False,
+        input_mass_relative_tolerance=_CHECK_OPTIONS["relative_tolerance"],
+        input_mass_minimum_reference_total=_CHECK_OPTIONS["minimum_reference_total"],
+    )
+    builder._start_national_gate_shadow(args, release_id="microcosm-us-test")
+    try:
+        shadow = current_gate_shadow("us_national_export_input_mass")
+        assert shadow is not None
+        returned = builder._record_export_input_mass_gate(
+            export_frame,
+            base_frame,
+            reference_h5=reference_h5,
+            reference_record={"sha256": None},
+            terminal_gate_failures=[],
+            **_CHECK_OPTIONS,
+        )
+        outcome = shadow.outcome("us_national_export_input_mass")
+        differences = shadow.differences()
+    finally:
+        builder._finish_national_gate_shadow(stopped_at="test teardown")
+
+    assert returned is verdict
+    # Today's check and the shadow's evaluation each got the loaded frame.
+    assert [call["reference"] for call in gate_calls] == ["loaded", "loaded"]
+    assert outcome is not None and outcome.status is GateStatus.PASSED
+    assert differences == ()
+    ((_, reference),) = loaded
+    gc.collect()
+    assert reference() is None
+
+
 def test_main_frees_the_release_engine_after_writing_the_dataset(builder) -> None:
-    """The engine that writes the H5 is deleted before post-export scoring."""
+    """The engine that writes the H5 is released right after the write, before
+    the written-file check, the export audit and the calibration NPZ that end
+    the build."""
     main = _main_function(builder)
-    deleted_at = _single_top_level_delete(main, "release_engine")
-    deleted_line = main.body[deleted_at].lineno
+    released_at = _single_top_level_release(main, "release_engine")
+    released_line = main.body[released_at].lineno
+    # Every read, the shadow-gate lambdas' included, comes before the release.
     reads = _name_lines(main, "release_engine", ast.Load)
-    assert reads and max(reads) < deleted_line
+    assert reads and max(reads) < released_line
     (write,) = [
         node
         for node in main.body
@@ -451,9 +577,7 @@ def test_main_frees_the_release_engine_after_writing_the_dataset(builder) -> Non
         and getattr(node.value.func, "attr", None) == "write_dataset"
     ]
     assert ast.unparse(write.value.func.value) == "release_engine"
-    assert write.lineno < deleted_line
-    (scorer,) = _calls_named(main, "_open_post_export_scorer")
-    assert deleted_line < scorer.lineno
+    assert released_at == main.body.index(write) + 1
 
 
 def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(

@@ -19039,8 +19039,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         terminal_gate_failures=terminal_gate_failures,
     )
     # The check above is base_frame's last reader; the export frame and the
-    # written H5 carry everything later stages read.
-    del base_frame
+    # written H5 carry everything later stages read. Rebinding the name frees
+    # the frame. A ``del`` would do the same, but ruff would then report the
+    # shadow-gate lambdas above, which read the name while they run, as reading
+    # an undefined name.
+    base_frame = None
     # A reference the gate never evaluated is still named, but marked so no
     # reader takes its bytes as what the parity verdict saw.
     export_input_mass_reference["evaluated"] = export_input_mass_gate is not None
@@ -19177,7 +19180,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
     # The writer was the engine's last use; post-export scoring builds its own.
-    del release_engine
+    # Rebound rather than deleted, as base_frame is above.
+    release_engine = None
     # microcosm#1026: the stored-input gate above graded a model of the
     # writer's output; the written bytes are graded whatever the gate reached
     # and must earn the same verdict (no refusal, if the gate could not
