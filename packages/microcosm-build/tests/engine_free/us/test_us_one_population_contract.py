@@ -58,6 +58,7 @@ import inspect
 import json
 import math
 import re
+import tomllib
 from pathlib import Path
 
 import numpy as np
@@ -128,6 +129,7 @@ from microcosm.data.stored_inputs import (
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind
 from test_support.microcosm_build.us_one_population_contract import (
+    ENGINE_ABI_LOCK,
     READER_CLONE_DEFECTS,
     READER_GATES,
     READER_SOURCE_COLUMNS,
@@ -140,8 +142,10 @@ from test_support.microcosm_build.us_one_population_contract import (
     TAIL_PROVENANCE_DEFAULTS,
     WIC_SOURCE_TRIPLE,
     StandInVariableIndex,
+    acs_household_weight_series,
     assembled_frame,
     clone_zero_assembly_record,
+    cps_household_weight_series,
     cps_role_record,
     fill_manifest,
     generate_population,
@@ -156,6 +160,7 @@ from test_support.microcosm_build.us_one_population_contract import (
     with_spm_role_record,
     with_staging_union_columns,
 )
+from test_support.paths import REPOSITORY_ROOT
 
 _SEEDS = (0, 1, 2)
 
@@ -862,8 +867,12 @@ class TestProvenanceRewrite:
         frame = to_assembled_provenance(
             cps,
             acs,
-            cps_household_weights=cps_weights,
-            acs_household_weights=acs_weights,
+            cps_household_weights=cps_household_weight_series(
+                cps["household"], cps_weights
+            ),
+            acs_household_weights=acs_household_weight_series(
+                acs["household"], acs_weights
+            ),
             staging_lineage=staging_lineage(population),
         )
         given = np.concatenate(
@@ -897,6 +906,33 @@ class TestProvenanceRewrite:
         np.testing.assert_array_equal(
             frame.weights_for("household").values,
             reference.weights_for("household").values,
+        )
+
+    @pytest.mark.parametrize("form", ("series", "mapping"))
+    def test_weights_are_tied_to_households_by_key(self, population, form) -> None:
+        # d2283 lead call L3's hazard: PR 1's ACS starting weights come in
+        # selection order and staging's households in id order. Keyed
+        # weights in another order than the tables' still give each
+        # household its own weight; by position they would not.
+        rng = np.random.default_rng(11)
+        cps = population.keyed_cps_household_weights
+        acs = population.keyed_acs_household_weights
+        cps = cps.iloc[rng.permutation(len(cps))]
+        acs = acs.iloc[::-1]
+        assert not np.array_equal(acs.to_numpy(), population.acs_household_weights)
+        assert not np.array_equal(cps.to_numpy(), population.cps_household_weights)
+        if form == "mapping":
+            cps, acs = dict(cps.items()), dict(acs.items())
+        frame = to_assembled_provenance(
+            population.cps_tables,
+            population.acs_tables,
+            cps_household_weights=cps,
+            acs_household_weights=acs,
+            staging_lineage=staging_lineage(population),
+        )
+        np.testing.assert_array_equal(
+            frame.weights_for("household").values,
+            assembled_frame(population).weights_for("household").values,
         )
 
     def test_inputs_are_not_mutated(self, population) -> None:
@@ -1043,8 +1079,10 @@ def test_role_readers_match_route_a_with_no_acs_row(route_a, population) -> None
     frame = to_assembled_provenance(
         tables,
         empty_acs,
-        cps_household_weights=route_a.weights_for("household").values,
-        acs_household_weights=np.array([]),
+        cps_household_weights=cps_household_weight_series(
+            route_a.table("household"), route_a.weights_for("household").values
+        ),
+        acs_household_weights={},
         staging_lineage=frozenset(),
     )
     for entity in US_SCHEMA.entities:
@@ -1220,19 +1258,49 @@ def _acs_spine_tag_absent(p):
     return {"acs": acs}
 
 
-def _weights_misaligned(p):
-    return {"acs_weights": p.acs_household_weights[:-1]}
+def _acs_weights_by_position(p):
+    # PR 1's StartingWeights.acs as it comes: an array in selection order.
+    return {"acs_weights": p.acs_household_weights}
+
+
+def _cps_weights_by_position(p):
+    return {"cps_weights": p.cps_household_weights.tolist()}
+
+
+def _acs_weight_key_repeats(p):
+    weights = p.keyed_acs_household_weights
+    return {"acs_weights": pd.concat([weights, weights.iloc[:1]])}
+
+
+def _acs_household_without_a_weight(p):
+    return {"acs_weights": p.keyed_acs_household_weights.iloc[1:]}
+
+
+def _serialno_not_a_clean_key(p):
+    # P7 takes any non-empty, unique SERIALNO; the weight key needs a clean
+    # one, so staging's own lineage is made to agree with it.
+    acs = _copies(p, "acs")
+    serial = acs["household"]["SERIALNO"].iloc[0]
+    _set(acs["household"], 0, "SERIALNO", f"{serial}|x")
+    lineage = staging_lineage(dataclasses.replace(p, acs_tables=acs))
+    return {"acs": acs, "lineage": lineage}
+
+
+def _cps_weight_names_no_household(p):
+    weights = p.keyed_cps_household_weights
+    extra = pd.Series([1.0], index=[int(weights.index.max()) + 1])
+    return {"cps_weights": pd.concat([weights, extra])}
 
 
 def _cps_weight_negative(p):
-    weights = np.array(p.cps_household_weights, dtype=np.float64)
-    weights[0] = -1.0
+    weights = p.keyed_cps_household_weights.copy()
+    weights.iloc[0] = -1.0
     return {"cps_weights": weights}
 
 
 def _acs_weight_not_finite(p):
-    weights = np.array(p.acs_household_weights, dtype=np.float64)
-    weights[0] = np.nan
+    weights = dict(p.keyed_acs_household_weights.items())
+    weights[next(iter(weights))] = np.nan
     return {"acs_weights": weights}
 
 
@@ -1394,10 +1462,18 @@ _REFUSALS = [
     # Q3: a null spine tag after the rewrite.
     (_acs_null_spine_tag, "A null spine tag: 1 ACS 'tax_unit' row(s)"),
     (_acs_spine_tag_absent, "A null spine tag: 24 ACS 'household' row(s)"),
+    # Household weights keyed by household (d2283 lead call L3's check).
     (
-        _weights_misaligned,
-        "ACS household weights must align with the ACS household table",
+        _acs_weights_by_position,
+        "ACS household weights must be keyed by acs_unit_key(SERIALNO) (a pandas "
+        "Series or a mapping), not a ndarray",
     ),
+    (
+        _cps_weights_by_position,
+        "CPS household weights must be keyed by household_id (a pandas Series or "
+        "a mapping), not a list",
+    ),
+    (_acs_weight_key_repeats, "ACS household weights repeat a key: ['acs:"),
     (_cps_weight_negative, "CPS household weights must be finite and non-negative."),
     (_acs_weight_not_finite, "ACS household weights must be finite and non-negative."),
     # P6b: frame ids and memberships across origins.
@@ -1461,6 +1537,22 @@ _REFUSALS = [
         _staging_pair_malformed,
         "ACS lineage does not survive: staging's lineage holds ('2024HU0000001',), not a (SERIALNO, SPORDER) pair",
     ),
+    # Each household's weight found by its key, after P7 checked SERIALNO.
+    (
+        _acs_household_without_a_weight,
+        "ACS household weights must name each ACS household by its "
+        "acs_unit_key(SERIALNO) exactly once: 1 household(s) have no weight",
+    ),
+    (
+        _serialno_not_a_clean_key,
+        "ACS household weights need each household's SERIALNO key",
+    ),
+    (
+        _cps_weight_names_no_household,
+        "CPS household weights must name each CPS household by its household_id "
+        "exactly once: 0 household(s) have no weight (such as []) and 1 weight(s) "
+        "name no household",
+    ),
 ]
 
 
@@ -1469,10 +1561,10 @@ def _rewrite(population, corruption: dict) -> Frame:
         corruption.get("cps", population.cps_tables),
         corruption.get("acs", population.acs_tables),
         cps_household_weights=corruption.get(
-            "cps_weights", population.cps_household_weights
+            "cps_weights", population.keyed_cps_household_weights
         ),
         acs_household_weights=corruption.get(
-            "acs_weights", population.acs_household_weights
+            "acs_weights", population.keyed_acs_household_weights
         ),
         staging_lineage=corruption.get("lineage", staging_lineage(population)),
     )
@@ -1732,7 +1824,9 @@ def _acs_null_on_cps(frame: Frame, entity: str, column: str, value) -> Frame:
 #: The engine inputs d2283 lead call L1 (11-18) moved off the exempt list: a
 #: release engine pass built from the frame loads each before its producer
 #: writes it, so prepare fills it on ACS rows and R6 refuses its null. The
-#: last three are the integer recodes staging writes natively.
+#: three integer recodes are the ones staging writes natively. The ACA pass
+#: computes from takes_up_medicaid_if_eligible before Medicaid writes it,
+#: masked today; it moved with the lead-call review (fail closed).
 _MOVED_OFF_THE_EXEMPT_LIST = (
     "cps_race",
     "hourly_wage",
@@ -1744,7 +1838,10 @@ _MOVED_OFF_THE_EXEMPT_LIST = (
     "detailed_occupation_recode",
     "detailed_industry_recode",
     "major_industry_recode",
+    "takes_up_medicaid_if_eligible",
 )
+#: The moved inputs the engine holds as booleans.
+_MOVED_BOOLEANS = frozenset({"is_self_employed", "takes_up_medicaid_if_eligible"})
 
 
 class TestRequireOnePopulation:
@@ -1766,8 +1863,8 @@ class TestRequireOnePopulation:
         frame = to_assembled_provenance(
             population.cps_tables,
             empty_acs,
-            cps_household_weights=population.cps_household_weights,
-            acs_household_weights=np.array([]),
+            cps_household_weights=population.keyed_cps_household_weights,
+            acs_household_weights={},
             staging_lineage=frozenset(),
         )
         manifest = dataclasses.replace(
@@ -1788,8 +1885,8 @@ class TestRequireOnePopulation:
         frame = to_assembled_provenance(
             population.cps_tables,
             empty_acs,
-            cps_household_weights=population.cps_household_weights,
-            acs_household_weights=np.array([]),
+            cps_household_weights=population.keyed_cps_household_weights,
+            acs_household_weights={},
             staging_lineage=frozenset(),
         )
         manifest = dataclasses.replace(
@@ -1923,7 +2020,7 @@ class TestRequireOnePopulation:
         with pytest.raises(
             OnePopulationContractError,
             match=re.escape(
-                "A model-named column filled on CPS rows is null on ACS rows "
+                "A model-named column held on some CPS row is null on ACS rows "
                 "without a declared absence: {'person.federal_student_loan_balance'"
             ),
         ):
@@ -1933,7 +2030,7 @@ class TestRequireOnePopulation:
         self, population, assembled
     ) -> None:
         frame = _acs_null_on_cps(
-            assembled, "person", "takes_up_medicaid_if_eligible", True
+            assembled, "person", "takes_up_head_start_if_eligible", True
         )
         _require(population, frame)
         not_exempt = _acs_null_on_cps(
@@ -1952,7 +2049,7 @@ class TestRequireOnePopulation:
         # d2283 lead call L1: each moved input is R6's on every row. The
         # generator carries none of them, so each is added on its entity.
         entity = lock_engine_inputs()[column]
-        value = True if column == "is_self_employed" else 1.0
+        value = True if column in _MOVED_BOOLEANS else 1.0
         filled = _with_column(assembled, entity, column, value)
         _require(population, filled)
         with pytest.raises(
@@ -2029,9 +2126,8 @@ class TestExemptList:
             "would_file_taxes_voluntarily",
             *org_bools,
             "takes_up_aca_if_eligible",
-            "takes_up_medicaid_if_eligible",
         }
-        assert len(RELEASE_WRITTEN_INPUTS) == 19
+        assert len(RELEASE_WRITTEN_INPUTS) == 18
         assert len(outputs["org_wages"]) == 15
         moved = set(_MOVED_OFF_THE_EXEMPT_LIST)
         assert set(outputs["org_wages"]) == org_bools | (
@@ -2040,7 +2136,9 @@ class TestExemptList:
         assert len(moved & set(outputs["org_wages"])) == 6
         assert moved - set(outputs["org_wages"]) <= set(
             outputs["aca_marketplace_inputs"]
-        ) | set(outputs["other_health_insurance_premiums"])
+        ) | set(outputs["other_health_insurance_premiums"]) | set(
+            outputs["medicaid_take_up"]
+        )
         not_exempt = {
             # d2283 lead call L1: an engine pass loads each before its
             # producer writes it.
@@ -2075,6 +2173,263 @@ class TestExemptList:
         )
         assert set(PUF_TAIL_TAX_UNIT_COLUMNS) == set(TAIL_PROVENANCE_DEFAULTS)
         assert "unrecaptured_section_1250_gain" not in PUF_TAIL_TAX_UNIT_COLUMNS
+
+
+# ---- what the exempt list's verdicts rest on (d2283 lead-call review, 11-19)
+
+#: The release tool whose pool arm d2283 lead call L1's trace read.
+_RELEASE_TOOL = REPOSITORY_ROOT / "tools" / "build_us_fiscal_refresh_release.py"
+#: The calls whose order the exempt list's verdicts read, in the release's
+#: order: the three producers no engine pass precedes, the first engine
+#: pass (the SSI December pass), the producers whose outputs only that pass
+#: loads first, and the passes that compute from the moved premiums and
+#: self-employment flag before their producer, other health insurance.
+_TRACED_STAGE_ORDER = (
+    "with_us_scf_wealth_inputs",
+    "with_us_ssi_disability_criteria",
+    "with_us_sipp_head_start_input",
+    "_ssi_person_uncapped_amount",
+    "with_us_ssi_take_up",
+    "with_us_voluntary_filing_input",
+    "with_us_org_wages_inputs",
+    "_with_aca_marketplace_source_outputs",
+    "_with_medicaid_take_up_outputs",
+    "_with_snap_state_take_up_outputs",
+    "with_us_other_health_insurance_inputs",
+)
+#: The release's engine passes built from the frame, up to and including
+#: the other-health-insurance stage's own (L1's trace: E1 to E5).
+_TRACED_FRAME_PASSES = (
+    "_ssi_person_uncapped_amount",
+    "_with_aca_marketplace_source_outputs",
+    "_with_medicaid_take_up_outputs",
+    "_with_snap_state_take_up_outputs",
+    "with_us_other_health_insurance_inputs",
+)
+#: The calls that build an engine pass from a frame. An engine made only to
+#: read variable metadata (``PolicyEngineUSEngine()``) and a dataset read
+#: from a file (``_load_frame``'s ``USSingleYearDataset``) are not passes.
+_FRAME_PASS_CALLS = frozenset({"_dataset_from_frame", "Microsimulation", "materialize"})
+#: The engine releases L1's trace read statically: policyengine-us's
+#: variables and policyengine-core's null handling at load.
+_L1_TRACED_ENGINE = {"policyengine-us": "2.2.1", "policyengine-core": "3.32.5"}
+_RETRACE = (
+    "re-run d2283 lead call L1's earlier-reader trace over "
+    "RELEASE_WRITTEN_INPUTS and the inputs moved off it before this changes, "
+    "then update their evidence and this test"
+)
+
+
+class _SourceCalls:
+    """Which functions build a frame engine pass, read from source text.
+
+    Nothing is imported. A function builds a pass when it calls a name in
+    :data:`_FRAME_PASS_CALLS`, or a function that does, followed by name
+    through its own module (methods and nested functions included) and its
+    ``microcosm`` imports. Following by name over-approximates, which errs
+    toward a failure; a call through a variable or a class is not followed.
+    """
+
+    def __init__(self) -> None:
+        self._parsed: dict[Path, tuple[dict, dict]] = {}
+        self._builds: dict[tuple[Path, str], bool] = {}
+
+    @staticmethod
+    def calls(node: ast.AST) -> list[tuple[int, str]]:
+        found = []
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Call):
+                func = sub.func
+                name = (
+                    func.id
+                    if isinstance(func, ast.Name)
+                    else getattr(func, "attr", None)
+                )
+                if name:
+                    found.append((sub.lineno, name))
+        return sorted(found)
+
+    @staticmethod
+    def module_path(module: str) -> Path | None:
+        if not module.startswith("microcosm"):
+            return None
+        for src in sorted((REPOSITORY_ROOT / "packages").glob("*/src")):
+            base = src.joinpath(*module.split("."))
+            for candidate in (base / "__init__.py", base.with_suffix(".py")):
+                if candidate.is_file():
+                    return candidate
+        return None
+
+    @staticmethod
+    def _absolute(path: Path, node: ast.ImportFrom) -> str:
+        if not node.level:
+            return node.module or ""
+        package = path.parent
+        for _ in range(node.level - 1):
+            package = package.parent
+        src = next(parent for parent in package.parents if parent.name == "src")
+        parts = package.relative_to(src).parts
+        return ".".join((*parts, *([node.module] if node.module else [])))
+
+    def parsed(self, path: Path) -> tuple[dict, dict]:
+        if path not in self._parsed:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            functions: dict[str, list[ast.AST]] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                    functions.setdefault(node.name, []).append(node)
+            imports = {
+                alias.asname or alias.name: (self._absolute(path, node), alias.name)
+                for node in tree.body
+                if isinstance(node, ast.ImportFrom)
+                for alias in node.names
+            }
+            self._parsed[path] = (functions, imports)
+        return self._parsed[path]
+
+    def resolve(self, module: str, name: str, depth: int = 0):
+        path = self.module_path(module)
+        if path is None or depth > 8:
+            return None
+        functions, imports = self.parsed(path)
+        if name in functions:
+            return path, name
+        if name in imports:
+            return self.resolve(*imports[name], depth + 1)
+        return None
+
+    def builds(self, path: Path, name: str, *, seen=frozenset()) -> bool:
+        key = (path, name)
+        if key in self._builds:
+            return self._builds[key]
+        if key in seen:
+            return False
+        functions, imports = self.parsed(path)
+        result = False
+        for node in functions.get(name, ()):
+            for _, called in self.calls(node):
+                if called in _FRAME_PASS_CALLS:
+                    result = True
+                elif called in functions:
+                    result = self.builds(path, called, seen=seen | {key})
+                elif called in imports:
+                    target = self.resolve(*imports[called])
+                    result = target is not None and self.builds(
+                        *target, seen=seen | {key}
+                    )
+                if result:
+                    break
+            if result:
+                break
+        # A False found under a cut cycle may be wrong from elsewhere: keep
+        # only what holds whatever the path.
+        if result or not seen:
+            self._builds[key] = result
+        return result
+
+    def main_calls(self, path: Path) -> list[tuple[int, str, bool]]:
+        """``_main``'s calls in source order, each marked if it builds a pass."""
+
+        functions, imports = self.parsed(path)
+        (main,) = functions["_main"]
+        marked = []
+        for line, name in self.calls(main):
+            if name in _FRAME_PASS_CALLS:
+                builds = True
+            elif name in functions:
+                builds = self.builds(path, name)
+            elif name in imports:
+                target = self.resolve(*imports[name])
+                builds = target is not None and self.builds(*target)
+            else:
+                builds = False
+            marked.append((line, name, builds))
+        return marked
+
+
+class TestWhatTheExemptListRestsOn:
+    """The release order and engine pins L1's verdicts read (lead-call review).
+
+    Every exempt entry's "Earlier readers" verdict, and the moved inputs'
+    fill notes, are static reads of the release tool's stage order and of
+    the pinned engine. These fail when either moves, so the trace is re-run.
+    """
+
+    @pytest.fixture(scope="class")
+    def release_calls(self) -> list[tuple[int, str, bool]]:
+        return _SourceCalls().main_calls(_RELEASE_TOOL)
+
+    def test_the_stages_run_in_the_traced_order(self, release_calls) -> None:
+        first: dict[str, int] = {}
+        for line, name, _ in release_calls:
+            first.setdefault(name, line)
+        missing = [name for name in _TRACED_STAGE_ORDER if name not in first]
+        assert not missing, f"The release no longer calls {missing}: {_RETRACE}."
+        lines = {name: first[name] for name in _TRACED_STAGE_ORDER}
+        assert list(lines.values()) == sorted(lines.values()), (
+            f"The release's stage order moved: {lines}; {_RETRACE}."
+        )
+
+    def test_the_frame_engine_passes_are_the_traced_ones(self, release_calls) -> None:
+        last = next(
+            line for line, name, _ in release_calls if name == _TRACED_FRAME_PASSES[-1]
+        )
+        passes = [
+            name for line, name, builds in release_calls if builds and line <= last
+        ]
+        assert passes == list(_TRACED_FRAME_PASSES), (
+            "The release's engine passes through other health insurance are "
+            f"{passes}; {_RETRACE}."
+        )
+
+    def test_an_untraced_pass_would_be_seen(self, tmp_path) -> None:
+        # The reader, fed a tool as data: a tool-local helper that builds a
+        # dataset from the frame, a call it cannot resolve, and a stage
+        # imported through us_runtime's package that materializes a pass.
+        tool = tmp_path / "tool.py"
+        tool.write_text(
+            "from microcosm.build.us_runtime import (\n"
+            "    with_us_other_health_insurance_inputs,\n"
+            ")\n"
+            "def _early(frame):\n"
+            "    return _dataset_from_frame(frame)\n"
+            "def _main(frame):\n"
+            "    frame = _early(frame)\n"
+            "    frame = with_us_scf_wealth_inputs(frame)\n"
+            "    return with_us_other_health_insurance_inputs(frame)\n",
+            encoding="utf-8",
+        )
+        marked = [(name, builds) for _, name, builds in _SourceCalls().main_calls(tool)]
+        assert marked == [
+            ("_early", True),
+            ("with_us_scf_wealth_inputs", False),
+            ("with_us_other_health_insurance_inputs", True),
+        ]
+
+    def test_the_engine_pins_are_the_ones_l1_traced(self) -> None:
+        engine = json.loads(ENGINE_ABI_LOCK.read_text(encoding="utf-8"))["engine"]
+        lock = tomllib.loads((REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8"))
+        build = next(p for p in lock["package"] if p["name"] == "microcosm-build")
+        core = [
+            requirement["specifier"]
+            for requirement in build["metadata"]["requires-dist"]
+            if requirement["name"] == "policyengine-core"
+            and requirement.get("marker") == "extra == 'us'"
+        ]
+        locked_us = {
+            p["version"] for p in lock["package"] if p["name"] == "policyengine-us"
+        }
+        traced_us = _L1_TRACED_ENGINE["policyengine-us"]
+        pins = {
+            "policyengine-us": (engine["package"], engine["version"], locked_us),
+            "policyengine-core": core,
+        }
+        assert pins == {
+            "policyengine-us": ("policyengine-us", traced_us, {traced_us}),
+            "policyengine-core": [f"=={_L1_TRACED_ENGINE['policyengine-core']}"],
+        }, f"The engine pins moved: {pins}; {_RETRACE}."
+        for package, version in _L1_TRACED_ENGINE.items():
+            assert f"{package} {version}" in contract._LOADED_NOT_COMPUTED
 
 
 # X1: one or more corruptions per clause. Each takes the population and its
@@ -2732,12 +3087,12 @@ _FRAME_REFUSALS = [
     # R10.
     (
         _r10_register_column_null_on_acs,
-        "A model-named column filled on CPS rows is null on ACS rows without a "
+        "A model-named column held on some CPS row is null on ACS rows without a "
         "declared absence: {'person.source_row_id': '1 of",
     ),
     (
         _r10_register_column_null_beside_a_cps_null,
-        "A model-named column filled on CPS rows is null on ACS rows without a "
+        "A model-named column held on some CPS row is null on ACS rows without a "
         "declared absence: {'person.cps_employment_income_last_year': '",
     ),
 ]
@@ -3003,8 +3358,8 @@ class TestCombinedSpmRoleRecord:
         frame = to_assembled_provenance(
             population.cps_tables,
             empty_acs,
-            cps_household_weights=population.cps_household_weights,
-            acs_household_weights=np.array([]),
+            cps_household_weights=population.keyed_cps_household_weights,
+            acs_household_weights={},
             staging_lineage=frozenset(),
         )
         record = combined_spm_role_record(*_role_inputs(frame), frame)
@@ -3520,8 +3875,8 @@ class TestAbsences:
         frame = to_assembled_provenance(
             population.cps_tables,
             empty_acs,
-            cps_household_weights=population.cps_household_weights,
-            acs_household_weights=np.array([]),
+            cps_household_weights=population.keyed_cps_household_weights,
+            acs_household_weights={},
             staging_lineage=frozenset(),
         )
         record = _absences(frame)
@@ -3750,6 +4105,62 @@ def test_every_kindless_column_is_listed_in_one_refusal(assembled) -> None:
     message = str(raised.value)
     assert f"'person.parent_1_id': 'null on {int(acs.sum())} ACS row(s)'" in message
     assert (f"'household.puma_geoid': 'null on {cps_households} CPS row(s)'") in message
+
+
+# ---- the moved inputs on a whole population (lead-call review, 11-19)
+
+
+def _with_moved_inputs(frame: Frame, *, acs_null: bool) -> Frame:
+    """Every moved input on its entity: on every row, or null on ACS rows.
+
+    PR 4's genuine input carries each on CPS rows (the parent export's
+    release values) and fills each on ACS rows; the generator carries none.
+    """
+
+    entities = lock_engine_inputs()
+    tables = _tables(frame)
+    for column in _MOVED_OFF_THE_EXEMPT_LIST:
+        entity = entities[column]
+        table = tables[entity]
+        value = True if column in _MOVED_BOOLEANS else 1.0
+        if acs_null:
+            acs = _origin_mask(table, entity, "acs")
+            table[column] = pd.Series(
+                np.where(acs, None, value), index=table.index, dtype=object
+            )
+        else:
+            table[column] = value
+    return _rebuild(frame, tables)
+
+
+class TestMovedInputs:
+    @pytest.mark.parametrize("seed", _SEEDS)
+    def test_filled_on_every_row_they_pass_and_add_no_absence(self, seed) -> None:
+        population = generate_population(seed)
+        frame = assembled_frame(population)
+        filled = _with_moved_inputs(frame, acs_null=False)
+        _require(population, filled, staging_lineage=staging_lineage(population))
+        assert set(_keyed(_absences(filled))) == set(_keyed(_absences(frame)))
+
+    def test_null_on_acs_rows_both_checks_name_every_one(
+        self, population, assembled
+    ) -> None:
+        frame = _with_moved_inputs(assembled, acs_null=True)
+        with pytest.raises(OnePopulationContractError) as refused:
+            _require(population, frame)
+        message = str(refused.value)
+        assert message.startswith("A null in an engine input at 2024: "), message
+        missing = [c for c in _MOVED_OFF_THE_EXEMPT_LIST if f".{c}'" not in message]
+        assert not missing, message
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape("A column one origin lacks has no absence kind"),
+        ) as gap:
+            _absences(frame)
+        missing = [
+            c for c in _MOVED_OFF_THE_EXEMPT_LIST if f".{c}'" not in str(gap.value)
+        ]
+        assert not missing, str(gap.value)
 
 
 # ------- lead call (a), 11-18: ACS-native amounts CPS rows lack by origin
@@ -4027,7 +4438,7 @@ class TestOneDeclarationsMapping:
         with pytest.raises(
             OnePopulationContractError,
             match=re.escape(
-                "A model-named column filled on CPS rows is null on ACS rows "
+                "A model-named column held on some CPS row is null on ACS rows "
                 f"without a declared absence: {{'person.{_AUXILIARY}': "
             ),
         ):
@@ -4074,8 +4485,8 @@ class TestOneDeclarationsMapping:
         frame = to_assembled_provenance(
             population.cps_tables,
             empty_acs,
-            cps_household_weights=population.cps_household_weights,
-            acs_household_weights=np.array([]),
+            cps_household_weights=population.keyed_cps_household_weights,
+            acs_household_weights={},
             staging_lineage=frozenset(),
         )
         manifest = dataclasses.replace(
@@ -4127,8 +4538,8 @@ def _rewrite_with(p, **overrides) -> Frame:
     kwargs = {
         "cps_tables": p.cps_tables,
         "acs_tables": p.acs_tables,
-        "cps_household_weights": p.cps_household_weights,
-        "acs_household_weights": p.acs_household_weights,
+        "cps_household_weights": p.keyed_cps_household_weights,
+        "acs_household_weights": p.keyed_acs_household_weights,
         "staging_lineage": staging_lineage(p),
         **overrides,
     }
@@ -4305,7 +4716,7 @@ def test_n2_kinds_on_a_generated_population(population, assembled) -> None:
     with pytest.raises(
         OnePopulationContractError,
         match=re.escape(
-            "A model-named column filled on CPS rows is null on ACS rows without "
+            "A model-named column held on some CPS row is null on ACS rows without "
             f"a declared absence: {{'person.{_AUXILIARY}'"
         ),
     ):

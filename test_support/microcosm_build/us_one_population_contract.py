@@ -724,10 +724,12 @@ class GeneratedPopulation:
     """One valid input pair for the contract, with what a test needs to know.
 
     ``cps_household_weights`` and ``acs_household_weights`` align with each
-    origin's household table. ``clone_multiplier`` is the CPS clone id shift,
-    ``acs_id_offsets`` staging's per-entity ACS offsets, ``tail_donor_ids``
-    the applied tail donors, and ``cps_keys``/``acs_keys`` the selection keys
-    of the native CPS households and the ACS households.
+    origin's household table; :attr:`keyed_cps_household_weights` and
+    :attr:`keyed_acs_household_weights` key them as the contract takes them.
+    ``clone_multiplier`` is the CPS clone id shift, ``acs_id_offsets``
+    staging's per-entity ACS offsets, ``tail_donor_ids`` the applied tail
+    donors, and ``cps_keys``/``acs_keys`` the selection keys of the native
+    CPS households and the ACS households.
     """
 
     seed: int
@@ -740,6 +742,52 @@ class GeneratedPopulation:
     tail_donor_ids: frozenset[int]
     cps_keys: tuple[str, ...]
     acs_keys: tuple[str, ...]
+
+    @property
+    def keyed_cps_household_weights(self) -> pd.Series:
+        """The CPS household weights keyed by ``household_id``."""
+
+        return cps_household_weight_series(
+            self.cps_tables["household"], self.cps_household_weights
+        )
+
+    @property
+    def keyed_acs_household_weights(self) -> pd.Series:
+        """The ACS household weights keyed by ``acs_unit_key(SERIALNO)``."""
+
+        return acs_household_weight_series(
+            self.acs_tables["household"], self.acs_household_weights
+        )
+
+
+def cps_household_weight_series(household: pd.DataFrame, weights: object) -> pd.Series:
+    """CPS household weights keyed as the contract takes them, by household id.
+
+    ``weights`` align with ``household``'s rows.
+    """
+
+    return pd.Series(
+        np.asarray(weights, dtype=np.float64),
+        index=pd.Index(household["household_id"].to_numpy(), name="household_id"),
+    )
+
+
+def acs_household_weight_series(household: pd.DataFrame, weights: object) -> pd.Series:
+    """ACS household weights keyed as the contract takes them.
+
+    The key is ``acs_unit_key(SERIALNO)``, the key PR 1's selection keeps its
+    ACS starting weights in order of. ``weights`` align with ``household``'s
+    rows.
+    """
+
+    return pd.Series(
+        np.asarray(weights, dtype=np.float64),
+        index=pd.Index(
+            [acs_unit_key(serial) for serial in household["SERIALNO"]],
+            dtype=object,
+            name="acs_unit_key",
+        ),
+    )
 
 
 def generate_population(
@@ -860,8 +908,8 @@ def assembled_frame(population: GeneratedPopulation) -> Frame:
     return to_assembled_provenance(
         population.cps_tables,
         population.acs_tables,
-        cps_household_weights=population.cps_household_weights,
-        acs_household_weights=population.acs_household_weights,
+        cps_household_weights=population.keyed_cps_household_weights,
+        acs_household_weights=population.keyed_acs_household_weights,
         staging_lineage=staging_lineage(population),
     )
 
@@ -1599,8 +1647,10 @@ def reader_population(*, clone_defect: str | None = None) -> ReaderPopulation:
     assembled = to_assembled_provenance(
         tables,
         empty_acs,
-        cps_household_weights=route_a.weights_for("household").values,
-        acs_household_weights=np.array([]),
+        cps_household_weights=cps_household_weight_series(
+            route_a.table("household"), route_a.weights_for("household").values
+        ),
+        acs_household_weights={},
         staging_lineage=frozenset(),
     )
     return ReaderPopulation(

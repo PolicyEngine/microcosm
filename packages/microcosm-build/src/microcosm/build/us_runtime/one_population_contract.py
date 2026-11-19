@@ -59,29 +59,50 @@ What the later d2283 PRs owe this library:
   :data:`RELEASE_WRITTEN_INPUTS`, ``takes_up_snap_if_eligible`` included
   (the SNAP take-up gate misgrades an ACS null). Lead call L1 moved ten
   producer outputs off that list, because an engine pass loads each
-  before its producer writes it. Their fill sources: the three integer
-  recodes (``detailed_occupation_recode``, ``detailed_industry_recode``,
-  ``major_industry_recode``) come from staging, which writes them natively
-  from ``OCCP`` and ``INDP`` (``acs_inputs.ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS``);
-  any finite value serves for ``cps_race``, ``hourly_wage``,
-  ``fsla_overtime_premium``, ``selected_marketplace_plan_benchmark_ratio``
-  and ``other_health_insurance_premiums``, which their producers rewrite and
-  no earlier pass computes from; ``health_insurance_premiums`` and
-  ``is_self_employed`` need a reviewed source, since the ACA, Medicaid and
-  SNAP-state passes compute from them on ACS rows before their producer
-  runs and staging writes neither (which source is open). A null PR 4
+  before its producer writes it, and the lead-call review moved an
+  eleventh, ``takes_up_medicaid_if_eligible``. Their fill sources: the
+  three integer recodes (``detailed_occupation_recode``,
+  ``detailed_industry_recode``, ``major_industry_recode``) come from
+  staging, which writes them natively from ``OCCP`` and ``INDP``
+  (``acs_inputs.ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS``); any finite value
+  serves for ``cps_race``, ``hourly_wage``, ``fsla_overtime_premium``,
+  ``selected_marketplace_plan_benchmark_ratio`` and
+  ``other_health_insurance_premiums``, and any boolean for
+  ``takes_up_medicaid_if_eligible``, since their producers rewrite them and
+  no earlier pass's result depends on them (the ACA pass's two reads of the
+  Medicaid flag are masked by Medicaid eligibility in policyengine-us
+  2.2.1). ``health_insurance_premiums`` and ``is_self_employed``
+  need a reviewed source, since the ACA, Medicaid and SNAP-state passes
+  compute from them on ACS rows before their producer runs and staging
+  writes neither. Which source is a lead call still owed, the US data
+  owner deciding (d2283 Q2's owner). The candidate is the producer's own
+  pinned rule, ``other_health_insurance.attribute_us_se_health_premiums``,
+  run in prepare on the ACS rows' filled
+  ``health_insurance_premiums_without_medicare_part_b``, self-employment
+  income, age, ``social_security_disability`` and ``has_esi``. A null PR 4
   leaves in an exempt boolean column must be NaN or None, never ``pd.NA``,
-  which the first engine pass refuses at load. PR 4 also fills the raw
-  ``PRDTRACE``, ``PRDTHSP``, ``POCCU2``, ``WEIND``, ``WEMIND`` and
-  ``WKSWORK`` on ACS rows (the ORG stage reads them and refuses incomplete
-  ``WEIND``, ``WEMIND`` or ``WKSWORK``; ``org_wages.py`` :590-655), and
-  writes the six :data:`PUF_TAIL_TAX_UNIT_COLUMNS` defaults on ACS tax
-  units (applied False, donor id -1), which R7 and R8 require.
-- PR 4 passes :func:`to_assembled_provenance` each household weight in its
-  table's row order. PR 1's ACS starting weights
-  (``StartingWeights.acs``) come in selection-rank order and staging's
-  household table in id order, so PR 4 reorders them by key first; the
-  contract cannot see a permutation (lead call L3's check).
+  which the first engine pass refuses at load.
+- PR 4 writes on ACS rows every raw predictor of
+  ``acs_release_predictors._MODEL_PREDICTORS``, all fourteen
+  (:data:`RAW_COLUMN_READERS` names each one's readers): ``PEDISDRS``,
+  ``PEDISEAR``, ``PEDISEYE``, ``PEDISOUT``, ``PEDISPHY``, ``PEDISREM``,
+  ``PRDTRACE``, ``PRDTHSP``, ``SPM_TENMORTSTATUS``, ``PEIOOCC``,
+  ``POCCU2``, ``WEIND``, ``WEMIND`` and ``WKSWORK``, by the join's own
+  crosswalk from the ACS PUMS sources or from staging where staging writes
+  them. The join itself passes the joined frame through, since no row
+  carries channel ``acs``. A null stops the build in the SSI disability
+  stage (a non-finite ``PEDIS*``) or the ORG stage (incomplete ``WEIND``,
+  ``WEMIND`` or ``WKSWORK``; ``org_wages.py`` :590-655), and passes
+  silently where a reader fills it (``sipp_vehicles`` reads a null
+  ``SPM_TENMORTSTATUS`` as 3, ``scf_wealth`` a null ``PRDTRACE`` or
+  ``PRDTHSP`` as 0). PR 4 also writes the six
+  :data:`PUF_TAIL_TAX_UNIT_COLUMNS` defaults on ACS tax units (applied
+  False, donor id -1), which R7 and R8 require.
+- PR 4 passes :func:`to_assembled_provenance` each origin's household
+  weights keyed: CPS by ``household_id``, ACS by ``acs_unit_key(SERIALNO)``
+  (``pd.Series(starting.acs, index=plan.acs_keys)``). PR 1's ACS starting
+  weights come in selection order and staging's household table in id
+  order, so a weight given by position is refused (lead call L3's check).
 - PR 4 runs the reviewed default fill on the joined frame so its
   manifest's row counts are the frame's; reads the parent's applied tail
   donor ids from the export's tax-unit columns (checked against the base
@@ -264,6 +285,15 @@ _CPS_CLONE_INDICES = (
 )
 _CPS = "CPS"
 _ACS = "ACS"
+#: What each origin's household weights are keyed by for
+#: :func:`to_assembled_provenance`: the CPS household's frame id (PR 1's CPS
+#: starting weights follow the export's household rows) and the ACS
+#: household's selection key (PR 1's ``StartingWeights.acs`` follows
+#: ``plan.acs_keys``).
+_WEIGHT_KEYS = {
+    _CPS: US_SCHEMA.id_column("household"),
+    _ACS: f"acs_unit_key({_SERIALNO})",
+}
 #: The boundary name the assembly validator reports.
 _BOUNDARY = "one-population provenance"
 #: The consumer name the ESI premium refusal reports.
@@ -336,7 +366,8 @@ _ORG_EVIDENCE = (
 #: (whose ``us/source_stages.json`` ``outputs`` name the column; a test pins
 #: that), the lines that rewrite every row or raise on a null, and the
 #: release's earlier readers (an engine pass built from the frame before the
-#: producer), from L1's static trace of the release tool's pool arm.
+#: producer), from L1's static trace of the release tool's pool arm. A test
+#: pins the stage order and the engine pins those verdicts read.
 #:
 #: Left out, so prepare must fill them on ACS rows: producers that pass a
 #: frame through when the column carries signal after dropping nulls
@@ -370,6 +401,20 @@ _ORG_EVIDENCE = (
 #: a boolean null there reads silently as True or False. Staging writes the
 #: three integer recodes natively on ACS rows (U/acs_inputs.py:105-120,
 #: ``ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS``) and none of the other seven.
+#:
+#: And ``takes_up_medicaid_if_eligible`` (medicaid_take_up, :15751; moved
+#: by the lead-call review, fail closed): the ACA stage's pass (:15716)
+#: computes ``medicaid_enrolled`` from it before Medicaid writes it, by two
+#: routes in policyengine-us 2.2.1. One is the ineligible-coverage sum's
+#: qualifying non-marketplace coverage; the other is CHIP's disqualifying
+#: coverage, into ``is_chip_eligible_child`` and so ``is_chip_eligible``,
+#: which the ineligible-coverage sum and Basic Health Program eligibility
+#: read. Both are masked today: ``medicaid_enrolled`` is defined for
+#: ``is_medicaid_eligible``, which sits in the same sum, and
+#: ``is_chip_eligible_child`` and Basic Health Program eligibility each
+#: require not ``is_medicaid_eligible``. L1 let only the two
+#: self-employed-premium inputs argue a harmless read, and nothing here
+#: checks the masking, so the column is filled like the others.
 RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
     {
         "bank_account_assets": _SCF_ASSETS_EVIDENCE,
@@ -430,16 +475,6 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
             f"{_LOADED_NOT_COMPUTED}; the stage's own pass reads the potential "
             "aca_ptc, not the take-up flag (:3928-3930)"
         ),
-        "takes_up_medicaid_if_eligible": (
-            "medicaid_take_up stage: with_us_medicaid_take_up raises if any "
-            "person is unassigned and writes every person "
-            f"(U/medicaid_take_up.py:319, :323). {_LOADED_NOT_COMPUTED}. The "
-            "ACA stage's pass (tools/build_us_fiscal_refresh_release.py:15716) "
-            "reads it only through medicaid_enrolled in pays_aca_premium's "
-            "ineligible-coverage sum, which also holds is_medicaid_eligible, "
-            "the variable medicaid_enrolled is defined for, so the flag cannot "
-            "change that pass's result (policyengine-us 2.2.1)"
-        ),
     }
 )
 
@@ -479,14 +514,15 @@ _ACS_TRANSFER_READER = (
 #: The six ACS-native reported amounts, each with its entity and the
 #: release's readers: the ``acs_*`` keys of
 #: ``operator_boundary._ACS_NATIVE_INPUT_CONTRACTS``. A test pins the two by
-#: reading that module's source, since importing it loads the ACS transfer
-#: and ``microcosm.fit``. Staging maps them from ACS source columns on ACS
-#: rows only, and the stored-input register files each as "not a model
-#: input", so CPS rows lack them by origin: :func:`absences` files that as
-#: "origin-native", with no owner's decision. The ACS transfer reads the
-#: three combined amounts as recipient-side predictors on ACS rows; no
-#: release producer reads the three housing amounts, which are source
-#: lineage the native-input receipt records.
+#: reading that module's source. The import would cost nothing extra
+#: (``us_runtime``'s ``__init__`` already imports ``operator_boundary``); the
+#: copy stays by d2283 lead call L8. Staging maps them from ACS source
+#: columns on ACS rows only, and the stored-input register files each as
+#: "not a model input", so CPS rows lack them by origin: :func:`absences`
+#: files that as "origin-native", with no owner's decision. The ACS transfer
+#: reads the three combined amounts as recipient-side predictors on ACS
+#: rows; no release producer reads the three housing amounts, which are
+#: source lineage the native-input receipt records.
 ACS_NATIVE_AMOUNTS: Mapping[str, tuple[str, tuple[str, ...]]] = MappingProxyType(
     {
         "acs_social_security_income": ("person", (_ACS_TRANSFER_READER,)),
@@ -858,20 +894,78 @@ def _require_acs_support_metadata(tables: Mapping[str, pd.DataFrame]) -> None:
                 )
 
 
-def _household_weights(values: object, *, origin: str, households: int) -> np.ndarray:
-    """One origin's household weights, aligned with its household table."""
+def _keyed_weights(values: object, *, origin: str) -> dict[object, float]:
+    """One origin's household weights, by key, before they meet its table.
 
-    array = np.asarray(values, dtype=np.float64)
-    if array.ndim != 1 or len(array) != households:
+    Only a keyed input is taken (d2283 lead call L3's check): PR 1's ACS
+    starting weights come in selection order and staging's ACS households
+    in id order, so a weight given by position cannot be tied to its
+    household, and no later clause would see the permutation.
+    """
+
+    key = _WEIGHT_KEYS[origin]
+    if isinstance(values, pd.Series):
+        keys, given = values.index.tolist(), values.to_numpy()
+    elif isinstance(values, Mapping):
+        keys, given = list(values), list(values.values())
+    else:
         raise OnePopulationContractError(
-            f"{origin} household weights must align with the {origin} household "
-            f"table: {households} row(s), got shape {array.shape}."
+            f"{origin} household weights must be keyed by {key} (a pandas Series "
+            f"or a mapping), not a {type(values).__name__}: a weight given by "
+            "position cannot be tied to its household."
         )
-    if not np.isfinite(array).all() or (array < 0).any():
+    try:
+        array = np.asarray(given, dtype=np.float64)
+    except (TypeError, ValueError):
+        array = None
+    if (
+        array is None
+        or array.ndim != 1
+        or not np.isfinite(array).all()
+        or (array < 0).any()
+    ):
         raise OnePopulationContractError(
             f"{origin} household weights must be finite and non-negative."
         )
-    return array
+    seen: set[object] = set()
+    repeated = []
+    for k in keys:
+        if k in seen:
+            repeated.append(k)
+        seen.add(k)
+    if repeated:
+        raise OnePopulationContractError(
+            f"{origin} household weights repeat a key: {repeated[:5]!r}."
+        )
+    return dict(zip(keys, array.tolist(), strict=True))
+
+
+def _aligned_weights(
+    weights: Mapping[object, float], keys: list[object], *, origin: str
+) -> np.ndarray:
+    """``weights`` in the order of ``keys``, each household's by its key."""
+
+    missing = [k for k in keys if k not in weights]
+    extra = sorted(repr(k) for k in set(weights) - set(keys))
+    if missing or extra:
+        raise OnePopulationContractError(
+            f"{origin} household weights must name each {origin} household by its "
+            f"{_WEIGHT_KEYS[origin]} exactly once: {len(missing)} household(s) "
+            f"have no weight (such as {missing[:3]!r}) and {len(extra)} weight(s) "
+            f"name no household (such as {extra[:3]})."
+        )
+    return np.array([weights[k] for k in keys], dtype=np.float64)
+
+
+def _acs_weight_keys(household: pd.DataFrame) -> list[object]:
+    """Each ACS household's weight key, ``acs_unit_key(SERIALNO)``, in row order."""
+
+    try:
+        return [acs_unit_key(serial) for serial in household[_SERIALNO]]
+    except ValueError as exc:
+        raise OnePopulationContractError(
+            f"ACS household weights need each household's SERIALNO key: {exc}"
+        ) from exc
 
 
 def _object_column(value: object, index: pd.Index) -> pd.Series:
@@ -1205,8 +1299,8 @@ def to_assembled_provenance(
     cps_tables: Mapping[str, pd.DataFrame],
     acs_tables: Mapping[str, pd.DataFrame],
     *,
-    cps_household_weights: object,
-    acs_household_weights: object,
+    cps_household_weights: pd.Series | Mapping[object, float],
+    acs_household_weights: pd.Series | Mapping[object, float],
     staging_lineage: Collection[tuple[str, int]],
 ) -> Frame:
     """Join CPS and ACS rows in the assembled provenance form (d2283 K-1).
@@ -1236,6 +1330,8 @@ def to_assembled_provenance(
       ``acs_2024_1yr``, clone index 0, ``<entity>_id - <entity>_source_id``
       one constant per entity, no spine source id, and no spine tag other
       than ``acs_2024_1yr``;
+    - household weights keyed, each key once, finite and non-negative
+      (d2283 lead call L3's check);
     - a non-null ``<entity>_spine`` on every row after the rewrite (Q3);
     - each entity's id unique across the joined rows, every person
       membership resolving to exactly one group row of its own origin, and
@@ -1244,7 +1340,9 @@ def to_assembled_provenance(
       :func:`~microcosm.build.us_runtime.support_provenance.support_copy_rank_series`'s
       (P6);
     - the ACS rows' ``SERIALNO``/``SPORDER`` lineage, against
-      ``staging_lineage`` (P7; see :func:`_require_acs_lineage`).
+      ``staging_lineage`` (P7; see :func:`_require_acs_lineage`);
+    - one weight per household, found by its key: no household without a
+      weight, no weight without a household.
 
     The spine assembly record (P8) is
     :func:`~microcosm.build.us_runtime.support_provenance.spine_assembly_manifest`
@@ -1258,16 +1356,20 @@ def to_assembled_provenance(
             native rows and their clones).
         acs_tables: Staging's six entity tables for the selected ACS
             households. A table may have no rows.
-        cps_household_weights: One weight per row of
-            ``cps_tables["household"]``, in its order (PR 1's starting
-            weights).
-        acs_household_weights: One weight per row of
-            ``acs_tables["household"]``, in its order; empty when no ACS
-            household is selected. PR 1's ``StartingWeights.acs`` comes in
-            selection-rank order and staging's household table in id order,
-            so the caller reorders the weights by key first: nothing here
-            ties a weight to its household, and no clause sees a permutation
-            (d2283 lead call L3's check).
+        cps_household_weights: PR 1's CPS starting weights keyed by
+            ``household_id``: a :class:`pandas.Series` indexed by it, or a
+            mapping, one entry per row of ``cps_tables["household"]``, in
+            any order.
+        acs_household_weights: PR 1's ACS starting weights keyed by each
+            household's
+            :func:`~microcosm.build.us_runtime.one_population_selection.acs_unit_key`
+            of its ``SERIALNO`` (``pd.Series(starting.acs,
+            index=plan.acs_keys)``), one entry per row of
+            ``acs_tables["household"]``, in any order; empty when no ACS
+            household is selected. A weight given by position is refused:
+            ``StartingWeights.acs`` comes in selection order and staging's
+            households in id order, and no later clause would see the
+            permutation (d2283 lead call L3's check).
         staging_lineage: Staging's (``SERIALNO``, ``SPORDER``) pairs for the
             persons of the selected ACS households, read from staging's
             output, not from ``acs_tables``. ``SPORDER`` may be an integral
@@ -1276,7 +1378,7 @@ def to_assembled_provenance(
     Returns:
         A :class:`~microcosm.frame.Frame` of the CPS rows then the ACS rows,
         each group table sorted by its id. Household weights are the two
-        inputs, concatenated and carried through that sort, as
+        inputs, each household's by its key, carried through that sort, as
         :attr:`~microcosm.frame.WeightKind.IMPORTANCE` weights (a pool
         assembly's starting weights, the kind staging gives its pooled
         weights). ``metadata`` holds only the spine assembly record, under
@@ -1293,12 +1395,8 @@ def to_assembled_provenance(
     acs = _origin_tables(acs_tables, origin=_ACS)
     _require_cps_support_metadata(cps)
     _require_acs_support_metadata(acs)
-    cps_weights = _household_weights(
-        cps_household_weights, origin=_CPS, households=len(cps["household"])
-    )
-    acs_weights = _household_weights(
-        acs_household_weights, origin=_ACS, households=len(acs["household"])
-    )
+    cps_keyed = _keyed_weights(cps_household_weights, origin=_CPS)
+    acs_keyed = _keyed_weights(acs_household_weights, origin=_ACS)
     staging = _lineage_pairs(staging_lineage)
 
     origins = {_CPS: _assembled_cps(cps), _ACS: _assembled_acs(acs)}
@@ -1306,6 +1404,15 @@ def to_assembled_provenance(
     _require_disjoint_ids(origins)
     _require_unique_source_ranks(origins)
     _require_acs_lineage(origins[_ACS], staging)
+    # After P7, which checked each ACS household's SERIALNO.
+    cps_weights = _aligned_weights(
+        cps_keyed,
+        cps["household"][US_SCHEMA.id_column("household")].tolist(),
+        origin=_CPS,
+    )
+    acs_weights = _aligned_weights(
+        acs_keyed, _acs_weight_keys(acs["household"]), origin=_ACS
+    )
 
     tables, household_order = _joined_tables(origins)
     record = spine_assembly_manifest(
@@ -2087,9 +2194,9 @@ def _require_declared_absences(
                 )
     if gaps:
         raise OnePopulationContractError(
-            "A model-named column filled on CPS rows is null on ACS rows without "
-            f"a declared absence: {gaps}. Fill it on ACS rows, or declare it in "
-            "the absences file with its owner's decision."
+            "A model-named column held on some CPS row is null on ACS rows "
+            f"without a declared absence: {gaps}. Fill it on ACS rows, or declare "
+            "it in the absences file with its owner's decision."
         )
 
 
