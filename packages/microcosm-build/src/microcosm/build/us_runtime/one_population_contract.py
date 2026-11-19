@@ -58,9 +58,12 @@ What the later d2283 PRs owe this library:
 - PR 4 (prepare) fills on ACS rows every engine input outside
   :data:`RELEASE_WRITTEN_INPUTS`, ``takes_up_snap_if_eligible`` included
   (the SNAP take-up gate misgrades an ACS null). Lead call L1 moved ten
-  producer outputs off that list, because an engine pass loads each
-  before its producer writes it, and the lead-call review moved an
-  eleventh, ``takes_up_medicaid_if_eligible``. Their fill sources: the
+  producer outputs off that list: the release's first engine pass refuses
+  a null in the nine float and integer ones at load, and later passes
+  compute from ``is_self_employed`` before its producer writes it. The
+  lead-call review moved an eleventh, ``takes_up_medicaid_if_eligible``,
+  which the ACA pass computes from before Medicaid writes it. Their fill
+  sources: the
   three integer recodes (``detailed_occupation_recode``,
   ``detailed_industry_recode``, ``major_industry_recode``) come from
   staging, which writes them natively from ``OCCP`` and ``INDP``

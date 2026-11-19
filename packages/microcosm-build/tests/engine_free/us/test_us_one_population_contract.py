@@ -1821,9 +1821,11 @@ def _acs_null_on_cps(frame: Frame, entity: str, column: str, value) -> Frame:
     )
 
 
-#: The engine inputs d2283 lead call L1 (11-18) moved off the exempt list: a
-#: release engine pass built from the frame loads each before its producer
-#: writes it, so prepare fills it on ACS rows and R6 refuses its null. The
+#: The engine inputs d2283 lead call L1 (11-18) moved off the exempt list:
+#: the release's first engine pass refuses a null in each float or integer
+#: one at load, and later passes compute from is_self_employed, before their
+#: producers write them, so prepare fills each on ACS rows and R6 refuses its
+#: null. The
 #: three integer recodes are the ones staging writes natively. The ACA pass
 #: computes from takes_up_medicaid_if_eligible before Medicaid writes it,
 #: masked today; it moved with the lead-call review (fail closed).
@@ -2140,8 +2142,9 @@ class TestExemptList:
             outputs["medicaid_take_up"]
         )
         not_exempt = {
-            # d2283 lead call L1: an engine pass loads each before its
-            # producer writes it.
+            # d2283 lead call L1: the first engine pass refuses each null
+            # float or integer at load, and later passes compute from
+            # is_self_employed, before the producers write them.
             *_MOVED_OFF_THE_EXEMPT_LIST,
             # SNAP take-up passes ACS nulls to a gate that misgrades them.
             "takes_up_snap_if_eligible",
