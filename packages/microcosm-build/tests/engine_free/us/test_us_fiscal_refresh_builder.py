@@ -21633,6 +21633,52 @@ def test_a_build_that_failed_certification_is_no_reference(tmp_path: Path) -> No
     )
 
 
+def test_a_later_build_in_the_same_out_inherits_no_certification_failures(
+    tmp_path: Path,
+) -> None:
+    """Each attempt names the build and its record's digest. A later build
+    into the same --out writes a new record, so the earlier build's attempts
+    no longer hold it, and its own first attempt drops them; an attempt that
+    names no record still counts (review of #1676)."""
+    from types import SimpleNamespace
+
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    record = builder._read_us_build_record(path)
+    h5 = path.parent / payload["files"]["dataset"]["path"]
+    register = path.parent / builder.US_CERTIFICATION_FAILURES_FILENAME
+    certified_tier = SimpleNamespace(evidence_release=False, commit="c" * 40)
+    builder._record_certification_failures(
+        record, certified_tier, ["Reform coverage smoke failed: ssi: $0"]
+    )
+    [attempt] = json.loads(register.read_text())["attempts"]
+    assert attempt["build"] == "populace-us-2024-test-build"
+    assert attempt["record_sha256"] == record.payload["record_sha256"]
+    assert builder._failed_build_holding(h5) is not None
+
+    # A later build into the same --out: a new record, so a new digest.
+    payload["built_at"] = "2026-11-20T00:00:00+00:00"
+    builder._write_us_build_record(path.parent, payload)
+    later = builder._read_us_build_record(path)
+    assert later.payload["record_sha256"] != attempt["record_sha256"]
+    assert builder._failed_build_holding(h5) is None
+    builder._record_certification_failures(
+        later, certified_tier, ["Source coverage failed: a"]
+    )
+    attempts = json.loads(register.read_text())["attempts"]
+    assert [entry["record_sha256"] for entry in attempts] == [
+        later.payload["record_sha256"]
+    ]
+    assert "which failed 1 gate(s) of its certification" in (
+        builder._failed_build_holding(h5)
+    )
+    # An attempt that names no record counts against any build.
+    register.write_text(
+        json.dumps({"attempts": [{"failures": ["Source coverage failed: b"]}]})
+    )
+    assert builder._failed_build_holding(h5) is not None
+
+
 def test_a_build_that_stopped_before_its_record_is_no_reference(
     tmp_path: Path,
 ) -> None:
@@ -21663,13 +21709,16 @@ def test_a_build_that_stopped_before_its_record_is_no_reference(
     assert builder._failed_build_holding(path.parent / "artifacts") is None
 
 
-def test_the_build_marks_its_h5_incomplete_until_its_record_is_written() -> None:
-    """The mark goes down before the H5 write and comes off after the record
-    write, so no raise in between leaves an H5 that reads as a finished
-    build's (review of #1681)."""
+def test_the_build_marks_its_out_incomplete_until_its_record_is_written() -> None:
+    """The mark goes down as the build creates its --out, before any file it
+    writes there (its diagnostics included), and comes off after the record
+    write, so no raise in between leaves files that read as a finished
+    build's. A dry run, which writes no --out, writes none (review of #1681
+    and of #1676)."""
     import ast
 
     builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
     main_fn = _builder_function(builder, "_main")
     [marked] = _calls_named(main_fn, "_mark_build_incomplete")
     [record_write] = _calls_named(main_fn, "_write_us_build_record")
@@ -21691,6 +21740,30 @@ def test_the_build_marks_its_h5_incomplete_until_its_record_is_written() -> None
     ]
     assert len(cleared) == 1
     assert marked.lineno < writes[0].lineno < record_write.lineno < cleared[0].lineno
+    # It sits in the block that creates the build's directories, right after
+    # them, and that block runs for a build only.
+    [creates] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.If)
+        and ast.unparse(node.test) == "dry_run is None"
+        and "release_dir.mkdir" in ast.get_source_segment(source, node)
+    ]
+    statements = [ast.unparse(statement) for statement in creates.body]
+    made = statements.index("release_dir.mkdir(parents=True, exist_ok=True)")
+    assert statements[made + 1] == (
+        "_mark_build_incomplete(release_root, build=release_id)"
+    )
+    # Before the first diagnostics file the build writes.
+    first_writes = [
+        call.lineno
+        for name in (
+            "write_us_ssi_take_up_diagnostics",
+            "_write_release_calibration_diagnostics",
+        )
+        for call in _calls_named(main_fn, name)
+    ]
+    assert first_writes and marked.lineno < min(first_writes)
 
 
 def test_certification_records_each_gate_failure_before_its_tier_decides() -> None:
@@ -21698,40 +21771,53 @@ def test_certification_records_each_gate_failure_before_its_tier_decides() -> No
     before the certified tier refuses it or the evidence tier checks its
     owner, and the certified tier refuses a failed source-coverage gate, as
     it refuses a failed smoke, before either manifest is written (review of
-    #1681)."""
+    #1681). Read by structure, not line numbers, so a refusal moved out of
+    its tier's branch fails here (review of #1676)."""
     import ast
 
     builder = _load_builder_module()
     source = Path(builder.__file__).read_text()
     certify_fn = _builder_function(builder, "_certify_us_build")
-    recorded = sorted(
-        node.lineno
-        for node in _calls_named(certify_fn, "_record_certification_failures")
-    )
-    refusals = sorted(
-        node.lineno
+
+    def refuses(node: ast.AST) -> bool:
+        return isinstance(node, ast.Raise) and "Release gates failed: " in (
+            ast.get_source_segment(source, node) or ""
+        )
+
+    branches = [
+        (block, index, statement)
         for node in ast.walk(certify_fn)
-        if isinstance(node, ast.Raise)
-        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
-    )
-    assert len(recorded) == len(refusals) == 3
-    for record_line, refusal_line in zip(recorded, refusals, strict=True):
-        assert 0 < refusal_line - record_line < 6
-    coverage_refusal = next(
-        node
-        for node in ast.walk(certify_fn)
-        if isinstance(node, ast.Raise)
-        and "coverage_gate_failures" in (ast.get_source_segment(source, node) or "")
+        for field in ("body", "orelse")
+        if isinstance(block := getattr(node, field, None), list)
+        for index, statement in enumerate(block)
+        if isinstance(statement, ast.If)
+        and ast.unparse(statement.test) == "not args.evidence_release"
+        and any(refuses(child) for child in statement.body)
+    ]
+    # The smoke, source coverage and a stale count-calibrated take-up column.
+    assert len(branches) == 3
+    assert len([node for node in ast.walk(certify_fn) if refuses(node)]) == 3
+    for block, index, branch in branches:
+        # The certified tier refuses at once: the refusal is the whole branch.
+        assert len(branch.body) == 1 and refuses(branch.body[0])
+        # The register is written by the statement just before the tier decides.
+        recorded = block[index - 1]
+        assert isinstance(recorded, ast.Expr) and isinstance(recorded.value, ast.Call)
+        assert getattr(recorded.value.func, "id", None) == (
+            "_record_certification_failures"
+        )
+        # The evidence tier's owner check follows in the same block.
+        assert any(
+            _calls_named(statement, "_evidence_known_failures")
+            for statement in block[index + 1 :]
+        )
+    coverage = next(
+        branch
+        for _block, _index, branch in branches
+        if "coverage_gate_failures" in ast.get_source_segment(source, branch)
     )
     [manifests] = _calls_named(certify_fn, "_build_manifests")
-    assert coverage_refusal.lineno < manifests.lineno
-    # The evidence tier still binds those failures into known_failures.
-    owner_checks = sorted(
-        node.lineno for node in _calls_named(certify_fn, "_evidence_known_failures")
-    )
-    assert any(
-        coverage_refusal.lineno < line < manifests.lineno for line in owner_checks
-    )
+    assert coverage.lineno < manifests.lineno
 
 
 def test_a_standing_owner_pattern_owns_a_line_only_from_its_start(

@@ -575,10 +575,31 @@ with open(recorded, encoding="utf-8") as handle:
 EOF
 }
 
+# The digest of what the release reads by path, beside its command: the
+# base H5, the release's pinned inputs (verified against their files before
+# the release starts) and the export input-mass reference, which no setting
+# pins. The command alone cannot tell a file replaced in place under the
+# same path, such as a QRF tail register edited with a new
+# QRF_TAIL_EXCLUSIONS_SHA (review of #1681).
+release_inputs_key() {
+  local reference=none
+  if [ -n "$EXPORT_MASS_REF_H5" ] && [ -f "$EXPORT_MASS_REF_H5" ]; then
+    reference=$(sha_of "$EXPORT_MASS_REF_H5") || return 1
+  fi
+  {
+    printf 'base_h5|%s\n' "$BASE_SHA"
+    input_rows | awk -F'|' '$1 == "release_ledger_facts" || $1 == "qrf_tail_exclusions" || $1 == "ssi_take_up_prior_basis" || $1 == "scf_summary_extract" { print $1 "|" $3 }'
+    printf 'export_input_mass_reference|%s\n' "$reference"
+  } | openssl dgst -sha256 -r | cut -c1-64
+}
+
 # The probe's arguments, one per line, from the build record: the export,
 # then its reference. A build that passed its gates is its own reference
-# (its build directory); a failed build is no reference, so its fit and its
-# target surface are given instead (tools/probe_us_post_export.py).
+# (its build directory). A failed build is no reference, nor is one whose
+# certification found gates failing (certification_failures.json, its own
+# attempts only), so their fit and target surface are given instead, which
+# the probe accepts of any build (tools/probe_us_post_export.py; review of
+# #1681).
 probe_record_arguments() {  # $1 = 1 when the build failed its release gates
   "$PY" - "$REL_OUT/build_record.json" "$1" <<'EOF'
 import json
@@ -587,6 +608,17 @@ from pathlib import Path
 
 record_path, failed = Path(sys.argv[1]), sys.argv[2] == "1"
 record = json.loads(record_path.read_text(encoding="utf-8"))
+register = record_path.parent / "certification_failures.json"
+if not failed and register.exists():
+    try:
+        attempts = json.loads(register.read_text(encoding="utf-8"))["attempts"]
+        failed = any(
+            attempt.get("record_sha256") in (None, record.get("record_sha256"))
+            and attempt.get("failures")
+            for attempt in attempts
+        )
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        failed = True
 layout = record["layout"]
 build_dir = record_path.parent / layout["build_dir"]
 lines = [record_path.parent / layout["artifact_root"] / layout["dataset_filename"]]
@@ -995,6 +1027,8 @@ if ! stage_done release && ! result_accepted "$RUN/release-sup" "0 $BUILT_FAILED
   REL_OUT=$RUN/release-out/$RID
   release_command
   write_config release 110 "$RELEASE_RAM_GIB" 45 "${RELEASE_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- "${RELEASE_ARGV[@]}"
+  INPUTS_KEY=$(release_inputs_key) || fail "cannot digest the release's inputs"
+  echo "$INPUTS_KEY" > "$RUN/release-inputs.key"
 fi
 # --- 6a. The release's gates, dry-run on this base before the release starts
 # (ROUTE_A_DRY_RUN=1; ruled for the next national build on 17 Nov 2026): its
@@ -1005,7 +1039,7 @@ fi
 # settings it checked: a restart with other settings dry-runs them again. ---
 if [ "$RELEASE_PENDING" = 1 ] && [ "$ROUTE_A_DRY_RUN" = 1 ]; then
   wait_prior_supervisor release-dry-run
-  DRY_KEY=$(release_settings_key "$RID" "${RELEASE_ARGV[@]}") || fail "cannot digest the release settings"
+  DRY_KEY=$(release_settings_key "$RID" "${RELEASE_ARGV[@]}" "inputs=$INPUTS_KEY") || fail "cannot digest the release settings"
   if stage_done release-dry-run && [ "$(cat "$RUN/release-dry-run.key" 2>/dev/null)" != "$DRY_KEY" ]; then
     mv "$RUN/release-dry-run-sup" "$RUN/release-dry-run-sup.stale-$(date +%s)"
     log "release-dry-run: the release settings changed since it ran; dry-running them again"
@@ -1042,6 +1076,13 @@ if [ "$MODE" = run ] && [ "$ROUTE_A_CERTIFY" != 1 ] && [ "$RELEASE_PENDING" = 0 
   release_command
   release_ran "${RELEASE_ARGV[@]}" \
     || fail "build $RID was accepted with other release settings than route_a.env gives now (its command is in $RUN/release-sup/COMMAND.json): rerun with --rebuild to build again with these, or restore them"
+  if [ -f "$RUN/release-inputs.key" ]; then
+    inputs_now=$(release_inputs_key) || fail "cannot digest the release's inputs"
+    [ "$inputs_now" = "$(cat "$RUN/release-inputs.key")" ] \
+      || fail "build $RID was accepted with other release inputs than it would read now: the base H5, a pinned release input or the export input-mass reference changed in place since. Rerun with --rebuild to build again with these, or restore them"
+  else
+    log "release inputs not compared: $RUN/release-inputs.key predates this driver"
+  fi
 fi
 # The release tool builds and stops: its build record is what certification
 # reads (microcosm#1585 item 11, PR 4a). A build has no tier, so it writes its

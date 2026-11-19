@@ -2814,11 +2814,12 @@ _REFERENCE_OPTIONS = (
     ("incumbent_diagnostics", "--incumbent-diagnostics"),
 )
 
-#: Written in a build's --out just before its H5, and removed once its
-#: record is written. A build that stopped between the two, at a full disk
-#: during the calibration NPZ write or the base copy for example, leaves an
-#: H5 no record pins, and this file marks it as no reference
-#: (:func:`_failed_build_holding`, review of #1681).
+#: Written in a build's --out as the build creates it, before any file the
+#: build writes there, and removed once its record is written. A build that
+#: stopped between the two, at a full disk during the calibration NPZ write
+#: or the base copy for example, leaves diagnostics or an H5 no record pins,
+#: and this file marks them as no reference (:func:`_failed_build_holding`,
+#: review of #1681).
 US_BUILD_INCOMPLETE_FILENAME = "build_incomplete.json"
 US_BUILD_INCOMPLETE_KIND = "microcosm_us_national_build_incomplete"
 
@@ -2831,12 +2832,17 @@ US_CERTIFICATION_FAILURES_FILENAME = "certification_failures.json"
 US_CERTIFICATION_FAILURES_KIND = "microcosm_us_certification_failures"
 
 
-def _recorded_certification_failures(release_root: Path) -> list[str] | None:
-    """The gate failures certifications of the build in ``release_root`` found.
+def _recorded_certification_failures(
+    release_root: Path, record_sha256: object
+) -> list[str] | None:
+    """The gate failures certifications of this build in ``release_root`` found.
 
-    None when no certification recorded any. A register that does not read
-    counts as one failure, as a record that does not read counts its build
-    as failed.
+    Only the attempts on the build whose record has ``record_sha256`` count:
+    a build into the same --out writes a new record, and an earlier build's
+    attempts are not its own (review of #1681). An attempt that names no
+    record counts. None when no attempt on this build recorded a failure. A
+    register that does not read counts as one failure, as a record that
+    does not read counts its build as failed.
     """
 
     path = Path(release_root) / US_CERTIFICATION_FAILURES_FILENAME
@@ -2844,20 +2850,23 @@ def _recorded_certification_failures(release_root: Path) -> list[str] | None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        attempts = payload["attempts"]
         failures = [
-            str(failure) for attempt in attempts for failure in attempt["failures"]
+            str(failure)
+            for attempt in payload["attempts"]
+            if attempt.get("record_sha256") in (None, record_sha256)
+            for failure in attempt["failures"]
         ]
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return [f"{path} does not read"]
-    return failures
+    return failures or None
 
 
 def _mark_build_incomplete(release_root: Path, *, build: str) -> Path:
     """Write :data:`US_BUILD_INCOMPLETE_FILENAME` in the build's --out.
 
-    The build writes it just before its H5 and removes it once its record is
-    written, so an H5 no record pins is never taken for a finished build's.
+    The build writes it as it creates its --out, before any file there, and
+    removes it once its record is written, so neither its diagnostics nor
+    its H5 is taken for a finished build's before the record pins them.
     """
 
     path = Path(release_root) / US_BUILD_INCOMPLETE_FILENAME
@@ -2870,10 +2879,11 @@ def _mark_build_incomplete(release_root: Path, *, build: str) -> Path:
                 "build": build,
                 "writing_since": datetime.now(UTC).isoformat(),
                 "note": (
-                    "The build writes this before its H5 and removes it once "
-                    f"its {US_BUILD_RECORD_FILENAME} is written. Left here, the "
-                    "build stopped in between: its H5 is no build's, and no "
-                    "gate takes it as a reference."
+                    "The build writes this before any file under its --out "
+                    f"and removes it once its {US_BUILD_RECORD_FILENAME} is "
+                    "written. Left here, the build stopped in between: its "
+                    "files are no build's, and no gate takes them as a "
+                    "reference."
                 ),
             },
             indent=1,
@@ -2945,7 +2955,9 @@ def _failed_build_holding(path: Path) -> str | None:
                 f"{build}, which failed {len(failures)} release gate(s) when it "
                 "was built"
             )
-        certification_failures = _recorded_certification_failures(release_root)
+        certification_failures = _recorded_certification_failures(
+            release_root, payload.get("record_sha256")
+        )
         if certification_failures is not None and not (
             _build_certified_at_the_certified_tier(release_root)
         ):
@@ -16053,6 +16065,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             checkpoint_root.mkdir(parents=True, exist_ok=True)
         artifact_root.mkdir(parents=True, exist_ok=True)
         release_dir.mkdir(parents=True, exist_ok=True)
+        # Every file the build writes under --out, its diagnostics before
+        # its H5, stays no build's reference until the record below pins
+        # the build: one that stops in between leaves this mark beside them
+        # (review of #1681).
+        _mark_build_incomplete(release_root, build=release_id)
     # A dry run writes only its report under --out and creates no staging
     # artifacts. Hosted telemetry identifies it separately from a release.
     if dry_run is None:
@@ -19450,9 +19467,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # are then a certified build's, never to be overwritten (review of #1681).
     _refuse_reusing_a_certified_build(release_root)
     dataset_path = artifact_root / dataset_filename
-    # Until the record below pins the H5, this marks it as no build's
-    # reference: a build that stops in between leaves both (review of #1681).
-    _mark_build_incomplete(release_root, build=release_id)
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
     # the batched pre-export raise so a gate-failed run never produces it.
@@ -19633,22 +19647,32 @@ def _record_certification_failures(
 
     :data:`US_CERTIFICATION_FAILURES_FILENAME` sits beside the build record,
     which never changes once written, and gains one attempt per
-    certification that finds gates failing, at either tier. Written before
-    the certified tier refuses, or the evidence tier checks owners, so the
-    build is no reference while no certification has shipped it
-    (:func:`_failed_build_holding`, review of #1681).
+    certification that finds gates failing, at either tier. Each attempt
+    names the build and its record's digest, and an earlier build's attempts
+    in the same --out are dropped, so a later build there inherits none
+    (review of #1681). Written before the certified tier refuses, or the
+    evidence tier checks owners, so the build is no reference while no
+    certification has shipped it (:func:`_failed_build_holding`).
     """
 
     path = Path(record.release_root) / US_CERTIFICATION_FAILURES_FILENAME
+    record_sha256 = record.payload.get("record_sha256")
     attempts: list[object] = []
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload, dict) and isinstance(payload.get("attempts"), list):
-            attempts = list(payload["attempts"])
+            attempts = [
+                attempt
+                for attempt in payload["attempts"]
+                if isinstance(attempt, dict)
+                and attempt.get("record_sha256") == record_sha256
+            ]
     except (OSError, ValueError):
         pass
     attempts.append(
         {
+            "build": record.build,
+            "record_sha256": record_sha256,
             "tier": "evidence" if certification.evidence_release else "certified",
             "commit": certification.commit,
             "recorded_at": datetime.now(UTC).isoformat(),

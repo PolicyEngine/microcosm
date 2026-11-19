@@ -1888,9 +1888,79 @@ def test_a_build_rerun_with_other_settings_is_refused_until_rebuild() -> None:
         '[ "$RELEASE_PENDING" = 0 ]; then'
     )
     check = source.index('release_ran "${RELEASE_ARGV[@]}"')
+    inputs = source.index("inputs_now=$(release_inputs_key)")
     handoff = source.index('if [ "$ROUTE_A_CERTIFY" != 1 ]; then\n  "$PY" -')
-    assert rid < guard < check < handoff
-    assert "rerun with --rebuild" in source[check:handoff]
+    assert rid < guard < check < inputs < handoff
+    assert "rerun with --rebuild" in source[check:inputs]
+    assert "Rerun with --rebuild" in source[inputs:handoff]
+    # The key the guard compares is the one the release was launched with,
+    # and the dry run's key carries it too.
+    launched = source.index('echo "$INPUTS_KEY" > "$RUN/release-inputs.key"')
+    config = source.index('write_config release 110 "$RELEASE_RAM_GIB"')
+    assert config < launched < rid
+    assert '"inputs=$INPUTS_KEY"' in source
+
+
+def _inputs_key(tmp_path: Path, **changes: str) -> str:
+    """release_inputs_key over a fixture's inputs, with ``changes`` applied."""
+    reference = tmp_path / "reference.h5"
+    if not reference.exists():
+        reference.write_bytes(b"reference")
+    settings = {
+        "STORAGE": "/fixture/storage",
+        "EDU": "/fixture/edu",
+        "BASE_LEDGER_FACTS": "/fixture/feed.jsonl",
+        "BASE_LEDGER_FACTS_SHA": "a" * 64,
+        "LADDER": "/fixture/ladder.npz",
+        "LADDER_SHA": "b" * 64,
+        "LADDER_BYTES": "1",
+        "FEED": "/fixture/feed.jsonl",
+        "FEED_SHA": "a" * 64,
+        "FEED_BYTES": "1",
+        "TAIL": "/fixture/tail.json",
+        "QRF_TAIL_EXCLUSIONS_SHA": "c" * 64,
+        "SSI": "/fixture/ssi.json",
+        "SSI_SHA": "d" * 64,
+        "SCF": "/fixture/scf.dta",
+        "BASE_SHA": "e" * 64,
+        "EXPORT_MASS_REF_H5": str(reference),
+    }
+    for name in (
+        "ASEC_2025_SHA",
+        "ASEC_2024_SHA",
+        "ASEC_2023_SHA",
+        "ASEC_EDU_2023_SHA",
+        "ASEC_EDU_2024_SHA",
+        "ASEC_EDU_2025_SHA",
+    ):
+        settings[name] = "f" * 64
+    settings.update(changes)
+    result = _run_functions(
+        ["input_rows", "sha_of", "release_inputs_key"],
+        settings,
+        "release_inputs_key\n",
+    )
+    assert result.returncode == 0, result.stderr
+    key = result.stdout.strip()
+    assert re.fullmatch(r"[0-9a-f]{64}", key), key
+    return key
+
+
+def test_the_rerun_guard_keys_the_files_the_release_reads(tmp_path: Path) -> None:
+    """The rerun guard compares the digests of what the release reads by
+    path beside its command: a QRF tail register edited in place with a new
+    QRF_TAIL_EXCLUSIONS_SHA, an export reference replaced in place or a
+    rebuilt base changes the key; a base-only input does not (review of
+    #1676)."""
+    same = _inputs_key(tmp_path)
+    assert _inputs_key(tmp_path) == same
+    assert _inputs_key(tmp_path, QRF_TAIL_EXCLUSIONS_SHA="9" * 64) != same
+    assert _inputs_key(tmp_path, BASE_SHA="8" * 64) != same
+    assert _inputs_key(tmp_path, SSI_SHA="7" * 64) != same
+    # The base's own inputs belong to the base, which --rebuild keeps.
+    assert _inputs_key(tmp_path, LADDER_SHA="6" * 64) == same
+    (tmp_path / "reference.h5").write_bytes(b"replaced in place")
+    assert _inputs_key(tmp_path) != same
 
 
 def _rebuild(
@@ -2054,6 +2124,52 @@ def test_the_probe_reads_its_export_and_reference_from_the_build_record(
             "--dropped-congressional-district-targets",
             "436",
         ]
+
+
+@pytest.mark.parametrize(
+    ("register", "reference"),
+    [
+        (None, True),
+        ("this build", False),
+        ("no record", False),
+        ("another build", True),
+        ("unreadable", False),
+    ],
+)
+def test_a_build_whose_certification_failed_is_no_reference_to_the_probe(
+    tmp_path: Path, register: str | None, reference: bool
+) -> None:
+    """A build that passed its gates and then failed certification is no
+    reference (certification_failures.json), so the probe gets its fit and
+    target surface instead; only attempts on this build's record count
+    (review of #1676)."""
+    rel_out = _probe_record(tmp_path)
+    record_path = rel_out / "build_record.json"
+    record = json.loads(record_path.read_text())
+    record["record_sha256"] = "r" * 64
+    record_path.write_text(json.dumps(record))
+    attempt = {"failures": ["Reform coverage smoke failed: x"]}
+    contents = {
+        "this build": json.dumps(
+            {"attempts": [{**attempt, "record_sha256": "r" * 64}]}
+        ),
+        "no record": json.dumps({"attempts": [attempt]}),
+        "another build": json.dumps(
+            {"attempts": [{**attempt, "record_sha256": "o" * 64}]}
+        ),
+        "unreadable": "{",
+    }
+    if register is not None:
+        (rel_out / "certification_failures.json").write_text(contents[register])
+    result = _run_functions(
+        ["probe_record_arguments"],
+        {"PY": sys.executable, "REL_OUT": str(rel_out)},
+        "probe_record_arguments 0\n",
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert ("--reference-release-dir" in lines) is reference
+    assert ("--calibration-diagnostics" in lines) is not reference
 
 
 def test_the_probe_runs_only_on_an_accepted_build_and_stops_after_it() -> None:
