@@ -84,11 +84,17 @@ SALSAC_CONVERSION_SEED = 2024
 SALSAC_CONVERSION_SALT = "salary_sacrifice_conversion"
 #: Whom the QRF predicts for. Salary sacrifice is pay given up for a pension
 #: contribution, so a person not asked the question who has no employment
-#: income has none: the prediction covers the people not asked who are paid,
-#: and everyone else not asked is zero (microcosm#1063).
+#: income has none: the prediction covers the adult records not asked who are
+#: paid, and everyone else not asked is zero (microcosm#1063). The FRS asks
+#: the question on adults' job records, so the forest only ever sees adults; a
+#: dependent child (a child-table person, ``is_hbai_dependent_child``) is paid
+#: CHILD.CHEARNS since PolicyEngine/microcosm#1663, and the forest does not
+#: predict for them: a child not asked sacrifices none (Vahid's final review of
+#: PolicyEngine/microcosm#1663, María's reply of 19 November 2026).
 SALSAC_TARGET_POPULATION = (
-    "salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people "
-    "not asked who have no employment income are set to zero"
+    "salary_sacrifice_asked != 1 and employment_income > 0 and not "
+    "is_hbai_dependent_child, frame-wide; people not asked who have no "
+    "employment income, and dependent children not asked, are set to zero"
 )
 #: Whom the QRF trains on. A respondent asked the question who has no pay
 #: cannot show what a paid person sacrifices, and only predictions for paid
@@ -428,6 +434,8 @@ class UKSalarySacrificeResult:
     prediction_rows: int
     not_asked_without_pay_rows: int
     not_asked_without_pay_mass: float
+    not_asked_dependent_child_rows: int
+    not_asked_dependent_child_mass: float
     limited_to_pay_rows: int
     limited_to_pay_mass: float
     limited_to_pay_amount: float
@@ -460,6 +468,10 @@ class UKSalarySacrificeResult:
                 # zero, never predicted for.
                 "not_asked_without_pay_rows": self.not_asked_without_pay_rows,
                 "not_asked_without_pay_mass": self.not_asked_without_pay_mass,
+                # Dependent children not asked who have pay (CHILD.CHEARNS):
+                # set to zero, never predicted for.
+                "not_asked_dependent_child_rows": self.not_asked_dependent_child_rows,
+                "not_asked_dependent_child_mass": self.not_asked_dependent_child_mass,
                 # Amounts above the person's pay, reported or predicted,
                 # limited to it: rows, weighted people and unweighted pounds
                 # removed.
@@ -557,6 +569,7 @@ def impute_salary_sacrifice(
         "salary_sacrifice_asked",
         SALSAC_OUTPUT,
         "employee_pension_contributions",
+        "is_hbai_dependent_child",
     }
     missing = sorted(required_person - set(person.columns))
     if missing:
@@ -583,6 +596,10 @@ def impute_salary_sacrifice(
     asked = pd.to_numeric(person["salary_sacrifice_asked"], errors="coerce")
     if asked.isna().any():
         raise ValueError("salary_sacrifice_asked contains non-numeric values.")
+    dependent = person["is_hbai_dependent_child"]
+    if not dependent.isin([True, False]).all():
+        raise ValueError("is_hbai_dependent_child must be true or false for everyone.")
+    dependent_child = dependent.astype(bool)
     numeric = person.loc[:, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].apply(
         pd.to_numeric, errors="coerce"
     )
@@ -602,12 +619,14 @@ def impute_salary_sacrifice(
         raise ValueError(
             "Salary-sacrifice QRF has no eligible asked FRS rows with pay."
         )
-    # The prediction population is the people not asked who are paid; a
-    # person not asked with no employment income sacrifices none of it.
+    # The prediction population is the adult records not asked who are paid;
+    # a person not asked with no employment income sacrifices none of it, and
+    # nor does a dependent child not asked, whom the forest never sees.
     not_asked = ~asked.eq(1)
-    predict_mask = not_asked & paid
+    predict_mask = not_asked & paid & ~dependent_child
     without_pay = not_asked & ~paid
-    person.loc[without_pay, SALSAC_OUTPUT] = 0.0
+    child_with_pay = not_asked & paid & dependent_child
+    person.loc[without_pay | child_with_pay, SALSAC_OUTPUT] = 0.0
     household_weights = pd.Series(
         frame.weights_for("household").values,
         index=household["household_id"],
@@ -859,6 +878,10 @@ def impute_salary_sacrifice(
         prediction_rows=int(predict_mask.sum()),
         not_asked_without_pay_rows=int(without_pay.sum()),
         not_asked_without_pay_mass=float(person_weights[without_pay.to_numpy()].sum()),
+        not_asked_dependent_child_rows=int(child_with_pay.sum()),
+        not_asked_dependent_child_mass=float(
+            person_weights[child_with_pay.to_numpy()].sum()
+        ),
         limited_to_pay_rows=int(limited.sum()),
         limited_to_pay_mass=float(person_weights[limited].sum()),
         limited_to_pay_amount=limited_to_pay_amount,

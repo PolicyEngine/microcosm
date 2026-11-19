@@ -1104,6 +1104,7 @@ def test_salary_sacrifice_runs_on_the_stage_s_output(
             "salary_sacrifice_asked": np.where(spi, 0, 1),
             salary_sacrifice.SALSAC_OUTPUT: 0.0,
             salary_sacrifice.BONUS_SACRIFICE_SOURCE: 0.0,
+            "is_hbai_dependent_child": False,
         }
     )
     # The tape's PAY on the two tape rows (no TAXTERM); the FRS rows' own.

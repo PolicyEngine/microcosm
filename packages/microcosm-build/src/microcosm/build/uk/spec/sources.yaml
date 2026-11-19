@@ -6581,7 +6581,7 @@ stages:
     fail_on_mismatch: true
   - kind: fit_weighted_qrf
     training_population: support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1 and employment_income > 0
-    target_population: salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people not asked who have no employment income are set to zero
+    target_population: salary_sacrifice_asked != 1 and employment_income > 0 and not is_hbai_dependent_child, frame-wide; people not asked who have no employment income, and dependent children not asked, are set to zero
     predictors:
     - age
     - employment_income
