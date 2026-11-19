@@ -40,7 +40,7 @@ def test_source_coordinates_and_operation_contract_are_exact() -> None:
     assert "rate" not in " ".join(map(str, SIPP_HEAD_START_FIT_PARAMETERS.values()))
 
 
-def test_loader_keeps_only_strict_reported_labels(tmp_path: Path) -> None:
+def test_donor_keeps_only_strict_reported_labels(tmp_path: Path) -> None:
     rows = [
         _source_row("yes", 1, head_start_answer=1),
         _source_row("no", 1, head_start_answer=2),
@@ -86,10 +86,8 @@ def test_loader_keeps_only_strict_reported_labels(tmp_path: Path) -> None:
         _source_row("age_two", 1, age=2, head_start_answer=1),
         _source_row("month_eleven", 1, month=11, head_start_answer=1),
     ]
-    donor = load_sipp_2023_head_start_donor(
+    donor = _head_start_donor_from_file(
         _write_source(tmp_path, rows),
-        expected_sha256=None,
-        expected_size_bytes=None,
         chunksize=3,
     )
 
@@ -106,16 +104,14 @@ def test_loader_keeps_only_strict_reported_labels(tmp_path: Path) -> None:
     assert audit["pinned_transform"] is False
 
 
-def test_loader_refuses_missing_upstream_status(tmp_path: Path) -> None:
+def test_read_refuses_missing_upstream_status(tmp_path: Path) -> None:
     path = _write_source(tmp_path, [_source_row("one", 1)])
     source = pd.read_csv(path, sep="|").drop(columns=["AED_SCRNR"])
     source.to_csv(path, sep="|", index=False)
 
     with pytest.raises(ValueError, match="AED_SCRNR"):
-        load_sipp_2023_head_start_donor(
+        _head_start_donor_from_file(
             path,
-            expected_sha256=None,
-            expected_size_bytes=None,
         )
 
 

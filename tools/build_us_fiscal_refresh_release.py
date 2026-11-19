@@ -114,15 +114,12 @@ from microcosm.build.us_runtime import (
     SCF_2025_SUMMARY_EXTRACT,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
-    SIPP_2023_HEAD_START_DONOR_SHA256,
-    SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
-    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
-    SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
     SIPP_2023_TIP_DONOR_SHA256,
-    SIPP_2023_VEHICLE_DONOR_SHA256,
-    SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
-    SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
-    SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
+    SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+    SIPP_HEAD_START_SOURCE_COLUMNS,
+    SIPP_SSI_DISABILITY_SOURCE_COLUMNS,
+    SIPP_VEHICLE_SOURCE_COLUMNS,
+    SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
@@ -136,6 +133,11 @@ from microcosm.build.us_runtime import (
     assert_take_up_treatments_consistent,
     assert_target_parity_manifest_current,
     assert_validation_leaf_registry_current,
+    build_sipp_2023_financial_asset_donor,
+    build_sipp_2023_head_start_donor,
+    build_sipp_2023_ssi_disability_donor,
+    build_sipp_2023_vehicle_donor,
+    build_sipp_2023_voluntary_filing_donor,
     compile_us_fiscal_target_registry,
     default_congressional_district_vintage_crosswalk_path,
     fetch_asec_2023_weeks_unemployed_source,
@@ -152,12 +154,8 @@ from microcosm.build.us_runtime import (
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
     load_scf_2025_education_debt_donor,
-    load_sipp_2023_financial_asset_donor,
-    load_sipp_2023_head_start_donor,
-    load_sipp_2023_ssi_disability_donor,
     load_sipp_2023_tip_donor,
-    load_sipp_2023_vehicle_donor,
-    load_sipp_2023_voluntary_filing_donor,
+    read_sipp_december_person_rows,
     ssi_take_up_prior_basis_from_artifact,
     ssi_take_up_prior_basis_from_diagnostics,
     us_alimony_signal_gate,
@@ -15349,6 +15347,20 @@ def _check_us_feed_carries_fsa_facts(
     return plan
 
 
+# Every column the five donor tables built from the full SIPP 2023 file use.
+_SIPP_2023_DONOR_SOURCE_COLUMNS = tuple(
+    sorted(
+        {
+            *SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+            *SIPP_SSI_DISABILITY_SOURCE_COLUMNS,
+            *SIPP_HEAD_START_SOURCE_COLUMNS,
+            *SIPP_VEHICLE_SOURCE_COLUMNS,
+            *SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
+        }
+    )
+)
+
+
 def _main(argv: Sequence[str] | None = None) -> int | None:
     global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
@@ -16904,16 +16916,19 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         else fetch_scf_2022_summary_extract()
     )
     # The asset blend, SSI criterion, Head Start, vehicle, and filing families
-    # share one immutable full SIPP artifact. Resolve it once; the CLI option's
-    # historical name remains stable for existing release invocations.
+    # share one immutable full SIPP artifact. Resolve it once and parse it once;
+    # each stage builds its donor table from these December rows, which stay in
+    # memory until the last of the five stages. The CLI option's historical name
+    # remains stable for existing release invocations.
     sipp_full_donor_path = (
         Path(args.sipp_vehicle_donor)
         if args.sipp_vehicle_donor is not None
         else fetch_sipp_2023_financial_asset_donor()
     )
     scf_wealth_donor = load_scf_2022_financial_asset_donor(scf_summary_extract_path)
-    sipp_financial_asset_donor = load_sipp_2023_financial_asset_donor(
+    sipp_december_person_rows = read_sipp_december_person_rows(
         sipp_full_donor_path,
+        columns=_SIPP_2023_DONOR_SOURCE_COLUMNS,
         expected_sha256=SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
         expected_size_bytes=SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
     )
@@ -16922,7 +16937,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         time_period=PERIOD,
         scf_donor=scf_wealth_donor,
-        sipp_donor=sipp_financial_asset_donor,
+        sipp_donor=build_sipp_2023_financial_asset_donor(sipp_december_person_rows),
     )
     scf_wealth_gate = shadow_gate(
         "us_national_scf_wealth",
@@ -16953,7 +16968,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     scf_wealth_signal = _scf_wealth_gate_record(
         scf_wealth_gate, base_frame.table("household")["household_id"]
     )
-    sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
             "ssi_disability_criteria",
@@ -16962,18 +16976,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "sha-pinned full SIPP 2023 donor after SCF assets."
             ),
         )
-    ssi_disability_donor = load_sipp_2023_ssi_disability_donor(
-        sipp_vehicle_donor_path,
-        expected_sha256=SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
-        time_period=PERIOD,
-    )
     base_frame = with_us_ssi_disability_criteria(
         base_frame,
         # The retired weighted bootstrap and MicroImpute forest are fixed.
         seed=42,
         time_period=PERIOD,
-        sipp_donor=ssi_disability_donor,
+        sipp_donor=build_sipp_2023_ssi_disability_donor(
+            sipp_december_person_rows,
+            time_period=PERIOD,
+        ),
     )
     ssi_disability_gate = _shadow_frame_gate(
         "us_national_ssi_disability_criteria",
@@ -17005,16 +17016,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "2023 donor."
             ),
         )
-    head_start_donor = load_sipp_2023_head_start_donor(
-        sipp_vehicle_donor_path,
-        expected_sha256=SIPP_2023_HEAD_START_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
-    )
     base_frame = with_us_sipp_head_start_input(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        sipp_donor=head_start_donor,
+        sipp_donor=build_sipp_2023_head_start_donor(sipp_december_person_rows),
     )
     head_start_gate = _shadow_frame_gate(
         "us_national_sipp_head_start",
@@ -17190,17 +17196,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "sha-pinned full SIPP 2023 donor."
             ),
         )
-    sipp_vehicle_donor = load_sipp_2023_vehicle_donor(
-        sipp_vehicle_donor_path,
-        expected_sha256=SIPP_2023_VEHICLE_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
-    )
     base_frame = with_us_sipp_vehicle_inputs(
         base_frame,
         # The retired MicroImpute model pins both forests to seed 42.
         seed=42,
         time_period=PERIOD,
-        sipp_donor=sipp_vehicle_donor,
+        sipp_donor=build_sipp_2023_vehicle_donor(sipp_december_person_rows),
     )
     sipp_vehicles_gate = _shadow_frame_gate(
         "us_national_sipp_vehicles",
@@ -17231,17 +17232,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "same sha-pinned full SIPP 2023 donor."
             ),
         )
-    voluntary_filing_donor = load_sipp_2023_voluntary_filing_donor(
-        sipp_vehicle_donor_path,
-        expected_sha256=SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
-    )
     base_frame = with_us_voluntary_filing_input(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        sipp_donor=voluntary_filing_donor,
+        sipp_donor=build_sipp_2023_voluntary_filing_donor(sipp_december_person_rows),
     )
+    del sipp_december_person_rows
     voluntary_filing_gate = _shadow_frame_gate(
         "us_national_voluntary_filing",
         lambda: us_voluntary_filing_signal_gate(base_frame),

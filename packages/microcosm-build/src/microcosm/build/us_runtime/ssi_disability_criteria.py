@@ -44,6 +44,10 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    SippDecemberPersonRows,
+    read_sipp_december_person_rows,
+)
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_clone_index_column,
@@ -77,6 +81,7 @@ __all__ = [
     "US_SSI_DISABILITY_CRITERIA_NONCONSTANT_PERSON_COLUMNS",
     "US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS",
     "US_SSI_DISABILITY_CRITERIA_STAGE_NAME",
+    "build_sipp_2023_ssi_disability_donor",
     "fetch_sipp_2023_ssi_disability_donor",
     "impute_us_ssi_disability_criteria",
     "load_sipp_2023_ssi_disability_donor",
@@ -353,16 +358,6 @@ def us_ssi_disability_criteria_stage_spec() -> SourceStageSpec:
     return spec
 
 
-def _sha256_file(path: Path) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def fetch_sipp_2023_ssi_disability_donor(
     cache_dir: str | Path | None = None,
     *,
@@ -527,45 +522,28 @@ def load_sipp_2023_ssi_disability_donor(
     chunksize: int = 100_000,
     time_period: int = 2024,
 ) -> pd.DataFrame:
+    """Read the SIPP file and build the SSI disability training frame from it."""
+
+    return build_sipp_2023_ssi_disability_donor(
+        read_sipp_december_person_rows(
+            path,
+            columns=SIPP_SSI_DISABILITY_SOURCE_COLUMNS,
+            expected_sha256=expected_sha256,
+            expected_size_bytes=expected_size_bytes,
+            chunksize=chunksize,
+        ),
+        time_period=time_period,
+    )
+
+
+def build_sipp_2023_ssi_disability_donor(
+    person_rows: SippDecemberPersonRows,
+    *,
+    time_period: int = 2024,
+) -> pd.DataFrame:
     """Build the exact observed/candidate SIPP SSI disability training frame."""
 
-    source_path = Path(path)
-    actual_size = source_path.stat().st_size
-    if expected_size_bytes is not None and actual_size != expected_size_bytes:
-        raise ValueError(
-            "SIPP 2023 SSI disability donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {actual_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(source_path)
-        if actual_sha256 != expected_sha256:
-            raise ValueError(
-                "SIPP 2023 SSI disability donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
-            )
-    if chunksize < 1:
-        raise ValueError("chunksize must be a positive integer")
-
-    header = pd.read_csv(source_path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_SSI_DISABILITY_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP SSI disability donor missing column(s): {missing}.")
-
-    parts: list[pd.DataFrame] = []
-    for chunk in pd.read_csv(
-        source_path,
-        delimiter="|",
-        usecols=list(SIPP_SSI_DISABILITY_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        low_memory=False,
-    ):
-        month = _numeric(chunk["MONTHCODE"])
-        december = chunk.loc[month.eq(12.0)].copy()
-        if not december.empty:
-            parts.append(december)
-    if not parts:
-        raise ValueError("SIPP SSI disability donor has no December rows.")
-    frame = pd.concat(parts, ignore_index=True)
+    frame = person_rows.source_table(SIPP_SSI_DISABILITY_SOURCE_COLUMNS)
 
     for column in SIPP_SSI_DISABILITY_SOURCE_COLUMNS:
         if column == "SSUID":
@@ -685,7 +663,7 @@ def load_sipp_2023_ssi_disability_donor(
         "time_period": int(time_period),
     }
     pinned_transform = (
-        actual_size == SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES
+        person_rows.file_size_bytes == SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES
         and int(time_period) == 2024
     )
     audit["pinned_transform"] = pinned_transform
