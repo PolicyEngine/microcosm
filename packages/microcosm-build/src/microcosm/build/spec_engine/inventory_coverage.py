@@ -402,10 +402,12 @@ EXPECTED_HASHES = {
     # microcosm#1641 moves both again: it rewords docstrings and a comment in
     # solve and the delivery gate's docstring in ssi_take_up, which now names
     # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
+    # The in-place QRF leaf array in microcosm.fit.qrf moves both again: the
+    # forests' leaf arrays are byte-identical, and no draw changes.
     # The QRF draw's default thread count, joblib.cpu_count() in place of
     # os.cpu_count() in microcosm.fit.qrf, moves both again; no draw changes.
-    "seed_map": "867b2ecfc84279744eced0ba7d70bbc55da99b30dcc39a4ea5f40f5198ff1132",
-    "seed_protocol": "f5ca111b8e17024e542cf959a65fd616328a1e28b81570acbe137ce632f351c1",
+    "seed_map": "69b2ded443df77b92a8890fa8a7fc41a205b8fac9afa34786b25cb619a46c1da",
+    "seed_protocol": "d0e05f34b6416091746f0955b53d45276f8ea1392268f87700c6323a765bec49",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

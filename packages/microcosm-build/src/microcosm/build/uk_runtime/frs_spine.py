@@ -369,6 +369,19 @@ FRS_CARE_LINE_HOURS = 35.0
 FRS_UC_LCW_STATUS_COLUMN = "frs_uc_lcw_status"
 FRS_UC_LCW_STATUS_CODES = {0: "NONE", 1: "LCW", 2: "LCWRA"}
 FRS_UC_LCW_NOT_LINKED = "NOT_LINKED"
+#: Whether a long-standing illness or disability limits a person's day-to-day
+#: activities: ADULT.CONDIT, "Whether condition limits day to day activities",
+#: coded 1 "Yes, activities reduced a lot", 2 "Yes, activities reduced a
+#: little" and 3 "Not at all" in SN 9563's variable listing, and asked exactly
+#: where ADULT.HEALTH1, "Whether has a long standing illness", is 1. An adult
+#: whose HEALTH1 is 2 carries NO_CONDITION, and a child, whom the child tab
+#: asks neither, NOT_ASKED. The uc_limited_capability stage reads it for the
+#: cells of its imputation (PolicyEngine/microcosm#1663); it is no engine
+#: input and leaves at the release boundary.
+FRS_CONDITION_LIMITS_COLUMN = "frs_condition_limits_activities"
+FRS_CONDITION_LIMITS_CODES = {1: "A_LOT", 2: "A_LITTLE", 3: "NOT_AT_ALL"}
+FRS_CONDITION_NONE = "NO_CONDITION"
+FRS_CONDITION_NOT_ASKED = "NOT_ASKED"
 #: DWP's carer element on a benefit unit's linked Universal Credit claim:
 #: BENEFITS.UCCAREEL on the UC row, "Weekly Carer Element Amount (Admin UC)"
 #: in SN 9563's UKDA data dictionary, which gives it no value labels. The
@@ -474,6 +487,7 @@ OUTPUT_COLUMNS = (
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
     FRS_UC_LCW_STATUS_COLUMN,
+    FRS_CONDITION_LIMITS_COLUMN,
     FRS_UC_CARER_ELEMENT_COLUMN,
     "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
@@ -853,7 +867,29 @@ def _assemble_frame(
     # (uk-data#523).
     pe_person["is_blind"] = _number(person, "spcreg1") == FRS_REGISTERED_YES
 
-    pe_person["employment_income"] = _positive(person, "inearns") * WEEKS_IN_YEAR
+    # A dependent child's pay is CHILD.CHEARNS, DWP's derived income from
+    # employment on the child tab (a spare-time job's pay plus any employment
+    # training amount), as ADULT.INEARNS is an adult's; HBAI's BUEARNS sums
+    # the two (FRS 2024-25 derived variables). Without it every dependent aged
+    # 16 to 19 in full-time non-advanced education read as unpaid, and PAYE
+    # RTI's young employees could never count them (Vahid's review of
+    # PolicyEngine/microcosm#1663, María's call of 2026-11-18).
+    # policyengine-uk counts a child's pay only where the household's income
+    # does: UC and the legacy means tests read the claimant's and partner's
+    # alone, and the employer's secondary rate is nil under 21.
+    if "chearns" not in frs["child"].columns:
+        raise KeyError(
+            "FRS child.tab has no CHEARNS: a dependent child's pay would read as none."
+        )
+    is_adult_record = pe_person["person_id"].isin(adult_ids).to_numpy()
+    pe_person["employment_income"] = (
+        np.where(
+            is_adult_record,
+            _positive(person, "inearns"),
+            _positive(person, "chearns"),
+        )
+        * WEEKS_IN_YEAR
+    )
     # SEINCAM2 is the self-employment income the respondent gives, a loss as a
     # negative amount. policyengine-uk takes profits in self_employment_income,
     # never below zero, and the year's losses in trading_loss as a positive
@@ -956,6 +992,9 @@ def _assemble_frame(
         benefits=frs["benefits"],
     )
     pe_person[FRS_UC_LCW_STATUS_COLUMN] = frs_uc_lcw_status(frs["benefits"], pe_person)
+    pe_person[FRS_CONDITION_LIMITS_COLUMN] = frs_condition_limits_activities(
+        person, adult_record
+    )
     pe_person[FRS_UC_CARER_ELEMENT_COLUMN] = frs_uc_carer_element(
         frs["benefits"], pe_person
     )
@@ -2550,6 +2589,57 @@ def frs_uc_lcw_status(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.nda
         carrier="UC limited capability",
         known="the data dictionary's",
     )
+
+
+def frs_condition_limits_activities(
+    person: pd.DataFrame, adult_record: object
+) -> np.ndarray:
+    """Each person's :data:`FRS_CONDITION_LIMITS_COLUMN` from ADULT.HEALTH1 and CONDIT.
+
+    ``person`` is the spine's adult and child rows, blanks read as 0, and
+    ``adult_record`` marks the adult tab's rows. An adult with a long-standing
+    illness (HEALTH1 1) carries CONDIT's label, an adult without one (HEALTH1
+    2) NO_CONDITION, and a child NOT_ASKED. An adult's HEALTH1 outside 1 and
+    2, a CONDIT outside the listing's codes where HEALTH1 is 1, or a CONDIT
+    where HEALTH1 isn't, is refused rather than guessed (PolicyEngine/
+    microcosm#1663). The refusals count the rows, never naming one.
+    """
+
+    missing = [column for column in ("health1", "condit") if column not in person]
+    if missing:
+        raise KeyError(
+            "The FRS adult tab has no "
+            f"{' or '.join(column.upper() for column in missing)} column, which "
+            "the uc_limited_capability stage's imputation cells read."
+        )
+    adult = np.asarray(adult_record, dtype=bool)
+    if adult.shape != (len(person),):
+        raise ValueError("The adult record flags must align to the spine's people.")
+    health = pd.to_numeric(person["health1"], errors="coerce").fillna(0).to_numpy()
+    condit = pd.to_numeric(person["condit"], errors="coerce").fillna(0).to_numpy()
+    bad_health = int((adult & ~np.isin(health, (1, 2))).sum())
+    if bad_health:
+        raise ValueError(
+            f"{bad_health} adult row(s) carry a HEALTH1 outside 1 (yes) and 2 (no)."
+        )
+    ill = adult & (health == 1)
+    bad_condit = int((ill & ~np.isin(condit, tuple(FRS_CONDITION_LIMITS_CODES))).sum())
+    if bad_condit:
+        raise ValueError(
+            f"{bad_condit} adult row(s) with a long-standing illness carry a "
+            "CONDIT outside the variable listing's codes 1 to 3."
+        )
+    asked_otherwise = int((~ill & (condit != 0)).sum())
+    if asked_otherwise:
+        raise ValueError(
+            f"{asked_otherwise} row(s) carry a CONDIT without a long-standing "
+            "illness (HEALTH1 1), which the questionnaire asks it after."
+        )
+    out = np.full(len(person), FRS_CONDITION_NOT_ASKED, dtype=object)
+    out[adult & ~ill] = FRS_CONDITION_NONE
+    for code, label in FRS_CONDITION_LIMITS_CODES.items():
+        out[ill & (condit == code)] = label
+    return out
 
 
 def frs_uc_carer_element(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.ndarray:

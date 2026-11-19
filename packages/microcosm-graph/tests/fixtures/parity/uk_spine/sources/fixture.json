@@ -1545,8 +1545,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "621ccf8d4b91fd89c7b66ff7ed221786c5e634d4ab63fd32c253d8fa686b66f9",
-          "size_bytes": 36049,
+          "sha256": "613b9af49e34d4c19e11bce23ab1b9ed7422a80c31962cb93cef2e93f437ad85",
+          "size_bytes": 36514,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1811,8 +1811,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "621ccf8d4b91fd89c7b66ff7ed221786c5e634d4ab63fd32c253d8fa686b66f9",
-          "size_bytes": 36049,
+          "sha256": "613b9af49e34d4c19e11bce23ab1b9ed7422a80c31962cb93cef2e93f437ad85",
+          "size_bytes": 36514,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -1822,8 +1822,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
-          "size_bytes": 2187,
+          "sha256": "44c3cb2900b70e15828a8bb021be463ac69ebd079aadd28f3eabd56aa139499b",
+          "size_bytes": 2330,
           "table": "child",
           "vintage": "synthetic-h2"
         }
@@ -1931,8 +1931,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "621ccf8d4b91fd89c7b66ff7ed221786c5e634d4ab63fd32c253d8fa686b66f9",
-          "size_bytes": 36049,
+          "sha256": "613b9af49e34d4c19e11bce23ab1b9ed7422a80c31962cb93cef2e93f437ad85",
+          "size_bytes": 36514,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -1975,8 +1975,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "621ccf8d4b91fd89c7b66ff7ed221786c5e634d4ab63fd32c253d8fa686b66f9",
-          "size_bytes": 36049,
+          "sha256": "613b9af49e34d4c19e11bce23ab1b9ed7422a80c31962cb93cef2e93f437ad85",
+          "size_bytes": 36514,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -2193,8 +2193,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "621ccf8d4b91fd89c7b66ff7ed221786c5e634d4ab63fd32c253d8fa686b66f9",
-          "size_bytes": 36049,
+          "sha256": "613b9af49e34d4c19e11bce23ab1b9ed7422a80c31962cb93cef2e93f437ad85",
+          "size_bytes": 36514,
           "table": "adult",
           "vintage": "synthetic-h2"
         }
@@ -2315,8 +2315,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "621ccf8d4b91fd89c7b66ff7ed221786c5e634d4ab63fd32c253d8fa686b66f9",
-          "size_bytes": 36049,
+          "sha256": "613b9af49e34d4c19e11bce23ab1b9ed7422a80c31962cb93cef2e93f437ad85",
+          "size_bytes": 36514,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -2326,8 +2326,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
-          "size_bytes": 2187,
+          "sha256": "44c3cb2900b70e15828a8bb021be463ac69ebd079aadd28f3eabd56aa139499b",
+          "size_bytes": 2330,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -2557,8 +2557,8 @@
           "locator": "adult.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "621ccf8d4b91fd89c7b66ff7ed221786c5e634d4ab63fd32c253d8fa686b66f9",
-          "size_bytes": 36049,
+          "sha256": "613b9af49e34d4c19e11bce23ab1b9ed7422a80c31962cb93cef2e93f437ad85",
+          "size_bytes": 36514,
           "table": "adult",
           "vintage": "synthetic-h2"
         },
@@ -2601,8 +2601,8 @@
           "locator": "child.tab",
           "role": "frs_table",
           "runtime_sha256_required": true,
-          "sha256": "13e7c811f8dbdf1ee3ede64782ef14a29d5c045cd8b8d853b2fc78fafb3fc106",
-          "size_bytes": 2187,
+          "sha256": "44c3cb2900b70e15828a8bb021be463ac69ebd079aadd28f3eabd56aa139499b",
+          "size_bytes": 2330,
           "table": "child",
           "vintage": "synthetic-h2"
         },
@@ -2814,6 +2814,7 @@
         "is_hbai_dependent_child",
         "uc_is_in_startup_period",
         "frs_uc_lcw_status",
+        "frs_condition_limits_activities",
         "frs_uc_carer_element",
         "uc_is_in_gainful_self_employment",
         "rent_paid_as_boarder",
@@ -7900,7 +7901,7 @@
       "artifacts": [],
       "grain": "person",
       "nonnegative_outputs": [],
-      "notes": "DWP's limited capability for work status on linked Universal Credit claims (Y1 of the November event-data plan, microcosm#1095; Mar\u00eda's NS6 ruling of 9 November 2026, which revisits her ruling of 29 October 2026 to keep the engine's proxy; she signed the choices below the same day). policyengine-uk 2.177.7 gives limited capability for work and work-related activity (uc_limited_capability_for_WRA) to a person flagged is_disabled_for_benefits, which the spine sets from any reported disability benefit or ESA, unless their own ESA award lacks the support component, and limited capability for work (uc_limited_capability_for_work) to that or the same flag. The FRS 2024-25 links most UC claims to DWP's records, and BENEFITS.UCLCW, which frs_spine carries as frs_uc_lcw_status on the UC row's person, gives the claim's own status; the status and the proxy disagree on a substantial share of linked claims in both directions, so the stage changes who has the LCWRA element more than how many. Every person takes the locked engine's own proxy, so nothing mirrors its formula here, and a linked FRS claim (a non-SPI household) takes DWP's status: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags and, if it flags none, gives both flags to the UC row's person, or to the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not, so a carer keeps the carer element; LCW does the same for limited capability for work, with WRA false for every claimant. The FRS keeps one UC row per claim, couples included, so which partner holds a joint claim's status is this rule's approximation. Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy, which their stored value equals, since no later stage writes its inputs. The flags are stored as survey-year inputs, which the engine carries into every projected year, and the release carries both. uc_reporter_redraw's award screen, earlier in the spine, still reads the proxy.",
+      "notes": "DWP's limited capability for work status on linked Universal Credit claims (Y1 of the November event-data plan, microcosm#1095; Mar\u00eda's NS6 ruling of 9 November 2026, which revisits her ruling of 29 October 2026 to keep the engine's proxy; she signed the choices below the same day). policyengine-uk 2.177.7 gives limited capability for work and work-related activity (uc_limited_capability_for_WRA) to a person flagged is_disabled_for_benefits, which the spine sets from any reported disability benefit or ESA, unless their own ESA award lacks the support component, and limited capability for work (uc_limited_capability_for_work) to that or the same flag. The FRS 2024-25 links most UC claims to DWP's records, and BENEFITS.UCLCW, which frs_spine carries as frs_uc_lcw_status on the UC row's person, gives the claim's own status; the status and the proxy disagree on a substantial share of linked claims in both directions, so the stage changes who has the LCWRA element more than how many. Every person takes the locked engine's own proxy, so nothing mirrors its formula here, and a linked FRS claim (a non-SPI household) takes DWP's status: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags and, if it flags none, gives both flags to the UC row's person, or to the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not, so a carer keeps the carer element; LCW does the same for limited capability for work, with WRA false for every claimant. The FRS keeps one UC row per claim, couples included, so which partner holds a joint claim's status is this rule's approximation. Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy, which their stored value equals, since no later stage writes its inputs. The flags are stored as survey-year inputs, which the engine carries into every projected year, and the release carries both. uc_reporter_redraw's award screen, earlier in the spine, still reads the proxy. On Mar\u00eda's call of 17 November 2026, after the Milburn review's benchmarks put the build's young claimants with the LCWRA element about a third above the Resolution Foundation's count, nine in ten of them on PIP (PolicyEngine/uk-milburn-review-dashboard#1), every other claim outside the SPI rows takes an imputed status instead of the proxy: LCWRA at the share of linked claims with that status in its cell (the youngest claimant's age band, and whether the proxy flags any claimant), among the linked claims in which no claimant has their own ESA award, NONE otherwise, so the take-up redraw's entrants carry the element at the rates DWP's own records show and not only where someone gets a disability benefit. Claims in which a claimant has their own ESA award keep the proxy, since the award carries DWP's determination, and linked claims with one stay out of the rates, so the rates are measured on the kind of claim that draws (the review of microcosm#1663); the receipt gives their own rate beside each cell's. On Mar\u00eda's go of 18 November 2026 (\"lets start UC parts 1-2\", PolicyEngine/microcosm#1663), the cells also split on whether any claimant's long-standing illness limits their day-to-day activities a lot (ADULT.CONDIT, frs_spine's carrier): on linked claims DWP's LCWRA status is far commoner where such a condition is reported, whether or not the proxy flags the claim, so a drawn claim with no disability benefit takes the element at its condition's rate rather than its whole group's.",
       "operations": [
         {
           "kind": "materialize_rules_engine_predictors",
@@ -7908,14 +7909,37 @@
             "uc_limited_capability_for_WRA",
             "uc_limited_capability_for_work",
             "is_uc_assessed_claimant",
-            "is_carer_for_benefits"
+            "is_carer_for_benefits",
+            "has_own_esa_award"
           ],
           "year_rule": "survey_year"
         },
         {
+          "age": "age",
+          "age_bands": [
+            {
+              "band": "16_to_24",
+              "high": 24,
+              "low": 16
+            },
+            {
+              "band": "25_to_49",
+              "high": 49,
+              "low": 25
+            },
+            {
+              "band": "50_and_over",
+              "high": null,
+              "low": 50
+            }
+          ],
           "carer": "is_carer_for_benefits",
           "carrier": "frs_uc_lcw_status",
           "claimant": "is_uc_assessed_claimant",
+          "condition": "frs_condition_limits_activities",
+          "condition_cell": "A_LOT",
+          "esa_award": "has_own_esa_award",
+          "imputation_rule": "Every other claim outside the SPI rows (an unlinked reporter, a take-up entrant or any other benefit unit with a claimant) takes an imputed status: LCWRA when its identity-keyed uniform falls below its cell's rate, NONE otherwise, and then the linked rules with the claim's first claimant in place of the UC row's person. A cell is the youngest claimant's age band, whether the proxy flags any claimant, and whether any claimant's long-standing illness limits their day-to-day activities a lot (frs_spine's ADULT.CONDIT carrier); its rate is the share of linked claims in it with DWP's LCWRA status, at the stage's household weights, counting only linked claims in which no claimant has their own ESA award: a claim with one keeps the proxy rather than drawing, so the rates are measured on the kind of claim that draws. A cell with fewer than three distinct source households takes its proxy and condition group's rate over every age, then its proxy group's over every age, and a group with fewer keeps the proxy.",
           "joint_claim_rule": "The FRS keeps one UC row per claim, couples included, so the status is the claim's. Where a claimant must be chosen it is the UC row's person, or the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not; the other claimant keeps the proxy.",
           "kind": "assign_uc_limited_capability_from_admin_status",
           "linked_scope": "household_is_spi_synthetic",
@@ -7925,7 +7949,9 @@
             "uc_limited_capability_for_work"
           ],
           "rule": "Every person takes the locked engine's own proxy for both flags. A linked FRS claim (a non-SPI household whose UC row carries a status) takes DWP's: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags, and if it flags none gives both flags to one claimant; LCW keeps the claimants the proxy gives limited capability for work, and if it gives none gives it to one claimant, with WRA false for every claimant.",
-          "scope": "Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy; no later stage writes the proxy's inputs, so their stored value equals the formula's.",
+          "salt": "frs_uc_lcw_status_imputed",
+          "scope": "SPI rows, and claims in which a claimant has their own ESA award, keep the proxy; no later stage writes the proxy's inputs, so their stored value equals the formula's.",
+          "seed": 0,
           "statuses": [
             "NONE",
             "LCW",
@@ -7945,9 +7971,9 @@
         "uc_limited_capability_for_work"
       ],
       "rewrites": [],
-      "source": "frs_uc_lcw_status (frs_spine) on the UC row's person, and the locked engine's uc_limited_capability_for_WRA, uc_limited_capability_for_work, is_uc_assessed_claimant and is_carer_for_benefits on the frame as it stands",
+      "source": "frs_uc_lcw_status (frs_spine) on the UC row's person, frs_condition_limits_activities (frs_spine) on each adult, and the locked engine's uc_limited_capability_for_WRA, uc_limited_capability_for_work, is_uc_assessed_claimant and is_carer_for_benefits on the frame as it stands",
       "stage": "uc_limited_capability",
-      "survey": "Family Resources Survey 2024-25 (BENEFITS.UCLCW, DWP's limited capability status on a linked Universal Credit claim) and policyengine-uk's limited capability proxy, evaluated by the pinned engine"
+      "survey": "Family Resources Survey 2024-25 (BENEFITS.UCLCW, DWP's limited capability status on a linked Universal Credit claim, and ADULT.CONDIT, whether a long-standing illness limits day-to-day activities) and policyengine-uk's limited capability proxy, evaluated by the pinned engine"
     },
     "uc_reporter_redraw": {
       "artifacts": [],
@@ -8044,6 +8070,13 @@
           "resource": "dwp_uc_lcwra_households_facts.json",
           "role": "uc_lcwra_households_facts",
           "runtime_sha256_required": true
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "dwp_uc_young_lcwra_people_facts.json",
+          "role": "uc_young_lcwra_people_facts",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "benunit",
@@ -8116,6 +8149,22 @@
           "resource": "dwp_uc_lcwra_households_facts.json",
           "runtime_sha256_required": true,
           "source_vintage": "January to December 2025"
+        },
+        {
+          "artifact_role": "uc_young_lcwra_people_facts",
+          "fail_on_mismatch": true,
+          "feed_pin": "chronicle_feed.json",
+          "kind": "verify_vendored_fact_resource",
+          "mapped_build_period": 2025,
+          "period_mapping": "calendar_year_window_of_fiscal_years",
+          "record_sets": [
+            "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
+            "dwp.young_people_work_interim_2026.table_28.caseload.fy2025"
+          ],
+          "require_before_source_read": true,
+          "resource": "dwp_uc_young_lcwra_people_facts.json",
+          "runtime_sha256_required": true,
+          "source_vintage": "financial years 2024-25 and 2025-26"
         },
         {
           "consumed_only": true,
