@@ -397,21 +397,22 @@ that release's current build.
 
 ## Thread variables
 
-`MICROCOSM_THREADS` is the one thread setting of three US commands: the release
-command (`tools/build_us_fiscal_refresh_release.py`), the base command
-(`tools/build_us_puf_support_base.py`) and the ACS multispine staging command
+`MICROCOSM_THREADS` is the one thread setting of the US build commands: the
+release command (`tools/build_us_fiscal_refresh_release.py`), the base command
+(`tools/build_us_puf_support_base.py`), the ACS multispine staging command
 (`tools/build_us_acs_multispine_base.py`, and
-`tools/_legacy/build_us_acs_multispine_base.py` when that file is run directly).
-Set it to a positive whole number to choose the thread count of every numerical
-library these commands use. Before numpy loads, `tools/us_build_thread_environment.py`
+`tools/_legacy/build_us_acs_multispine_base.py` when that file is run directly)
+and the ACS local-release command (`tools/build_us_acs_local_release.py`). Set it
+to a positive whole number to set the thread count of every numerical library
+these commands use. Before numpy loads, `tools/us_build_thread_environment.py`
 copies it into each of these variables that is unset or blank:
 
 - `OMP_NUM_THREADS`: OpenMP, which scikit-learn's QRF sign classifier and torch
   use. OpenBLAS and numexpr read it when their own variable is unset.
 - `OPENBLAS_NUM_THREADS`: OpenBLAS, which numpy and scipy bundle on Linux. It
   reads this before its older name, `GOTO_NUM_THREADS`.
-- `MKL_NUM_THREADS`: Intel MKL, which only torch bundles here. torch also takes
-  its own thread count from it.
+- `MKL_NUM_THREADS`: Intel MKL, which torch's Linux x86-64 builds include. torch
+  also takes its own thread count from it, ahead of `OMP_NUM_THREADS`.
 - `BLIS_NUM_THREADS`: BLIS, which nothing installed here uses.
 - `VECLIB_MAXIMUM_THREADS`: Apple's Accelerate, which numpy uses on macOS.
 - `NUMEXPR_NUM_THREADS`: numexpr, which pandas uses for large element-wise
@@ -420,40 +421,57 @@ copies it into each of these variables that is unset or blank:
   tree-building jobs and prediction workers while `POPULACE_FIT_N_JOBS` and
   `POPULACE_FIT_PREDICT_WORKERS` are unset.
 
+numexpr refuses a count above `NUMEXPR_MAX_THREADS`, 64 by default, and then runs
+one thread, so a count above 64 also fills `NUMEXPR_MAX_THREADS`. Some libraries
+use fewer threads than they are given: OpenBLAS no more than the CPUs it may run
+on, and `joblib.cpu_count()` no more than CPU affinity and a CPU quota allow.
+
 A variable that already has a value keeps it, so one library's count can still be
 set directly. A setting that is not a positive whole number, such as `0`, `+4` or
-`four`, stops the command before numpy loads. The base and ACS staging commands
+`four`, stops the command before numpy loads, and a Modal plan that sets one is
+refused when it is loaded. The base, ACS staging and ACS local-release commands
 read the setting only when started as commands, not when imported.
-`tools/build_us_acs_local_release.py` does not read it.
 
-**Without the setting.** The base and ACS staging commands set nothing, and each
-library chooses its own count, as before:
+The release tool's step runs on import too, as it always has, so other commands
+that import it read the setting at that import. `build_us_exact_k_ladder_release.py`,
+`certify_us_national_build.py`, `score_us_fiscal_targets.py` and
+`score_us_release_head_to_head.py` import it before numpy loads. Code that
+imports it later, such as the release-gate preflight
+(`microcosm.build.us_runtime.release_gate_preflight`), applies it only to the
+libraries it loads afterwards and to its child processes, and a setting that is
+not a positive whole number stops it at that import.
+
+**Without the setting.** The base, ACS staging and ACS local-release commands set
+nothing, and each library chooses its own count, as before:
 
 - OpenBLAS and OpenMP use the CPUs the process may run on (its CPU affinity).
   They do not follow a CPU quota.
-- scikit-learn uses at most the physical cores, a CPU quota allows and
-  `LOKY_MAX_CPU_COUNT` allows. torch uses the physical cores (on Apple chips, the
-  performance cores).
+- scikit-learn uses the smaller of OpenMP's count and `joblib.cpu_count()`, which
+  is the smallest of CPU affinity, a CPU quota and `LOKY_MAX_CPU_COUNT`. When none
+  of those is below the logical CPU count, it uses the physical cores instead.
+- torch uses the physical cores (on Apple chips, the performance cores).
 - numexpr uses the online CPUs, up to 16.
 - `joblib.cpu_count()`, and with it the QRF's pools, follows CPU affinity, a CPU
   quota and `LOKY_MAX_CPU_COUNT`.
 
-The release tool instead fills the same variables with `min(os.cpu_count(), 16)`,
-as it did before for all of them but `BLIS_NUM_THREADS`, which has no effect here.
-It does this on import too, as it always has. Its calibration's exact weights
-depend on torch's thread count, so that default stays.
+The ACS local-release command later imports the release tool, which then fills
+the variables still unset with the release default, as before. The release tool
+fills them with `min(os.cpu_count(), 16)`, as it did before for all of them but
+`BLIS_NUM_THREADS`, which has no effect here. As before, it keeps a blank value;
+only `MICROCOSM_THREADS` replaces a blank. Its calibration's exact weights depend
+on torch's thread count, so that default stays.
 
-**On Linux the BLAS thread count changes output bytes.** numpy's Linux wheels use
-OpenBLAS, which splits a large dot product between its threads, so the order of
-the additions, and with it the last bits of the sum, depends on the count.
+**On Linux the BLAS thread count can change output bytes.** numpy's Linux wheels
+use OpenBLAS, which splits a large dot product between its threads, so the order
+of the additions, and with it the last bits of the sum, depends on the count.
 Setting only `OMP_NUM_THREADS` has the same effect, because OpenBLAS follows it.
-In Linux containers (x86-64 under emulation and arm64, 10 CPUs visible, numpy
-2.4.6), `np.dot` and `@` on vectors of 20,000 to 500,000 rows gave different
-results at 1, 2, 4, 8 and 10 threads, and `_project_weighted_sum_to_bounds` on
-150,000 rows wrote different bytes at 1, 2 and 4 threads than at 10. These were
-small synthetic checks, not full builds. The same checks on macOS, where numpy
-uses Accelerate, showed no difference. The affected operations reach, for
-example:
+In container probes on 18 November 2026, whose results are not kept in the
+repository (x86-64 under emulation and arm64, 10 CPUs visible, numpy 2.4.6),
+`np.dot` and `@` on vectors of 20,000 to 500,000 rows gave different results at
+1, 2, 4, 8 and 10 threads, and `_project_weighted_sum_to_bounds` on 150,000 rows
+wrote different bytes at 1, 2 and 4 threads than at 10. These were small
+synthetic checks, not full builds. The same checks on macOS, where numpy uses
+Accelerate, showed no difference. The affected operations reach, for example:
 
 - the ESI premium stage (`esi_premiums.py`), which scales a person column by a
   weighted total;
@@ -462,10 +480,10 @@ example:
 - cross-fitted calibration of the QRF sign classifier (`microcosm.fit.qrf`),
   which uses `w @ ...` on row-length vectors.
 
-So a Linux base build's output depends on the OpenBLAS thread count. Without the
-setting that count follows the host, so two hosts with different CPU counts can
-write different bytes, as before. A build made with `MICROCOSM_THREADS=N` matches
-one made without it only where OpenBLAS would otherwise use N threads.
+So a Linux base build's output can depend on the OpenBLAS thread count. Without
+the setting that count follows the host, so two hosts with different CPU counts
+can write different bytes, as before. A build made with `MICROCOSM_THREADS=N` can
+match one made without it only where OpenBLAS would otherwise use N threads.
 
 **Other effects of the setting.** Because it sets `OMP_NUM_THREADS`, scikit-learn
 no longer limits itself to physical cores, a CPU quota or `LOKY_MAX_CPU_COUNT`:
@@ -483,22 +501,29 @@ values do not depend on those counts.
   `VECLIB_MAXIMUM_THREADS`, `NUMEXPR_NUM_THREADS`, `POPULACE_FIT_N_JOBS`,
   `POPULACE_FIT_PREDICT_WORKERS` and `PYTHONHASHSEED`. It also records
   `blas_threads_in_use`: each loaded BLAS library with the thread count it uses
-  once numpy has loaded, as `threadpoolctl` reports it. threadpoolctl does not
-  report Accelerate, so on macOS the list is empty.
+  once numpy has loaded, as `threadpoolctl` reads it from the library. That count
+  does not come from the environment. threadpoolctl does not report Accelerate,
+  so where numpy uses Accelerate, as on macOS, the list is empty.
 - *A resume of the base command* compares all of these except
   `POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS`, and refuses a
   difference, so a new thread setting needs a new checkpoint directory. Because
   `blas_threads_in_use` is compared, a resume is also refused on a host where
   OpenBLAS would use a different count. Before, with the variables unset on both
   hosts, the configurations matched.
-- *`POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS`:* recorded and not
-  compared. A new value applies from the next outer stage of a resumed run.
-  `LOKY_MAX_CPU_COUNT` is not recorded. None of the three changes an imputed value.
+- *`POPULACE_FIT_N_JOBS`, `POPULACE_FIT_PREDICT_WORKERS` and
+  `LOKY_MAX_CPU_COUNT`:* the first two are recorded and not compared, and a new
+  value applies from the next outer stage of a resumed run. `LOKY_MAX_CPU_COUNT`
+  is not recorded. The QRF counts these set change no imputed value. While
+  `OMP_NUM_THREADS` is unset, `LOKY_MAX_CPU_COUNT` also limits the sign
+  classifier's OpenMP count (see "Without the setting").
+- *The helper's own file* is not in the digest of the tool's code
+  (`builder_code_identity`), but the values it sets are recorded and compared.
 - *Base runs started before this change:* they cannot resume after it. The run
   configuration holds a digest that covers the tool's own file
   (`builder_code_identity`), and the file changed.
-- *ACS multispine staging command:* it keeps no run configuration, so the values
-  apply to the process that was started.
+- *ACS staging and ACS local-release commands:* the staging command keeps no run
+  configuration, so the values apply to the process that was started. The
+  local-release command's stage settings check does not record thread variables.
 
 **On Modal.** A plan may set `MICROCOSM_THREADS`, because its environment
 allowlist accepts `MICROCOSM_*` names, and it may set `OMP_NUM_THREADS`,
@@ -512,10 +537,11 @@ allowlist accepts `MICROCOSM_*` names, and it may set `OMP_NUM_THREADS`,
 Because a value already set is kept, a plan's `MICROCOSM_THREADS` does not
 replace those four. It fills only `VECLIB_MAXIMUM_THREADS`, `NUMEXPR_NUM_THREADS`
 and `LOKY_MAX_CPU_COUNT`. To change the BLAS and OpenMP counts on Modal, a plan
-sets those variables directly, as before. No record shows what Modal sets in the
-`acs-staging` class. The tools at `4b57d15a2` and `74f5e6123`, the commits pinned
-by the historical base plan and the ACS staging plan, predate the setting and
-ignore it.
+sets those variables directly, as before; torch follows `MKL_NUM_THREADS` before
+`OMP_NUM_THREADS`, so changing only the latter leaves torch at Modal's value. No
+record shows what Modal sets in the `acs-staging` class. The tools at `4b57d15a2`
+and `74f5e6123`, the commits pinned by the historical base plan and the ACS
+staging plan, predate the setting and ignore it.
 
 ## Resources and cost
 
@@ -1449,10 +1475,13 @@ Two things are reported and never refused: the interpreter string
 (`python`) and every other `thread_environment` variable whose value
 differs (`thread_environment_differences`). The tool reads those variables
 from its environment, and Modal sets some of them itself (see "Resources").
-These differences are reported and not refused, although a different BLAS or
-OpenMP count can change output bytes on Linux (see "Thread variables"). That
-includes `blas_threads_in_use`, which is empty for a macOS run. Only the
-checkpoint digests compared above show that outputs agree. The report says
+Code that records `blas_threads_in_use` reads that one from the loaded BLAS
+libraries instead. These differences are reported and not refused, although a
+different BLAS or OpenMP count can change output bytes on Linux (see "Thread
+variables"). `blas_threads_in_use` is an empty list for a run where numpy uses
+Accelerate, as on macOS, and is absent from a reference made with code that does
+not record it, such as `4b57d15a2`. Only the checkpoint digests compared above
+show that outputs agree. The report says
 `compared_outputs_match`, with `stages_compared` 2 of `stages_total` 24 and
 the 22 stages it did not compare (`stages_not_compared`).
 

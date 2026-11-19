@@ -43,11 +43,13 @@ ignore = ["E501"]
 # defaults before numpy/torch load, which requires statements above the
 # import block.
 "tools/build_us_fiscal_refresh_release.py" = ["E402"]
-# The base and ACS staging commands apply the thread setting before numpy
-# loads (tools/us_build_thread_environment.py), for the same reason.
+# The base, ACS staging and ACS local-release commands apply the thread
+# setting before numpy loads (tools/us_build_thread_environment.py), for the
+# same reason.
 "tools/build_us_puf_support_base.py" = ["E402"]
 "tools/build_us_acs_multispine_base.py" = ["E402"]
 "tools/_legacy/build_us_acs_multispine_base.py" = ["E402"]
+"tools/build_us_acs_local_release.py" = ["E402"]
 # Evidence scripts are frozen receipts of one-off measurements: formatted and
 # import-sorted, but their logic stays exactly as it produced the committed
 # outputs, so style rules that would edit that logic are waived.

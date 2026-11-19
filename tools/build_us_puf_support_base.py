@@ -18,16 +18,23 @@ and a named ``--stage`` run by hand records that stage.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 if __name__ == "__main__":
     # The one thread setting, MICROCOSM_THREADS, fills the OpenMP, BLAS,
     # numexpr and joblib thread variables, and the libraries read those when
     # they load, so this comes before numpy. Without the setting nothing is
     # set. It runs only for the command: tests and other tools import this
-    # file. Stage subprocesses inherit the values, and the run configuration
-    # records them (``_stage_run_config``). E402 is ignored for this file in
-    # pyproject for this block.
+    # file. The helper is loaded from this file's folder, which is not on the
+    # import path under ``python -m`` or ``python -P``. Stage subprocesses
+    # inherit the values, and the run configuration records them, except
+    # LOKY_MAX_CPU_COUNT (``_stage_run_config``). E402 is ignored for this
+    # file in pyproject for this block.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from us_build_thread_environment import set_build_thread_environment
 
+    del sys.path[0]
     set_build_thread_environment()
 
 import argparse
@@ -36,11 +43,9 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
-from pathlib import Path
 
 import numpy as np
 import pandas as pd

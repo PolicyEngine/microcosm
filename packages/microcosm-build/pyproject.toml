@@ -31,8 +31,9 @@ dependencies = [
     # own version, and every emitter release accepts the versions in use.
     "microcosm-emitter-interface>=0.16.0,<1",
     # The US base command records each loaded BLAS library's thread count in
-    # its run configuration. scikit-learn already depends on it.
-    "threadpoolctl>=3.1",
+    # its run configuration. scikit-learn already depends on it; 3.6 reads
+    # the scipy-openblas library that numpy 2 wheels bundle.
+    "threadpoolctl>=3.6",
 ]
 
 [project.optional-dependencies]
