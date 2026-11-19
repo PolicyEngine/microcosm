@@ -65,6 +65,8 @@ def _stage_frame():
             "household_id": list(range(1, count + 1)),
             "region": ["WALES", "SCOTLAND", "LONDON"] * (count // 3),
             "household_source_id": list(range(count)),
+            # The true source each floor counts (microcosm#931).
+            "source_household_id": list(range(count)),
         }
     )
     return uk_national_frame(

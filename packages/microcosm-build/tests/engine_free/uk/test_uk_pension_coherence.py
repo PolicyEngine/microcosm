@@ -107,7 +107,7 @@ def test_the_spi_stage_applies_the_rule_to_its_recipients() -> None:
         {
             "household_id": [10, 20, 30, 40, 50],
             "household_weight": [1.0] * 5,
-            "household_source_id": [10, 20, 30, 40, 50],
+            "source_household_id": [10, 20, 30, 40, 50],
         }
     )
     recipients = pd.Series([True, True, True, False, True])

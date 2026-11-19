@@ -133,7 +133,8 @@ def test_each_manifest_golden_names_the_writers_its_real_build_calls():
     """A golden freezes live bytes only while the real build path still calls
     the writers ``writers.json`` names for it: the UK assembler's
     ``_stage_and_finalize`` calls the pure function and its serializer, the US
-    builder's ``_main`` calls ``_build_manifests`` and
+    builder's certification (``_certify_us_build``, run from the build record
+    ``_main`` writes, microcosm#1585 item 11) calls ``_build_manifests`` and
     ``_finish_build_folder_release``, and that function calls
     ``rewrite_release_dir``."""
 
@@ -164,8 +165,9 @@ def test_each_manifest_golden_names_the_writers_its_real_build_calls():
         ("microcosm.data.build_folder_manifests", "rewrite_release_dir"),
     ]
     assert {"_build_manifests", "_finish_build_folder_release"} <= _called_in(
-        US_BUILDER_TOOL, "_main"
+        US_BUILDER_TOOL, "_certify_us_build"
     )
+    assert "_write_us_build_record" in _called_in(US_BUILDER_TOOL, "_main")
     assert "rewrite_release_dir" in _called_in(
         US_BUILDER_TOOL, "_finish_build_folder_release"
     )

@@ -101,7 +101,9 @@ def occupation_frame_tables(n_frs: int = 900, n_spi: int = 150, seed: int = 0):
         {
             "household_id": household_id,
             "household_support_channel": "frs",
+            "household_support_clone_index": 0,
             "household_source_id": household_id,
+            "source_household_id": household_id,
             "region": rng.choice(_REGIONS, n_frs),
         }
     )
@@ -164,7 +166,10 @@ def occupation_frame_tables(n_frs: int = 900, n_spi: int = 150, seed: int = 0):
         {
             "household_id": n_frs + np.arange(1, n_spi + 1),
             "household_support_channel": "spi",
+            "household_support_clone_index": 1,
             "household_source_id": twins,
+            # A copy's true source is the FRS household it copies.
+            "source_household_id": twins,
             "region": household.set_index("household_id")
             .loc[twins, "region"]
             .to_numpy(),

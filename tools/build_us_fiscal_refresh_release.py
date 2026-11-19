@@ -5,15 +5,26 @@ starts from an existing Microcosm US H5, materializes the current structured
 fiscal target rows, recalibrates only the household weights, writes a fresh
 PolicyEngine-US H5, and emits the release contract files.
 
-Each run is one build of a release in ``policyengine/populace-us``
-(microcosm#1570): a certified or exact-k build of the national release,
-``microcosm-us-2024-national``, or an evidence-tier build of the evidence
-release, ``microcosm-us-2024-evidence``. The release directory is
-``<out>/releases/<release>/``; both manifests name the release and the build
-(the ``populace-us-2024-…`` build ID) in the build-folder layout; the run
-checks the directory against its tier's release contract and prints the
-``microcosm-publish-release-build`` commands that publish the build into its
-own folder of the release and then make it the release's current build.
+Each run is one build of the US national dataset (microcosm#1570), and a
+build has no tier (microcosm#1585 item 11): it writes its H5 and calibration
+weights to ``<out>/artifacts/`` and its own files (the diagnostics, the gate
+evidence) to ``<out>/build/``, whatever release certification later places
+it in.
+
+The run builds and stops (microcosm#1585 item 11, PR 4a): once the H5, the
+calibration weights, the diagnostics and the build's gate evidence are
+written, it writes ``<out>/build_record.json`` and prints the commands that
+certify the build, so the build can be evaluated first. Nothing it writes
+is publishable. ``tools/certify_us_national_build.py`` certifies it and
+chooses its tier: certified, into the national release
+``microcosm-us-2024-national``, or, with ``--evidence-release``, evidence,
+into the evidence release ``microcosm-us-2024-evidence``. It runs the
+release's post-export checks on the written H5, places the build's files in
+``<out>/releases/<release>/``, then writes both manifests, which name the
+release and the build (the ``populace-us-2024-…`` build ID) in the
+build-folder layout, and the ``microcosm-publish-release-build`` commands
+that publish the build into its own folder of the release and then make it
+the release's current build.
 """
 
 from __future__ import annotations
@@ -43,21 +54,25 @@ import dataclasses
 import gc
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import math
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import time
 import tomllib
+import traceback
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
-from pathlib import Path
-from types import MethodType
+from importlib.resources import files as package_files
+from pathlib import Path, PurePosixPath
+from types import MethodType, SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -69,6 +84,7 @@ from microcosm.build.calibration_epoch_telemetry import (
     calibration_epoch_stride,
     forwards_calibration_epoch,
 )
+from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.gates import (
     GateResult,
     TargetFitRequirement,
@@ -248,6 +264,11 @@ from microcosm.build.us_runtime import (
 from microcosm.build.us_runtime.acs_release_predictors import (
     join_acs_release_predictors,
 )
+from microcosm.build.us_runtime.battery_bindings import (
+    us_flag_overrides,
+    us_gate_registry,
+    us_gate_specs,
+)
 from microcosm.build.us_runtime.chronicle_feed import (
     USChronicleFeed,
     load_us_chronicle_feed,
@@ -283,6 +304,20 @@ from microcosm.build.us_runtime.fsa_student_loan_targets import (
     fsa_student_loan_household_values,
     fsa_student_loan_target_receipt,
     plan_fsa_student_loan_targets,
+)
+from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+from microcosm.build.us_runtime.gate_shadow import (
+    GATE_BATTERY_SHADOW_DIRECTORY,
+    GateBatteryShadow,
+    LegacyVerdict,
+    arm_gate_shadow,
+    disarm_gate_shadow,
+    shadow_failures,
+    shadow_file_paths,
+    shadow_gate,
+    shadow_not_run,
+    shadow_value,
+    tool_gate_shadows_enabled,
 )
 from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
@@ -449,6 +484,7 @@ from microcosm.data.us_critical_targets import (
 )
 from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    DiagnosticsWriteFailure,
     DiagnosticsWriteOutcome,
     DiagnosticsWriteSuccess,
 )
@@ -1317,21 +1353,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help=(
-            "Output root: the H5 and calibration weights go in <out>/artifacts "
-            "and the release directory in <out>/releases/<release>, named "
-            "after the release the build belongs to (microcosm#1570). A "
-            "finished build's directory is never reused, so each build needs "
-            "its own --out."
+            "Output root: the H5 and calibration weights go in <out>/artifacts, "
+            "the build's diagnostics and gate evidence in <out>/build and its "
+            "record in <out>/build_record.json. A build has no tier "
+            "(microcosm#1585 item 11): certification places it in "
+            "<out>/releases/<release>, the release of the tier it chooses "
+            "(microcosm#1570). A finished build's directory is never reused, "
+            "so each build needs its own --out."
         ),
     )
     parser.add_argument(
         "--release-id",
         help=(
             "The build ID (populace-us-2024-...), the name of the build's own "
-            "folder in its release: microcosm-us-2024-national, or "
-            "microcosm-us-2024-evidence with --evidence-release. Defaults to "
-            "an ID made from the base dataset's digest, the commit and the "
-            "time."
+            "folder in its release. It carries no tier: certified into "
+            "microcosm-us-2024-national, the build keeps it; certified as "
+            "evidence into microcosm-us-2024-evidence, it gains an "
+            "'-evidence-' segment (microcosm#1585 item 11). Defaults to an ID "
+            "made from the base dataset's digest, the commit and the time."
         ),
     )
     parser.add_argument(
@@ -1483,35 +1522,24 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--evidence-release",
         action="store_true",
         help=(
-            "Build an EVIDENCE-tier release (microcosm#506): on terminal-gate "
-            "failure, continue to write the H5 and full manifests with the "
-            "recorded failures carried verbatim in the release manifest's "
-            "known_failures block (each with an owner issue), instead of "
-            "refusing to export. It does not bypass the release checks: the build "
-            "ID carries an "
-            "'-evidence-' segment, the build belongs to the evidence release "
-            "microcosm-us-2024-evidence (never the US default), the release "
-            "manifest declares the evidence "
-            "schema marker the certified contract structurally rejects, and a "
-            "run whose terminal gates all pass is refused under this flag "
-            "(rerun without it). Preflight and mid-build source-stage gates, "
-            "artifact-integrity assertions (e.g. --audit-export-targets), and "
-            "the dirty-worktree refusal still abort: the evidence tier "
-            "relaxes terminal gate verdicts, never artifact auditability. "
-            "Incompatible with --exact-k (an exact-k build is a build of the "
-            "national release under the certified contract)."
+            "With --dry-run-gates-report only: preview an evidence-tier "
+            "certification (microcosm#506), grading a certain failure whose "
+            "every release line an owner pattern matches as AT-RISK (OWNED). "
+            "A build has no tier (microcosm#1585 item 11): it records every "
+            "release-gate failure and writes its H5, and certification "
+            "chooses the tier after it (tools/certify_us_national_build.py "
+            "--evidence-release), so a build refuses this flag."
         ),
     )
     parser.add_argument(
         "--evidence-failure-owners",
         type=Path,
         help=(
+            "With --dry-run-gates-report --evidence-release only: the per-run "
             "JSON file mapping failure-substring patterns to owner issue refs "
             '(e.g. {"Input coverage failed:": "PolicyEngine/microcosm#368"}) '
-            "for --evidence-release. Checked ahead of the standing "
-            "US_EVIDENCE_FAILURE_OWNERS register; a recorded failure matching "
-            "neither refuses the evidence export — every shipped failure "
-            "needs an owner."
+            "the evidence certification would take, checked ahead of the "
+            "standing register (the US evidence_failure_owners.json)."
         ),
     )
     parser.add_argument(
@@ -1603,8 +1631,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "SSI take-up bands for ages 18-64 and 65+ (microcosm#566/#567), "
             "so a delivery miss there ships in the scorecard. The other arms "
             "count a miss of more than 5%% as a release-gate failure, which "
-            "fails the build unless the miss has an owner and "
-            "--evidence-release exports it. As of 2026-11-15, every US "
+            "fails the build; only an evidence-tier certification, with an "
+            "owner for the miss, can ship it. As of 2026-11-15, every US "
             "national calibration that PolicyEngine had tagged in "
             "policyengine/populace-us since 2026-07-01 came from this arm, "
             "and docs/us-release-build-rule.md lists them. A selection source "
@@ -2103,6 +2131,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     if args.evidence_failure_owners is not None and not args.evidence_release:
         parser.error("--evidence-failure-owners requires --evidence-release.")
+    if args.evidence_release and args.dry_run_gates_report is None:
+        parser.error(
+            "--evidence-release previews an evidence-tier certification in a "
+            "dry run (--dry-run-gates-report). A build has no tier "
+            "(microcosm#1585 item 11): build without it, then choose the tier "
+            "at certification: tools/certify_us_national_build.py <out> "
+            "--evidence-release [--evidence-failure-owners FILE]."
+        )
     if args.allow_gate_failed_base_pool and args.base_h5 is None:
         parser.error("--allow-gate-failed-base-pool requires --base-h5.")
     acs_archive_options = (
@@ -2224,6 +2260,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         )
     except ValueError as error:
         parser.error(str(error))
+    for attribute, flag in _REFERENCE_OPTIONS:
+        path = getattr(args, attribute)
+        failed = None if path is None else _failed_build_holding(path)
+        if failed is not None:
+            parser.error(
+                f"{flag} {path} belongs to {failed}. A failed build is never "
+                "the reference a gate judges this build against."
+            )
     return args
 
 
@@ -2577,6 +2621,38 @@ def _write_reform_income_tax_cache(
     return digest, values_path
 
 
+def _finished_release_manifest(release_dir: Path) -> dict | None:
+    """``release_dir``'s release manifest, if a certification finished it.
+
+    Certification's last writes are the build-folder rewrite
+    (:func:`rewrite_release_dir`), which names the release and the build at
+    the top level of the release manifest and then of the build manifest.
+    Until both read and name the same build, a crash left the certification
+    part-written: it certifies nothing, and a rerun replaces both manifests
+    (review of #1681).
+    """
+
+    release_dir = Path(release_dir)
+    manifests = []
+    for name in ("release_manifest.json", "build_manifest.json"):
+        try:
+            manifest = json.loads((release_dir / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not (
+            isinstance(manifest, dict)
+            and manifest.get("release") == release_dir.name
+            and isinstance(manifest.get("build"), str)
+            and manifest["build"]
+        ):
+            return None
+        manifests.append(manifest)
+    release_manifest, build_manifest = manifests
+    if build_manifest["build"] != release_manifest["build"]:
+        return None
+    return release_manifest
+
+
 def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
     """Fail loud when --out points at a finished build's release directory.
 
@@ -2589,45 +2665,197 @@ def _refuse_certified_release_dir_reuse(release_dir: Path) -> None:
     or the directory removed deliberately.
     """
 
-    manifest_path = Path(release_dir) / "release_manifest.json"
-    if manifest_path.exists():
+    if _finished_release_manifest(release_dir) is not None:
         raise RuntimeError(
             f"Release directory {release_dir} already carries a certified "
-            "release (release_manifest.json present). Choose a new --out for "
+            "release (its release and build manifests name the build). Choose "
+            "a new --out for "
             "this build or deliberately remove the stale directory before "
             "rerunning."
         )
 
 
-#: Files the release manifest declares whenever they exist, written only by
-#: a run that does not skip their check, with the option that skips it.
-_SKIPPABLE_CHECK_FILES = (
-    ("reform_validation.json", "skip_reform_validation", "--skip-reform-validation"),
-    ("demographics.json", "skip_demographics", "--skip-demographics"),
+def _refuse_overwriting_a_build_awaiting_certification(release_root: Path) -> None:
+    """Fail loud when --out holds a finished build that awaits certification.
+
+    A build stops at its record (microcosm#1585 item 11, PR 4a), so its
+    --out carries no release manifest until certification writes one, and
+    :func:`_refuse_reusing_a_certified_build` would let a rerun overwrite it.
+    A build whose release gates failed is not certified at the certified
+    tier, so a rerun into its --out still replaces it, as it did before
+    builds wrote a record. Certifying it at the evidence tier is a choice
+    made before such a rerun, and a build certified at either tier refuses
+    one. A record that does not read cannot be certified either, so its
+    --out is a failed build's too, as :func:`_failed_build_holding` counts
+    it. A record of another schema is refused, and the refusal names the
+    code that can certify it.
+    """
+
+    path = Path(release_root) / US_BUILD_RECORD_FILENAME
+    if not path.is_file():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if _build_failed(payload):
+        return
+    awaiting = (
+        f"{release_root} holds a finished build awaiting certification "
+        f"({US_BUILD_RECORD_FILENAME})"
+    )
+    if (
+        isinstance(payload, dict)
+        and payload.get("schema_version") != US_BUILD_RECORD_SCHEMA_VERSION
+    ):
+        raise RuntimeError(
+            f"{awaiting} with build record schema "
+            f"{payload.get('schema_version')!r}, which this tool does not read. "
+            f"{_certify_with_its_own_code(payload)}, or choose a new --out for "
+            "this build."
+        )
+    raise RuntimeError(
+        f"{awaiting}. Certify it with {_certify_command(release_root)}, or "
+        "choose a new --out for this build."
+    )
+
+
+def _build_failed(payload: object) -> bool:
+    """Whether a build record's release-gate failures make its build a failed one.
+
+    A build has no tier (microcosm#1585 item 11), so a build that recorded
+    failures failed, whatever tier certifies it later. A schema 2 record's
+    build chose its tier, and an evidence-tier build's owned failures were
+    its certification's to ship, so they did not.
+    """
+
+    if not _recorded_release_gate_failures(payload):
+        return False
+    settings = payload.get("settings") if isinstance(payload, dict) else None
+    return not (isinstance(settings, dict) and settings.get("evidence_release") is True)
+
+
+def _build_certified_as_evidence(release_root: Path) -> bool:
+    """Whether the build in ``release_root`` is certified at the evidence tier.
+
+    An evidence-tier certification ships the build's failures as owned known
+    failures (microcosm#506), so the build is an evidence release, not a
+    failed build. Like the record's digest, this reads a file and stops a
+    mistake, not an edit, until certification signs (PR 4b).
+    """
+
+    manifest = _finished_release_manifest(
+        _certification_release_dir(release_root, evidence_release=True)
+    )
+    return (
+        manifest is not None
+        and manifest.get("tier") == "evidence"
+        and bool(manifest.get("known_failures"))
+    )
+
+
+def _recorded_release_gate_failures(payload: object) -> list[str]:
+    """The release-gate failures a build record carries.
+
+    A build whose release gates fail records them and is not certified at
+    the certified tier (microcosm#1585 item 11, PR 4a). A build has no tier:
+    only an evidence-tier certification, with an owner for each failure, can
+    ship them. A payload that is not a build record has none.
+    """
+
+    try:
+        failures = payload["terminal_gate_failures"]
+    except (KeyError, TypeError):
+        return []
+    if not isinstance(failures, list):
+        return []
+    return [str(line) for line in failures]
+
+
+#: The #568 weight evidence. Only a build whose release gates fail writes it,
+#: and a green build removes any it finds.
+US_FAILED_BUILD_WEIGHT_EVIDENCE = (
+    FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
+    FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
+    FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
+)
+
+#: The options whose file is a reference a gate judges this build against:
+#: the two input-mass references, and the incumbent diagnostics a critical
+#: target may improve on. A failed build's files are refused there, as the
+#: release-gate preflight refuses them as its export input-mass reference.
+#: As a starting point (--base-h5, --selection-source-h5,
+#: --warm-start-calibration-npz) they are allowed: they can cut a rerun's
+#: time while its data is fixed, and the build's own gates judge its result.
+_REFERENCE_OPTIONS = (
+    ("input_mass_reference_h5", "--input-mass-reference-h5"),
+    ("export_input_mass_reference_h5", "--export-input-mass-reference-h5"),
+    ("incumbent_diagnostics", "--incumbent-diagnostics"),
 )
 
 
-def _refuse_skipped_checks_left_files(release_dir: Path, args) -> None:
-    """Refuse a skipped check's file left in the release directory.
+def _failed_build_holding(path: Path) -> str | None:
+    """The build whose release gates failed that ``path`` belongs to, or None.
 
-    The directory is named after the build's release (microcosm#1570), so a
-    rerun into the same --out finds an earlier attempt's files, and the
-    release manifest declares these whenever they exist. A run that skips
-    the check never rewrites its file, so the earlier attempt's would be
-    published as this build's.
+    A build whose release gates fail still writes its H5, its calibration
+    weights and its record, so it can be evaluated (microcosm#1585 item 11,
+    PR 4a), and its files may start a later build. No gate judges against
+    it: a later build refuses its files as an input-mass reference or as the
+    incumbent diagnostics (:data:`_REFERENCE_OPTIONS`), the release-gate
+    preflight refuses them as its export input-mass reference, and the
+    post-export probe refuses its directories as the reference. A path
+    belongs to the build whose record sits in the nearest directory above
+    it. That build failed if its record carries release-gate failures
+    (:func:`_build_failed`), or if its own directory holds the #568 weight
+    evidence, unless an evidence-tier certification has made it an evidence
+    release. A record that does not read cannot be certified, so its build
+    counts as failed, as the --out refusal counts it
+    (:func:`_refuse_overwriting_a_build_awaiting_certification`). Like the
+    record's digest, this stops a mistake, not an edit, until certification
+    signs (PR 4b).
     """
 
-    left = [
-        f"{name} ({option})"
-        for name, flag, option in _SKIPPABLE_CHECK_FILES
-        if getattr(args, flag, False) and (Path(release_dir) / name).exists()
-    ]
-    if left:
-        raise RuntimeError(
-            f"Release directory {release_dir} holds {', '.join(left)} from an "
-            "earlier attempt, which this run skips and so would not rewrite. "
-            "Remove those files or choose a new --out before rerunning."
-        )
+    target = Path(path).resolve()
+    for release_root in (target, *target.parents):
+        record_path = release_root / US_BUILD_RECORD_FILENAME
+        if not record_path.is_file():
+            continue
+        try:
+            payload = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return f"the build whose record {record_path} does not read"
+        if not isinstance(payload, dict) or payload.get("kind") != US_BUILD_RECORD_KIND:
+            continue
+        build = f"build {payload.get('build')} ({record_path})"
+        if _build_certified_as_evidence(release_root):
+            return None
+        if _build_failed(payload):
+            failures = _recorded_release_gate_failures(payload)
+            return (
+                f"{build}, which failed {len(failures)} release gate(s) when it "
+                "was built"
+            )
+        try:
+            layout = payload["layout"]
+            # Schema 2 named the build's directory after its release.
+            build_dir = release_root / (
+                layout.get("build_dir") or layout["release_dir"]
+            )
+        except (KeyError, TypeError):
+            return None
+        evidence = [
+            name
+            for name in US_FAILED_BUILD_WEIGHT_EVIDENCE
+            if (build_dir / name).exists()
+        ]
+        if evidence:
+            return (
+                f"{build}, whose directory holds the weight evidence a build "
+                f"writes when its release gates fail ({', '.join(evidence)}; "
+                "microcosm#568)"
+            )
+        return None
+    return None
 
 
 def _write_final_household_weight_evidence(
@@ -3375,12 +3603,93 @@ def _local_workspace_package_version(package: str) -> str:
     return version if isinstance(version, str) and version else "not-installed"
 
 
+def _repository_root() -> Path:
+    """The checkout this tool's code is in, where its git checks run.
+
+    A build and its certification check the commit and the work tree of the
+    code that runs, not of the current directory, so a tool run from
+    another checkout's directory cannot pass as that checkout's code (review
+    of #1681). The workspace packages must load from it too
+    (:func:`_packages_outside_the_checkout`).
+    """
+
+    return Path(__file__).resolve().parents[1]
+
+
+#: The workspace packages a build and its certification run. Every one
+#: reports the same version wherever it is installed from, so a version check
+#: cannot tell checkouts apart: each must load from this tool's checkout.
+_WORKSPACE_PACKAGES = (
+    "microcosm.build",
+    "microcosm.calibrate",
+    "microcosm.data",
+    "microcosm.diagnostics",
+    "microcosm.fit",
+    "microcosm.frame",
+    "microcosm.graph",
+)
+
+
+def _packages_outside_the_checkout() -> list[str]:
+    """The workspace packages that load from outside this tool's checkout."""
+
+    root = _repository_root().resolve()
+    outside = []
+    for name in _WORKSPACE_PACKAGES:
+        spec = importlib.util.find_spec(name)
+        origin = None if spec is None else spec.origin
+        if origin is None or root not in Path(origin).resolve().parents:
+            outside.append(f"{name} ({origin})")
+    return outside
+
+
+def _refuse_packages_from_another_checkout(action: str) -> None:
+    """Refuse to ``action`` with workspace packages from another tree."""
+
+    outside = _packages_outside_the_checkout()
+    if outside:
+        raise SystemExit(
+            f"Refusing to {action} with packages from outside this tool's "
+            f"checkout ({_repository_root()}): " + "; ".join(outside) + ". Run "
+            "it from a checkout whose own packages are installed (`uv sync "
+            "--all-packages` there), so the commit it records is the code that "
+            "ran."
+        )
+
+
 def _git_output(*args: str) -> str:
-    return subprocess.check_output(("git", *args), text=True).strip()
+    return subprocess.check_output(
+        ("git", "-C", str(_repository_root()), *args), text=True
+    ).strip()
 
 
 def _git_dirty() -> bool:
     return bool(_git_output("status", "--porcelain"))
+
+
+def _git_dirty_paths(*, excluding: Path) -> list[str]:
+    """The work tree's ``git status --porcelain`` lines, leaving out ``excluding``.
+
+    Certification checks the code it runs, not the build it reads: a build
+    whose ``--out`` lies inside the work tree, unignored, would otherwise make
+    its own certification refuse it, since the build's files are untracked
+    there. The build directory is left out only when it lies strictly inside
+    the work tree; its files are the record's to check, by digest.
+    """
+
+    top = Path(_git_output("rev-parse", "--show-toplevel")).resolve()
+    pathspec = ["."]
+    try:
+        inside = Path(excluding).resolve().relative_to(top)
+    except ValueError:
+        inside = None
+    if inside is not None and inside != Path("."):
+        pathspec.append(f":(exclude,literal){inside.as_posix()}")
+    # Unstripped, so each line keeps its two status columns.
+    status = subprocess.check_output(
+        ("git", "-C", str(top), "status", "--porcelain", "--", *pathspec), text=True
+    )
+    return [line for line in status.splitlines() if line]
 
 
 def _download_base_h5() -> Path:
@@ -7946,17 +8255,36 @@ def _input_mass_reference_gate(
     before calibration burns hours on a base that cannot score those reforms.
     """
     if reference_h5 is None:
+        shadow_not_run(
+            "us_national_input_mass_reference",
+            "no --input-mass-reference-h5 was given",
+        )
         return None
     input_variables = _engine_input_variables()
     reference_frame = load_us_frame(reference_h5)
-    return us_input_mass_parity_gate(
-        us_input_mass_totals(base_frame, columns=input_variables),
-        us_input_mass_totals(reference_frame, columns=input_variables),
-        carriers=us_line_32_carriers(base_frame, reference_frame),
-        candidate_name="base_frame",
-        reference_name=reference_h5.name,
-        relative_tolerance=relative_tolerance,
-        minimum_reference_total=minimum_reference_total,
+    candidate_totals = us_input_mass_totals(base_frame, columns=input_variables)
+    reference_totals = us_input_mass_totals(reference_frame, columns=input_variables)
+    carriers = us_line_32_carriers(base_frame, reference_frame)
+    return shadow_gate(
+        "us_national_input_mass_reference",
+        lambda: us_input_mass_parity_gate(
+            candidate_totals,
+            reference_totals,
+            carriers=carriers,
+            candidate_name="base_frame",
+            reference_name=reference_h5.name,
+            relative_tolerance=relative_tolerance,
+            minimum_reference_total=minimum_reference_total,
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "candidate_input_mass_totals": candidate_totals,
+                "reference_input_mass_totals": reference_totals,
+                "input_mass_carriers": carriers,
+                "input_mass_candidate_name": "base_frame",
+                "input_mass_reference_name": reference_h5.name,
+            }
+        ),
     )
 
 
@@ -8555,7 +8883,7 @@ def _unmeasured_reason(error: Exception) -> str:
 #: not match the checked surface. Deliberately distinct from the standing
 #: evidence owner "QRF tail concentration failed:" (US_EVIDENCE_FAILURE_OWNERS):
 #: a register mismatch is an operator input error, not the #481/#487 tail
-#: defect, and --evidence-release refuses it outright.
+#: defect, and an evidence-tier certification refuses it outright.
 US_QRF_TAIL_REGISTER_MISMATCH_PREFIX = "QRF tail-concentration register mismatch:"
 
 
@@ -8593,20 +8921,28 @@ def _qrf_tail_register_failures(mismatch: Mapping[str, Sequence[str]]) -> list[s
 
 
 def _qrf_tail_register_evidence_refusal(
-    register_failures: Sequence[str],
+    failures: Sequence[str],
 ) -> RuntimeError | None:
-    """--evidence-release refusal for a register mismatch, owned or not.
+    """An evidence-tier certification's refusal of a register mismatch.
 
     A register mismatch is corrected in the register, never owned: the
     pre-batch raise this replaced refused every mode, so no per-run
     adjudication may carry a stale or unused entry into an evidence export.
+    The build records the mismatch with its other failures
+    (:data:`US_QRF_TAIL_REGISTER_MISMATCH_PREFIX`), and certification refuses
+    it whatever an owner pattern says (microcosm#1585 item 11).
     """
-    if not register_failures:
+    mismatches = [
+        line
+        for line in failures
+        if line.startswith(US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    ]
+    if not mismatches:
         return None
     return RuntimeError(
         "Evidence release refused: a QRF tail-concentration register "
         "mismatch cannot be owned; correct the register from "
-        "qrf_tail_concentration.json and rerun. " + "; ".join(register_failures)
+        "qrf_tail_concentration.json and rebuild. " + "; ".join(mismatches)
     )
 
 
@@ -8653,13 +8989,23 @@ def _record_qrf_tail_concentration_gate(
     and becomes one unowned failure line under earlier failures.
 
     Returns the register-mismatch failure lines (empty when the register
-    matches) so --evidence-release can refuse them.
+    matches); an evidence-tier certification refuses them by their prefix.
     """
+    register_loaded = False
     try:
         register = _load_qrf_tail_concentration_exclusions(exclusions_path)
-        gate, surface = _qrf_tail_concentration_gate(
-            export_frame,
-            reviewed_exclusions=register,
+        register_loaded = True
+        gate, surface = shadow_value(
+            "us_national_qrf_tail_concentration",
+            lambda: _qrf_tail_concentration_gate(
+                export_frame,
+                reviewed_exclusions=register,
+            ),
+            lambda: EvidenceContext(
+                frame=export_frame,
+                artifacts={"qrf_tail_reviewed_exclusions": register},
+            ),
+            verdict=lambda value: LegacyVerdict.from_result(value[0]),
         )
         mismatch = _qrf_tail_register_mismatch(register, gate)
         surface = {
@@ -8677,11 +9023,20 @@ def _record_qrf_tail_concentration_gate(
         # Same degraded-mode contract as the coverage gate and as before this
         # refactor: with earlier failures on record, an evaluation crash
         # becomes one more line under the standing "QRF tail concentration
-        # failed:" prefix (so --evidence-release ownership is unchanged)
-        # instead of masking them. Only a register mismatch is refused
-        # outright; see _qrf_tail_register_evidence_refusal.
+        # failed:" prefix (so evidence-tier ownership is unchanged) instead
+        # of masking them. Only a register mismatch is refused outright; see
+        # _qrf_tail_register_evidence_refusal.
         if not terminal_gate_failures:
             raise
+        if not register_loaded:
+            # The gate never ran, so the gate battery's shadow (microcosm#1585
+            # item 11) records that, or the finished build would call the
+            # entry unwired.
+            shadow_not_run(
+                "us_national_qrf_tail_concentration",
+                "its reviewed-exclusions register did not load: "
+                f"{type(exc).__name__}: {exc}",
+            )
         terminal_gate_failures.append(
             "QRF tail concentration failed: evaluation error under earlier "
             f"gate failures: {type(exc).__name__}: {exc}"
@@ -9392,8 +9747,18 @@ def _enforce_ssi_take_up_delivery(
     written.
     """
 
-    delivery_gate = us_ssi_take_up_delivery_gate(
-        diagnostics, targets=targets, enforcement_fences=enforcement_fences
+    delivery_gate = shadow_gate(
+        "us_national_ssi_take_up_delivery",
+        lambda: us_ssi_take_up_delivery_gate(
+            diagnostics, targets=targets, enforcement_fences=enforcement_fences
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "ssi_take_up_diagnostics": diagnostics,
+                "ssi_band_targets": targets,
+                "ssi_enforcement_fences": enforcement_fences,
+            }
+        ),
     )
     if delivery_gate.passed:
         return [], delivery_gate
@@ -10646,8 +11011,9 @@ def _gate_evidence_status(
 
     A missing verdict alone cannot tell a gate the operator skipped by flag
     (``skipped``: only --skip-reform-coverage-smoke can) from one whose
-    evaluation crashed under earlier failures on an evidence-tier run and so
-    wrote nothing (``not_evaluated``), or from a release built before gate
+    evaluation crashed under earlier failures, on a build certified at the
+    evidence tier, and so wrote nothing (``not_evaluated``), or from a
+    release built before gate
     evidence was bound at all. This block names which, in both manifests.
     """
     skipped = set(skipped_gates)
@@ -11068,6 +11434,11 @@ def _build_manifests(
     diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
     scf_wealth_signal: Mapping[str, object] | None = None,
     scf_education_debt: bool = False,
+    release_gate_failures: Sequence[str] | None = None,
+    git_commit: str | None = None,
+    built_at: str | None = None,
+    runtime_versions: Mapping[str, str] | None = None,
+    certification: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -11148,29 +11519,42 @@ def _build_manifests(
             coverage_path, coverage_sha
         ),
     }
-    gate_failures = _release_gate_failures(
-        result,
-        dropped,
-        target_profile_gate,
-        health_input_gate,
-        base_population_gate,
-        incumbent_diagnostics,
-        immigration_gate,
-        input_mass_reference_gate,
-        degenerate_input_gate,
-        ecps_parity_gate=ecps_parity_gate,
-        hours_worked_gate=hours_worked_gate,
-        snap_take_up_gate=snap_take_up_gate,
-        eligibility_inputs_gate=eligibility_inputs_gate,
-        pregnancy_gate=pregnancy_gate,
-        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
-        snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
-        target_registry=registry,
+    # A build record carries the summary its build computed: the
+    # calibration result and the registry it reads stay in the build's
+    # process (microcosm#1585 item 11, PR 4a).
+    gate_failures = (
+        list(release_gate_failures)
+        if release_gate_failures is not None
+        else _release_gate_failures(
+            result,
+            dropped,
+            target_profile_gate,
+            health_input_gate,
+            base_population_gate,
+            incumbent_diagnostics,
+            immigration_gate,
+            input_mass_reference_gate,
+            degenerate_input_gate,
+            ecps_parity_gate=ecps_parity_gate,
+            hours_worked_gate=hours_worked_gate,
+            snap_take_up_gate=snap_take_up_gate,
+            eligibility_inputs_gate=eligibility_inputs_gate,
+            pregnancy_gate=pregnancy_gate,
+            reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+            snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+            target_registry=registry,
+        )
     )
 
-    commit = _git_output("rev-parse", "HEAD")
-    built_at = datetime.now(UTC).isoformat()
-    runtime = _runtime_versions()
+    # A certified build's provenance is its build's, from its record: the
+    # commit, the time it was made and the packages that made it, not the
+    # certifying process's (microcosm#1585 item 11, PR 4a).
+    commit = git_commit if git_commit is not None else _git_output("rev-parse", "HEAD")
+    if built_at is None:
+        built_at = datetime.now(UTC).isoformat()
+    runtime = (
+        dict(runtime_versions) if runtime_versions is not None else _runtime_versions()
+    )
     timing_payload = dict(timing or {})
     warm_start_payload = (
         dict(warm_start_calibration)
@@ -11195,6 +11579,10 @@ def _build_manifests(
             "git_commit": commit,
             "git_dirty": False,
         },
+        # The certification beside the build's code (microcosm#1585 item 11):
+        # the commit that certified it, which may follow the build's, and the
+        # tier it chose. Additive; the release contract reads ``code``.
+        **({"certification": dict(certification)} if certification is not None else {}),
         "runtime": runtime,
         "timing": timing_payload,
         "ledger_artifact": dict(ledger_artifact) if ledger_artifact else None,
@@ -11444,6 +11832,11 @@ def _build_manifests(
         "build": {
             "build_id": release_id,
             "built_at": built_at,
+            **(
+                {"certification": dict(certification)}
+                if certification is not None
+                else {}
+            ),
             "built_with_core_package": {
                 "name": "policyengine-core",
                 "version": runtime["policyengine-core"],
@@ -11793,29 +12186,132 @@ def _fiscal_target_source_provenance(
     }
 
 
-#: Standing failure-pattern -> owner register for --evidence-release
-#: (microcosm#506). Only owner-adjudicated families belong here: the two dense
-#: blockers named in the #506 brief — the SOI Table 1.4 dollar blanket (the
-#: −30.2% capital-gain-distributions row, PUF donor uprating, #487) and the
-#: dense QRF tail-concentration set (bootstrap seed-lottery tail draws, #481,
-#: with the #487 uprating interaction). Any other recorded failure needs a
-#: per-run adjudication via --evidence-failure-owners; an unowned failure
-#: refuses the evidence export.
-US_EVIDENCE_FAILURE_OWNERS: tuple[tuple[str, str], ...] = (
-    (
-        "SOI Table 1.4 national dollar fit failed:",
-        "PolicyEngine/microcosm#487",
-    ),
-    (
-        "QRF tail concentration failed:",
-        "PolicyEngine/microcosm#481, PolicyEngine/microcosm#487",
-    ),
-)
-
 # Kept in lockstep with microcosm.data.contract._ISSUE_REF_RE; the evidence
 # publish contract re-validates every owner ref, so drift here fails at
 # publish rather than silently.
 _EVIDENCE_ISSUE_REF_RE = re.compile(r"#\d+|github\.com/\S+/(?:issues|pull)/\d+")
+
+#: The standing failure-pattern -> owner register of an evidence-tier
+#: certification (microcosm#506), a packaged US runtime data file rather than
+#: this tool's source, so that a sign-off changes that file alone and a build
+#: can be certified at the commit that makes it (microcosm#1585 item 11, as a
+#: UK cut is certified at its sign-off's head). It is not a country resource:
+#: no part of the US spec reads it, so a sign-off moves no spec digest. Only owner-adjudicated families
+#: belong there: the two dense blockers named in the #506 brief, the SOI
+#: Table 1.4 dollar blanket (#487) and the dense QRF tail-concentration set
+#: (#481, with the #487 uprating interaction). Any other recorded failure
+#: needs a per-run adjudication via --evidence-failure-owners; an unowned
+#: failure refuses the evidence certification.
+US_EVIDENCE_FAILURE_OWNERS_RESOURCE = "evidence_failure_owners.json"
+US_EVIDENCE_FAILURE_OWNERS_KIND = "us_evidence_failure_owners"
+#: The register's path in the repository, which a later certifying commit
+#: may change (:func:`_certification_may_change`).
+US_EVIDENCE_FAILURE_OWNERS_REGISTER = (
+    "packages/microcosm-build/src/microcosm/build/us_runtime/data/"
+    + US_EVIDENCE_FAILURE_OWNERS_RESOURCE
+)
+
+
+def _standing_evidence_failure_owners_file():
+    """The packaged standing owners register, as this checkout holds it."""
+
+    return package_files("microcosm.build.us_runtime.data").joinpath(
+        US_EVIDENCE_FAILURE_OWNERS_RESOURCE
+    )
+
+
+def _evidence_owner_pairs(
+    entries: Iterable[tuple[object, object]], *, source: str
+) -> tuple[tuple[str, str], ...]:
+    """Validated ``(pattern, owner)`` pairs: a pattern, and an issue owning it."""
+
+    pairs: list[tuple[str, str]] = []
+    for pattern, owner in entries:
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise ValueError(f"{source} has an empty pattern key.")
+        if not isinstance(owner, str) or not _EVIDENCE_ISSUE_REF_RE.search(owner):
+            raise ValueError(
+                f"{source} owner for pattern {pattern!r} must carry an issue "
+                f"reference (e.g. 'PolicyEngine/microcosm#487'), got {owner!r}."
+            )
+        pairs.append((pattern, owner))
+    return tuple(pairs)
+
+
+def _read_standing_evidence_failure_owners(text: str) -> tuple[tuple[str, str], ...]:
+    """The standing register's ``(pattern, owner)`` pairs, in its order."""
+
+    source = f"the US standing {US_EVIDENCE_FAILURE_OWNERS_RESOURCE} register"
+    payload = json.loads(text)
+    if (
+        not isinstance(payload, dict)
+        or payload.get("kind") != US_EVIDENCE_FAILURE_OWNERS_KIND
+        or payload.get("schema_version") != 1
+        or not isinstance(payload.get("owners"), list)
+    ):
+        raise ValueError(
+            f"{source} must be a schema 1 {US_EVIDENCE_FAILURE_OWNERS_KIND!r} "
+            "object with an 'owners' list."
+        )
+    entries = []
+    for entry in payload["owners"]:
+        if not isinstance(entry, dict) or not str(entry.get("reason") or "").strip():
+            raise ValueError(
+                f"{source}: each owner entry is an object with a pattern, an "
+                f"owner and the reason it is owned; got {entry!r}."
+            )
+        pattern = entry.get("pattern")
+        # A register-only commit can certify (microcosm#1585 item 11), so a
+        # standing pattern must name one gate's failure lines, as its prefix
+        # "<gate words> failed:" does; a short pattern would own every
+        # ownable failure (review of #1681).
+        if isinstance(pattern, str) and pattern.strip():
+            gate_words = pattern.removesuffix(" failed:").split()
+            names_a_gate = pattern.endswith(" failed:") and len(gate_words) >= 2
+        else:
+            names_a_gate = True  # _evidence_owner_pairs refuses it as empty
+        if not names_a_gate:
+            raise ValueError(
+                f"{source}: standing pattern {pattern!r} must be a gate's "
+                "failure prefix, at least two words then ' failed:', so it owns "
+                "that gate's failures alone."
+            )
+        entries.append((pattern, entry.get("owner")))
+    return _evidence_owner_pairs(entries, source=source)
+
+
+_STANDING_EVIDENCE_FAILURE_OWNERS_BYTES = (
+    _standing_evidence_failure_owners_file().read_bytes()
+)
+#: The standing register, as this checkout packages it, read once, and the
+#: digest of the bytes it was read from, which an evidence certification
+#: records (review of #1681).
+US_EVIDENCE_FAILURE_OWNERS: tuple[tuple[str, str], ...] = (
+    _read_standing_evidence_failure_owners(
+        _STANDING_EVIDENCE_FAILURE_OWNERS_BYTES.decode("utf-8")
+    )
+)
+US_EVIDENCE_FAILURE_OWNERS_SHA256 = hashlib.sha256(
+    _STANDING_EVIDENCE_FAILURE_OWNERS_BYTES
+).hexdigest()
+
+
+def _read_evidence_failure_owners_file(
+    path: Path,
+) -> tuple[tuple[tuple[str, str], ...], str]:
+    """A per-run owners file's pairs, and the digest of the bytes they came
+    from, so a certification records the file that decided ownership."""
+    data = Path(path).read_bytes()
+    payload = json.loads(data)
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"--evidence-failure-owners {path} must be a JSON object of "
+            "failure-substring pattern -> owner issue ref."
+        )
+    pairs = _evidence_owner_pairs(
+        payload.items(), source=f"--evidence-failure-owners {path}"
+    )
+    return pairs, hashlib.sha256(data).hexdigest()
 
 
 def _load_evidence_failure_owner_patterns(
@@ -11823,26 +12319,9 @@ def _load_evidence_failure_owner_patterns(
 ) -> tuple[tuple[str, str], ...]:
     """Failure-pattern -> owner pairs: per-run adjudications first, then the
     standing register, so a run-specific entry can sharpen a standing owner."""
-    per_run: list[tuple[str, str]] = []
+    per_run: tuple[tuple[str, str], ...] = ()
     if path is not None:
-        payload = json.loads(path.read_text())
-        if not isinstance(payload, dict):
-            raise ValueError(
-                f"--evidence-failure-owners {path} must be a JSON object of "
-                "failure-substring pattern -> owner issue ref."
-            )
-        for pattern, owner in payload.items():
-            if not isinstance(pattern, str) or not pattern.strip():
-                raise ValueError(
-                    f"--evidence-failure-owners {path} has an empty pattern key."
-                )
-            if not isinstance(owner, str) or not _EVIDENCE_ISSUE_REF_RE.search(owner):
-                raise ValueError(
-                    f"--evidence-failure-owners {path} owner for pattern "
-                    f"{pattern!r} must carry an issue reference (e.g. "
-                    f"'PolicyEngine/microcosm#487'), got {owner!r}."
-                )
-            per_run.append((pattern, owner))
+        per_run, _ = _read_evidence_failure_owners_file(path)
     return (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
 
 
@@ -11918,19 +12397,14 @@ def _default_release_id(
 ) -> str:
     """The auto-generated build ID for a run without --release-id.
 
-    Exact-k builds carry the k segment; evidence-tier builds carry the
-    ``evidence`` segment (microcosm#506) so the tier is visible in every
-    build folder's path; certified national builds keep the historical shape.
-    The release each one belongs to is :func:`_release_for_build`.
+    Exact-k builds carry the k segment; every other build keeps the
+    historical shape. A build has no tier (microcosm#1585 item 11): an
+    evidence-tier certification mints the ID it publishes the build under
+    from this one (:func:`_evidence_build_id`).
     """
     if args.exact_k is not None:
         return (
             f"populace-us-2024-k{args.exact_k}-{digest}-{commit}-"
-            f"{build_timestamp:%Y%m%dT%H%M%SZ}"
-        )
-    if args.evidence_release:
-        return (
-            f"populace-us-2024-evidence-{digest}-{commit}-"
             f"{build_timestamp:%Y%m%dT%H%M%SZ}"
         )
     return f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
@@ -11955,15 +12429,54 @@ def _telemetry_run_id(args: argparse.Namespace, *, timestamp: datetime) -> str:
     )
 
 
-def _release_for_build(args: argparse.Namespace) -> str:
-    """The release a run's build belongs to (microcosm#1570).
+#: The releases certification places a national build in (microcosm#1570):
+#: the national release, the repository's default, at the certified tier, and
+#: the evidence release, never the default, at the evidence tier
+#: (microcosm#506). A build belongs to neither until it is certified
+#: (microcosm#1585 item 11).
+US_CERTIFICATION_RELEASES = (US_NATIONAL_RELEASE_ID, US_EVIDENCE_RELEASE_ID)
+#: The build's own directory under ``--out``: its calibration diagnostics,
+#: its SSI take-up measurement, the gate evidence it wrote and, for a build
+#: whose release gates fail, its #568 weight evidence. A build has no tier, so
+#: it writes no release directory: certification copies these files into
+#: ``<out>/releases/<release>/`` for the tier it chooses.
+US_BUILD_FILES_DIRECTORY = "build"
 
-    Certified and exact-k builds are builds of the national release, the
-    repository's default; evidence-tier builds are builds of the evidence
-    release, which is never the default. The release directory is named
-    after it.
+
+def _certification_release_dir(release_root: Path, *, evidence_release: bool) -> Path:
+    """Where certification places a build: its tier's release directory."""
+
+    release = US_EVIDENCE_RELEASE_ID if evidence_release else US_NATIONAL_RELEASE_ID
+    return Path(release_root) / "releases" / release
+
+
+def _refuse_reusing_a_certified_build(release_root: Path) -> None:
+    """Refuse an ``--out`` whose build is certified, at either tier.
+
+    A build is certified once, into the release of the tier certification
+    chose (:data:`US_CERTIFICATION_RELEASES`), and a certified build is never
+    changed: a build into its ``--out``, or a second certification, is
+    refused while either release directory carries a release manifest.
     """
-    return US_EVIDENCE_RELEASE_ID if args.evidence_release else US_NATIONAL_RELEASE_ID
+
+    for release in US_CERTIFICATION_RELEASES:
+        _refuse_certified_release_dir_reuse(Path(release_root) / "releases" / release)
+
+
+def _evidence_build_id(build: str) -> str:
+    """The ID an evidence-tier certification publishes ``build`` under.
+
+    A build ID carries no tier (microcosm#1585 item 11), and the evidence
+    contract requires the ``-evidence-`` segment in the ID of every evidence
+    build, so the tier is visible in each build folder's path (microcosm#506).
+    The segment follows the ``populace-us-2024-`` prefix, the shape evidence
+    builds always had, or else ``populace-us-``.
+    """
+
+    for prefix in (f"populace-us-{PERIOD}-", "populace-us-"):
+        if build.startswith(prefix):
+            return f"{prefix}evidence-{build[len(prefix) :]}"
+    raise ValueError(f"{build!r} is not a US build ID (populace-us-...).")
 
 
 def _promotion_note(release: str) -> str:
@@ -12009,37 +12522,32 @@ def _finish_build_folder_release(
     )
 
 
-def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
+def _assert_us_release_id(release_id: str) -> None:
     """Check the build ID ``--release-id`` gives, or the default one.
 
-    The ID names the build, not its release, and keeps the rules it had
-    before microcosm#1570: the US prefix, and the ``-evidence-`` segment
-    exactly for evidence-tier builds.
+    The ID names the build, not its release, and keeps the US prefix it had
+    before microcosm#1570. A build has no tier (microcosm#1585 item 11), so
+    its ID never carries the ``-evidence-`` segment: an evidence-tier
+    certification adds it (:func:`_evidence_build_id`).
     """
     if release_id in US_RELEASES:
         raise ValueError(
             f"{release_id!r} is a release, not a build: --release-id gives the "
-            "build ID (populace-us-2024-...), and the build is published into "
-            f"its release, {US_NATIONAL_RELEASE_ID!r} or, with "
-            f"--evidence-release, {US_EVIDENCE_RELEASE_ID!r}."
+            "build ID (populace-us-2024-...), and certification publishes the "
+            f"build into its tier's release, {US_NATIONAL_RELEASE_ID!r} or "
+            f"{US_EVIDENCE_RELEASE_ID!r}."
         )
     if not release_id.startswith("populace-us-"):
         raise ValueError(
             "US fiscal refresh release ids must start with 'populace-us-' so "
             "the US release contract requires source coverage diagnostics."
         )
-    if evidence_release and EVIDENCE_RELEASE_ID_SEGMENT not in release_id:
-        raise ValueError(
-            "--evidence-release ids must carry the "
-            f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment (e.g. "
-            "populace-us-2024-evidence-<sha>-<date>) so the tier is visible "
-            "in every build folder's path."
-        )
-    if not evidence_release and EVIDENCE_RELEASE_ID_SEGMENT in release_id:
+    if EVIDENCE_RELEASE_ID_SEGMENT in release_id:
         raise ValueError(
             f"release ids containing {EVIDENCE_RELEASE_ID_SEGMENT!r} are "
-            "reserved for --evidence-release builds; a certified build must "
-            "not squat the evidence namespace."
+            "reserved for the builds an evidence-tier certification publishes; "
+            "a build has no tier, and certification mints its evidence ID "
+            "(microcosm#1585 item 11)."
         )
 
 
@@ -12544,9 +13052,11 @@ class _ReleaseDryRun:
         if self.args.evidence_release:
             print(
                 "\n--evidence-release: a certain failure whose every release line "
-                "an owner pattern matches is reported AT-RISK (OWNED), since the "
-                "evidence tier ships it as a known failure; any unowned line "
-                "refuses the export."
+                "an owner pattern matches is reported AT-RISK (OWNED), since an "
+                "evidence-tier certification of the build would ship it as a "
+                "known failure; any unowned line would refuse that "
+                "certification. The build itself has no tier: it records every "
+                "failure and writes its H5."
             )
         print(f"\nWrote the dry-run report to {self.report_path}")
         return report.exit_code
@@ -12662,13 +13172,15 @@ def _release_dry_run_checks(
     export is this frame with calibrated household weights; on the L0 path it
     is a household selection of it. See
     :mod:`microcosm.build.us_runtime.release_gate_dry_run` for what is certain.
-    Under ``--evidence-release`` each certain failure is graded against the
-    owner patterns with the terminal batch's own rule (:func:`_evidence_owner`).
+    Under ``--evidence-release``, a preview of an evidence-tier certification
+    (a build has no tier, microcosm#1585 item 11), each certain failure is
+    graded against the owner patterns with certification's own rule
+    (:func:`_evidence_owner`).
     """
 
     checks: list[CheckResult] = []
-    # The exact lines the release would append for each check's certain
-    # failures, for the evidence tier's owner check.
+    # The exact lines the build would record for each check's certain
+    # failures, for the evidence certification's owner check.
     release_lines: dict[str, list[str]] = {}
 
     def owner_of(line: str) -> str | None:
@@ -12945,9 +13457,9 @@ def _release_dry_run_checks(
     run("spm_composition", spm_composition)
     run("zero_support_preview", zero_support)
     if args.evidence_release:
-        # With no earlier terminal failure on record, the release raises at the
-        # first failing one of these gates before the solve, outside the
-        # evidence batch, so no owner converts that refusal.
+        # With no earlier terminal failure on record, the build raises at the
+        # first failing one of these gates before the solve, so there is no
+        # build for a certification to own that refusal in.
         refused_before_solve: set[str] = set()
         if not early_terminal_gate_failures:
             if (
@@ -12966,8 +13478,8 @@ def _release_dry_run_checks(
                 details={
                     **dict(check.details),
                     "evidence_ownership": (
-                        "not ownable: the release refuses it before the solve, "
-                        "outside the evidence batch"
+                        "not ownable: the build refuses it before the solve, "
+                        "so no build is left to certify"
                     ),
                 },
             )
@@ -13012,13 +13524,15 @@ def _build_progress(
     release_id: str,
     run_id: str | None = None,
     emitter: LocalTelemetryEmitter,
+    epoch_every: int | None = None,
 ) -> _BuildProgress:
     global _ACTIVE_PROGRESS
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
     _ACTIVE_PROGRESS = None
     run_id = run_id or args.staging_run_id or release_id
-    epoch_every = _calibration_epoch_every(args)
+    if epoch_every is None:
+        epoch_every = _calibration_epoch_every(args)
     if args.no_staging:
         _ACTIVE_PROGRESS = _BuildProgress(
             run_id=run_id,
@@ -13152,6 +13666,1380 @@ def _is_release_refusal(error: BaseException) -> bool:
     return isinstance(error, Exception)
 
 
+#: The exit status of a build that failed release gates once its H5 and its
+#: record are written (microcosm#1585 item 11). A build has no tier, so such
+#: a build may still be certified at the evidence tier; a driver tells it
+#: from a refusal or a crash, which exit 1, and keeps it rather than
+#: building again.
+US_BUILD_FAILED_RELEASE_GATES_EXIT = 3
+
+
+class _BuildFailedReleaseGatesError(RuntimeError):
+    """A finished build's refusal: its record carries release-gate failures.
+
+    Raised once the H5, the calibration weights and the record are written;
+    run as a script, the build then exits
+    :data:`US_BUILD_FAILED_RELEASE_GATES_EXIT`.
+    """
+
+
+#: The build record a build leaves beside ``artifacts/`` and ``build/``
+#: (microcosm#1585 item 11, PR 4a). The build ends once its H5, calibration
+#: weights, diagnostics and gate evidence are written; certification is a
+#: separate step (``tools/certify_us_national_build.py``) that runs the
+#: release's post-export checks from this record, places the build in the
+#: release of the tier it chooses and writes the manifests the publisher
+#: requires.
+US_BUILD_RECORD_FILENAME = "build_record.json"
+US_BUILD_RECORD_KIND = "microcosm_us_national_build_record"
+#: Schema 2 added the build's provenance (``built_at``, ``runtime``), its
+#: staging settings and the record's own digest (``record_sha256``). Schema 3
+#: dropped the tier: a build has no release, no ``evidence_release`` setting
+#: and no owner patterns, and its own directory is ``layout.build_dir``; it
+#: lists the failures of the written H5's own checks apart, as
+#: ``artifact_integrity_failures`` (microcosm#1585 item 11). A record of
+#: another schema is certified with the code that built it.
+US_BUILD_RECORD_SCHEMA_VERSION = 3
+#: The options of the build that its post-export checks read. Certification
+#: takes them from the record, never from its own command line, so a build is
+#: certified exactly as it was configured. The tier is certification's own
+#: option.
+US_BUILD_RECORD_SETTINGS = (
+    "allow_reform_coverage_smoke_failures",
+    "maximum_microsim_batch_size",
+    "scf_education_debt",
+    "skip_demographics",
+    "skip_out_of_sample_reforms",
+    "skip_reform_coverage_smoke",
+    "skip_reform_validation",
+)
+#: The build's gate verdicts its manifests carry, under the keyword
+#: :func:`_build_manifests` takes each by.
+US_BUILD_RECORD_GATES = (
+    "target_profile_gate",
+    "ssi_take_up_delivery_gate_result",
+    "health_input_gate",
+    "base_population_gate",
+    "immigration_gate",
+    "degenerate_input_gate",
+    "ecps_parity_gate",
+    "hours_worked_gate",
+    "snap_take_up_gate",
+    "eligibility_inputs_gate",
+    "pregnancy_gate",
+    "reported_coverage_vintage_gate",
+    "snap_discretionary_exemption_gate",
+)
+
+
+def _build_record_gate(gate: GateResult | None) -> dict[str, object] | None:
+    if gate is None:
+        return None
+    return {
+        "name": gate.name,
+        "passed": bool(gate.passed),
+        "failures": list(gate.failures),
+        "details": dict(gate.details),
+    }
+
+
+def _gate_from_build_record(record: Mapping[str, Any] | None) -> GateResult | None:
+    if record is None:
+        return None
+    return GateResult(
+        name=str(record["name"]),
+        passed=bool(record["passed"]),
+        failures=tuple(str(line) for line in record["failures"]),
+        details=dict(record["details"]),
+    )
+
+
+def _build_record_loss(value: float) -> float | str:
+    """A calibration loss in strict JSON: non-finite losses as their names."""
+    value = float(value)
+    return value if math.isfinite(value) else repr(value)
+
+
+def _build_record_finite(value: object) -> float | None:
+    if value is None:
+        return None
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def _canonical_json(payload: object) -> str:
+    return json.dumps(payload, sort_keys=True, allow_nan=False)
+
+
+class _RecordedCalibrationResult:
+    """The calibration result as certification reads it, from the record.
+
+    The post-export consumers read each target's name, final estimate and
+    target value (reform validation's in-sample rows); the manifests read
+    the three losses, since the release's gate summary is computed when the
+    build ends and recorded (``release_gate_failures``). (A plain class:
+    this tool is loaded by file path in the tests, outside ``sys.modules``,
+    where ``dataclasses`` cannot resolve the module's string annotations.)
+    """
+
+    def __init__(
+        self,
+        *,
+        initial_loss: float | str,
+        final_loss: float | str,
+        fraction_within_10pct: float | str,
+        in_sample_fit: Sequence[Sequence[object]],
+    ) -> None:
+        self.initial_loss = float(initial_loss)
+        self.final_loss = float(final_loss)
+        self.fraction_within_10pct = float(fraction_within_10pct)
+        self.diagnostics = [
+            SimpleNamespace(final_estimate=estimate, target=target)
+            for _, estimate, target in in_sample_fit
+        ]
+        self.problem = SimpleNamespace(
+            targets=[SimpleNamespace(name=str(name)) for name, _, _ in in_sample_fit]
+        )
+
+
+class _RecordedTargetRegistry:
+    """The target registry as :func:`_build_manifests` reads it: version, size."""
+
+    def __init__(self, *, version: object, n_specs: int) -> None:
+        self.version = version
+        self.n_specs = int(n_specs)
+
+    def __len__(self) -> int:
+        return self.n_specs
+
+
+def _us_build_files_certification_reads(
+    release_dir: Path, *, scf_education_debt: bool
+) -> dict[str, Path]:
+    """The build's own files in its release directory that certification reads.
+
+    Certification hashes each into the manifests (and reads the QRF tail
+    register and the stored-input verdict back from theirs), so the build
+    record pins each one the build wrote, under its artifact key in the
+    manifests. Gate evidence that certification writes itself (the
+    reform-coverage smoke) is not among them.
+    """
+
+    files = {"us_ssi_take_up": release_dir / "us_ssi_take_up.json"}
+    files.update(
+        (key, release_dir / filename)
+        for key, filename in US_RELEASE_GATE_EVIDENCE_FILES.items()
+        if filename not in US_CERTIFICATION_OUTPUT_FILES
+    )
+    if scf_education_debt:
+        files.update(
+            (key, release_dir / filename)
+            for key, filename in US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.items()
+        )
+    return files
+
+
+def _us_build_record(
+    *,
+    release_id: str,
+    release_root: Path,
+    release_dir: Path,
+    artifact_root: Path,
+    dataset_key: str,
+    dataset_filename: str,
+    calibration_key: str,
+    calibration_filename: str,
+    commit: str,
+    built_at: str,
+    runtime: Mapping[str, str],
+    args: argparse.Namespace,
+    terminal_gate_failures: Sequence[str],
+    n_households: int,
+    artifact_integrity_failures: Sequence[str] = (),
+    result,
+    post_export_scoring_plan: _PostExportScoringPlan,
+    release_gate_failures: Sequence[str] | None,
+    registry: TargetRegistry,
+    target_surface: Mapping[str, object],
+    dropped: Mapping[str, object],
+    gates: Mapping[str, GateResult | None],
+    warm_start_calibration: Mapping[str, object] | None,
+    selection_source: Mapping[str, object] | None,
+    target_surface_selection: Mapping[str, object] | None,
+    ledger_artifact: Mapping[str, object] | None,
+    default_dataset: Mapping[str, object] | None,
+    medicaid_enrollment_substitutions: Sequence[Mapping[str, object]],
+    exact_k_ladder: Mapping[str, object] | None,
+    base_pool: Mapping[str, object] | None,
+    acs_predictor_join: Mapping[str, object] | None,
+    export_input_mass_reference: Mapping[str, object] | None,
+    calibration_runtime: Mapping[str, object] | None,
+    diagnostics_outcome: DiagnosticsWriteOutcome,
+    scf_wealth_signal: Mapping[str, object] | None,
+    fiscal_target_sources: object,
+    congressional_district_vintage_crosswalk: Mapping[str, object] | None,
+    fiscal_target_exclusion_receipt: object,
+    fsa_target_receipt: object,
+    take_up_participation: Mapping[str, object],
+    medicaid_take_up_diagnostics: Mapping[str, object],
+    snap_state_take_up_diagnostics: Mapping[str, object],
+    timing: Mapping[str, object],
+    staging: Mapping[str, object],
+    staging_settings: Mapping[str, object],
+) -> dict[str, object]:
+    """What certification needs of a finished build, as strict JSON.
+
+    Everything certification reads that is not a file of the build: its
+    provenance (its commit, the time it finished and the packages that built
+    it), options, gate verdicts, calibration summary, scoring plan and the
+    receipts that ride the manifests. The files themselves are pinned by
+    digest: the H5, the calibration weights, the diagnostics and every other
+    file of the build that certification reads
+    (:func:`_us_build_files_certification_reads`).
+    """
+
+    if set(gates) != set(US_BUILD_RECORD_GATES):
+        raise ValueError(
+            "The build record carries exactly the gates its manifests write: "
+            f"expected {sorted(US_BUILD_RECORD_GATES)}, got {sorted(gates)}."
+        )
+
+    def relative(path: Path) -> str:
+        return path.relative_to(release_root).as_posix()
+
+    files = {
+        "dataset": artifact_root / dataset_filename,
+        "calibration_weights": artifact_root / calibration_filename,
+    }
+    if diagnostics_outcome.status == "available":
+        files["calibration_diagnostics"] = release_dir / "calibration_diagnostics.json"
+        diagnostics = {
+            "status": "available",
+            "schema_version": diagnostics_outcome.schema_version,
+            "sha256": diagnostics_outcome.sha256,
+        }
+    else:
+        diagnostics = {
+            "status": "failed",
+            "expected_schema_version": diagnostics_outcome.expected_schema_version,
+            "error_code": diagnostics_outcome.error_code,
+            "message": diagnostics_outcome.message,
+        }
+    files.update(
+        (role, path)
+        for role, path in _us_build_files_certification_reads(
+            release_dir, scf_education_debt=bool(args.scf_education_debt)
+        ).items()
+        if path.is_file()
+    )
+    return {
+        "schema_version": US_BUILD_RECORD_SCHEMA_VERSION,
+        "kind": US_BUILD_RECORD_KIND,
+        "build": release_id,
+        "code": {"repository": "PolicyEngine/microcosm", "git_commit": commit},
+        # The manifests' built_at and built-with packages: the time the build
+        # finished and the packages that built it, not certification's.
+        "built_at": built_at,
+        "runtime": dict(runtime),
+        "layout": {
+            "build_dir": relative(release_dir),
+            "artifact_root": relative(artifact_root),
+            "dataset_key": dataset_key,
+            "dataset_filename": dataset_filename,
+            "calibration_key": calibration_key,
+            "calibration_filename": calibration_filename,
+        },
+        "files": {
+            role: {"path": relative(path), "sha256": _sha256(path)}
+            for role, path in files.items()
+        },
+        "settings": {name: getattr(args, name) for name in US_BUILD_RECORD_SETTINGS},
+        "terminal_gate_failures": list(terminal_gate_failures),
+        # The ones the written H5 failed in its own checks, which no tier
+        # certifies; each is also among terminal_gate_failures.
+        "artifact_integrity_failures": list(artifact_integrity_failures),
+        "n_households": int(n_households),
+        # The calibration fit as the reform-validation consumer reads it: each
+        # target's name, final estimate and target value, in solve order.
+        "in_sample_fit": [
+            [
+                str(target.name),
+                _build_record_finite(diagnostic.final_estimate),
+                _build_record_finite(diagnostic.target),
+            ]
+            for diagnostic, target in zip(
+                result.diagnostics, result.problem.targets, strict=True
+            )
+        ],
+        "post_export_scoring_plan": post_export_scoring_plan.record(),
+        "manifest": {
+            "result": {
+                "initial_loss": _build_record_loss(result.initial_loss),
+                "final_loss": _build_record_loss(result.final_loss),
+                "fraction_within_10pct": _build_record_loss(
+                    result.fraction_within_10pct
+                ),
+            },
+            "registry": {"version": registry.version, "n_specs": len(registry)},
+            "release_gate_failures": (
+                None if release_gate_failures is None else list(release_gate_failures)
+            ),
+            "target_surface": dict(target_surface),
+            "dropped": dict(dropped),
+            "gates": {
+                name: _build_record_gate(gates[name]) for name in US_BUILD_RECORD_GATES
+            },
+            "warm_start_calibration": warm_start_calibration,
+            "selection_source": selection_source,
+            "target_surface_selection": target_surface_selection,
+            "ledger_artifact": ledger_artifact,
+            "default_dataset": default_dataset,
+            "medicaid_enrollment_substitutions": [
+                dict(record) for record in medicaid_enrollment_substitutions
+            ],
+            "exact_k_ladder": exact_k_ladder,
+            "base_pool": base_pool,
+            "acs_predictor_join": acs_predictor_join,
+            "export_input_mass_reference": export_input_mass_reference,
+            "calibration_runtime": calibration_runtime,
+            "diagnostics_outcome": diagnostics,
+            "scf_wealth_signal": scf_wealth_signal,
+        },
+        "source_coverage": {
+            "fiscal_target_sources": fiscal_target_sources,
+            "congressional_district_vintage_crosswalk": (
+                congressional_district_vintage_crosswalk
+            ),
+            "fiscal_target_exclusion_receipt": fiscal_target_exclusion_receipt,
+            "fsa_student_loan_target_receipt": fsa_target_receipt,
+        },
+        "take_up": {
+            "participation": take_up_participation,
+            "medicaid": medicaid_take_up_diagnostics,
+            "snap_state": snap_state_take_up_diagnostics,
+        },
+        "timing": dict(timing),
+        "staging": dict(staging),
+        # Where the build staged, so certification stages there too.
+        "staging_settings": dict(staging_settings),
+    }
+
+
+def _us_build_record_digest(record: Mapping[str, object]) -> str:
+    """The sha256 of a build record's canonical JSON, its own digest aside."""
+
+    body = {key: value for key, value in record.items() if key != "record_sha256"}
+    return hashlib.sha256(_canonical_json(body).encode("utf-8")).hexdigest()
+
+
+def _write_us_build_record(release_root: Path, record: Mapping[str, object]) -> Path:
+    """Write the build record atomically; certification refuses a torn one.
+
+    The record carries a digest of itself, so certification refuses one
+    edited after its build wrote it. That catches an edit, not a forgery:
+    anyone who recomputes the digest can change the record, until
+    certification signs (PR 4b).
+    """
+
+    path = release_root / US_BUILD_RECORD_FILENAME
+    # Digested as certification reads it back: JSON writes every key as a
+    # string, so a mapping keyed otherwise would digest differently once read.
+    record = json.loads(
+        json.dumps(
+            {key: value for key, value in record.items() if key != "record_sha256"},
+            allow_nan=False,
+        )
+    )
+    record["record_sha256"] = _us_build_record_digest(record)
+    text = json.dumps(record, indent=1, allow_nan=False) + "\n"
+    staged = path.with_name(f".{path.name}.tmp")
+    staged.write_text(text, encoding="utf-8")
+    staged.replace(path)
+    return path
+
+
+class _USBuildRecord:
+    """A finished build, read back from its :data:`US_BUILD_RECORD_FILENAME`.
+
+    Paths are relative to the record's directory, so a build folder moved to
+    another machine certifies in place. ``build_dir`` holds the build's own
+    files; certification copies them into the release directory of the tier
+    it chooses (microcosm#1585 item 11). (A plain class, for the reason
+    :class:`_RecordedCalibrationResult` gives.)
+    """
+
+    def __init__(self, payload: Mapping[str, Any], *, release_root: Path) -> None:
+        layout = payload["layout"]
+        self.payload = payload
+        self.release_root = release_root
+        self.build = str(payload["build"])
+        self.commit = str(payload["code"]["git_commit"])
+        self.built_at = str(payload["built_at"])
+        self.runtime = {
+            str(name): str(version) for name, version in payload["runtime"].items()
+        }
+        self.build_dir = release_root / layout["build_dir"]
+        self.artifact_root = release_root / layout["artifact_root"]
+        self.dataset_key = str(layout["dataset_key"])
+        self.dataset_filename = str(layout["dataset_filename"])
+        self.calibration_key = str(layout["calibration_key"])
+        self.calibration_filename = str(layout["calibration_filename"])
+        self.settings = dict(payload["settings"])
+        self.terminal_gate_failures = tuple(
+            str(line) for line in payload["terminal_gate_failures"]
+        )
+        self.artifact_integrity_failures = tuple(
+            str(line) for line in payload["artifact_integrity_failures"]
+        )
+        self.n_households = int(payload["n_households"])
+        self.timing = dict(payload["timing"])
+        self.staging = dict(payload["staging"])
+        self.staging_settings = dict(payload["staging_settings"])
+        self.manifest_inputs = dict(payload["manifest"])
+        self.source_coverage = dict(payload["source_coverage"])
+        self.take_up = dict(payload["take_up"])
+
+    def certify_args(self, *, evidence_release: bool) -> argparse.Namespace:
+        """The build's options its post-export checks read, with the tier
+        certification chose."""
+        return argparse.Namespace(**self.settings, evidence_release=evidence_release)
+
+    def exact_k(self) -> bool:
+        """Whether the build is an exact-k ladder build of the national release."""
+        return self.manifest_inputs.get("exact_k_ladder") is not None
+
+    def post_export_scoring_plan(
+        self, args: argparse.Namespace, *, result
+    ) -> _PostExportScoringPlan:
+        """The build's scoring plan, rebuilt and held to the one it recorded."""
+        plan = _record_post_export_scoring_plan(
+            args, n_households=self.n_households, result=result, release_id=self.build
+        )
+        recorded = self.payload["post_export_scoring_plan"]
+        if _canonical_json(plan.record()) != _canonical_json(recorded):
+            raise RuntimeError(
+                f"Build {self.build}: the post-export scoring plan rebuilt for "
+                "certification differs from the one the build recorded in "
+                f"{US_BUILD_RECORD_FILENAME}; certify the build with the code "
+                f"it was built with ({self.commit})."
+            )
+        return plan
+
+    def gates(self) -> dict[str, GateResult | None]:
+        recorded = self.manifest_inputs["gates"]
+        return {
+            name: _gate_from_build_record(recorded[name])
+            for name in US_BUILD_RECORD_GATES
+        }
+
+    def calibration_result(self) -> _RecordedCalibrationResult:
+        return _RecordedCalibrationResult(
+            **self.manifest_inputs["result"],
+            in_sample_fit=self.payload["in_sample_fit"],
+        )
+
+    def registry_summary(self) -> _RecordedTargetRegistry:
+        return _RecordedTargetRegistry(**self.manifest_inputs["registry"])
+
+    def diagnostics_outcome(self, release_dir: Path) -> DiagnosticsWriteOutcome:
+        """The diagnostics outcome, its file at ``release_dir`` once placed there."""
+        recorded = dict(self.manifest_inputs["diagnostics_outcome"])
+        if recorded["status"] == "available":
+            return DiagnosticsWriteSuccess(
+                status="available",
+                path=Path(release_dir) / "calibration_diagnostics.json",
+                schema_version=recorded["schema_version"],
+                sha256=recorded["sha256"],
+            )
+        return DiagnosticsWriteFailure(
+            status="failed",
+            expected_schema_version=recorded["expected_schema_version"],
+            error_code=recorded["error_code"],
+            message=recorded["message"],
+        )
+
+
+def _certify_with_its_own_code(payload: Mapping[str, object]) -> str:
+    """Where a record of another schema certifies: with the code that built it."""
+
+    code = payload.get("code")
+    commit = code.get("git_commit") if isinstance(code, dict) else None
+    built_with = f" ({commit})" if isinstance(commit, str) and commit else ""
+    return f"Certify the build with the code it was built with{built_with}"
+
+
+def _read_us_build_record(path: Path) -> _USBuildRecord:
+    """Read a build record and check the files it pins are the build's."""
+
+    path = Path(path)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f"Cannot read the build record {path}: {error}") from error
+    if not isinstance(payload, dict) or payload.get("kind") != US_BUILD_RECORD_KIND:
+        raise RuntimeError(f"{path} is not a US national build record.")
+    # Before the digest: a record of another schema need not carry one.
+    if payload.get("schema_version") != US_BUILD_RECORD_SCHEMA_VERSION:
+        raise RuntimeError(
+            f"{path} has build record schema {payload.get('schema_version')!r}; "
+            f"this tool reads schema {US_BUILD_RECORD_SCHEMA_VERSION}. "
+            f"{_certify_with_its_own_code(payload)}, or build it again into a "
+            "new --out."
+        )
+    if payload.get("record_sha256") != _us_build_record_digest(payload):
+        raise RuntimeError(
+            f"{path} does not hash to the record_sha256 it carries; the record "
+            "changed after its build wrote it."
+        )
+    release_root = path.resolve().parent
+    for role, pinned in payload["files"].items():
+        file_path = release_root / pinned["path"]
+        if not file_path.is_file():
+            raise RuntimeError(
+                f"Build {payload['build']}: its {role} file {file_path} is missing."
+            )
+        actual = _sha256(file_path)
+        if actual != pinned["sha256"]:
+            raise RuntimeError(
+                f"Build {payload['build']}: its {role} file {file_path} hashes to "
+                f"{actual}, not the {pinned['sha256']} the build recorded; the "
+                "build's files changed after it finished."
+            )
+    # A file certification would read that the build did not write: the
+    # manifests would bind it with no digest the build recorded.
+    for role, file_path in _us_build_files_certification_reads(
+        release_root / payload["layout"]["build_dir"],
+        scf_education_debt=bool(payload["settings"]["scf_education_debt"]),
+    ).items():
+        if role not in payload["files"] and file_path.is_file():
+            raise RuntimeError(
+                f"Build {payload['build']}: {file_path} ({role}) is not a file "
+                "the build recorded; it appeared after the build finished."
+            )
+    return _USBuildRecord(payload, release_root=release_root)
+
+
+#: Files certification writes into the release directory, beside the
+#: manifests. A rerun after a failed certification removes them first, so a
+#: check this run skips cannot leave an earlier attempt's verdict behind.
+US_CERTIFICATION_OUTPUT_FILES = (
+    "reform_coverage_smoke.json",
+    "reform_validation.json",
+    "demographics.json",
+    "us_ssi_social_security_holdout.json",
+    "us_medicare_irmaa_holdout.json",
+    "us_population_structure_holdout.json",
+    "us_source_coverage.json",
+    "us_take_up_participation.json",
+    "us_medicaid_take_up.json",
+    "us_snap_state_take_up.json",
+    "build_manifest.json",
+)
+
+
+def _certify_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="certify_us_national_build.py",
+        description=(
+            "Certify a finished US national build: run the release's "
+            "post-export checks (the reform-coverage smoke, reform validation, "
+            "demographics and the holdouts) on its written H5, place the build "
+            "in the release of the tier chosen here and write the manifests "
+            "that microcosm-publish-release-build requires. The build is the "
+            "--out directory of tools/build_us_fiscal_refresh_release.py, "
+            f"which holds {US_BUILD_RECORD_FILENAME}. A build has no tier "
+            "(microcosm#1585 item 11): the certified tier is the default, and "
+            "--evidence-release chooses the evidence tier."
+        ),
+    )
+    parser.add_argument(
+        "build_dir",
+        type=Path,
+        help=f"The build's --out directory, holding {US_BUILD_RECORD_FILENAME}.",
+    )
+    parser.add_argument(
+        "--evidence-release",
+        action="store_true",
+        help=(
+            "Certify at the EVIDENCE tier (microcosm#506), into the evidence "
+            f"release {US_EVIDENCE_RELEASE_ID} (never the US default), under "
+            "the build ID with an '-evidence-' segment added. Every failure "
+            "the build recorded or certification finds must match an owner "
+            "pattern, from --evidence-failure-owners first, then the standing "
+            "register (the US evidence_failure_owners.json), and rides the "
+            "release manifest's known_failures block; at least one must "
+            "exist, since a build that passes every gate belongs on the "
+            "certified tier. A QRF tail-concentration register mismatch is "
+            "never owned, and an --exact-k build is a build of the national "
+            "release, never evidence. Without this flag the build is "
+            f"certified into the national release {US_NATIONAL_RELEASE_ID}, "
+            "which refuses any failure."
+        ),
+    )
+    parser.add_argument(
+        "--evidence-failure-owners",
+        type=Path,
+        help=(
+            "With --evidence-release: a JSON file mapping failure-substring "
+            "patterns to owner issue refs (e.g. "
+            '{"Input coverage failed:": "PolicyEngine/microcosm#368"}), '
+            "checked ahead of the standing register; a failure matching "
+            "neither refuses the certification, since every shipped failure "
+            "needs an owner."
+        ),
+    )
+    parser.add_argument(
+        "--no-staging",
+        action="store_true",
+        help=(
+            "Certify without a staging run, even where the build staged; "
+            "hosted telemetry remains active. The build manifest's staging "
+            "block then records the opt-out, saying when the build staged, "
+            "beside the build's own block. A build that did not stage is "
+            "certified without one regardless."
+        ),
+    )
+    parser.add_argument(
+        "--staging-run-id",
+        help=(
+            "The certification's staging run id, never the build's own, since "
+            "a staging run's files start afresh when it opens. Defaults to the "
+            "build's staging run id with -certify appended."
+        ),
+    )
+    parser.add_argument(
+        "--staging-dir",
+        type=Path,
+        help=(
+            "Local directory for the certification's staging run files. "
+            "Defaults to <build_dir>/staging/runs/<run id>."
+        ),
+    )
+    return parser
+
+
+def _certify_progress(
+    args: argparse.Namespace,
+    *,
+    record: _USBuildRecord,
+    build: str,
+    run_id: str,
+    emitter: LocalTelemetryEmitter,
+) -> _BuildProgress:
+    """Certification's staging run, where its build staged.
+
+    The post-export verdicts and the manifests reach the staging dashboard,
+    as they did when a build certified itself (microcosm#1585 item 11, PR
+    4a). Certification stages where its build did, to the build's repository
+    and prefix, in a run of its own, since a staging run's files start afresh
+    when it opens. A build that did not stage (``--no-staging``, which
+    ``--exact-k`` requires) is certified without staging. ``--no-staging``
+    opts certification out where the build staged too, as a build may opt
+    out: the publisher accepts a stated opt-out, and the reason says the
+    build staged, so the manifest shows that its certification did not.
+    ``build`` is the ID certification publishes the build under.
+    """
+
+    settings = record.staging_settings
+    if settings["no_staging"] or args.no_staging:
+        build_run = record.staging.get("run_id")
+        reason = (
+            "the build did not stage (--no-staging)"
+            if settings["no_staging"]
+            else "--no-staging at certification; the build staged"
+            + (f" (run {build_run})" if build_run else "")
+        )
+        return _BuildProgress(
+            run_id=run_id,
+            emitter=emitter,
+            staging_bundle=None,
+            staging_opt_out_reason=reason,
+        )
+    staging_dir = args.staging_dir
+    if staging_dir is None and not settings["repo_id"]:
+        # A build that staged only locally is certified into the same layout.
+        staging_dir = record.release_root / "staging" / "runs" / run_id
+    return _build_progress(
+        SimpleNamespace(
+            no_staging=False,
+            staging_run_id=run_id,
+            staging_dir=staging_dir,
+            staging_repo_id=settings["repo_id"],
+            staging_prefix=settings["prefix"],
+            staging_upload_interval_seconds=settings["upload_interval_seconds"],
+        ),
+        release_root=record.release_root,
+        release_id=build,
+        run_id=run_id,
+        emitter=emitter,
+        epoch_every=CALIBRATION_EPOCH_EVERY,
+    )
+
+
+def _refuse_reopening_the_builds_staging_run(
+    args: argparse.Namespace, record: _USBuildRecord
+) -> None:
+    """Refuse a ``--staging-run-id`` that names the build or its staging run.
+
+    Certification stages in a run of its own: a staging run's files start
+    afresh when it opens, so a run reopened under the build's id would
+    replace the build's progress and calibration curve.
+    """
+
+    build_run = record.staging.get("run_id")
+    if args.staging_run_id is not None and args.staging_run_id in {
+        build_run,
+        record.build,
+    }:
+        raise SystemExit(
+            f"--staging-run-id {args.staging_run_id} names build {record.build} "
+            "or its staging run; certification stages in a run of its own, "
+            "since a staging run's files start afresh when it opens. Choose "
+            f"another, or leave it out for {build_run or record.build}-certify."
+        )
+
+
+def _certification_may_change(path: str) -> bool:
+    """Whether a commit after a build's may change ``path`` and certify it.
+
+    A UK cut is certified at its sign-off's head, where only gate-only
+    registers changed (microcosm#1301, ``UK_GATE_ONLY_RESOURCES``). A US
+    build may be certified at a descendant of its commit that changes only
+    what certification never runs (microcosm#1585 item 11): tests and their
+    helpers (``packages/*/tests/``, ``test_support/``, the root
+    ``conftest.py``), docs (``docs/``, ``LICENSE``, and Markdown or
+    reStructuredText outside the packages' sources), changelog fragments
+    (``changelog.d/``), and the standing evidence owners register
+    (:data:`US_EVIDENCE_FAILURE_OWNERS_REGISTER`), the US sign-off, which an
+    evidence-tier certification reads at the certifying commit.
+    """
+
+    posix = PurePosixPath(path)
+    parts = posix.parts
+    if not parts:
+        return False
+    if path in {US_EVIDENCE_FAILURE_OWNERS_REGISTER, "conftest.py", "LICENSE"}:
+        return True
+    if parts[0] in {"docs", "changelog.d", "test_support"}:
+        return True
+    if len(parts) >= 3 and parts[0] == "packages" and parts[2] == "tests":
+        return True
+    in_package_source = len(parts) >= 3 and parts[0] == "packages" and parts[2] == "src"
+    return posix.suffix.lower() in {".md", ".rst"} and not in_package_source
+
+
+def _git_commit_exists(commit: str) -> bool:
+    return (
+        subprocess.run(
+            (
+                "git",
+                "-C",
+                str(_repository_root()),
+                "cat-file",
+                "-e",
+                f"{commit}^{{commit}}",
+            ),
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def _certifying_commit(record: _USBuildRecord) -> tuple[str, list[str]]:
+    """The commit certification runs at, and what changed since the build's.
+
+    The build's own commit, or a descendant of it whose every change since
+    is one :func:`_certification_may_change` allows (microcosm#1585 item 11).
+    Anything else is refused, naming the paths, so the checks and the
+    manifests stay the code the build was built with.
+    """
+
+    head = _git_output("rev-parse", "HEAD")
+    if head == record.commit:
+        return head, []
+    if not _git_commit_exists(record.commit):
+        raise SystemExit(
+            f"Build {record.build} was built at {record.commit}, which this "
+            f"checkout does not have; fetch it, so certification at {head} can "
+            "check what changed since the build."
+        )
+    root = str(_repository_root())
+    descends = (
+        subprocess.run(
+            ("git", "-C", root, "merge-base", "--is-ancestor", record.commit, head),
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+    if not descends:
+        raise SystemExit(
+            f"Build {record.build} was built at {record.commit}; certify it "
+            f"from a checkout of that commit or of a descendant of it, not "
+            f"{head}, which does not descend from it."
+        )
+    changed = [
+        path
+        for path in subprocess.check_output(
+            (
+                "git",
+                "-C",
+                root,
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                record.commit,
+                head,
+            ),
+            text=True,
+        ).split("\0")
+        if path
+    ]
+    refused = sorted(path for path in changed if not _certification_may_change(path))
+    if refused:
+        raise SystemExit(
+            f"Build {record.build} was built at {record.commit}. {head} descends "
+            "from it, but changes more than tests, docs, changelog fragments "
+            f"and the evidence owners register ({US_EVIDENCE_FAILURE_OWNERS_REGISTER}), "
+            "so it would certify the build with code it was not built with: "
+            + ", ".join(refused)
+            + ". Certify it from a checkout of its commit, or of one that "
+            "changes only those."
+        )
+    return head, sorted(changed)
+
+
+def _refuse_an_unowned_evidence_certification(
+    failures: Sequence[str], owner_patterns: Sequence[tuple[str, str]]
+) -> None:
+    """Refuse an evidence-tier certification some failure would refuse anyway.
+
+    Run on the build's recorded failures before certification scores
+    anything, so a QRF tail register mismatch, which no owner may own, or an
+    unowned failure is refused in seconds rather than after the scoring. The
+    mismatch comes first: an owner would not let it ship.
+    """
+
+    refusal = _qrf_tail_register_evidence_refusal(failures)
+    if refusal is not None:
+        raise SystemExit(str(refusal))
+    try:
+        _evidence_known_failures(failures, owner_patterns)
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from error
+
+
+class _Certification:
+    """What certification chose and where it runs (microcosm#1585 item 11).
+
+    The tier and its owner patterns; the release directory it places the
+    build in and the ID it publishes the build under; and the commit it
+    certifies at, with the paths changed since the build's. (A plain class,
+    for the reason :class:`_RecordedCalibrationResult` gives.)
+    """
+
+    def __init__(
+        self,
+        *,
+        evidence_release: bool,
+        owner_patterns: Sequence[tuple[str, str]],
+        owners_file: Path | None,
+        owners_file_sha256: str | None,
+        release_dir: Path,
+        build: str,
+        commit: str,
+        changed_since_build: Sequence[str],
+    ) -> None:
+        self.evidence_release = bool(evidence_release)
+        self.owner_patterns = tuple(owner_patterns)
+        self.owners_file = owners_file
+        self.owners_file_sha256 = owners_file_sha256
+        self.release_dir = Path(release_dir)
+        self.build = build
+        self.commit = commit
+        self.changed_since_build = tuple(changed_since_build)
+
+    def manifest_block(self, record: _USBuildRecord) -> dict[str, object]:
+        """Both manifests' ``certification`` block, beside the build's ``code``.
+
+        The manifests' ``code`` is the build's commit, as the release
+        contract reads it; this records the commit that certified it, what
+        changed between the two, the tier, and the record certified.
+        """
+
+        block: dict[str, object] = {
+            "tier": "evidence" if self.evidence_release else "certified",
+            "code": {
+                "repository": "PolicyEngine/microcosm",
+                "git_commit": self.commit,
+                "git_dirty": False,
+            },
+            "build_commit": record.commit,
+            "changed_since_build": list(self.changed_since_build),
+            "build_record": {
+                "build": record.build,
+                "sha256": record.payload["record_sha256"],
+            },
+        }
+        if self.evidence_release:
+            # The digests of the bytes that decided ownership, taken when they
+            # were read: the standing register at import, the per-run file
+            # before any scoring (review of #1681).
+            block["evidence_failure_owners"] = {
+                "standing_register": {
+                    "path": US_EVIDENCE_FAILURE_OWNERS_REGISTER,
+                    "sha256": US_EVIDENCE_FAILURE_OWNERS_SHA256,
+                },
+                "per_run_file_sha256": self.owners_file_sha256,
+            }
+        return block
+
+
+def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) -> None:
+    """Copy the build's own files into ``release_dir``, its tier's release directory.
+
+    A build has no tier, so its files are in its own directory
+    (``layout.build_dir``, microcosm#1585 item 11). Certification copies each
+    one the record pins there into the release directory of the tier it
+    chose, checking the copy against the record's digest, and writes its
+    own files beside them. The record is never edited, and the build's
+    #568 weight evidence is never copied: the H5 carries the weights. A
+    rerun after a failed certification first removes every file this
+    certification would copy or write, so none of an earlier attempt's
+    survives.
+    """
+
+    release_dir.mkdir(parents=True, exist_ok=True)
+    for name in {
+        # Part-written by an earlier attempt: a finished one is refused
+        # before placement (_refuse_reusing_a_certified_build).
+        "release_manifest.json",
+        *US_CERTIFICATION_OUTPUT_FILES,
+        *US_RELEASE_GATE_EVIDENCE_FILES.values(),
+        *US_SCF_EDUCATION_DEBT_FIT_ARTIFACTS.values(),
+        *US_FAILED_BUILD_WEIGHT_EVIDENCE,
+        "calibration_diagnostics.json",
+        "us_ssi_take_up.json",
+    }:
+        (release_dir / name).unlink(missing_ok=True)
+    build_dir = record.build_dir.resolve()
+    for role, pinned in record.payload["files"].items():
+        source = (record.release_root / pinned["path"]).resolve()
+        if source.parent != build_dir:
+            # The H5 and the calibration weights stay in artifacts/, which
+            # the publish command names as the artifact root.
+            continue
+        target = release_dir / source.name
+        shutil.copyfile(source, target)
+        copied = _sha256(target)
+        if copied != pinned["sha256"]:
+            raise RuntimeError(
+                f"Build {record.build}: its {role} file copied to {target} hashes "
+                f"to {copied}, not the {pinned['sha256']} the build recorded."
+            )
+
+
+def certify_main(argv: Sequence[str] | None = None) -> None:
+    """Certify a finished build from its record (microcosm#1585 item 11).
+
+    A build has no tier: certification chooses it. The certified tier, the
+    default, places the build in the national release and refuses a build
+    that recorded release-gate failures or holds the #568 weight evidence.
+    ``--evidence-release`` places it in the evidence release under its
+    evidence ID, and needs an owner for every failure, at least one failure,
+    and a build that is not exact-k. Certification runs at the commit the
+    build was built at, or at a descendant that changes only what
+    certification never runs (:func:`_certifying_commit`), from a clean
+    worktree (the build directory aside), with the packages the build was
+    built with, so the checks and the manifests are the build's own code and
+    score the H5 on the versions its manifests name. A build certified at
+    either tier is refused: a certified build is never changed.
+    Certification opens its own staging run where the build staged
+    (:func:`_certify_progress`) and marks it failed if it does not finish.
+    """
+
+    global _ACTIVE_EMITTER
+    parser = _certify_parser()
+    args = parser.parse_args(argv)
+    if args.evidence_failure_owners is not None and not args.evidence_release:
+        parser.error("--evidence-failure-owners requires --evidence-release.")
+    record = _read_us_build_record(args.build_dir / US_BUILD_RECORD_FILENAME)
+    _refuse_reopening_the_builds_staging_run(args, record)
+    failures = _recorded_release_gate_failures(record.payload)
+    owner_patterns: tuple[tuple[str, str], ...] = ()
+    owners_file_sha256: str | None = None
+    if record.artifact_integrity_failures:
+        raise SystemExit(
+            f"Build {record.build}: its written H5 failed its own checks, which "
+            "no tier certifies, since the evidence tier relaxes gate verdicts, "
+            "never the written artifact's (microcosm#506): "
+            + "; ".join(record.artifact_integrity_failures)
+            + ". Build it again."
+        )
+    if args.evidence_release:
+        if record.exact_k():
+            raise SystemExit(
+                f"Build {record.build} is an --exact-k build, a build of the "
+                f"national release under the certified contract; the evidence "
+                "tier (microcosm#506) covers the national artifact only. "
+                "Certify it without --evidence-release."
+            )
+        per_run: tuple[tuple[str, str], ...] = ()
+        if args.evidence_failure_owners is not None:
+            per_run, owners_file_sha256 = _read_evidence_failure_owners_file(
+                args.evidence_failure_owners
+            )
+        owner_patterns = (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
+        _refuse_an_unowned_evidence_certification(failures, owner_patterns)
+    else:
+        if failures:
+            raise SystemExit(
+                f"Build {record.build} failed {len(failures)} release gate(s) "
+                "when it was built, so it cannot be certified at the certified "
+                "tier; with an owner for each failure, --evidence-release "
+                "certifies it at the evidence tier: " + "; ".join(failures)
+            )
+        # Only a build whose release gates failed writes the #568 weight
+        # evidence (a green build removes any it finds), so its presence
+        # refuses the build at the certified tier whatever its record says.
+        weight_evidence = [
+            name
+            for name in US_FAILED_BUILD_WEIGHT_EVIDENCE
+            if (record.build_dir / name).exists()
+        ]
+        if weight_evidence:
+            raise SystemExit(
+                f"Build {record.build}: its directory holds the weight evidence "
+                f"a build writes when its release gates fail "
+                f"({', '.join(weight_evidence)}, microcosm#568), so it cannot be "
+                "certified at the certified tier."
+            )
+    dirty = _git_dirty_paths(excluding=record.release_root)
+    if dirty:
+        raise SystemExit(
+            "Refusing to certify a build from a dirty git worktree: "
+            + "; ".join(dirty[:5])
+            + ("; ..." if len(dirty) > 5 else "")
+        )
+    _refuse_packages_from_another_checkout("certify a build")
+    head, changed_since_build = _certifying_commit(record)
+    runtime = _runtime_versions()
+    mismatched = sorted(
+        name
+        for name in record.runtime.keys() | runtime.keys()
+        if record.runtime.get(name) != runtime.get(name)
+    )
+    if mismatched:
+        raise SystemExit(
+            f"Build {record.build} was built with "
+            + ", ".join(f"{name} {record.runtime.get(name)}" for name in mismatched)
+            + "; certify it with those packages, not "
+            + ", ".join(f"{name} {runtime.get(name)}" for name in mismatched)
+            + ", so its checks run on the versions its manifests name."
+        )
+    _refuse_reusing_a_certified_build(record.release_root)
+    certification = _Certification(
+        evidence_release=args.evidence_release,
+        owner_patterns=owner_patterns,
+        owners_file=args.evidence_failure_owners,
+        owners_file_sha256=owners_file_sha256,
+        release_dir=_certification_release_dir(
+            record.release_root, evidence_release=args.evidence_release
+        ),
+        build=(
+            _evidence_build_id(record.build) if args.evidence_release else record.build
+        ),
+        commit=head,
+        changed_since_build=changed_since_build,
+    )
+    _place_build_for_certification(record, certification.release_dir)
+    run_id = args.staging_run_id or (
+        f"{record.staging.get('run_id') or record.build}-certify"
+    )
+    _ACTIVE_EMITTER = start_local_telemetry_emitter_service(
+        run_id=run_id,
+        country_code="US",
+        pipeline="us_fiscal_refresh",
+        candidate_id=record.build,
+        release_id=certification.build,
+        run_kind="certification",
+    )
+    telemetry: _BuildProgress | None = None
+    try:
+        telemetry = _certify_progress(
+            args,
+            record=record,
+            build=certification.build,
+            run_id=run_id,
+            emitter=_ACTIVE_EMITTER,
+        )
+        _certify_us_build(record, certification=certification, telemetry=telemetry)
+    except BaseException as error:
+        try:
+            if telemetry is not None:
+                telemetry.fail(error)
+            elif _ACTIVE_EMITTER.available:
+                _ACTIVE_EMITTER.fail(error)
+        except Exception as telemetry_error:  # pragma: no cover - defensive
+            # A failing failure-report must not replace the real traceback.
+            print(
+                "warning: could not record the certification's staging run as "
+                f"failed: {type(telemetry_error).__name__}: {telemetry_error}",
+                file=sys.stderr,
+            )
+        raise
+
+
+def _certify_command(release_root: Path, *, evidence_release: bool = False) -> str:
+    """The command that certifies the build in ``release_root``.
+
+    The certified tier by default, placing the build in the national release;
+    with ``evidence_release``, the evidence tier, placing it in the evidence
+    release (microcosm#1585 item 11).
+    """
+    return shlex.join(
+        [
+            "uv",
+            "run",
+            "--no-sync",
+            "python",
+            "tools/certify_us_national_build.py",
+            str(release_root),
+            *(["--evidence-release"] if evidence_release else []),
+        ]
+    )
+
+
+def _print_built_result(
+    *,
+    build: str,
+    release_root: Path,
+    build_dir: Path,
+    artifact_root: Path,
+    build_record: Path,
+    release_gate_failures: Sequence[str] = (),
+) -> None:
+    """Print the finished build and the commands that certify it.
+
+    A build that failed a release gate is printed too, so its H5 can be
+    evaluated, with the failures that stop its certification at the
+    certified tier.
+
+    A build is not publishable until it is certified: certification runs the
+    release's post-export checks on the written H5, places the build in the
+    release of the tier it chooses and writes the manifests
+    ``microcosm-publish-release-build`` requires (microcosm#1585 item 11). A
+    build has no tier, so both commands are printed.
+    """
+    print(
+        json.dumps(
+            {
+                "build": build,
+                "certified": False,
+                "certifiable_as_certified": not release_gate_failures,
+                "release_gate_failures": list(release_gate_failures),
+                "build_record": str(build_record),
+                "build_dir": str(build_dir),
+                "artifact_root": str(artifact_root),
+                "certify_command": _certify_command(release_root),
+                "evidence_certify_command": _certify_command(
+                    release_root, evidence_release=True
+                ),
+                "next": (
+                    "The build is written and checked; it is not publishable "
+                    "until it is certified. certify_command certifies it for "
+                    "the national release and refuses a build with release-gate "
+                    "failures. evidence_certify_command certifies it for the "
+                    "evidence release instead, once every failure has an "
+                    "owner, in --evidence-failure-owners FILE or the standing "
+                    "register."
+                ),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+#: This tool's scope of us/gates.json, evaluated in shadow beside today's
+#: gates (microcosm#1585 item 11, PR 2 of 4).
+US_NATIONAL_GATE_SCOPE = "us_national"
+_ACTIVE_GATE_SHADOW: GateBatteryShadow | None = None
+
+#: The waiver flags, each with the entries it waives today.
+_NATIONAL_GATE_WAIVERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "allow_input_mass_drift",
+        "--allow-input-mass-drift",
+        ("us_national_input_mass_reference", "us_national_export_input_mass"),
+    ),
+    (
+        "allow_ecps_parity_gaps",
+        "--allow-ecps-parity-gaps",
+        ("us_national_ecps_parity",),
+    ),
+    (
+        "allow_input_coverage_gaps",
+        "--allow-input-coverage-gaps",
+        ("us_national_release_input_coverage",),
+    ),
+    (
+        "allow_esi_premium_gaps",
+        "--allow-esi-premium-gaps",
+        (
+            "us_national_esi_anchor_feed",
+            "us_national_esi_premiums",
+            "us_national_esi_premiums_export",
+            "us_national_esi_premiums_anchor",
+        ),
+    ),
+    ("allow_unpinned_feed", "--allow-unpinned-feed", ("us_national_esi_anchor_feed",)),
+    (
+        "allow_qrf_tail_concentration",
+        "--allow-qrf-tail-concentration",
+        ("us_national_qrf_tail_concentration",),
+    ),
+)
+
+
+def _national_gate_shadow_directory(args: argparse.Namespace) -> Path:
+    """``<out>/gate_battery_shadow``: beside the build's outputs, never in a
+    release directory, as for the other US tools. A build has no tier
+    (microcosm#1585 item 11), so its shadow is not kept per release.
+
+    A dry run writes no output directory, so its shadow goes beside its
+    report instead.
+    """
+
+    if args.dry_run_gates_report is not None:
+        report = Path(args.dry_run_gates_report).resolve()
+        return report.parent / f"{report.stem}.{GATE_BATTERY_SHADOW_DIRECTORY}"
+    return Path(args.out).resolve() / GATE_BATTERY_SHADOW_DIRECTORY
+
+
+def _national_gate_waivers(args: argparse.Namespace) -> dict[str, list[str]]:
+    """The entries each waiver flag of this run waives.
+
+    A build has no tier (microcosm#1585 item 11): its terminal failures are
+    recorded and refuse it as the certified tier's did, whatever tier its
+    certification later chooses, so no tier waives an entry.
+    """
+
+    waivers: dict[str, list[str]] = {}
+    for destination, flag, entry_ids in _NATIONAL_GATE_WAIVERS:
+        if getattr(args, destination, False):
+            for entry_id in entry_ids:
+                waivers.setdefault(entry_id, []).append(flag)
+    return waivers
+
+
+def _start_national_gate_shadow(args: argparse.Namespace, *, release_id: str) -> None:
+    """Arm this run's gate battery in shadow (finished in :func:`main`).
+
+    The preflight gates run before ``_main`` refuses to reuse a certified
+    release directory, so a build's shadow holds its files until
+    :func:`_release_national_gate_shadow_files`: a refused rerun leaves the
+    certified build's shadow files as they were. A dry run's files go beside
+    its own report and are not held.
+    """
+
+    global _ACTIVE_GATE_SHADOW
+    _finish_national_gate_shadow(stopped_at="a previous run in this process")
+    if not tool_gate_shadows_enabled():
+        return
+    gates = us_scoped_gate_manifest(US_NATIONAL_GATE_SCOPE)
+    report, comparison = shadow_file_paths(
+        _national_gate_shadow_directory(args), US_NATIONAL_GATE_SCOPE
+    )
+    shadow = GateBatteryShadow(
+        gates,
+        scope=US_NATIONAL_GATE_SCOPE,
+        release_id=release_id,
+        report_path=report,
+        comparison_path=comparison,
+        registry=us_gate_registry(US_NATIONAL_GATE_SCOPE, tool=globals()),
+        waivers=_national_gate_waivers(args),
+        overrides=us_flag_overrides(gates, us_gate_specs(US_NATIONAL_GATE_SCOPE), args),
+        hold_files=args.dry_run_gates_report is None,
+    )
+    arm_gate_shadow(shadow)
+    _ACTIVE_GATE_SHADOW = shadow
+
+
+def _release_national_gate_shadow_files() -> None:
+    """Let the armed shadow write, once no certified release dir is reused."""
+
+    if _ACTIVE_GATE_SHADOW is not None:
+        _ACTIVE_GATE_SHADOW.release_files()
+
+
+def _finish_national_gate_shadow(
+    *,
+    stopped_by: BaseException | None = None,
+    stopped_at: str | None = None,
+) -> None:
+    """Finish the armed shadow, if any. It never fails the build: a finished
+    build's differences are recorded and printed."""
+
+    global _ACTIVE_GATE_SHADOW
+    shadow, _ACTIVE_GATE_SHADOW = _ACTIVE_GATE_SHADOW, None
+    if shadow is None:
+        return
+    disarm_gate_shadow(shadow)
+    if stopped_by is not None:
+        shadow.stop(stopped_by)
+    elif stopped_at is not None:
+        shadow.finish(stopped_at=stopped_at)
+    else:
+        shadow.finish()
+
+
+def _shadow_frame_gate(
+    entry_id: str, evaluate: Callable[[], GateResult], frame: Frame
+) -> GateResult:
+    """Today's frame signal gate, with the battery's entry beside it."""
+
+    return shadow_gate(entry_id, evaluate, lambda: EvidenceContext(frame=frame))
+
+
+def _shadow_exact_k_puf_tail_support_gate(
+    frame: Frame, support: np.ndarray
+) -> GateResult:
+    """The exact-k arm's tail gate, with the battery's entry beside it."""
+
+    return shadow_gate(
+        "us_national_exact_k_puf_capital_gains_tail",
+        lambda: _exact_k_puf_tail_support_gate(frame, support),
+        lambda: EvidenceContext(frame=frame, artifacts={"exact_k_support": support}),
+    )
+
+
+def _shadow_tail_survival(
+    entry_id: str, candidate: Frame, selected: Frame
+) -> dict[str, object]:
+    """Today's PUF tail survival check, observed: its refusal is its failure."""
+
+    return shadow_value(
+        entry_id,
+        lambda: assert_puf_capital_gains_tail_survives_selection(
+            candidate,
+            selected,
+            require_present=True,
+        ),
+        lambda: EvidenceContext(
+            frame=selected,
+            artifacts={
+                "tail_candidate_frame": candidate,
+                "tail_require_present": True,
+            },
+        ),
+        verdict=lambda receipt: LegacyVerdict.from_failures(()),
+        refusals=(ValueError,),
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Run the build and mark its staging run failed if it does not finish.
 
@@ -13162,13 +15050,22 @@ def main(argv: Sequence[str] | None = None) -> None:
     A build returns ``None``. ``--dry-run-gates-report`` leaves through
     ``SystemExit`` with the report's exit code: 1 on any certain failure, 2 on
     AT-RISK only, 0 clean.
+
+    The gate battery's shadow (microcosm#1585 item 11) finishes after the
+    build's own handler, and never changes the program's exit: today's gates
+    decide until the flip, so a verdict difference is recorded in the
+    shadow's comparison file and printed as a warning. By then a finished
+    build's telemetry has completed its staging run and its emitter, which
+    closes on that outcome.
     """
 
     global _ACTIVE_DRY_RUN
     _ACTIVE_DRY_RUN = None
+    _finish_national_gate_shadow(stopped_at="a previous run in this process")
     try:
         dry_run_exit = _main(argv)
     except BaseException as error:
+        _finish_national_gate_shadow(stopped_by=error)
         dry_run = _ACTIVE_DRY_RUN
         if dry_run is not None and _is_release_refusal(error):
             # A dry run the release refuses before its stop point: the
@@ -13189,6 +15086,22 @@ def main(argv: Sequence[str] | None = None) -> None:
                     f"{type(telemetry_error).__name__}: {telemetry_error}",
                     file=sys.stderr,
                 )
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.fail(error)
+        raise
+    try:
+        _finish_national_gate_shadow(
+            stopped_at=(
+                "dry run: the release stops before target materialization"
+                if dry_run_exit is not None
+                else None
+            )
+        )
+    except BaseException as error:
+        # Only a fault in the wiring reaches here: the shadow reports a
+        # difference without raising. A finished release's telemetry has
+        # closed the emitter by now (see the docstring), so this records an
+        # outcome only on an emitter that something left open.
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
             _ACTIVE_EMITTER.fail(error)
         raise
@@ -13293,7 +15206,11 @@ def _with_scf_education_debt_stage(
         time_period=PERIOD,
         scf_education_debt_donor=donor,
     )
-    gate = us_scf_education_debt_signal_gate(base_frame)
+    gate = _shadow_frame_gate(
+        "us_national_scf_education_debt",
+        lambda: us_scf_education_debt_signal_gate(base_frame),
+        base_frame,
+    )
     if not gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -13385,7 +15302,11 @@ def _check_us_esi_anchor_against_feed(
     either way and written to ``esi_premiums.json``.
     """
 
-    mismatches = us_esi_premiums_anchor_feed_mismatches(facts)
+    mismatches = shadow_failures(
+        "us_national_esi_anchor_feed",
+        lambda: us_esi_premiums_anchor_feed_mismatches(facts),
+        lambda: EvidenceContext(artifacts={"ledger_facts": facts}),
+    )
     if mismatches and not (allow_unpinned_feed or allow_esi_premium_gaps):
         raise SystemExit(
             "error: the meps_esi_premiums anchor differs from the Chronicle "
@@ -13455,10 +15376,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     dry_run = _ReleaseDryRun.start(args, argv)
     if dry_run is None and _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
-    # Loaded (and validated) up front so a malformed owners file dies in
-    # seconds, not after the multi-hour build. The flag-combination rules
-    # (--evidence-failure-owners requires the tier flag; --exact-k is
-    # incompatible with it) live in _parse_args with the other combos.
+    if dry_run is None:
+        _refuse_packages_from_another_checkout("build a release")
+    # A build has no tier (microcosm#1585 item 11): only a dry run takes
+    # --evidence-release, to preview an evidence certification's owners
+    # (_parse_args refuses it on a build). Loaded up front so a malformed
+    # owners file dies in seconds.
     evidence_failure_owner_patterns = (
         _load_evidence_failure_owner_patterns(args.evidence_failure_owners)
         if args.evidence_release
@@ -13467,15 +15390,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     timing: dict[str, float] = {}
 
     # microcosm#568 round 4: refuse certified-dir reuse before ANY side
-    # effect, including the base download and cache writes below. The
-    # release directory is named after the build's release (microcosm#1570),
-    # so it is known here whether or not --release-id gives the build ID.
-    _refuse_certified_release_dir_reuse(
-        args.out.resolve() / "releases" / _release_for_build(args)
-    )
-    _refuse_skipped_checks_left_files(
-        args.out.resolve() / "releases" / _release_for_build(args), args
-    )
+    # effect, including the base download and cache writes below. A build is
+    # certified into the release of the tier its certification chose, so
+    # both release directories are checked, whether or not --release-id
+    # gives the build ID.
+    _refuse_reusing_a_certified_build(args.out.resolve())
+    if dry_run is None:
+        # A build stops at its record (microcosm#1585 item 11, PR 4a), so an
+        # --out awaiting certification carries no release manifest yet.
+        _refuse_overwriting_a_build_awaiting_certification(args.out.resolve())
     pinned_incumbent_payload: dict[str, object] | None = None
     pinned_incumbent_sha256: str | None = None
     if args.exact_k is not None:
@@ -13551,9 +15474,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         commit=commit,
         build_timestamp=build_timestamp,
     )
-    _assert_us_release_id(release_id, evidence_release=args.evidence_release)
+    _assert_us_release_id(release_id)
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
+    _start_national_gate_shadow(args, release_id=release_id)
     # Every build, exact-k builds included, writes its dataset and calibration
     # weights under the names its release's new builds declare
     # (microcosm#1570); the build ID carries the exact count.
@@ -13589,7 +15513,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # checked against the live PolicyEngine-US graph so a stale entry cannot mask
     # a real gap.
     assert_validation_leaf_registry_current()
-    validation_input_coverage_gate = us_validation_input_coverage_gate()
+    validation_input_coverage_gate = shadow_gate(
+        "us_national_validation_input_coverage",
+        lambda: us_validation_input_coverage_gate(),
+        EvidenceContext(),
+    )
     if not validation_input_coverage_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
@@ -13611,10 +15539,22 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # documented-absent). Such a pincer aborts every build AFTER the expensive
     # source stages — the stale TANF exclusion did exactly that on Build G and
     # Build I. Fail it here, in seconds.
-    register_consistency_gate = us_register_consistency_gate(
-        degenerate_reviewed_exclusions=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
-        documented_absent_inputs=US_DOCUMENTED_ABSENT_INPUTS,
-        nonconstant_required_columns=US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+    register_consistency_gate = shadow_gate(
+        "us_national_register_consistency",
+        lambda: us_register_consistency_gate(
+            degenerate_reviewed_exclusions=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+            documented_absent_inputs=US_DOCUMENTED_ABSENT_INPUTS,
+            nonconstant_required_columns=US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "degenerate_reviewed_exclusions": (
+                    US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS
+                ),
+                "documented_absent_inputs": US_DOCUMENTED_ABSENT_INPUTS,
+                "nonconstant_required_columns": US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+            }
+        ),
     )
     if not register_consistency_gate.passed:
         raise RuntimeError(
@@ -13717,7 +15657,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # the one-surface parity contract until that stage is default.
     parity_registry = _without_opt_in_student_loan_targets(target_registry)
     assert_target_parity_manifest_current(registry=parity_registry)
-    target_parity_gate = us_release_target_parity_gate(parity_registry)
+    target_parity_gate = shadow_gate(
+        "us_national_target_parity",
+        lambda: us_release_target_parity_gate(parity_registry),
+        lambda: EvidenceContext(artifacts={"target_parity_registry": parity_registry}),
+    )
     if not target_parity_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
@@ -13738,9 +15682,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         targets=ssi_band_targets,
         expected_sha256=args.ssi_take_up_prior_weight_basis_sha256,
     )
-    target_profile_gate = target_profile_coverage_gate(
-        target_specs,
-        US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    target_profile_gate = shadow_gate(
+        "us_national_target_profile_coverage",
+        lambda: target_profile_coverage_gate(
+            target_specs,
+            US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "target_specs": target_specs,
+                "target_coverage_requirements": US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+            }
+        ),
     )
     if not target_profile_gate.passed:
         raise RuntimeError(
@@ -13761,11 +15714,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     active_target_registry = TargetRegistry(target_specs, country="us")
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
-    release_dir = release_root / "releases" / _release_for_build(args)
+    # The build's own directory (microcosm#1585 item 11): a build has no tier,
+    # so it writes no release directory; certification places these files in
+    # the release of the tier it chooses. The name stays release_dir below,
+    # where every build file is written.
+    release_dir = release_root / US_BUILD_FILES_DIRECTORY
     # Unconditional refusal BEFORE any output-directory creation: a hostile
     # --checkpoint-root beneath releases/<release> must not mutate a certified
     # directory before the raise (microcosm#568 round 4).
-    _refuse_certified_release_dir_reuse(release_dir)
+    _refuse_reusing_a_certified_build(release_root)
+    _release_national_gate_shadow_files()
     checkpoint_root, target_materialization_cache_dir, target_frame_checkpoint_path = (
         _resolve_checkpoint_paths(args, artifact_root=artifact_root)
     )
@@ -13808,10 +15766,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame = _load_frame(base_h5, expected_sha256=base_dataset_sha256)
     else:
         base_frame = pool_frame
-    capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(
-        base_frame,
-        base_frame,
-        require_present=True,
+    capital_gains_tail_presence = _shadow_tail_survival(
+        "us_national_capital_gains_tail_presence", base_frame, base_frame
     )
     if telemetry is not None:
         telemetry.stage(
@@ -13852,7 +15808,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "Verified measured ASEC LKWEEKS before selection and target "
             "materialization."
         )
-    weeks_unemployed_gate = us_weeks_unemployed_signal_gate(base_frame)
+    weeks_unemployed_gate = _shadow_frame_gate(
+        "us_national_weeks_unemployed",
+        lambda: us_weeks_unemployed_signal_gate(base_frame),
+        base_frame,
+    )
     if not weeks_unemployed_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -13888,6 +15848,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # ~57k support instead of the ~338k pool.
     selection_source, _selection_join_key = _resolve_selection_source(args)
     selection_source_payload: dict | None = None
+    if selection_source is None:
+        for entry_id in (
+            "us_national_capital_gains_tail_retention",
+            "us_national_weeks_unemployed_post_selection",
+        ):
+            shadow_not_run(entry_id, "no frozen-support selection source was given")
     if selection_source is not None:
         if args.selection_mode != "frozen_support":
             raise ValueError(
@@ -13908,10 +15874,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
         selection_source_payload = selection_report.as_manifest()
         selection_source_payload["puf_capital_gains_tail_retention"] = (
-            assert_puf_capital_gains_tail_survives_selection(
+            _shadow_tail_survival(
+                "us_national_capital_gains_tail_retention",
                 selection_candidate_frame,
                 base_frame,
-                require_present=True,
             )
         )
         if telemetry is not None:
@@ -13922,8 +15888,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 n_base_candidates=selection_report.n_base_candidates,
                 n_unmapped=selection_report.n_unmapped,
             )
-        post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate(
-            base_frame
+        post_selection_weeks_unemployed_gate = _shadow_frame_gate(
+            "us_national_weeks_unemployed_post_selection",
+            lambda: us_weeks_unemployed_signal_gate(base_frame),
+            base_frame,
         )
         if not post_selection_weeks_unemployed_gate.passed:
             if telemetry is not None:
@@ -14000,9 +15968,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             target=non_sch_d_cgd_repair.get("target"),
             initial_estimate=non_sch_d_cgd_repair.get("initial_estimate"),
         )
-    base_population_gate = _base_population_scale_gate(
-        base_frame,
-        mass_repair=base_population_repair,
+    base_population_gate = shadow_gate(
+        "us_national_base_population_scale",
+        lambda: _base_population_scale_gate(
+            base_frame,
+            mass_repair=base_population_repair,
+        ),
+        lambda: EvidenceContext(
+            frame=base_frame,
+            artifacts={"base_population_mass_repair": base_population_repair},
+        ),
     )
     if not base_population_gate.passed:
         if telemetry is not None:
@@ -14022,7 +15997,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     if pool_frame is None:
         base_frame = with_us_qbi_input_reconciliation(base_frame)
-    qbi_inputs_gate = us_qbi_inputs_signal_gate(base_frame)
+    qbi_inputs_gate = _shadow_frame_gate(
+        "us_national_qbi_inputs",
+        lambda: us_qbi_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not qbi_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14039,7 +16018,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in qbi_inputs_gate.failures
             )
         )
-    farm_business_income_gate = us_farm_business_income_signal_gate(base_frame)
+    farm_business_income_gate = _shadow_frame_gate(
+        "us_national_farm_business_income",
+        lambda: us_farm_business_income_signal_gate(base_frame),
+        base_frame,
+    )
     if not farm_business_income_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14056,7 +16039,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in farm_business_income_gate.failures
             )
         )
-    domestic_production_ald_gate = us_domestic_production_ald_signal_gate(base_frame)
+    domestic_production_ald_gate = _shadow_frame_gate(
+        "us_national_domestic_production_ald",
+        lambda: us_domestic_production_ald_signal_gate(base_frame),
+        base_frame,
+    )
     if not domestic_production_ald_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14073,7 +16060,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in domestic_production_ald_gate.failures
             )
         )
-    child_support_gate = us_child_support_signal_gate(base_frame)
+    child_support_gate = _shadow_frame_gate(
+        "us_national_child_support",
+        lambda: us_child_support_signal_gate(base_frame),
+        base_frame,
+    )
     if not child_support_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14090,7 +16081,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in child_support_gate.failures
             )
         )
-    disability_benefits_gate = us_disability_benefits_signal_gate(base_frame)
+    disability_benefits_gate = _shadow_frame_gate(
+        "us_national_disability_benefits",
+        lambda: us_disability_benefits_signal_gate(base_frame),
+        base_frame,
+    )
     if not disability_benefits_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14107,7 +16102,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in disability_benefits_gate.failures
             )
         )
-    workers_compensation_gate = us_workers_compensation_signal_gate(base_frame)
+    workers_compensation_gate = _shadow_frame_gate(
+        "us_national_workers_compensation",
+        lambda: us_workers_compensation_signal_gate(base_frame),
+        base_frame,
+    )
     if not workers_compensation_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14124,7 +16123,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in workers_compensation_gate.failures
             )
         )
-    educator_expense_gate = us_educator_expense_signal_gate(base_frame)
+    educator_expense_gate = _shadow_frame_gate(
+        "us_national_educator_expense",
+        lambda: us_educator_expense_signal_gate(base_frame),
+        base_frame,
+    )
     if not educator_expense_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14141,7 +16144,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in educator_expense_gate.failures
             )
         )
-    form_4952_election_gate = us_form_4952_election_signal_gate(base_frame)
+    form_4952_election_gate = _shadow_frame_gate(
+        "us_national_form_4952_election",
+        lambda: us_form_4952_election_signal_gate(base_frame),
+        base_frame,
+    )
     if not form_4952_election_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14158,7 +16165,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in form_4952_election_gate.failures
             )
         )
-    salt_refund_income_gate = us_salt_refund_income_signal_gate(base_frame)
+    salt_refund_income_gate = _shadow_frame_gate(
+        "us_national_salt_refund_income",
+        lambda: us_salt_refund_income_signal_gate(base_frame),
+        base_frame,
+    )
     if not salt_refund_income_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14175,7 +16186,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in salt_refund_income_gate.failures
             )
         )
-    capital_gain_details_gate = us_capital_gain_details_signal_gate(base_frame)
+    capital_gain_details_gate = _shadow_frame_gate(
+        "us_national_capital_gain_details",
+        lambda: us_capital_gain_details_signal_gate(base_frame),
+        base_frame,
+    )
     if not capital_gain_details_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14199,7 +16214,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             time_period=PERIOD,
             allow_existing_without_source=True,
         )
-    childcare_gate = us_childcare_signal_gate(base_frame)
+    childcare_gate = _shadow_frame_gate(
+        "us_national_childcare",
+        lambda: us_childcare_signal_gate(base_frame),
+        base_frame,
+    )
     if not childcare_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14223,7 +16242,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             time_period=PERIOD,
             allow_existing_without_source=True,
         )
-    energy_subsidy_gate = us_energy_subsidy_signal_gate(base_frame)
+    energy_subsidy_gate = _shadow_frame_gate(
+        "us_national_energy_subsidy",
+        lambda: us_energy_subsidy_signal_gate(base_frame),
+        base_frame,
+    )
     if not energy_subsidy_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14240,7 +16263,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in energy_subsidy_gate.failures
             )
         )
-    alimony_gate = us_alimony_signal_gate(base_frame)
+    alimony_gate = _shadow_frame_gate(
+        "us_national_alimony", lambda: us_alimony_signal_gate(base_frame), base_frame
+    )
     if not alimony_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14257,7 +16282,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in alimony_gate.failures
             )
         )
-    casualty_loss_gate = us_casualty_loss_signal_gate(base_frame)
+    casualty_loss_gate = _shadow_frame_gate(
+        "us_national_casualty_loss",
+        lambda: us_casualty_loss_signal_gate(base_frame),
+        base_frame,
+    )
     if not casualty_loss_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14274,7 +16303,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in casualty_loss_gate.failures
             )
         )
-    misc_itemized_gate = us_misc_itemized_signal_gate(base_frame)
+    misc_itemized_gate = _shadow_frame_gate(
+        "us_national_misc_itemized",
+        lambda: us_misc_itemized_signal_gate(base_frame),
+        base_frame,
+    )
     if not misc_itemized_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14302,7 +16335,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    retirement_contributions_gate = us_retirement_contributions_signal_gate(base_frame)
+    retirement_contributions_gate = _shadow_frame_gate(
+        "us_national_retirement_contributions",
+        lambda: us_retirement_contributions_signal_gate(base_frame),
+        base_frame,
+    )
     if not retirement_contributions_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14330,7 +16367,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    immigration_gate = us_immigration_composition_gate(base_frame)
+    immigration_gate = _shadow_frame_gate(
+        "us_national_immigration_composition",
+        lambda: us_immigration_composition_gate(base_frame),
+        base_frame,
+    )
     if not immigration_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14358,7 +16399,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    take_up_gate = us_take_up_signal_gate(base_frame)
+    take_up_gate = _shadow_frame_gate(
+        "us_national_take_up", lambda: us_take_up_signal_gate(base_frame), base_frame
+    )
     if not take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14385,7 +16428,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    hours_worked_gate = us_hours_worked_signal_gate(base_frame)
+    hours_worked_gate = _shadow_frame_gate(
+        "us_national_hours_worked",
+        lambda: us_hours_worked_signal_gate(base_frame),
+        base_frame,
+    )
     if not hours_worked_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14412,7 +16459,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         time_period=PERIOD,
     )
-    snap_take_up_gate = us_snap_take_up_signal_gate(base_frame)
+    snap_take_up_gate = _shadow_frame_gate(
+        "us_national_snap_take_up",
+        lambda: us_snap_take_up_signal_gate(base_frame),
+        base_frame,
+    )
     if not snap_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14440,7 +16491,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    relationship_inputs_gate = us_relationship_inputs_signal_gate(base_frame)
+    relationship_inputs_gate = _shadow_frame_gate(
+        "us_national_relationship_inputs",
+        lambda: us_relationship_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not relationship_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14471,7 +16526,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    spm_independence_role_gate = us_spm_independence_role_signal_gate(base_frame)
+    spm_independence_role_gate = _shadow_frame_gate(
+        "us_national_spm_independence_role",
+        lambda: us_spm_independence_role_signal_gate(base_frame),
+        base_frame,
+    )
     if not spm_independence_role_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14499,7 +16558,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    medicare_take_up_gate = us_medicare_take_up_signal_gate(base_frame)
+    medicare_take_up_gate = _shadow_frame_gate(
+        "us_national_medicare_take_up",
+        lambda: us_medicare_take_up_signal_gate(base_frame),
+        base_frame,
+    )
     if not medicare_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14516,7 +16579,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in medicare_take_up_gate.failures
             )
         )
-    prior_year_income_gate = us_prior_year_income_signal_gate(base_frame)
+    prior_year_income_gate = _shadow_frame_gate(
+        "us_national_prior_year_income",
+        lambda: us_prior_year_income_signal_gate(base_frame),
+        base_frame,
+    )
     if not prior_year_income_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14539,7 +16606,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             message="Verified restored adjacent-ASEC prior-year income inputs.",
             details=dict(prior_year_income_gate.details),
         )
-    housing_inputs_gate = us_housing_inputs_signal_gate(base_frame)
+    housing_inputs_gate = _shadow_frame_gate(
+        "us_national_housing_inputs",
+        lambda: us_housing_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not housing_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14575,7 +16646,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    retirement_distributions_gate = us_retirement_distributions_signal_gate(base_frame)
+    retirement_distributions_gate = _shadow_frame_gate(
+        "us_national_retirement_distributions",
+        lambda: us_retirement_distributions_signal_gate(base_frame),
+        base_frame,
+    )
     early_terminal_gate_failures: list[str] = []
     if not retirement_distributions_gate.passed:
         # A selected support is consume-only at this boundary. Preserve the
@@ -14610,7 +16685,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    eligibility_inputs_gate = us_eligibility_inputs_signal_gate(base_frame)
+    eligibility_inputs_gate = _shadow_frame_gate(
+        "us_national_eligibility_inputs",
+        lambda: us_eligibility_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not eligibility_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14641,7 +16720,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    education_inputs_gate = us_education_inputs_signal_gate(base_frame)
+    education_inputs_gate = _shadow_frame_gate(
+        "us_national_education_inputs",
+        lambda: us_education_inputs_signal_gate(base_frame),
+        base_frame,
+    )
     if not education_inputs_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14669,7 +16752,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    pregnancy_gate = us_pregnancy_signal_gate(base_frame)
+    pregnancy_gate = _shadow_frame_gate(
+        "us_national_pregnancy",
+        lambda: us_pregnancy_signal_gate(base_frame),
+        base_frame,
+    )
     if not pregnancy_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14686,8 +16773,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 for failure in pregnancy_gate.failures
             )
         )
-    reported_coverage_vintage_gate = us_reported_coverage_vintage_signal_gate(
-        base_frame
+    reported_coverage_vintage_gate = _shadow_frame_gate(
+        "us_national_reported_coverage_vintage",
+        lambda: us_reported_coverage_vintage_signal_gate(base_frame),
+        base_frame,
     )
     if not reported_coverage_vintage_gate.passed:
         receipt_path = (
@@ -14724,7 +16813,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    wic_claim_gate = us_wic_claim_signal_gate(base_frame)
+    wic_claim_gate = _shadow_frame_gate(
+        "us_national_wic_claim",
+        lambda: us_wic_claim_signal_gate(base_frame),
+        base_frame,
+    )
     if not wic_claim_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14751,8 +16844,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         time_period=PERIOD,
     )
-    snap_discretionary_exemption_gate = us_snap_discretionary_exemption_signal_gate(
-        base_frame
+    snap_discretionary_exemption_gate = _shadow_frame_gate(
+        "us_national_snap_discretionary_exemption",
+        lambda: us_snap_discretionary_exemption_signal_gate(base_frame),
+        base_frame,
     )
     if not snap_discretionary_exemption_gate.passed:
         if telemetry is not None:
@@ -14830,9 +16925,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         scf_donor=scf_wealth_donor,
         sipp_donor=sipp_financial_asset_donor,
     )
-    scf_wealth_gate = us_scf_wealth_signal_gate(
-        base_frame,
-        require_sipp_blend=True,
+    scf_wealth_gate = shadow_gate(
+        "us_national_scf_wealth",
+        lambda: us_scf_wealth_signal_gate(
+            base_frame,
+            require_sipp_blend=True,
+        ),
+        lambda: EvidenceContext(
+            frame=base_frame, artifacts={"scf_require_sipp_blend": True}
+        ),
     )
     if not scf_wealth_gate.passed:
         if telemetry is not None:
@@ -14875,7 +16976,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=ssi_disability_donor,
     )
-    ssi_disability_gate = us_ssi_disability_criteria_signal_gate(base_frame)
+    ssi_disability_gate = _shadow_frame_gate(
+        "us_national_ssi_disability_criteria",
+        lambda: us_ssi_disability_criteria_signal_gate(base_frame),
+        base_frame,
+    )
     if not ssi_disability_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14912,7 +17017,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=head_start_donor,
     )
-    head_start_gate = us_sipp_head_start_signal_gate(base_frame)
+    head_start_gate = _shadow_frame_gate(
+        "us_national_sipp_head_start",
+        lambda: us_sipp_head_start_signal_gate(base_frame),
+        base_frame,
+    )
     if not head_start_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -14961,8 +17070,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         reporter_source_ids=ssi_reporter_source_ids,
         prior_basis=ssi_take_up_prior_basis,
     )
-    ssi_take_up_gate = us_ssi_take_up_gate(
-        ssi_take_up_stage_diagnostics, targets=ssi_band_targets
+    ssi_take_up_gate = shadow_gate(
+        "us_national_ssi_take_up",
+        lambda: us_ssi_take_up_gate(
+            ssi_take_up_stage_diagnostics, targets=ssi_band_targets
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "ssi_take_up_diagnostics": ssi_take_up_stage_diagnostics,
+                "ssi_band_targets": ssi_band_targets,
+            }
+        ),
     )
     if not ssi_take_up_gate.passed:
         if telemetry is not None:
@@ -15024,7 +17142,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         scf_auto_loan_donor=scf_auto_loan_donor,
     )
-    scf_auto_loan_gate = us_scf_auto_loans_signal_gate(base_frame)
+    scf_auto_loan_gate = _shadow_frame_gate(
+        "us_national_scf_auto_loans",
+        lambda: us_scf_auto_loans_signal_gate(base_frame),
+        base_frame,
+    )
     if not scf_auto_loan_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15056,6 +17178,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 else None
             ),
         )
+    else:
+        shadow_not_run(
+            "us_national_scf_education_debt",
+            "the SCF education-debt stage runs only with --scf-education-debt",
+        )
     if telemetry is not None:
         telemetry.stage(
             "sipp_vehicle_inputs",
@@ -15076,7 +17203,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=sipp_vehicle_donor,
     )
-    sipp_vehicles_gate = us_sipp_vehicles_signal_gate(base_frame)
+    sipp_vehicles_gate = _shadow_frame_gate(
+        "us_national_sipp_vehicles",
+        lambda: us_sipp_vehicles_signal_gate(base_frame),
+        base_frame,
+    )
     if not sipp_vehicles_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15112,7 +17243,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=voluntary_filing_donor,
     )
-    voluntary_filing_gate = us_voluntary_filing_signal_gate(base_frame)
+    voluntary_filing_gate = _shadow_frame_gate(
+        "us_national_voluntary_filing",
+        lambda: us_voluntary_filing_signal_gate(base_frame),
+        base_frame,
+    )
     if not voluntary_filing_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15152,7 +17287,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         sipp_donor=sipp_tip_donor,
     )
-    sipp_tips_gate = us_sipp_tips_signal_gate(base_frame)
+    sipp_tips_gate = _shadow_frame_gate(
+        "us_national_sipp_tips",
+        lambda: us_sipp_tips_signal_gate(base_frame),
+        base_frame,
+    )
     if not sipp_tips_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15193,7 +17332,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         org_donor=org_wages_donor,
     )
-    org_wages_gate = us_org_wages_signal_gate(base_frame)
+    org_wages_gate = _shadow_frame_gate(
+        "us_national_org_wages",
+        lambda: us_org_wages_signal_gate(base_frame),
+        base_frame,
+    )
     if not org_wages_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15221,7 +17364,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
-    health_input_gate = _health_input_signal_gate(base_frame)
+    health_input_gate = _shadow_frame_gate(
+        "us_national_health_input",
+        lambda: _health_input_signal_gate(base_frame),
+        base_frame,
+    )
     if not health_input_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15253,7 +17400,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         substitutions=medicaid_enrollment_substitutions,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
-    medicaid_take_up_gate = us_medicaid_take_up_gate(medicaid_take_up_diagnostics)
+    medicaid_take_up_gate = shadow_gate(
+        "us_national_medicaid_take_up",
+        lambda: us_medicaid_take_up_gate(medicaid_take_up_diagnostics),
+        lambda: EvidenceContext(
+            artifacts={"medicaid_take_up_diagnostics": medicaid_take_up_diagnostics}
+        ),
+    )
     if not medicaid_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15281,7 +17434,13 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
-    snap_state_take_up_gate = us_snap_state_take_up_gate(snap_state_take_up_diagnostics)
+    snap_state_take_up_gate = shadow_gate(
+        "us_national_snap_state_take_up",
+        lambda: us_snap_state_take_up_gate(snap_state_take_up_diagnostics),
+        lambda: EvidenceContext(
+            artifacts={"snap_state_take_up_diagnostics": snap_state_take_up_diagnostics}
+        ),
+    )
     if not snap_state_take_up_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15312,7 +17471,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         time_period=PERIOD,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
-    other_health_insurance_gate = us_other_health_insurance_signal_gate(base_frame)
+    other_health_insurance_gate = _shadow_frame_gate(
+        "us_national_other_health_insurance",
+        lambda: us_other_health_insurance_signal_gate(base_frame),
+        base_frame,
+    )
     if not other_health_insurance_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -15331,7 +17494,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
     # microcosm#454: the meps_esi_premiums base stage owns the ESI employer
     # premium input; refuse a base that lacks or flattens it before the solve.
-    esi_premiums_base_gate = us_esi_premiums_signal_gate(base_frame)
+    esi_premiums_base_gate = _shadow_frame_gate(
+        "us_national_esi_premiums",
+        lambda: us_esi_premiums_signal_gate(base_frame),
+        base_frame,
+    )
     if not esi_premiums_base_gate.passed and not args.allow_esi_premium_gaps:
         if telemetry is not None:
             telemetry.stage(
@@ -15403,9 +17570,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     for failure in input_mass_reference_gate.failures
                 )
             )
-    degenerate_input_gate = _degenerate_input_signal_gate(
-        base_frame, PolicyEngineUSEngine()
+    degenerate_input_engine = PolicyEngineUSEngine()
+    degenerate_input_gate = shadow_gate(
+        "us_national_degenerate_input",
+        lambda engine=degenerate_input_engine: _degenerate_input_signal_gate(
+            base_frame, engine
+        ),
+        lambda engine=degenerate_input_engine: EvidenceContext(
+            frame=base_frame, artifacts={"policyengine_engine": engine}
+        ),
     )
+    # Today's call made the engine a temporary; it lives no longer here.
+    del degenerate_input_engine
     if not degenerate_input_gate.passed:
         # Same degraded contract as the input-mass gate above: the gate
         # object rides _release_gate_failures to the batch; no raise, no
@@ -15452,7 +17628,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "ecps_parity_gate",
             message="Gating candidate layers against the incumbent eCPS reference.",
         )
-    ecps_parity_gate = _ecps_parity_gate(base_frame)
+    ecps_parity_gate = _shadow_frame_gate(
+        "us_national_ecps_parity", lambda: _ecps_parity_gate(base_frame), base_frame
+    )
     if not ecps_parity_gate.passed and not args.allow_ecps_parity_gaps:
         # Same degraded contract as the input-mass/degenerate gates above
         # (PR #557 round 3 finding 1): the pinned parity reference requires
@@ -15776,6 +17954,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     calibration_runtime = _calibration_runtime()
     ladder_outcome = None
     exact_k_puf_tail_gate: GateResult | None = None
+    if args.exact_k is None:
+        for entry_id in (
+            "us_national_exact_k_puf_capital_gains_tail",
+            "us_national_exact_k_frozen_register_fit",
+        ):
+            shadow_not_run(entry_id, "the exact-k gates run on the exact-k arm only")
     if args.exact_k is not None:
         if (
             pool_original_household_ids is None
@@ -15818,7 +18002,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
         assert_exact_k_realized_count(ladder_outcome, args.exact_k)
         result = ladder_outcome.result
-        exact_k_puf_tail_gate = _exact_k_puf_tail_support_gate(
+        # A helper, not a lambda over target_frame: the frame is deleted
+        # below to free it, and a closure must not keep it alive.
+        exact_k_puf_tail_gate = _shadow_exact_k_puf_tail_support_gate(
             target_frame,
             ladder_outcome.support,
         )
@@ -16010,8 +18196,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # weight-safe, so any downstream transform that corrupted the frozen
     # decisions fails the build here instead of shipping (PR #477 review
     # finding 3). The SSA-count miss itself stays scorecard-only.
-    final_ssi_take_up_gate = us_ssi_take_up_gate(
-        ssi_take_up_diagnostics, targets=ssi_band_targets
+    final_ssi_take_up_gate = shadow_gate(
+        "us_national_ssi_take_up_final",
+        lambda: us_ssi_take_up_gate(ssi_take_up_diagnostics, targets=ssi_band_targets),
+        lambda: EvidenceContext(
+            artifacts={
+                "ssi_take_up_diagnostics": ssi_take_up_diagnostics,
+                "ssi_band_targets": ssi_band_targets,
+            }
+        ),
     )
     # SSI gate failures join the #437 batched terminal gates instead of
     # raising here: an early raise destroyed the failed run's calibration
@@ -16077,7 +18270,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # rows, and a column nonconstant on the candidate base can flatten on the
     # selected support.
     try:
-        health_input_gate = _health_input_signal_gate(export_frame)
+        health_input_gate = _shadow_frame_gate(
+            "us_national_health_input_export",
+            lambda: _health_input_signal_gate(export_frame),
+            export_frame,
+        )
     except Exception as error:
         # Degraded-mode guard (microcosm#547): record instead of masking; the
         # downstream gate-failure evaluation is itself guarded, so a None
@@ -16090,8 +18287,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             f"recorded instead of masking earlier failures: {error}"
         )
     try:
-        reported_coverage_vintage_gate = us_reported_coverage_vintage_signal_gate(
-            export_frame
+        reported_coverage_vintage_gate = _shadow_frame_gate(
+            "us_national_reported_coverage_vintage_export",
+            lambda: us_reported_coverage_vintage_signal_gate(export_frame),
+            export_frame,
         )
     except Exception as error:
         if not early_terminal_gate_failures:
@@ -16102,8 +18301,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             f"mode; recorded instead of masking earlier failures: {error}"
         )
     try:
-        other_health_insurance_gate = us_other_health_insurance_signal_gate(
-            export_frame
+        other_health_insurance_gate = _shadow_frame_gate(
+            "us_national_other_health_insurance_export",
+            lambda: us_other_health_insurance_signal_gate(export_frame),
+            export_frame,
         )
     except Exception as error:
         if not early_terminal_gate_failures:
@@ -16124,7 +18325,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             for failure in other_health_insurance_gate.failures
         )
     try:
-        esi_premiums_export_gate = us_esi_premiums_signal_gate(export_frame)
+        esi_premiums_export_gate = _shadow_frame_gate(
+            "us_national_esi_premiums_export",
+            lambda: us_esi_premiums_signal_gate(export_frame),
+            export_frame,
+        )
     except Exception as error:
         if not early_terminal_gate_failures:
             raise
@@ -16246,13 +18451,26 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             )
         if current_target_surface is None:
             current_target_surface = target_surface_payload(result)
-        exact_k_incumbent_fit_gate = _exact_k_frozen_register_fit_gate(
-            result,
-            incumbent_diagnostics,
-            target_registry=registry,
-            target_loss_weights=target_loss_weights,
-            configured_loss_basis=target_loss_basis,
-            incumbent_loss_basis=incumbent_loss_basis,
+        exact_k_incumbent_fit_gate = shadow_gate(
+            "us_national_exact_k_frozen_register_fit",
+            lambda: _exact_k_frozen_register_fit_gate(
+                result,
+                incumbent_diagnostics,
+                target_registry=registry,
+                target_loss_weights=target_loss_weights,
+                configured_loss_basis=target_loss_basis,
+                incumbent_loss_basis=incumbent_loss_basis,
+            ),
+            lambda: EvidenceContext(
+                artifacts={
+                    "calibration_result": result,
+                    "incumbent_diagnostics": incumbent_diagnostics,
+                    "target_registry": registry,
+                    "target_loss_weights": target_loss_weights,
+                    "configured_loss_basis": target_loss_basis,
+                    "incumbent_loss_basis": incumbent_loss_basis,
+                }
+            ),
         )
         exact_k_ladder_provenance = _exact_k_ladder_manifest_payload(
             args=args,
@@ -16272,26 +18490,67 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     enforced_ecps_parity_gate = (
         None if args.allow_ecps_parity_gaps else ecps_parity_gate
     )
+    # The summary the manifests' calibration gate block carries, recorded for
+    # certification (microcosm#1585 item 11, PR 4a); None when it crashed.
+    release_gate_summary: list[str] | None = None
     try:
-        gate_failures = _release_gate_failures(
-            result,
-            compilation,
-            target_profile_gate,
-            health_input_gate,
-            base_population_gate,
-            incumbent_diagnostics,
-            immigration_gate,
-            enforced_input_mass_reference_gate,
-            degenerate_input_gate,
-            ecps_parity_gate=enforced_ecps_parity_gate,
-            hours_worked_gate=hours_worked_gate,
-            snap_take_up_gate=snap_take_up_gate,
-            eligibility_inputs_gate=eligibility_inputs_gate,
-            pregnancy_gate=pregnancy_gate,
-            reported_coverage_vintage_gate=reported_coverage_vintage_gate,
-            snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
-            target_registry=registry,
+        gate_failures = shadow_failures(
+            "us_national_release_gates",
+            # Today's call, argument for argument: callers read its
+            # positional arguments (the #547 corridor tests read args[8]).
+            lambda: _release_gate_failures(
+                result,
+                compilation,
+                target_profile_gate,
+                health_input_gate,
+                base_population_gate,
+                incumbent_diagnostics,
+                immigration_gate,
+                enforced_input_mass_reference_gate,
+                degenerate_input_gate,
+                ecps_parity_gate=enforced_ecps_parity_gate,
+                hours_worked_gate=hours_worked_gate,
+                snap_take_up_gate=snap_take_up_gate,
+                eligibility_inputs_gate=eligibility_inputs_gate,
+                pregnancy_gate=pregnancy_gate,
+                reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+                snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+                target_registry=registry,
+            ),
+            lambda: EvidenceContext(
+                artifacts={
+                    "calibration_result": result,
+                    "target_compilation": compilation,
+                    **{
+                        f"release_gates_{name}": value
+                        for name, value in {
+                            "target_profile_gate": target_profile_gate,
+                            "health_input_gate": health_input_gate,
+                            "base_population_gate": base_population_gate,
+                            "incumbent_diagnostics": incumbent_diagnostics,
+                            "immigration_gate": immigration_gate,
+                            "input_mass_reference_gate": (
+                                enforced_input_mass_reference_gate
+                            ),
+                            "degenerate_input_gate": degenerate_input_gate,
+                            "ecps_parity_gate": enforced_ecps_parity_gate,
+                            "hours_worked_gate": hours_worked_gate,
+                            "snap_take_up_gate": snap_take_up_gate,
+                            "eligibility_inputs_gate": eligibility_inputs_gate,
+                            "pregnancy_gate": pregnancy_gate,
+                            "reported_coverage_vintage_gate": (
+                                reported_coverage_vintage_gate
+                            ),
+                            "snap_discretionary_exemption_gate": (
+                                snap_discretionary_exemption_gate
+                            ),
+                            "target_registry": registry,
+                        }.items()
+                    },
+                }
+            ),
         )
+        release_gate_summary = list(gate_failures)
     except Exception as error:
         # Degraded-mode guard (microcosm#547): the batch must still form and
         # the diagnostics artifact must still be written when earlier
@@ -16418,15 +18677,19 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # before the NPZ write, instead of after them.
     #
     # It rides the batch like every other pre-export gate, which also means
-    # --evidence-release can convert it into an owned known failure and export
-    # anyway (microcosm#506) — the conversion contract
-    # test_evidence_mode_conversion_is_pinned_structurally enforces on every
-    # terminal raise past the accumulator. Such an export still cannot be
-    # SPM-measured, so reform validation below reaches the engine's own
-    # refusal; that is the declared, owner-checked, manifest-recorded choice an
-    # evidence release makes about any pre-export gate, not a hole here.
-    spm_composition_failures, export_frame_spm_composition = (
-        _spm_composition_gate_failures(export_frame, stage="export frame")
+    # an evidence-tier certification can ship it as an owned known failure
+    # (microcosm#506): the build records it with the others and writes its
+    # H5. Such an export still cannot be SPM-measured, so reform validation in
+    # certification reaches the engine's own refusal; that is the declared,
+    # owner-checked, manifest-recorded choice an evidence release makes about
+    # any pre-export gate, not a hole here.
+    spm_composition_failures, export_frame_spm_composition = shadow_value(
+        "us_national_spm_composition",
+        lambda: _spm_composition_gate_failures(export_frame, stage="export frame"),
+        lambda: EvidenceContext(
+            frame=export_frame, artifacts={"spm_composition_stage": "export frame"}
+        ),
+        verdict=lambda value: LegacyVerdict.from_failures(value[0]),
     )
     terminal_gate_failures.extend(spm_composition_failures)
     terminal_batch_telemetry.stage(
@@ -16462,8 +18725,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # build.built_with_model_package. Column names only: no rows are read, and
     # the verdict joins the one batched pre-export raise below, so a refusal
     # names every other failing gate too and mints no H5.
-    stored_input_failures_, export_frame_stored_inputs = _stored_input_gate_failures(
-        export_frame, stage=US_FISCAL_STORED_INPUTS_STAGE
+    stored_input_failures_, export_frame_stored_inputs = shadow_value(
+        "us_national_stored_inputs",
+        lambda: _stored_input_gate_failures(
+            export_frame, stage=US_FISCAL_STORED_INPUTS_STAGE
+        ),
+        lambda: EvidenceContext(
+            frame=export_frame,
+            artifacts={"stored_inputs_stage": US_FISCAL_STORED_INPUTS_STAGE},
+        ),
+        verdict=lambda value: LegacyVerdict.from_failures(value[0]),
     )
     terminal_gate_failures.extend(stored_input_failures_)
     terminal_batch_telemetry.stage(
@@ -16519,8 +18790,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # RED on today's asset-less artifacts by design (Deliverable 2 turns it
     # green); that is the gate doing its job, not a bug.
     try:
-        input_coverage_gate = us_release_input_coverage_gate(
-            export_frame, release_engine
+        input_coverage_gate = shadow_gate(
+            "us_national_release_input_coverage",
+            lambda: us_release_input_coverage_gate(export_frame, release_engine),
+            lambda: EvidenceContext(
+                frame=export_frame, artifacts={"release_engine": release_engine}
+            ),
         )
     except Exception as exc:
         # Degraded mode only: with earlier pre-export failures on record, a
@@ -16579,8 +18854,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # evidence, with the base and export signal verdicts beside it so a waived
     # assignment failure stays on the record.
     try:
-        esi_premiums_anchor_gate = us_esi_premiums_anchor_gate(
-            export_frame, time_period=PERIOD
+        esi_premiums_anchor_gate = shadow_gate(
+            "us_national_esi_premiums_anchor",
+            lambda: us_esi_premiums_anchor_gate(export_frame, time_period=PERIOD),
+            lambda: EvidenceContext(
+                frame=export_frame, artifacts={"time_period": PERIOD}
+            ),
         )
     except Exception as exc:
         if not terminal_gate_failures:
@@ -16665,6 +18944,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         "sha256": None,
         "reference_name": export_reference_name,
     }
+    reference_loaded = False
     try:
         if args.export_input_mass_reference_h5 is not None:
             export_input_mass_reference["sha256"] = _sha256(
@@ -16675,25 +18955,46 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             if args.export_input_mass_reference_h5 is not None
             else None
         )
-        export_input_mass_gate = _export_input_mass_gate(
-            export_frame,
-            base_frame,
-            relative_tolerance=args.input_mass_relative_tolerance,
-            minimum_reference_total=args.input_mass_minimum_reference_total,
-            reference_frame=export_reference_frame,
-            reference_name=export_reference_name,
-            # Build H (microcosm#299): the two SOI-identified columns whose true
-            # target level provably cannot sit inside the live-default reference
-            # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
-            # and both mortgage columns are deliberately NOT excluded so the run
-            # adjudicates their actual gate outcome. See the constant's band-math
-            # rationale above.
-            reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+        reference_loaded = True
+        # Build H (microcosm#299): the two SOI-identified columns whose true
+        # target level provably cannot sit inside the live-default reference
+        # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
+        # and both mortgage columns are deliberately NOT excluded so the run
+        # adjudicates their actual gate outcome. See the constant's band-math
+        # rationale above.
+        export_input_mass_gate = shadow_gate(
+            "us_national_export_input_mass",
+            lambda: _export_input_mass_gate(
+                export_frame,
+                base_frame,
+                relative_tolerance=args.input_mass_relative_tolerance,
+                minimum_reference_total=args.input_mass_minimum_reference_total,
+                reference_frame=export_reference_frame,
+                reference_name=export_reference_name,
+                reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+            ),
+            lambda: EvidenceContext(
+                frame=export_frame,
+                artifacts={
+                    "base_frame": base_frame,
+                    "export_input_mass_reference_frame": export_reference_frame,
+                    "export_input_mass_reference_name": export_reference_name,
+                    "export_input_mass_reviewed_exclusions": (
+                        US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+                    ),
+                },
+            ),
         )
     except Exception as exc:
         # Same degraded-mode contract as the coverage gate above.
         if not terminal_gate_failures:
             raise
+        if not reference_loaded:
+            # As for the QRF tail register: the gate never ran.
+            shadow_not_run(
+                "us_national_export_input_mass",
+                f"its reference did not load: {type(exc).__name__}: {exc}",
+            )
         terminal_gate_failures.append(
             "Input mass parity failed: evaluation error under earlier gate "
             f"failures: {type(exc).__name__}: {exc}"
@@ -16758,7 +19059,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # top-k weighted-mass share. A per-run register that does not match the
     # checked surface is a batched failure (never an early raise), so the
     # measured tail evidence and the #568 weight sidecar survive it.
-    qrf_tail_register_failures = _record_qrf_tail_concentration_gate(
+    # A register mismatch is recorded like any other terminal failure; an
+    # evidence-tier certification refuses to own it (microcosm#1585 item 11).
+    _record_qrf_tail_concentration_gate(
         export_frame,
         exclusions_path=args.qrf_tail_concentration_exclusions,
         allow_concentration=args.allow_qrf_tail_concentration,
@@ -16772,86 +19075,59 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # at this point, so one failed
     # run reports every failing pre-export group at once (Build M attempts 9
     # and 10 each burned a ~2h run to surface one of these groups serially).
-    # The reform-coverage smoke and take-up contract keep their own raises
-    # below: each already evaluates and reports its full failure set
-    # internally, and both require the written H5 / export artifacts that a
-    # gate-failed run must not produce.
+    # A failed release gate no longer withholds a build's H5 (microcosm#1585
+    # item 11, PR 4a): a build is evaluated before anyone certifies it. Its
+    # failures ride the build record, and the build exits non-zero once its
+    # record is written. A build has no tier: certification refuses it at the
+    # certified tier while its failures stand, and only an evidence-tier
+    # certification, which needs an owner for every failure, can ship them.
+    build_refusal: RuntimeError | None = None
     if terminal_gate_failures:
-        # Evidence tier (microcosm#506): owners are resolved NOW so an
-        # unowned failure refuses the export before the H5 and manifest work
-        # below. A refused evidence attempt then falls through to the SAME
-        # failed-run path as a certified gate failure — #568 weight-evidence
-        # sidecar included — so no failed run ever loses its record-level
-        # weight evidence.
-        evidence_refusal: RuntimeError | None = None
-        if args.evidence_release:
-            try:
-                _evidence_known_failures(
-                    terminal_gate_failures, evidence_failure_owner_patterns
-                )
-            except RuntimeError as error:
-                evidence_refusal = error
-            if evidence_refusal is None:
-                evidence_refusal = _qrf_tail_register_evidence_refusal(
-                    qrf_tail_register_failures
-                )
-        if not args.evidence_release or evidence_refusal is not None:
-            # Gate-failure path ONLY (microcosm#568 review): a batched
-            # pre-export failure mints no H5, so the exact calibrated weight
-            # vector — with the ordered household ids it aligns to, bound to
-            # the target-frame identity — is persisted here as the run's only
-            # record-level weight evidence. Green runs never write these files
-            # (the certified H5 carries the weights); late gates (reform
-            # smoke, take-up contract) raise after the H5 write, so their
-            # failed runs retain weights in the written dataset itself.
-            _write_final_household_weight_evidence(
-                release_dir,
-                export_frame,
-                identity=target_frame_checkpoint_identity,
-            )
-            terminal_batch_telemetry.stage(
-                "release_gates",
-                status="failed",
-                message="Release gates failed (batched pre-export report).",
-                failures=terminal_gate_failures,
-                force_upload=True,
-            )
-            if evidence_refusal is not None:
-                raise evidence_refusal
-            raise RuntimeError(
-                "Release gates failed: " + "; ".join(terminal_gate_failures)
-            )
-        # The owned failures ride into the release manifest's known_failures
-        # block instead of aborting the export; the H5 written below carries
-        # the calibrated weights, so the sidecar is not written on this path.
-        # Failures appended AFTER this point (a _TerminalBatchProgress crash
-        # line, the smoke/take-up/coverage recordings) are owner-checked at
-        # their own append sites and again before the manifest write; if one
-        # is unowned the run dies post-H5 — weights retained in the written
-        # dataset, per the #568 doctrine for late-gate failures — and no
-        # manifest is minted.
+        # Gate-failure path ONLY (microcosm#568 review): the exact calibrated
+        # weight vector — with the ordered household ids it aligns to, bound
+        # to the target-frame identity — is persisted here as the run's
+        # record-level weight evidence. Green runs never write these files
+        # (the H5 carries the weights), and certification never copies them
+        # into a release directory.
+        _write_final_household_weight_evidence(
+            release_dir,
+            export_frame,
+            identity=target_frame_checkpoint_identity,
+        )
         terminal_batch_telemetry.stage(
             "release_gates",
             status="failed",
-            message=(
-                "Release gates failed; --evidence-release continues to "
-                "export with the failures recorded (microcosm#506)."
-            ),
+            message="Release gates failed (batched pre-export report).",
             failures=terminal_gate_failures,
             force_upload=True,
         )
+        build_refusal = _BuildFailedReleaseGatesError(
+            "Release gates failed: " + "; ".join(terminal_gate_failures)
+        )
     # A green run must not inherit a prior failed attempt's weight evidence
     # (microcosm#568 round 2): with --out/--release-id reuse, stale evidence
-    # files would coexist with a certified release whose manifest knows
-    # nothing about them. The batched gates have passed (or --evidence-release
-    # is recording their failures), so any evidence present here belongs to a
-    # superseded attempt — remove it before the release artifacts are written.
-    for stale_evidence in (
-        release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
-        release_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
-        release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
-    ):
-        stale_evidence.unlink(missing_ok=True)
+    # files would coexist with a green build whose record knows nothing about
+    # them. The batched gates have passed, so any evidence present here
+    # belongs to a superseded attempt — remove it before the build's
+    # artifacts are written.
+    if build_refusal is None:
+        for stale_evidence in (
+            release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
+            release_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
+            release_dir / FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME,
+        ):
+            stale_evidence.unlink(missing_ok=True)
+    # What the written file fails, its stored-input premise and the export
+    # audit below, is recorded with the release-gate failures, on a green
+    # build too, so its H5 never stands without a record that marks it
+    # failed (review of #1672). No tier certifies it: the evidence tier
+    # relaxes gate verdicts, never the written artifact's own checks
+    # (microcosm#506), so the record lists these apart.
+    artifact_integrity_failures: list[str] = []
+    # A failed build's --out may be built into again, so its build may have
+    # been certified as evidence since this build started: its H5 and record
+    # are then a certified build's, never to be overwritten (review of #1681).
+    _refuse_reusing_a_certified_build(release_root)
     dataset_path = artifact_root / dataset_filename
     # The export H5 write: everything below (reform smoke, take-up contract,
     # release manifest sha) reads THIS file, and it must be written only after
@@ -16863,11 +19139,245 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # writer's output; the written bytes are graded whatever the gate reached
     # and must earn the same verdict (no refusal, if the gate could not
     # evaluate).
-    stored_input_premise_failure = _written_stored_input_verdict_mismatch(
-        dataset_path, export_frame_stored_inputs
+    stored_input_premise_failure = shadow_value(
+        "us_national_stored_inputs_written",
+        lambda: _written_stored_input_verdict_mismatch(
+            dataset_path, export_frame_stored_inputs
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "dataset_path": dataset_path,
+                "pre_export_stored_inputs": export_frame_stored_inputs,
+            }
+        ),
+        verdict=lambda mismatch: LegacyVerdict.from_failures(
+            [] if mismatch is None else [mismatch]
+        ),
     )
     if stored_input_premise_failure is not None:
-        raise RuntimeError(stored_input_premise_failure)
+        artifact_integrity_failures.append(stored_input_premise_failure)
+        terminal_gate_failures.append(stored_input_premise_failure)
+    # The build ends here (microcosm#1585 item 11, PR 4a). The optional export
+    # audit and the calibration NPZ read the calibration result, which only
+    # this process holds, so they run first. Every later stage scores the
+    # written H5 and runs from the build record (_certify_us_build), so a
+    # build can be judged before anyone pays for those checks.
+    if args.audit_export_targets:
+        if telemetry is not None:
+            telemetry.stage(
+                "post_export_audit",
+                message="Auditing exported H5 against calibration targets.",
+            )
+        try:
+            _assert_export_matches_calibration(
+                dataset_path,
+                result,
+                target_specs,
+                maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+            )
+        except Exception as error:
+            audit_failure = f"Export audit failed: {type(error).__name__}: {error}"
+            artifact_integrity_failures.append(audit_failure)
+            terminal_gate_failures.append(audit_failure)
+
+    if telemetry is not None:
+        telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
+    calibration_path = artifact_root / calibration_filename
+    _write_npz(calibration_path, result=result, registry=registry)
+    # Keep a copy of the exact base artifact beside diagnostics for local audit.
+    _copy_base_h5_for_local_audit(
+        base_h5,
+        release_root / f"base_{base_h5.name}",
+        authenticated_pool_h5=authenticated_pool_h5,
+    )
+    if build_refusal is not None or artifact_integrity_failures:
+        # The refusal names every failure the record carries, those found
+        # after the H5 write included. A build whose written file failed its
+        # own checks exits as a refusal (exit 1), not with
+        # US_BUILD_FAILED_RELEASE_GATES_EXIT: no tier certifies it, so a
+        # driver must not keep it for certification.
+        refusal = (
+            RuntimeError
+            if artifact_integrity_failures
+            else _BuildFailedReleaseGatesError
+        )
+        build_refusal = refusal(
+            "Release gates failed: " + "; ".join(terminal_gate_failures)
+        )
+    timing["build_seconds"] = time.perf_counter() - build_started
+    build_record_path = _write_us_build_record(
+        release_root,
+        _us_build_record(
+            release_id=release_id,
+            release_root=release_root,
+            release_dir=release_dir,
+            artifact_root=artifact_root,
+            dataset_key=dataset_key,
+            dataset_filename=dataset_filename,
+            calibration_key=calibration_key,
+            calibration_filename=calibration_filename,
+            commit=full_commit,
+            built_at=datetime.now(UTC).isoformat(),
+            runtime=_runtime_versions(),
+            args=args,
+            terminal_gate_failures=terminal_gate_failures,
+            artifact_integrity_failures=artifact_integrity_failures,
+            n_households=int(export_frame.n("household")),
+            result=result,
+            post_export_scoring_plan=post_export_scoring_plan,
+            release_gate_failures=release_gate_summary,
+            registry=registry,
+            target_surface=current_target_surface,
+            dropped=compilation,
+            gates={
+                "target_profile_gate": target_profile_gate,
+                "ssi_take_up_delivery_gate_result": ssi_take_up_delivery_gate_result,
+                "health_input_gate": health_input_gate,
+                "base_population_gate": base_population_gate,
+                "immigration_gate": immigration_gate,
+                "degenerate_input_gate": degenerate_input_gate,
+                "ecps_parity_gate": enforced_ecps_parity_gate,
+                "hours_worked_gate": hours_worked_gate,
+                "snap_take_up_gate": snap_take_up_gate,
+                "eligibility_inputs_gate": eligibility_inputs_gate,
+                "pregnancy_gate": pregnancy_gate,
+                "reported_coverage_vintage_gate": reported_coverage_vintage_gate,
+                "snap_discretionary_exemption_gate": (
+                    snap_discretionary_exemption_gate
+                ),
+            },
+            warm_start_calibration=warm_start_calibration,
+            selection_source=selection_source_payload,
+            target_surface_selection=target_surface_selection,
+            ledger_artifact=ledger_artifact.provenance(),
+            default_dataset=default_dataset,
+            medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
+            exact_k_ladder=exact_k_ladder_provenance,
+            base_pool=base_pool_receipt,
+            acs_predictor_join=acs_predictor_join_receipt,
+            export_input_mass_reference=export_input_mass_reference,
+            calibration_runtime=calibration_runtime,
+            diagnostics_outcome=diagnostics_outcome,
+            scf_wealth_signal=scf_wealth_signal,
+            fiscal_target_sources=_fiscal_target_source_provenance(target_specs),
+            congressional_district_vintage_crosswalk=(
+                congressional_district_vintage_crosswalk_metadata
+            ),
+            fiscal_target_exclusion_receipt=fiscal_target_exclusion_receipt,
+            fsa_target_receipt=fsa_target_receipt,
+            take_up_participation=us_take_up_participation_diagnostics(export_frame),
+            medicaid_take_up_diagnostics=medicaid_take_up_diagnostics,
+            snap_state_take_up_diagnostics=snap_state_take_up_diagnostics,
+            timing=timing,
+            staging=_staging_manifest_block(telemetry),
+            staging_settings={
+                "no_staging": bool(args.no_staging),
+                "repo_id": args.staging_repo_id or None,
+                "prefix": args.staging_prefix,
+                "upload_interval_seconds": float(args.staging_upload_interval_seconds),
+            },
+        ),
+    )
+    if telemetry is not None:
+        telemetry.attach_artifact("build_record", build_record_path)
+        if build_refusal is None:
+            telemetry.complete()
+    _print_built_result(
+        build=release_id,
+        release_root=release_root,
+        build_dir=release_dir,
+        artifact_root=artifact_root,
+        build_record=build_record_path,
+        release_gate_failures=terminal_gate_failures if build_refusal else (),
+    )
+    if build_refusal is not None:
+        raise build_refusal
+
+
+def _certify_us_build(
+    record: _USBuildRecord,
+    *,
+    certification: _Certification,
+    telemetry: _BuildProgress | None = None,
+) -> None:
+    """Run a finished build's post-export checks and write its manifests.
+
+    The build (``_main``) ends once its H5, calibration weights, diagnostics,
+    gate evidence and :data:`US_BUILD_RECORD_FILENAME` are written. This
+    scores the written H5 (the reform-coverage smoke, reform validation,
+    demographics and the holdouts), writes the source-coverage and take-up
+    receipts and both manifests, and leaves the release directory in the
+    build-folder layout for ``microcosm-publish-release-build``
+    (microcosm#1585 item 11, PR 4a). Every input is the record, or a file
+    whose digest the record pins: nothing is read from the build's process.
+    The manifests' provenance (the commit, ``built_at`` and the built-with
+    packages) is the build's, from the record. A build has no tier:
+    ``certification`` is the tier certification chose, the release directory
+    it placed the build's files in and the ID it publishes the build under,
+    and both manifests record it beside the build's provenance.
+    """
+
+    certify_started = time.perf_counter()
+    args = record.certify_args(evidence_release=certification.evidence_release)
+    release_id = certification.build
+    release_dir = certification.release_dir
+    artifact_root = record.artifact_root
+    dataset_key = record.dataset_key
+    dataset_filename = record.dataset_filename
+    calibration_key = record.calibration_key
+    calibration_filename = record.calibration_filename
+    dataset_path = artifact_root / dataset_filename
+    evidence_failure_owner_patterns = certification.owner_patterns
+    terminal_gate_failures = list(record.terminal_gate_failures)
+    timing = dict(record.timing)
+    result = record.calibration_result()
+    registry = record.registry_summary()
+    post_export_scoring_plan = record.post_export_scoring_plan(args, result=result)
+    inputs = record.manifest_inputs
+    if inputs["release_gate_failures"] is None:
+        raise RuntimeError(
+            f"Build {release_id}: its release gate summary crashed when it was "
+            "built, so its manifests cannot record the calibration gate."
+        )
+    gates = record.gates()
+    target_profile_gate = gates["target_profile_gate"]
+    ssi_take_up_delivery_gate_result = gates["ssi_take_up_delivery_gate_result"]
+    health_input_gate = gates["health_input_gate"]
+    base_population_gate = gates["base_population_gate"]
+    immigration_gate = gates["immigration_gate"]
+    degenerate_input_gate = gates["degenerate_input_gate"]
+    enforced_ecps_parity_gate = gates["ecps_parity_gate"]
+    hours_worked_gate = gates["hours_worked_gate"]
+    snap_take_up_gate = gates["snap_take_up_gate"]
+    eligibility_inputs_gate = gates["eligibility_inputs_gate"]
+    pregnancy_gate = gates["pregnancy_gate"]
+    reported_coverage_vintage_gate = gates["reported_coverage_vintage_gate"]
+    snap_discretionary_exemption_gate = gates["snap_discretionary_exemption_gate"]
+    # Read only by the gate summary, which the build recorded.
+    incumbent_diagnostics = None
+    enforced_input_mass_reference_gate = None
+    current_target_surface = inputs["target_surface"]
+    compilation = inputs["dropped"]
+    warm_start_calibration = inputs["warm_start_calibration"]
+    selection_source_payload = inputs["selection_source"]
+    target_surface_selection = inputs["target_surface_selection"]
+    default_dataset = inputs["default_dataset"]
+    medicaid_enrollment_substitutions = inputs["medicaid_enrollment_substitutions"]
+    exact_k_ladder_provenance = inputs["exact_k_ladder"]
+    base_pool_receipt = inputs["base_pool"]
+    acs_predictor_join_receipt = inputs["acs_predictor_join"]
+    export_input_mass_reference = inputs["export_input_mass_reference"]
+    calibration_runtime = inputs["calibration_runtime"]
+    diagnostics_outcome = record.diagnostics_outcome(release_dir)
+    scf_wealth_signal = inputs["scf_wealth_signal"]
+    source_coverage = record.source_coverage
+    congressional_district_vintage_crosswalk_metadata = source_coverage[
+        "congressional_district_vintage_crosswalk"
+    ]
+    fiscal_target_exclusion_receipt = source_coverage["fiscal_target_exclusion_receipt"]
+    fsa_target_receipt = source_coverage["fsa_student_loan_target_receipt"]
+    medicaid_take_up_diagnostics = record.take_up["medicaid"]
+    snap_state_take_up_diagnostics = record.take_up["snap_state"]
     # Route A remediation (microcosm#956): every post-export stage below (the
     # smoke, reform validation, demographics) scores THIS file through one
     # household-batched scorer instead of one whole-pool Microsimulation each.
@@ -16953,24 +19463,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             _evidence_known_failures(
                 terminal_gate_failures, evidence_failure_owner_patterns
             )
-    if args.audit_export_targets:
-        if telemetry is not None:
-            telemetry.stage(
-                "post_export_audit",
-                message="Auditing exported H5 against calibration targets.",
-            )
-        _assert_export_matches_calibration(
-            dataset_path,
-            result,
-            target_specs,
-            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-        )
-
-    if telemetry is not None:
-        telemetry.stage("write_calibration_npz", message="Writing calibration NPZ.")
-    calibration_path = artifact_root / calibration_filename
-    _write_npz(calibration_path, result=result, registry=registry)
-
     if not args.skip_reform_validation:
         if telemetry is not None:
             telemetry.stage(
@@ -17083,7 +19575,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             **surface_exclusions,
         },
     )
-    coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
+    coverage["fiscal_target_sources"] = source_coverage["fiscal_target_sources"]
     if congressional_district_vintage_crosswalk_metadata is not None:
         coverage["congressional_district_vintage_crosswalk"] = (
             congressional_district_vintage_crosswalk_metadata
@@ -17125,7 +19617,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "take_up_participation",
             message="Writing take-up participation diagnostics.",
         )
-    take_up_participation = us_take_up_participation_diagnostics(export_frame)
+    take_up_participation = record.take_up["participation"]
     write_us_take_up_participation_diagnostics(
         take_up_participation,
         release_dir / "us_take_up_participation.json",
@@ -17185,13 +19677,14 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             release_dir / "us_snap_state_take_up.json",
         )
         telemetry.stage("manifests", message="Writing release manifests.")
-    timing["total_build_seconds"] = time.perf_counter() - build_started
+    timing["certify_seconds"] = time.perf_counter() - certify_started
+    timing["total_build_seconds"] = timing["build_seconds"] + timing["certify_seconds"]
     evidence_known_failures = None
     if args.evidence_release:
         if not terminal_gate_failures:
             raise RuntimeError(
                 "Evidence release refused: every terminal gate passed. This "
-                "artifact qualifies for the certified path — rerun without "
+                "build qualifies for the certified tier — certify it without "
                 "--evidence-release (the flag cannot mint a certified-shape "
                 "manifest, and an evidence manifest with no known failures "
                 "is invalid by contract)."
@@ -17222,14 +19715,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         pregnancy_gate=pregnancy_gate,
         reported_coverage_vintage_gate=reported_coverage_vintage_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
+        release_gate_failures=inputs["release_gate_failures"],
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
         target_surface_selection=target_surface_selection,
-        ledger_artifact=ledger_artifact.provenance(),
+        ledger_artifact=inputs["ledger_artifact"],
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-        staging=_staging_manifest_block(telemetry),
+        # The staging run the publisher checks is certification's, which
+        # carries the post-export verdicts and the manifests; the build's
+        # rides inside it.
+        staging={**_staging_manifest_block(telemetry), "build": dict(record.staging)},
         dataset_key=dataset_key,
         dataset_filename=dataset_filename,
         calibration_key=calibration_key,
@@ -17248,6 +19745,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         diagnostics_outcome=diagnostics_outcome,
         scf_wealth_signal=scf_wealth_signal,
         scf_education_debt=args.scf_education_debt,
+        git_commit=record.commit,
+        built_at=record.built_at,
+        runtime_versions=record.runtime,
+        certification=certification.manifest_block(record),
     )
     # Both manifests name the release and this build, in the build-folder
     # layout, before telemetry attaches them; the directory must then pass
@@ -17266,12 +19767,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         )
         telemetry.complete()
 
-    # Keep a copy of the exact base artifact beside diagnostics for local audit.
-    _copy_base_h5_for_local_audit(
-        base_h5,
-        release_root / f"base_{base_h5.name}",
-        authenticated_pool_h5=authenticated_pool_h5,
-    )
     _print_build_result(
         build=release_id,
         release_dir=release_dir,
@@ -17280,5 +19775,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
 
 
+def _run_as_script() -> None:
+    """Run the build as a command: a build that failed release gates once its
+    record is written exits :data:`US_BUILD_FAILED_RELEASE_GATES_EXIT`, with
+    its refusal printed as Python prints any other."""
+
+    try:
+        main()
+    except _BuildFailedReleaseGatesError:
+        traceback.print_exc()
+        raise SystemExit(US_BUILD_FAILED_RELEASE_GATES_EXIT) from None
+
+
 if __name__ == "__main__":
-    main()
+    _run_as_script()

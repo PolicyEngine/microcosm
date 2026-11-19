@@ -210,6 +210,7 @@ def _frame(*, base_own_right_override: bool | None = None):
             "household_id": [1, 2, 3, 5, 6, 7],
             # Each SPI copy repeats its twin's household.
             "household_source_id": [1, 2, 3, 1, 2, 3],
+            "source_household_id": [1, 2, 3, 1, 2, 3],
         }
     )
     return uk_national_frame(

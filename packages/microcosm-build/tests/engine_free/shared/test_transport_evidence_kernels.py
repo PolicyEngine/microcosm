@@ -150,6 +150,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1585: the US keyed draws call
         # stochastic_assignment.stable_identity_uniforms.
         "microcosm.build.stochastic_assignment",
+        # microcosm#1585 item 11: us_runtime.multispine_pool's shadow sites
+        # import us_runtime.gate_shadow.
+        "microcosm.build.us_runtime.gate_shadow",
         # microcosm#1405: the gate battery refuses a signing key the committed
         # registry does not let sign, so it imports
         # microcosm.data.gate_signing_keys, and with it the microcosm.data

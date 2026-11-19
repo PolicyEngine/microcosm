@@ -24,6 +24,7 @@ from typing import Protocol
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.gates import GateResult
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.build.us_runtime.acs_income_universe import (
@@ -50,6 +51,7 @@ from microcosm.build.us_runtime.eligibility_inputs import (
 from microcosm.build.us_runtime.energy_subsidy import (
     with_us_energy_subsidy_input,
 )
+from microcosm.build.us_runtime.gate_shadow import shadow_gate
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
     us_hours_worked_signal_gate,
@@ -1829,7 +1831,13 @@ def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
         seed=POOL_RANDOM_SEED,
         time_period=POOL_TIME_PERIOD,
     )
-    gate = us_hours_worked_signal_gate(produced)
+    # The pool builder's stacked path observes this gate for its shadow
+    # battery (microcosm#1585 item 11); with no shadow armed it is the call.
+    gate = shadow_gate(
+        "us_pool_hours_worked",
+        lambda: us_hours_worked_signal_gate(produced),
+        lambda: EvidenceContext(frame=produced),
+    )
     if not gate.passed:
         raise ValueError(
             "Pool pre-clone hours-worked signal gate failed:\n  "

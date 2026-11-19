@@ -556,6 +556,143 @@ def test_the_target_surface_resolves_from_a_build_folder_release_manifest(
     assert probe_tool.resolve_target_surface(None, None, identity)["mode"] == "full"
 
 
+def test_the_target_surface_resolves_from_an_uncertified_builds_record(
+    probe_tool, tmp_path
+) -> None:
+    """A build not yet certified has no manifest; the probe reads its
+    selection from the build_record.json in its --out directory: one level
+    above the build's own directory, build/, and two above a release
+    directory certification placed it in (microcosm#1585 item 11). A flag
+    still wins."""
+    selection = {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+    }
+    release_dir = tmp_path / "out" / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    build_dir = tmp_path / "out" / "build"
+    build_dir.mkdir()
+    assert probe_tool.reference_build_record(release_dir) is None
+    assert probe_tool.reference_build_record(build_dir) is None
+    record_path = tmp_path / "out" / "build_record.json"
+    record_path.write_text(
+        json.dumps({"manifest": {"target_surface_selection": selection}})
+    )
+    assert probe_tool.reference_build_record(release_dir) == record_path.resolve()
+    assert probe_tool.reference_build_record(build_dir) == record_path.resolve()
+    record = json.loads(record_path.read_text())
+
+    assert probe_tool.resolve_target_surface(None, None, None, record) == {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+        "source": "reference build_record.json manifest.target_surface_selection",
+    }
+    full = {"manifest": {"target_surface_selection": None}}
+    assert probe_tool.resolve_target_surface(None, None, None, full)["mode"] == "full"
+    assert (
+        probe_tool.resolve_target_surface("full", None, None, record)["source"]
+        == "--target-surface"
+    )
+
+
+def test_a_failed_build_is_no_reference(
+    probe_tool, builder, tmp_path, capsys, monkeypatch
+) -> None:
+    """A failed build keeps its H5 to be evaluated, which the probe may score
+    as --export, but its directories are refused as the reference (review of
+    #1672), until an evidence-tier certification makes it an evidence
+    release (microcosm#1585 item 11)."""
+    out = tmp_path / "out"
+    build_dir = out / builder.US_BUILD_FILES_DIRECTORY
+    build_dir.mkdir(parents=True)
+    (out / "build_record.json").write_text(
+        json.dumps(
+            {
+                "kind": builder.US_BUILD_RECORD_KIND,
+                "build": "populace-us-2024-failed",
+                "layout": {"build_dir": builder.US_BUILD_FILES_DIRECTORY},
+                "settings": {},
+                "terminal_gate_failures": ["Input coverage failed: x"],
+            }
+        )
+    )
+    evidence_dir = out / "releases" / builder.US_EVIDENCE_RELEASE_ID
+    diagnostics = build_dir / "calibration_diagnostics.json"
+    diagnostics.write_text("{}")
+
+    def argv(flag: str, reference: Path) -> list[str]:
+        return [
+            "--export",
+            str(tmp_path / "sample.h5"),
+            "--out",
+            str(tmp_path / "probe"),
+            flag,
+            str(reference),
+        ]
+
+    # Its directories, the --out itself, and any file under it given as an
+    # explicit reference (review of #1681).
+    for flag, reference in (
+        ("--reference-release-dir", build_dir),
+        ("--reference-release-dir", evidence_dir),
+        ("--reference-release-dir", out),
+        ("--reference-smoke", build_dir / "reform_coverage_smoke.json"),
+        ("--reference-validation", build_dir / "reform_validation.json"),
+        ("--reference-build-manifest", build_dir / "build_manifest.json"),
+    ):
+        with pytest.raises(SystemExit):
+            probe_tool.main(argv(flag, reference))
+        assert (
+            f"{flag} {reference} belongs to build populace-us-2024-failed"
+            in capsys.readouterr().err
+        )
+    assert not (tmp_path / "probe").exists()
+
+    # Its own calibration diagnostics are the scored build's fit, not a
+    # reference, so they go with its export: the probe passes its reference
+    # check and goes on to resolve the reference files.
+    class ReferenceCheckPassedError(Exception):
+        pass
+
+    def stop(*args, **kwargs):
+        raise ReferenceCheckPassedError
+
+    monkeypatch.setattr(probe_tool, "reference_paths", stop)
+    with pytest.raises(ReferenceCheckPassedError):
+        probe_tool.main(argv("--calibration-diagnostics", diagnostics))
+    # A part-written evidence certification exempts nothing; a finished one
+    # makes it an evidence release, which is a reference again.
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "release_manifest.json").write_text("{}")
+    assert builder._failed_build_holding(evidence_dir) is not None
+    (evidence_dir / "release_manifest.json").write_text(
+        json.dumps(
+            {
+                "release": builder.US_EVIDENCE_RELEASE_ID,
+                "build": "populace-us-2024-evidence-failed",
+                "tier": "evidence",
+                "known_failures": [
+                    {
+                        "failure": "Input coverage failed: x",
+                        "owner": "PolicyEngine/microcosm#1",
+                    }
+                ],
+            }
+        )
+    )
+    # The rewrite names the build in the build manifest last.
+    assert builder._failed_build_holding(evidence_dir) is not None
+    (evidence_dir / "build_manifest.json").write_text(
+        json.dumps(
+            {
+                "release": builder.US_EVIDENCE_RELEASE_ID,
+                "build": "populace-us-2024-evidence-failed",
+            }
+        )
+    )
+    assert builder._failed_build_holding(evidence_dir) is None
+
+
 def test_census_with_a_receipt_is_refused(
     probe_tool, builder, fake_reforms, chain, tmp_path
 ) -> None:
