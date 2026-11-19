@@ -1,9 +1,9 @@
-"""The thread settings the US base and ACS staging commands give themselves.
+"""The one thread setting of the US build commands, ``MICROCOSM_THREADS``.
 
-The commands name the thread count each numerical library already uses, so
-that it is recorded and is in place before the libraries load. On Linux the
-OpenBLAS thread count changes the bytes of large dot products, so these tests
-compare real library behaviour with and without the settings.
+When it is set, the release, base and ACS staging commands copy it into every
+library's thread variable before numpy loads. When it is not, the base and ACS
+staging commands set nothing, so each library keeps choosing its own count,
+and the release tool keeps its default of ``min(os.cpu_count(), 16)``.
 
 Each process-level case starts a fresh interpreter: the settings depend on what
 the process has loaded and must not reach the process that runs the tests.
@@ -11,7 +11,6 @@ the process has loaded and must not reach the process that runs the tests.
 
 from __future__ import annotations
 
-import functools
 import importlib.util
 import json
 import os
@@ -31,24 +30,24 @@ BASE_TOOL = "tools/build_us_puf_support_base.py"
 ACS_STAGING_COMMAND = "tools/build_us_acs_multispine_base.py"
 ACS_STAGING_IMPLEMENTATION = "tools/_legacy/build_us_acs_multispine_base.py"
 BUILD_COMMANDS = (BASE_TOOL, ACS_STAGING_COMMAND, ACS_STAGING_IMPLEMENTATION)
+EVERY_COMMAND = (*BUILD_COMMANDS, RELEASE_TOOL)
 
+THREAD_SETTING = "MICROCOSM_THREADS"
 OPENMP = "OMP_NUM_THREADS"
 OPENBLAS = "OPENBLAS_NUM_THREADS"
-OPENBLAS_FALLBACK = "GOTO_NUM_THREADS"
 MKL = "MKL_NUM_THREADS"
 BLIS = "BLIS_NUM_THREADS"
 VECLIB = "VECLIB_MAXIMUM_THREADS"
 NUMEXPR = "NUMEXPR_NUM_THREADS"
-NUMEXPR_MAXIMUM = "NUMEXPR_MAX_THREADS"
 JOBLIB_LIMIT = "LOKY_MAX_CPU_COUNT"
+FILLED_VARIABLES = (OPENMP, OPENBLAS, MKL, BLIS, VECLIB, NUMEXPR, JOBLIB_LIMIT)
 QRF_VARIABLES = ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS")
-SET_BY_COMMANDS = (OPENMP, OPENBLAS, MKL, BLIS, VECLIB, NUMEXPR)
 #: Every variable a process-level case clears before applying its own.
 THREAD_VARIABLES = (
-    *SET_BY_COMMANDS,
-    OPENBLAS_FALLBACK,
-    NUMEXPR_MAXIMUM,
-    JOBLIB_LIMIT,
+    THREAD_SETTING,
+    *FILLED_VARIABLES,
+    "GOTO_NUM_THREADS",
+    "NUMEXPR_MAX_THREADS",
     *QRF_VARIABLES,
 )
 
@@ -63,8 +62,8 @@ def _clean_environment(settings: Mapping[str, str] = {}) -> dict[str, str]:
     return environment
 
 
-def _last_json_line(command: list[str], environment: dict[str, str]) -> dict:
-    completed = subprocess.run(
+def _run(command: list[str], environment: dict[str, str]):
+    return subprocess.run(
         command,
         cwd=REPOSITORY,
         env=environment,
@@ -72,8 +71,16 @@ def _last_json_line(command: list[str], environment: dict[str, str]) -> dict:
         text=True,
         check=False,
     )
+
+
+def _last_json_line(command: list[str], environment: dict[str, str]) -> dict:
+    completed = _run(command, environment)
     assert completed.returncode == 0, completed.stderr[-4000:]
     return json.loads(completed.stdout.strip().splitlines()[-1])
+
+
+def _every_variable(count: str, **replacements: str) -> dict[str, str]:
+    return {**dict.fromkeys(FILLED_VARIABLES, count), **replacements}
 
 
 # ---------------------------------------------------------------------------
@@ -92,161 +99,94 @@ def helper() -> ModuleType:
     return module
 
 
-def _defaults_for(
+def _filled(
     helper: ModuleType,
-    monkeypatch: pytest.MonkeyPatch,
     settings: Mapping[str, str] = {},
     *,
-    usable_cpus: int | None = 6,
-    online_cpus: int | None = 6,
+    default_count: int | None = None,
 ) -> dict[str, str]:
-    monkeypatch.setattr(helper.os, "process_cpu_count", lambda: usable_cpus)
-    monkeypatch.setattr(helper.os, "cpu_count", lambda: online_cpus)
     environment = dict(settings)
-    helper.set_build_thread_environment(environment)
+    helper.set_build_thread_environment(environment, default_count=default_count)
     return environment
 
 
-def _every_variable(count: str, **replacements: str) -> dict[str, str]:
-    return {**dict.fromkeys(SET_BY_COMMANDS, count), **replacements}
+def test_nothing_is_set_without_the_thread_setting(helper: ModuleType) -> None:
+    settings = {OPENBLAS: "3", "UNRELATED": "value"}
+
+    assert _filled(helper) == {}
+    assert _filled(helper, settings) == settings
 
 
-def test_unset_variables_take_the_usable_cpu_count(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    assert _defaults_for(helper, monkeypatch) == _every_variable("6")
+def test_a_blank_thread_setting_counts_as_unset(helper: ModuleType) -> None:
+    assert _filled(helper, {THREAD_SETTING: ""}) == {THREAD_SETTING: ""}
 
 
-def test_openmp_and_blas_counts_have_no_upper_limit(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """numexpr alone limits itself to 16 threads when nothing configures it."""
+def test_the_thread_setting_fills_every_thread_variable(helper: ModuleType) -> None:
+    environment = _filled(helper, {THREAD_SETTING: "4"})
 
-    environment = _defaults_for(helper, monkeypatch, usable_cpus=32, online_cpus=32)
-
-    assert environment == _every_variable("32", **{NUMEXPR: "16"})
+    assert environment == {THREAD_SETTING: "4", **_every_variable("4")}
 
 
-def test_cpu_affinity_sets_the_count_and_numexpr_counts_online_cpus(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    environment = _defaults_for(helper, monkeypatch, usable_cpus=4, online_cpus=10)
+def test_the_thread_setting_has_no_upper_limit(helper: ModuleType) -> None:
+    environment = _filled(helper, {THREAD_SETTING: "64"}, default_count=16)
 
-    assert environment == _every_variable("4", **{NUMEXPR: "10"})
+    assert environment == {THREAD_SETTING: "64", **_every_variable("64")}
 
 
-@pytest.mark.parametrize(
-    ("configured", "expected"),
-    (("2", "2"), ("007", "7")),
-)
-def test_an_openmp_count_already_set_is_used_for_the_others(
-    helper: ModuleType,
-    monkeypatch: pytest.MonkeyPatch,
-    configured: str,
-    expected: str,
-) -> None:
-    environment = _defaults_for(helper, monkeypatch, {OPENMP: configured})
+def test_leading_zeros_are_dropped_from_the_copies(helper: ModuleType) -> None:
+    environment = _filled(helper, {THREAD_SETTING: "007"})
 
-    assert environment == _every_variable(expected, **{OPENMP: configured})
+    assert environment == {THREAD_SETTING: "007", **_every_variable("7")}
 
 
-def test_a_blank_openmp_value_counts_as_unset(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    environment = _defaults_for(helper, monkeypatch, {OPENMP: ""})
+def test_variables_already_set_are_kept(helper: ModuleType) -> None:
+    settings = {THREAD_SETTING: "4", OPENMP: "2", OPENBLAS: "5"}
 
-    assert environment == _every_variable("6", **{OPENMP: ""})
-
-
-@pytest.mark.parametrize("configured", ("+4", "4,2", " 3 ", "0", "-1", "many", "٣"))
-def test_libraries_read_an_unusual_openmp_value_themselves(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch, configured: str
-) -> None:
-    """OpenBLAS and numexpr parse these differently, so neither gets a copy."""
-
-    environment = _defaults_for(helper, monkeypatch, {OPENMP: configured})
-
-    assert environment == {OPENMP: configured, VECLIB: "6"}
-
-
-@pytest.mark.parametrize(
-    ("source", "left_unset"),
-    ((OPENBLAS_FALLBACK, OPENBLAS), (NUMEXPR_MAXIMUM, NUMEXPR)),
-)
-def test_libraries_read_their_own_unusual_values_themselves(
-    helper: ModuleType,
-    monkeypatch: pytest.MonkeyPatch,
-    source: str,
-    left_unset: str,
-) -> None:
-    environment = _defaults_for(helper, monkeypatch, {source: "+3"})
-
-    assert left_unset not in environment
-    assert environment[MKL] == "6"
-
-
-def test_values_already_set_are_kept(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    settings = {name: str(index + 1) for index, name in enumerate(SET_BY_COMMANDS)}
-
-    assert _defaults_for(helper, monkeypatch, settings) == settings
-
-
-def test_openblas_follows_its_own_fallback_variable(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    environment = _defaults_for(
-        helper, monkeypatch, {OPENMP: "2", OPENBLAS_FALLBACK: "3"}
-    )
-
-    assert environment == {
-        **_every_variable("2", **{OPENBLAS: "3"}),
-        OPENBLAS_FALLBACK: "3",
+    assert _filled(helper, settings) == {
+        THREAD_SETTING: "4",
+        **_every_variable("4", **{OPENMP: "2", OPENBLAS: "5"}),
     }
 
 
+def test_a_blank_thread_variable_is_filled(helper: ModuleType) -> None:
+    """Libraries read a blank thread variable as unset."""
+
+    environment = _filled(helper, {THREAD_SETTING: "4", OPENMP: ""})
+
+    assert environment == {THREAD_SETTING: "4", **_every_variable("4")}
+
+
 @pytest.mark.parametrize(
-    ("settings", "expected"),
-    (
-        ({NUMEXPR_MAXIMUM: "3"}, "3"),
-        ({NUMEXPR_MAXIMUM: "3", OPENMP: "2"}, "2"),
-    ),
+    "configured", ("0", "-1", "+4", "4,2", " 3 ", "4.0", "many", "٣")
 )
-def test_numexpr_follows_openmp_and_then_its_maximum(
+def test_a_thread_setting_that_is_not_a_positive_count_is_refused(
+    helper: ModuleType, configured: str
+) -> None:
+    environment = {THREAD_SETTING: configured}
+
+    with pytest.raises(ValueError, match=THREAD_SETTING):
+        helper.set_build_thread_environment(environment, default_count=16)
+
+    assert environment == {THREAD_SETTING: configured}
+
+
+def test_the_default_count_applies_without_the_thread_setting(
     helper: ModuleType,
-    monkeypatch: pytest.MonkeyPatch,
-    settings: dict[str, str],
-    expected: str,
 ) -> None:
-    environment = _defaults_for(helper, monkeypatch, settings)
-
-    assert environment[NUMEXPR] == expected
+    assert _filled(helper, default_count=16) == _every_variable("16")
 
 
-def test_nothing_is_set_when_the_usable_cpus_are_unknown(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    environment = _defaults_for(helper, monkeypatch, usable_cpus=None, online_cpus=None)
+def test_the_thread_setting_replaces_the_default_count(helper: ModuleType) -> None:
+    environment = _filled(helper, {THREAD_SETTING: "3"}, default_count=16)
 
-    assert environment == {}
+    assert environment == {THREAD_SETTING: "3", **_every_variable("3")}
 
 
-def test_numexpr_uses_the_usable_count_when_online_cpus_are_unknown(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    environment = _defaults_for(helper, monkeypatch, usable_cpus=20, online_cpus=None)
-
-    assert environment == _every_variable("20", **{NUMEXPR: "16"})
-
-
-def test_a_second_call_changes_nothing(
-    helper: ModuleType, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    environment = _defaults_for(helper, monkeypatch, usable_cpus=32, online_cpus=32)
+def test_a_second_call_changes_nothing(helper: ModuleType) -> None:
+    environment = _filled(helper, {THREAD_SETTING: "4"})
     first_result = dict(environment)
 
-    helper.set_build_thread_environment(environment)
+    helper.set_build_thread_environment(environment, default_count=16)
 
     assert environment == first_result
 
@@ -256,8 +196,9 @@ def test_a_second_call_changes_nothing(
 # ---------------------------------------------------------------------------
 
 #: Starts one tool under ``runpy`` and stops it at its first import of a
-#: numerical library, printing the environment at that moment. The tool's
-#: imports never finish, so a case costs no more than the code before them.
+#: numerical library, printing the environment and import path at that moment.
+#: The tool's imports never finish, so a case costs no more than the code
+#: before them.
 _START_PROBE = """
 import json
 import os
@@ -285,6 +226,7 @@ cpu_count = int(sys.argv[3])
 os.cpu_count = lambda: cpu_count
 os.process_cpu_count = lambda: cpu_count
 sys.path.insert(0, str(tool.parent))
+path_before = list(sys.path)
 sys.argv = [str(tool), "--help"]
 sys.meta_path.insert(0, StopAtNumericalLibrary())
 library = None
@@ -293,8 +235,20 @@ try:
 except ReachedNumericalLibrary as reached:
     library = str(reached)
 print()
-print(json.dumps({"library": library, "environment": dict(os.environ)}))
+print(
+    json.dumps(
+        {
+            "library": library,
+            "environment": dict(os.environ),
+            "path_unchanged": sys.path == path_before,
+        }
+    )
+)
 """
+
+
+def _probe_command(tool: str, run_name: str, cpu_count: int) -> list[str]:
+    return [sys.executable, "-c", _START_PROBE, tool, run_name, str(cpu_count)]
 
 
 def _state_at_first_numerical_import(
@@ -305,118 +259,162 @@ def _state_at_first_numerical_import(
     settings: Mapping[str, str] = {},
 ) -> dict:
     state = _last_json_line(
-        [sys.executable, "-c", _START_PROBE, tool, run_name, str(cpu_count)],
-        _clean_environment(settings),
+        _probe_command(tool, run_name, cpu_count), _clean_environment(settings)
     )
     assert state["library"] is not None
     return state
 
 
+def _thread_variables_in(environment: Mapping[str, str]) -> dict[str, str]:
+    return {name: environment[name] for name in THREAD_VARIABLES if name in environment}
+
+
 @pytest.mark.parametrize("tool", BUILD_COMMANDS)
-def test_a_started_command_sets_every_variable_before_numerical_imports(
+def test_a_started_command_sets_nothing_without_the_thread_setting(
     tool: str,
 ) -> None:
     environment = _state_at_first_numerical_import(tool)["environment"]
 
-    assert {name: environment.get(name) for name in SET_BY_COMMANDS} == (
-        _every_variable("3", **{NUMEXPR: "3"})
-    )
+    assert _thread_variables_in(environment) == {}
 
 
-@pytest.mark.parametrize("tool", BUILD_COMMANDS)
+@pytest.mark.parametrize("tool", EVERY_COMMAND)
+def test_a_started_command_fills_every_variable_before_numerical_imports(
+    tool: str,
+) -> None:
+    environment = _state_at_first_numerical_import(
+        tool, cpu_count=32, settings={THREAD_SETTING: "5"}
+    )["environment"]
+
+    assert _thread_variables_in(environment) == {
+        THREAD_SETTING: "5",
+        **_every_variable("5"),
+    }
+
+
+@pytest.mark.parametrize("tool", EVERY_COMMAND)
 def test_a_started_command_keeps_the_values_it_was_given(tool: str) -> None:
-    settings = {OPENMP: "2", OPENBLAS: "5"}
+    settings = {THREAD_SETTING: "5", OPENMP: "2", OPENBLAS: "7"}
 
     environment = _state_at_first_numerical_import(tool, settings=settings)[
         "environment"
     ]
 
-    assert {name: environment.get(name) for name in SET_BY_COMMANDS} == (
-        _every_variable("2", **{OPENBLAS: "5"})
+    assert _thread_variables_in(environment) == {
+        THREAD_SETTING: "5",
+        **_every_variable("5", **{OPENMP: "2", OPENBLAS: "7"}),
+    }
+
+
+@pytest.mark.parametrize("tool", EVERY_COMMAND)
+def test_a_started_command_refuses_an_unusable_thread_setting(tool: str) -> None:
+    completed = _run(
+        _probe_command(tool, "__main__", 3),
+        _clean_environment({THREAD_SETTING: "four"}),
     )
+
+    assert completed.returncode != 0
+    assert THREAD_SETTING in completed.stderr
+    assert "ReachedNumericalLibrary" not in completed.stderr
 
 
 @pytest.mark.parametrize("tool", BUILD_COMMANDS)
 def test_importing_a_command_changes_no_thread_variable(tool: str) -> None:
     """Tests and other tools import these files, often after numpy has loaded."""
 
-    environment = _state_at_first_numerical_import(tool, run_name="imported_tool")[
-        "environment"
-    ]
+    environment = _state_at_first_numerical_import(
+        tool, run_name="imported_tool", settings={THREAD_SETTING: "5"}
+    )["environment"]
 
-    assert not set(THREAD_VARIABLES) & set(environment)
+    assert _thread_variables_in(environment) == {THREAD_SETTING: "5"}
 
 
-@pytest.mark.parametrize("tool", (*BUILD_COMMANDS, RELEASE_TOOL))
-def test_no_command_sets_the_qrf_or_joblib_limits_of_the_base_build(
-    tool: str,
-) -> None:
-    environment = _state_at_first_numerical_import(tool)["environment"]
+@pytest.mark.parametrize("tool", EVERY_COMMAND)
+def test_no_command_sets_the_qrf_variables(tool: str) -> None:
+    environment = _state_at_first_numerical_import(
+        tool, settings={THREAD_SETTING: "5"}
+    )["environment"]
 
     assert not set(QRF_VARIABLES) & set(environment)
-    if tool != RELEASE_TOOL:
-        assert JOBLIB_LIMIT not in environment
 
 
 @pytest.mark.parametrize(("cpu_count", "expected"), ((3, "3"), (32, "16")))
-def test_release_tool_keeps_its_existing_thread_values(
+def test_release_tool_keeps_its_default_without_the_thread_setting(
     cpu_count: int, expected: str
 ) -> None:
-    environment = _state_at_first_numerical_import(RELEASE_TOOL, cpu_count=cpu_count)[
-        "environment"
-    ]
+    """Its existing six variables keep their values; BLIS has no library here."""
 
-    for name in (OPENMP, OPENBLAS, MKL, NUMEXPR, VECLIB, JOBLIB_LIMIT):
-        assert environment[name] == expected, name
-    assert BLIS not in environment
+    state = _state_at_first_numerical_import(RELEASE_TOOL, cpu_count=cpu_count)
+
+    assert _thread_variables_in(state["environment"]) == _every_variable(expected)
+    assert state["path_unchanged"]
+
+
+def test_importing_the_release_tool_still_applies_its_default() -> None:
+    """It always has: its tests import it, and the values only fill unset ones."""
+
+    state = _state_at_first_numerical_import(
+        RELEASE_TOOL, run_name="imported_tool", cpu_count=32
+    )
+
+    assert _thread_variables_in(state["environment"]) == _every_variable("16")
+    assert state["path_unchanged"]
 
 
 # ---------------------------------------------------------------------------
 # What the libraries do with them
 # ---------------------------------------------------------------------------
 
-#: Loads the libraries, with or without the commands' settings, and prints the
-#: thread counts they chose and results of the BLAS operations whose bytes
-#: depend on the OpenBLAS thread count on Linux.
-_LIBRARY_PROBE = """
-import hashlib
+#: Applies the commands' settings, loads every library whose thread count they
+#: choose, and prints the counts each library ended with.
+_THREAD_COUNT_PROBE = """
 import json
 import sys
 
 sys.path.insert(0, "tools")
-if sys.argv[1] == "with_settings":
-    from us_build_thread_environment import set_build_thread_environment
+from us_build_thread_environment import set_build_thread_environment
 
-    set_build_thread_environment()
+set_build_thread_environment()
 
+import joblib
 import numexpr
-import numpy as np
-import sklearn.utils._openmp_helpers
+import numpy
+import scipy.linalg
 import threadpoolctl
+import torch
+from sklearn.utils._openmp_helpers import _openmp_effective_n_threads
 
-generator = np.random.default_rng(0)
-weights = generator.lognormal(7.0, 1.0, 150_000)
-values = generator.lognormal(8.0, 1.5, 150_000)
-probabilities = generator.dirichlet(np.ones(3), 150_000)
-scaled_column = values * (9.6e11 / float(weights @ values))
 print()
 print(
     json.dumps(
         {
-            "pools": sorted(
-                [pool["user_api"], pool["internal_api"], pool["num_threads"]]
-                for pool in threadpoolctl.threadpool_info()
+            "thread_pools": sorted(
+                {pool["num_threads"] for pool in threadpoolctl.threadpool_info()}
             ),
-            "numexpr_threads": numexpr.utils.get_num_threads(),
-            "dot_product": float(np.dot(weights, values)).hex(),
-            "scaled_column": hashlib.sha256(scaled_column.tobytes()).hexdigest(),
-            "weighted_probabilities": hashlib.sha256(
-                (weights @ probabilities).tobytes()
-            ).hexdigest(),
+            "numexpr": numexpr.utils.get_num_threads(),
+            "scikit_learn": _openmp_effective_n_threads(),
+            "joblib_cpu_count": joblib.cpu_count(),
+            "torch": torch.get_num_threads(),
         }
     )
 )
 """
+
+
+def test_the_thread_setting_reaches_every_library() -> None:
+    counts = _last_json_line(
+        [sys.executable, "-c", _THREAD_COUNT_PROBE],
+        _clean_environment({THREAD_SETTING: "2"}),
+    )
+
+    assert counts == {
+        "thread_pools": [2],
+        "numexpr": 2,
+        "scikit_learn": 2,
+        "joblib_cpu_count": 2,
+        "torch": 2,
+    }
+
 
 _SIGN_CLASSIFIER_PROBE = """
 import hashlib
@@ -438,45 +436,8 @@ print(json.dumps({"digest": hashlib.sha256(probabilities.tobytes()).hexdigest()}
 """
 
 
-@functools.cache
-def _library_results(
-    mode: str, settings: tuple[tuple[str, str], ...]
-) -> dict[str, object]:
-    return _last_json_line(
-        [sys.executable, "-c", _LIBRARY_PROBE, mode],
-        _clean_environment(dict(settings)),
-    )
-
-
-@pytest.mark.parametrize(
-    "settings",
-    (
-        (),
-        ((OPENMP, "2"),),
-        ((OPENMP, "+4"),),
-        ((OPENBLAS_FALLBACK, "2"),),
-        ((NUMEXPR_MAXIMUM, "3"),),
-        ((NUMEXPR_MAXIMUM, "3"), (OPENMP, "2")),
-    ),
-    ids=(
-        "nothing",
-        "openmp",
-        "openmp_with_sign",
-        "openblas_fallback",
-        "numexpr_maximum",
-        "both",
-    ),
-)
-def test_the_settings_keep_thread_counts_and_result_bytes(
-    settings: tuple[tuple[str, str], ...],
-) -> None:
-    assert _library_results("with_settings", settings) == _library_results(
-        "without_settings", settings
-    )
-
-
 def test_sign_classifier_probabilities_do_not_depend_on_the_openmp_count() -> None:
-    """scikit-learn may move from physical to logical CPUs under the settings."""
+    """The thread setting changes the classifier's OpenMP count."""
 
     digests = {
         thread_count: _last_json_line(
