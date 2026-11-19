@@ -810,11 +810,17 @@ def test_packaged_exclusions_load():
     # Scottish NSND outturn and taxpayers for 2024-25 (S4), DWP's people on UC
     # aged 16 to 24 as the check on its two bound parts (Y4), DWP's PIP cases
     # but for England's and Wales's award split, which binds (P3 and P2), and
-    # ONS's NEET count (Y3). PR3 holds PAYE RTI's payrolled employees aged 0 to
-    # 17 and 18 to 24 (B1), DWP's people on UC aged 16 to 21 and 22 to 24 in two
+    # ONS's NEET count (Y3). PR3 held PAYE RTI's payrolled employees aged 0 to
+    # 17 and 18 to 24 (B1); since María's go of 2026-11-18, 18 to 24 binds, counted
+    # at interview, and 0 to 17 stays held. PR3 holds DWP's people on UC aged 16 to
+    # 21 and 22 to 24 in two
     # conditionality groups (B5), and Social Security Scotland's ADP and Carer
-    # Support Payment caseloads (B10).
-    assert len(names) == len(set(names)) == 143
+    # Support Payment caseloads (B10). María's call of 2026-11-17 binds England's
+    # PIP cases at 16 to 19 and 20 to 24 and holds their sum, 16 to 24, out.
+    # PolicyEngine/microcosm#1663 holds RTI's pay of employees aged 18 to 24 and
+    # England's PIP cases aged 16 to 24 at each component's enhanced rate as
+    # checks (María's go of 2026-11-18).
+    assert len(names) == len(set(names)) == 144
     (gas,) = [
         entry
         for entry in exclusions

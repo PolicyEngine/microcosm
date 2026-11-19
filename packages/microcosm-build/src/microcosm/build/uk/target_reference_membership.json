@@ -1,11 +1,11 @@
 {
-  "source_fact_feed": "chronicle-uk-4ce631f-consumer-facts",
+  "source_fact_feed": "chronicle-uk-15040ea-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1747,
-  "contract_target_count": 591,
-  "active_reference_count": 1710,
+  "candidate_count": 1751,
+  "contract_target_count": 595,
+  "active_reference_count": 1714,
   "status_counts": {
-    "active": 1710,
+    "active": 1714,
     "signed_excluded": 37
   },
   "geography_pins": {
@@ -2286,6 +2286,10 @@
     "dwp.uc.people_aged_16_to_24": {
       "geography_level": "country",
       "geography_id": "K03000001"
+    },
+    "dwp.uc.people_aged_16_to_24_lcwra_element": {
+      "geography_level": "country",
+      "geography_id": "K04000001"
     },
     "dwp.uc.people_aged_16_to_21": {
       "geography_level": "country",
@@ -4663,6 +4667,14 @@
       "geography_level": "country",
       "geography_id": "E92000001"
     },
+    "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
     "dwp.pip.cases_england_aged_25_to_34": {
       "geography_level": "country",
       "geography_id": "E92000001"
@@ -5856,6 +5868,10 @@
       "geography_id": "K02000001"
     },
     "ons.paye_rti.employees_aged_18_to_24": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "ons.paye_rti.pay_aged_18_to_24": {
       "geography_level": "country",
       "geography_id": "K02000001"
     }
@@ -22995,6 +23011,21 @@
         }
       ]
     },
+    "dwp.uc.people_aged_16_to_24_lcwra_element": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.people_aged_16_to_24_lcwra_element",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 176000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_22db2044adca8add76d96f18"
+        }
+      ]
+    },
     "dwp.uc.people_aged_16_to_21": {
       "status": "active",
       "candidates": [
@@ -33873,6 +33904,38 @@
         }
       ]
     },
+    "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 8,
+          "matched_fact_count_at_or_before_period": 8,
+          "matched_fact_count_in_source_window": 8,
+          "resolved_period": 2025,
+          "resolved_value": 302776.25,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0fc4408172cf623431f6a0cf"
+        }
+      ]
+    },
+    "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced",
+          "status": "active",
+          "matched_fact_count_overall": 8,
+          "matched_fact_count_at_or_before_period": 8,
+          "matched_fact_count_in_source_window": 8,
+          "resolved_period": 2025,
+          "resolved_value": 239924.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_956cd74542165a81aaf41ed4"
+        }
+      ]
+    },
     "dwp.pip.cases_england_aged_25_to_34": {
       "status": "active",
       "candidates": [
@@ -37903,6 +37966,22 @@
           "resolved_value": 3441394.4166666665,
           "resolved_fact_period": "2025-12",
           "resolved_fact_key": "ledger_aggregate_fact_v2_569f37e19583cbcc489dbf2e"
+        }
+      ]
+    },
+    "ons.paye_rti.pay_aged_18_to_24": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "ons.paye_rti.pay_aged_18_to_24",
+          "status": "active",
+          "matched_fact_count_overall": 24,
+          "matched_fact_count_at_or_before_period": 24,
+          "matched_fact_count_in_source_window": 24,
+          "resolved_period": 2025,
+          "resolved_value": 75853593264.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9e20bbd11c08e48d759e07de"
         }
       ]
     }

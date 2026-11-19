@@ -344,6 +344,8 @@
       "dwp.pip.cases_england": "dwp.pip",
       "dwp.pip.cases_england_aged_16_to_19": "dwp.pip",
       "dwp.pip.cases_england_aged_16_to_24": "dwp.pip",
+      "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced": "dwp.pip",
+      "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": "dwp.pip",
       "dwp.pip.cases_england_aged_20_to_24": "dwp.pip",
       "dwp.pip.cases_england_aged_25_to_29": "dwp.pip",
       "dwp.pip.cases_england_aged_25_to_34": "dwp.pip",
@@ -476,6 +478,7 @@
       "dwp.uc.people_aged_16_to_21_no_work_requirements": "dwp.universal_credit",
       "dwp.uc.people_aged_16_to_21_other_regimes": "dwp.universal_credit",
       "dwp.uc.people_aged_16_to_24": "dwp.universal_credit",
+      "dwp.uc.people_aged_16_to_24_lcwra_element": "dwp.universal_credit",
       "dwp.uc.people_aged_22_to_24": "dwp.universal_credit",
       "dwp.uc.people_aged_22_to_24_no_work_requirements": "dwp.universal_credit",
       "dwp.uc.people_aged_22_to_24_other_regimes": "dwp.universal_credit",
@@ -720,6 +723,7 @@
       "ons.occupation.skilled_trades_by_region": "ons.employment",
       "ons.paye_rti.employees_aged_0_to_17": "ons.employment",
       "ons.paye_rti.employees_aged_18_to_24": "ons.employment",
+      "ons.paye_rti.pay_aged_18_to_24": "ons.employment",
       "ons.population.age_0": "ons.population",
       "ons.population.age_0_9_by_region": "ons.population",
       "ons.population.age_1": "ons.population",
@@ -930,6 +934,8 @@
       "dwp.pip.cases_england": "PIP cases with entitlement, England",
       "dwp.pip.cases_england_aged_16_to_19": "PIP cases with entitlement, England, aged 16 to 19",
       "dwp.pip.cases_england_aged_16_to_24": "PIP cases with entitlement, England, aged 16 to 24",
+      "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced": "PIP cases with entitlement, England, aged 16 to 24, daily living enhanced",
+      "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": "PIP cases with entitlement, England, aged 16 to 24, mobility enhanced",
       "dwp.pip.cases_england_aged_20_to_24": "PIP cases with entitlement, England, aged 20 to 24",
       "dwp.pip.cases_england_aged_25_to_29": "PIP cases with entitlement, England, aged 25 to 29",
       "dwp.pip.cases_england_aged_25_to_34": "PIP cases with entitlement, England, aged 25 to 34",
@@ -1062,6 +1068,7 @@
       "dwp.uc.people_aged_16_to_21_no_work_requirements": "Universal Credit people aged 16 to 21, no work requirements",
       "dwp.uc.people_aged_16_to_21_other_regimes": "Universal Credit people aged 16 to 21, other conditionality regimes",
       "dwp.uc.people_aged_16_to_24": "Universal Credit people aged 16 to 24",
+      "dwp.uc.people_aged_16_to_24_lcwra_element": "Universal Credit people aged 16 to 24 with the LCWRA element, England and Wales",
       "dwp.uc.people_aged_22_to_24": "Universal Credit people aged 22 to 24",
       "dwp.uc.people_aged_22_to_24_no_work_requirements": "Universal Credit people aged 22 to 24, no work requirements",
       "dwp.uc.people_aged_22_to_24_other_regimes": "Universal Credit people aged 22 to 24, other conditionality regimes",
@@ -1306,6 +1313,7 @@
       "ons.occupation.skilled_trades_by_region": "Skilled trades occupations in employment by region",
       "ons.paye_rti.employees_aged_0_to_17": "Payrolled employees aged 0 to 17 (PAYE RTI)",
       "ons.paye_rti.employees_aged_18_to_24": "Payrolled employees aged 18 to 24 (PAYE RTI)",
+      "ons.paye_rti.pay_aged_18_to_24": "Pay of payrolled employees aged 18 to 24 (PAYE RTI)",
       "ons.population.age_0": "Age 0",
       "ons.population.age_0_9_by_region": "Age 0 9 by region",
       "ons.population.age_1": "Age 1",
@@ -27417,6 +27425,34 @@
       ]
     },
     {
+      "name": "dwp.uc.people_aged_16_to_24_lcwra_element",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.benefit_caseload_count",
+        "entity_name": "person",
+        "geography_id": "K04000001",
+        "dimension_values": {
+          "age_band": "16_to_24",
+          "health_and_disability_benefit": "uc_health_lcwra"
+        },
+        "source_measure_id_by_opening_year": {
+          "2024": "caseload_2024",
+          "2025": "caseload_2025"
+        },
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/uc/people_aged_16_to_24_lcwra_element",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.people_aged_16_to_24_lcwra_element",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
       "name": "dwp.uc.people_aged_16_to_21",
       "ledger_selector": {
         "source_name": "dwp",
@@ -51649,6 +51685,128 @@
       ]
     },
     {
+      "name": "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "Daily Living - Enhanced",
+          "mobility_award_status": "all",
+          "age_bands_and_single_year": [
+            "16-19",
+            "20-24"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_16_to_24_daily_living_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "Daily Living - Enhanced",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "16-19"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "Daily Living - Enhanced",
+            "mobility_award_status": "all",
+            "age_bands_and_single_year": "20-24"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_table": "PIP cases with entitlement by country, daily living award, mobility award and age band, January 2024 to July 2026",
+        "source_concept": [
+          "dwp.pip_cases_with_entitlement"
+        ],
+        "source_measure_id": "cases_with_entitlement",
+        "dimensions": [
+          "daily_living_award_status",
+          "mobility_award_status",
+          "age_bands_and_single_year"
+        ],
+        "dimension_values": {
+          "daily_living_award_status": "all",
+          "mobility_award_status": "Mobility Award - Enhanced",
+          "age_bands_and_single_year": [
+            "16-19",
+            "20-24"
+          ]
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-04",
+          "2025-07",
+          "2025-10"
+        ],
+        "geography_id": "E92000001",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "dwp/pip/cases_england_aged_16_to_24_mobility_enhanced",
+      "family": "dwp_pip",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-04\",\"2025-07\",\"2025-10\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "Mobility Award - Enhanced",
+            "age_bands_and_single_year": "16-19"
+          }
+        },
+        {
+          "dimension_values": {
+            "daily_living_award_status": "all",
+            "mobility_award_status": "Mobility Award - Enhanced",
+            "age_bands_and_single_year": "20-24"
+          }
+        }
+      ]
+    },
+    {
       "name": "dwp.pip.cases_england_aged_25_to_34",
       "ledger_selector": {
         "source_name": "dwp",
@@ -60715,6 +60873,68 @@
       },
       "period_match_policy": "source_window",
       "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "ons.paye_rti.pay_aged_18_to_24",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": [
+          "ons.paye_rti_payrolled_employees",
+          "ons.paye_rti_mean_monthly_pay"
+        ],
+        "source_measure_id": [
+          "employees_18_to_24",
+          "mean_pay_18_to_24"
+        ],
+        "groupby_dimension": "ons.paye_rti_month",
+        "dimensions": [
+          "age_band",
+          "seasonal_adjustment"
+        ],
+        "dimension_values": {
+          "age_band": "18_to_24",
+          "seasonal_adjustment": "not_seasonally_adjusted"
+        },
+        "entity_name": "person",
+        "geography_id": "K02000001",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "ons/paye_rti/pay_aged_18_to_24",
+      "family": "ons_employment",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "ons.paye_rti.pay_aged_18_to_24",
+        "measure_kind": "prepared_column"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_count_x_mean",
+      "value_operands": [
+        {
+          "role": "count",
+          "concept": "ons.paye_rti_payrolled_employees"
+        },
+        {
+          "role": "mean",
+          "concept": "ons.paye_rti_mean_monthly_pay",
+          "period_factor": 12
+        }
+      ]
     }
   ]
 }
