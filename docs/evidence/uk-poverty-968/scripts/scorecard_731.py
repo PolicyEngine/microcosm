@@ -33,8 +33,19 @@ headline ~17 % refers to, so the scorecard reports the pair HBAI publishes:
   couple with no children (HBAI FYE 2024: £650).
 * ``child_poverty_bhc_relative_pct`` — children under 18 (HBAI FYE 2024: 23 %).
 
-HBAI reference: DWP, Households Below Average Income FYE 2024, summary tables
-1.2b and 1.3a–1.4a (March 2025).
+HBAI validation (microcosm#731, uk-data#487; María's rulings of 2026-10-16
+and 2026-10-20). With ``--hbai-facts`` (Chronicle consumer facts, the pinned
+feed or a cut of it holding the ``dwp.hbai_fye2025`` rows), the
+``hbai_validation`` block measures the file at engine year 2024, which is FRS
+FY2024/25 and HBAI FYE 2025, and sets four statistics beside DWP's estimate
+and 95 percent interval (``microcosm.build.uk_runtime.hbai_validation``): the
+person-weighted median equivalised income before and after housing costs, in
+pounds a week, and the shares of individuals in relative low income before and
+after housing costs. Report-only: a statistic outside its interval never binds
+and never fails. The other HBAI-shaped rows (absolute and child poverty, the
+decile ratios, the zero-income share) stay as diagnostics without a
+reference; the FYE 2024 figures this script once compared them with were the
+wrong year for period 2024.
 """
 
 from __future__ import annotations
@@ -44,6 +55,12 @@ import json
 from pathlib import Path
 
 import numpy as np
+
+from microcosm.build.uk_runtime.hbai_validation import (
+    UK_HBAI_VALIDATION_PERIOD,
+    classify_uk_hbai_statistics,
+    uk_hbai_validation_references,
+)
 
 
 def gini(values: np.ndarray, weights: np.ndarray) -> float:
@@ -71,10 +88,11 @@ def main() -> int:
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument(
-        "--hbai-year",
-        type=int,
-        default=2024,
-        help="year at which the HBAI-basis block is measured (HBAI FYE 2024 = April 2023 to March 2024; 0 disables)",
+        "--hbai-facts",
+        type=Path,
+        help="Chronicle consumer facts (JSONL) holding the dwp.hbai_fye2025 rows; "
+        "measures the hbai_validation block at engine year "
+        f"{UK_HBAI_VALIDATION_PERIOD} (HBAI FYE 2025)",
     )
     args = parser.parse_args()
 
@@ -164,6 +182,7 @@ def main() -> int:
             "poverty_ahc_absolute_pct": share(poverty_abs_ahc > 0),
             "poverty_ahc_relative_pct": share(rel_ahc),
             "median_equiv_bhc_income_week": median_bhc / 52.0,
+            "median_equiv_ahc_income_week": median_ahc / 52.0,
             "child_poverty_bhc_relative_pct": float(
                 100.0 * pw[is_child & rel_bhc].sum() / pw[is_child].sum()
             ),
@@ -176,45 +195,37 @@ def main() -> int:
         return rows
 
     rows = measure(year)
-    HBAI_KEYS = (
-        "poverty_bhc_absolute_pct",
-        "poverty_bhc_relative_pct",
-        "poverty_ahc_absolute_pct",
-        "poverty_ahc_relative_pct",
-        "child_poverty_bhc_relative_pct",
-        "median_equiv_bhc_income_week",
-        "p10_over_median_bhc",
-        "p90_over_median_bhc",
-        "zero_income_share_pct",
-    )
-    hbai_basis = None
-    if args.hbai_year:
-        # HBAI FYE 2024 is April 2023 to March 2024; the closest engine year is 2024. The
-        # files are measured at that year so the comparison does not conflate years
-        # (microcosm#968, review point 4). p10/p90 are ratios to the person-weighted
-        # median; zero_income_share is individuals under £10/week equivalised (HBAI's
-        # £0-10 band, 1.0 % of individuals in FYE 2024).
-        hb_rows = measure(args.hbai_year) if args.hbai_year != year else rows
-        hbai_basis = {
-            "year": args.hbai_year,
-            "rows": {k: hb_rows[k] for k in HBAI_KEYS},
-            "hbai": {
-                "label": "HBAI FYE 2024 (April 2023 to March 2024), survey-reported incomes",
-                "poverty_bhc_absolute_pct": 15,
-                "poverty_bhc_relative_pct": 17,
-                "poverty_ahc_absolute_pct": 18,
-                "poverty_ahc_relative_pct": 21,
-                "child_poverty_bhc_relative_pct": 23,
-                "median_equiv_bhc_income_week": 650,
-                "p10_over_median_bhc": 0.48,
-                "p90_over_median_bhc": 1.955,
-                "zero_income_share_pct": 1.0,
-                "source": (
-                    "DWP HBAI FYE 2024 (March 2025): summary tables 1.2b (quintile medians: "
-                    "bottom 312, top 1271 on a 650 median) and 1.3a-1.4a; chart 2.4 income "
-                    "bands (0.66m individuals at 0-10 GBP/week)"
-                ),
-            },
+    hbai_validation = None
+    if args.hbai_facts:
+        with args.hbai_facts.open(encoding="utf-8") as handle:
+            references = uk_hbai_validation_references(
+                json.loads(line) for line in handle if "dwp.hbai_fye2025" in line
+            )
+        hbai_rows = (
+            rows
+            if year == UK_HBAI_VALIDATION_PERIOD
+            else measure(UK_HBAI_VALIDATION_PERIOD)
+        )
+        hbai_validation = {
+            "year": UK_HBAI_VALIDATION_PERIOD,
+            "hbai": "FYE 2025 (April 2024 to March 2025), DWP's estimate and 95% interval",
+            "statistics": classify_uk_hbai_statistics(
+                {
+                    "median_equivalised_income_bhc_gbp_week": hbai_rows[
+                        "median_equiv_bhc_income_week"
+                    ],
+                    "median_equivalised_income_ahc_gbp_week": hbai_rows[
+                        "median_equiv_ahc_income_week"
+                    ],
+                    "relative_low_income_bhc_pct": hbai_rows[
+                        "poverty_bhc_relative_pct"
+                    ],
+                    "relative_low_income_ahc_pct": hbai_rows[
+                        "poverty_ahc_relative_pct"
+                    ],
+                },
+                references,
+            ),
         }
 
     payload = {
@@ -232,18 +243,8 @@ def main() -> int:
             "median_equiv_bhc_income_week: person-weighted, couple-no-children "
             "equivalent; gini/top-1%: household-weighted household_net_income"
         ),
-        "hbai_fye_2024_reference": {
-            "poverty_bhc_absolute_pct": 15,
-            "poverty_bhc_relative_pct": 17,
-            "poverty_ahc_absolute_pct": 18,
-            "poverty_ahc_relative_pct": 21,
-            "median_equiv_bhc_income_week": 650,
-            "child_poverty_bhc_relative_pct": 23,
-            "year": "FYE 2024 (April 2023 to March 2024); compare with the hbai_basis block, not with the 2026 rows",
-            "source": "DWP HBAI FYE 2024 summary tables 1.2b, 1.3a, 1.4a (March 2025)",
-        },
         "rows": rows,
-        "hbai_basis": hbai_basis,
+        "hbai_validation": hbai_validation,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=2), encoding="utf-8")

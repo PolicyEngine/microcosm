@@ -9,38 +9,75 @@ whose earnings are above the limit cannot report the allowance, so no reform
 that widens it, such as the April 2025 rise of the limit from £151 to £196 a
 week, reached a carer who would claim once entitled.
 
-This stage runs after the SPI income chain and the other take-up redraws. It
-opens the flag to the carers the earnings limit alone keeps from the
-allowance at the survey year: a person outside Scotland whose ``care_hours``
-reach the engine's ``gov.dwp.carers_allowance.min_hours``, who reports no
-Carer's Allowance, and whom ``is_gainfully_employed_for_carers_allowance``
-holds gainfully employed at the survey year (the 2024-25 limit of £151 a
-week; the engine reads a year's parameters at 30 April). Such a person claims
-at the take-up contract's ``carers_allowance_newly_entitled`` rate, on an
-identity-keyed uniform:
+This stage runs after the SPI income chain, the other take-up redraws and
+``salary_sacrifice`` (below). It opens the flag to the carers the earnings
+limit alone keeps from the allowance at the survey year: a person whose
+``care_hours`` reach the engine's ``gov.dwp.carers_allowance.min_hours``, who
+cares for a severely disabled person, who reports no Carer's Allowance, and whom
+``is_gainfully_employed_for_carers_allowance`` holds gainfully employed at the
+survey year (the 2024-25 limit of £151 a week; the engine reads a year's
+parameters at 30 April). Such a person claims at the take-up contract's
+``carers_allowance_newly_entitled`` rate, on an identity-keyed uniform placed
+by weight within strata (below):
 
-    would_claim = reported OR (eligible AND u < rate)
+    would_claim = reported OR (eligible AND position < rate)
+
+The allowance is paid only for caring for a severely disabled person (SSCBA
+1992 s. 70(2)), which the FRS care hours do not record (microcosm#1418).
+policyengine-uk reads it from ``cares_for_severely_disabled_person``
+(2.177.3, pe-uk#2860) wherever the hours reach the minimum, and the build
+writes that input: ``frs_disability`` from the FRS care tab, and
+``hmrc_spi_income_spine`` again on the SPI channel's households (A3 of the
+November event-data plan's PR3, microcosm#1095; María's choices of
+2026-11-10). A carer whose main recipients include someone outside the
+household and no qualifying member is drawn there at the in-household share,
+the rule this stage drew its own pool by until then (María's decision (a) of
+2026-10-28). The pool is the carers the input holds:
+
+    pool = care_hours >= min_hours AND cares_for_severely_disabled_person
+
+The draw is balanced by weight within strata (microcosm#1418). Each
+uniform orders a stratum's records, and each record takes the midpoint of its
+slice of the stratum's cumulative weight (``weight_balanced_uniforms``, as
+policyengine-uk's ``stratified_uniform``), rotated by a start drawn per
+stratum from its code and its lowest-draw member's identity, so every stratum
+claims the rate of its weight to within one record and every carer claims with
+probability equal to the rate, however few share the stratum (the independent
+review of microcosm#1420, finding 4, and its re-review, G). The stage
+refuses a stratum that misses by more than its heaviest record (Anthony's
+reviews of microcosm#1420). Independent draws reach
+it only in expectation, and on the few source households over the limit one draw put the
+2031 taper's cost a quarter below its expectation. The take-up strata are the
+route (in-household or not), whether the benefit unit reports a means-tested
+benefit at the survey year, and the survey-year weekly earnings band, one
+weekly rate wide above the limit and open above three; the route is whether
+the carer's largest in-household band (``frs_care_hours_in_household``)
+reaches the hours. Balancing changes neither the rate nor the caseload.
 
 A reporter stays true. A carer under the limit who reports no allowance
 stays false, as the survey records them entitled and not claiming. Scotland
-is left closed: Carer Support Payment reads the same flag, and in law it has
-the allowance's earnings limit, but policyengine-uk does not yet apply that
-limit, so a draw there would pay it to carers over the limit. The incoming flag
-must still follow reported receipt, since the stage rebuilds it from that
-anchor.
+is drawn too, at the same rate (María's ruling of 2026-10-23): Carer Support
+Payment replaces the allowance there and reads the same flag, and the take-up
+contract holds no rate of its own for it. Since policyengine-uk 2.146.1
+(PolicyEngine/policyengine-uk#2473) the engine pays it only under its own
+earnings limit, so a drawn Scottish carer is paid only where its rules allow.
+The receipt reports Scotland apart. The incoming flag must still follow
+reported receipt, since the stage rebuilds it from that anchor.
 
-The earnings test is read where the stage runs, before ``salary_sacrifice``
-moves some contributors' pension amounts out of their pay, which lowers the
-earnings the engine tests by about half the amount moved. A drawn carer whom
-that conversion takes under the survey year's limit keeps the flag, although
-the released file then shows them entitled and not reporting. Reading the
-converted pay would need the stage after ``salary_sacrifice``, with a draw
-keyed on lineage so that the CGT clones keep their source's draw.
+The stage runs after ``salary_sacrifice``, which moves some contributors'
+pension amounts out of their pay and so lowers the earnings the engine tests
+by about half the amount moved: the earnings test reads the converted pay
+(microcosm#1095 B5). That puts it after the CGT stages too, which copy
+households, so each draw is keyed on lineage (``lineage_roots``): a CGT copy
+draws as the member it copies, and the balanced placement takes a source and
+its copies in one stratum as one record of their joint weight
+(``lineage_balanced_positions``), so they claim together, as when the stage
+ran before the CGT clones. A CGT copy carries its source's
+``cares_for_severely_disabled_person`` too.
 
 The receipt is aggregate-only (UKDS disclosure control): support as bands of
-distinct source households, a weighted total only where ten or more carry
-it, and the realised share only where neither the drawn nor the undrawn side
-rests on one to nine.
+distinct source households, a weighted total only where three or more carry
+it, and a share only where neither of its sides rests on one or two.
 """
 
 from __future__ import annotations
@@ -53,8 +90,13 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.stochastic_assignment import (
+    integer_record_keys,
+    stable_identity_uniforms,
+    weight_balanced_uniforms,
+)
 from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
+from microcosm.build.uk_runtime.household_lineage import uk_household_clone_paths
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -62,9 +104,11 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
+    record_source_households,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.take_up_contract import (
@@ -75,16 +119,26 @@ from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
 __all__ = [
+    "CGT_LINEAGE_BRANCHES",
+    "CARERS_ALLOWANCE_CARER_LINK",
     "CARERS_ALLOWANCE_ENGINE_VARIABLES",
     "CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY",
     "CARERS_ALLOWANCE_TAKE_UP_OUTPUT",
     "CARERS_ALLOWANCE_TAKE_UP_STAGE_NAME",
     "UKCarersAllowancePolicy",
+    "UKCarersAllowancePool",
     "UKCarersAllowanceTakeUpResult",
     "UKCarersAllowanceTakeUpStageTransform",
+    "assert_strata_within_one_record",
+    "carers_allowance_earnings_band",
     "carers_allowance_eligible",
+    "carers_allowance_pool",
     "carers_allowance_take_up_operation_parameters",
+    "lineage_balanced_positions",
+    "lineage_roots",
+    "means_tested_benefit_unit",
     "redraw_carers_allowance_take_up",
+    "stratum_starts",
     "uk_carers_allowance_policy",
 ]
 
@@ -94,43 +148,114 @@ CARERS_ALLOWANCE_TAKE_UP_SEED = 0
 CARERS_ALLOWANCE_REPORTED = "carers_allowance_reported"
 CARERS_ALLOWANCE_CARE_HOURS = "care_hours"
 CARERS_ALLOWANCE_EARNINGS_TEST = "is_gainfully_employed_for_carers_allowance"
-CARERS_ALLOWANCE_ENGINE_VARIABLES = (CARERS_ALLOWANCE_EARNINGS_TEST,)
+#: Whether a carer cares for a severely disabled person (SSCBA 1992 s. 70(2)):
+#: policyengine-uk's input (2.177.3, pe-uk#2860), which frs_disability writes
+#: (frs_disability.CARER_LINK_COLUMN; A3, microcosm#1095).
+CARERS_ALLOWANCE_CARER_LINK = "cares_for_severely_disabled_person"
+#: The annual earnings the engine's test spreads over 52 weeks; the draw's
+#: earnings bands read them the same way.
+CARERS_ALLOWANCE_EARNINGS = "carers_allowance_earnings"
+CARERS_ALLOWANCE_ENGINE_VARIABLES = (
+    CARERS_ALLOWANCE_EARNINGS_TEST,
+    CARERS_ALLOWANCE_EARNINGS,
+)
+CARERS_ALLOWANCE_WEEKS_IN_YEAR = 52
+#: The means-tested benefits a benefit unit reports at the survey year: a
+#: carer's allowance counts against them pound for pound, so the draw keeps
+#: claimants on them and off them at the rate apart (microcosm#1418).
+CARERS_ALLOWANCE_MEANS_TESTED_REPORTED = (
+    "universal_credit_reported",
+    "housing_benefit_reported",
+    "income_support_reported",
+    "jsa_income_reported",
+    "esa_income_reported",
+    "working_tax_credit_reported",
+    "child_tax_credit_reported",
+    "pension_credit_reported",
+)
+#: The earnings bands, one weekly rate wide above the survey-year limit; the
+#: last is open. A carer at or under the limit is band -1.
+CARERS_ALLOWANCE_EARNINGS_BANDS = 4
+#: frs_spine.FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN: the weekly hours of the
+#: largest in-household FRS care band, which sets the draw's route.
+CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS = "frs_care_hours_in_household"
 #: The earnings test is read on the frame's own values at the survey year, the
 #: limit the survey's carers were held to; the stage refuses any other period.
 CARERS_ALLOWANCE_YEAR_RULE = "survey_year"
 CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY = "carers_allowance_newly_entitled"
-#: Carer Support Payment replaces the allowance in Scotland and reads the same
-#: flag; policyengine-uk does not yet apply its earnings limit, so Scotland is
-#: never drawn.
-CARERS_ALLOWANCE_CLOSED_REGION = "SCOTLAND"
+#: Where Carer Support Payment replaces the allowance and reads the same flag:
+#: drawn as everywhere else, under the engine's own earnings limit from
+#: policyengine-uk 2.146.1, and reported apart in the receipt.
+CARER_SUPPORT_PAYMENT_REGION = "SCOTLAND"
 CARERS_ALLOWANCE_PARAMETERS = "gov.dwp.carers_allowance"
 CARERS_ALLOWANCE_REPORTED_ANCHOR = "carers_allowance_reported > 0"
+CARERS_ALLOWANCE_POOL_RULE = (
+    "a carer cares for a severely disabled person where "
+    "cares_for_severely_disabled_person is true, the input policyengine-uk "
+    "reads wherever care_hours reach min_hours: frs_disability writes it from "
+    "the FRS care tab and hmrc_spi_income_spine takes it again on the SPI "
+    "channel's households, drawing a carer of someone outside the household "
+    "at the in-household share (A3 of the November event-data plan's PR3, "
+    "microcosm#1095)"
+)
+CARERS_ALLOWANCE_STRATA = (
+    "the route (whether the carer's largest in-household band, "
+    "frs_care_hours_in_household, reaches min_hours), whether the benefit unit "
+    "reports a means-tested benefit at the survey year (universal credit, "
+    "housing benefit, income support, income-based JSA, income-related ESA, "
+    "tax credits or pension credit), and the survey-year weekly earnings band, "
+    "one weekly rate wide above the limit and open above three"
+)
 CARERS_ALLOWANCE_ELIGIBILITY = (
-    "persons outside Scotland whose care_hours reach policyengine-uk's "
-    "gov.dwp.carers_allowance.min_hours, who report no Carer's Allowance, and "
-    "whom is_gainfully_employed_for_carers_allowance holds gainfully employed at "
-    "the survey year: the carers the earnings limit alone keeps from the "
-    "allowance. Scotland stays closed, since Carer Support Payment reads the same "
-    "flag and policyengine-uk does not yet apply its earnings limit"
+    "persons whose care_hours reach policyengine-uk's "
+    "gov.dwp.carers_allowance.min_hours, who care for a severely disabled "
+    "person, who report no Carer's Allowance, and whom "
+    "is_gainfully_employed_for_carers_allowance holds gainfully employed at the "
+    "survey year: the carers the earnings limit alone keeps from the allowance "
+    f"({CARERS_ALLOWANCE_POOL_RULE}). In Scotland the flag is Carer Support "
+    "Payment's, which policyengine-uk pays under its own earnings limit from "
+    "2.146.1"
 )
 CARERS_ALLOWANCE_RATE_DERIVATION = (
-    "the take-up contract's carers_allowance_newly_entitled rate, drawn flat over "
-    "the eligible persons; would_claim = reported OR (eligible AND u < rate), so "
-    "a reporter stays true and every other person false"
+    "the take-up contract's carers_allowance_newly_entitled rate, with the "
+    "identity-keyed uniforms placed by weight within strata "
+    f"({CARERS_ALLOWANCE_STRATA}) and rotated by a start drawn per stratum, so "
+    "that every stratum claims the rate of its eligible weight to within one "
+    "record and every eligible carer claims with probability equal to the rate; "
+    "a CGT copy draws as the member it copies, placed with it as one record of "
+    "their joint weight, so the two claim together; would_claim = reported OR "
+    "(eligible AND position < rate), so a reporter stays true and every other "
+    "person false"
+)
+#: The CGT stages' branches of a household's clone path: a support copy, an
+#: incidence clone and a residential arm each copy their source household's
+#: members in ``person_id`` order (microcosm#1095 B5).
+CGT_LINEAGE_BRANCHES = frozenset(
+    {"cgt_support_split", "cgt_incidence_clone", "cgt_residential_split"}
+)
+#: The household columns that mark a frame the CGT stages have copied.
+_CGT_LINEAGE_COLUMNS = (
+    "household_is_cgt_support_copy",
+    "cgt_support_copy_index",
+    "household_is_capital_gains_clone",
+    "household_is_cgt_residential_clone",
+    "cgt_residential_clone_index",
 )
 
 
 @dataclass(frozen=True)
 class UKCarersAllowancePolicy:
-    """The engine's hours condition and weekly earnings limit at one instant.
+    """The engine's hours condition, weekly earnings limit and rate at one instant.
 
     ``min_hours`` forms the eligible set; the earnings test itself is the
     engine's own ``is_gainfully_employed_for_carers_allowance``, so
-    ``earnings_limit`` is recorded for the receipt only.
+    ``earnings_limit`` and ``weekly_rate`` only band the survey-year earnings
+    for the draw's strata and are recorded for the receipt.
     """
 
     min_hours: float
     earnings_limit: float
+    weekly_rate: float
     instant: str
     source: str
 
@@ -160,6 +285,7 @@ def uk_carers_allowance_policy(year: int | str) -> UKCarersAllowancePolicy:
     return UKCarersAllowancePolicy(
         min_hours=float(carers_allowance.min_hours(instant)),
         earnings_limit=float(carers_allowance.earnings_limit(instant)),
+        weekly_rate=float(carers_allowance.rate(instant)),
         instant=instant,
         source=(
             f"policyengine-uk {metadata.version('policyengine-uk')} "
@@ -168,22 +294,295 @@ def uk_carers_allowance_policy(year: int | str) -> UKCarersAllowancePolicy:
     )
 
 
-def carers_allowance_eligible(
+@dataclass(frozen=True)
+class UKCarersAllowancePool:
+    """The carers of a severely disabled person, and the routes they come from.
+
+    ``in_household`` carers reach the hours in their largest in-household band
+    and ``other`` carers do not (they care outside the household, or spread
+    the hours over bands); ``pool`` holds the carers at the hours whom
+    ``cares_for_severely_disabled_person`` holds caring for a severely disabled
+    person, on either route.
+    """
+
+    pool: np.ndarray
+    in_household: np.ndarray
+    other: np.ndarray
+
+
+def carers_allowance_pool(
     *,
     care_hours: np.ndarray,
+    in_household_hours: np.ndarray,
+    cares_for_severely_disabled_person: np.ndarray,
+    min_hours: float,
+) -> UKCarersAllowancePool:
+    """The carers whom the allowance can pay for the care they give."""
+
+    hours = np.asarray(care_hours, dtype=np.float64) >= float(min_hours)
+    in_household = hours & (
+        np.asarray(in_household_hours, dtype=np.float64) >= float(min_hours)
+    )
+    return UKCarersAllowancePool(
+        pool=hours & np.asarray(cares_for_severely_disabled_person, dtype=bool),
+        in_household=in_household,
+        other=hours & ~in_household,
+    )
+
+
+def stratum_starts(
+    strata: np.ndarray, *, salt: str, identities: np.ndarray, draws: np.ndarray
+) -> np.ndarray:
+    """Each record's stratum start: one identity-keyed uniform per stratum.
+
+    Keyed on the stratum code and the identity of its lowest-draw member,
+    under the draw's salt. A carer alone in a stratum then claims with
+    probability equal to the rate over identities, in any build or survey
+    vintage, and a rebuild of the same people rotates each stratum the same
+    way whatever the row order. A change of membership re-draws a stratum only
+    when its lowest-draw member leaves or a lower one joins, about one change
+    in its size; otherwise the start stays and only the moved weights shift
+    positions (the re-review of microcosm#1420, 2). Keyed on every member,
+    any change re-drew about half the stratum; on the code alone, a one-record
+    stratum's outcome was fixed per code in every build.
+    """
+
+    codes = np.asarray(strata)
+    members = integer_record_keys(identities, label="Carer's Allowance identities")
+    uniforms = np.asarray(draws, dtype=np.float64)
+    if not codes.shape == members.shape == uniforms.shape:
+        raise ValueError("Stratum starts need one identity and draw per record.")
+    unique = np.unique(codes)
+    order = np.lexsort((members, uniforms, codes))
+    first = np.searchsorted(codes[order], unique)
+    keys = [
+        f"{code}:{int(member)}"
+        for code, member in zip(unique, members[order][first], strict=True)
+    ]
+    starts = stable_identity_uniforms(
+        keys, seed=CARERS_ALLOWANCE_TAKE_UP_SEED, salt=f"{salt}:stratum_start"
+    )
+    return starts[np.searchsorted(unique, codes)]
+
+
+def lineage_roots(person: pd.DataFrame, household: pd.DataFrame) -> np.ndarray:
+    """Each person's lineage root: the ``person_id`` the draws key them on.
+
+    A CGT support copy, incidence clone or residential arm copies its source
+    household's members in ``person_id`` order, so a member's root is the
+    member at the same rank of the household with the same source id and clone
+    path without the CGT branches (``CGT_LINEAGE_BRANCHES``). Every other
+    person, an SPI or high-value support copy's included, is their own root,
+    as is everyone in a frame the CGT stages have not copied.
+    """
+
+    ids = pd.to_numeric(person["person_id"], errors="raise").astype("int64")
+    if not any(column in household.columns for column in _CGT_LINEAGE_COLUMNS):
+        return ids.to_numpy()
+    source_ids, paths = uk_household_clone_paths(household)
+    stripped = [
+        tuple(branch for branch in path if branch[0] not in CGT_LINEAGE_BRANCHES)
+        for path in paths
+    ]
+    household_ids = household["household_id"].to_numpy()
+    keys = pd.Series(
+        [
+            str((source, path))
+            for source, path in zip(source_ids, stripped, strict=True)
+        ],
+        index=household_ids,
+    )
+    is_root = pd.Series(
+        [path == bare for path, bare in zip(paths, stripped, strict=True)],
+        index=household_ids,
+    )
+    members = person["person_household_id"]
+    household_keys = members.map(keys)
+    if household_keys.isna().any():
+        raise ValueError("Every Carer's Allowance person must map to a household.")
+    rank = ids.groupby(members.to_numpy()).rank(method="first").astype("int64")
+    lineage = household_keys.astype(str) + "#" + rank.astype(str)
+    root_rows = members.map(is_root).to_numpy(dtype=bool)
+    roots = pd.Series(ids.to_numpy()[root_rows], index=lineage.to_numpy()[root_rows])
+    if roots.index.has_duplicates:
+        raise ValueError("Two source members share one Carer's Allowance lineage.")
+    mapped = lineage.map(roots)
+    if mapped.isna().any():
+        raise ValueError(
+            "A CGT copy's member has no member at its rank in the household it copies."
+        )
+    return mapped.astype("int64").to_numpy()
+
+
+def lineage_balanced_positions(
+    strata: np.ndarray,
+    draws: np.ndarray,
+    weights: np.ndarray,
+    *,
+    identities: np.ndarray,
+    salt: str,
+) -> np.ndarray:
+    """Weight-balanced positions, the rows of one identity in a stratum as one record.
+
+    A source and its CGT copies share an identity (``lineage_roots``) and so a
+    draw. Placed as one record of their joint weight they take one position
+    and claim together, as when the stage ran before the CGT clones split the
+    source's weight (microcosm#1095 B5). Rows of distinct identities are placed
+    exactly as ``weight_balanced_uniforms`` places them.
+
+    One lineage can sit in two strata, as a record of each: salary sacrifice
+    draws each copy's pay on its own id, so a copy's earnings band can differ
+    from its source's. Each stratum's start is keyed on its own members, so the
+    starts are drawn stratum by stratum, where an identity names one record.
+    """
+
+    strata = np.asarray(strata)
+    identities = np.asarray(identities)
+    draws = np.asarray(draws, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    if not strata.shape == identities.shape == draws.shape == weights.shape:
+        raise ValueError(
+            "Balanced positions need one stratum, identity and draw per row."
+        )
+    if not len(strata):
+        return draws.copy()
+    record, unique = pd.factorize(pd.MultiIndex.from_arrays([strata, identities]))
+    low = pd.Series(draws).groupby(record).min().sort_index().to_numpy()
+    high = pd.Series(draws).groupby(record).max().sort_index().to_numpy()
+    if (low != high).any():
+        raise ValueError("Rows of one lineage must share their draw.")
+    record_strata = unique.get_level_values(0).to_numpy()
+    record_identities = unique.get_level_values(1).to_numpy()
+    starts = np.empty(len(unique), dtype=np.float64)
+    for code in pd.unique(record_strata):
+        members = record_strata == code
+        starts[members] = stratum_starts(
+            record_strata[members],
+            salt=salt,
+            identities=record_identities[members],
+            draws=low[members],
+        )
+    positions = weight_balanced_uniforms(
+        record_strata,
+        low,
+        np.bincount(record, weights=weights, minlength=len(unique)),
+        starts=starts,
+    )
+    return np.asarray(positions, dtype=np.float64)[record]
+
+
+def assert_strata_within_one_record(
+    members: np.ndarray,
+    strata: np.ndarray,
+    taken: np.ndarray,
+    weights: np.ndarray,
+    share: float,
+    *,
+    label: str,
+    identities: np.ndarray | None = None,
+) -> None:
+    """Refuse a stratum whose taken weight misses ``share`` of its weight by
+    more than its heaviest record.
+
+    The rotated placement takes each stratum's share to within half a record
+    at each end of the stratum's arc, one record in all, by construction. A
+    larger miss means the draw was not balanced. With ``identities``, a record
+    is the rows of one lineage, as ``lineage_balanced_positions`` places them.
+    """
+
+    weights = np.maximum(np.asarray(weights, dtype=np.float64), 0.0)
+    strata = np.asarray(strata)
+    for code in np.unique(strata[members]):
+        stratum = members & (strata == code)
+        stratum_weights = weights[stratum]
+        heaviest = (
+            float(stratum_weights.max())
+            if identities is None
+            else float(
+                pd.Series(stratum_weights)
+                .groupby(np.asarray(identities)[stratum])
+                .sum()
+                .max()
+            )
+        )
+        miss = abs(
+            float(weights[stratum & taken].sum())
+            - float(share) * float(stratum_weights.sum())
+        )
+        if miss > heaviest * (1.0 + 1e-9) + 1e-9:
+            raise ValueError(
+                f"Carer's Allowance {label} stratum {int(code)} misses its share by "
+                "more than one record: the draw was not balanced by weight."
+            )
+
+
+def carers_allowance_eligible(
+    *,
+    pool: np.ndarray,
     reported: np.ndarray,
     gainfully_employed: np.ndarray,
-    scotland: np.ndarray,
-    min_hours: float,
 ) -> np.ndarray:
     """The carers the earnings limit alone keeps from the allowance."""
 
     return (
-        ~np.asarray(scotland, dtype=bool)
-        & (np.asarray(care_hours, dtype=np.float64) >= float(min_hours))
+        np.asarray(pool, dtype=bool)
         & ~np.asarray(reported, dtype=bool)
         & np.asarray(gainfully_employed, dtype=bool)
     )
+
+
+def means_tested_benefit_unit(
+    benunit_ids: np.ndarray, reported_amounts: np.ndarray
+) -> np.ndarray:
+    """Whether anyone in each person's benefit unit reports a means-tested benefit."""
+
+    reports = (np.asarray(reported_amounts, dtype=np.float64) > 0.0).any(axis=1)
+    return (
+        pd.Series(reports)
+        .groupby(np.asarray(benunit_ids))
+        .transform("max")
+        .to_numpy(dtype=bool)
+    )
+
+
+def carers_allowance_earnings_band(
+    annual_earnings: np.ndarray, *, earnings_limit: float, weekly_rate: float
+) -> np.ndarray:
+    """The survey-year weekly earnings band against the limit.
+
+    The engine's test spreads the year's earnings over 52 weeks and disregards
+    a fraction of a penny; read the same way, a carer at or under the limit is
+    band -1, and one over it takes the whole weekly rates by which the earnings
+    exceed it, the last band open (``CARERS_ALLOWANCE_EARNINGS_BANDS``).
+    """
+
+    if not weekly_rate > 0.0:
+        raise ValueError("The Carer's Allowance weekly rate must be positive.")
+    weekly = (
+        np.floor(
+            np.asarray(annual_earnings, dtype=np.float64)
+            / CARERS_ALLOWANCE_WEEKS_IN_YEAR
+            * 100
+            + 1e-6
+        )
+        / 100
+    )
+    over = weekly > float(earnings_limit)
+    rates_over = np.floor((weekly - float(earnings_limit)) / float(weekly_rate))
+    return np.where(
+        over, np.minimum(rates_over, CARERS_ALLOWANCE_EARNINGS_BANDS - 1), -1
+    ).astype(np.int64)
+
+
+_BAND_COUNT = CARERS_ALLOWANCE_EARNINGS_BANDS + 1
+
+
+def _band_label(band: int) -> str:
+    if band < 0:
+        return "at or under the limit"
+    if band == CARERS_ALLOWANCE_EARNINGS_BANDS - 1:
+        return f"{band} or more weekly rates over"
+    return f"{band} to {band + 1} weekly rates over"
 
 
 @dataclass(frozen=True)
@@ -249,7 +648,11 @@ def redraw_carers_allowance_take_up(
                 "person_household_id",
                 CARERS_ALLOWANCE_REPORTED,
                 CARERS_ALLOWANCE_CARE_HOURS,
+                CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS,
+                CARERS_ALLOWANCE_CARER_LINK,
                 CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
+                "person_benunit_id",
+                *CARERS_ALLOWANCE_MEANS_TESTED_REPORTED,
             ),
             "person",
         ),
@@ -272,9 +675,10 @@ def redraw_carers_allowance_take_up(
         )
     # The graph node is an open surface, so the lineage arrives with every
     # other live cell; the receipt counts support by it.
-    household_sources = pd.Series(
-        source_household_ids(household, stage="The Carer's Allowance take-up stage"),
-        index=household["household_id"].to_numpy(),
+    source_ids = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage="The Carer's Allowance take-up stage",
     )
     reported = (
         pd.to_numeric(person[CARERS_ALLOWANCE_REPORTED], errors="coerce")
@@ -305,31 +709,79 @@ def redraw_carers_allowance_take_up(
         len(person),
         CARERS_ALLOWANCE_EARNINGS_TEST,
     ).astype(bool)
+    earnings = _aligned(
+        materialized[CARERS_ALLOWANCE_EARNINGS], len(person), CARERS_ALLOWANCE_EARNINGS
+    ).astype(np.float64)
+    means_tested = means_tested_benefit_unit(
+        person["person_benunit_id"].to_numpy(),
+        person[list(CARERS_ALLOWANCE_MEANS_TESTED_REPORTED)]
+        .apply(pd.to_numeric, errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64),
+    )
+    bands = carers_allowance_earnings_band(
+        earnings,
+        earnings_limit=resolved.earnings_limit,
+        weekly_rate=resolved.weekly_rate,
+    )
+    # Means-tested receipt by earnings band; the take-up strata add the route.
+    income_strata = means_tested.astype(np.int64) * _BAND_COUNT + (bands + 1)
     person_households = person["person_household_id"]
     regions = person_households.map(
         household.set_index("household_id")["region"].astype(str)
     )
     if regions.isna().any():
         raise ValueError("Every person's household must carry a region.")
-    scotland = regions.eq(CARERS_ALLOWANCE_CLOSED_REGION).to_numpy(dtype=bool)
+    scotland = regions.eq(CARER_SUPPORT_PAYMENT_REGION).to_numpy(dtype=bool)
     care_hours = (
         pd.to_numeric(person[CARERS_ALLOWANCE_CARE_HOURS], errors="coerce")
         .fillna(0.0)
         .to_numpy(dtype=np.float64)
     )
-    eligible = carers_allowance_eligible(
+    in_household_hours = (
+        pd.to_numeric(person[CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+    # Every draw is keyed on lineage: a CGT copy draws as the member it copies.
+    roots = lineage_roots(person, household)
+    pool = carers_allowance_pool(
         care_hours=care_hours,
-        reported=reported,
-        gainfully_employed=gainfully_employed,
-        scotland=scotland,
+        in_household_hours=in_household_hours,
+        cares_for_severely_disabled_person=person[CARERS_ALLOWANCE_CARER_LINK]
+        .fillna(False)
+        .to_numpy(dtype=bool),
         min_hours=resolved.min_hours,
     )
+    eligible = carers_allowance_eligible(
+        pool=pool.pool,
+        reported=reported,
+        gainfully_employed=gainfully_employed,
+    )
     draws = stable_identity_uniforms(
-        person["person_id"].to_numpy(),
-        seed=CARERS_ALLOWANCE_TAKE_UP_SEED,
+        roots, seed=CARERS_ALLOWANCE_TAKE_UP_SEED, salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT
+    )
+    # The take-up strata add the route to the income strata.
+    take_up_strata = pool.other.astype(np.int64) * 2 * _BAND_COUNT + income_strata
+    positions = draws.copy()
+    positions[eligible] = lineage_balanced_positions(
+        take_up_strata[eligible],
+        draws[eligible],
+        weights[eligible],
+        identities=roots[eligible],
         salt=CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
     )
-    drawn = eligible & (draws < rate)
+    drawn = eligible & (positions < rate)
+    assert_strata_within_one_record(
+        eligible,
+        take_up_strata,
+        drawn,
+        weights,
+        rate,
+        label="take-up",
+        identities=roots,
+    )
     would_claim = reported | drawn
     person[CARERS_ALLOWANCE_TAKE_UP_OUTPUT] = would_claim
     result = uk_national_frame(
@@ -343,32 +795,59 @@ def redraw_carers_allowance_take_up(
     )
     validate_uk_national_frame(result)
 
-    source_ids = person_households.map(household_sources).to_numpy()
-    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
-
-    # Weighted aggregates only; a figure one to nine source households carry
-    # is "<10" (UKDS disclosure control).
+    # Weighted aggregates only; a figure one or two source households carry
+    # is "<3" (UKDS disclosure control).
     def sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, weights)
 
+    def guarded_share(part: np.ndarray, whole: np.ndarray) -> float | str | None:
+        # The share times the whole's weight gives back either side, so a
+        # share is given only where neither side rests on one or two sources;
+        # the part's weight is never given beside the whole's for the same
+        # reason.
+        whole_weight = float(weights[whole].sum())
+        if not whole_weight:
+            return None
+        if 0 < min(sources(part & whole), sources(whole & ~part)) < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
+        return small_cell_share(
+            float(weights[part & whole].sum()) / whole_weight, sources(whole)
+        )
+
+    def weighted(mask: np.ndarray) -> float | str:
+        return small_cell_share(float(weights[mask].sum()), sources(mask))
+
+    def strata_rows(
+        members: np.ndarray, strata: np.ndarray, claimed: np.ndarray, target: object
+    ) -> list[dict[str, object]]:
+        rows = []
+        for code in np.unique(strata[members]):
+            stratum = members & (strata == code)
+            within = int(code) % (2 * _BAND_COUNT)
+            rows.append(
+                {
+                    "route": "other"
+                    if int(code) >= 2 * _BAND_COUNT
+                    else "in_household",
+                    "means_tested": bool(within // _BAND_COUNT),
+                    "earnings_band": _band_label(within % _BAND_COUNT - 1),
+                    "support": support_band(sources(stratum)),
+                    "target": target,
+                    "realised_share": guarded_share(claimed, stratum),
+                }
+            )
+        return rows
+
     eligible_sources = sources(eligible)
     eligible_weight = float(weights[eligible].sum())
-    # The share times the eligible weight gives back either side, so the share
-    # is given only where neither side rests on one to nine sources; the drawn
-    # weight is never given beside the eligible weight for the same reason.
-    if not eligible_weight:
-        share: float | str | None = None
-    elif 0 < min(sources(drawn), sources(eligible & ~drawn)) < 10:
-        share = "<10"
-    else:
-        share = small_cell_share(
-            float(weights[drawn].sum()) / eligible_weight, eligible_sources
-        )
+    hours = care_hours >= resolved.min_hours
+    over_limit = hours & ~reported & gainfully_employed
     receipt = {
         "seed": CARERS_ALLOWANCE_TAKE_UP_SEED,
         "salt": CARERS_ALLOWANCE_TAKE_UP_OUTPUT,
         "eligibility": CARERS_ALLOWANCE_ELIGIBILITY,
         "rule": CARERS_ALLOWANCE_RATE_DERIVATION,
+        "strata": CARERS_ALLOWANCE_STRATA,
         "rate_key": CARERS_ALLOWANCE_NEWLY_ENTITLED_RATE_KEY,
         "rate": rate,
         "survey_year": survey_year,
@@ -376,23 +855,52 @@ def redraw_carers_allowance_take_up(
         "weekly_earnings_limit": resolved.earnings_limit,
         "policy_source": resolved.source,
         "weights": "household weights at the stage, before calibration, per person",
+        "pool_rule": CARERS_ALLOWANCE_POOL_RULE,
+        # Of the carers at the hours who report no allowance, the share the
+        # carer link holds caring for a severely disabled person, on each route.
+        "pool_share_in_household": guarded_share(
+            pool.pool, pool.in_household & ~reported
+        ),
+        "pool_share_other": guarded_share(pool.pool, pool.other & ~reported),
+        # The carers over the limit before and after the pool: the hours alone
+        # (microcosm#1319), then those caring for a severely disabled person,
+        # each split by where the hours are given.
+        "over_limit_carers_support": support_band(sources(over_limit)),
+        # Beside the eligible weight, it would give back the weight the pool
+        # leaves out, so it is withheld where that rests on one or two.
+        "over_limit_carers_weighted_persons": (
+            UK_WITHHELD
+            if 0 < sources(over_limit & ~eligible) < UK_DISCLOSURE_FLOOR
+            else weighted(over_limit)
+        ),
+        "over_limit_in_household_support": support_band(
+            sources(over_limit & pool.in_household)
+        ),
+        "over_limit_other_support": support_band(sources(over_limit & pool.other)),
+        "eligible_in_household_support": support_band(
+            sources(eligible & pool.in_household)
+        ),
+        "eligible_other_support": support_band(sources(eligible & pool.other)),
         "eligible_support": support_band(eligible_sources),
         "eligible_weighted_persons": small_cell_share(
             eligible_weight, eligible_sources
         ),
         "drawn_support": support_band(sources(drawn)),
-        "realized_share": share,
-        # Over-limit carers in Scotland stay closed: no Scottish person who
-        # reports no allowance carries the flag.
-        "scotland_left_closed_support": support_band(
-            sources(
-                scotland
-                & (care_hours >= resolved.min_hours)
-                & ~reported
-                & gainfully_employed
-            )
+        "drawn_share_of_over_limit_pool": guarded_share(drawn, eligible),
+        # Each stratum's realised share against its target, to within one
+        # record by construction and refused at more; a share either side of
+        # which one or two source households carry is "<3".
+        "weekly_rate": resolved.weekly_rate,
+        "strata_within_one_record": True,
+        "take_up_strata": strata_rows(eligible, take_up_strata, drawn, rate),
+        # Scotland apart: there the flag is Carer Support Payment's (María's
+        # ruling of 2026-10-23).
+        "scotland_eligible_support": support_band(sources(eligible & scotland)),
+        "scotland_eligible_weighted_persons": small_cell_share(
+            float(weights[eligible & scotland].sum()),
+            sources(eligible & scotland),
         ),
-        "scotland_closed": not bool((scotland & ~reported & would_claim).any()),
+        "scotland_drawn_support": support_band(sources(drawn & scotland)),
     }
     return UKCarersAllowanceTakeUpResult(frame=result, receipt=receipt)
 

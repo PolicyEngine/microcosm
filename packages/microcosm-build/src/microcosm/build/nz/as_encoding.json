@@ -1,0 +1,6 @@
+{
+  "rent_allocation": "reference_unit",
+  "asset_test": true,
+  "area_column": "as_area",
+  "rent_factor": 1
+}

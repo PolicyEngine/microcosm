@@ -72,6 +72,13 @@ import numpy as np
 import pandas as pd
 import score_us_fiscal_targets as fiscal_scorer
 
+from microcosm.build.head_to_head import (
+    LOWER_CANDIDATE,
+    LOWER_EQUAL,
+    LOWER_REFERENCE,
+    ScoredTarget,
+    compare_scored_targets,
+)
 from microcosm.build.us_runtime.congressional_district_vintage import (
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
@@ -2094,44 +2101,55 @@ def _comparison_payload(
         raise TypeError("Artifact target payloads must be lists.")
     if len(incumbent_rows) != len(candidate_rows):
         raise ValueError("Fiscal target payload lengths differ after contract checks.")
-    target_comparisons: list[dict[str, object]] = []
-    candidate_lower = 0
-    equal = 0
-    incumbent_lower = 0
-    for incumbent_row, candidate_row in zip(
-        incumbent_rows,
-        candidate_rows,
-        strict=True,
-    ):
-        key = (incumbent_row["name"], incumbent_row["period"])
-        candidate_key = (candidate_row["name"], candidate_row["period"])
-        if candidate_key != key:
-            raise ValueError(
-                f"Target comparison contracts differ: {key!r} vs {candidate_key!r}."
+    # The country-neutral comparison (microcosm.build.head_to_head); this
+    # payload keeps the US scorecard's own names, so its bytes are unchanged.
+    head_to_head = compare_scored_targets(
+        [
+            ScoredTarget(
+                name=row["name"],
+                period=row["period"],
+                relative_error=float(row["absolute_relative_error"]),
             )
-        incumbent_error = float(incumbent_row["absolute_relative_error"])
-        candidate_error = float(candidate_row["absolute_relative_error"])
-        if candidate_error < incumbent_error:
-            candidate_lower += 1
-            lower = "candidate"
-        elif candidate_error > incumbent_error:
-            incumbent_lower += 1
-            lower = "incumbent"
-        else:
-            equal += 1
-            lower = "equal"
-        target_comparisons.append(
-            {
-                "name": key[0],
-                "period": key[1],
-                "incumbent_absolute_relative_error": incumbent_error,
-                "candidate_absolute_relative_error": candidate_error,
-                "candidate_minus_incumbent_absolute_relative_error": (
-                    candidate_error - incumbent_error
-                ),
-                "lower_absolute_relative_error": lower,
-            }
-        )
+            for row in candidate_rows
+        ],
+        [
+            ScoredTarget(
+                name=row["name"],
+                period=row["period"],
+                relative_error=float(row["absolute_relative_error"]),
+            )
+            for row in incumbent_rows
+        ],
+        candidate_loss=float(candidate_fiscal["weighted_loss"]),
+        reference_loss=float(incumbent_fiscal["weighted_loss"]),
+    )
+    lower_names = {
+        LOWER_CANDIDATE: "candidate",
+        LOWER_REFERENCE: "incumbent",
+        LOWER_EQUAL: "equal",
+    }
+    target_comparisons: list[dict[str, object]] = [
+        {
+            "name": comparison.name,
+            "period": comparison.period,
+            "incumbent_absolute_relative_error": (
+                comparison.reference_absolute_relative_error
+            ),
+            "candidate_absolute_relative_error": (
+                comparison.candidate_absolute_relative_error
+            ),
+            "candidate_minus_incumbent_absolute_relative_error": (
+                comparison.candidate_absolute_relative_error
+                - comparison.reference_absolute_relative_error
+            ),
+            "lower_absolute_relative_error": lower_names[comparison.lower],
+        }
+        for comparison in head_to_head.comparisons
+    ]
+    counts = head_to_head.counts
+    candidate_lower = counts["candidate_lower_count"]
+    equal = counts["equal_count"]
+    incumbent_lower = counts["reference_lower_count"]
     incumbent_loss = float(incumbent_fiscal["weighted_loss"])
     candidate_loss = float(candidate_fiscal["weighted_loss"])
     incumbent_battery = incumbent["terminal_battery"]

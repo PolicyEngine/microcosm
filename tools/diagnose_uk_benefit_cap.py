@@ -1,13 +1,15 @@
 """Size the benefit-cap reduction tail on a UK spine or calibrated dataset.
 
 DWP's benefit-cap Table 4 counts UC households capped by the amount capped
-per monthly assessment period. The engine's ``benefit_cap_reduction`` is an
-annual amount, so the bands are the monthly edges times twelve, half-open on
-the lower edge and closed on the upper. The tool reports the band counts on
-the paid-claim GB basis the contract binds, the mean and median reduction,
-the composition of the tail (family type, children, elements, regions) and,
-on a spine, how many source households stand behind each band. Development
-diagnostic: it never recalibrates and writes only an aggregate JSON.
+per monthly assessment period. The contract binds the rows to
+``uc_benefit_cap_reduction_after_floor``, the annual amount the Universal
+Credit award loses to the cap (microcosm#1349), so the bands are the monthly
+edges times twelve, half-open on the lower edge and closed on the upper. The
+tool reports the band counts on the paid-claim GB basis the contract binds,
+the mean and median reduction, the composition of the tail (family type,
+children, elements, regions) and, on a spine, how many source households
+stand behind each band. Development diagnostic: it never recalibrates and
+writes only an aggregate JSON.
 """
 
 from __future__ import annotations
@@ -50,6 +52,8 @@ BANDS = (
     ("1300_01_and_above", 1300, None),
 )
 TAIL_EDGE = 1300
+# The reduction the contract's dwp.benefit_cap rows bind (microcosm#1349).
+REDUCTION = "uc_benefit_cap_reduction_after_floor"
 COMPONENTS = {
     "uc_maximum_amount": "uc_maximum_amount",
     "housing_element": "uc_housing_costs_element",
@@ -86,9 +90,7 @@ def measure(dataset: str, year: int, spine: str | None = None) -> dict:
     universal_credit = np.asarray(
         simulation.calculate("universal_credit", year).values, dtype=float
     )
-    reduction = np.asarray(
-        simulation.calculate("benefit_cap_reduction", year).values, dtype=float
-    )
+    reduction = np.asarray(simulation.calculate(REDUCTION, year).values, dtype=float)
     family_type = np.asarray(simulation.calculate("family_type", year).values).astype(
         str
     )
@@ -142,9 +144,9 @@ def measure(dataset: str, year: int, spine: str | None = None) -> dict:
         "dataset": str(dataset),
         "year": year,
         "basis": {
-            "capped": "benefit_cap_reduction > 0 and first member in a GB region",
+            "capped": f"{REDUCTION} > 0 and first member in a GB region",
             "paid_uc_gb": "capped and universal_credit > 0",
-            "bands": "monthly reduction = annual benefit_cap_reduction / 12; "
+            "bands": f"monthly reduction = annual {REDUCTION} / 12; "
             "lower edge exclusive, upper edge inclusive, last band open",
         },
         "capped_units_gb": count(capped),
@@ -192,12 +194,12 @@ def _support(
 
     The join is positional: the engine's household population keeps the spine
     household table's row order, so each benefit unit's household position
-    (through its first member) indexes the spine's ``household_source_id``
+    (through its first member) indexes the spine's ``source_household_id``
     directly. No id is cast, so no two households can collide.
     """
 
     household = pd.read_hdf(spine, "/household")
-    if "household_source_id" not in household.columns:
+    if "source_household_id" not in household.columns:
         return {"available": False}
     household_population = simulation.populations["household"]
     person_household_position = np.asarray(
@@ -216,7 +218,7 @@ def _support(
             "spine_households": int(len(household)),
             "engine_households": int(household_population.count),
         }
-    source = household["household_source_id"].to_numpy()[positions]
+    source = household["source_household_id"].to_numpy()[positions]
     out = {
         "available": True,
         "join": "positional (engine household order is spine table order)",
@@ -239,7 +241,7 @@ def main() -> None:
     parser.add_argument("--dataset", required=True, help="an H5 the engine loads")
     parser.add_argument(
         "--spine",
-        help="the spine H5 whose household table carries household_source_id "
+        help="the spine H5 whose household table carries source_household_id "
         "(support counts; only meaningful when --dataset is that spine)",
     )
     parser.add_argument("--year", type=int, default=2025)

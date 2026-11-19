@@ -293,7 +293,8 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
     )
 
     release_id = f"populace-us-2024-k{k}-fixture"
-    release_dir = tmp_path / "release" / release_id
+    # An exact-k build is a build of the national release (microcosm#1570).
+    release_dir = tmp_path / "releases" / builder.US_NATIONAL_RELEASE_ID
     artifact_root = tmp_path / "artifacts"
     release_dir.mkdir(parents=True)
     artifact_root.mkdir()
@@ -338,7 +339,28 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         },
         exact_k_ladder=ladder_receipt,
     )
+    # The run's last step rewrites both manifests for the national release and
+    # leaves the certified contract, which these stub diagnostics would not
+    # pass, to the publication command's preflight; any call is recorded.
+    from microcosm.data import contract
 
+    validated: list[Path] = []
+
+    def record_certified_contract(directory, *, artifact_root=None):
+        validated.append(Path(directory))
+        return []
+
+    monkeypatch.setattr(contract, "validate_release_dir", record_certified_contract)
+    commands = builder._finish_build_folder_release(
+        release_dir,
+        build=release_id,
+        artifact_root=artifact_root,
+        evidence_release=False,
+    )
+
+    assert validated == []
+    assert "microcosm-publish-release-build" in commands["publish_command"]
+    assert commands["promote_command"].endswith("--promote")
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert ladder_point
@@ -396,11 +418,14 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         == "importance"
     )
     assert build_manifest["exact_k_ladder"] == ladder_receipt
-    assert release_manifest["build"]["exact_k_ladder"] == ladder_receipt
-    assert release_manifest["default_datasets"] == {"national": "populace_us_2024"}
+    assert release_manifest["release"] == builder.US_NATIONAL_RELEASE_ID
+    assert release_manifest["build"] == release_id
+    assert release_manifest["exact_k_ladder"] == ladder_receipt
+    assert release_manifest["default_datasets"] == {"national": "microcosm_us_2024"}
     assert (
-        release_manifest["artifacts"]["populace_us_2024"]["path"]
+        release_manifest["artifacts"]["microcosm_us_2024"]["path"]
         == builder.DATASET_FILENAME
+        == "microcosm_us_2024.h5"
     )
     if k == 8:
         np.testing.assert_array_equal(outcome.support, np.arange(8))

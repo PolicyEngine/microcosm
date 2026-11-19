@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from microcosm.calibrate import (
-    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION,
     TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
     TARGET_LOSS_BASIS_HASH_ALGORITHM,
     CalibrationHierarchy,
@@ -48,6 +48,11 @@ from microcosm.calibrate.geography_constants import (
     US_STATE_POSTAL_TO_NUMERIC_FIPS,
 )
 from microcosm.calibrate.solve import zero_target_loss_census
+from microcosm.diagnostics import (
+    CalibrationDiagnosticsV8,
+    expand_calibration_diagnostics,
+    parse_calibration_diagnostics,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-calibrate")
@@ -272,7 +277,9 @@ def test_payload_uses_compiled_target_hierarchy_without_registry(
 
     payload = diagnostics_payload(result)
 
-    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    # Producers assemble schema 8, labels on every row; the writer publishes
+    # it as schema 9 with the labels in catalogs.
+    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION
     assert payload["targets"][0]["hierarchy"] == {
         "provider": {
             "id": "census_pep",
@@ -815,7 +822,11 @@ def test_payload_can_carry_target_registry_identity(
     )
     assert outcome.status == "available"
     payload["target_surface"] = precomputed_target_surface
-    assert json.loads(output.read_text()) == payload
+    written = json.loads(output.read_text())
+    assert written["schema_version"] == 9
+    assert expand_calibration_diagnostics(
+        parse_calibration_diagnostics(written)
+    ) == CalibrationDiagnosticsV8.model_validate(payload)
 
 
 def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(
@@ -1034,10 +1045,9 @@ def test_payload_reports_weight_concentration(feasible_frame) -> None:
 
 
 def test_payload_accepts_l0_refit_result(feasible_frame) -> None:
-    """Regression: the default sparse build hands an L0RefitResult to the writer.
+    """The diagnostics writer accepts the builder's L0RefitResult.
 
-    ``fraction_within_10pct`` was never delegated to the refit stage, so the
-    payload raised AttributeError on the production default (L0+refit) path.
+    It reports ``fraction_within_10pct`` from the refit stage.
     """
     frame, truths = feasible_frame()
     targets = TargetSet(

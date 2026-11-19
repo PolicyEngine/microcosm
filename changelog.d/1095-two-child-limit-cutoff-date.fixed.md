@@ -1,0 +1,1 @@
+The two-child-limit target rows now date births by policyengine-uk's own cutoff test, `uc_is_child_born_before_child_limit` (a date of birth before 6 April 2017), instead of a birth year of 2017 or later (microcosm#1095). The calendar year counted a child born from January to 5 April 2017 as affected by the limit, although the limit does not apply to them in the engine.

@@ -17,14 +17,19 @@ as policyengine-core does. Invariants:
   plans and reform passes equal the reference's, its effects carry z-scores,
   and a stored column the engine does not define fails the stored-input gate
   authoritatively;
-- the target surface resolves from the reference release manifest.
+- the target surface resolves from the reference release manifest;
+- the report names the commit the probe was loaded from, not the worktree's
+  HEAD when the report is written.
 """
 
 # ruff: noqa: F403, F405
 from __future__ import annotations
 
+import hashlib
+import inspect
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -520,6 +525,174 @@ def test_an_older_reference_manifest_is_compared_not_fatal(probe_tool) -> None:
     ]
 
 
+def test_the_target_surface_resolves_from_a_build_folder_release_manifest(
+    probe_tool,
+) -> None:
+    """A reference release's manifest in the build-folder layout names its
+    release and build as strings and records the build's details, the target
+    surface selection among them, at its top level (microcosm#1570); a
+    tagged manifest records them in its build object."""
+    selection = {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+    }
+    identity = {
+        "release": "microcosm-us-2024-national",
+        "build": "populace-us-2024-fixture",
+    }
+    for manifest, field in (
+        ({**identity, "target_surface_selection": selection}, ""),
+        ({"build": {"target_surface_selection": selection}}, "build."),
+    ):
+        surface = probe_tool.resolve_target_surface(None, None, manifest)
+        assert surface == {
+            "mode": "national_state",
+            "dropped_congressional_district_targets": 27_148,
+            "source": (
+                f"reference release_manifest.json {field}target_surface_selection"
+            ),
+        }
+
+    assert probe_tool.resolve_target_surface(None, None, identity)["mode"] == "full"
+
+
+def test_the_target_surface_resolves_from_an_uncertified_builds_record(
+    probe_tool, tmp_path
+) -> None:
+    """A build not yet certified has no manifest; the probe reads its
+    selection from the build_record.json in its --out directory: one level
+    above the build's own directory, build/, and two above a release
+    directory certification placed it in (microcosm#1585 item 11). A flag
+    still wins."""
+    selection = {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+    }
+    release_dir = tmp_path / "out" / "releases" / "microcosm-us-2024-national"
+    release_dir.mkdir(parents=True)
+    build_dir = tmp_path / "out" / "build"
+    build_dir.mkdir()
+    assert probe_tool.reference_build_record(release_dir) is None
+    assert probe_tool.reference_build_record(build_dir) is None
+    record_path = tmp_path / "out" / "build_record.json"
+    record_path.write_text(
+        json.dumps({"manifest": {"target_surface_selection": selection}})
+    )
+    assert probe_tool.reference_build_record(release_dir) == record_path.resolve()
+    assert probe_tool.reference_build_record(build_dir) == record_path.resolve()
+    record = json.loads(record_path.read_text())
+
+    assert probe_tool.resolve_target_surface(None, None, None, record) == {
+        "mode": "national_state",
+        "dropped_congressional_district_targets": 27_148,
+        "source": "reference build_record.json manifest.target_surface_selection",
+    }
+    full = {"manifest": {"target_surface_selection": None}}
+    assert probe_tool.resolve_target_surface(None, None, None, full)["mode"] == "full"
+    assert (
+        probe_tool.resolve_target_surface("full", None, None, record)["source"]
+        == "--target-surface"
+    )
+
+
+def test_a_failed_build_is_no_reference(
+    probe_tool, builder, tmp_path, capsys, monkeypatch
+) -> None:
+    """A failed build keeps its H5 to be evaluated, which the probe may score
+    as --export, but its directories are refused as the reference (review of
+    #1672), until an evidence-tier certification makes it an evidence
+    release (microcosm#1585 item 11)."""
+    out = tmp_path / "out"
+    build_dir = out / builder.US_BUILD_FILES_DIRECTORY
+    build_dir.mkdir(parents=True)
+    (out / "build_record.json").write_text(
+        json.dumps(
+            {
+                "kind": builder.US_BUILD_RECORD_KIND,
+                "build": "populace-us-2024-failed",
+                "layout": {"build_dir": builder.US_BUILD_FILES_DIRECTORY},
+                "settings": {},
+                "terminal_gate_failures": ["Input coverage failed: x"],
+            }
+        )
+    )
+    evidence_dir = out / "releases" / builder.US_EVIDENCE_RELEASE_ID
+    diagnostics = build_dir / "calibration_diagnostics.json"
+    diagnostics.write_text("{}")
+
+    def argv(flag: str, reference: Path) -> list[str]:
+        return [
+            "--export",
+            str(tmp_path / "sample.h5"),
+            "--out",
+            str(tmp_path / "probe"),
+            flag,
+            str(reference),
+        ]
+
+    # Its directories, the --out itself, and any file under it given as an
+    # explicit reference (review of #1681).
+    for flag, reference in (
+        ("--reference-release-dir", build_dir),
+        ("--reference-release-dir", evidence_dir),
+        ("--reference-release-dir", out),
+        ("--reference-smoke", build_dir / "reform_coverage_smoke.json"),
+        ("--reference-validation", build_dir / "reform_validation.json"),
+        ("--reference-build-manifest", build_dir / "build_manifest.json"),
+    ):
+        with pytest.raises(SystemExit):
+            probe_tool.main(argv(flag, reference))
+        assert (
+            f"{flag} {reference} belongs to build populace-us-2024-failed"
+            in capsys.readouterr().err
+        )
+    assert not (tmp_path / "probe").exists()
+
+    # Its own calibration diagnostics are the scored build's fit, not a
+    # reference, so they go with its export: the probe passes its reference
+    # check and goes on to resolve the reference files.
+    class ReferenceCheckPassedError(Exception):
+        pass
+
+    def stop(*args, **kwargs):
+        raise ReferenceCheckPassedError
+
+    monkeypatch.setattr(probe_tool, "reference_paths", stop)
+    with pytest.raises(ReferenceCheckPassedError):
+        probe_tool.main(argv("--calibration-diagnostics", diagnostics))
+    # A part-written evidence certification exempts nothing; a finished one
+    # makes it an evidence release, which is a reference again.
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "release_manifest.json").write_text("{}")
+    assert builder._failed_build_holding(evidence_dir) is not None
+    (evidence_dir / "release_manifest.json").write_text(
+        json.dumps(
+            {
+                "release": builder.US_EVIDENCE_RELEASE_ID,
+                "build": "populace-us-2024-evidence-failed",
+                "tier": "evidence",
+                "known_failures": [
+                    {
+                        "failure": "Input coverage failed: x",
+                        "owner": "PolicyEngine/microcosm#1",
+                    }
+                ],
+            }
+        )
+    )
+    # The rewrite names the build in the build manifest last.
+    assert builder._failed_build_holding(evidence_dir) is not None
+    (evidence_dir / "build_manifest.json").write_text(
+        json.dumps(
+            {
+                "release": builder.US_EVIDENCE_RELEASE_ID,
+                "build": "populace-us-2024-evidence-failed",
+            }
+        )
+    )
+    assert builder._failed_build_holding(evidence_dir) is None
+
+
 def test_census_with_a_receipt_is_refused(
     probe_tool, builder, fake_reforms, chain, tmp_path
 ) -> None:
@@ -780,3 +953,287 @@ def test_a_malformed_reference_smoke_file_costs_only_the_comparison(
     assert "malformed" in smoke["reference_error"]
     assert len(smoke["probes"]) == len(fixture_engine_probes())
     assert all("reference" not in row for row in smoke["probes"])
+
+
+def test_the_report_names_the_commit_the_probe_loaded_from(
+    probe_tool, builder, chain, tmp_path, monkeypatch
+) -> None:
+    """The Route A probe launched 2026-10-02 named a commit made ten minutes
+    after it started: it read HEAD when it wrote its report header. The
+    report now keeps the state read when the probe loaded, the sha256 of the
+    probe and of the sibling tools it runs, and the state at each write,
+    flagging a move (modules imported in between would then come from either
+    state). The report is written here before ``run``, as no stage runs."""
+    _, path, receipt, _ = chain
+    with monkeypatch.context() as unmoved:
+        pin_git_state_at_load(unmoved, probe_tool)
+        probe, _ = fixture_export_probe(
+            probe_tool, builder, path, tmp_path / "probe", receipt=receipt
+        )
+    # Outside a git checkout there is no state to compare.
+    unmoved = False if probe_tool._TOOL_SOURCE["commit"] is not None else None
+    assert probe.report["tool_source"]["moved_since_load"] is unmoved
+
+    move_head_after_load(monkeypatch)
+    probe._write_report()
+    written = tmp_path / "probe" / probe_tool.REPORT_FILENAME
+    source = json.loads(written.read_text())["tool_source"]
+    assert {key: source[key] for key in LOAD_STATE_FIELDS} == probe_tool._TOOL_SOURCE
+    assert source["commit"] != LATER_HEAD
+    assert source["commit_at_write"] == LATER_HEAD
+    # Outside a git checkout there is no load state to compare with.
+    expected = True if source["commit"] is not None else None
+    assert source["moved_since_load"] is expected
+
+    def sha256(path) -> str:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+    assert source["sha256"] == sha256(probe_tool.__file__)
+    # The fixtures load both siblings themselves, so the probe hashes their
+    # files when it writes.
+    assert source["tools"] == {
+        "tools/build_us_fiscal_refresh_release.py": {
+            "sha256": sha256(builder.__file__),
+            "file": builder.__file__,
+            "hashed": "at write",
+        },
+        "tools/sample_us_export_households.py": {
+            "sha256": sha256(probe.sampler.__file__),
+            "file": probe.sampler.__file__,
+            "hashed": "at write",
+        },
+    }
+
+
+def _tail_result(single_record=None, *, passed=True, share=0.4, unmeasured=None):
+    surface = {"checked_sparse_columns": ["partnership_income"]}
+    if single_record is not None:
+        surface["single_record_concentration"] = {
+            "top_k": 100,
+            "columns": single_record,
+            "unmeasured": unmeasured or {},
+        }
+    return {
+        "passed": passed,
+        "surface": surface,
+        "details": {"top_share": {"partnership_income": share}},
+    }
+
+
+def _tail_reference(single_record=None, **options):
+    result = _tail_result(single_record, **options)
+    return {
+        "surface": result["surface"],
+        "tail_concentration": {
+            "passed": result["passed"],
+            "details": result["details"],
+        },
+    }
+
+
+# Line 32 in #1259's seed-0 rerun of the #1251 chain, at initial weights: one
+# measurement, rounded.
+_LINE_32 = {
+    "carriers": 16_001,
+    "top_1_share": 0.217,
+    "top_1_weight": 644.7,
+    "top_k_share": 0.451,
+}
+_ZERO_MASS = {
+    "carriers": 0,
+    "top_1_share": None,
+    "top_1_weight": None,
+    "top_k_share": None,
+}
+
+
+def test_the_probe_compares_single_record_measurements(probe_tool) -> None:
+    measured = {"partnership_income": _LINE_32, "estate_income": _ZERO_MASS}
+
+    same = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference(measured)
+    )
+
+    assert same == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 2,
+    }
+
+    moved = probe_tool.compare_qrf_tail(
+        _tail_result(
+            {**measured, "partnership_income": {**_LINE_32, "top_1_weight": 1.08}}
+        ),
+        _tail_reference(measured),
+    )
+
+    assert moved["differences"] == ["partnership_income: top_1_weight 1.08 vs 644.7"]
+
+    lost = probe_tool.compare_qrf_tail(
+        _tail_result({**measured, "estate_income": {**_ZERO_MASS, "top_1_share": 0.5}}),
+        _tail_reference(measured),
+    )
+
+    assert lost["differences"] == ["estate_income: top_1_share 0.5 vs None"]
+
+    # The other direction, a probe column with the release's carriers and no
+    # share: what the measurement reports when a column's mass sums past the
+    # float range.
+    no_share = {
+        **_LINE_32,
+        "top_1_share": None,
+        "top_1_weight": None,
+        "top_k_share": None,
+    }
+    unshared = probe_tool.compare_qrf_tail(
+        _tail_result({**measured, "partnership_income": no_share}),
+        _tail_reference(measured),
+    )
+
+    assert unshared["differences"] == [
+        "partnership_income: top_1_share None vs 0.217",
+        "partnership_income: top_1_weight None vs 644.7",
+        "partnership_income: top_k_share None vs 0.451",
+    ]
+
+    narrower = probe_tool.compare_qrf_tail(
+        _tail_result({"partnership_income": _LINE_32}), _tail_reference(measured)
+    )
+
+    assert narrower["differences"] == [
+        "single-record columns differ: only probe [], only release ['estate_income']"
+    ]
+    assert narrower["single_record_columns_compared"] == 1
+
+    wider = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference({"partnership_income": _LINE_32})
+    )
+
+    assert wider["differences"] == [
+        "single-record columns differ: only probe ['estate_income'], only release []"
+    ]
+    assert wider["single_record_columns_compared"] == 1
+
+    for field, value in (("carriers", 16_002), ("top_k_share", 0.452)):
+        one_field = probe_tool.compare_qrf_tail(
+            _tail_result(
+                {**measured, "partnership_income": {**_LINE_32, field: value}}
+            ),
+            _tail_reference(measured),
+        )
+
+        assert one_field["differences"] == [
+            f"partnership_income: {field} {value!r} vs {_LINE_32[field]!r}"
+        ]
+
+
+def test_the_probe_compares_unmeasured_reasons(probe_tool) -> None:
+    """Review N8: an output unmeasured in both runs for different reasons is a
+    difference, and so is an output unmeasured in one run only."""
+    measured = {"partnership_income": _LINE_32}
+    unmeasured = {
+        "taxable_interest_income": "ValueError: Cannot resolve person-level weights"
+    }
+
+    same = probe_tool.compare_qrf_tail(
+        _tail_result(measured, unmeasured=unmeasured),
+        _tail_reference(measured, unmeasured=unmeasured),
+    )
+
+    assert same["differences"] == []
+
+    another_reason = probe_tool.compare_qrf_tail(
+        _tail_result(
+            measured,
+            unmeasured={
+                "taxable_interest_income": "RuntimeError: weight store offline"
+            },
+        ),
+        _tail_reference(measured, unmeasured=unmeasured),
+    )
+
+    assert another_reason["differences"] == [
+        "taxable_interest_income: unmeasured as 'RuntimeError: weight store "
+        "offline' vs 'ValueError: Cannot resolve person-level weights'"
+    ]
+
+    only_release = probe_tool.compare_qrf_tail(
+        _tail_result(measured), _tail_reference(measured, unmeasured=unmeasured)
+    )
+
+    assert only_release["differences"] == [
+        "unmeasured columns differ: only probe [], only release "
+        "['taxable_interest_income']"
+    ]
+
+    only_probe = probe_tool.compare_qrf_tail(
+        _tail_result(measured, unmeasured=unmeasured), _tail_reference(measured)
+    )
+
+    assert only_probe["differences"] == [
+        "unmeasured columns differ: only probe ['taxable_interest_income'], "
+        "only release []"
+    ]
+
+
+def test_a_release_without_single_record_measurements_compares_none(
+    probe_tool,
+) -> None:
+    """A release built before its tail surface carried the block (Route A)."""
+    comparison = probe_tool.compare_qrf_tail(
+        _tail_result({"partnership_income": _LINE_32}), _tail_reference()
+    )
+
+    assert comparison == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 0,
+    }
+
+
+def test_a_probe_surface_without_the_block_compares_none(probe_tool) -> None:
+    """The comparison skips the block when either side lacks it. A probe run's
+    side is the surface its builder's ``_qrf_tail_concentration_gate``
+    returns, and the release tool's always carries the block, so this pins
+    the skip on a hand-built result."""
+    comparison = probe_tool.compare_qrf_tail(
+        _tail_result(), _tail_reference({"partnership_income": _LINE_32})
+    )
+
+    assert comparison == {
+        "differences": [],
+        "columns_compared": 1,
+        "single_record_columns_compared": 0,
+    }
+
+
+def test_the_timed_scorer_passes_every_scoring_argument_on(
+    probe_tool, builder, tmp_path, monkeypatch
+) -> None:
+    """The probe times each pass, and the release scorer gets what it was sent,
+    including a reform pass's outer counter (microcosm#1556)."""
+    from microcosm_emitter_interface.telemetry import OuterProgress
+
+    received: list[dict[str, object]] = []
+
+    def score(self, keys, *, label, reform_system=None, outer=None):
+        received.append({"label": label, "outer": outer})
+        return {}
+
+    monkeypatch.setattr(builder._HouseholdBatchedPostExportScorer, "_score", score)
+    passes = tmp_path / "passes.jsonl"
+    timed = probe_tool._timed_scorer_class(builder, passes, probe_tool.StageClock(None))
+    parameters = inspect.signature(timed._score).parameters
+    assert "outer" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    monkeypatch.setattr(timed, "n_batches", 3, raising=False)
+    scorer = object.__new__(timed)
+    counter = OuterProgress(2, 5, "reform_pass")
+    scorer._score(
+        ("fixture key",), label="fixture reform", reform_system=object(), outer=counter
+    )
+    assert received == [{"label": "fixture reform", "outer": counter}]
+    row = json.loads(passes.read_text())
+    assert (row["label"], row["reform"], row["batches"]) == ("fixture reform", True, 3)

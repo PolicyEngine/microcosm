@@ -36,7 +36,12 @@ import numpy as np
 from microcosm.build.uk_runtime.employer_pension_contributions import (
     ASHE_EMPLOYER_RATE_BANDS,
 )
-from microcosm.build.uk_runtime.receipt_counts import distinct_count, support_band
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    distinct_count,
+    support_band,
+)
 
 #: ASHE's highest employer contribution rate, the top of its open band as the
 #: employer draw closes it (``employer_pension_contributions.py``).
@@ -101,18 +106,18 @@ def coherence_receipt(
     """Banded support and weighted amounts for one coherence step.
 
     Support is counted on distinct source households (``support_band``), and
-    the weighted amounts are withheld as "<10" where one to nine of them carry
+    the weighted amounts are withheld as "<3" where one or two of them carry
     the change, so the receipt gives back no small cell.
     """
 
     mask = np.asarray(changed, dtype=bool)
     weight = np.asarray(weights, dtype=np.float64)
     sources = distinct_count(source_ids, mask, weight)
-    small = 0 < sources < 10
+    small = 0 < sources < UK_DISCLOSURE_FLOOR
     before_mass = float(np.dot(weight[mask], np.asarray(before, dtype=float)[mask]))
     after_mass = float(np.dot(weight[mask], np.asarray(after, dtype=float)[mask]))
     return {
         "support": support_band(sources),
-        "weighted_before": "<10" if small else before_mass,
-        "weighted_after": "<10" if small else after_mass,
+        "weighted_before": UK_WITHHELD if small else before_mass,
+        "weighted_after": UK_WITHHELD if small else after_mass,
     }

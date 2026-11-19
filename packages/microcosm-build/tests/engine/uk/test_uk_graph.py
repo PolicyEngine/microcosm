@@ -38,7 +38,7 @@ def test_spi_support_fixture_changes_person_mass_and_conserves_household_mass() 
 def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     tmp_path,
 ) -> None:
-    """The driver's record projection must cover every declared output.
+    """The driver's record projection must cover every declared output and rewrite.
 
     ``frs_spine`` declares the entity ids and memberships among its outputs,
     but the executor carries those outside owned cells, so the root node
@@ -81,9 +81,12 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     assert [record.stage for record in records] == [stage.stage for stage in stages]
     by_stage = {record.stage: record for record in records}
     for stage in stages:
-        assert set(by_stage[stage.stage].nonzero_share) == set(stage.outputs), (
-            stage.stage
-        )
+        # A declared rewrite is recorded beside the outputs (microcosm#721).
+        assert set(by_stage[stage.stage].nonzero_share) == {
+            *stage.outputs,
+            *stage.rewrites,
+        }, stage.stage
+        assert by_stage[stage.stage].rewrote == stage.rewrites, stage.stage
     root_shares = by_stage["frs_spine"].nonzero_share
     for column in (
         "person_id",

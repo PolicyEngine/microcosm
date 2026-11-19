@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "be",
-  "policy": "BE-SILC microdata is licence-restricted (Statbel/Eurostat scientific-use terms, the UK FRS posture): microdata and per-record outputs live only in the private artifact repo, public artifacts are aggregates only, and releases are identified by data_build_id plus HF revision — never ordinals.",
+  "policy": "Microcosm-BE: synthetic Belgian population calibrated to Belgian administrative and national-accounts targets (sums of Chronicle facts; surveys validation-only). Support records: US survey donor pool, reweighted; a Belgian donor pool is the planned upgrade. All artifacts remain in the private Hugging Face repository. Publication is Max's decision at release time; this inactive declaration authorizes no publication. Releases use data_build_id plus immutable Hugging Face revision, never ordinals.",
   "builder": "populace-be",
   "hf": {
     "artifact_repo": "policyengine/populace-be-private",
@@ -20,9 +20,7 @@
   "boundary": {
     "private": [
       "populace_be_{year}.h5",
-      "populace_be_{year}_calibration.npz"
-    ],
-    "public": [
+      "populace_be_{year}_calibration.npz",
       "build_manifest.json",
       "release_manifest.json",
       "calibration_diagnostics.json",
@@ -30,12 +28,13 @@
       "demographics.json",
       "reform_validation.json",
       "latest.json"
-    ]
+    ],
+    "public": []
   },
   "licence": {
-    "name": "BE-SILC (Statbel/Eurostat scientific use)",
-    "restricted": true,
-    "notes": "Destination guards (an hf_destinations allowlist module + AST-scan test, the pattern proven on the UK licensed-data repo) land before any upload code exists — populace#262's first PR. No individual-level records in logs or CI output."
+    "name": "Microcosm US public synthetic donor release plus Belgian public aggregate facts",
+    "restricted": false,
+    "notes": "The donor is the immutable Build P artifact in source_stages.json. Chronicle owns licence evidence for destination facts. Repository visibility remains private pending Max's publication decision."
   },
-  "notes": "source_coverage.json uses the country-neutral name (generalizing us_source_coverage.json per populace#265). reform_validation.json carries the EUROMOD-BE / Federal Planning Bureau comparators with in/out-of-sample labeling (populace#264). latest.json uploads last as the atomic pointer; the staging repo feeds the dashboard monitor ahead of release."
-  }
+  "notes": "Proposed target and policy year 2026 (BE-MC0), pending Max's ruling d1902. Microcosm-BE: synthetic Belgian population calibrated to Belgian administrative and national-accounts targets (sums of Chronicle facts; surveys validation-only). Support records: US survey donor pool, reweighted; a Belgian donor pool is the planned upgrade. source_coverage.json records source provenance, calibration_diagnostics.json records target fit, and reform_validation.json separates held-out comparisons. The existing private artifact and staging repository names are retained. A later release assembler and release qualification are required; latest.json is an atomic pointer only after publication is authorized."
+}

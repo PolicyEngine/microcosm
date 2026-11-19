@@ -1,0 +1,190 @@
+﻿"STATEFP
+(INCITS38)"|"OLD_COUNTYFP
+(INCITS31)"|OLD_COUNTY_NAMELSAD|"NEW_COUNTYFP
+(INCITS31)"|NEW_COUNTY_NAMELSAD|COUSUBFP|OLD_COUSUB_GEOID|NEW_COUSUB_GEOID|COUSUB_NAMELSAD|"COUSUBNS
+(INCITS446)"|COUSUB_LSAD|COUSUB_FUNCSTAT|COUSUB_CLASSFP
+09|001|Fairfield County|120|Greater Bridgeport Planning Region|08070|0900108070|0912008070|Bridgeport town|00213396|43|C|T5
+09|001|Fairfield County|120|Greater Bridgeport Planning Region|23890|0900123890|0912023890|Easton town|00213427|43|A|T1
+09|001|Fairfield County|120|Greater Bridgeport Planning Region|26620|0900126620|0912026620|Fairfield town|00213429|43|A|T1
+09|001|Fairfield County|120|Greater Bridgeport Planning Region|48620|0900148620|0912048620|Monroe town|00213463|43|A|T1
+09|001|Fairfield County|120|Greater Bridgeport Planning Region|74190|0900174190|0912074190|Stratford town|00213514|43|A|T1
+09|001|Fairfield County|120|Greater Bridgeport Planning Region|77200|0900177200|0912077200|Trumbull town|00213518|43|A|T1
+09|001|Fairfield County|120|Greater Bridgeport Planning Region|00000|0900100000|0912000000|County subdivisions not defined|00000000|00|F|Z9
+09|001|Fairfield County|140|Naugatuck Valley Planning Region|68170|0900168170|0914068170|Shelton town|00213504|43|C|T5
+09|001|Fairfield County|190|Western Connecticut Planning Region|00000|0900100000|0919000000|County subdivisions not defined|00000000|00|F|Z9
+09|001|Fairfield County|190|Western Connecticut Planning Region|56060|0900156060|0919056060|Norwalk town|00213481|43|C|T5
+09|001|Fairfield County|190|Western Connecticut Planning Region|04720|0900104720|0919004720|Bethel town|00213390|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|08980|0900108980|0919008980|Brookfield town|00213399|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|18500|0900118500|0919018500|Danbury town|00213415|43|C|T5
+09|001|Fairfield County|190|Western Connecticut Planning Region|18850|0900118850|0919018850|Darien town|00213416|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|33620|0900133620|0919033620|Greenwich town|00213435|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|50580|0900150580|0919050580|New Canaan town|00213468|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|50860|0900150860|0919050860|New Fairfield town|00213469|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|52980|0900152980|0919052980|Newtown town|00213475|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|63970|0900163970|0919063970|Ridgefield town|00213496|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|68310|0900168310|0919068310|Sherman town|00213505|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|73070|0900173070|0919073070|Stamford town|00213511|43|C|T5
+09|001|Fairfield County|190|Western Connecticut Planning Region|83430|0900183430|0919083430|Weston town|00213531|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|83500|0900183500|0919083500|Westport town|00213532|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|86370|0900186370|0919086370|Wilton town|00213535|43|A|T1
+09|001|Fairfield County|190|Western Connecticut Planning Region|63480|0900163480|0919063480|Redding town|00213495|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|12270|0900312270|0911012270|Canton town|00213404|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|32640|0900332640|0911032640|Granby town|00213434|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|45820|0900345820|0911045820|Marlborough town|00213457|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|02060|0900302060|0911002060|Avon town|00213385|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|04300|0900304300|0911004300|Berlin town|00213388|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|05910|0900305910|0911005910|Bloomfield town|00213392|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|22070|0900322070|0911022070|East Granby town|00213421|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|22630|0900322630|0911022630|East Hartford town|00213424|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|25990|0900325990|0911025990|Enfield town|00212332|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|27600|0900327600|0911027600|Farmington town|00213430|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|31240|0900331240|0911031240|Glastonbury town|00213432|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|37070|0900337070|0911037070|Hartford town|00213442|43|C|T5
+09|003|Hartford County|110|Capitol Planning Region|44700|0900344700|0911044700|Manchester town|00213455|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|50440|0900350440|0911050440|New Britain town|00213467|43|C|T5
+09|003|Hartford County|110|Capitol Planning Region|52140|0900352140|0911052140|Newington town|00213472|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|60120|0900360120|0911060120|Plainville town|00213488|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|68940|0900368940|0911068940|Simsbury town|00213506|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|70550|0900370550|0911070550|Southington town|00213508|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|71390|0900371390|0911071390|South Windsor town|00213509|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|82590|0900382590|0911082590|West Hartford town|00213529|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|84900|0900384900|0911084900|Wethersfield town|00213533|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|87000|0900387000|0911087000|Windsor town|00212354|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|87070|0900387070|0911087070|Windsor Locks town|00212355|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|24800|0900324800|0911024800|East Windsor town|00212329|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|65370|0900365370|0911065370|Rocky Hill town|00213497|43|A|T1
+09|003|Hartford County|110|Capitol Planning Region|74540|0900374540|0911074540|Suffield town|00212351|43|A|T1
+09|003|Hartford County|140|Naugatuck Valley Planning Region|08490|0900308490|0914008490|Bristol town|00213398|43|C|T5
+09|003|Hartford County|160|Northwest Hills Planning Region|10100|0900310100|0916010100|Burlington town|00213401|43|A|T1
+09|003|Hartford County|160|Northwest Hills Planning Region|37140|0900337140|0916037140|Hartland town|00213443|43|A|T1
+09|005|Litchfield County|140|Naugatuck Valley Planning Region|75730|0900575730|0914075730|Thomaston town|00213515|43|A|T1
+09|005|Litchfield County|140|Naugatuck Valley Planning Region|80490|0900580490|0914080490|Watertown town|00213527|43|A|T1
+09|005|Litchfield County|140|Naugatuck Valley Planning Region|87910|0900587910|0914087910|Woodbury town|00213540|43|A|T1
+09|005|Litchfield County|140|Naugatuck Valley Planning Region|60750|0900560750|0914060750|Plymouth town|00213489|43|A|T1
+09|005|Litchfield County|140|Naugatuck Valley Planning Region|04930|0900504930|0914004930|Bethlehem town|00213391|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|43370|0900543370|0916043370|Litchfield town|00213452|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|51350|0900551350|0916051350|New Hartford town|00213470|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|53470|0900553470|0916053470|Norfolk town|00213476|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|54030|0900554030|0916054030|North Canaan town|00213478|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|67960|0900567960|0916067960|Sharon town|00213503|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|76570|0900576570|0916076570|Torrington town|00213517|43|C|T5
+09|005|Litchfield County|160|Northwest Hills Planning Region|79510|0900579510|0916079510|Warren town|00213523|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|79720|0900579720|0916079720|Washington town|00213524|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|86440|0900586440|0916086440|Winchester town|00213536|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|02760|0900502760|0916002760|Barkhamsted town|00213386|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|65930|0900565930|0916065930|Roxbury town|00213498|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|66420|0900566420|0916066420|Salisbury town|00213500|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|10940|0900510940|0916010940|Canaan town|00213402|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|16050|0900516050|0916016050|Colebrook town|00213410|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|17240|0900517240|0916017240|Cornwall town|00213412|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|32290|0900532290|0916032290|Goshen town|00213433|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|37280|0900537280|0916037280|Harwinton town|00213444|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|40290|0900540290|0916040290|Kent town|00213446|43|A|T1
+09|005|Litchfield County|160|Northwest Hills Planning Region|49460|0900549460|0916049460|Morris town|00213465|43|A|T1
+09|005|Litchfield County|190|Western Connecticut Planning Region|52630|0900552630|0919052630|New Milford town|00213474|43|A|T1
+09|005|Litchfield County|190|Western Connecticut Planning Region|08210|0900508210|0919008210|Bridgewater town|00213397|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|81680|0900781680|0913081680|Westbrook town|00213528|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|00000|0900700000|0913000000|County subdivisions not defined|00000000|00|F|Z9
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|19130|0900719130|0913019130|Deep River town|00213417|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|22280|0900722280|0913022280|East Haddam town|02378251|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|22490|0900722490|0913022490|East Hampton town|00213423|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|26270|0900726270|0913026270|Essex town|00213428|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|35230|0900735230|0913035230|Haddam town|00213439|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|40710|0900740710|0913040710|Killingworth town|00213448|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|47080|0900747080|0913047080|Middlefield town|00213460|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|57320|0900757320|0913057320|Old Saybrook town|00213484|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|61800|0900761800|0913061800|Portland town|00213491|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|47360|0900747360|0913047360|Middletown town|00213461|43|C|T5
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|14300|0900714300|0913014300|Chester town|00213407|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|18080|0900718080|0913018080|Cromwell town|00213414|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|20810|0900720810|0913020810|Durham town|00213419|43|A|T1
+09|007|Middlesex County|130|Lower Connecticut River Valley Planning Region|15350|0900715350|0913015350|Clinton town|00213408|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|14160|0900914160|0914014160|Cheshire town|00213406|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|19550|0900919550|0914019550|Derby town|00213418|43|C|T5
+09|009|New Haven County|140|Naugatuck Valley Planning Region|67610|0900967610|0914067610|Seymour town|00213502|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|49950|0900949950|0914049950|Naugatuck town|00213466|43|C|T5
+09|009|New Haven County|140|Naugatuck Valley Planning Region|87560|0900987560|0914087560|Wolcott town|00213538|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|03250|0900903250|0914003250|Beacon Falls town|00213387|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|46940|0900946940|0914046940|Middlebury town|00213459|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|80070|0900980070|0914080070|Waterbury town|00213525|43|C|T5
+09|009|New Haven County|140|Naugatuck Valley Planning Region|58300|0900958300|0914058300|Oxford town|00213486|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|69640|0900969640|0914069640|Southbury town|00213507|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|62290|0900962290|0914062290|Prospect town|00213493|43|A|T1
+09|009|New Haven County|140|Naugatuck Valley Planning Region|01220|0900901220|0914001220|Ansonia town|00213383|43|C|T5
+09|009|New Haven County|170|South Central Connecticut Planning Region|22910|0900922910|0917022910|East Haven town|00213425|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|87700|0900987700|0917087700|Woodbridge town|00213539|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|35650|0900935650|0917035650|Hamden town|00213440|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|46520|0900946520|0917046520|Meriden town|00213458|43|C|T5
+09|009|New Haven County|170|South Central Connecticut Planning Region|52070|0900952070|0917052070|New Haven town|00213471|43|C|T5
+09|009|New Haven County|170|South Central Connecticut Planning Region|53890|0900953890|0917053890|North Branford town|00213477|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|54870|0900954870|0917054870|North Haven town|00213479|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|57600|0900957600|0917057600|Orange town|00213485|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|78740|0900978740|0917078740|Wallingford town|00213522|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|82870|0900982870|0917082870|West Haven town|00213530|43|C|T5
+09|009|New Haven County|170|South Central Connecticut Planning Region|47535|0900947535|0917047535|Milford town|00213462|43|C|T5
+09|009|New Haven County|170|South Central Connecticut Planning Region|00000|0900900000|0917000000|County subdivisions not defined|00000000|00|F|Z9
+09|009|New Haven County|170|South Central Connecticut Planning Region|44560|0900944560|0917044560|Madison town|00213454|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|04580|0900904580|0917004580|Bethany town|00213389|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|07310|0900907310|0917007310|Branford town|00213395|43|A|T1
+09|009|New Haven County|170|South Central Connecticut Planning Region|34950|0900934950|0917034950|Guilford town|00213438|43|A|T1
+09|011|New London County|130|Lower Connecticut River Valley Planning Region|44210|0901144210|0913044210|Lyme town|00213453|43|A|T1
+09|011|New London County|130|Lower Connecticut River Valley Planning Region|57040|0901157040|0913057040|Old Lyme town|00213483|43|A|T1
+09|011|New London County|150|Northeastern Connecticut Planning Region|78600|0901178600|0915078600|Voluntown town|00213521|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|06820|0901106820|0918006820|Bozrah town|00213394|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|15910|0901115910|0918015910|Colchester town|00213409|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|23400|0901123400|0918023400|East Lyme town|00213426|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|29910|0901129910|0918029910|Franklin town|00213431|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|33900|0901133900|0918033900|Griswold town|00213436|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|34250|0901134250|0918034250|Groton town|00213437|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|48900|0901148900|0918048900|Montville town|00213464|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|55500|0901155500|0918055500|North Stonington town|00213480|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|56270|0901156270|0918056270|Norwich town|00213482|43|C|T5
+09|011|New London County|180|Southeastern Connecticut Planning Region|62150|0901162150|0918062150|Preston town|00213492|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|66210|0901166210|0918066210|Salem town|00213499|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|71670|0901171670|0918071670|Sprague town|00213510|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|80280|0901180280|0918080280|Waterford town|00213526|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|00000|0901100000|0918000000|County subdivisions not defined|00000000|00|F|Z9
+09|011|New London County|180|Southeastern Connecticut Planning Region|42390|0901142390|0918042390|Lebanon town|00213449|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|43230|0901143230|0918043230|Lisbon town|00213451|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|42600|0901142600|0918042600|Ledyard town|00213450|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|73770|0901173770|0918073770|Stonington town|00213513|43|A|T1
+09|011|New London County|180|Southeastern Connecticut Planning Region|52350|0901152350|0918052350|New London town|00213473|43|C|T5
+09|013|Tolland County|110|Capitol Planning Region|06260|0901306260|0911006260|Bolton town|00213393|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|25360|0901325360|0911025360|Ellington town|00212330|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|37910|0901337910|0911037910|Hebron town|00213445|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|69220|0901369220|0911069220|Somers town|00212346|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|72090|0901372090|0911072090|Stafford town|00212349|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|76290|0901376290|0911076290|Tolland town|00212667|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|78250|0901378250|0911078250|Vernon town|00213520|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|85950|0901385950|0911085950|Willington town|00213534|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|01080|0901301080|0911001080|Andover town|00213382|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|16400|0901316400|0911016400|Columbia town|00213411|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|17800|0901317800|0911017800|Coventry town|00213413|43|A|T1
+09|013|Tolland County|110|Capitol Planning Region|44910|0901344910|0911044910|Mansfield town|00213456|43|A|T1
+09|013|Tolland County|150|Northeastern Connecticut Planning Region|77830|0901377830|0915077830|Union town|00213519|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|36000|0901536000|0915036000|Hampton town|00213441|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|73420|0901573420|0915073420|Sterling town|00213512|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|75870|0901575870|0915075870|Thompson town|00213516|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|88190|0901588190|0915088190|Woodstock town|00213541|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|62710|0901562710|0915062710|Putnam town|00213494|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|40500|0901540500|0915040500|Killingly town|00213447|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|01430|0901501430|0915001430|Ashford town|00213384|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|09190|0901509190|0915009190|Brooklyn town|00213400|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|12130|0901512130|0915012130|Canterbury town|00213403|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|13810|0901513810|0915013810|Chaplin town|00213405|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|21860|0901521860|0915021860|Eastford town|00213420|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|59980|0901559980|0915059980|Plainfield town|00213487|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|61030|0901561030|0915061030|Pomfret town|00213490|43|A|T1
+09|015|Windham County|150|Northeastern Connecticut Planning Region|67400|0901567400|0915067400|Scotland town|00213501|43|A|T1
+09|015|Windham County|180|Southeastern Connecticut Planning Region|86790|0901586790|0918086790|Windham town|00213537|43|A|T1
+
+
+GLOSSARY
+STATEFP = State FIPS Code / ANSI INCITS 38 Code
+COUNTYFP = County FIPS Code / ANSI INCITS 31 Code
+COUSUBFP = County Subdivision FIPS Code
+LSAD = Legal Statistical Area Descriptor Code
+COUSUB_GEOID = Nationally Unique Geographic Identifier, State FIPS Code + County FIPS Code + County Subdivision FIPS Code
+COUSUBNS = County Subdivision National Standard (NS) Code / ANSI INCITS 446 Code
+FUNCSTAT = Functional Status
+CLASSFP = FIPS Class Code

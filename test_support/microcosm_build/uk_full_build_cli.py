@@ -332,10 +332,10 @@ def gate_payload(phase, failed=None, release_candidate=False):
 
 
 LADDER_TARGET = "ons.census.households@E14000001"
-#: microcosm#1262: tests flip ``WITHHELD_BRMA_ROW`` to stage a Scottish BRMA
-#: row whose model figures the terminal gates withhold (it rests on fewer than
-#: ten source households), so the projection reads it blank.
-WITHHELD_BRMA_ROW = False
+#: Tests flip ``THIN_BRMA_ROW`` to stage a Scottish BRMA row that rests on
+#: fewer than ten source households; it carries its model figures like any
+#: other row (María's ruling of 2026-10-26).
+THIN_BRMA_ROW = False
 BRMA_TARGET = "ons.rent.private_rent_brma@S33000001"
 
 #: The synthetic measures node's engine resolution, as the problem bindings
@@ -380,7 +380,7 @@ def problem_payload() -> bytes:
             "source": "fixture",
         }
     ]
-    if WITHHELD_BRMA_ROW:
+    if THIN_BRMA_ROW:
         targets.append(
             Target(
                 BRMA_TARGET,
@@ -580,16 +580,17 @@ TARGET_ROWS_CSV = (
 
 
 def target_rows_csv() -> bytes:
-    """The terminal targets table; a withheld BRMA row reads blank (#1262)."""
+    """The terminal targets table, with the thin BRMA row when it is staged."""
 
-    if not WITHHELD_BRMA_ROW:
+    if not THIN_BRMA_ROW:
         return TARGET_ROWS_CSV
-    header, ladder = TARGET_ROWS_CSV.decode().splitlines()
     return (
-        f"{header},model_figures_withheld\n{ladder},False\n"
-        f"{BRMA_TARGET}@2025,{BRMA_TARGET}@2025,1000.0,,,,"
-        "private_rent,brma,brma,S33000001,rent/private_rent_brma,True\n"
-    ).encode()
+        TARGET_ROWS_CSV
+        + (
+            f"{BRMA_TARGET}@2025,{BRMA_TARGET}@2025,1000.0,900.0,-0.1,0.1,"
+            "private_rent,brma,brma,S33000001,rent/private_rent_brma\n"
+        ).encode()
+    )
 
 
 SUPPORT_CSV = (
@@ -1081,6 +1082,47 @@ def prepared(
         pins=pins,
         inputs=inputs,
     )
+
+
+def _remote_hub(monkeypatch, client_options=None, **kwargs):
+    """One fake Hub for the run files and the bundle the build's emitter commits."""
+    from test_support.microcosm_build.telemetry import share_fake_hub
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    hub = _FakeHub(**kwargs)
+    share_fake_hub(monkeypatch, hub, **(client_options or {}))
+    return hub
+
+
+def _bundle_emitter_for(hub):
+    """The re-stage tool's own short-lived emitter, committing to ``hub``."""
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    return lambda: FakeEmitterClient(hub_files=hub.files, hub_api=hub)
+
+
+def _edit_an_output(out):
+    """Change a CSV output, keeping the manifest consistent.
+
+    The directory still verifies against its own manifest, so only a record
+    of the bytes from elsewhere (a landed bundle, a Modal run's receipt) can
+    tell that it changed.
+    """
+    manifest_path = out / cli.MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    key, entry = next(
+        (key, entry)
+        for key, entry in manifest["outputs"].items()
+        if entry and str(entry["path"]).endswith(".csv")
+    )
+    path = out / Path(entry["path"]).name
+    path.write_bytes(path.read_bytes() + b"edited,after,landing\n")
+    manifest["outputs"][key] = {
+        **entry,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "bytes": path.stat().st_size,
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

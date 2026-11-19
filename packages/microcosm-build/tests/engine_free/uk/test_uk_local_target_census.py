@@ -16,9 +16,7 @@ import pytest
 
 from microcosm.build.uk_runtime import metric_names
 from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
-from microcosm.build.uk_runtime.high_value_homes import (
-    load_uk_high_value_home_stock_facts,
-)
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_resource_pins
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_target_census import (
@@ -99,6 +97,7 @@ def test_census_families_partition_metrics_and_reference_known_ids() -> None:
 
 def test_census_source_rows_are_reviewed_pointers() -> None:
     census = build_uk_local_target_census()
+    derived_pins = uk_derived_fact_resource_pins()
     statuses = {source["status"] for source in census["sources"]}
     assert SOURCE_STATUS_DOCUMENTED_UNPINNED not in statuses
     for source in census["sources"]:
@@ -113,12 +112,12 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
             SOURCE_STATUS_SIGNED_DEFERRED,
         }
         if source["status"] == SOURCE_STATUS_PINNED_IN_DERIVED_RESOURCE:
-            # microcosm#1240: the derived resource restates its own row digest
-            # beside the shared Chronicle pin its auxiliary facts came from.
+            # microcosm#1240, #1095: the derived resource restates its own row
+            # digest beside the shared Chronicle pin its facts came from.
             pin = source["derived_resource_pin"]
-            derived = load_uk_high_value_home_stock_facts()
-            assert pin["rows_sha256"] == derived.rows_sha256
-            assert pin["rows"] == len(derived.rows)
+            derived = derived_pins[pin["resource"]]
+            assert pin["rows_sha256"] == derived["rows_sha256"]
+            assert pin["rows"] == derived["rows"]
             assert source["ledger_fact_pin"]["source_repo"] == "PolicyEngine/chronicle"
         if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
             # One UK Chronicle pin governs both grains (uk/chronicle_feed.json);

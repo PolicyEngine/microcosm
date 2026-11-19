@@ -1,0 +1,1 @@
+Wire the five release-evidence producers into New Zealand's transport graph and the synthetic NZ toy, give `nz.gates.terminal` its six evidence edges, and drop the w4 line from the graph's pending outputs. The toy's three evidence gates pass end to end and export proceeds; a forged producer artifact blocks export.

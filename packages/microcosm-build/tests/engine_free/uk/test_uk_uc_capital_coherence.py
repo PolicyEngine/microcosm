@@ -1,6 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_uc_capital_coherence.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.uk_runtime.rowwise_dataset import ladder_clone_index_column
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_uc_capital_coherence import *
 
 RECEIPTS = ("coarsening_levels", "capital_against_investment_income", "property_shares")
@@ -63,17 +65,19 @@ def test_stage_orders_after_every_universal_credit_report_writer() -> None:
 
     assert reporter_writers
     assert all(index < coherence_index for index, _ in reporter_writers)
-    # The Move to UC claim draw (microcosm#1095), the Pension Credit take-up
-    # redraw (microcosm#1069 c7), the Child Benefit redraw (microcosm#1063 c8)
-    # and the Carer's Allowance draw (microcosm#1319) sit between the
-    # coherence stage and the deduction attributes; none writes a UC report.
+    # Y1's limited capability status (microcosm#1095), the Universal Credit
+    # redraw (microcosm#1334), the Move to UC claim draw (microcosm#1095), the
+    # Pension Credit take-up redraw (microcosm#1069 c7) and the Child Benefit
+    # redraw (microcosm#1063 c8) sit between the coherence stage and the
+    # deduction attributes; none writes a UC report.
     assert [
-        stage.stage for stage in stages[coherence_index + 1 : coherence_index + 6]
+        stage.stage for stage in stages[coherence_index + 1 : coherence_index + 7]
     ] == [
+        "uc_limited_capability",
+        "uc_take_up",
         "uc_legacy_closure_take_up",
         "pension_credit_take_up",
         "child_benefit_take_up",
-        "carers_allowance_take_up",
         "uc_deduction_attributes",
     ]
 
@@ -228,6 +232,7 @@ def test_redraw_is_stable_under_input_row_permutation() -> None:
         _redraw_spi_capital(
             benunit_table,
             person=person_table,
+            household=household_table,
             weights=_household_to_benunit_weights(
                 benunit_table,
                 person=person_table,
@@ -404,6 +409,8 @@ def _property_tables():
             ],
             "non_residential_property_value": [20_000.0, 0.0, 0.0, 2_000.0],
             "owned_land": [5_000.0, 30_000.0, 0.0, 0.0],
+            "other_residential_property_secured_debt": [0.0, 0.0, 0.0, 0.0],
+            "non_residential_property_secured_debt": [0.0, 0.0, 0.0, 0.0],
         }
     )
     return person, benunit, household
@@ -433,6 +440,36 @@ def test_the_reference_persons_unit_holds_the_households_property() -> None:
     np.testing.assert_allclose(
         by_household, [108_000.0, 81_000.0, 36_000.0, 10_800.0], rtol=1e-12
     )
+
+
+def test_the_property_shares_net_the_debt_secured_on_each_class() -> None:
+    """microcosm#1095: the debt secured on each property class comes off its
+    value after the costs of sale, floored at zero class by class (UC Regs
+    2013 reg 49(1)(b); SPC Regs 2002 reg 19(b)); owned land carries none."""
+
+    person, benunit, household = _property_tables()
+    household["other_residential_property_secured_debt"] = [30_000.0, 0.0, 0.0, 0.0]
+    # 25,000 on buildings worth 20,000: that class floors at zero and takes
+    # nothing off the other residential property.
+    household["non_residential_property_secured_debt"] = [25_000.0, 0.0, 0.0, 0.0]
+
+    uc = uc_property_capital_share(person, benunit, household)
+    pension_credit = pension_credit_property_capital_share(person, benunit, household)
+
+    np.testing.assert_allclose(
+        uc, [60_000.0, 81_000.0, 0.0, 36_000.0, 0.0, 10_800.0], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        pension_credit,
+        [64_500.0, 108_000.0, 0.0, 36_000.0, 0.0, 10_800.0],
+        rtol=1e-12,
+    )
+    with pytest.raises(ValueError, match="finite and nonnegative"):
+        uc_property_capital_share(
+            person,
+            benunit,
+            household.assign(other_residential_property_secured_debt=-1.0),
+        )
 
 
 def test_a_household_needs_exactly_one_reference_person() -> None:
@@ -595,3 +632,22 @@ def test_stage_refuses_a_drifted_property_share_declaration() -> None:
     )
     with pytest.raises(ValueError, match="derive operation"):
         transform(_frame())
+
+
+def test_geographic_clones_donate_once_at_their_whole_weight() -> None:
+    """Two geographic clones of every unit at half its weight donate as the
+    units donate alone: every SPI unit's first clone draws the capital it
+    draws without clones, and a cell's donor count reads units, not clones,
+    so each clone draws at its unit's coarsening level (microcosm#931)."""
+
+    alone = cohere_uc_capital(_frame(), minimum_cell_donors=2)
+    cloned = cohere_uc_capital(with_geographic_clones(_frame()), minimum_cell_donors=2)
+    benunit = cloned.frame.table("benunit")
+    first = benunit.loc[benunit[ladder_clone_index_column("benunit")] == 0]
+    pd.testing.assert_series_equal(
+        first.set_index("benunit_id")["frs_benunit_capital"],
+        alone.frame.table("benunit").set_index("benunit_id")["frs_benunit_capital"],
+    )
+    assert cloned.coarsening_levels == {
+        level: 2 * count for level, count in alone.coarsening_levels.items()
+    }

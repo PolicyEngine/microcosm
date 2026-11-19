@@ -8,9 +8,24 @@ import pytest
 
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
 from microcosm.build.uk_runtime.frs_council_tax import (
+    SCOTTISH_BAND_D_EQUIVALENTS_CONCEPT,
+    SCOTTISH_BAND_D_EQUIVALENTS_RECORD_SET,
+    SCOTTISH_BAND_D_LIABILITY_RESOURCE,
+    SCOTTISH_BAND_D_RATE_CONCEPT,
+    SCOTTISH_BAND_D_RATES_RECORD_SET,
+    SCOTTISH_CHARGEABLE_DWELLINGS_CONCEPT,
+    SCOTTISH_CHARGEABLE_DWELLINGS_RECORD_SET,
     SCOTTISH_CHARGES_IN_RECIPIENT_BILL,
+    SCOTTISH_EMPTY_HOMES_CONCEPT,
+    SCOTTISH_EMPTY_HOMES_RECORD_SET,
+    SCOTTISH_SECOND_HOMES_CONCEPT,
+    SCOTTISH_SECOND_HOMES_RECORD_SET,
+    ScottishCouncilTaxLevel,
     assert_frs_council_tax_stage_parameters,
     derive_council_tax,
+    level_scottish_council_tax,
+    load_scottish_council_tax_level,
+    scottish_council_tax_level_from_rows,
 )
 from microcosm.build.uk_runtime.frs_spine import WEEKS_IN_YEAR
 from test_support.paths import paths_for
@@ -226,3 +241,297 @@ def test_manifest_drift_from_the_implemented_rule_refuses(parameter, value) -> N
     drifted = SourceStageSpec.from_mapping({**stage.__dict__, "operations": operations})
     with pytest.raises(ValueError, match=parameter):
         assert_frs_council_tax_stage_parameters(drifted)
+
+
+@pytest.mark.parametrize(
+    ("operation", "parameter", "value"),
+    [
+        (2, "record_sets", [SCOTTISH_BAND_D_EQUIVALENTS_RECORD_SET]),
+        (2, "mapped_build_period", 2025),
+        (3, "level", "Band D equivalents after council tax reduction"),
+        (3, "weights", "calibrated_weights"),
+    ],
+)
+def test_scottish_level_declaration_drift_refuses(operation, parameter, value) -> None:
+    stage = _committed_stage()
+    operations = [
+        {"kind": item.kind, **dict(item.parameters)} for item in stage.operations
+    ]
+    operations[operation][parameter] = value
+    drifted = SourceStageSpec.from_mapping({**stage.__dict__, "operations": operations})
+    with pytest.raises(ValueError, match=parameter):
+        assert_frs_council_tax_stage_parameters(drifted)
+
+
+def test_a_stage_without_the_band_d_resource_refuses() -> None:
+    stage = _committed_stage()
+    artifacts = [
+        dict(artifact)
+        for artifact in stage.artifacts
+        if artifact.get("resource") != SCOTTISH_BAND_D_LIABILITY_RESOURCE
+    ]
+    operations = [
+        {"kind": item.kind, **dict(item.parameters)} for item in stage.operations
+    ]
+    missing = SourceStageSpec.from_mapping(
+        {**stage.__dict__, "artifacts": artifacts, "operations": operations}
+    )
+    with pytest.raises(ValueError, match="scotgov_band_d_liability_facts"):
+        assert_frs_council_tax_stage_parameters(missing)
+
+
+def _area(index: int) -> str:
+    return f"S12{index:06d}"
+
+
+def _share_rows(
+    chargeable: float = 2_000_000.0,
+    second_homes: float = 30_000.0,
+    empty_homes: float = 20_000.0,
+) -> list[dict[str, object]]:
+    """Scotland's rows for the main-residence share, with a council's and a
+    band's rows that the share leaves out."""
+
+    def row(record_set: str, concept: str, value: float, area="S92000003") -> dict:
+        return {
+            "concept": concept,
+            "geography": {
+                "id": area,
+                "level": "country" if area == "S92000003" else "local_authority",
+            },
+            "layout": {"record_set_id": record_set},
+            "value": value,
+        }
+
+    return [
+        row(
+            SCOTTISH_CHARGEABLE_DWELLINGS_RECORD_SET,
+            SCOTTISH_CHARGEABLE_DWELLINGS_CONCEPT,
+            chargeable,
+        ),
+        row(
+            SCOTTISH_CHARGEABLE_DWELLINGS_RECORD_SET,
+            "scotgov.chargeable_dwellings_band_a",
+            1.0,
+        ),
+        row(
+            SCOTTISH_SECOND_HOMES_RECORD_SET,
+            SCOTTISH_SECOND_HOMES_CONCEPT,
+            second_homes,
+        ),
+        row(
+            SCOTTISH_SECOND_HOMES_RECORD_SET,
+            SCOTTISH_SECOND_HOMES_CONCEPT,
+            1e9,
+            area=_area(0),
+        ),
+        row(SCOTTISH_EMPTY_HOMES_RECORD_SET, SCOTTISH_EMPTY_HOMES_CONCEPT, empty_homes),
+    ]
+
+
+def _band_d_rows(
+    equivalents: dict[str, float], rates: dict[str, float], *, share=None
+) -> list[dict[str, object]]:
+    def row(record_set: str, concept: str, area: str, value: float) -> dict:
+        return {
+            "concept": concept,
+            "geography": {"id": area, "level": "local_authority"},
+            "layout": {"record_set_id": record_set},
+            "value": value,
+        }
+
+    # The share's rows come last, so a test editing rows[0] edits a council's.
+    return (
+        [
+            row(
+                SCOTTISH_BAND_D_EQUIVALENTS_RECORD_SET,
+                SCOTTISH_BAND_D_EQUIVALENTS_CONCEPT,
+                area,
+                value,
+            )
+            for area, value in equivalents.items()
+        ]
+        + [
+            row(
+                SCOTTISH_BAND_D_RATES_RECORD_SET,
+                SCOTTISH_BAND_D_RATE_CONCEPT,
+                area,
+                value,
+            )
+            for area, value in rates.items()
+        ]
+        + (_share_rows() if share is None else share)
+    )
+
+
+def _thirty_two() -> tuple[dict[str, float], dict[str, float]]:
+    equivalents = {_area(index): 1_000.0 + index for index in range(32)}
+    rates = {_area(index): 1_300.0 + 10.0 * index for index in range(32)}
+    return equivalents, rates
+
+
+def test_the_level_sums_each_council_areas_band_d_equivalents_times_its_band_d() -> (
+    None
+):
+    equivalents, rates = _thirty_two()
+    # Scotland's own row and the after-reduction table are not the level's.
+    rows = _band_d_rows(equivalents, rates) + [
+        {
+            "concept": SCOTTISH_BAND_D_EQUIVALENTS_CONCEPT,
+            "geography": {"id": "S92000003", "level": "country"},
+            "layout": {"record_set_id": SCOTTISH_BAND_D_EQUIVALENTS_RECORD_SET},
+            "value": 1.0,
+        },
+        {
+            "concept": "scotgov.council_tax.band_d_equivalents_after_council_tax_reduction",
+            "geography": {"id": _area(0), "level": "local_authority"},
+            "layout": {
+                "record_set_id": "scotgov.ctaxbase2025.band_d_equivalents_after_council_tax_reduction.y2024"
+            },
+            "value": 1.0,
+        },
+    ]
+
+    level = scottish_council_tax_level_from_rows(rows)
+
+    liability = sum(equivalents[area] * rates[area] for area in equivalents)
+    # Scotland's 30,000 second homes and 20,000 liable empty homes come out of
+    # its 2,000,000 chargeable dwellings: a main-residence share of 0.975 (B11).
+    assert level.total == pytest.approx(liability * 0.975)
+    assert level.receipt["liability_gbp"] == pytest.approx(liability)
+    assert level.receipt["main_residence_share"] == pytest.approx(0.975)
+    assert level.receipt["main_residence_share_basis"] == "dwellings"
+    assert level.receipt["chargeable_dwellings"] == pytest.approx(2_000_000.0)
+    assert level.receipt["second_homes"] == pytest.approx(30_000.0)
+    assert level.receipt["empty_homes"] == pytest.approx(20_000.0)
+    assert level.receipt["level_gbp"] == pytest.approx(level.total)
+    assert level.receipt["council_areas"] == 32
+    assert level.receipt["band_d_equivalents"] == pytest.approx(
+        sum(equivalents.values())
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("drop_rate", "same 32 council areas"),
+        ("drop_both", "same 32 council areas"),
+        ("duplicate", "twice"),
+        ("english", "non-Scottish"),
+        ("zero", "non-positive"),
+        ("concept", "carries concept"),
+    ],
+)
+def test_the_level_refuses_rows_that_do_not_cover_the_councils_once(
+    change, message
+) -> None:
+    equivalents, rates = _thirty_two()
+    if change == "drop_rate":
+        rates.pop(_area(5))
+    if change == "drop_both":
+        equivalents.pop(_area(5))
+        rates.pop(_area(5))
+    if change == "zero":
+        rates[_area(3)] = 0.0
+    rows = _band_d_rows(equivalents, rates)
+    if change == "duplicate":
+        rows.append(dict(rows[0]))
+    if change == "english":
+        rows[0] = {
+            **rows[0],
+            "geography": {"id": "E06000001", "level": "local_authority"},
+        }
+    if change == "concept":
+        rows[0] = {**rows[0], "concept": "scotgov.council_tax.average_band_d"}
+    with pytest.raises(ValueError, match=message):
+        scottish_council_tax_level_from_rows(rows)
+
+
+@pytest.mark.parametrize(
+    ("share", "message"),
+    [
+        (_share_rows()[1:], "chargeable_dwellings_total from"),
+        (_share_rows() + [_share_rows()[2]], "second_homes from"),
+        (
+            [
+                row
+                for row in _share_rows()
+                if row["concept"] != SCOTTISH_EMPTY_HOMES_CONCEPT
+            ],
+            "empty_properties from",
+        ),
+        (_share_rows(second_homes=0.0), "non-positive"),
+        (_share_rows(second_homes=1_500_000.0, empty_homes=500_000.0), "fewer than"),
+        (
+            [
+                {**row, "geography": {"id": "E92000001", "level": "country"}}
+                if row["concept"] == SCOTTISH_SECOND_HOMES_CONCEPT
+                and row["geography"]["level"] == "country"
+                else row
+                for row in _share_rows()
+            ],
+            "other than Scotland",
+        ),
+    ],
+)
+def test_the_main_residence_share_needs_scotlands_counts_once(share, message) -> None:
+    equivalents, rates = _thirty_two()
+    with pytest.raises(ValueError, match=message):
+        scottish_council_tax_level_from_rows(
+            _band_d_rows(equivalents, rates, share=share)
+        )
+
+
+def test_the_level_scales_only_the_scottish_bills_to_the_published_total() -> None:
+    bills = np.array([1_000.0, 1_500.0, 0.0, 2_000.0, 900.0])
+    scottish = np.array([True, True, True, False, False])
+    weights = np.array([10.0, 20.0, 5.0, 7.0, 3.0])
+    stored = 10.0 * 1_000.0 + 20.0 * 1_500.0
+    level = ScottishCouncilTaxLevel(
+        total=1.08 * stored, receipt={"level_gbp": 1.08 * stored}
+    )
+
+    levelled, receipt = level_scottish_council_tax(
+        bills, scottish=scottish, weights=weights, level=level
+    )
+
+    np.testing.assert_allclose(levelled[scottish], bills[scottish] * 1.08)
+    np.testing.assert_array_equal(levelled[~scottish], bills[~scottish])
+    assert float(np.dot(weights[scottish], levelled[scottish])) == pytest.approx(
+        level.total
+    )
+    assert receipt["levelled"] is True
+    assert receipt["factor"] == pytest.approx(1.08)
+    assert receipt["stored_gbp"] == pytest.approx(stored)
+    # Support as a band, never a count (three Scottish households here).
+    assert receipt["households"] == "3-9"
+    np.testing.assert_array_equal(bills, [1_000.0, 1_500.0, 0.0, 2_000.0, 900.0])
+
+
+def test_a_frame_with_no_scottish_bill_keeps_its_bills() -> None:
+    bills = np.array([0.0, 2_000.0])
+    scottish = np.array([True, False])
+    level = ScottishCouncilTaxLevel(total=3.4e9, receipt={})
+
+    levelled, receipt = level_scottish_council_tax(
+        bills, scottish=scottish, weights=np.ones(2), level=level
+    )
+
+    np.testing.assert_array_equal(levelled, bills)
+    assert receipt["levelled"] is False
+    assert receipt["factor"] is None
+
+
+def test_the_committed_resource_gives_scotlands_2024_25_liability() -> None:
+    level = load_scottish_council_tax_level()
+
+    assert level.receipt["council_areas"] == 32
+    # CTAXBASE x CTAS gives about GBP 3.4bn before council tax reduction for
+    # 2024-25; a units or period slip would land far outside this range.
+    assert 3.0e9 < level.receipt["liability_gbp"] < 3.8e9
+    # About 21,600 second homes and 43,500 liable empty homes of about 2.6
+    # million chargeable dwellings at September 2024 (B11).
+    assert level.receipt["main_residence_share"] == pytest.approx(0.975, abs=0.002)
+    assert level.total == pytest.approx(
+        level.receipt["liability_gbp"] * level.receipt["main_residence_share"]
+    )

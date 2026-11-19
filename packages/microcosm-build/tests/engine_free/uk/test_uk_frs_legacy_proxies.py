@@ -59,7 +59,13 @@ def test_esa_proxies_read_only_the_sick_or_disabled_codes(empstati) -> None:
     status = derive_frs_employment(
         pd.DataFrame({"person_id": [1]}),
         pd.DataFrame(
-            {"person_id": [1], "empstati": [empstati], "mjobsect": [0], "sic": [0]}
+            {
+                "person_id": [1],
+                "empstati": [empstati],
+                "mjobsect": [0],
+                "sic": [0],
+                "soc2020": [0],
+            }
         ),
     )["employment_status"]
 

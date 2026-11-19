@@ -28,15 +28,23 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import SimpleNamespace
 
+from microcosm.build.money_normalization import (
+    selected_money_factors,
+    validate_money_normalization,
+)
+from microcosm.build.reference_factors import validate_factor_context
 from microcosm.graph import ArtifactInput, ArtifactOutput, Graph, Node, SourceRef
 from microcosm.graph.canonical import canonical_json
 
 from .compose import (
+    GRAPH_RESOURCE,
     SKELETON_KERNELS,
     TransportExtension,
     TransportGraphConfig,
     _artifact_outputs,
+    _has_resource,
     _literal_data,
     _mapping,
     _node,
@@ -46,6 +54,8 @@ from .compose import (
     _sequence,
     transport_resource,
 )
+from .evidence_contract import GRAPH_EVIDENCE
+from .money_kernels import MONEY_NORMALIZE_REF
 from .takeup_kernels import (
     BANDS_TYPE,
     CELL_DIAGNOSTICS_TYPE,
@@ -53,7 +63,12 @@ from .takeup_kernels import (
     reporting_cell_declarations,
 )
 
-__all__ = ["ENTITLEMENT_RESOURCE", "entitlement_extension", "transport_extensions"]
+__all__ = [
+    "ENTITLEMENT_RESOURCE",
+    "entitlement_extension",
+    "money_node_factor_entries",
+    "transport_extensions",
+]
 
 ENTITLEMENT_RESOURCE = "entitlement_graph"
 _KERNELS = SKELETON_KERNELS | frozenset(
@@ -82,6 +97,7 @@ _FIELDS = frozenset(
         "checkpoints",
         "bands",
         "package",
+        "gate_evidence",
     }
 )
 
@@ -160,8 +176,16 @@ def _parameter(spec, config, value, scenario):
         raise ValueError(
             "Scenario objects require json encoding; encodings are value, json, sha256."
         )
-    if value.get("encoding") == "json" and "resource" in value:
-        selected = json.loads(_resource_param(spec, value, allow_json_sequences=True))
+    if "resource" in value:
+        selected = _resource_param(
+            spec,
+            value,
+            allow_json_sequences=True,
+            profile_selection=None if scenario is None else scenario.get("knobs", {}),
+        )
+        if value.get("encoding") != "json":
+            return selected
+        selected = json.loads(selected)
         return canonical_json(_bind_data(spec, config, selected)).decode("utf-8")
     if not ({"resource", "prepared"} & set(value)):
         return canonical_json(_bind_data(spec, config, value)).decode("utf-8")
@@ -196,6 +220,78 @@ def _rows(spec):
     if not gaps:
         raise ValueError("An entitlement graph needs at least its baseline scenario.")
     return result, gaps
+
+
+def money_node_factor_entries(spec: Mapping) -> tuple[dict, ...]:
+    """Resolve each declared money node's factors through composition's resolvers.
+
+    Skeleton and entitlement rows select their own declaration, profile and
+    context before engine preparation or CREATE. Keep contexts separate even
+    when nodes select the same factor id. A spec without money nodes selects
+    no money factors. A node that selects no factor still needs a valid
+    context, as the kernel does. Caller extensions contain code rather than
+    spec rows; this walk does not cover them.
+    """
+    rows = []
+    if _has_resource(spec, GRAPH_RESOURCE):
+        rows.extend(
+            (row, None, False)
+            for row in transport_resource(spec, GRAPH_RESOURCE).get("nodes", ())
+        )
+    if _has_resource(spec, ENTITLEMENT_RESOURCE) and _has_resource(spec, "scenarios"):
+        rows.extend((row, scenario, True) for row, scenario in _rows(spec)[0])
+    config = SimpleNamespace(engine_refs={})
+    entries = []
+    for row, scenario, entitlement in rows:
+        if _mapping(row, "graph node").get("kernel") != MONEY_NORMALIZE_REF:
+            continue
+        documents = {}
+        for name in ("declaration", "profile_selection", "factor_context"):
+            try:
+                value = _mapping(row.get("params", {}), "node params").get(name)
+                if isinstance(value, Mapping) and {"binding", "prepared"} & set(value):
+                    raise ValueError(
+                        "Money parameters need data before engine preparation."
+                    )
+                value = (
+                    _parameter(spec, config, value, scenario)
+                    if entitlement
+                    else _param(spec, value, None)
+                )
+                if not isinstance(value, str):
+                    raise ValueError("The parameter must contain a JSON object string.")
+                document = json.loads(value)
+                if not isinstance(document, dict):
+                    raise ValueError("The parameter must contain a JSON object string.")
+                documents[name] = document
+            except (ValueError, TypeError, KeyError) as error:
+                raise ValueError(
+                    f"Money node {row.get('id')!r} {name}: {error}"
+                ) from error
+        try:
+            declaration = validate_money_normalization(documents["declaration"])
+        except (ValueError, TypeError, KeyError) as error:
+            raise ValueError(
+                f"Money node {row.get('id')!r} declaration: {error}"
+            ) from error
+        try:
+            _, factors = selected_money_factors(
+                declaration, documents["profile_selection"]
+            )
+        except (ValueError, TypeError, KeyError) as error:
+            raise ValueError(
+                f"Money node {row.get('id')!r} profile_selection: {error}"
+            ) from error
+        ids = sorted({value for value in factors.values() if value is not None})
+        try:
+            selected = validate_factor_context(documents["factor_context"], ids)
+        except (ValueError, TypeError, KeyError) as error:
+            raise ValueError(
+                f"Money node {row.get('id')!r} factor_context: {error}"
+            ) from error
+        if ids:
+            entries.append(selected)
+    return tuple(entries)
 
 
 def _require_matching_cell_targets(spec, contract):
@@ -452,6 +548,9 @@ class _EntitlementFactory:
                     types,
                     allowed_kernels=_KERNELS,
                     resolved_params=params,
+                    profile_selection=None
+                    if scenario is None
+                    else scenario.get("knobs", {}),
                 )
             )
         bands = _mapping(document["bands"], "entitlement bands")
@@ -495,10 +594,62 @@ class _EntitlementFactory:
         return tuple(nodes)
 
 
+def _gate_evidence(spec, document, gaps):
+    """Each declared scenario's ``gap``, under its alias, at its phase's batteries.
+
+    A scenario's ``gap`` exists only when that scenario's own branch ran (a
+    variant's own calibration included), so the gap is the run's evidence
+    for it, and nothing else reaches a battery under these aliases. A row
+    names an alias, a scenario this graph runs and a battery phase. A
+    document that declares no rows adds no edge and reads no other resource.
+    """
+    declared = _sequence(document.get("gate_evidence", []), "gate_evidence")
+    if not declared:
+        return []
+    batteries: dict[object, list[str]] = {}
+    for row in transport_resource(spec, "transport_graph")["nodes"]:
+        if row["kernel"] == "gates.battery@1":
+            phase = row.get("params", {}).get("phase")
+            batteries.setdefault(phase, []).append(row["id"])
+    edges = []
+    names = set()
+    for row in declared:
+        row = _mapping(row, "gate evidence")
+        if set(row) != {"name", "scenario", "phase"} or not all(
+            isinstance(value, str) and value for value in row.values()
+        ):
+            raise ValueError(
+                "Gate evidence rows declare exactly a nonempty name, scenario "
+                "and phase."
+            )
+        name = row["name"]
+        if name == GRAPH_EVIDENCE:
+            raise ValueError(
+                f"Gate evidence may not use {name!r}, the battery's reserved alias."
+            )
+        if name in names:
+            raise ValueError(f"Gate evidence {name!r} is declared twice.")
+        names.add(name)
+        if row["scenario"] not in gaps:
+            raise ValueError(
+                f"Gate evidence {name!r} names scenario {row['scenario']!r}, "
+                "which this entitlement graph doesn't run."
+            )
+        targets = batteries.get(row["phase"])
+        if not targets:
+            raise ValueError(
+                f"Gate evidence {name!r} needs a declared gate-battery node of "
+                f"phase {row['phase']!r}."
+            )
+        edge = ArtifactInput(name, gaps[row["scenario"]], "gap", GAP_TYPE)
+        edges.extend((battery, edge) for battery in targets)
+    return edges
+
+
 def entitlement_extension(spec: Mapping) -> TransportExtension:
     """The optional entitlement declarations as an ordered transport extension."""
     document = _document(spec)
-    rows, _ = _rows(spec)
+    rows, gaps = _rows(spec)
     bands = _mapping(document["bands"], "entitlement bands")
     package = _mapping(document["package"], "entitlement package")
     cell_contract = _cell_contract(spec)
@@ -547,6 +698,7 @@ def entitlement_extension(spec: Mapping) -> TransportExtension:
             raise ValueError(
                 "Cell diagnostics need a matching declared gate-battery node."
             )
+    gate_inputs.extend(_gate_evidence(spec, document, gaps))
     return TransportExtension(
         factory=_EntitlementFactory(),
         sources=tuple(SourceRef(**row) for row in document.get("sources", ())),

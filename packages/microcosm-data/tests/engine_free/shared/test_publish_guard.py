@@ -216,6 +216,70 @@ def test_version_2_staging_delivery_parser(tmp_path, delivery, undelivered):
     assert _staging_undelivered(tmp_path) is undelivered
 
 
+_STAGED = {"enabled": True, "run_id": "r", "repo_id": "o/s", "uploads_succeeded": 4}
+_UNDELIVERED = {
+    "enabled": True,
+    "run_id": "r",
+    "repo_id": "o/s",
+    "uploads_succeeded": 0,
+}
+_OPTED_OUT = {"enabled": False, "reason": "--no-staging"}
+
+
+@pytest.mark.parametrize(
+    ("certification", "build", "undelivered"),
+    [
+        # Both staged, or both declared an opt-out.
+        (_STAGED, _STAGED, False),
+        ({"enabled": False, "reason": "the build did not stage"}, _OPTED_OUT, False),
+        # Certification opted out where its build staged.
+        ({"enabled": False, "reason": "--no-staging at certification"}, _STAGED, False),
+        # The build's own uploads never arrived: refused, whatever its
+        # certification did (review of microcosm#1672).
+        (_STAGED, _UNDELIVERED, True),
+        (
+            {"enabled": False, "reason": "--no-staging at certification"},
+            _UNDELIVERED,
+            True,
+        ),
+        (_STAGED, None, True),
+        (_STAGED, {}, True),
+        (_STAGED, {"enabled": False}, True),
+        # The certification's own uploads never arrived.
+        (_UNDELIVERED, _STAGED, True),
+    ],
+)
+def test_a_separately_certified_build_needs_its_own_staging_too(
+    tmp_path, certification, build, undelivered
+):
+    """A US national build is certified as a step of its own (microcosm#1585
+    item 11): the manifest's staging block is its certification's, with the
+    build's own under ``build``, and the gate reads both."""
+    _write_bm(tmp_path, {"build_id": "x", "staging": {**certification, "build": build}})
+    assert _staging_undelivered(tmp_path) is undelivered
+
+
+def test_publish_refuses_a_certified_build_whose_own_staging_never_arrived(
+    tmp_path, capsys, monkeypatch
+):
+    _write_bm(
+        tmp_path,
+        {
+            "build_id": "x",
+            "staging": {
+                "enabled": False,
+                "reason": "--no-staging at certification; the build staged (run r)",
+                "build": _UNDELIVERED,
+            },
+        },
+    )
+    cli = _stub_publish(monkeypatch)
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
+    assert cli.main([str(tmp_path)]) == 1
+    assert "for the build itself under staging.build" in capsys.readouterr().err
+    assert cli.main([str(tmp_path), "--allow-missing-staging"]) == 0
+
+
 def test_publish_refused_when_staging_never_delivered(tmp_path, capsys, monkeypatch):
     _write_bm(
         tmp_path,
@@ -428,83 +492,3 @@ def test_publish_cli_defaults_to_the_certified_tier(tmp_path, monkeypatch):
     rc = main([str(tmp_path)])
     assert rc == 0
     assert calls[0][2]["evidence"] is False
-
-
-def test_publish_cli_forwards_line_promotion_and_cut_tag(tmp_path, monkeypatch):
-    cut_tag = "microcosm-uk-2024-25-national-20260920T120000Z-deadbeef"
-    calls = _capture_publish(monkeypatch)
-
-    rc = main(
-        [
-            str(tmp_path),
-            "--promote-line",
-            "national",
-            "--tag-name",
-            cut_tag,
-        ]
-    )
-
-    assert rc == 0
-    assert len(calls) == 1
-    assert calls[0][2]["line"] == "national"
-    assert calls[0][2]["tag_name"] == cut_tag
-    assert calls[0][2]["update_latest"] is True
-
-
-@pytest.mark.parametrize(
-    ("arguments", "message"),
-    [
-        (
-            [
-                "--promote-line",
-                "national",
-                "--tag-name",
-                "cut-tag",
-                "--no-latest",
-            ],
-            "--promote-line cannot be combined with --no-latest",
-        ),
-        (
-            [
-                "--promote-line",
-                "national",
-                "--tag-name",
-                "cut-tag",
-                "--tag-only",
-            ],
-            "--promote-line cannot be combined with --tag-only",
-        ),
-        (
-            [
-                "--promote-line",
-                "national",
-                "--tag-name",
-                "cut-tag",
-                "--evidence",
-            ],
-            "--promote-line cannot be combined with --evidence",
-        ),
-        (
-            ["--promote-line", "national"],
-            "--promote-line requires --tag-name",
-        ),
-    ],
-)
-def test_publish_cli_refuses_incompatible_line_promotion_modes(
-    tmp_path, capsys, monkeypatch, arguments, message
-):
-    import microcosm.data.publish_cli as cli
-
-    called = False
-
-    def unexpected_publish(*args, **kwargs):
-        nonlocal called
-        called = True
-
-    monkeypatch.setattr(cli, "publish_release", unexpected_publish)
-
-    with pytest.raises(SystemExit, match="2"):
-        cli.main([str(tmp_path), *arguments])
-
-    assert message in capsys.readouterr().err
-    assert called is False

@@ -12,6 +12,7 @@ import pytest
 
 from microcosm.frame import RulesEngine
 from microcosm.frame.adapters.policyengine_uk import (
+    SUPPLIED_ROLE_INPUTS,
     UK_SCHEMA,
     PolicyEngineUKEngine,
 )

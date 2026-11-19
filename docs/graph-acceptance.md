@@ -685,6 +685,88 @@ lock unchanged:
     this validation changes no graph computation key. `decl.py` is re-locked.
     Adopted during the Orrery export review in #888.
 
+29. **A kernel's report of a changed identity is never a verdict.**
+    Amendment 7 makes a raising gate a `fail` verdict, and the executor files
+    that verdict under the node key, so every later run that derives the key
+    is served it. Keys are derived from each kernel's `implementation_hash`
+    before any node runs. A kernel whose identity can move during a run would
+    therefore have its failure filed under the key of an identity it no
+    longer has. `gates.battery@1` is that kernel. It binds its binding
+    registry and the registry's source closure, and raises once either moved
+    after the kernel was built. An edit to a binding while a build ran, or a
+    closure file rewritten during a long build, stored `fail` under the
+    unedited registry's key, and a later run with the correct registry on the
+    same store was served that `fail` (#1125 review, finding 1).
+
+    `errors.py` gains `KernelIdentityChangedError`, a `NodeRejectedError`. A
+    kernel raises it when state its `implementation_hash` describes has moved
+    since that hash was fixed. When any kernel's `run` raises it, whatever the
+    kernel's role, the executor re-raises it. For a gate, that replaces
+    amendment 7's verdict and F4's "becomes `fail`" in this one case: the run
+    refuses, and nothing for the node is applied or stored. The nodes the run
+    completed before the refusal keep their stored results, as after any
+    refused run whose sources are unchanged (`_settle_failed_run`). Their keys
+    still name what computed them, so the next run reuses them and computes
+    the refused node afresh. Every other gate exception is still a `fail`
+    verdict, filed and reused.
+
+    The executor does not re-derive a kernel's hash after `run` to detect a
+    move itself. Most gate identities in this codebase are source hashes that
+    re-read module files on every call. A file rewritten under a running
+    process does not change the code that process already imported, so a
+    re-derived hash moves without the computation changing. Comparing against
+    the keyed hash would then refuse a correct build at the first gate whose
+    hashed files a save, checkout or pull touched after the keys were
+    derived, however long before that gate ran. Only the
+    kernel knows whether its identity is state that can move in memory. A
+    kernel whose identity can move in process must therefore check it in `run`
+    and raise `KernelIdentityChangedError`. `gates.battery@1` does so in three
+    places:
+
+    - before it evaluates;
+    - before it returns;
+    - when evaluation raises, chained to that exception.
+
+    A closure file that can no longer be read or parsed counts as a change. A
+    move that is undone before the kernel's next check is not seen.
+
+    Runtime-only. `decl.py` and `kernel.py` are untouched and the interface
+    lock is unchanged. Three implementation hashes move:
+
+    - `gates.battery@1`, whose own source changed. A binding whose source
+      closure reaches `microcosm.graph` also binds the edited executor and
+      errors modules.
+    - `export.prepare@1` and `transport.package@1`, whose hashes include the
+      battery's source.
+
+    Their node keys move, and so do their descendants'. No other kernel's
+    hash reads a file this change edits. That was checked for the 41
+    `implementation_hash` definitions in `packages/*/src` on 2026-10-07, and
+    again for the 71 on main (`ecf87ee24`) on 2026-11-11. A `fail` filed by an
+    earlier version under a stale identity therefore sits under a key that no
+    run of this version derives, and is never served. Raised by the
+    independent review of #1125 (finding 1, Subfleet job 20261007-081708);
+    adopted with the fix in #1140.
+
+30. **A caller may name the versions it retains.** `run_graph(...,
+    retain_populations=...)` names the population versions the caller will
+    read from the manifest. `None`, the default, keeps every version to the
+    end of the run and attaches all of them, as before. Given a collection,
+    the executor drops each version it does not name once its last reader
+    has applied its result, before that reader is observed or written. A
+    last reader that is not reached drops it at its turn in the run order.
+    Ordinary members read a version as their incumbent and structural nodes
+    as their base; nothing else does, so a version nothing reads goes with
+    the node that made it. Only the named versions and their mass ledgers
+    are attached, and `RunManifest.population` refuses any other with the
+    error it gives a manifest restored from JSON. An unknown name, an
+    ordinary member's id, a name that is not a string, a bare `str` or
+    `bytes`, and anything that is not a collection are refused before any
+    source is read. Each node reads the same population with or without the
+    keyword, and it enters no node key, receipt, cache record or portable
+    manifest field. Runtime-only, the interface lock is unchanged. Adopted
+    2026-11-06 for the 15-clone UK spine (#931), which cannot hold every
+    version it builds in 32 GiB.
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and

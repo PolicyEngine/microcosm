@@ -33,6 +33,7 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
     load_congressional_district_vintage_crosswalk,
 )
 from microcosm.build.us_runtime.h5_io import AuthenticatedPoolH5
+from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.build.us_runtime.release_gate_preflight import (
     MAX_REPORTED_SPM_UNITS_HARD_CAP,
     PreflightReport,
@@ -1024,6 +1025,58 @@ def test__cli__release_manifest_does_not_replace_required_static_inputs(
     assert "--selection-source-manifest" in stderr
 
 
+def test__cli__a_failed_build_is_no_export_input_mass_reference(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """A failed build keeps its H5, but no gate judges a build against it: the
+    preflight refuses it as its export input-mass reference, as the release
+    tool does (review of microcosm#1672, microcosm#1585 item 11). A green
+    build's H5 is read as before."""
+    cli = _load_preflight_cli()
+    out = tmp_path / "out"
+    reference = out / "artifacts" / "microcosm_us_2024.h5"
+    reference.parent.mkdir(parents=True)
+    reference.write_bytes(b"h5")
+    record = {
+        "kind": "microcosm_us_national_build_record",
+        "build": "populace-us-2024-failed",
+        "layout": {"build_dir": "build"},
+        "settings": {},
+        "terminal_gate_failures": ["Input coverage failed: x"],
+    }
+    (out / "build_record.json").write_text(json.dumps(record))
+    argv = [
+        "--base-h5",
+        str(tmp_path / "base.h5"),
+        "--new-lineage",
+        "--export-input-mass-reference-h5",
+        str(reference),
+    ]
+    reached: list[dict[str, object]] = []
+
+    def run_preflight(**kwargs):
+        reached.append(kwargs)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(cli, "run_preflight", run_preflight)
+    with pytest.raises(SystemExit) as error:
+        cli.main(argv)
+    assert error.value.code == 2
+    assert (
+        f"--export-input-mass-reference-h5 {reference} belongs to build "
+        "populace-us-2024-failed" in capsys.readouterr().err
+    )
+    assert reached == []
+
+    (out / "build_record.json").write_text(
+        json.dumps({**record, "terminal_gate_failures": []})
+    )
+    with pytest.raises(SystemExit) as error:
+        cli.main(argv)
+    assert error.value.code == 0
+    assert reached[0]["export_input_mass_reference_h5"] == reference
+
+
 @pytest.mark.parametrize(
     ("static_status", "expected_exit"),
     (("PASS", 0), ("AT_RISK", 2), ("FAIL", 1)),
@@ -1939,7 +1992,9 @@ def _whole_pool_selection(pool: list[dict[str, object]]) -> SelectionSource:
     )
 
 
-def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
+def _run_synthetic_preflight(
+    monkeypatch, tmp_path, *, frame: Frame, reference_frame: Frame | None = None, **mode
+):
     """``run_preflight`` over a synthetic base, with every optional input given.
 
     The base loader, the Ledger target compiler and the reference-H5 loader are
@@ -1964,7 +2019,11 @@ def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
         "_load_ledger_target_specs",
         lambda path, *, target_period, ledger_facts_sha256, **kwargs: (spec,),
     )
-    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
+    monkeypatch.setattr(
+        l0_refit_export,
+        "load_us_frame",
+        lambda path: frame if reference_frame is None else reference_frame,
+    )
     return preflight_module.run_preflight(
         base_h5=tmp_path / "base.h5",
         export_input_mass_reference_h5=tmp_path / "reference.h5",
@@ -1975,6 +2034,73 @@ def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
         minimum_reference_total=0.0,
         **mode,
     )
+
+
+def _line_32_preflight_check(monkeypatch, tmp_path, *, reference_s_corp_income):
+    """The preflight's mass check on line 32 totals rounded from an 11/03 export.
+
+    The reference's ``s_corp_income`` total is zero either way; the carriers
+    say whether a reference record holds an amount, as records that cancel do.
+    """
+    base = _new_lineage_frame()
+    reference = _new_lineage_frame()
+    monkeypatch.setattr(
+        preflight_module,
+        "us_input_mass_totals",
+        lambda frame, columns=None: (
+            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
+            if frame is reference
+            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
+        ),
+    )
+
+    def carriers(candidate, reference_frame):
+        # The check reads carriers from the frames whose totals it compares.
+        assert candidate is base
+        assert reference_frame is reference
+        return UsLine32Carriers(
+            candidate_partnership_income=True,
+            reference_s_corp_income=reference_s_corp_income,
+        )
+
+    monkeypatch.setattr(preflight_module, "us_line_32_carriers", carriers)
+    report = _run_synthetic_preflight(
+        monkeypatch, tmp_path, frame=base, reference_frame=reference, new_lineage=True
+    )
+    return next(c for c in report.checks if c.name == "export_mass_parity_risk")
+
+
+def test__run_preflight__reads_line_32_on_the_reference_terms(
+    monkeypatch, tmp_path
+) -> None:
+    check = _line_32_preflight_check(
+        monkeypatch, tmp_path, reference_s_corp_income=False
+    )
+
+    assert check.status == "PASS"
+    row = next(r for r in check.rows if r["column"] == "partnership_income")
+    assert row["pool_mass_at_base_weights"] == pytest.approx(1.05e12)
+    assert row["verdict"] == "in_band"
+    # The row's mass measures both columns, so the details say so, as the
+    # gate's do.
+    assert check.details["partnership_income_counts"] == [
+        "partnership_income",
+        "s_corp_income",
+    ]
+
+
+def test__run_preflight__compares_each_line_32_column_against_a_split_reference(
+    monkeypatch, tmp_path
+) -> None:
+    check = _line_32_preflight_check(
+        monkeypatch, tmp_path, reference_s_corp_income=True
+    )
+
+    assert check.status == "AT_RISK"
+    row = next(r for r in check.rows if r["column"] == "partnership_income")
+    assert row["pool_mass_at_base_weights"] == pytest.approx(3.9e11)
+    assert row["verdict"] == "out_of_band_at_base_weights"
+    assert "partnership_income_counts" not in check.details
 
 
 def test__run_preflight__new_lineage_skips_only_carryover_and_records_why(
@@ -2265,3 +2391,67 @@ def test__cli__new_lineage_release_manifest_must_record_no_selection_source(
     with pytest.raises(ValueError, match="not a new lineage"):
         cli.main(argv)
     assert reached == []
+
+
+def _as_build_folder_release_manifest(path: Path, **details: object) -> dict:
+    """Rewrite a tagged release manifest the way the US builders' last step
+    does (microcosm#1570): the release and the build as strings, and the
+    build object's fields, plus ``details``, at the top level."""
+    tagged = json.loads(path.read_text())
+    build_details = {
+        key: value for key, value in tagged.pop("build").items() if key != "build_id"
+    }
+    manifest = {
+        **tagged,
+        "release": "microcosm-us-2024-national",
+        "build": "populace-us-2024-fixture",
+        **build_details,
+        **details,
+    }
+    path.write_text(json.dumps(manifest))
+    return manifest
+
+
+def test__cli__reads_a_build_folder_release_manifest_at_its_top_level(
+    tmp_path,
+) -> None:
+    """A release manifest in the build-folder layout records the build's
+    details at its top level, where ``build`` is the build's ID: the
+    base-pool receipt and the selection source are read there."""
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    _write_gate_failed_release_manifest(release_manifest)
+    tagged_base_pool = json.loads(release_manifest.read_text())["build"]["base_pool"]
+    manifest = _as_build_folder_release_manifest(
+        release_manifest, selection_source={"enabled": False}
+    )
+
+    assert cli._load_release_base_pool_receipt(release_manifest) == tagged_base_pool
+    assert cli._carried_base_pool_battery(
+        manifest["base_pool"], path=release_manifest
+    ) == cli._carried_base_pool_battery(tagged_base_pool, path=release_manifest)
+    cli._require_release_without_selection_source(release_manifest)
+
+    manifest["selection_source"] = {"mode": "frozen_support", "n_source": 57240}
+    release_manifest.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="not a new lineage"):
+        cli._require_release_without_selection_source(release_manifest)
+
+    del manifest["base_pool"]
+    release_manifest.write_text(json.dumps(manifest))
+    assert cli._load_release_base_pool_receipt(release_manifest) is None
+
+
+def test__cli__a_release_manifest_without_build_details_is_refused(
+    tmp_path,
+) -> None:
+    """Neither a build object nor a build ID: nothing says how the build
+    was made, so the release manifest is refused."""
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    release_manifest.write_text(json.dumps({"schema_version": 1}))
+
+    with pytest.raises(ValueError, match="no build details"):
+        cli._load_release_base_pool_receipt(release_manifest)
+    with pytest.raises(ValueError, match="no build details"):
+        cli._require_release_without_selection_source(release_manifest)

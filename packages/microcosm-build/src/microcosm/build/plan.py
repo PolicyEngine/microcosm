@@ -114,10 +114,14 @@ class StageRecord:
         stage: The stage's name.
         produced: The columns it added.
         donor_survey: The donor survey name, if the stage imputes.
-        nonzero_share: Produced column -> share of records with a non-zero
-            (or True) value — the layer-population evidence the parity gate
-            and the observatory read.
+        nonzero_share: Produced or rewritten column -> share of records with
+            a non-zero (or True) value after the stage — the
+            layer-population evidence the parity gate and the observatory
+            read.
         seconds: Wall-clock duration of the transform.
+        rewrote: The declared rewrites: columns an earlier stage produced
+            that this stage replaced, so provenance names the last writer
+            (microcosm#721).
     """
 
     stage: str
@@ -125,6 +129,7 @@ class StageRecord:
     donor_survey: str | None
     nonzero_share: Mapping[str, float] = field(default_factory=dict)
     seconds: float = 0.0
+    rewrote: tuple[str, ...] = ()
 
 
 class StagePlan:
@@ -226,12 +231,17 @@ class StagePlan:
                         f"{type(result).__name__}."
                     )
                 shares: dict[str, float] = {}
-                for column in stage.produces:
+                declared = (
+                    *stage.produces,
+                    *(c for c in stage.rewrites if c not in stage.produces),
+                )
+                for column in declared:
+                    verb = "produces" if column in stage.produces else "rewrites"
                     try:
                         entity = result.column_entity(column)
                     except ValueError as error:
                         raise ValueError(
-                            f"Stage {stage.name!r} declared it produces "
+                            f"Stage {stage.name!r} declared it {verb} "
                             f"{column!r} but the column is absent after the "
                             "stage ran."
                         ) from error
@@ -244,6 +254,7 @@ class StagePlan:
                 donor_survey=stage.donor.survey if stage.donor else None,
                 nonzero_share=shares,
                 seconds=elapsed,
+                rewrote=stage.rewrites,
             )
             records.append(record)
             donor_note = f" <- {stage.donor.survey}" if stage.donor is not None else ""

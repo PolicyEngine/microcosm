@@ -23,6 +23,7 @@ from microcosm.build.ledger_artifact import (
 )
 from microcosm.build.uk_runtime.chronicle_feed import (
     load_uk_chronicle_feed,
+    require_uk_chronicle_feed_row_contracts,
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import (
     load_vendor_selections,
@@ -82,6 +83,11 @@ def main() -> int:
                 f"error: {message} Re-pin first, or pass --allow-unpinned-feed for a diagnostic run."
             )
         print(f"warning: {message} (--allow-unpinned-feed)", file=sys.stderr)
+    # The digests say these are the committed feed's rows; the rows' own
+    # schema_version values must also be the pin's declared row contracts.
+    require_uk_chronicle_feed_row_contracts(
+        artifact.fact_schema_versions, facts_sha256=artifact.facts_sha256, pin=pin
+    )
     register = load_vendor_selections()
     output_dir = (
         args.output_dir

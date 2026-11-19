@@ -5,7 +5,10 @@ The stage (microcosm#791) reads the licensed FRS household grid — ``relhrp``
 pairwise ``R01``-``R14`` matrix — and derives four frame columns: the
 relationship to the head, each person's role inside an ONS family, the family
 index within the household, and the household's ONS Families and households
-Table 7 type. The ten household-type values are Chronicle's own category
+Table 7 type. From the same grid it marks two kinds of child for
+policyengine-uk: those a local authority placed in the household, and those
+in non-parental care, the two-child limit's kinship and friends care
+exception. The ten household-type values are Chronicle's own category
 identifiers for the ``ons.household_type`` dimension, so the frame value, the
 manifest declaration, the contract row and the published fact share one
 string.
@@ -58,6 +61,7 @@ __all__ = [
     "FRS_RELATIONSHIPS_STAGE_NAME",
     "FRS_RELATIONSHIPS_TABLES",
     "LOOKED_AFTER_CHILD_RULE",
+    "NON_PARENTAL_CARE_CHILD_RULE",
     "ONS_DEPENDENT_CHILD_RULE",
     "ONS_FAMILY_LINK_CODES",
     "ONS_FAMILY_ROLE_VALUES",
@@ -81,6 +85,7 @@ FRS_RELATIONSHIPS_OUTPUT_COLUMNS = (
     "ons_family_role",
     "ons_family_index",
     "is_looked_after_by_local_authority",
+    "child_limit_non_parental_caring_exception",
     "ons_household_type",
 )
 FRS_RELATIONSHIPS_PERSON_OUTPUT_COLUMNS = (
@@ -88,6 +93,7 @@ FRS_RELATIONSHIPS_PERSON_OUTPUT_COLUMNS = (
     "ons_family_role",
     "ons_family_index",
     "is_looked_after_by_local_authority",
+    "child_limit_non_parental_caring_exception",
 )
 FRS_RELATIONSHIPS_HOUSEHOLD_OUTPUT_COLUMNS = ("ons_household_type",)
 
@@ -195,6 +201,27 @@ LOOKED_AFTER_CHILD_RULE: Mapping[str, int] = {
     "foster_parent_code": 9,
     "below_age": 16,
 }
+#: A child in non-parental care (policyengine-uk's
+#: ``child_limit_non_parental_caring_exception``; UC Regs 2013 Sch 12 para 4,
+#: CTC Regs 2002 reg 12): a child-table member whom no adult of their own
+#: benefit unit claims as a natural, adopted or step child (the child's grid
+#: code toward the adult is child or step child, 3 or 4, or the adult's toward
+#: the child is parent or step parent, 7 or 8; either side's declaration
+#: establishes the link) and whom no local authority placed there. Such a
+#: child lives with kinship or friends carers, or with a claimant whose own
+#: child is the child's parent. The flag is an upper bound on the exception:
+#: a friend or family carer also needs one of para 4(2)'s conditions (a child
+#: arrangements order, special guardianship, guardian's allowance, a kinship
+#: care order, guardianship, a permanence order, or taking on a child who
+#: would otherwise likely be looked after), which the FRS grid does not show,
+#: so informal arrangements are flagged too (Vahid's review of #1426). The
+#: multiple births, adoption and
+#: non-consensual conception exceptions stay false: the FRS has no twin field,
+#: and its birth dates are blank (María's ruling of 2026-11-02).
+NON_PARENTAL_CARE_CHILD_RULE: Mapping[str, tuple[int, ...]] = {
+    "child_codes": (3, 4),
+    "parent_codes": (7, 8),
+}
 
 FRS_RELATIONSHIPS_DOCUMENTATION: Mapping[str, str] = {
     "frs_codes": (
@@ -238,6 +265,9 @@ def frs_relationships_operation_parameters() -> dict[str, Any]:
         },
         "dependent_child": dict(ONS_DEPENDENT_CHILD_RULE),
         "looked_after_child": dict(LOOKED_AFTER_CHILD_RULE),
+        "non_parental_care_child": {
+            key: list(codes) for key, codes in NON_PARENTAL_CARE_CHILD_RULE.items()
+        },
         "one_person_age_split": ONS_ONE_PERSON_AGE_SPLIT,
         "family_role_values": list(ONS_FAMILY_ROLE_VALUES),
         "household_type_values": list(CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS),
@@ -469,6 +499,7 @@ def derive_frs_relationships(
     family_index = np.zeros(len(person), dtype="int64")
     role = np.full(len(person), "INDIVIDUAL", dtype=object)
     looked_after = np.zeros(len(person), dtype=bool)
+    non_parental_care = np.zeros(len(person), dtype=bool)
     household_type: dict[int, str] = {}
 
     counters = {
@@ -515,6 +546,15 @@ def derive_frs_relationships(
             from_child_tab[rows]
             & (ages[rows] < LOOKED_AFTER_CHILD_RULE["below_age"])
             & (foster_child_of & same_unit).any(axis=1)
+        )
+        parented_by = np.isin(
+            matrix, NON_PARENTAL_CARE_CHILD_RULE["child_codes"]
+        ) | np.isin(matrix.T, NON_PARENTAL_CARE_CHILD_RULE["parent_codes"])
+        unit_adult = same_unit & ~from_child_tab[rows][None, :]
+        non_parental_care[rows] = (
+            from_child_tab[rows]
+            & ~looked_after[rows]
+            & ~(parented_by & unit_adult).any(axis=1)
         )
         counters["grid_reciprocity_mismatches"] += int(
             np.triu(partner != partner.T, 1).sum()
@@ -676,6 +716,7 @@ def derive_frs_relationships(
         "domain_violations": domain_violations,
         "dependency_counts": dependency_counts,
         "looked_after_children": int(looked_after.sum()),
+        "non_parental_care_children": int(non_parental_care.sum()),
         "household_type_counts": type_counts,
         "household_type_weighted": type_weighted,
         "partition_closes": sum(type_counts.values()) == int(len(household_table_ids)),
@@ -689,6 +730,7 @@ def derive_frs_relationships(
             "ons_family_role": role,
             "ons_family_index": family_index,
             "is_looked_after_by_local_authority": looked_after,
+            "child_limit_non_parental_caring_exception": non_parental_care,
         },
         index=person.index,
     )

@@ -19,7 +19,8 @@ from microcosm.data.contract import (
 )
 
 DENSE_ID = "microcosm-uk-2024-25-dense"
-CUT_TAG = f"{DENSE_ID}-20260903T105422Z-ca611e43"
+#: The calibration attempt the signed report is bound to: the dense build.
+DENSE_BUILD = "uk-local-candidate-f100-s42-20260903T105422Z-ca611e43"
 KEY = base64.b64encode(b"\x07" * 32).decode()
 KEY_BYTES = base64.b64decode(KEY)
 
@@ -117,13 +118,13 @@ def write_dense_bundle(
     root: Path,
     *,
     release_id: str = DENSE_ID,
-    revision: str = CUT_TAG,
+    revision: str | None = None,
     namespace: str = "uk_dense",
     default_datasets: dict | None = None,
     report: dict | None = None,
     drop_coverage_key: str | None = None,
     drop_households: bool = False,
-    attempt_id: str | None = None,
+    build: str | None = None,
     with_incumbent: bool = False,
     holdout: str = "skipped",
     sized: bool = False,
@@ -141,7 +142,14 @@ def write_dense_bundle(
     coverage and the manifest's limitations, the areas in ``area_support``;
     the candidate manifest records the target-fit and input-mass names under
     ``reviewed_exclusions_stood_on``, as the build does.
+
+    A release in the build-folder layout (the dense release) names its
+    ``build``, the signed report's attempt unless ``build`` says otherwise, in
+    both manifests, and pins no artifact ``revision`` unless ``revision`` asks
+    for one. Any other release ID gets the tagged layout, pinned to
+    ``revision`` or the release ID.
     """
+    build_folder = release_id.startswith("microcosm-uk-2024-25-")
     release_dir = root / "releases" / release_id
     release_dir.mkdir(parents=True)
     report = report or _signed_report()
@@ -257,12 +265,15 @@ def write_dense_bundle(
     }
     if drop_coverage_key:
         del coverage[drop_coverage_key]
-    build_manifest = {
-        "build_id": release_id,
-        "build_sha": "abc1234",
-        "code": {"git_commit": "a" * 40, "git_dirty": False},
-        "attempt_id": attempt_id if attempt_id is not None else report["release_id"],
-    }
+    build_name = build if build is not None else report["release_id"]
+    build_manifest = (
+        {"release": release_id, "build": build_name}
+        if build_folder
+        else {"build_id": release_id, "attempt_id": build_name}
+    )
+    build_manifest.update(
+        build_sha="abc1234", code={"git_commit": "a" * 40, "git_dirty": False}
+    )
     score = {
         "candidate_fitted_surface_loss": 0.01,
         "incumbent_fitted_surface_loss": 0.2,
@@ -387,15 +398,44 @@ def write_dense_bundle(
     h5_bytes = b"dense-h5-stand-in"
     (root / "microcosm_uk_2024_25_dense.h5").write_bytes(h5_bytes)
 
-    def artifact(kind, path, sha):
-        return {
+    pinned = revision if revision is not None or build_folder else release_id
+
+    def artifact(kind, path, sha, role):
+        entry = {
             "kind": kind,
             "path": path,
             "repo_id": "policyengine/populace-uk-private",
-            "revision": revision,
             "sha256": sha,
         }
+        if build_folder:
+            entry["role"] = role
+        if pinned is not None:
+            entry["revision"] = pinned
+        return entry
 
+    identity = (
+        {
+            "release": release_id,
+            "build": build_name,
+            "built_at": "2026-09-03T12:00:00+00:00",
+            "built_with_core_package": {
+                "name": "policyengine-core",
+                "version": "3.33.3",
+            },
+            "built_with_model_package": {
+                "name": "policyengine-uk",
+                "version": "2.165.1",
+            },
+            "compatible_core_packages": [
+                {"name": "policyengine-core", "specifier": "==3.33.3"}
+            ],
+            "compatible_model_packages": [
+                {"name": "policyengine-uk", "specifier": "==2.165.1"}
+            ],
+        }
+        if build_folder
+        else {"build": {"build_id": release_id}}
+    )
     manifest = {
         "schema_version": 1,
         "data_package": {"name": "microcosm-data", "version": "0.1.0"},
@@ -403,13 +443,15 @@ def write_dense_bundle(
         "is_default": False,
         "default_datasets": default_datasets if default_datasets is not None else {},
         "namespace": namespace,
-        "build": {"build_id": release_id},
+        **identity,
         "artifacts": {
             "microcosm_uk_2024_25_dense": artifact(
-                "microdata", "microcosm_uk_2024_25_dense.h5", _sha(h5_bytes)
+                "microdata", "microcosm_uk_2024_25_dense.h5", _sha(h5_bytes), "dataset"
             ),
             **{
-                Path(name).stem: artifact("diagnostics", name, _sha(payload))
+                Path(name).stem: artifact(
+                    "diagnostics", name, _sha(payload), Path(name).stem
+                )
                 for name, payload in payloads.items()
                 if name != "build_manifest.json"
             },
@@ -702,50 +744,21 @@ def test_the_candidate_manifest_restates_the_diagnostics_totals() -> None:
     assert len(failures) == 3, failures
 
 
-def test_a_brma_row_without_its_carrier_verdict_is_warned_not_refused() -> None:
-    """María's ruling of 2026-10-19 on the fourth review of #1305: warn only."""
+def test_a_brma_row_needs_no_carrier_verdict() -> None:
+    """María's ruling of 2026-10-26 dropped the withholding and its BRMA
+    carrier verdict; an earlier release's verdicts still read, unchecked."""
 
-    assert dc._uk_brma_floor_verdict_warnings(_withheld_diagnostics()) == []
     unflagged = _withheld_diagnostics()
     del unflagged["targets"][1]["metadata"]["carrier_floor_met"]
-    (warning,) = dc._uk_brma_floor_verdict_warnings(unflagged)
-    # A count, never a row.
-    assert warning.startswith("calibration_diagnostics.json has 1 BRMA row(s) without")
-    disagreeing = _withheld_diagnostics()
-    disagreeing["targets"][1]["metadata"]["carrier_floor_met"] = True
-    (warning,) = dc._uk_brma_floor_verdict_warnings(disagreeing)
-    assert "disagrees with their withheld flag" in warning
     failures: list[str] = []
     dc._check_local_area_calibration_diagnostics(unflagged, failures)
     assert failures == []
-
-
-def test_a_brma_row_withheld_beside_a_thin_one_agrees_with_its_verdict() -> None:
-    """Vahid's second review of #1333, item 10: a row withheld beside a thin
-    one meets the floor and says so (``metadata.complementary_withholding``)."""
-
-    beside = _withheld_diagnostics()
-    beside["targets"][1]["metadata"].update(
-        carrier_floor_met=True, complementary_withholding=True
-    )
-    assert dc._uk_brma_floor_verdict_warnings(beside) == []
-    # Flagged as withheld beside a thin row, yet published.
-    published = _withheld_diagnostics()
-    published["targets"][1]["metadata"].update(
-        carrier_floor_met=True, complementary_withholding=True
-    )
-    del published["targets"][1]["metadata"]["model_figures_withheld"]
-    (warning,) = dc._uk_brma_floor_verdict_warnings(published)
-    assert "disagrees with their withheld flag" in warning
-    # A thin row is withheld for itself, never only beside another.
-    thin = _withheld_diagnostics()
-    thin["targets"][1]["metadata"]["complementary_withholding"] = True
-    (warning,) = dc._uk_brma_floor_verdict_warnings(thin)
-    assert "disagrees with their withheld flag" in warning
+    assert not hasattr(dc, "_uk_brma_floor_verdict_warnings")
 
 
 def test_the_dense_validator_runs_the_withheld_checks(tmp_path, monkeypatch) -> None:
-    """The candidate cross-check and the verdict warnings run on a release."""
+    """The candidate cross-check still runs on a release, for the releases
+    built while rows were withheld."""
 
     seen: list[str] = []
 
@@ -753,15 +766,9 @@ def test_the_dense_validator_runs_the_withheld_checks(tmp_path, monkeypatch) -> 
         seen.append("restated")
         assert "solve" in candidate and "targets" in diagnostics
 
-    def verdicts(diagnostics) -> list[str]:
-        seen.append("verdicts")
-        return ["a synthetic verdict warning"]
-
     monkeypatch.setattr(dc, "_check_uk_candidate_restated_losses", restated)
-    monkeypatch.setattr(dc, "_uk_brma_floor_verdict_warnings", verdicts)
-    warnings = validate_release_dir(write_dense_bundle(tmp_path))
-    assert sorted(seen) == ["restated", "verdicts"]
-    assert "a synthetic verdict warning" in warnings
+    validate_release_dir(write_dense_bundle(tmp_path))
+    assert seen == ["restated"]
 
 
 def test_the_withheld_block_must_count_the_withheld_rows() -> None:
@@ -785,8 +792,14 @@ def test_dense_bundle_rejects_stale_ledger_identity_key(tmp_path: Path) -> None:
     assert "identity.targets.chronicle" in _failures(release_dir)
 
 
-def test_dense_bundle_accepts_the_release_id_as_revision(tmp_path: Path) -> None:
-    validate_release_dir(write_dense_bundle(tmp_path, revision=DENSE_ID))
+def test_dense_bundle_names_its_release_and_build_in_both_manifests(
+    tmp_path: Path,
+) -> None:
+    release_dir = write_dense_bundle(tmp_path)
+    for name in ("build_manifest.json", "release_manifest.json"):
+        manifest = json.loads((release_dir / name).read_text())
+        assert (manifest["release"], manifest["build"]) == (DENSE_ID, DENSE_BUILD)
+    validate_release_dir(release_dir)
 
 
 def _failures(release_dir: Path) -> str:
@@ -795,8 +808,10 @@ def _failures(release_dir: Path) -> str:
     return str(excinfo.value)
 
 
-def test_unpinned_revision_is_rejected(tmp_path: Path) -> None:
-    assert "not pinned" in _failures(write_dense_bundle(tmp_path, revision="main"))
+@pytest.mark.parametrize("revision", ["main", DENSE_ID])
+def test_a_pinned_revision_is_rejected(tmp_path: Path, revision: str) -> None:
+    text = _failures(write_dense_bundle(tmp_path, revision=revision))
+    assert f"pins revision {revision!r}" in text
 
 
 def test_wrong_namespace_is_rejected(tmp_path: Path) -> None:
@@ -865,30 +880,79 @@ def test_missing_key_env_names_the_hole(tmp_path: Path, monkeypatch) -> None:
 
 def test_other_local_area_ids_keep_the_generic_contract(tmp_path: Path) -> None:
     # A non-dense local-area id never reaches the dense validator.
-    release_dir = write_dense_bundle(
-        tmp_path,
-        release_id="populace-uk-2025-frs-k9",
-        revision="populace-uk-2025-frs-k9",
-    )
+    release_dir = write_dense_bundle(tmp_path, release_id="populace-uk-2025-frs-k9")
     text = _failures(release_dir)
     assert "us_source_coverage.json" in text
 
 
 def test_report_from_another_attempt_is_rejected(tmp_path: Path) -> None:
     release_dir = write_dense_bundle(
-        tmp_path, attempt_id="uk-local-candidate-f100-s42-20260101T000000Z-00000000"
+        tmp_path, build="uk-local-candidate-f100-s42-20260101T000000Z-00000000"
     )
     assert "does not belong to this run" in _failures(release_dir)
 
 
-def test_build_manifest_without_attempt_id_is_rejected(tmp_path: Path) -> None:
+def test_build_manifest_without_its_build_is_rejected(tmp_path: Path) -> None:
     release_dir = write_dense_bundle(tmp_path)
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
-    del build_manifest["attempt_id"]
+    del build_manifest["build"]
     (release_dir / "build_manifest.json").write_text(
         json.dumps(build_manifest, indent=1)
     )
-    assert "must carry the calibration 'attempt_id'" in _failures(release_dir)
+    text = _failures(release_dir)
+    assert "build_manifest.json 'build' must be the build's name" in text
+
+
+@pytest.mark.parametrize("field", ["attempt_id", "cut_tag", "build_id"])
+def test_a_build_manifest_with_a_retired_build_field_is_rejected(
+    tmp_path: Path, field: str
+) -> None:
+    release_dir = write_dense_bundle(tmp_path)
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    build_manifest[field] = DENSE_BUILD
+    (release_dir / "build_manifest.json").write_text(
+        json.dumps(build_manifest, indent=1)
+    )
+    assert f"build_manifest.json carries {field!r}" in _failures(release_dir)
+
+
+def test_a_release_manifest_naming_another_build_is_rejected(tmp_path: Path) -> None:
+    release_dir = write_dense_bundle(tmp_path)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    manifest["build"] = "uk-local-candidate-f100-s42-20260101T000000Z-00000000"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest, indent=1))
+    text = _failures(release_dir)
+    assert "name different builds" in text
+
+
+def test_a_dense_release_keeps_the_local_area_package_checks(tmp_path: Path) -> None:
+    """The build details moved to the top level, but the local-area contract
+    still checks only that they are there, as it did inside ``build``: a
+    build run where the engines were not installed, whose versions read
+    ``unavailable``, validates as before."""
+    release_dir = write_dense_bundle(tmp_path)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    for field in ("built_with_core_package", "built_with_model_package"):
+        manifest[field]["version"] = "unavailable"
+    for field in ("compatible_core_packages", "compatible_model_packages"):
+        manifest[field][0]["specifier"] = "==unavailable"
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest, indent=1))
+    _refresh_packaging_checksums(release_dir)
+
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize(
+    "field", ["built_at", "built_with_core_package", "built_with_model_package"]
+)
+def test_a_dense_release_records_its_build_details_at_the_top_level(
+    tmp_path: Path, field: str
+) -> None:
+    release_dir = write_dense_bundle(tmp_path)
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    del manifest[field]
+    (release_dir / "release_manifest.json").write_text(json.dumps(manifest, indent=1))
+    assert field in _failures(release_dir)
 
 
 @pytest.mark.parametrize("dirty", [True, None, "false", 0, "missing"])
@@ -1762,15 +1826,9 @@ def test_refreshing_unsigned_coverage_cannot_renew_original_approvals(
 #: with support figures never reads as a real area's figures.
 _AREA = "E06999999"
 _OTHER_AREA = "E06999998"
-#: The synthetic support figures the warning tests inject; no warning may
+#: The synthetic support figures the walk tests inject; no finding may
 #: repeat one.
 _FIGURES = ("37", "23.75", "29", "41")
-
-
-def _warning_lines(release_dir: Path) -> str:
-    """The contract's warnings for a release it otherwise passes: the
-    disclosure walk warns, never refuses (microcosm#1301)."""
-    return "\n".join(validate_release_dir(release_dir))
 
 
 #: The area-support details a signed report may ship: the floors an excused
@@ -1813,18 +1871,13 @@ def _with_figures(details: dict) -> dict:
     return figures
 
 
-@pytest.mark.parametrize(
-    "inject,expected",
-    [
-        ("summary_shortfall_text", "string(s) stating an area's measured support"),
-        ("signed_report_figures", "per-area support figure(s)"),
-    ],
-)
-def test_dense_release_warns_on_per_area_support_figures(
-    tmp_path: Path, inject: str, expected: str
+@pytest.mark.parametrize("inject", ["summary_shortfall_text", "signed_report_figures"])
+def test_a_dense_release_ships_per_area_support_figures(
+    tmp_path: Path, inject: str
 ) -> None:
-    """A shipped document carrying an area's rows, ESS or sources is a
-    warning, not a refusal (microcosm#1301)."""
+    """María's ruling of 2026-10-26 dropped the withholding of per-area
+    support figures (microcosm#1301): a shipped document carrying an area's
+    rows, ESS or sources draws no warning."""
 
     if inject == "signed_report_figures":
         release_dir = write_dense_bundle(
@@ -1833,11 +1886,9 @@ def test_dense_release_warns_on_per_area_support_figures(
                 area_support_details=_with_figures(_FLOOR_ONLY_DETAILS)
             ),
         )
-        name = "uk_local_gates.json"
     else:
         release_dir = write_dense_bundle(tmp_path)
-        name = "gate_summary.json"
-        path = release_dir / name
+        path = release_dir / "gate_summary.json"
         summary = json.loads(path.read_text())
         summary["diagnostic_gates"]["uk_local_area_support"] = {
             "failures": [f"local_authority/{_AREA}: rows 37 < 50"]
@@ -1845,12 +1896,7 @@ def test_dense_release_warns_on_per_area_support_figures(
         path.write_text(json.dumps(summary))
         _refresh_packaging_checksums(release_dir)
 
-    warnings = _warning_lines(release_dir)
-    assert expected in warnings
-    assert name in warnings
-    # The warning names where the figure is, never its value.
-    for figure in _FIGURES:
-        assert figure not in warnings
+    assert validate_release_dir(release_dir) == []
 
 
 _FIGURE = "per-area support figure(s)"
@@ -1962,45 +2008,20 @@ _SUPPORT_FIGURE_SHAPES = {
 
 
 @pytest.mark.parametrize("shape", sorted(_SUPPORT_FIGURE_SHAPES))
-def test_dense_release_warns_on_support_figures_in_every_shape(
-    tmp_path: Path, shape: str
-) -> None:
+def test_the_walk_finds_support_figures_in_every_shape(shape: str) -> None:
     """Records keyed by any area identifier, code-keyed maps, columnar tables,
-    lists and the extremes of a figure are warned about alike (microcosm#1301)."""
+    lists and the extremes of a figure are found alike (microcosm#1301). The
+    sign-off drafter walks the entries it drafts for a public PR with it."""
 
     key, value, expected = _SUPPORT_FIGURE_SHAPES[shape]
-    release_dir = write_dense_bundle(tmp_path)
-    _rewrite_manifest(release_dir, lambda manifest: manifest.__setitem__(key, value))
-    warnings = _warning_lines(release_dir)
-    assert "release_manifest.json carries" in warnings and expected in warnings
-    # The warning names where the figures are, never their values.
-    assert f"first at ['{key}" in warnings
+    findings = "\n".join(
+        dc._uk_dense_disclosure_findings("release_manifest.json", {key: value})
+    )
+    assert "release_manifest.json carries" in findings and expected in findings
+    # A finding names where the figures are, never their values.
+    assert f"first at ['{key}" in findings
     for figure in _FIGURES:
-        assert figure not in warnings
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        b'{"support": {"rows": ',
-        b'{"rows": NaN}',
-        b'{"rows": "\xc3\x28"}',
-        b"[" * 100_000 + b"]" * 100_000,
-    ],
-    ids=["truncated", "non-standard-constant", "undecodable", "nested-too-deep"],
-)
-def test_dense_release_warns_on_a_json_document_it_cannot_walk(
-    tmp_path: Path, content: bytes
-) -> None:
-    """A document the walk cannot read could hide a figure, so it is warned
-    about too."""
-
-    release_dir = write_dense_bundle(tmp_path)
-    (release_dir / "support_notes.json").write_bytes(content)
-    assert (
-        "support_notes.json cannot be read and walked as JSON, so the disclosure "
-        "walk cannot rule out"
-    ) in _warning_lines(release_dir)
+        assert figure not in findings
 
 
 def test_disclosure_walker_allows_floors_counts_weights_and_estimates() -> None:

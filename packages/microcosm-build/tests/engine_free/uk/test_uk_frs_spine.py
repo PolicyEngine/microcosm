@@ -14,6 +14,8 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.logbook import load_spool_rows
@@ -34,27 +36,52 @@ from microcosm.build.uk_runtime.birth_month import (
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_council_tax import (
-    frs_council_tax_operation_parameters,
+    frs_council_tax_operations,
+    frs_council_tax_resource_artifact,
 )
+from microcosm.build.uk_runtime.frs_disability import CARER_LINK_PARAMETERS
 from microcosm.build.uk_runtime.frs_relationships import (
     FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
     frs_relationships_operation_parameters,
 )
 from microcosm.build.uk_runtime.frs_spine import (
     BENEFIT_CODES,
+    BENEFIT_RECIPIENT_RULE,
+    BSP_MONTHLY_RATES,
+    FRS_CARE_HELPER_BIT,
+    FRS_CARE_OUTSIDE_BIT,
+    FRS_CARE_RECIPIENTS_COLUMN,
+    FRS_COMPANY_CAR_CARRIER_COLUMNS,
+    FRS_COMPANY_CAR_FUEL_CODES,
+    FRS_COMPANY_CAR_FUEL_ELECTRIC,
+    FRS_COMPANY_CAR_FUEL_HYBRID,
+    FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
+    FRS_COMPANY_CAR_PRICE_BAND_OPEN,
+    FRS_COMPANY_CAR_PRICE_BANDS,
+    FRS_CONDITION_LIMITS_COLUMN,
     FRS_SPINE_TABLES,
+    FRS_UC_CARER_ELEMENT_COLUMN,
+    FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
     SCOTTISH_WATER_CHARGES_REDUCTION_RECIPIENT_SHARE,
-    STATE_PENSION_WEEKS_IN_YEAR,
     UC_CAPITAL_UNAVAILABLE,
     WEEKS_IN_YEAR,
+    WPA_WEEKLY_RATE,
     UKFRSSpineStageTransform,
     _add_benefits,
     access_fund_annual,
+    benefits_by_recipient,
     build_uk_frs_spine_frame,
     completed_months,
+    frs_care_recipients,
+    frs_claimant_or_partner,
+    frs_condition_limits_activities,
     frs_council_tax_band,
+    frs_dwp_carer_care_hours,
+    frs_lcwra_proxy,
+    frs_uc_carer_element,
+    frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
     uc_gainful_self_employment,
@@ -74,6 +101,7 @@ from microcosm.build.uk_runtime.spi_support import (
     support_channel_column,
     support_source_id_column,
 )
+from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind, engine_tables
 
 # The driver lives in the package now; ``tools/build_uk_frs_spine.py`` is a
@@ -184,6 +212,10 @@ def _write_tab(root: Path, table: str, rows: list[dict[str, object]]) -> None:
     pd.DataFrame(rows).to_csv(path, sep="\t", index=False)
 
 
+#: Bereavement Support Payment's standard rate, GBP 100 a month, weekly.
+_BSP_STANDARD_WEEKLY = 100 * 12 / 52
+
+
 def _fixture_tables() -> dict[str, list[dict[str, object]]]:
     household_2 = {
         "SERNUM": 2,
@@ -260,6 +292,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TOTHOURS": 40,
         # HOURTOT 5 = 35-49 hours of care a week (#882).
         "HOURTOT": 5,
+        # No long-standing illness, so CONDIT is blank (PolicyEngine/microcosm#1663).
+        "HEALTH1": 2,
+        "CONDIT": "",
         "HRPID": 1,
         "UPERSON": 1,
         # #791 household grid: the HRP carries a blank relhrp and the parent
@@ -276,6 +311,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "CONVBL": 2,
         "MJOBSECT": 1,
         "SIC": 84,
+        "SOC2020": 4000,
         "FTED": 2,
         "TYPEED2": 0,
         "EDUCQUAL": 17,
@@ -303,6 +339,10 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "APAMT": 11.0,
         "APDAMT": 12.0,
         "PAREAMT": 13.0,
+        # The last alimony was not the usual amount (ALIUS 2): ALUAMT counts.
+        "ALIUS": 2,
+        "ALUAMT": 3.0,
+        "ALIAMT": 4.0,
         "REDAMT": 100.0,
         "SLREPAMT": 2.0,
         # A repayer answers no to SLOS; EDUCLEFT dates the course (#868).
@@ -352,6 +392,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "FSFVVAL": 1.0,
         "FSBVAL": 2.0,
         "HEARTVAL": 4.0,
+        "CHEARNS": 0.0,
     }
     return {
         "adult": [adult_2, adult_1],
@@ -380,13 +421,29 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "SERNUM": 1,
                 "BENUNIT": 1,
                 "PERSON": 1,
+                "PENTYPE": 1,
                 "PENPAY": 10.0,
                 "PTAMT": 2.0,
                 "PTINC": 2,
                 "POAMT": 3.0,
                 "POINC": 2,
                 "PENOTH": 0,
-            }
+            },
+            # Income from a trust (PENTYPE 5) stays private pension income,
+            # where the engine's means tests read it; its part is stored for
+            # SPI Table 3.7's other income (microcosm#1428).
+            {
+                "SERNUM": 2,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "PENTYPE": 5,
+                "PENPAY": 6.0,
+                "PTAMT": 0.0,
+                "PTINC": 0,
+                "POAMT": 0.0,
+                "POINC": 0,
+                "PENOTH": 0,
+            },
         ],
         "oddjob": [{"SERNUM": 1, "BENUNIT": 1, "PERSON": 1, "OJAMT": 4.0, "OJNOW": 1}],
         "accounts": [
@@ -417,6 +474,37 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "ACCTAX": 0,
                 "INVTAX": 0,
             },
+            # An NS&I Direct Saver paid after tax, deposit interest since
+            # microcosm#1428 (SPI Table 3.7 note 4), and a gilt paid after tax,
+            # other interest (microcosm#1418), both grossed up at the basic rate.
+            {
+                "SERNUM": 1,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "ACCOUNT": 2,
+                "ACCINT": 2.0,
+                "ACCTAX": 1,
+                "INVTAX": 0,
+            },
+            {
+                "SERNUM": 1,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "ACCOUNT": 6,
+                "ACCINT": 4.0,
+                "ACCTAX": 0,
+                "INVTAX": 1,
+            },
+            # A Premium Bond holding is tax-free and books nothing.
+            {
+                "SERNUM": 1,
+                "BENUNIT": 1,
+                "PERSON": 1,
+                "ACCOUNT": 15,
+                "ACCINT": 9.0,
+                "ACCTAX": 0,
+                "INVTAX": 0,
+            },
         ],
         "job": [
             {
@@ -436,6 +524,28 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "NATURE": 4,
                 "DIRPERC": -1,
                 "DIVIDEND": 0.0,
+                # No company car and no fuel for private use (EXPBEN 2), so the
+                # car's questions are not asked.
+                "EXPBEN01": 2,
+                "EXPBEN03": 2,
+                "CARVAL": "",
+                "FUELTYP": "",
+                "CARCON": "",
+                "CARAMT": "",
+                # Two bonuses (#1340): 1,000 before tax, and 500 after a weekly
+                # imputed tax of 2.
+                **{
+                    f"BONAMT{index}": {1: 1_000.0, 2: 500.0}.get(index, "")
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTAX{index}": {1: 1, 2: 2}.get(index, "")
+                    for index in range(1, 7)
+                },
+                **{
+                    f"BONTXAM{index}": 2.0 if index == 2 else ""
+                    for index in range(1, 7)
+                },
             }
         ],
         "benefits": [
@@ -447,6 +557,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 1,
                 "BENAMT": 2.0,
                 "UCSTART": "",
+                "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -457,6 +569,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 2,
                 "BENAMT": 3.0,
                 "UCSTART": "",
+                "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -469,6 +583,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR3": 1,
                 "BENAMT": 4.0,
                 "UCSTART": "",
+                "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -481,6 +597,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR3": 3,
                 "BENAMT": 5.0,
                 "UCSTART": "",
+                "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -489,8 +607,12 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "PERSON": 1,
                 "BENEFIT": 6,
                 "VAR2": 0,
-                "BENAMT": 6.0,
+                # Bereavement Support Payment's standard rate, GBP 100 a
+                # month, as a weekly amount.
+                "BENAMT": _BSP_STANDARD_WEEKLY,
                 "UCSTART": "",
+                "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
             {
@@ -501,6 +623,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
                 "VAR2": 0,
                 "BENAMT": 7.0,
                 "UCSTART": "",
+                "UCLCW": "",
+                "UCCAREEL": "",
                 "UCHOUSEL": "",
             },
         ],
@@ -529,6 +653,12 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
             }
         ],
         "extchild": [{"SERNUM": 1, "BENUNIT": 1, "NHHAMT": 2.0}],
+        # Person 1 cares for household member 2 at 35-49 hours a week, the
+        # largest band, and for a parent outside the household at 5-9.
+        "care": [
+            {"SERNUM": 1, "BENUNIT": 1, "NEEDPER": 2, "WHOLOO01": 1, "HOUR01": 5},
+            {"SERNUM": 1, "BENUNIT": 1, "NEEDPER": 15, "WHOLOO01": 1, "HOUR01": 2},
+        ],
         "mortgage": [
             {"SERNUM": 1, "RMORT": 1, "RMAMT": 120.0, "BORRAMT": 240.0, "MORTEND": 12.0}
         ],
@@ -539,8 +669,13 @@ def _write_fixture(
     root: Path, tables: dict[str, list[dict[str, object]]] | None = None
 ) -> SourceStageSpec:
     root.mkdir(exist_ok=True)
-    for table, rows in (tables or _fixture_tables()).items():
+    tables = tables or _fixture_tables()
+    for table, rows in tables.items():
         _write_tab(root, table, rows)
+    if "care" not in tables:
+        # Tables written before the care tab joined the spine (A3) take the
+        # fixture's own care rows.
+        _write_tab(root, "care", _fixture_tables()["care"])
     artifacts = []
     for table in FRS_SPINE_TABLES:
         path = root / f"{table}.tab"
@@ -644,10 +779,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     tables=("househol",),
                     operations=[
                         {"kind": "read_tables"},
-                        frs_council_tax_operation_parameters(),
+                        *frs_council_tax_operations(),
                     ],
                     outputs=("council_tax",),
                     nonnegative_outputs=("council_tax",),
+                    # S2(a) levels the Scottish bills to the vendored Band D facts.
+                    extra_artifacts=(frs_council_tax_resource_artifact(),),
                 ),
                 source_stage(
                     "frs_disability",
@@ -662,6 +799,13 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "parameters": "disability flags from the fiscal-converted gov.dwp tree at the survey year",
                             "year_rule": "survey_year",
                         },
+                        # The carer link (A3 of the November event-data plan's
+                        # PR3, microcosm#1095).
+                        {
+                            "kind": "derive",
+                            "parameters": CARER_LINK_PARAMETERS,
+                            "year_rule": "survey_year",
+                        },
                     ],
                     outputs=(
                         "aa_category",
@@ -671,7 +815,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "pip_dl_category",
                         "is_disabled_for_benefits",
                         "is_enhanced_disabled_for_benefits",
-                        "is_severely_disabled_for_benefits",
+                        "cares_for_severely_disabled_person",
                     ),
                 ),
                 source_stage(
@@ -688,6 +832,9 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "adult_ema",
                         "child_ema",
                         "receives_benefits_in_own_right",
+                        # frs_person_draws never draws a full-time student as
+                        # an apprentice (nit 3 of #1535's review).
+                        "is_in_full_time_education",
                     ),
                     nonnegative_outputs=(
                         "adult_ema",
@@ -796,6 +943,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {
                             "kind": "assign_binary_from_rate",
                             "output": "would_claim_universal_childcare",
+                            "nested_under": "would_claim_extended_childcare",
                             "seed": 0,
                         },
                         {
@@ -813,6 +961,16 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "output": "maximum_extended_childcare_hours_usage",
                             "seed": 0,
                         },
+                        *(
+                            {
+                                "kind": "assign_binary_from_rate",
+                                "output": "max_free_entitlement_hours_used",
+                                "rate_key": f"extended_childcare_age_{age}_usage",
+                                "assignment_unit": "person",
+                                "seed": 0,
+                            }
+                            for age in (0, 1)
+                        ),
                     ],
                     outputs=(
                         "would_claim_child_benefit",
@@ -825,8 +983,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "would_claim_targeted_childcare",
                         "would_claim_uc_childcare",
                         "maximum_extended_childcare_hours_usage",
+                        "max_free_entitlement_hours_used",
                     ),
-                    nonnegative_outputs=("maximum_extended_childcare_hours_usage",),
+                    nonnegative_outputs=(
+                        "maximum_extended_childcare_hours_usage",
+                        "max_free_entitlement_hours_used",
+                    ),
                 ),
                 source_stage(
                     "frs_person_draws",
@@ -1006,7 +1168,11 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             ),
         ),
         geography_spine=None,
-        resource_hashes={"brma_private_rented_households.json": "f" * 64},
+        resource_hashes={
+            "brma_private_rented_households.json": "f" * 64,
+            # S2(a): frs_council_tax levels the Scottish bills to these facts.
+            "scotgov_band_d_liability_facts.json": "f" * 64,
+        },
     )
 
 
@@ -1029,7 +1195,7 @@ class _FakeUKEngine:
 def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
     stage = _manifest_stage()
 
-    assert len(stage.artifacts) == 14
+    assert len(stage.artifacts) == 15
     assert [artifact["table"] for artifact in stage.artifacts] == sorted(
         FRS_SPINE_TABLES
     )
@@ -1169,9 +1335,24 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["trading_loss"] == 0.0
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
-    assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
-    assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
+    # ISA interest apart from non-ISA interest (microcosm#1360).
+    assert adult["individual_savings_account_interest_income"] == pytest.approx(
+        1 * WEEKS_IN_YEAR
+    )
+    # The current account (2 x 1.25) and the NS&I Direct Saver (2 x 1.25),
+    # deposit interest since microcosm#1428 (SPI Table 3.7 note 4).
+    assert adult["savings_interest_income"] == pytest.approx(5.0 * WEEKS_IN_YEAR)
+    assert "tax_free_savings_income" not in adult
+    # The gilt is other interest, no longer a dividend (microcosm#1418).
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    assert adult["other_investment_income"] == pytest.approx(5.0 * WEEKS_IN_YEAR)
+    # Household 2's trust income stays private pension, where the engine's
+    # means tests and household income read it, and its part is stored as
+    # the descriptor SPI Table 3.7's other-income measure adds (microcosm#1428).
+    assert other["other_investment_income"] == 0.0
+    assert other["private_pension_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
+    assert other["annuity_and_trust_income"] == pytest.approx(6.0 * WEEKS_IN_YEAR)
+    assert adult["annuity_and_trust_income"] == 0.0
     # ROYYR1 2 only: CVPAY (1 a week) is rent the adult pays as a lodger
     # (rent_paid_as_lodger, pe-uk#2006), not their own income, and household 1
     # does not sub-let.
@@ -1181,9 +1362,11 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["maintenance_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     # Odd jobs 4, ALLPAY2 6, ROYYR2-4 3 + 4 + 5, CHAMTERN 9 and CHAMTTST 10.
     assert adult["miscellaneous_income"] == pytest.approx(41 * WEEKS_IN_YEAR)
-    # APAMT 11, APDAMT 12, PAREAMT 13, ALLPAY3 7 and ALLPAY4 8: ALLPAY2 is
-    # miscellaneous income alone (#1320).
-    assert adult["private_transfer_income"] == pytest.approx(51 * WEEKS_IN_YEAR)
+    # ALUAMT 3 (ALIUS 2) and APAMT 11 (#1320).
+    assert adult["spousal_maintenance_income"] == pytest.approx(14 * WEEKS_IN_YEAR)
+    # APDAMT 12, PAREAMT 13, ALLPAY3 7 and ALLPAY4 8: ALLPAY2 is miscellaneous
+    # income alone and APAMT spousal maintenance (#1320).
+    assert adult["private_transfer_income"] == pytest.approx(40 * WEEKS_IN_YEAR)
     assert adult["lump_sum_income"] == pytest.approx(100)
     assert adult["student_loan_repayments"] == pytest.approx(2 * WEEKS_IN_YEAR)
     assert adult["statutory_sick_pay"] == pytest.approx(WEEKS_IN_YEAR)
@@ -1208,17 +1391,20 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["salary_sacrifice_asked"] == 1
 
 
-#: The spine's person income columns (#1320, uk-data#627).
-#: tax_free_savings_income is not one: it is the ISA part of
-#: savings_interest_income.
+#: The spine's person income columns (#1320, uk-data#627). ISA interest is one
+#: since the additive contract stores it apart from non-ISA interest
+#: (microcosm#1360).
 _PERSON_INCOME_COLUMNS = (
     "employment_income",
     "self_employment_income",
     "private_pension_income",
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
+    "other_investment_income",
     "property_income",
     "maintenance_income",
+    "spousal_maintenance_income",
     "miscellaneous_income",
     "private_transfer_income",
     "lump_sum_income",
@@ -1239,6 +1425,7 @@ _PERSON_INCOME_COLUMNS = (
     "esa_contrib_reported",
     "esa_income_reported",
     "bsp_reported",
+    "widowed_parents_allowance_reported",
 )
 
 
@@ -1251,7 +1438,13 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     and pension rows, with that field raised by one in its copy, and each
     copy's people are compared with an unchanged copy's. The benefits and
     accounts tabs route one amount column by a row code, and the other tabs
-    carry no person income, so they are not varied.
+    carry no person income, so they are not varied. Nor are the record keys
+    or UPERSON, which place a person in their benefit unit: a child raised to
+    UPERSON 1 would head the unit beside its adult head, which the spine
+    refuses. Nor are the household codes mapped through their data
+    dictionary, which refuse a raised code outside it (uk-data#636), nor
+    ADULT's HEALTH1 and CONDIT, refused the same way (PolicyEngine/
+    microcosm#1663).
     """
 
     tables = _fixture_tables()
@@ -1261,7 +1454,18 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
         for field in dict.fromkeys(
             field for row in tables[table] if row["SERNUM"] == 1 for field in row
         )
-        if field not in {"SERNUM", "BENUNIT", "PERSON"}
+        if field
+        not in {
+            "SERNUM",
+            "BENUNIT",
+            "PERSON",
+            "UPERSON",
+            "GVTREGNO",
+            "PTENTYP2",
+            "TYPEACC",
+            "HEALTH1",
+            "CONDIT",
+        }
     ]
     copies: dict[str, list[dict[str, object]]] = {table: [] for table in tables}
     for household, varied in enumerate([None, *fields], start=1):
@@ -1291,7 +1495,11 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     } == {}
     # The comparison sees a field's own column.
     assert moved[("adult", "ALLPAY2")] == {"miscellaneous_income"}
-    assert moved[("adult", "APAMT")] == {"private_transfer_income"}
+    assert moved[("adult", "APAMT")] == {"spousal_maintenance_income"}
+    assert moved[("adult", "APDAMT")] == {"private_transfer_income"}
+    assert moved[("adult", "ALUAMT")] == {"spousal_maintenance_income"}
+    # ALIUS 2 reads the usual amount, so the last one moves nothing.
+    assert moved[("adult", "ALIAMT")] == set()
     assert moved[("adult", "INEARNS")] == {"employment_income"}
     assert moved[("househol", "CTREBAMT")] == {"council_tax_benefit_reported"}
     assert moved[("oddjob", "OJAMT")] == {"miscellaneous_income"}
@@ -1421,6 +1629,58 @@ def test_household_subrent_column_floors_missing_value_codes(
 
     assert household.loc[1, "subrent"] == 0
     assert household.loc[2, "subrent"] == pytest.approx(6 * WEEKS_IN_YEAR)
+
+
+@pytest.mark.parametrize(
+    ("alius", "expected"),
+    [(1, 4.0), (2, 3.0), (3, 4.0)],
+    ids=["usual", "not_usual", "no_usual"],
+)
+def test_spousal_maintenance_reads_the_usual_alimony_where_the_last_was_not(
+    tmp_path: Path, alius: int, expected: float
+) -> None:
+    """ALIUS 2 (the last amount was not the usual one) reads ALUAMT; any other
+    answer reads ALIAMT, beside APAMT (#1320; María's ruling of 2026-10-22)."""
+
+    tables = _fixture_tables()
+    for row in tables["adult"]:
+        row.update(ALIUS=alius, ALUAMT=3.0, ALIAMT=4.0, APAMT=0.0)
+    stage = _write_fixture(tmp_path, tables)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+    adults = person[person["age"] >= 16]
+    assert adults["spousal_maintenance_income"].to_numpy() == pytest.approx(
+        expected * WEEKS_IN_YEAR
+    )
+
+
+@pytest.mark.parametrize("column", ["ALIAMT", "ALUAMT", "ALIUS"])
+def test_frs_spine_refuses_an_adult_tab_without_alimony(
+    tmp_path: Path, column: str
+) -> None:
+    """A vintage without the alimony columns refuses; it never sets nobody's
+    spousal maintenance."""
+
+    tables = _fixture_tables()
+    for row in tables["adult"]:
+        row.pop(column)
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match=column):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_frs_spine_refuses_a_pension_tab_without_pentype(tmp_path: Path) -> None:
+    """A vintage without PENTYPE refuses; it never reads every annuity and
+    trust payment as a pension (microcosm#1428)."""
+
+    tables = _fixture_tables()
+    tables["pension"] = [
+        {key: value for key, value in row.items() if key != "PENTYPE"}
+        for row in tables["pension"]
+    ]
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(ValueError, match="PENTYPE"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
 def test_frs_spine_refuses_an_adult_tab_without_sppadj(tmp_path: Path) -> None:
@@ -1694,10 +1954,199 @@ def test_a_benefit_unit_with_three_adult_records_refuses(tmp_path: Path) -> None
         )
     stage = _write_fixture(tmp_path, tables)
 
-    # The claimant mask refuses it, so adult-table membership is always a
-    # single claimant or a couple (uk-data#524).
-    with pytest.raises(ValueError, match="one or two claimants per benefit unit"):
+    # Adult-table membership is always a single claimant or a couple
+    # (uk-data#524), so a third adult record refuses the build.
+    with pytest.raises(ValueError, match="one or two adult-table records"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_a_dependent_child_at_uperson_2_is_not_a_partner(tmp_path: Path) -> None:
+    # A dependent child can be UPERSON 2 under a single head (raw FRS 2020-21
+    # to 2024-25 all have such records): UPERSON alone would make a
+    # 17-year-old the lone parent's partner.
+    tables = _fixture_tables()
+    tables["child"][0].update({"UPERSON": 2, "AGE": 17})
+    stage = _write_fixture(tmp_path, tables)
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+    assert person["is_claimant_or_partner"].to_dict() == {
+        1001: True,
+        1002: False,
+        2001: True,
+    }
+    assert not person.loc[1002, "is_benunit_head"]
+
+
+def test_a_benefit_unit_with_no_adult_record_refuses(tmp_path: Path) -> None:
+    # A unit holding only a child record. With DEPCHLDB 0 the dependant-count
+    # rule would make the child its claimant; adult-table membership refuses.
+    tables = _fixture_tables()
+    tables["child"].append({**tables["child"][0], "BENUNIT": 2, "PERSON": 3})
+    tables["benunit"].append({**tables["benunit"][1], "BENUNIT": 2, "DEPCHLDB": 0})
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(ValueError, match="one or two adult-table records"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_claimant_roles_must_agree_with_the_dependant_count(tmp_path: Path) -> None:
+    # DEPCHLDB 0 beside a child record: the dependant-count rule would make the
+    # child a UC claimant while the adult table makes them a dependant, and
+    # policyengine-uk derives is_uc_claimant from is_claimant_or_partner.
+    tables = _fixture_tables()
+    tables["benunit"][1]["DEPCHLDB"] = 0
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"must be the same roles\. 1 benefit unit\(s\) have a DEPCHLDB other "
+            r"than their child-record count, and 0 child record\(s\) are at UPERSON 1"
+        ),
+    ):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_a_child_record_at_uperson_1_refuses(tmp_path: Path) -> None:
+    # is_benunit_head reads UPERSON 1 on either tab, so a child record there
+    # would be a second head: the dependant-count rule makes it a UC claimant
+    # while the adult table makes it a dependant. Raw FRS 2020-21 to 2024-25
+    # have exactly one UPERSON 1 adult per unit and no child at UPERSON 1.
+    tables = _fixture_tables()
+    tables["child"][0]["UPERSON"] = 1
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"must be the same roles\. 0 benefit unit\(s\) have a DEPCHLDB other "
+            r"than their child-record count, and 1 child record\(s\) are at UPERSON 1"
+        ),
+    ):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+@st.composite
+def _frs_benefit_units(draw):
+    """FRS-shaped records: units of one or two adult records plus children.
+
+    Adult records are aged 16-80 with UPERSON 1 (head) and 2 (partner); child
+    records are aged 0-19 and carry UPERSON 2 or above, as raw FRS 2020-21 to
+    2024-25 do. Rows arrive in a random order.
+    """
+    rows = []
+    for household in range(1, draw(st.integers(1, 5)) + 1):
+        person = 0
+        for benunit in range(1, draw(st.integers(1, 3)) + 1):
+            n_adults = draw(st.integers(1, 2))
+            for index in range(n_adults + draw(st.integers(0, 4))):
+                person += 1
+                adult = index < n_adults
+                rows.append(
+                    {
+                        "person_id": household * 1000 + person,
+                        "benunit_id": household * 100 + benunit,
+                        "adult": adult,
+                        "age": draw(
+                            st.integers(16, 80) if adult else st.integers(0, 19)
+                        ),
+                        "uperson": index + 1 if adult else draw(st.integers(2, 9)),
+                    }
+                )
+    frame = pd.DataFrame(rows)
+    order = draw(st.permutations(range(len(frame))))
+    return frame.iloc[list(order)].reset_index(drop=True)
+
+
+def _roles(frame: pd.DataFrame) -> np.ndarray:
+    return frs_claimant_or_partner(
+        frame["person_id"],
+        frame["benunit_id"],
+        frame.loc[frame["adult"], "person_id"],
+    )
+
+
+@settings(max_examples=300, deadline=None)
+@given(_frs_benefit_units())
+def test_claimant_or_partner_properties(frame: pd.DataFrame) -> None:
+    role = _roles(frame)
+    adult = frame["adult"].to_numpy()
+    assert role.dtype == bool
+    assert (role == adult).all()
+    per_unit = pd.Series(role).groupby(frame["benunit_id"].to_numpy()).sum()
+    assert per_unit.between(1, 2).all()
+    # Never a child record; always everyone aged 20 or more (FRS dependants are
+    # 19 at most) and every head.
+    assert not (role & ~adult).any()
+    assert role[frame["age"].to_numpy() >= 20].all()
+    assert role[adult & (frame["uperson"] == 1).to_numpy()].all()
+
+
+@settings(max_examples=200, deadline=None)
+@given(_frs_benefit_units(), st.randoms(use_true_random=False))
+def test_claimant_or_partner_ignores_record_order(frame: pd.DataFrame, rng) -> None:
+    order = list(range(len(frame)))
+    rng.shuffle(order)
+    shuffled = frame.iloc[order].reset_index(drop=True)
+    by_person = dict(zip(frame["person_id"], _roles(frame), strict=True))
+    assert [by_person[p] for p in shuffled["person_id"]] == _roles(shuffled).tolist()
+
+
+@settings(max_examples=300, deadline=None)
+@given(_frs_benefit_units())
+def test_claimant_or_partner_agrees_with_the_dependant_count_rule(
+    frame: pd.DataFrame,
+) -> None:
+    # Differential: where each unit's dependant count is its number of child
+    # records and no child record is at UPERSON 1 (every unit of the pinned
+    # FRS 2024-25), the UC rule (head, or adult with dependants, or any member
+    # of a childless unit) and adult-table membership name the same people.
+    # The generator draws no child head; test_a_child_record_at_uperson_1_refuses
+    # covers that case.
+    adult = frame["adult"].to_numpy()
+    children = pd.Series(~adult).groupby(frame["benunit_id"].to_numpy()).sum()
+    benunit_ids = np.sort(frame["benunit_id"].unique())
+    person = pd.DataFrame(
+        {
+            "person_benunit_id": frame["benunit_id"],
+            # The spine reads UPERSON 1 on either tab as the head.
+            "is_benunit_head": (frame["uperson"] == 1).to_numpy(),
+            "is_parent": adult & frame["benunit_id"].map(children).gt(0).to_numpy(),
+        }
+    )
+    benunit = pd.DataFrame(
+        {
+            "benunit_id": benunit_ids,
+            "dependent_children": children.reindex(benunit_ids).to_numpy(),
+        }
+    )
+    assert (frs_uc_claimant_mask(person, benunit) == _roles(frame)).all()
+
+
+@settings(max_examples=200, deadline=None)
+@given(_frs_benefit_units(), st.data())
+def test_claimant_or_partner_refuses_no_or_a_third_adult(
+    frame: pd.DataFrame, data
+) -> None:
+    benunit = data.draw(st.sampled_from(sorted(frame["benunit_id"].unique())))
+    members = (frame["benunit_id"] == benunit).to_numpy()
+    if data.draw(st.booleans()):
+        frame = frame.assign(adult=frame["adult"] & ~members)
+    else:
+        n_extra = 3 - int(frame.loc[members, "adult"].sum())
+        start = int(frame["person_id"].max()) + 1
+        extra = pd.DataFrame(
+            {
+                "person_id": range(start, start + n_extra),
+                "benunit_id": benunit,
+                "adult": True,
+                "age": 40,
+                "uperson": 2,
+            }
+        )
+        frame = pd.concat([frame, extra], ignore_index=True)
+    with pytest.raises(ValueError, match="one or two adult-table records"):
+        _roles(frame)
 
 
 def _shared_household_tables(
@@ -1843,7 +2292,182 @@ def test_benefit_code_splits_are_ported(tmp_path: Path) -> None:
     assert adult["jsa_income_reported"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["esa_contrib_reported"] == pytest.approx(4 * WEEKS_IN_YEAR)
     assert adult["esa_income_reported"] == pytest.approx(5 * WEEKS_IN_YEAR)
-    assert adult["bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
+    assert adult["bsp_reported"] == pytest.approx(_BSP_STANDARD_WEEKLY * WEEKS_IN_YEAR)
+    assert adult["widowed_parents_allowance_reported"] == 0.0
+
+
+@pytest.mark.parametrize(
+    ("weekly", "payment"),
+    [
+        # Each monthly rate at 12/52 and at four weeks, and 1% either side.
+        (350 * 12 / 52, "bsp"),
+        (350 / 4, "bsp"),
+        (100 * 12 / 52, "bsp"),
+        (100 / 4, "bsp"),
+        (350 * 12 / 52 * 1.0099, "bsp"),
+        (100 * 12 / 52 * 0.9901, "bsp"),
+        # Off every rate: Widowed Parent's Allowance, at its 2024-25 full
+        # rate and 1% above it, at a reduced rate, and just outside the band.
+        (148.40, "wpa"),
+        (148.40 * 1.0099, "wpa"),
+        (65.0, "wpa"),
+        (350 * 12 / 52 * 1.011, "wpa"),
+        (100 / 4 * 0.989, "wpa"),
+        # Above the allowance's rate and at no rate (a lump sum, a part month
+        # or a misreport): the payment (Vahid's review of #1383, item 12).
+        (148.40 * 1.011, "bsp"),
+        (3_500 / 4, "bsp"),
+        # A lump sum spread over the year reads as a reduced allowance: the
+        # rule cannot tell the two apart below the allowance's rate.
+        (2_500 / 52, "wpa"),
+    ],
+)
+def test_code_6_splits_at_the_bereavement_support_payment_rates(
+    tmp_path: Path, weekly: float, payment: str
+) -> None:
+    """A code-6 amount at a Bereavement Support Payment rate stays
+    bsp_reported; one at Widowed Parent's Allowance's rate or below it is the
+    allowance, which policyengine-uk 2.149.0 gives its own input (#1222,
+    pe-uk#2572); any other stays bsp_reported."""
+
+    assert BSP_MONTHLY_RATES == (350.0, 100.0)
+    assert WPA_WEEKLY_RATE == 148.40
+    tables = _fixture_tables()
+    (row,) = [entry for entry in tables["benefits"] if entry["BENEFIT"] == 6]
+    row["BENAMT"] = weekly
+    stage = _write_fixture(tmp_path, tables)
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+    columns = {"bsp": "bsp_reported", "wpa": "widowed_parents_allowance_reported"}
+    assert person.loc[1001, columns[payment]] == pytest.approx(weekly * WEEKS_IN_YEAR)
+    other = columns["wpa" if payment == "bsp" else "bsp"]
+    assert person[other].eq(0.0).all()
+    assert person.drop(index=1001)[columns[payment]].eq(0.0).all()
+
+
+def test_bonuses_are_summed_gross_over_the_year(tmp_path: Path) -> None:
+    """A bonus given after tax adds back its imputed weekly tax over the year;
+    BONAMT is the sum received, not weekly (#1340)."""
+
+    stage = _write_fixture(tmp_path, _fixture_tables())
+    person = (
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+        .table("person")
+        .set_index("person_id")
+    )
+    assert person.loc[1001, "frs_bonus_amount"] == pytest.approx(
+        1_000.0 + 500.0 + 2.0 * WEEKS_IN_YEAR
+    )
+    assert person.drop(index=1001)["frs_bonus_amount"].eq(0.0).all()
+
+
+@pytest.mark.parametrize("column", ["BONAMT1", "BONTAX3", "BONTXAM6"])
+def test_frs_spine_refuses_a_job_tab_without_the_bonus_fields(
+    tmp_path: Path, column: str
+) -> None:
+    tables = _fixture_tables()
+    for row in tables["job"]:
+        row.pop(column)
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match=column.lower()):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def _company_car_carriers(tmp_path: Path, tables: dict) -> pd.DataFrame:
+    frame = build_uk_frs_spine_frame(tmp_path, stage=_write_fixture(tmp_path, tables))
+    return frame.table("person").set_index("person_id")[
+        list(FRS_COMPANY_CAR_CARRIER_COLUMNS)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("answers", "expected"),
+    [
+        # A diesel listed at GBP 30,001 to 40,000, with fuel for private use and
+        # a contribution to its cost.
+        (
+            {
+                "EXPBEN01": 1,
+                "EXPBEN03": 1,
+                "CARVAL": 8,
+                "FUELTYP": 2,
+                "CARCON": 1,
+                "CARAMT": 1_500.0,
+            },
+            (8, 2, True, 1_500.0),
+        ),
+        # "Don't know" for the band and the fuel; no contribution.
+        (
+            {"EXPBEN01": 1, "CARVAL": 10, "FUELTYP": 6, "CARCON": 2},
+            (10, 6, False, 0.0),
+        ),
+        # A car whose band and fuel are unanswered carries the unknown codes.
+        ({"EXPBEN01": 1}, (10, 6, False, 0.0)),
+        # A contribution with a missing-value amount counts as none.
+        (
+            {"EXPBEN01": 1, "CARVAL": 5, "FUELTYP": 1, "CARCON": 1, "CARAMT": -9},
+            (5, 1, False, 0.0),
+        ),
+        # A van's list price is asked too, but without EXPBEN01 there is no car.
+        ({"CARVAL": 7, "CARCON": 1, "CARAMT": 900.0}, (0, 0, False, 0.0)),
+    ],
+)
+def test_company_car_carriers_come_from_the_job_tab(
+    tmp_path: Path, answers: dict, expected: tuple
+) -> None:
+    """The company_cars stage's carriers (dashboard #316)."""
+
+    tables = _fixture_tables()
+    tables["job"][0].update(answers)
+    carriers = _company_car_carriers(tmp_path, tables)
+    assert tuple(carriers.loc[1001]) == expected
+    assert carriers["frs_company_car_price_band"].dtype == "int64"
+    assert carriers["frs_company_car_fuel_code"].dtype == "int64"
+    # Nobody else in the fixture holds a job, so nobody else has a car.
+    others = carriers.drop(index=1001)
+    assert not others.to_numpy(dtype=float).any()
+
+
+def test_the_company_car_code_views_follow_their_definitions() -> None:
+    """CARVAL's bands and FUELTYP's codes are defined once here and the
+    company_cars stage reads them (docs/shared-constants.md)."""
+
+    assert FRS_COMPANY_CAR_PRICE_BANDS == tuple(range(1, 10))
+    assert FRS_COMPANY_CAR_PRICE_BAND_OPEN == 9
+    bounds = list(FRS_COMPANY_CAR_PRICE_BAND_BOUNDS.values())
+    # The bands tile from zero, each opening where the last closes; the top is open.
+    assert bounds[0][0] == 0.0 and bounds[-1][1] is None
+    assert [low for low, _ in bounds[1:]] == [high for _, high in bounds[:-1]]
+    assert FRS_COMPANY_CAR_FUEL_CODES == tuple(range(1, 6))
+    assert (FRS_COMPANY_CAR_FUEL_HYBRID, FRS_COMPANY_CAR_FUEL_ELECTRIC) == (3, 4)
+
+
+def test_a_persons_main_job_car_is_their_company_car(tmp_path: Path) -> None:
+    """One car per person, as in the engine: the lowest JOBTYPE's, whatever the
+    tab's order."""
+
+    tables = _fixture_tables()
+    main = tables["job"][0]
+    second = {**main, "JOBTYPE": 2, "EXPBEN01": 1, "CARVAL": 3, "FUELTYP": 1}
+    main.update({"EXPBEN01": 1, "CARVAL": 9, "FUELTYP": 4})
+    tables["job"] = [second, main]
+    carriers = _company_car_carriers(tmp_path, tables)
+    assert tuple(carriers.loc[1001]) == (9, 4, False, 0.0)
+
+
+@pytest.mark.parametrize("column", ["EXPBEN01", "CARVAL", "CARAMT"])
+def test_frs_spine_refuses_a_job_tab_without_the_company_car_answers(
+    tmp_path: Path, column: str
+) -> None:
+    tables = _fixture_tables()
+    for row in tables["job"]:
+        row.pop(column)
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match="company cars cannot be set"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
 def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
@@ -1860,6 +2484,8 @@ def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
             "VAR2": 0,
             "BENAMT": 8.0,
             "UCSTART": "",
+            "UCLCW": "",
+            "UCCAREEL": "",
             "UCHOUSEL": "",
         }
     )
@@ -1870,7 +2496,9 @@ def test_war_widows_pension_leaves_bereavement_support(tmp_path: Path) -> None:
         .set_index("person_id")
     )
 
-    assert person.loc[1001, "bsp_reported"] == pytest.approx(6 * WEEKS_IN_YEAR)
+    assert person.loc[1001, "bsp_reported"] == pytest.approx(
+        _BSP_STANDARD_WEEKLY * WEEKS_IN_YEAR
+    )
     assert person.loc[1001, "war_widows_pension_reported"] == pytest.approx(
         8 * WEEKS_IN_YEAR
     )
@@ -1914,13 +2542,204 @@ def test_scottish_disability_payments_land_in_the_pip_and_dla_columns() -> None:
     )
 
 
-def test_state_pension_alone_annualises_at_52_weeks() -> None:
-    """policyengine-uk reads the State Pension back at 52 weeks a year.
+def _recipient_rows() -> pd.DataFrame:
+    """One household's disability benefit rows, as the normalized BENEFITS table.
+
+    Person 1 is a parent, 2 a child with DLA on her own row, 3 and 4 children
+    whose Child Disability Payment sits on the parent's row (WHOREC names them).
+    """
+
+    return pd.DataFrame(
+        {
+            "household_id": [1] * 8,
+            "person_id": [1001, 1001, 1001, 1002, 1001, 1001, 1001, 1001],
+            "benefit": [121, 122, 121, 1, 12, 19, 96, 13],
+            "var2": [0] * 8,
+            "var3": [0] * 8,
+            "benamt": [72.65, 28.70, 100.0, 29.20, 72.65, 50.0, 73.90, 83.30],
+            # 3 and 4: the children; 2: her own row; 97: someone outside the
+            # household; 9: a person number the household doesn't hold; -1:
+            # missing. The income support and Carer's Allowance rows name a
+            # child too, and never move.
+            "whorec1": [3, 3, 3, 2, 97, 3, 9, 3],
+            "whorec2": [-1, -1, 4, -1, -1, -1, -1, -1],
+            "whorec3": [-1] * 8,
+            "whorec4": [-1] * 8,
+            "whorec5": [-1] * 8,
+        }
+    )
+
+
+def test_disability_benefits_move_to_the_household_member_they_are_for() -> None:
+    """A Child Disability Payment row on a parent's record moves to the child (A3a).
+
+    The FRS records it on the receiving adult's row with WHOREC naming the
+    child; a row naming two children splits evenly, and a row naming its own
+    person, someone outside the household or a person number the household
+    doesn't hold stays, as every non-disability row does.
+    """
+
+    rows = _recipient_rows()
+    moved, evidence = benefits_by_recipient(rows, [1001, 1002, 1003, 1004])
+
+    by_person = (
+        moved.assign(weekly=moved["benamt"])
+        .groupby(["person_id", "benefit"])["weekly"]
+        .sum()
+    )
+    assert by_person[(1003, 121)] == pytest.approx(72.65 + 50.0)
+    assert by_person[(1004, 121)] == pytest.approx(50.0)
+    assert by_person[(1003, 122)] == pytest.approx(28.70)
+    assert (1001, 121) not in by_person and (1001, 122) not in by_person
+    # The child's own DLA, the AA naming someone outside the household and the
+    # PIP naming a person number the household doesn't hold stay put.
+    assert by_person[(1002, 1)] == pytest.approx(29.20)
+    assert by_person[(1001, 12)] == pytest.approx(72.65)
+    assert by_person[(1001, 96)] == pytest.approx(73.90)
+    # Other benefits never move, whatever WHOREC says.
+    assert by_person[(1001, 19)] == pytest.approx(50.0)
+    assert by_person[(1001, 13)] == pytest.approx(83.30)
+    # Nothing is gained or lost.
+    assert moved["benamt"].sum() == pytest.approx(rows["benamt"].sum())
+
+    assert evidence["rule"] == BENEFIT_RECIPIENT_RULE
+    # One or two rows of each kind: the receipt rounds them, never exact.
+    assert evidence["rows_moved"] == "<3"
+    assert evidence["rows_split"] == "<3"
+    assert evidence["households"] == "<3"
+    assert evidence["by_code"]["121"] == "<3"
+    assert evidence["by_code"]["1"] == 0
+    assert evidence["rows_naming_someone_outside"] == "<3"
+    assert evidence["rows_naming_a_person_number_not_held"] == "<3"
+
+
+def test_moved_disability_benefits_reach_the_childs_reported_amounts() -> None:
+    """After the move the parent reports no DLA care, and each child reports her own."""
+
+    rows = _recipient_rows()
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 1004]})
+    pe_person = pd.DataFrame(index=person.index)
+    moved, _ = benefits_by_recipient(rows, person["person_id"])
+
+    _add_benefits(pe_person, person, moved)
+
+    weekly = pe_person.div(WEEKS_IN_YEAR)
+    assert weekly["dla_sc_reported"].tolist() == pytest.approx(
+        [0.0, 29.20, 72.65 + 50.0, 50.0]
+    )
+    assert weekly["dla_m_reported"].tolist() == pytest.approx([0.0, 0.0, 28.70, 0.0])
+    assert weekly["attendance_allowance_reported"].tolist() == pytest.approx(
+        [72.65, 0.0, 0.0, 0.0]
+    )
+
+
+def test_a_benefits_table_without_whorec_is_left_as_it_is() -> None:
+    """A table with no WHOREC columns (a synthetic fixture's) moves nothing."""
+
+    rows = _recipient_rows().drop(columns=[f"whorec{n}" for n in range(1, 6)])
+    moved, evidence = benefits_by_recipient(rows, [1001, 1002, 1003, 1004])
+
+    pd.testing.assert_frame_equal(moved, rows)
+    assert evidence["rows_moved"] == 0 and evidence["rows_split"] == 0
+
+
+def test_care_recipients_are_the_people_given_the_line() -> None:
+    """Each carer's recipients at 35 hours: household members by number, outside as one bit (A3).
+
+    Person 1 cares for member 2 at 35-49 hours and for someone outside at 5-9,
+    so member 2 alone is at the line. Person 3 gives member 2 and someone
+    outside 50-99 hours each, so both count. Every listed carer carries the
+    helper bit. Person 4's row names themself, which is left out, and person 5
+    helps nobody.
+    """
+
+    care = pd.DataFrame(
+        {
+            "household_id": [1, 1, 1, 1, 1],
+            "needper": [2, 15, 17, 2, 4],
+            "wholoo01": [1, 1, 2, 2, 2],
+            "hour01": [5, 2, 0, 0, 0],
+            "wholoo03": [2, 2, 1, 1, 2],
+            "hour03": [0, 0, 6, 6, 0],
+            "wholoo04": [2, 2, 2, 2, 1],
+            "hour04": [0, 0, 0, 0, 5],
+        }
+    )
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 1004, 1005]})
+
+    recipients, evidence = frs_care_recipients(care, person)
+
+    helper = 1 << FRS_CARE_HELPER_BIT
+    assert recipients.tolist() == [
+        helper | (1 << 2),
+        0,
+        helper | (1 << 2) | (1 << FRS_CARE_OUTSIDE_BIT),
+        0,
+        0,
+    ]
+    # Two carers: one with household recipients only, one with both.
+    assert evidence["carers"] == "<3"
+    assert evidence["household_only"] == "<3"
+    assert evidence["both"] == "<3"
+    assert evidence["outside_only"] == 0
+    assert evidence["nobody_at_the_line"] == 0
+    assert evidence["helpers_not_held"] == 0
+
+
+def test_care_spread_over_two_people_gives_nobody_the_line() -> None:
+    """Vahid's case (review of microcosm#1583, Should 1): 20-34 hours to each of two members.
+
+    HOURTOT puts the carer at 50-99 hours in all, but the Invalid Care
+    Allowance Regulations 1976 reg. 4(1A) count care for two or more people
+    only where one of them gets 35 hours on their own. So the carer is listed,
+    with the helper bit, and has no recipient at the line. A band that
+    varies at 35 or more (code 10) reaches it; one that varies at 20-34
+    (code 9) doesn't.
+    """
+
+    care = pd.DataFrame(
+        {
+            "household_id": [1, 1, 2, 2],
+            "needper": [2, 3, 2, 15],
+            "wholoo01": [1, 1, 1, 1],
+            "hour01": [4, 4, 9, 10],
+        }
+    )
+    person = pd.DataFrame({"person_id": [1001, 1002, 1003, 2001, 2002]})
+
+    recipients, evidence = frs_care_recipients(care, person)
+
+    helper = 1 << FRS_CARE_HELPER_BIT
+    assert recipients.tolist() == [
+        helper,
+        0,
+        0,
+        helper | (1 << FRS_CARE_OUTSIDE_BIT),
+        0,
+    ]
+    assert evidence["nobody_at_the_line"] == "<3"
+    assert evidence["outside_only"] == "<3"
+
+
+def test_the_spine_stores_each_carers_recipients_at_the_line(tmp_path: Path) -> None:
+    """The fixture's carer gives member 2 alone at least 35 hours (A3)."""
+
+    stage = _write_fixture(tmp_path)
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+    stored = person.set_index("person_id")[FRS_CARE_RECIPIENTS_COLUMN]
+    assert stored.loc[1001] == (1 << FRS_CARE_HELPER_BIT) | (1 << 2)
+    assert (stored.drop(index=1001) == 0).all()
+
+
+def test_weekly_benefits_annualise_at_52_weeks() -> None:
+    """policyengine-uk reads weekly amounts back at 52 weeks a year.
 
     At 365.25 / 7 a full-rate pensioner would read above the full rate and the
-    excess would become a protected payment (María's ruling of 2026-10-20, an
-    exception to microcosm#1095's weekly amounts). Every other weekly benefit
-    keeps 365.25 / 7, and the Winter Fuel Payment, already annual, keeps its
+    excess would become a protected payment (María's ruling of 2026-10-20),
+    and every other weekly amount would read 0.34% high at the rule that tests
+    it; since her ruling of 2026-10-23 every weekly FRS amount annualises at
+    52 (uk-data#531). The Winter Fuel Payment, already annual, keeps its
     amount.
     """
 
@@ -1940,7 +2759,7 @@ def test_state_pension_alone_annualises_at_52_weeks() -> None:
 
     _add_benefits(pe_person, person, benefits)
 
-    assert STATE_PENSION_WEEKS_IN_YEAR == 52
+    assert WEEKS_IN_YEAR == 52
     state_pension = pe_person["state_pension_reported"]
     assert state_pension.tolist() == pytest.approx([221.20 * 52, 179.50 * 52, 0.0])
     # Read back at the engine's 52 weeks, the full rate is the full rate.
@@ -1951,7 +2770,7 @@ def test_state_pension_alone_annualises_at_52_weeks() -> None:
     assert pe_person["winter_fuel_allowance_reported"].tolist() == pytest.approx(
         [0.0, 0.0, 300.0]
     )
-    # The 52-week State Pension stays out of the 365.25 / 7 sum.
+    # The State Pension is re-summed on its own, beside the other benefits.
     reported = pe_person.drop(
         columns=[
             "state_pension_reported",
@@ -1962,7 +2781,7 @@ def test_state_pension_alone_annualises_at_52_weeks() -> None:
     assert reported.to_numpy().sum() == pytest.approx(2 * 81.90 * WEEKS_IN_YEAR)
 
 
-def test_manifest_declares_the_state_pension_weeks_in_year() -> None:
+def test_manifest_declares_52_weeks_for_every_weekly_amount() -> None:
     operation = next(
         operation
         for operation in _manifest_stage().operations
@@ -1970,13 +2789,47 @@ def test_manifest_declares_the_state_pension_weeks_in_year() -> None:
     )
     parameters = dict(operation.parameters)
 
-    assert parameters["weeks_in_year"] == WEEKS_IN_YEAR
-    exceptions = parameters["weeks_in_year_exceptions"]
-    assert set(exceptions) == {"state_pension_reported"}
-    assert (
-        exceptions["state_pension_reported"]["weeks_in_year"]
-        == STATE_PENSION_WEEKS_IN_YEAR
+    assert parameters["weeks_in_year"] == WEEKS_IN_YEAR == 52
+    # The State Pension's exception of 2026-10-20 became the rule.
+    assert "weeks_in_year_exceptions" not in parameters
+
+
+def test_every_reader_of_weekly_frs_amounts_annualises_at_52() -> None:
+    """One week count for every FRS amount a weekly or monthly rule reads.
+
+    María's ruling of 2026-10-23 (uk-data#531): the spine, the HMRC replay
+    leaves and the private-rent localisation read 52; LCFS spending keeps
+    365.25 / 7 and NTS trips 52.14, since no weekly rule reads them back.
+    """
+
+    from microcosm.build.uk_runtime import (
+        frs_council_tax,
+        frs_disability,
+        frs_education,
+        frs_hmrc_source,
+        frs_legacy_proxies,
+        lcfs_consumption,
+        nts_bus_travel,
+        private_rent_localisation,
     )
+
+    for module in (
+        frs_council_tax,
+        frs_disability,
+        frs_education,
+        frs_legacy_proxies,
+    ):
+        assert module.WEEKS_IN_YEAR is WEEKS_IN_YEAR, module.__name__
+    assert frs_hmrc_source.FRS_WEEKS_IN_YEAR == WEEKS_IN_YEAR == 52
+    assert private_rent_localisation.WEEKS_IN_YEAR == WEEKS_IN_YEAR
+    formulas = [
+        str(entry["formula"])
+        for entry in frs_hmrc_source.FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE.values()
+        if "formula" in entry
+    ]
+    assert formulas and not [formula for formula in formulas if "365.25" in formula]
+    assert lcfs_consumption.WEEKS_IN_YEAR == pytest.approx(365.25 / 7)
+    assert nts_bus_travel.WEEKS_IN_YEAR == 52.14
 
 
 def test_northern_ireland_households_take_the_placeholder_band() -> None:
@@ -2032,6 +2885,36 @@ def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None
     assert benunit.loc[101, "dependent_children"] == 1
     assert benunit.loc[101, "frs_benunit_capital"] == 111.0
     assert benunit.loc[201, "frs_benunit_capital"] == 222.0
+
+
+@pytest.mark.parametrize(
+    ("column", "code"), [("GVTREGNO", 3), ("PTENTYP2", 7), ("TYPEACC", 8)]
+)
+def test_frs_spine_refuses_a_household_code_outside_the_data_dictionary(
+    tmp_path: Path, column: str, code: int
+) -> None:
+    """An unknown region, tenure or accommodation code stops the build and
+    names the FRS variable, where it used to take a default (uk-data#636)."""
+
+    tables = _fixture_tables()
+    tables["househol"][0][column] = code
+    stage = _write_fixture(tmp_path, tables)
+
+    with pytest.raises(ValueError, match=f"FRS {column} carries code"):
+        build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_a_blank_accommodation_code_keeps_the_detached_house_default(
+    tmp_path: Path,
+) -> None:
+    tables = _fixture_tables()
+    household_1 = next(row for row in tables["househol"] if row["SERNUM"] == 1)
+    household_1["TYPEACC"] = ""
+
+    frame = build_uk_frs_spine_frame(tmp_path, stage=_write_fixture(tmp_path, tables))
+
+    household = frame.table("household").set_index("household_id")
+    assert household.loc[1, "accommodation_type"] == "HOUSE_DETACHED"
 
 
 def test_region_code_map_covers_all_twelve_regions() -> None:
@@ -2116,6 +2999,10 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
             instant=f"{period}-01-01",
             source="test stub",
         ),
+    )
+    # The carer link's hours line (A3), gov.dwp.carers_allowance.min_hours.
+    monkeypatch.setattr(
+        frs_disability, "uk_dwp_carers_allowance_min_hours", lambda period: 35.0
     )
     monkeypatch.setattr(
         frs_legacy_proxies,
@@ -2282,6 +3169,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "would_claim_marriage_allowance",
         "would_claim_scp",
         "attends_private_school_random_draw",
+        "max_free_entitlement_hours_used",
     } <= set(frame.table("person"))
     assert {
         "household_owns_tv",
@@ -2292,6 +3180,17 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     } <= set(frame.table("household"))
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
+    # The build record says which of its stages read the SPI Public Use Tape
+    # (microcosm#1095), from the artifacts the run's spec declares. This
+    # synthetic spec's SPI stage reads a fabricated tab, not the tape.
+    from microcosm.build.uk_runtime.spi_dependency import (
+        uk_spi_public_use_tape_marker,
+    )
+
+    assert sidecar["spi_public_use_tape"] == uk_spi_public_use_tape_marker(
+        _synthetic_spec(stage).sources.stages
+    )
+    assert sidecar["spi_public_use_tape"]["dependent"] is False
     for name in (
         "graph_declaration",
         "graph_manifest",
@@ -2350,7 +3249,10 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "sha256": hashlib.sha256(replay_bytes).hexdigest(),
     }
     assert len(sidecar["stochastic_contract_sha256"]) == 64
-    assert sidecar["resource_pins"] == {"brma_private_rented_households.json": "f" * 64}
+    assert sidecar["resource_pins"] == {
+        "brma_private_rented_households.json": "f" * 64,
+        "scotgov_band_d_liability_facts.json": "f" * 64,
+    }
     # Resolve the expected version the way the driver does, so the assertion
     # holds in the engine-hermetic lane too: the real version where
     # policyengine-uk is installed, the documented fallback where it is not.
@@ -2369,6 +3271,74 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert len(rows) == 1
     assert rows[0].pipeline == "uk-frs-spine"
     assert rows[0].disposition == "iterating"
+
+
+@pytest.mark.parametrize("observed", [False, True])
+def test_driver_kernels_free_each_stage_result_once_its_evidence_is_captured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, observed: bool
+) -> None:
+    """The spine driver, and the full build that prepares its spine through
+    it, read stage evidence only from the store. So every stage kernel the
+    preparation binds frees its transform's result once that evidence is
+    captured, an expanding stage's too. ``main`` wraps each stage in an
+    observation wrapper and the full build does not, so the run is checked
+    both ways (microcosm#931)."""
+
+    from microcosm.build.stage_evidence import _proxy_chain
+    from microcosm.graph import ContentStore, compile_graph, run_graph
+
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+
+    prepared = tool.prepare_uk_spine_execution(
+        tool.parse_uk_spine_args(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--no-staging",
+            ]
+        ),
+        observer=(lambda observation: None) if observed else None,
+    )
+
+    kernels = prepared.kernels.as_mapping()
+    stage_refs = {
+        ref for ref in kernels if ref == "uk.create@1" or ref.startswith("uk.stage.")
+    }
+    assert "uk.stage.expand.spi_support_channel@1" in stage_refs
+    assert all(kernels[ref].release_stage_results is True for ref in stage_refs)
+    run_graph(
+        compile_graph(prepared.graph),
+        sources=prepared.sources,
+        store=ContentStore(tmp_path / "store"),
+        kernels=prepared.kernels,
+        resume="forbid",
+        decisions=(),
+    )
+    # Every object behind a stage's wrappers that keeps a result holds none
+    # now. The SPI support stage expands its rows; the relationships stage is
+    # built by a graph source transform.
+    kept = {
+        name: candidate.__dict__["last_result"]
+        for name, transform in prepared.implementations.items()
+        for candidate in _proxy_chain(transform)
+        if "last_result" in getattr(candidate, "__dict__", {})
+    }
+    assert {"spi_support_channel", "frs_relationships"} <= kept.keys()
+    assert {name for name, result in kept.items() if result is not None} == set()
 
 
 def test_driver_writes_payload_identical_h5s(
@@ -2431,6 +3401,59 @@ def test_driver_writes_payload_identical_h5s(
             first_frame.table(entity).reset_index(drop=True),
             second_frame.table(entity).reset_index(drop=True),
         )
+
+
+def test_driver_keeps_only_the_final_graph_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The spine reads one version from its graph manifest and keeps only it.
+
+    The graph run frees every other version once nothing reads it (#931), so
+    the manifest attaches the final stage's version and nothing else.
+    """
+    pytest.importorskip("tables")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "spine.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    runs = []
+    run_graph = tool.run_graph
+
+    def recorded(compiled, **kwargs):
+        manifest = run_graph(compiled, **kwargs)
+        runs.append((compiled, kwargs["retain_populations"], manifest))
+        return manifest
+
+    monkeypatch.setattr(tool, "run_graph", recorded)
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--no-staging",
+            ]
+        )
+        == 0
+    )
+    [(compiled, retained, manifest)] = runs
+    stage_names = tool._uk_spine_stage_names(_synthetic_spec(stage))
+    final = compiled.versions[stage_names[-1]]
+    assert retained == (final,)
+    assert set(manifest.populations) == set(manifest.mass_ledgers) == {final}
+    assert len(set(compiled.versions.values())) > 1
 
 
 def test_driver_refuses_missing_spi_tab(tmp_path: Path) -> None:
@@ -2702,6 +3725,44 @@ def test_driver_refuses_synthetic_fixture_without_smoke(tmp_path: Path) -> None:
         )
 
 
+def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
+    tmp_path: Path, fake_telemetry_emitters
+) -> None:
+    from microcosm.build.uk_runtime import spine_build
+
+    tool = _load_tool()
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(tmp_path),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(tmp_path / "put2223uk.tab"),
+            "--hmrc-ods",
+            str(tmp_path / "hmrc.ods"),
+            "--staging-upload-interval-seconds",
+            "0",
+        ]
+    )
+    state = SimpleNamespace(build_id="uk-spine-attempt-fixture")
+    emitter = spine_build._start_telemetry_emitter(args, state=state)
+    bundle = spine_build._create_staging_run_bundle(args, state=state)
+
+    assert bundle.emitter_client is emitter.client
+    bundle.stage("input_verification", force_upload=True)
+    request = emitter.client.run_file_requests[-1]
+    assert (request.repository, request.run_id, request.prefix) == (
+        "policyengine/populace-uk-staging",
+        "uk-spine-attempt-fixture",
+        "runs",
+    )
+    assert "runs/uk-spine-attempt-fixture/progress.json" in emitter.client.paths(
+        "policyengine/populace-uk-staging"
+    )
+    emitter.close()
+
+
 def test_driver_exposes_all_staging_modes_and_rejects_empty_remote(
     tmp_path: Path,
 ) -> None:
@@ -2892,6 +3953,180 @@ def test_driver_marks_full_fixture_smoke_outputs_non_release(
     ]
     assert created[0]["details"]["sha256"] == digest
     assert rows[0].gate_verdicts["pipeline"]["artifact_sha256"] == digest
+
+
+_RECORDED_SMOKE_RUN_ID = "recorded-smoke-spine"
+
+
+def _run_recorded_smoke_spine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    checkpoint_dir: Path | None,
+) -> tuple[Path, list[tuple[str, str, dict[str, bool]]]]:
+    """Run the full-fixture smoke spine and record its stage updates in order.
+
+    Each entry names one stage update, or the graph run's return, together
+    with which of the build's files existed at that moment. A test can then
+    tell which stage was open while each file was written.
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "smoke.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    checkpoint_root = (
+        checkpoint_dir
+        if checkpoint_dir is not None
+        else tmp_path / f".{output.stem}.checkpoints"
+    )
+    watched_files = {
+        "graph_manifest": checkpoint_root / "spine.graph.json",
+        "evidence_capture_timing": checkpoint_root / "evidence-capture-timing.jsonl",
+        "spine_h5": output,
+        "replay_sidecar": output.with_suffix(".hmrc_replay.json"),
+        "build_sidecar": output.with_suffix(".build.json"),
+    }
+    if checkpoint_dir is not None:
+        watched_files["checkpoint_h5"] = checkpoint_dir / "frs_spine.h5"
+    timeline: list[tuple[str, str, dict[str, bool]]] = []
+
+    def existing_files() -> dict[str, bool]:
+        return {name: path.exists() for name, path in watched_files.items()}
+
+    record_stage = tool._record_stage
+    run_graph = tool.run_graph
+
+    def recording_record_stage(staging_bundle, emitter, stage_id, status, **details):
+        timeline.append((stage_id, status, existing_files()))
+        record_stage(staging_bundle, emitter, stage_id, status, **details)
+
+    def recording_run_graph(*args, **kwargs):
+        manifest = run_graph(*args, **kwargs)
+        timeline.append(("graph", "returned", existing_files()))
+        return manifest
+
+    monkeypatch.setattr(tool, "_record_stage", recording_record_stage)
+    monkeypatch.setattr(tool, "run_graph", recording_run_graph)
+    argv = [
+        "--frs-raw-dir",
+        str(raw_dir),
+        "--spine-h5",
+        str(output),
+        "--spi-tab",
+        str(spi_tab),
+        "--hmrc-ods",
+        str(hmrc_ods),
+        "--sample-seed",
+        "41",
+        "--smoke",
+        "--staging-local-only",
+        "--staging-run-id",
+        _RECORDED_SMOKE_RUN_ID,
+        "--staging-dir",
+        str(tmp_path / "staging"),
+    ]
+    if checkpoint_dir is not None:
+        argv += ["--checkpoint-dir", str(checkpoint_dir)]
+
+    assert tool.main(argv) == 0
+    return output, timeline
+
+
+@pytest.mark.parametrize("with_checkpoint_dir", [False, True])
+def test_driver_reports_work_after_the_graph_run_inside_stages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_checkpoint_dir: bool
+) -> None:
+    """Every stretch of work after the graph run belongs to a reported stage.
+
+    The staging dashboard draws one bar segment per top-level stage, so work
+    done between two stages shows as an unexplained empty stretch.
+    """
+
+    checkpoint_dir = tmp_path / "checkpoints" if with_checkpoint_dir else None
+    _output, timeline = _run_recorded_smoke_spine(
+        tmp_path, monkeypatch, checkpoint_dir=checkpoint_dir
+    )
+
+    updates = [(stage_id, status) for stage_id, status, _files in timeline]
+    after_graph = timeline[updates.index(("graph", "returned")) :]
+    checkpoint_updates = (
+        [("checkpoint_h5_creation", "started"), ("checkpoint_h5_creation", "completed")]
+        if with_checkpoint_dir
+        else []
+    )
+    assert [(stage_id, status) for stage_id, status, _files in after_graph] == [
+        ("graph", "returned"),
+        ("graph_evidence_capture", "started"),
+        ("graph_evidence_capture", "completed"),
+        ("sampling", "completed"),
+        ("validation", "started"),
+        ("validation", "completed"),
+        ("spine_h5_creation", "started"),
+        ("spine_h5_creation", "completed"),
+        *checkpoint_updates,
+        ("sidecar_creation", "started"),
+        ("sidecar_creation", "completed"),
+    ]
+    files_at = {(stage_id, status): files for stage_id, status, files in after_graph}
+    # The graph manifest and the run evidence are written inside the
+    # evidence-capture stage, which opens as soon as the graph run returns.
+    capture_started = files_at["graph_evidence_capture", "started"]
+    capture_completed = files_at["graph_evidence_capture", "completed"]
+    assert not capture_started["graph_manifest"]
+    assert not capture_started["evidence_capture_timing"]
+    assert capture_completed["graph_manifest"]
+    assert capture_completed["evidence_capture_timing"]
+    if with_checkpoint_dir:
+        assert files_at["checkpoint_h5_creation", "started"]["spine_h5"]
+        assert not files_at["checkpoint_h5_creation", "started"]["checkpoint_h5"]
+        assert files_at["checkpoint_h5_creation", "completed"]["checkpoint_h5"]
+    # The HMRC replay sidecar is written inside sidecar_creation.
+    assert not files_at["sidecar_creation", "started"]["replay_sidecar"]
+    assert files_at["sidecar_creation", "completed"]["replay_sidecar"]
+    assert files_at["sidecar_creation", "completed"]["build_sidecar"]
+
+
+def test_driver_copies_the_finished_spine_h5_into_the_checkpoint_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The checkpoint is the output file whose digest the sidecar records."""
+
+    h5py = pytest.importorskip("h5py")
+    checkpoint_dir = tmp_path / "checkpoints"
+    output, _timeline = _run_recorded_smoke_spine(
+        tmp_path, monkeypatch, checkpoint_dir=checkpoint_dir
+    )
+
+    checkpoint = checkpoint_dir / "frs_spine.h5"
+    sidecar = json.loads(output.with_suffix(".build.json").read_text())
+    digest = sidecar["output"]["sha256"]
+    assert hashlib.sha256(checkpoint.read_bytes()).hexdigest() == digest
+    # The copy keeps the smoke marking, so a non-release frame never passes
+    # as a release checkpoint.
+    with h5py.File(checkpoint, mode="r") as file:
+        assert bool(file.attrs["populace_non_release"]) is True
+        assert file.attrs["populace_release_posture"] == "smoke"
+    bundle = validate_v2_bundle(tmp_path / "staging", _RECORDED_SMOKE_RUN_ID)
+    checkpoint_events = [
+        event
+        for event in bundle["events"]
+        if (event["stage_id"], event["status"])
+        == ("checkpoint_h5_creation", "completed")
+    ]
+    assert len(checkpoint_events) == 1
+    assert checkpoint_events[0]["details"] == {
+        "sha256": digest,
+        "size_bytes": checkpoint.stat().st_size,
+    }
 
 
 def test_driver_records_sanitized_failed_staging_lifecycle(
@@ -3256,6 +4491,36 @@ def test_read_pinned_tab_reads_only_the_declared_columns(tmp_path) -> None:
         read_pinned_tab(tab, {**pins, "sha256": "f" * 64}, columns=("CASER8",))
 
 
+def test_read_pinned_tab_selects_columns_of_a_long_mixed_type_tab(tmp_path) -> None:
+    """A long tab whose selected column turns from numbers to text reads.
+
+    pandas' chunked parser mis-indexes such a column under a callable column
+    filter and raises IndexError (FRS 2024-25 adult.tab did), so a selective
+    read takes one pass.
+    """
+
+    import hashlib
+
+    from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+
+    rows = 300_000
+    tab = tmp_path / "adult.tab"
+    lines = ["SERNUM\tB\tC\tD\tMIXED", *(f"{row}\t1\t2\t3\t1" for row in range(rows))]
+    lines[-1] = f"{rows - 1}\t1\t2\t3\tx"
+    tab.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    pins = {
+        "sha256": hashlib.sha256(tab.read_bytes()).hexdigest(),
+        "size_bytes": tab.stat().st_size,
+    }
+
+    table = read_pinned_tab(tab, pins, columns=("sernum", "mixed"))
+
+    assert list(table.columns) == ["sernum", "mixed"]
+    assert len(table) == rows
+    assert table["mixed"].iloc[0] == 1
+    assert np.isnan(table["mixed"].iloc[-1])
+
+
 def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:
     tables = _fixture_tables()
     tables["househol"][0]["GROSS4"] = ""
@@ -3275,6 +4540,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     pins = tool._input_artifact_pins(stages)
 
     assert set(pins) == {
+        "aps_person_tab",
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
@@ -3283,6 +4549,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "nts_trip_tab",
         "nts_stage_tab",
         "nts_ticket_tab",
+        "nts_vehicle_tab",
         "published_fact_surface",
         "qrf_donor",
         "was_person_tab",
@@ -3305,6 +4572,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
             "lcfs_consumption",
             "etb_vat",
             "etb_services",
+            "aps_occupation",
             "hmrc_spi_income_spine",
             "hmrc_cgt_gains_spine",
         )
@@ -3357,11 +4625,17 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     assert declared["salary_sacrifice"] == {
         "salary_sacrifice": 42,
         "salary_sacrifice_conversion": 2024,
+        # The bonus route's conversion (microcosm#1340).
+        "pension_contributions_via_bonus_sacrifice": 2024,
     }
     assert declared["student_loans"] == {
         "student_loan_plan_5": 42,
         "student_loan_plan_2": 42,
     }
+    # microcosm#1490: the employment shell's keyed draws under its stage name,
+    # the APS draw under the column it writes.
+    assert declared["spi_employment_shell"] == {"spi_employment_shell": 0}
+    assert declared["aps_occupation"] == {"soc2020_sub_major_group": 0}
 
 
 def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
@@ -3749,7 +5023,9 @@ class TestAccessFundAnnual:
             access_fund_annual(frame)
 
 
-def _uc_row(sernum: int, ucstart: str) -> dict[str, object]:
+def _uc_row(
+    sernum: int, ucstart: str, uclcw: object = "", uccareel: object = ""
+) -> dict[str, object]:
     return {
         "SERNUM": sernum,
         "BENUNIT": 1,
@@ -3758,6 +5034,8 @@ def _uc_row(sernum: int, ucstart: str) -> dict[str, object]:
         "VAR2": 0,
         "BENAMT": 1.0,
         "UCSTART": ucstart,
+        "UCLCW": uclcw,
+        "UCCAREEL": uccareel,
     }
 
 
@@ -3897,6 +5175,356 @@ def _gainful_flags(tmp_path: Path, tables) -> dict[int, bool]:
     person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
     assert person["uc_is_in_gainful_self_employment"].dtype == bool
     return person.set_index("person_id")["uc_is_in_gainful_self_employment"].to_dict()
+
+
+class TestUCLimitedCapabilityCarrier:
+    """DWP's admin-linked LCW status on a linked UC claim (microcosm#1095, Y1)."""
+
+    @staticmethod
+    def _benefits(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows, columns=["benunit_id", "person_id", "benefit", "uclcw"]
+        )
+
+    def test_the_uc_rows_person_carries_the_claims_status(self) -> None:
+        benefits = self._benefits(
+            [
+                (101, 1001, 95, 2.0),  # LCFWRA Group, on the claimant
+                (201, 2002, 95, 0.0),  # None, on the partner's row
+                (301, 3001, 95, np.nan),  # no linked record
+                (401, 4001, 96, np.nan),  # PIP daily living, not UC
+                (501, 5001, 95, 1.0),  # LCFW Group
+            ]
+        )
+        person = pd.DataFrame({"person_id": [1001, 1002, 2001, 2002, 3001, 4001, 5001]})
+
+        assert frs_uc_lcw_status(benefits, person).tolist() == [
+            "LCWRA",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NONE",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "LCW",
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        person = pd.DataFrame({"person_id": [1001, 1002]})
+        with pytest.raises(KeyError, match="uclcw"):
+            frs_uc_lcw_status(
+                pd.DataFrame(
+                    {"benunit_id": [101], "person_id": [1001], "benefit": [95]}
+                ),
+                person,
+            )
+        with pytest.raises(ValueError, match="two FRS UC rows"):
+            frs_uc_lcw_status(
+                self._benefits([(101, 1001, 95, 2.0), (101, 1002, 95, 2.0)]), person
+            )
+        with pytest.raises(ValueError, match="outside the data dictionary"):
+            frs_uc_lcw_status(self._benefits([(101, 1001, 95, 3.0)]), person)
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_lcw_status(self._benefits([(101, 9999, 95, 2.0)]), person)
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 2))
+        tables["benefits"].append(_uc_row(2, "", ""))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        status = person.set_index("person_id")[FRS_UC_LCW_STATUS_COLUMN].to_dict()
+        assert status[1001] == "LCWRA"
+        assert status[2001] == "NOT_LINKED"
+        assert {value for key, value in status.items() if key not in (1001,)} == {
+            "NOT_LINKED"
+        }
+
+
+class TestUCCarerElementCarrier:
+    """DWP's admin-linked UC carer element on a linked claim (microcosm#1095, A3 (f))."""
+
+    @staticmethod
+    def _benefits(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows,
+            columns=["benunit_id", "person_id", "benefit", "uccareel", "ucstart_raw"],
+        )
+
+    def test_the_uc_rows_person_carries_the_claims_carer_element(self) -> None:
+        benefits = self._benefits(
+            [
+                (101, 1001, 95, 1.0, "07/15/2024"),  # a carer element, claimant
+                (201, 2002, 95, 0.0, "01/15/2022"),  # none, on the partner's row
+                (301, 3001, 95, np.nan, ""),  # no linked record
+                (401, 4001, 96, np.nan, ""),  # PIP daily living, not UC
+                (501, 5001, 95, 1.0, ""),  # a value on a claim with no start
+            ]
+        )
+        person = pd.DataFrame({"person_id": [1001, 1002, 2001, 2002, 3001, 4001, 5001]})
+
+        assert frs_uc_carer_element(benefits, person).tolist() == [
+            "CARER",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NONE",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NOT_LINKED",
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        person = pd.DataFrame({"person_id": [1001, 1002]})
+        with pytest.raises(KeyError, match="uccareel"):
+            frs_uc_carer_element(
+                pd.DataFrame(
+                    {"benunit_id": [101], "person_id": [1001], "benefit": [95]}
+                ),
+                person,
+            )
+        with pytest.raises(KeyError, match="benefits.ucstart"):
+            frs_uc_carer_element(
+                pd.DataFrame(
+                    {
+                        "benunit_id": [101],
+                        "person_id": [1001],
+                        "benefit": [95],
+                        "uccareel": [1.0],
+                    }
+                ),
+                person,
+            )
+        linked = "07/15/2024"
+        with pytest.raises(ValueError, match="two FRS UC rows; UCCAREEL"):
+            frs_uc_carer_element(
+                self._benefits(
+                    [(101, 1001, 95, 1.0, linked), (101, 1002, 95, 1.0, linked)]
+                ),
+                person,
+            )
+        with pytest.raises(ValueError, match="outside the 0 and 1"):
+            frs_uc_carer_element(self._benefits([(101, 1001, 95, 2.0, linked)]), person)
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_carer_element(self._benefits([(101, 9999, 95, 1.0, linked)]), person)
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 2, 1))
+        tables["benefits"].append(_uc_row(2, "", "", ""))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        status = person.set_index("person_id")[FRS_UC_CARER_ELEMENT_COLUMN].to_dict()
+        assert status[1001] == "CARER"
+        assert {value for key, value in status.items() if key != 1001} == {"NOT_LINKED"}
+
+
+class TestDWPCarerCareHours:
+    """B3 (microcosm#1095; María's ruling of 2026-11-11): DWP's UC carer element
+    on a linked claim puts a carer at the 35-hour line where the survey has none."""
+
+    @staticmethod
+    def _people(rows) -> pd.DataFrame:
+        people = pd.DataFrame(
+            rows,
+            columns=[
+                "person_id",
+                "person_benunit_id",
+                "person_household_id",
+                "is_claimant_or_partner",
+                "care_hours",
+                "carers_allowance_reported",
+                FRS_UC_CARER_ELEMENT_COLUMN,
+            ],
+        )
+        # The claim's limited capability status sits on the UC row's person,
+        # as frs_uc_lcw_status writes it: NONE on a linked claim here.
+        linked = people[FRS_UC_CARER_ELEMENT_COLUMN].isin(["CARER", "NONE"])
+        people[FRS_UC_LCW_STATUS_COLUMN] = np.where(linked, "NONE", "NOT_LINKED")
+        return people
+
+    @staticmethod
+    def _joint_claim(
+        claimant_hours: float,
+        partner_hours: float,
+        *,
+        status: str = "NONE",
+        claimant_pip: float = 0.0,
+        partner_pip: float = 0.0,
+    ) -> pd.DataFrame:
+        """A joint claim: the UC row's person 1001 with the carer element, partner 1002."""
+
+        return pd.DataFrame(
+            {
+                "person_id": [1001, 1002],
+                "person_benunit_id": [11, 11],
+                "person_household_id": [1, 1],
+                "is_claimant_or_partner": [True, True],
+                "care_hours": [claimant_hours, partner_hours],
+                "carers_allowance_reported": [0.0, 0.0],
+                FRS_UC_CARER_ELEMENT_COLUMN: ["CARER", "NOT_LINKED"],
+                FRS_UC_LCW_STATUS_COLUMN: [status, "NOT_LINKED"],
+                "pip_dl_reported": [claimant_pip, partner_pip],
+            }
+        )
+
+    def test_the_partner_who_reports_more_care_takes_the_line(self) -> None:
+        """Vahid's review of microcosm#1583, Should 2: not always the UC row's person."""
+
+        hours, evidence = frs_dwp_carer_care_hours(self._joint_claim(0.0, 20.0))
+
+        assert hours.tolist() == [0.0, 35.0]
+        assert evidence["raised_the_partner_of_the_uc_rows_person"]["people"] == "<3"
+
+    def test_a_tie_raises_the_uc_rows_person(self) -> None:
+        hours, _ = frs_dwp_carer_care_hours(self._joint_claim(5.0, 5.0))
+
+        assert hours.tolist() == [35.0, 5.0]
+
+    def test_an_lcwra_claim_passes_over_the_claimant_the_proxy_flags(self) -> None:
+        """Vahid's case: the UC row's person gets PIP daily living, the partner cares.
+
+        On a claim DWP records with LCWRA and the carer element, the carer
+        isn't the claimant who holds LCWRA (UC Regs 2013 reg. 29(4)), so the
+        claimant Y1's proxy flags is passed over even with more care hours.
+        """
+
+        flagged = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(20.0, 0.0, status="LCWRA", claimant_pip=flagged)
+        )
+
+        assert hours.tolist() == [20.0, 35.0]
+        assert evidence["lcwra_claims_the_proxy_moved"]["people"] == "<3"
+        assert evidence["lcwra_claims"]["people"] == "<3"
+
+    def test_an_lcwra_claim_the_proxy_flags_whole_keeps_the_hours_rule(self) -> None:
+        both = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(
+                0.0, 20.0, status="LCWRA", claimant_pip=both, partner_pip=both
+            )
+        )
+
+        assert hours.tolist() == [0.0, 35.0]
+        assert evidence["lcwra_claims_the_proxy_flags_every_claimant"]["people"] == "<3"
+
+    def test_the_lcwra_proxy_follows_the_engines_formula(self) -> None:
+        """is_disabled_for_benefits, unless one's own ESA award lacks the support component."""
+
+        people = pd.DataFrame(
+            {
+                "pip_dl_reported": [100.0, 0.0, 0.0, 0.0],
+                "esa_income_reported": [0.0, 100.0, 100.0, 0.0],
+                "esa_includes_support_component": [True, True, False, True],
+            }
+        )
+
+        assert frs_lcwra_proxy(people).tolist() == [True, True, False, False]
+
+    def test_the_spines_strict_proxy_refuses_a_missing_column(self) -> None:
+        """A partial frame reads missing columns as no benefit; the spine's call refuses."""
+
+        from microcosm.build.uk_runtime.frs_disability import (
+            UK_DISABILITY_FLAG_REPORTED_COLUMNS,
+        )
+
+        full = pd.DataFrame(
+            {column: [0.0, 100.0] for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS}
+        )
+        full["esa_includes_support_component"] = [True, True]
+        assert frs_lcwra_proxy(full, strict=True).tolist() == [False, True]
+
+        renamed = full.drop(columns=[UK_DISABILITY_FLAG_REPORTED_COLUMNS[0]])
+        assert frs_lcwra_proxy(renamed).tolist() == [False, True]
+        with pytest.raises(ValueError, match="LCWRA proxy needs"):
+            frs_lcwra_proxy(renamed, strict=True)
+        without_support = full.drop(columns=["esa_includes_support_component"])
+        with pytest.raises(ValueError, match="esa_includes_support_component"):
+            frs_lcwra_proxy(without_support, strict=True)
+
+    def test_a_claim_without_lcwra_ignores_the_proxy(self) -> None:
+        flagged = 72.65 * 52
+        hours, evidence = frs_dwp_carer_care_hours(
+            self._joint_claim(20.0, 0.0, status="LCW", claimant_pip=flagged)
+        )
+
+        assert hours.tolist() == [35.0, 0.0]
+        assert evidence["lcwra_claims"]["people"] == 0
+
+    def test_a_dwp_carer_claim_with_no_carer_at_the_line_takes_35_hours(self) -> None:
+        rows = []
+        for household in range(1, 4):
+            # No care recorded, and care below the line: raised to 35.
+            rows.append(
+                (
+                    household * 1000 + 1,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    0.0,
+                    0.0,
+                    "CARER",
+                )
+            )
+            rows.append(
+                (
+                    household * 1000 + 2,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    0.0,
+                    0.0,
+                    "NOT_LINKED",
+                )
+            )
+        for household in range(4, 7):
+            rows.append(
+                (
+                    household * 1000 + 1,
+                    household * 10 + 1,
+                    household,
+                    True,
+                    20.0,
+                    0.0,
+                    "CARER",
+                )
+            )
+        # A partner already at the line, or Carer's Allowance reported: kept.
+        rows.append((7001, 71, 7, True, 0.0, 0.0, "CARER"))
+        rows.append((7002, 71, 7, True, 50.0, 0.0, "NOT_LINKED"))
+        rows.append((8001, 81, 8, True, 0.0, 4258.8, "CARER"))
+        # No carer element, or no linked record: the survey's answers stand.
+        rows.append((9001, 91, 9, True, 0.0, 0.0, "NONE"))
+        rows.append((10001, 101, 10, True, 10.0, 0.0, "NOT_LINKED"))
+        people = self._people(rows)
+
+        hours, evidence = frs_dwp_carer_care_hours(people)
+
+        by_id = dict(zip(people["person_id"], hours, strict=True))
+        assert [by_id[h * 1000 + 1] for h in range(1, 7)] == [35.0] * 6
+        assert [by_id[h * 1000 + 2] for h in range(1, 4)] == [0.0] * 3
+        assert by_id[7001] == 0.0 and by_id[7002] == 50.0
+        assert by_id[8001] == 0.0 and by_id[9001] == 0.0 and by_id[10001] == 10.0
+        assert evidence["raised"]["support"] == "3-9"
+        assert evidence["raised_from_no_care"]["support"] == "3-9"
+        assert evidence["raised_from_below_the_line"]["support"] == "3-9"
+        assert evidence["hours"] == 35.0
+        # The input frame is left as it was.
+        assert people.loc[people["person_id"] == 1001, "care_hours"].item() == 0.0
+
+    def test_the_spine_raises_a_dwp_carers_hours(self, tmp_path: Path) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 0, 1))
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        hours = person.set_index("person_id")["care_hours"]
+        assert hours[1001] >= 35.0
 
 
 class TestUCGainfulSelfEmployment:
@@ -4102,3 +5730,115 @@ def test_collect_fit_weight_records_sees_through_the_run_proxies():
     expected = [{"fit_name": "uk_was_2018_20_wealth:savings", "weight_kind": "design"}]
     assert records == {"was_wealth": expected, "etb_vat": expected}
     assert "frs_spine" not in records
+
+
+def test_a_spine_build_that_must_send_telemetry_stops_before_any_input_without_an_emitter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MICROCOSM_TELEMETRY_REQUIRED=1 and no emitter: the spine build stops first.
+
+    It starts its emitter right after reading its arguments, so with the real
+    adapter (not the shared fixture's in-memory one) it stops before it
+    resolves its Logbook predecessor, reads an input or writes anything.
+    """
+    from microcosm.build import telemetry_emitter
+    from microcosm.build.uk_runtime import spine_build
+    from test_support.microcosm_build.telemetry import ADAPTER_START
+
+    monkeypatch.setattr(
+        telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(ADAPTER_START)
+    )
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    monkeypatch.setenv(
+        "MICROCOSM_EMITTER_COMMAND", str(tmp_path / "missing" / "microcosm-emitter")
+    )
+
+    def went_on(*args, **kwargs):
+        pytest.fail("the build went on without the emitter it must use")
+
+    # The build's first step after starting its emitter.
+    monkeypatch.setattr(spine_build, "resolve_predecessor", went_on)
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+
+    with pytest.raises(telemetry_emitter.TelemetryRequiredError) as raised:
+        spine_build.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(tmp_path / "out" / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"),
+                "--no-staging",
+            ]
+        )
+
+    assert raised.value.reason == "command_not_found"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["raw"]
+
+
+def test_the_limiting_condition_carrier_reads_health1_and_condit() -> None:
+    """ADULT.CONDIT's three codes, NO_CONDITION and NOT_ASKED (PolicyEngine/microcosm#1663)."""
+
+    person = pd.DataFrame({"health1": [1, 1, 1, 2, 0], "condit": [1, 2, 3, 0, 0]})
+    adult = np.array([True, True, True, True, False])
+
+    assert frs_condition_limits_activities(person, adult).tolist() == [
+        "A_LOT",
+        "A_LITTLE",
+        "NOT_AT_ALL",
+        "NO_CONDITION",
+        "NOT_ASKED",
+    ]
+    with pytest.raises(KeyError, match="CONDIT"):
+        frs_condition_limits_activities(person[["health1"]], adult)
+    with pytest.raises(ValueError, match="HEALTH1 outside"):
+        frs_condition_limits_activities(person.assign(health1=[1, 1, 1, 3, 0]), adult)
+    with pytest.raises(ValueError, match="codes 1 to 3"):
+        frs_condition_limits_activities(person.assign(condit=[1, 2, 0, 0, 0]), adult)
+    with pytest.raises(ValueError, match="without a long-standing"):
+        frs_condition_limits_activities(person.assign(condit=[1, 2, 3, 1, 0]), adult)
+    with pytest.raises(ValueError, match="align"):
+        frs_condition_limits_activities(person, adult[:-1])
+
+
+def test_the_spine_carries_the_limiting_condition() -> None:
+    from microcosm.build.uk_runtime.frs_spine import OUTPUT_COLUMNS
+
+    assert FRS_CONDITION_LIMITS_COLUMN in OUTPUT_COLUMNS
+
+
+def test_a_dependent_childs_pay_is_its_chearns(tmp_path: Path) -> None:
+    # Vahid's review of PolicyEngine/microcosm#1663: a dependent aged 16 to 19
+    # in full-time non-advanced education sits on the child tab, whose pay is
+    # CHEARNS, never INEARNS.
+    tables = _fixture_tables()
+    tables["child"][0].update({"AGE": 17, "CHEARNS": 40.0})
+    plain = UKFRSSpineStageTransform(
+        tmp_path / "plain", stage=_write_fixture(tmp_path / "plain")
+    )(uk_frs_spine_seed_frame()).table("person")
+    paid = UKFRSSpineStageTransform(
+        tmp_path / "paid", stage=_write_fixture(tmp_path / "paid", tables)
+    )(uk_frs_spine_seed_frame()).table("person")
+
+    child = paid["is_hbai_dependent_child"].to_numpy(dtype=bool)
+    assert child.sum() == 1
+    assert paid.loc[child, "employment_income"].tolist() == [40.0 * 52]
+    assert plain.loc[child, "employment_income"].tolist() == [0.0]
+    # Adults keep their INEARNS pay.
+    assert (
+        paid.loc[~child, "employment_income"].tolist()
+        == plain.loc[~child, "employment_income"].tolist()
+    )
+
+
+def test_a_child_tab_without_chearns_is_refused(tmp_path: Path) -> None:
+    tables = _fixture_tables()
+    for child in tables["child"]:
+        child.pop("CHEARNS")
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match="CHEARNS"):
+        UKFRSSpineStageTransform(tmp_path, stage=stage)(uk_frs_spine_seed_frame())

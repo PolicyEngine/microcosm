@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime import l0_refit_export
+from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.build.us_runtime.l0_refit_export import (
     assert_required_us_release_source_columns,
     attach_l0_refit_entity_weights,
@@ -59,6 +60,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "takes_up_wic_if_eligible": [True, False, True],
             "educator_expense": [0.0, 300.0, 150.0],
             "other_health_insurance_premiums": [1_200.0, 0.0, 600.0],
+            "employer_sponsored_insurance_premiums": [9_400.0, 0.0, 6_100.0],
             "health_insurance_premiums": [1_200.0, 0.0, 800.0],
             "is_self_employed": [True, False, True],
             "is_incapable_of_self_care": [False, True, False],
@@ -129,6 +131,9 @@ def _us_frame(**person_extra: object) -> Frame:
             "cps_race": [1, 2, 4],
             "is_hispanic": [False, True, False],
             "detailed_occupation_recode": [1, 20, 53],
+            "detailed_industry_recode": [13, 7, 23],
+            "major_industry_recode": [9, 5, 15],
+            "worked_last_year": [True, True, False],
             "has_never_worked": [False, False, True],
             "is_military": [False, True, False],
             "is_computer_scientist": [False, True, False],
@@ -161,6 +166,7 @@ def _us_frame(**person_extra: object) -> Frame:
                     "block_geoid": ["360610001001000", "060370001001000"],
                     "tract_geoid": ["36061000100", "06037000100"],
                     "county_fips": ["36061", "06037"],
+                    "county_fips_2023": ["36061", "06037"],
                     "place_fips": ["51000", "44000"],
                     "sldu": ["027", "024"],
                     "sldl": ["075", "051"],
@@ -414,6 +420,62 @@ def test_export_us_l0_refit_h5_fails_when_selection_zeroes_input_mass(
             require_geography_ladder=False,
         )
     assert not output.exists()
+
+
+def test_export_us_l0_refit_h5_reads_line_32_on_the_reference_terms(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    frame = _us_frame()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_text("base")
+    output = tmp_path / "populace_us_2024.h5"
+
+    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
+    monkeypatch.setattr(
+        l0_refit_export,
+        "copy_microcosm_root_attrs",
+        lambda source, destination: (),
+    )
+    # A reference built before microcosm#1261 holds partnership and S
+    # corporation income together in partnership_income; the export splits the
+    # income between the two columns.
+    monkeypatch.setattr(
+        l0_refit_export,
+        "us_input_mass_totals",
+        lambda bundle: (
+            {"partnership_income": 8.5e11, "s_corp_income": 0.0}
+            if bundle is frame
+            else {"partnership_income": 3.9e11, "s_corp_income": 6.6e11}
+        ),
+    )
+
+    def carriers(candidate, reference):
+        # The gate reads carriers from the frames whose totals it compares: the
+        # reweighted export, then the base frame that stands in as reference.
+        assert candidate is not frame
+        assert reference is frame
+        return UsLine32Carriers(
+            candidate_partnership_income=True, reference_s_corp_income=False
+        )
+
+    monkeypatch.setattr(l0_refit_export, "us_line_32_carriers", carriers)
+
+    class FakeEngine:
+        def write_dataset(self, bundle, path, period):
+            Path(path).write_text("sentinel")
+
+    monkeypatch.setattr(l0_refit_export, "PolicyEngineUSEngine", FakeEngine)
+
+    summary = export_us_l0_refit_h5(
+        base_h5=base_h5,
+        weights_npz=_l0_refit_npz(tmp_path),
+        output_h5=output,
+        input_mass_relative_tolerance=0.5,
+        require_geography_ladder=False,
+    )
+
+    assert summary["input_mass_parity"]["passed"] is True
 
 
 def test_export_us_l0_refit_h5_records_input_mass_drift_when_allowed(
@@ -906,6 +968,37 @@ def test_required_us_release_source_columns_enforces_educator_expense_signal() -
         match="person.educator_expense: not nonconstant",
     ):
         assert_required_us_release_source_columns(raw_frame)
+
+
+def test_required_us_release_source_columns_enforces_esi_premium_signal() -> None:
+    """microcosm#454: an L0/refit export refuses an absent or flat ESI column."""
+
+    frame = _us_frame()
+    for mutate, message in (
+        (
+            lambda people: people.drop(
+                columns=["employer_sponsored_insurance_premiums"]
+            ),
+            "person.employer_sponsored_insurance_premiums: missing",
+        ),
+        (
+            lambda people: people.assign(employer_sponsored_insurance_premiums=0.0),
+            "person.employer_sponsored_insurance_premiums: not nonconstant",
+        ),
+    ):
+        raw_frame = Frame(
+            {
+                **{
+                    entity: frame.table(entity).copy()
+                    for entity in frame.schema.entities
+                },
+                "person": mutate(frame.table("person").copy()),
+            },
+            frame.schema,
+            {"household": frame.weights_for("household")},
+        )
+        with pytest.raises(ValueError, match=message):
+            assert_required_us_release_source_columns(raw_frame)
 
 
 def test_required_us_release_source_columns_enforces_other_premium_signal() -> None:

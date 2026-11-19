@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ import pytest
 from test_support.microcosm_build.route_a_driver import (
     ROUTE_A_TOOLS,
     SECRET_ALIASES,
+    run_driver_settings,
     write_executable,
 )
 from test_support.paths import paths_for
@@ -104,37 +106,6 @@ def _example_extra_args() -> str:
     return result.stdout.decode()
 
 
-def _input_settings_result(
-    tmp_path: Path, overrides: dict[str, str], commands: str
-) -> subprocess.CompletedProcess[bytes]:
-    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
-    prefix, delimiter, _ = source.partition("FETCH_OK=1\n")
-    assert delimiter
-    # Only initialize settings and define functions. The remainder fetches
-    # refs and may launch stages, so this harness never executes it.
-    script = tmp_path / "input-settings-check.sh"
-    script.write_text(prefix + commands, encoding="utf-8")
-    required = (
-        "PE MAIN WT_ROOT RUN_ROOT CHAIN_ROOT CHAIN_LOG DISK_PATH UV PYTHON "
-        "STORAGE EDU FEED LADDER SSI SCF AGENT_SECRET"
-    ).split()
-    settings = {key: str(tmp_path / key.lower()) for key in required}
-    settings.update(PYTHON=sys.executable, **overrides)
-    settings_path = tmp_path / "route_a.env"
-    settings_path.write_text(
-        "\n".join(f"{key}={shlex.quote(value)}" for key, value in settings.items())
-        + "\n",
-        encoding="utf-8",
-    )
-    return subprocess.run(
-        ["bash", str(script)],
-        env={"PATH": os.environ["PATH"], "ROUTE_A_ENV": str(settings_path)},
-        capture_output=True,
-        check=False,
-        timeout=20,
-    )
-
-
 @pytest.mark.parametrize("override", [False, True])
 def test_feed_and_crosswalk_pins_keep_defaults_or_settings_overrides(
     tmp_path: Path, override: bool
@@ -154,7 +125,7 @@ def test_feed_and_crosswalk_pins_keep_defaults_or_settings_overrides(
         if override
         else {}
     )
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         overrides,
         '\ninput_rows\nprintf "crosswalk|%s\\n" "$CROSSWALK_SHA"\n',
@@ -181,7 +152,7 @@ def test_overridden_feed_pin_still_verifies_digest_and_size(
     feed = tmp_path / "new-feed.jsonl"
     payload = b'{"fixture": "new release feed"}\n'
     feed.write_bytes(payload)
-    result = _input_settings_result(
+    result = run_driver_settings(
         tmp_path,
         {
             "FEED": str(feed),
@@ -207,6 +178,727 @@ printf '%s\\n' "${#INPUT_PROBLEMS[@]}"
     assert report["inputs"][0]["status"] == (
         "ok" if mismatch is None else f"{mismatch}_mismatch"
     )
+
+
+@pytest.mark.parametrize("override", [False, True])
+def test_ladder_pins_keep_defaults_or_settings_overrides(
+    tmp_path: Path, override: bool
+) -> None:
+    overrides = {"LADDER_SHA": "d" * 64, "LADDER_BYTES": "456"} if override else {}
+    result = run_driver_settings(tmp_path, overrides, "\ninput_rows\n")
+    assert result.returncode == 0, result.stderr.decode()
+    rows = {
+        row[0]: row[1:]
+        for row in (line.split("|") for line in result.stdout.decode().splitlines())
+    }
+    # The default is the published run's d713 ladder.
+    assert rows["block_ladder_npz"][1:3] == (
+        ["d" * 64, "456"]
+        if override
+        else [
+            "6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233",
+            "18991218",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("rule", "members", "problem"),
+    [
+        ("block_v1", ("block_geoid.npy", "puma.npy"), None),
+        ("block_v1", ("block_geoid.npy",), "has no per-block puma array"),
+        ("block_v1", None, "could not be read to list its arrays"),
+        ("legacy", ("block_geoid.npy",), None),
+    ],
+)
+def test_block_v1_requires_the_ladder_s_puma_array(
+    tmp_path: Path, rule: str, members: tuple[str, ...] | None, problem: str | None
+) -> None:
+    ladder = tmp_path / "ladder.npz"
+    if members is None:
+        ladder.write_bytes(b"not a zip archive\n")
+    else:
+        with zipfile.ZipFile(ladder, "w") as archive:
+            for name in members:
+                archive.writestr(name, b"fixture")
+    payload = ladder.read_bytes()
+    result = run_driver_settings(
+        tmp_path,
+        {
+            "LOCATION_RULE": rule,
+            "LADDER": str(ladder),
+            "LADDER_SHA": hashlib.sha256(payload).hexdigest(),
+            "LADDER_BYTES": str(len(payload)),
+        },
+        """
+# Only the ladder row, with its true digest and size, so any problem is the
+# PUMA check's. Adapt the driver's BSD stat call for CI.
+registered_rows=$(input_rows)
+input_rows() { printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "block_ladder_npz"'; }
+stat() { "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }
+verify_inputs
+printf '%s\\n' ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}
+""",
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    problems = [line for line in result.stdout.decode().splitlines() if line]
+    if problem is None:
+        assert problems == []
+    else:
+        assert len(problems) == 1
+        assert problem in problems[0]
+        assert str(ladder) in problems[0]
+
+
+@pytest.mark.parametrize(
+    "openssl",
+    [
+        # Nothing on stdout: openssl could not open the file.
+        "openssl() { return 1; }",
+        # An error on stdout instead of a digest.
+        "openssl() { echo 'Operation not permitted'; }",
+        # A digest-shaped line that is not 64 hex digits.
+        "openssl() { echo '0123 *x'; }",
+    ],
+)
+def test_an_input_openssl_cannot_read_is_unreadable_not_an_empty_digest(
+    tmp_path: Path, openssl: str
+) -> None:
+    # On 2026-11-17 a launchd job's /usr/bin/openssl could not read the
+    # archive drive, and sha_of turned that into an empty digest. Now it
+    # prints nothing and fails, and the input is reported as unreadable.
+    feed = tmp_path / "new-feed.jsonl"
+    payload = b'{"fixture": "feed"}\n'
+    feed.write_bytes(payload)
+    result = run_driver_settings(
+        tmp_path,
+        {
+            "FEED": str(feed),
+            "FEED_SHA": hashlib.sha256(payload).hexdigest(),
+            "FEED_BYTES": str(len(payload)),
+        },
+        f"""
+registered_rows=$(input_rows)
+input_rows() {{ printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "release_ledger_facts"'; }}
+stat() {{ "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }}
+{openssl}
+if out=$(sha_of "{feed}"); then echo "sha_of ok [$out]"; else echo "sha_of failed [$out]"; fi
+verify_inputs
+printf '%s\\n' "${{INPUT_PROBLEMS[@]}}"
+""",
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    assert lines[0] == "sha_of failed []"
+    assert lines[1:] == [f"release_ledger_facts could not be read to hash it: {feed}"]
+    report = json.loads((tmp_path / "run_root" / "inputs.resolved.json").read_text())
+    assert report["inputs"][0]["status"] == "unreadable"
+    assert report["inputs"][0]["observed_sha256"] == ""
+
+
+def test_the_crosswalk_and_base_digests_refuse_an_unreadable_file() -> None:
+    # These run after the fetch, where the settings harness stops, so the
+    # source is checked: neither compares nor records an empty digest.
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    assert (
+        'CROSSWALK_ACTUAL=$(sha_of "$W/$CROSSWALK_REL") || fail "could not read'
+        in source
+    )
+    assert 'BASE_SHA=$(sha_of "$BASE_H5") || fail "could not read $BASE_H5' in source
+    assert "[[ $BASE_SHA =~ ^[0-9a-f]{64}$ ]] || fail" in source
+    assert '"$(sha_of ' not in source
+
+
+def _tiny_main(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
+    """A throwaway local repository standing in for ``$MAIN`` at one commit."""
+
+    main = tmp_path / "main-repo"
+    for relative, text in files.items():
+        path = main / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    git = [
+        "git",
+        "-C",
+        str(main),
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+    ]
+    for args in (
+        ["init", "-q"],
+        ["add", "-A"],
+        ["commit", "-q", "-m", "fixture"],
+        # check_commit looks for the commit on origin's branches.
+        ["update-ref", "refs/remotes/origin/main", "HEAD"],
+    ):
+        subprocess.run([*git, *args], check=True, capture_output=True, timeout=20)
+    sha = subprocess.run(
+        [*git, "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    ).stdout.strip()
+    return main, sha
+
+
+_FEED_PIN_REL = "packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json"
+_CROSSWALK_REL = (
+    "packages/microcosm-build/src/microcosm/build/us_runtime/data/"
+    "congressional_district_vintage_crosswalk.csv"
+)
+_EMITTER_FLOOR_REL = (
+    "packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json"
+)
+
+
+def _report_lines(commands: str) -> str:
+    return (
+        commands
+        + """
+for x in ${COMMIT_NOTES[@]+"${COMMIT_NOTES[@]}"}; do printf 'NOTE %s\\n' "$x"; done
+for x in ${COMMIT_BLOCKERS[@]+"${COMMIT_BLOCKERS[@]}"}; do printf 'BLOCKER %s\\n' "$x"; done
+"""
+    )
+
+
+def test_stale_feed_and_crosswalk_blockers_name_the_commits_pins(
+    tmp_path: Path,
+) -> None:
+    """The driver keeps the published run's pins by default; a commit that
+    moved them gets blockers naming the commit's own values, so a rerun's
+    settings can copy them."""
+
+    crosswalk = "state,district\nCT,1\n"
+    main, sha = _tiny_main(
+        tmp_path,
+        {
+            _FEED_PIN_REL: json.dumps({"facts_sha256": "c" * 64}, indent=2) + "\n",
+            _CROSSWALK_REL: crosswalk,
+        },
+    )
+    result = run_driver_settings(
+        tmp_path,
+        {"MAIN": str(main), "FEED_SHA": "a" * 64, "CROSSWALK_SHA": "b" * 64},
+        _report_lines(f"\ncheck_commit {sha} {sha}\n"),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    digest = hashlib.sha256(crosswalk.encode()).hexdigest()
+    assert any(
+        line.startswith("BLOCKER ")
+        and f"does not pin facts_sha256 {'a' * 64}" in line
+        and f"it pins {'c' * 64}" in line
+        for line in lines
+    ), lines
+    assert any(
+        line.startswith("BLOCKER ")
+        and f"crosswalk at {sha} is {digest}, not {'b' * 64}" in line
+        for line in lines
+    ), lines
+    # check_commit ends with the emitter check (no floor file here).
+    assert f"NOTE no {_EMITTER_FLOOR_REL} at {sha}; emitter not checked" in lines
+
+
+def test_a_missing_crosswalk_blocks_without_naming_a_digest(tmp_path: Path) -> None:
+    main, sha = _tiny_main(
+        tmp_path,
+        {_FEED_PIN_REL: json.dumps({"facts_sha256": "c" * 64}) + "\n"},
+    )
+    result = run_driver_settings(
+        tmp_path,
+        {"MAIN": str(main), "FEED_SHA": "c" * 64},
+        _report_lines(f"\ncheck_commit {sha} {sha}\n"),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    assert (
+        f"BLOCKER no packaged CD vintage crosswalk at {sha} ({_CROSSWALK_REL})" in lines
+    )
+    assert not [line for line in lines if "set CROSSWALK_SHA" in line]
+
+
+def test_matching_feed_and_crosswalk_pins_are_notes_not_blockers(
+    tmp_path: Path,
+) -> None:
+    crosswalk = "state,district\nCT,1\n"
+    digest = hashlib.sha256(crosswalk.encode()).hexdigest()
+    main, sha = _tiny_main(
+        tmp_path,
+        {
+            _FEED_PIN_REL: json.dumps({"facts_sha256": "c" * 64}, indent=2) + "\n",
+            _CROSSWALK_REL: crosswalk,
+        },
+    )
+    result = run_driver_settings(
+        tmp_path,
+        {"MAIN": str(main), "FEED_SHA": "c" * 64, "CROSSWALK_SHA": digest},
+        _report_lines(f"\ncheck_commit {sha} {sha}\n"),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    lines = result.stdout.decode().splitlines()
+    assert f"NOTE us/chronicle_feed.json at {sha} pins facts_sha256 {'c' * 64}" in lines
+    assert f"NOTE packaged CD vintage crosswalk at {sha} = {digest}" in lines
+    blockers = [line for line in lines if line.startswith("BLOCKER ")]
+    assert not [line for line in blockers if "chronicle_feed.json" in line], blockers
+    assert not [line for line in blockers if "CD vintage crosswalk" in line], blockers
+
+
+def _emitter_stub(
+    where: Path, answer: str, status: int = 0, name: str = "emitter-stub"
+) -> Path:
+    return write_executable(
+        where / name,
+        "#!/bin/bash\n"
+        '[ "$#" = 1 ] && [ "$1" = version ] || exit 64\n'
+        f"printf '%s\\n' {shlex.quote(answer)}\n"
+        f"exit {status}\n",
+    )
+
+
+_FLOOR = '{"minimum_emitter_version": "0.16.0"}\n'
+_GOOD_EMITTER = '{"emitter_version": "0.16.0", "protocol_versions": [1]}'
+
+
+def _emitter_line(floor: str, env: dict[str, str], cwd: Path | None = None) -> str:
+    """The one line ``tools/route_a/check_emitter.py`` prints."""
+
+    result = subprocess.run(
+        [sys.executable, "-I", str(ROUTE_A_TOOLS / "check_emitter.py")],
+        input=floor,
+        env={"PATH": "/usr/bin:/bin", **env},
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1, lines
+    return lines[0]
+
+
+def _assert_problem(line: str, problem: str, required: bool) -> None:
+    assert problem in line, line
+    if required:
+        assert line.startswith("BLOCKER "), line
+        assert "would stop before any work" in line
+    else:
+        assert line.startswith("NOTE "), line
+        assert "without collector telemetry" in line
+
+
+@pytest.mark.parametrize("required", [False, True])
+@pytest.mark.parametrize(
+    ("answer", "status", "problem"),
+    [
+        (_GOOD_EMITTER, 0, None),
+        ('{"emitter_version": "0.17.2rc1", "protocol_versions": [1, 2]}', 0, None),
+        (
+            '{"emitter_version": "0.13.0", "protocol_versions": [1]}',
+            0,
+            "older than the commit's floor 0.16.0",
+        ),
+        (
+            '{"emitter_version": "0.9.10", "protocol_versions": [1]}',
+            0,
+            "older than the commit's floor 0.16.0",
+        ),
+        ("not json", 0, "printed no JSON object"),
+        ('["0.16.0"]', 0, "printed no JSON object"),
+        ('{"emitter_version": "dev"}', 0, "reported no release version"),
+        (
+            '{"emitter_version": "v0.16.0", "protocol_versions": [1]}',
+            0,
+            "reported no release version",
+        ),
+        (_GOOD_EMITTER, 7, "exited 7"),
+    ],
+)
+def test_emitter_check_follows_the_releases_version_rules(
+    tmp_path: Path, answer: str, status: int, problem: str | None, required: bool
+) -> None:
+    """``check_emitter.py`` repeats ``telemetry_emitter._start_emitter``: the
+    version command must exit 0 with a JSON object whose ``emitter_version``
+    starts with a release at or above the floor."""
+
+    env = {"MICROCOSM_EMITTER_COMMAND": str(_emitter_stub(tmp_path, answer, status))}
+    if required:
+        env["MICROCOSM_TELEMETRY_REQUIRED"] = "1"
+    line = _emitter_line(_FLOOR, env)
+    if problem is None:
+        assert line.startswith("NOTE microcosm-emitter 0."), line
+        assert line.endswith("meets the commit's floor 0.16.0")
+        return
+    _assert_problem(line, problem, required)
+
+
+@pytest.mark.parametrize(
+    ("answer", "problem"),
+    [
+        ('{"emitter_version": "0.17.2"}', "printed no list of protocol versions"),
+        (
+            '{"emitter_version": "0.17.2", "protocol_versions": ["1"]}',
+            "printed no list of protocol versions",
+        ),
+        (
+            '{"emitter_version": "0.17.2", "protocol_versions": [2]}',
+            "not protocol version 1",
+        ),
+    ],
+)
+def test_a_required_build_also_needs_protocol_version_1(
+    tmp_path: Path, answer: str, problem: str
+) -> None:
+    command = str(_emitter_stub(tmp_path, answer))
+    required = _emitter_line(
+        _FLOOR,
+        {"MICROCOSM_EMITTER_COMMAND": command, "MICROCOSM_TELEMETRY_REQUIRED": "1"},
+    )
+    _assert_problem(required, problem, True)
+    # The release reads the protocol list only when telemetry is required.
+    optional = _emitter_line(_FLOOR, {"MICROCOSM_EMITTER_COMMAND": command})
+    assert optional.startswith("NOTE microcosm-emitter 0.17.2 at "), optional
+
+
+def test_emitter_command_lookup_follows_the_release(tmp_path: Path) -> None:
+    stub = _emitter_stub(tmp_path, _GOOD_EMITTER)
+    # Padding, Unicode whitespace included, is stripped as str.strip() does.
+    padded = _emitter_line(_FLOOR, {"MICROCOSM_EMITTER_COMMAND": f"\u0085 {stub}\t"})
+    assert (
+        padded
+        == f"NOTE microcosm-emitter 0.16.0 at {stub} meets the commit's floor 0.16.0"
+    )
+    # Unset, the default name on PATH.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    on_path = _emitter_stub(bin_dir, _GOOD_EMITTER, name="microcosm-emitter")
+    found = _emitter_line(_FLOOR, {"PATH": f"{bin_dir}:/usr/bin:/bin"})
+    assert found.startswith(f"NOTE microcosm-emitter 0.16.0 at {on_path} "), found
+    missing = _emitter_line(_FLOOR, {})
+    _assert_problem(
+        missing, "no microcosm-emitter found (microcosm-emitter on PATH)", False
+    )
+    # A relative path resolves against the working directory, and the stages
+    # run in the build worktree, so it is refused even where it resolves.
+    relative = _emitter_line(
+        _FLOOR,
+        {
+            "MICROCOSM_EMITTER_COMMAND": "bin/microcosm-emitter",
+            "MICROCOSM_TELEMETRY_REQUIRED": "1",
+        },
+        cwd=tmp_path,
+    )
+    _assert_problem(relative, "is the relative path 'bin/microcosm-emitter'", True)
+
+
+def test_a_relative_path_entry_before_the_emitter_is_refused(
+    tmp_path: Path,
+) -> None:
+    """``shutil.which`` searches relative and empty PATH entries against the
+    working directory, and the stages run in the build worktree."""
+
+    local = tmp_path / "bin"
+    local.mkdir()
+    _emitter_stub(local, _GOOD_EMITTER, name="microcosm-emitter")
+    required = {"MICROCOSM_TELEMETRY_REQUIRED": "1"}
+    relative = _emitter_line(
+        _FLOOR, {**required, "PATH": "bin:/usr/bin:/bin"}, cwd=tmp_path
+    )
+    _assert_problem(relative, "the relative PATH entry 'bin' comes before", True)
+    empty = _emitter_line(_FLOOR, {**required, "PATH": ":/usr/bin:/bin"}, cwd=local)
+    _assert_problem(empty, "an empty PATH entry (the working directory)", True)
+    # Found in an absolute entry first: the relative one after it is never
+    # searched.
+    absolute = tmp_path / "abs"
+    absolute.mkdir()
+    found = _emitter_stub(absolute, _GOOD_EMITTER, name="microcosm-emitter")
+    line = _emitter_line(
+        _FLOOR, {**required, "PATH": f"{absolute}:bin:/usr/bin"}, cwd=tmp_path
+    )
+    assert line.startswith(f"NOTE microcosm-emitter 0.16.0 at {found} "), line
+    # An absolute MICROCOSM_EMITTER_COMMAND does not search PATH.
+    line = _emitter_line(
+        _FLOOR,
+        {**required, "PATH": "bin:/usr/bin", "MICROCOSM_EMITTER_COMMAND": str(found)},
+        cwd=tmp_path,
+    )
+    assert line.startswith(f"NOTE microcosm-emitter 0.16.0 at {found} "), line
+
+
+@pytest.mark.parametrize("required", [False, True])
+def test_undecodable_version_output_is_a_failed_run_as_in_the_release(
+    tmp_path: Path, required: bool
+) -> None:
+    """The release catches any exception from ``version`` (a decoding error
+    included) and goes on without an emitter unless telemetry is required."""
+
+    stub = write_executable(
+        tmp_path / "bytes-emitter",
+        "#!/bin/bash\n"
+        f"printf '%s\\n' {shlex.quote(_GOOD_EMITTER)}\n"
+        "printf '\\377\\n' >&2\n",
+    )
+    env = {"MICROCOSM_EMITTER_COMMAND": str(stub)}
+    if required:
+        env["MICROCOSM_TELEMETRY_REQUIRED"] = "1"
+    line = _emitter_line(_FLOOR, env)
+    _assert_problem(line, "could not be run (UnicodeDecodeError)", required)
+
+
+def test_a_version_command_that_hangs_is_cut_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "route_a_check_emitter", ROUTE_A_TOOLS / "check_emitter.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.TIMEOUT_SECONDS == 15.0  # the release's STARTUP_TIMEOUT_SECONDS
+    monkeypatch.setattr(module, "TIMEOUT_SECONDS", 0.5)
+    hang = write_executable(tmp_path / "hang", "#!/bin/bash\nexec sleep 30\n")
+    monkeypatch.setenv("MICROCOSM_EMITTER_COMMAND", str(hang))
+    monkeypatch.setenv("MICROCOSM_TELEMETRY_REQUIRED", "1")
+    _assert_problem(module.check(_FLOOR), "did not answer within 0.5 s", True)
+
+
+@pytest.mark.parametrize(
+    "floor",
+    [
+        '{"minimum_emitter_version": "0.16.0junk"}',
+        '{"minimum_emitter_version": "0.16"}',
+        '{"minimum_emitter_version": ""}',
+        "{}",
+        "not json",
+    ],
+)
+def test_a_floor_the_release_cannot_read_blocks(tmp_path: Path, floor: str) -> None:
+    command = str(_emitter_stub(tmp_path, _GOOD_EMITTER))
+    line = _emitter_line(floor, {"MICROCOSM_EMITTER_COMMAND": command})
+    assert line.startswith("BLOCKER the commit's minimum_emitter_version.json"), line
+
+
+@pytest.mark.parametrize("setting", ["yes", "true", " 1", ""])
+def test_a_telemetry_setting_the_release_refuses_blocks(
+    tmp_path: Path, setting: str
+) -> None:
+    command = str(_emitter_stub(tmp_path, _GOOD_EMITTER))
+    line = _emitter_line(
+        _FLOOR,
+        {"MICROCOSM_EMITTER_COMMAND": command, "MICROCOSM_TELEMETRY_REQUIRED": setting},
+    )
+    assert line == (
+        f"BLOCKER MICROCOSM_TELEMETRY_REQUIRED is {setting!r}; the release "
+        "accepts only 1, 0 or unset and refuses anything else"
+    )
+
+
+def _driver_emitter(tmp_path: Path, overrides: dict[str, str], sha: str) -> list[str]:
+    result = run_driver_settings(
+        tmp_path,
+        overrides,
+        _report_lines(
+            f"\nSCRIPT_DIR={shlex.quote(str(ROUTE_A_TOOLS))}\n"
+            f"COMMIT_NOTES=(); COMMIT_BLOCKERS=()\ncheck_emitter {sha}\n"
+        ),
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    return result.stdout.decode().splitlines()
+
+
+def test_driver_settings_reach_the_emitter_check_and_the_stages(tmp_path: Path) -> None:
+    """Settings-file values are exported, so the check and the stages (which
+    inherit the driver's environment) see them."""
+
+    main, sha = _tiny_main(tmp_path, {_EMITTER_FLOOR_REL: _FLOOR})
+    old = str(_emitter_stub(tmp_path, '{"emitter_version": "0.13.0"}'))
+    good = str(_emitter_stub(tmp_path, _GOOD_EMITTER, name="good-emitter"))
+    required = {"MAIN": str(main), "MICROCOSM_TELEMETRY_REQUIRED": "1"}
+    assert _driver_emitter(
+        tmp_path, {**required, "MICROCOSM_EMITTER_COMMAND": old}, sha
+    ) == [
+        f"BLOCKER microcosm-emitter 0.13.0 at {old} is older than the commit's floor "
+        "0.16.0 (uv tool install --upgrade 'microcosm-emitter>=0.16.0', or point "
+        "MICROCOSM_EMITTER_COMMAND at a newer one); MICROCOSM_TELEMETRY_REQUIRED=1, "
+        "so the release would stop before any work"
+    ]
+    assert _driver_emitter(
+        tmp_path, {**required, "MICROCOSM_EMITTER_COMMAND": good}, sha
+    ) == [f"NOTE microcosm-emitter 0.16.0 at {good} meets the commit's floor 0.16.0"]
+    exported = run_driver_settings(
+        tmp_path,
+        {**required, "MICROCOSM_EMITTER_COMMAND": good},
+        "\nprintenv MICROCOSM_TELEMETRY_REQUIRED\nprintenv MICROCOSM_EMITTER_COMMAND\n",
+    )
+    assert exported.stdout.decode().splitlines() == ["1", good]
+
+
+def test_the_emitter_floor_is_read_at_the_requested_commit(tmp_path: Path) -> None:
+    """``--resolve`` reads the floor of the commit it checks, not of the
+    checkout: an older commit with a lower floor accepts an older emitter."""
+
+    main, older = _tiny_main(
+        tmp_path, {_EMITTER_FLOOR_REL: '{"minimum_emitter_version": "0.13.0"}\n'}
+    )
+    (main / _EMITTER_FLOOR_REL).write_text(_FLOOR, encoding="utf-8")
+    git = ["git", "-C", str(main), "-c", "user.name=fixture"]
+    git += ["-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false"]
+    git += ["-c", "core.hooksPath=/dev/null"]
+    subprocess.run([*git, "commit", "-qam", "raise"], check=True, timeout=20)
+    old = str(
+        _emitter_stub(
+            tmp_path, '{"emitter_version": "0.13.0", "protocol_versions": [1]}'
+        )
+    )
+    settings = {
+        "MAIN": str(main),
+        "MICROCOSM_TELEMETRY_REQUIRED": "1",
+        "MICROCOSM_EMITTER_COMMAND": old,
+    }
+    assert _driver_emitter(tmp_path, settings, older) == [
+        f"NOTE microcosm-emitter 0.13.0 at {old} meets the commit's floor 0.13.0"
+    ]
+    line = _driver_emitter(tmp_path, settings, "HEAD")
+    assert len(line) == 1 and "older than the commit's floor 0.16.0" in line[0]
+
+
+def test_emitter_check_skips_a_commit_without_a_floor(tmp_path: Path) -> None:
+    main, sha = _tiny_main(tmp_path, {"README.md": "fixture\n"})
+    assert _driver_emitter(
+        tmp_path,
+        {"MAIN": str(main), "MICROCOSM_EMITTER_COMMAND": str(tmp_path / "never-run")},
+        sha,
+    ) == [f"NOTE no {_EMITTER_FLOOR_REL} at {sha}; emitter not checked"]
+
+
+_SYNC_SHA = "d" * 40
+
+
+def _ensure_worktree(
+    tmp_path: Path,
+    overrides: dict[str, str],
+    marker: str | None = None,
+    environment: str = "",
+) -> tuple[subprocess.CompletedProcess[bytes], Path]:
+    """Run ``ensure_worktree`` with stub ``git`` and ``uv``; ``marker`` is an
+    earlier sync's ``.route_a_synced`` in a worktree that already exists, and
+    ``environment`` is shell run first (exports a caller's shell would hand
+    down). The stub refuses ``--locked`` whenever ``UV_FROZEN`` is set; uv
+    0.11 refuses it beside a true value and fails to parse an empty one."""
+
+    recorded = tmp_path / "uv-args"
+    uv = write_executable(
+        tmp_path / "uv-stub",
+        "#!/bin/bash\n"
+        'if [ -n "${UV_FROZEN+set}" ]; then\n'
+        '  for a in "$@"; do\n'
+        '    [ "$a" != --locked ] || {\n'
+        "      echo 'error: the argument `--locked` cannot be used with `UV_FROZEN`' >&2\n"
+        "      exit 2\n"
+        "    }\n"
+        "  done\n"
+        "fi\n"
+        f'printf "%s\\n" "$@" > {shlex.quote(str(recorded))}\n'
+        "mkdir -p .venv/bin\n"
+        "printf '#!/bin/bash\\nexit 0\\n' > .venv/bin/python\n"
+        "chmod +x .venv/bin/python\n",
+    )
+    if marker is not None:
+        venv = tmp_path / "wt_root" / f"microcosm-route-a-{_SYNC_SHA[:12]}" / ".venv"
+        venv.mkdir(parents=True)
+        (venv / ".route_a_synced").write_text(marker, encoding="utf-8")
+    commands = (
+        "\ngit() {\n"
+        '  case "$3" in\n'
+        '    worktree) mkdir -p "$6" ;;\n'
+        "    status) : ;;\n"
+        '    rev-parse) printf "%s\\n" "$FIXTURE_SHA" ;;\n'
+        "  esac\n"
+        "}\n"
+        f"FIXTURE_SHA={_SYNC_SHA}\n"
+        + environment
+        + "\n"
+        + _function("ensure_worktree")
+        + '\nensure_worktree "$FIXTURE_SHA"\n'
+    )
+    run_root = tmp_path / "run-root"
+    run_root.mkdir()
+    result = run_driver_settings(
+        tmp_path, {"UV": str(uv), "RUN_ROOT": str(run_root), **overrides}, commands
+    )
+    return result, recorded
+
+
+@pytest.mark.parametrize("setting", [None, "3.13"])
+def test_worktree_sync_names_its_interpreter(
+    tmp_path: Path, setting: str | None
+) -> None:
+    """A fresh worktree's uv sync names an interpreter the lock has wheels
+    for; without one uv takes the newest installed CPython."""
+
+    overrides = {} if setting is None else {"UV_SYNC_PYTHON": setting}
+    result, recorded = _ensure_worktree(tmp_path, overrides)
+    assert result.returncode == 0, result.stderr.decode()
+    assert recorded.read_text(encoding="utf-8").splitlines() == [
+        "sync",
+        "--python",
+        setting or "3.14",
+        "--all-packages",
+        "--locked",
+        "--extra",
+        "us",
+    ]
+    marker = tmp_path / "wt_root" / f"microcosm-route-a-{_SYNC_SHA[:12]}"
+    synced = (marker / ".venv" / ".route_a_synced").read_text(encoding="utf-8")
+    assert synced.splitlines()[1] == f"python={setting or '3.14'}"
+
+
+@pytest.mark.parametrize("frozen", ["1", ""])
+def test_worktree_sync_drops_an_inherited_uv_frozen(
+    tmp_path: Path, frozen: str
+) -> None:
+    """A driver started from a shell that exports UV_FROZEN=1 (as a profile
+    may) still syncs: uv refuses --locked beside a true UV_FROZEN and fails on
+    an empty one, so the sync drops it."""
+
+    result, recorded = _ensure_worktree(
+        tmp_path, {}, environment=f"export UV_FROZEN={shlex.quote(frozen)}"
+    )
+    assert result.returncode == 0, result.stdout.decode() + result.stderr.decode()
+    assert "--locked" in recorded.read_text(encoding="utf-8").splitlines()
+
+
+@pytest.mark.parametrize(
+    ("marker", "setting", "outcome"),
+    [
+        ("2026-11-16 10:00:00\npython=3.14\n", None, "kept"),
+        ("2026-11-16 10:00:00\npython=3.13\n", "3.13", "kept"),
+        ("2026-11-16 10:00:00\n", None, "unrecorded"),
+        ("2026-11-16 10:00:00\npython=3.13\n", None, "refused"),
+    ],
+)
+def test_a_resumed_worktree_keeps_its_venv_only_for_the_same_interpreter(
+    tmp_path: Path, marker: str, setting: str | None, outcome: str
+) -> None:
+    overrides = {} if setting is None else {"UV_SYNC_PYTHON": setting}
+    result, recorded = _ensure_worktree(tmp_path, overrides, marker)
+    out = result.stdout.decode()
+    assert not recorded.exists(), "a synced worktree is not synced again"
+    if outcome == "refused":
+        assert result.returncode == 1
+        assert "was synced with --python 3.13, not UV_SYNC_PYTHON=3.14" in out
+        assert (tmp_path / "run-root" / "ROUTE_A_FAILED").exists()
+        return
+    assert result.returncode == 0, result.stderr.decode()
+    assert ("before its interpreter was recorded" in out) == (outcome == "unrecorded")
 
 
 def test_shell_scripts_are_valid_bash() -> None:
@@ -306,6 +998,31 @@ def test_release_rejects_invalid_staging_setting(tmp_path: Path, staging: str) -
     )
     assert result.returncode != 0
     assert "ROUTE_A_STAGING" in result.stderr.decode()
+
+
+@pytest.mark.parametrize("rule", ["block_v2", "Block_v1", "block-v1", "legacy "])
+def test_an_unknown_location_rule_is_refused(tmp_path: Path, rule: str) -> None:
+    result = run_driver_settings(tmp_path, {"LOCATION_RULE": rule}, "\n")
+    assert result.returncode == 64
+    assert "LOCATION_RULE must be legacy or block_v1" in result.stderr.decode()
+
+
+@pytest.mark.parametrize("rule", [None, "legacy", "block_v1"])
+def test_check_commit_checks_the_location_flags_only_under_block_v1(
+    tmp_path: Path, rule: str | None
+) -> None:
+    overrides = {} if rule is None else {"LOCATION_RULE": rule}
+    result = run_driver_settings(tmp_path, overrides, '\nprintf "%s" "$BASE_FLAGS"\n')
+    assert result.returncode == 0, result.stderr.decode()
+    flags = result.stdout.decode().split()
+    # The legacy list is the published run's, so an older commit stays clear.
+    for flag in ("--ledger-facts", "--assign-congressional-districts"):
+        assert flag in flags
+    location = {"--location-rule", "--location-seed"}
+    if rule == "block_v1":
+        assert location <= set(flags)
+    else:
+        assert not location & set(flags)
 
 
 @pytest.mark.parametrize(
@@ -494,3 +1211,466 @@ def test_route_a_sources_contain_no_machine_paths_or_credentials() -> None:
         source = path.read_text(encoding="utf-8")
         assert "/Users/" not in source, path.name
         assert not credential.search(source), path.name
+
+
+def test_route_a_preflights_the_build_in_its_release_directory() -> None:
+    """Certification places the build in its tier's release directory, the
+    national release's or the evidence release's (microcosm#1585 item 11), and
+    the publication command that publishes into build folders runs its
+    preflight there (microcosm#1570)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+
+    assert (
+        'if [ "$ROUTE_A_CERTIFY_TIER" = evidence ]; then\n'
+        "  REL_RELEASE=microcosm-us-2024-evidence\n"
+        "else\n"
+        "  REL_RELEASE=microcosm-us-2024-national\n"
+        "fi\n"
+        "REL_DIR=$REL_OUT/releases/$REL_RELEASE\n"
+    ) in source
+    assert '"$W/.venv/bin/microcosm-publish-release-build"' in source
+    assert '"$W/.venv/bin/microcosm-publish-release" ' not in source
+
+
+def test_route_a_hands_over_the_emitter_publication_commands() -> None:
+    """The hand-off record's next step publishes the build through the
+    emitter and then makes it current, in place of tools/publish_release.sh
+    (microcosm#1570)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+
+    assert "tools/publish_release.sh" not in source
+    # Shell-quoted, as the builders' publication_commands are, so a run root
+    # with a space or a shell character still pastes as one argument (review
+    # of #1571).
+    command = '["uv", "run", "microcosm-publish-release-build", rel_dir'
+    assert (
+        f'shlex.join({command}, "--repo-id", "policyengine/populace-us", '
+        '"--artifact-root", art])'
+    ) in source
+    assert (
+        f'shlex.join({command}, "--repo-id", "policyengine/populace-us", "--promote"])'
+    ) in source
+
+
+def test_route_a_stops_after_the_build_and_certifies_only_when_asked() -> None:
+    """The release tool builds and stops; the driver hands the build over
+    unless --certify (or ROUTE_A_CERTIFY=1) asks it to certify it, which reruns
+    no accepted stage (microcosm#1585 item 11, PR 4a)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+
+    assert "--certify) CERTIFY_FLAG=1 ;;" in source
+    assert ': "${ROUTE_A_CERTIFY=0}"' in source
+    assert 'case "$ROUTE_A_CERTIFY" in 0|1)' in source
+    built = source.index('[ -f "$REL_OUT/build_record.json" ]')
+    handoff = source.index('if [ "$ROUTE_A_CERTIFY" != 1 ]; then')
+    certify = source.index("run_stage certify 0")
+    certified = source.index('[ -f "$REL_DIR/release_manifest.json" ]')
+    preflight = source.index("run_stage preflight-release")
+    assert built < handoff < certify < certified < preflight
+    assert '"$RUN_ROOT/ROUTE_A_BUILT.json"' in source
+    # A build-only run whose base preflight is blocked exits 4, as a
+    # certified one does; the example settings name the switch.
+    built_only = source[handoff:certify]
+    assert built_only.index('if [ "$PF_BLOCKED" = 1 ]; then') < built_only.index(
+        "exit 4"
+    )
+    assert built_only.index("exit 4") < built_only.index("exit 0")
+    example = (ROUTE_A_TOOLS / "route_a.env.example").read_text(encoding="utf-8")
+    assert ': "${ROUTE_A_CERTIFY=0}"' in example
+    # The certify stage runs the command certify_command builds, in the
+    # release stage's environment.
+    assert (
+        "  certify_command\n"
+        '  write_config certify 110 "$RELEASE_RAM_GIB" 45 '
+        '"${CERTIFY_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- \\\n'
+        '    "${CERTIFY_ARGV[@]}"\n'
+    ) in source
+
+
+def _certify_argv(
+    staging: str | None, *, tier: str | None = None, owners: str | None = None
+) -> list[str]:
+    settings = {
+        "W": "/fixture/worktree",
+        "REL_OUT": "/fixture/release-out",
+        "TOKEN_WRAPPER": str(ROUTE_A_TOOLS / "with_hf_token.sh"),
+        "AGENT_SECRET": "/fixture/agent-secret",
+    }
+    script = "set -eu\nfail() { printf '%s\\n' \"$*\" >&2; exit 1; }\n"
+    script += "\n".join(
+        f"{key}={shlex.quote(value)}" for key, value in settings.items()
+    )
+    script += (
+        "\nunset ROUTE_A_STAGING ROUTE_A_CERTIFY_TIER ROUTE_A_EVIDENCE_FAILURE_OWNERS\n"
+    )
+    if staging is not None:
+        script += f"ROUTE_A_STAGING={shlex.quote(staging)}\n"
+    if tier is not None:
+        script += f"ROUTE_A_CERTIFY_TIER={shlex.quote(tier)}\n"
+    if owners is not None:
+        script += f"ROUTE_A_EVIDENCE_FAILURE_OWNERS={shlex.quote(owners)}\n"
+    script += _function("certify_command")
+    script += '\ncertify_command\nprintf "%s\\0" "${CERTIFY_ARGV[@]}"\n'
+    result = subprocess.run(
+        ["bash", "-c", script], capture_output=True, check=False, timeout=20
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    return result.stdout.decode().rstrip("\0").split("\0")
+
+
+@pytest.mark.parametrize("staging", [None, "1", "0"])
+def test_certification_stages_like_the_release(staging: str | None) -> None:
+    """Certification opens a staging run where its build staged, so it gets
+    the release stage's staging credential; without staging it runs as the
+    release stage does, online and without the HF tokens (microcosm#1585
+    item 11, PR 4a)."""
+    argv = _certify_argv(staging)
+    command = [
+        "/fixture/worktree/.venv/bin/python",
+        "-B",
+        "tools/certify_us_national_build.py",
+        "/fixture/release-out",
+    ]
+    if staging == "0":
+        release = _release_argv("0")
+        launcher = release[: release.index(sys.executable)]
+        assert launcher == [
+            "/usr/bin/env",
+            "-u",
+            "HF_TOKEN",
+            "-u",
+            "HUGGING_FACE_HUB_TOKEN",
+            "-u",
+            "HUGGINGFACE_HUB_TOKEN",
+            "-u",
+            "HUGGING_FACE_TOKEN_MAX",
+        ]
+        assert argv == [*launcher, *command, "--no-staging"]
+    else:
+        assert argv == [
+            str(ROUTE_A_TOOLS / "with_hf_token.sh"),
+            "/fixture/agent-secret",
+            *command,
+        ]
+
+
+@pytest.mark.parametrize("owners", [None, "/fixture/owners with spaces.json"])
+def test_the_certify_stage_passes_the_tier_it_was_given(owners: str | None) -> None:
+    """A build has no tier: ROUTE_A_CERTIFY_TIER chooses it at certification,
+    and the evidence tier passes the per-run owners file (microcosm#1585 item
+    11). The certified tier, the default, passes neither flag."""
+    command = [
+        "/fixture/worktree/.venv/bin/python",
+        "-B",
+        "tools/certify_us_national_build.py",
+        "/fixture/release-out",
+    ]
+    launcher = [str(ROUTE_A_TOOLS / "with_hf_token.sh"), "/fixture/agent-secret"]
+    assert _certify_argv("1", tier="certified") == [*launcher, *command]
+    expected = [*launcher, *command, "--evidence-release"]
+    if owners is not None:
+        expected += ["--evidence-failure-owners", owners]
+    assert _certify_argv("1", tier="evidence", owners=owners) == expected
+
+
+def _settings_file(tmp_path: Path, **overrides: str) -> Path:
+    """A settings file that passes the driver's required-settings checks."""
+    values = {
+        name: str(tmp_path / name.lower())
+        for name in (
+            "PE",
+            "MAIN",
+            "WT_ROOT",
+            "RUN_ROOT",
+            "CHAIN_ROOT",
+            "CHAIN_LOG",
+            "DISK_PATH",
+            "UV",
+            "STORAGE",
+            "EDU",
+            "FEED",
+            "LADDER",
+            "SSI",
+            "SCF",
+            "AGENT_SECRET",
+        )
+    }
+    values["PYTHON"] = sys.executable
+    values.update(overrides)
+    path = tmp_path / "route_a.env"
+    path.write_text(
+        "".join(f"{name}={shlex.quote(value)}\n" for name, value in values.items()),
+        encoding="utf-8",
+    )
+    return path
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"ROUTE_A_CERTIFY_TIER": "gold"}, b"must be certified or evidence"),
+        (
+            {"ROUTE_A_EVIDENCE_FAILURE_OWNERS": "/fixture/owners.json"},
+            b"needs ROUTE_A_CERTIFY_TIER=evidence",
+        ),
+        (
+            {
+                "ROUTE_A_CERTIFY_TIER": "evidence",
+                "ROUTE_A_EVIDENCE_FAILURE_OWNERS": "owners.json",
+            },
+            b"must be an absolute path",
+        ),
+    ],
+)
+def test_route_a_refuses_a_tier_setting_it_cannot_use(
+    tmp_path: Path, overrides: dict[str, str], message: bytes
+) -> None:
+    """The tier settings are checked with the other settings, before the run
+    root is made or any ref is fetched."""
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ROUTE_A_")
+    }
+    env["ROUTE_A_ENV"] = str(_settings_file(tmp_path, **overrides))
+    result = subprocess.run(
+        ["bash", str(ROUTE_A_TOOLS / "route_a.sh"), "--certify"],
+        capture_output=True,
+        env=env,
+        timeout=20,
+    )
+    assert result.returncode == 64, result.stderr.decode()
+    assert message in result.stderr
+    assert not (tmp_path / "run_root").exists()
+
+
+def test_route_a_keeps_a_build_that_failed_its_release_gates() -> None:
+    """A build that failed its release gates writes its H5 and record and
+    exits 3 (the release tool's US_BUILD_FAILED_RELEASE_GATES_EXIT). The
+    release stage accepts that, so the build is kept for an evidence-tier
+    certification rather than moved aside and built again; a build-only run
+    says so and exits 3, and a certify run at the certified tier fails before
+    the certify stage starts (microcosm#1585 item 11)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    tool = (ROUTE_A_TOOLS.parent / "build_us_fiscal_refresh_release.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "US_BUILD_FAILED_RELEASE_GATES_EXIT = 3\n" in tool
+    assert "BUILT_FAILED_GATES_RC=3\n" in source
+    assert 'result_accepted "$RUN/release-sup" "0 $BUILT_FAILED_GATES_RC"' in source
+    assert 'run_stage release "0 $BUILT_FAILED_GATES_RC"' in source
+    assert "run_stage release 0 " not in source
+    handoff = source.index('if [ "$ROUTE_A_CERTIFY" != 1 ]; then')
+    certify = source.index("run_stage certify 0")
+    built_only = source[handoff:certify]
+    assert '"release_gates_failed": failed,' in built_only
+    assert built_only.index('if [ "$BUILD_FAILED_GATES" = 1 ]; then') < (
+        built_only.index("exit 3")
+    )
+    assert built_only.index("exit 3") < built_only.index("exit 4")
+    refusal = built_only.index(
+        'if [ "$BUILD_FAILED_GATES" = 1 ] && [ "$ROUTE_A_CERTIFY_TIER" != evidence ]'
+    )
+    assert built_only.index("exit 0") < refusal
+    example = (ROUTE_A_TOOLS / "route_a.env.example").read_text(encoding="utf-8")
+    assert ': "${ROUTE_A_CERTIFY_TIER=certified}"' in example
+    assert ': "${ROUTE_A_EVIDENCE_FAILURE_OWNERS=}"' in example
+
+
+def test_route_a_removes_the_build_only_hand_off_once_certified() -> None:
+    """Once certification is accepted, the build-only ROUTE_A_BUILT.json an
+    earlier run left no longer holds, whatever the preflights after it find,
+    so it goes then, not only with a run that succeeds (review of #1681)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    certified = source.index('[ -f "$REL_DIR/release_manifest.json" ] || fail')
+    removed = source.index('rm -f "$RUN_ROOT/ROUTE_A_BUILT.json"')
+    preflight = source.index("run_stage preflight-release")
+    assert certified < removed < preflight
+    assert source.count('rm -f "$RUN_ROOT/ROUTE_A_BUILT.json"') == 1
+    readme = " ".join((ROUTE_A_TOOLS / "README.md").read_text(encoding="utf-8").split())
+    assert (
+        "Once certification is accepted the driver removes `ROUTE_A_BUILT.json`"
+        in readme
+    )
+
+
+def _after_the_release_stage(
+    tmp_path: Path,
+    *,
+    returncode: int,
+    certify: str,
+    tier: str = "certified",
+    owners: str = "",
+    blocked: str = "0",
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """Run the driver from the release stage's acceptance to the certify
+    stage, on a release stage that exited ``returncode``."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    start = source.index('[ -f "$REL_OUT/build_record.json" ] || fail')
+    end = source.index("wait_prior_supervisor certify\n")
+    run_root = tmp_path / "run-root"
+    run = run_root / "run-abc"
+    (run / "release-sup").mkdir(parents=True)
+    (run / "release-sup" / "ACCEPTED").write_text(
+        f"returncode={returncode} 2026-11-18 20:00:00\n"
+    )
+    rel_out = run / "release-out" / "populace-us-2024-x"
+    rel_out.mkdir(parents=True)
+    (rel_out / "build_record.json").write_text("{}")
+    settings = {
+        "RUN_ROOT": str(run_root),
+        "RUN": str(run),
+        "REL_OUT": str(rel_out),
+        "RID": "populace-us-2024-x",
+        "PY": sys.executable,
+        "C": "c" * 40,
+        "PEUS": "2.145.3",
+        "BASE_H5": "/fixture/base.h5",
+        "BASE_SHA": "b" * 64,
+        "PF_BLOCKED": blocked,
+        "BUILT_FAILED_GATES_RC": "3",
+        "ROUTE_A_CERTIFY": certify,
+        "ROUTE_A_CERTIFY_TIER": tier,
+        "ROUTE_A_EVIDENCE_FAILURE_OWNERS": owners,
+        "LOG": str(run_root / "route_a.log"),
+    }
+    # The driver's own log, fail and sha_of, so the run is the driver's.
+    helpers = source[source.index("log() {") : source.index("free_bytes() {")]
+    script = "set -u\n"
+    script += "".join(
+        f"{key}={shlex.quote(value)}\n" for key, value in settings.items()
+    )
+    script += helpers + source[start:end]
+    script += "echo REACHED_THE_CERTIFY_STAGE\n"
+    result = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=30
+    )
+    return result, run_root
+
+
+def test_route_a_keeps_a_failed_build_and_certifies_it_only_as_evidence(
+    tmp_path: Path,
+) -> None:
+    """Run, not read: a release stage that exited 3 (a build that failed its
+    release gates) is kept. A build-only run says so and exits 3; a certify
+    run refuses the certified tier before the certify stage, and the evidence
+    tier goes on to it (review of #1681)."""
+    built, root = _after_the_release_stage(tmp_path / "a", returncode=3, certify="0")
+    assert built.returncode == 3, built.stderr
+    hand_off = json.loads((root / "ROUTE_A_BUILT.json").read_text())
+    assert hand_off["release_gates_failed"] is True
+    assert hand_off["certified"] is False
+    assert "ROUTE_A_CERTIFY_TIER=evidence" in hand_off["next"]
+    assert "REACHED_THE_CERTIFY_STAGE" not in built.stdout
+
+    green, root = _after_the_release_stage(tmp_path / "b", returncode=0, certify="0")
+    assert green.returncode == 0, green.stderr
+    assert (
+        json.loads((root / "ROUTE_A_BUILT.json").read_text())["release_gates_failed"]
+        is False
+    )
+    blocked, _ = _after_the_release_stage(
+        tmp_path / "c", returncode=0, certify="0", blocked="1"
+    )
+    assert blocked.returncode == 4, blocked.stderr
+
+    refused, root = _after_the_release_stage(tmp_path / "d", returncode=3, certify="1")
+    assert refused.returncode == 1
+    assert "refuses it at the certified tier" in refused.stdout
+    assert (root / "ROUTE_A_FAILED").is_file()
+    assert "REACHED_THE_CERTIFY_STAGE" not in refused.stdout
+
+    owners = tmp_path / "owners.json"
+    owners.write_text("{}")
+    for case, given in (("e", ""), ("f", str(owners))):
+        evidence, root = _after_the_release_stage(
+            tmp_path / case, returncode=3, certify="1", tier="evidence", owners=given
+        )
+        assert evidence.returncode == 0, evidence.stderr
+        assert "REACHED_THE_CERTIFY_STAGE" in evidence.stdout
+        assert not (root / "ROUTE_A_FAILED").exists()
+        digest = hashlib.sha256(owners.read_bytes()).hexdigest()
+        assert (f"sha256 {digest}" in evidence.stdout) is bool(given)
+    missing, _ = _after_the_release_stage(
+        tmp_path / "g",
+        returncode=3,
+        certify="1",
+        tier="evidence",
+        owners=str(tmp_path / "absent.json"),
+    )
+    assert missing.returncode == 1
+    assert "is not a file" in missing.stdout
+
+
+def test_route_a_checks_the_certification_parser_for_the_tier_flags() -> None:
+    """The flags the certify stage passes are checked against the build
+    commit's certification parser, not its build parser, which declares
+    --evidence-release for its dry run (microcosm#1585 item 11)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    assert (
+        '"$PYTHON" "$SCRIPT_DIR/check_flags.py" --in-function _certify_parser '
+        "$CERTIFY_FLAGS"
+    ) in source
+    checker = _flag_checker()
+    tool = (ROUTE_A_TOOLS.parent / "build_us_fiscal_refresh_release.py").read_text(
+        encoding="utf-8"
+    )
+    flags = ["--evidence-release", "--evidence-failure-owners", "--no-staging"]
+    assert checker.missing_flags(tool, flags, function="_certify_parser") == []
+    # The build parser declares them too, so only the narrowed check tells a
+    # certification parser without the tier apart.
+    assert checker.missing_flags(tool, ["--evidence-release"]) == []
+    without_tier = (
+        "def _certify_parser():\n"
+        "    parser.add_argument('build_dir')\n"
+        "    parser.add_argument('--no-staging')\n"
+        "def _parse_args():\n"
+        "    parser.add_argument('--evidence-release')\n"
+    )
+    assert checker.missing_flags(
+        without_tier, ["--evidence-release"], function="_certify_parser"
+    ) == ["--evidence-release"]
+    assert checker.missing_flags(without_tier, ["--evidence-release"]) == []
+    assert checker.missing_flags("x = 1\n", ["--a"], function="_certify_parser") == [
+        "--a"
+    ]
+
+
+def test_route_a_certifies_an_accepted_build_without_hashing_its_inputs() -> None:
+    """Certification reads none of the raw inputs, which the build verified
+    when it ran, so --certify on an accepted build hashes them neither at the
+    start nor after the wait (microcosm#1585 item 11, PR 4a)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    decided = source.index(
+        'if [ "$ROUTE_A_CERTIFY" = 1 ] && '
+        '[ -f "$RUN_ROOT/run-${C:0:12}/release-sup/ACCEPTED" ]; then'
+    )
+    first = source.index("verify_inputs\nfi\ncheck_commit")
+    waited = source.index('if [ "$CERTIFY_ONLY" != 1 ]; then\n  verify_inputs\n')
+    assert decided < first < waited
+    # The run directory the decision reads is the one the stages use.
+    assert "RUN=$RUN_ROOT/run-${C:0:12}\n" in source
+    # A real run calls it only inside those two guards; --resolve, which
+    # exits before the real run, hashes them as before.
+    real_run = source[source.index("# Real run.") :]
+    calls = [line for line in real_run.splitlines() if line.strip() == "verify_inputs"]
+    assert calls == ["  verify_inputs", "  verify_inputs"]
+
+
+@pytest.mark.parametrize("flag", ["--certify", "--resolve"])
+def test_route_a_parses_its_modes_before_reading_settings(
+    tmp_path: Path, flag: str
+) -> None:
+    script = ROUTE_A_TOOLS / "route_a.sh"
+    env = {**os.environ, "ROUTE_A_ENV": str(tmp_path / "absent.env")}
+    known = subprocess.run(
+        ["bash", str(script), flag], capture_output=True, env=env, timeout=20
+    )
+    assert known.returncode == 64
+    assert b"missing settings" in known.stderr
+    unknown = subprocess.run(
+        ["bash", str(script), "--bogus"], capture_output=True, env=env, timeout=20
+    )
+    assert unknown.returncode == 64
+    assert b"[--resolve|--certify]" in unknown.stderr

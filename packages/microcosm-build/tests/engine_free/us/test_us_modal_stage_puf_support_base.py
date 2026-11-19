@@ -672,19 +672,25 @@ def test_loose_base_plans_are_refused(mutate, message: str) -> None:
 
 
 def test_rerun_template_refuses_validation_until_the_commit_is_selected(capsys) -> None:
+    # The template of Route A's next base plan: since d2603 the default-pool
+    # registration (test_route_a_asec_pool.py holds its years and pins).
     path = ROOT / "docs" / "us-modal-stage-route-a-rerun-base-plan.json"
     data = json.loads(path.read_text())
-    assert data["source"]["commit"] == "PICK_MAIN_COMMIT_ON_2026_10_18"
+    assert data["source"]["commit"] == "PICK_MAIN_COMMIT_FOR_THE_NEXT_CERTIFIED_BUILD"
     assert plan_lib.main(["validate", str(path)]) == 2
     assert (
         "source.commit must be a full 40-hex lowercase sha" in capsys.readouterr().err
     )
     data["source"]["commit"] = _committed_plan().commit
     plan = plan_lib.parse_plan(data)
-    assert plan.tool is plan_lib.US_PUF_SUPPORT_BASE_RERUN
+    assert plan.tool is plan_lib.US_PUF_SUPPORT_BASE_2023_2025
     assert plan.inputs["block_ladder_npz"].sha256 == (
         "6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233"
     )
+    # Its budget and price are the rerun's.
+    assert plan.max_wall_seconds == 14_400
+    assert plan.nonpreemptible
+    assert plan_lib.estimated_usd_at_timeout(plan) == 14.90
 
 
 def test_the_budget_ceiling_is_the_timeout_less_the_base_s_overhead() -> None:
@@ -706,7 +712,7 @@ def test_an_option_that_maps_to_an_owned_flag_is_refused(monkeypatch, flag) -> N
     # A registry mistake: an allowlisted option for a flag the builder sets
     # would pass it twice, and one for a withheld flag would open an escape
     # hatch (--base-h5, --allow-geography-ladder-gate-failures, ...). The
-    # plan is refused, and so is the argv, for every one of the 26 flags.
+    # plan is refused, and so is the argv, for every one of the 29 flags.
     rogue = dataclasses.replace(BASE, options={"x": plan_lib.OptionFlag(flag, str)})
     monkeypatch.setitem(plan_lib.TOOLS, BASE.name, rogue)
     with pytest.raises(plan_lib.PlanError, match=f"runner-owned flag {flag}"):
@@ -755,7 +761,7 @@ def test_an_abbreviation_of_a_withheld_flag_is_refused(monkeypatch, flag) -> Non
 
 
 def _owned_flag_parser():
-    """An argparse parser with the base's 26 owned flags, as the tool's own
+    """An argparse parser with the base's 29 owned flags, as the tool's own
     (4b57d15a2 ``_parse_args``: ``argparse.ArgumentParser()``, so
     ``allow_abbrev`` is on). Each flag takes an optional value, so a bool
     flag and a valued one both parse."""
@@ -833,14 +839,19 @@ def test_the_owned_flags_are_exactly_the_tool_s_flags() -> None:
         plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
         & plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
     )
-    assert len(_OWNED) == 26
+    assert len(_OWNED) == 29
     assert BASE.owned_flags == _OWNED
     assert plan_lib.TOOLS[BASE.name].owned_flags == _OWNED
     assert _tool_flags(BASE_TOOL.read_text()) == _OWNED
 
 
 def test_the_owned_flags_are_the_pinned_tool_s_flags(pinned_source: str) -> None:
-    assert _tool_flags(pinned_source) == _OWNED == BASE.owned_flags
+    # The location flags (#696) arrived after the pinned commit, and the
+    # plan withholds them.
+    location = plan_lib.PUF_SUPPORT_BASE_LOCATION_FLAGS
+    assert location <= plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
+    assert not _tool_flags(pinned_source) & location
+    assert _tool_flags(pinned_source) | location == _OWNED == BASE.owned_flags
 
 
 def test_a_staged_input_whose_bytes_differ_is_refused() -> None:
@@ -2291,22 +2302,35 @@ def test_a_finished_base_pushes_only_its_output_and_evidence(tmp_path: Path) -> 
 def test_write_probe_verdict_sizes_the_mirror_against_the_reserve() -> None:
     stage = BASE.stages["all"]
     gib = 1024**3
-    # The reserve less the stop's grace and the time kept after the mirror
+    # The reserve less the stop's grace, the 60 s the image emitter's
+    # `status` may take after the tool, and the time kept after the mirror
     # for the runner identity, the receipt and the final commit.
     reserve = (
         plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
         - plan_lib.STOP_GRACE_SECONDS
+        - 60
         - plan_lib.RECEIPT_RESERVE_SECONDS
     )
-    # The slowest rate that still mirrors 50 GiB inside that (about 33 MB/s).
+    # The slowest rate that still mirrors 50 GiB inside that (about 34 MB/s).
     floor = 50 * gib / reserve
-    assert floor / 1e6 == pytest.approx(33.1, abs=0.1)
+    assert floor / 1e6 == pytest.approx(34.4, abs=0.1)
     fast = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 1.01))
     assert "problem" not in fast
-    assert fast["mirror_reserve_seconds"] == reserve == 1620
+    assert fast["mirror_reserve_seconds"] == reserve == 1560
     assert fast["receipt_reserve_seconds"] == 120
+    # The 60 s kept for the image emitter's `status` is reported too, with
+    # the stop's grace, and the four figures add up to the reserve.
+    assert fast.get("emitter_status_reserve_seconds") == 60
+    assert fast.get("stop_grace_seconds") == 60
+    assert (
+        fast["mirror_reserve_seconds"]
+        + fast["stop_grace_seconds"]
+        + fast["emitter_status_reserve_seconds"]
+        + fast["receipt_reserve_seconds"]
+        == plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
+    )
     slow = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 0.99))
-    assert "more than the 1620s the runner keeps for the mirror" in slow["problem"]
+    assert "more than the 1560s the runner keeps for the mirror" in slow["problem"]
     # The runbook's one measured volume rate (reads, at least 58 MB/s) fits.
     assert "problem" not in plan_lib.write_probe_verdict(stage, 58_000_000, 1.0)
     acs = plan_lib.US_ACS_LOCAL_RELEASE.stages["materialize"]
@@ -2346,6 +2370,14 @@ def test_the_app_s_write_probe_times_a_committed_copy_and_cleans_up(
 
 RUNBOOK = ROOT / "docs" / "us-modal-stage-runbook.md"
 RUN_ID = "route-a-base-4b57d15a287c"
+#: Where the base tool writes its gate-shadow files, under its ``--out``
+#: (``GATE_BATTERY_SHADOW_DIRECTORY`` and the two file suffixes in
+#: ``microcosm.build.us_runtime.gate_shadow``, for the ``us_base`` scope).
+GATE_SHADOW_DIRECTORY = "gate_battery_shadow"
+GATE_SHADOW_FILES = (
+    "us_base.gate_battery_shadow_comparison.json",
+    "us_base.gate_battery_shadow_report.json",
+)
 
 
 def _hand_off_block() -> str:
@@ -2359,9 +2391,19 @@ def _hand_off_block() -> str:
     return block.replace("RUN=<Route A run directory>\n", 'RUN="$HANDOFF_RUN"\n')
 
 
-def _hand_off(tmp_path: Path, *, config: dict | None = None, run: Path | None = None):
+def _hand_off(
+    tmp_path: Path,
+    *,
+    config: dict | None = None,
+    run: Path | None = None,
+    gate_shadow: bool = False,
+):
     """Run step 7 against a Modal run of the committed plan and a Route A
-    run directory holding the failed local run's checkpoints."""
+    run directory holding the failed local run's checkpoints.
+
+    ``gate_shadow`` gives the Modal run the directory a base writes its
+    gate-shadow files in (microcosm#1635), which its receipt then lists.
+    """
 
     checkout = tmp_path / "checkout"
     checkout.mkdir()
@@ -2372,6 +2414,11 @@ def _hand_off(tmp_path: Path, *, config: dict | None = None, run: Path | None = 
     base_out.mkdir(parents=True)
     (base_out / plan_lib.PUF_SUPPORT_BASE_ARTIFACT).write_bytes(b"\x89HDF base")
     (base_out / "base_populace_us_2024_puf_support.summary.json").write_text("{}")
+    if gate_shadow:
+        shadow = base_out / GATE_SHADOW_DIRECTORY
+        shadow.mkdir()
+        for name in GATE_SHADOW_FILES:
+            (shadow / name).write_text("{}")
     reference = _reference()
     context = {
         "pipeline_sha256": reference["pipeline_sha256"],
@@ -2462,6 +2509,19 @@ def test_the_hand_off_runs_compare_lineage_and_keeps_its_report(
     assert len(list(run.glob("base-checkpoints.local-*"))) == 1
 
 
+def test_the_hand_off_copies_the_base_s_gate_shadow_directory(
+    tmp_path: Path,
+) -> None:
+    # The receipt lists every file under base-out, the gate-shadow files in
+    # their directory included, so the copy has to bring the directory: a
+    # copy of the files alone exits 1 on it and ends the block.
+    proc, run, _ = _hand_off(tmp_path, gate_shadow=True)
+    assert proc.returncode == 0, proc.stderr
+    shadow = run / "base-out" / GATE_SHADOW_DIRECTORY
+    assert sorted(path.name for path in shadow.iterdir()) == list(GATE_SHADOW_FILES)
+    assert (run / "base-sup" / "ACCEPTED").is_file()
+
+
 @pytest.mark.parametrize("seed", ["12345", None])
 def test_the_hand_off_stops_before_writing_when_compare_lineage_fails(
     tmp_path: Path, seed: str | None
@@ -2499,8 +2559,8 @@ def test_the_hand_off_never_overwrites_a_base(tmp_path: Path) -> None:
 def test_the_runbook_names_every_registered_tool() -> None:
     text = RUNBOOK.read_text()
     intro = text[: text.index("Two files do the work")]
-    assert len(plan_lib.TOOLS) == 5
-    assert "Five tools are registered" in intro
+    assert len(plan_lib.TOOLS) == 6
+    assert "Six tools are registered" in intro
     for name, tool in plan_lib.TOOLS.items():
         assert f"`{name}`" in intro, name
         if tool.script is not None:

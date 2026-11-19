@@ -1,0 +1,1 @@
+The NZ Chronicle feed is re-pinned to 8f4cfd57 (PolicyEngine/chronicle#382), adding Stats NZ QES average weekly earnings levels (SBSZ9A ordinary time and SBSZ9Z total, June 2023–June 2026) and Treasury PREFU 2026 annual ordinary-time earnings growth (years ending June 2025–2031); no other NZ fact changes and no target reference moves.

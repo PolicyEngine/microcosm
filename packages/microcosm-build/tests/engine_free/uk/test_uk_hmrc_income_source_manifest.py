@@ -71,7 +71,11 @@ def test_official_hmrc_sources_and_sampling_weights_remain_bound():
     first = _operation(payload, INCOME, "fit_weighted_qrf_stage1")
     second = _operation(payload, INCOME, "fit_weighted_qrf_stage2")
     assert first["source_sampling_weight"] == "FACT"
-    assert first["post_sample_fit_weight"] == "uniform"
+    # microcosm#1276: every rare output's carriers, the rest FACT-weighted
+    # without replacement, each row at FACT over its inclusion probability.
+    assert first["sample_design"] == "rare_carriers_certain"
+    assert first["sample_with_replacement"] is False
+    assert first["post_sample_fit_weight"] == "inverse_inclusion"
     assert first["double_apply_source_weight"] is False
     assert first["seed"] == 42 and second["seed"] == 43
     assert second["weight_mapping"] == "household_to_person"
@@ -122,6 +126,27 @@ def test_official_hmrc_sources_and_sampling_weights_remain_bound():
             "post_sample_fit_weight",
             "FACT",
             "post_sample_fit_weight",
+        ),
+        (
+            INCOME,
+            "fit_weighted_qrf_stage1",
+            "post_sample_fit_weight",
+            "uniform",
+            "post_sample_fit_weight",
+        ),
+        (
+            INCOME,
+            "fit_weighted_qrf_stage1",
+            "sample_with_replacement",
+            True,
+            "sample_with_replacement",
+        ),
+        (
+            INCOME,
+            "fit_weighted_qrf_stage1",
+            "sample_design",
+            "simple_random",
+            "sample_design",
         ),
         (INCOME, "fit_weighted_qrf_stage1", "source_columns", {}, "source_columns"),
         (INCOME, "fit_weighted_qrf_stage1", "seed", 43, "seed drifted"),

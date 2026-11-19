@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import support_channel_column
 from microcosm.build.uk_runtime.uc_capital_coherence import (
     PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+    PROPERTY_CAPITAL_SECURED_DEBT,
     UC_CAPITAL_COARSENING,
     UC_CAPITAL_INCOME_BAND_EDGES,
     UC_CAPITAL_MINIMUM_CELL_DONORS,
@@ -121,9 +122,25 @@ def _frame():
             "would_claim_uc": [row[7] for row in rows],
         }
     )
-    household = pd.DataFrame({"household_id": [row[0] for row in rows]})
+    # Each household is its own survey source here, with the lineage a spine
+    # carries by this stage: its unit's support channel and no high-value copy.
+    household = pd.DataFrame(
+        {
+            "household_id": [row[0] for row in rows],
+            "source_household_id": [row[0] for row in rows],
+            "household_support_channel": [row[3] for row in rows],
+            "household_support_clone_index": [
+                1 if row[3] == "spi" else 0 for row in rows
+            ],
+            "household_is_high_value_support_copy": False,
+            "high_value_support_copy_index": 0,
+        }
+    )
     # No household holds property here; the property-share tests add it.
-    for column in PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES:
+    for column in (
+        *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+        *PROPERTY_CAPITAL_SECURED_DEBT.values(),
+    ):
         household[column] = 0.0
     return uk_national_frame(
         person=person,

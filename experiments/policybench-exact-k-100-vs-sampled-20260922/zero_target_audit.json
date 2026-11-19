@@ -1,0 +1,386 @@
+{
+  "purpose": "Aggregate-only provenance audit of the feed-declared zero EITC controls dominating the national fixed-scale error mean.",
+  "feed": {
+    "path": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl",
+    "sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+    "sha256_verified": true
+  },
+  "fresh_national_design1": {
+    "source_file": "national_all_design1.json",
+    "n_targets": 504,
+    "n_zero_valued_targets": 26
+  },
+  "facts": [
+    {
+      "source_record_id": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+      "feed_line": 22564,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:22564",
+      "value": 0,
+      "value_type": "integer",
+      "unit": "count",
+      "assertion": "observation",
+      "schema_version": "chronicle.consumer_fact.v3",
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "geography": {
+        "id": "0100000US",
+        "level": "country",
+        "name": "United States",
+        "vintage": "2020_census"
+      },
+      "source_cell_keys": [
+        "ledger.source_cell.v1:d079e19d89e2a1a7f426b439",
+        "ledger.source_cell.v1:1a340fdcaf95dcc9c2506e3f",
+        "ledger.source_cell.v1:b45a802f459714f0c8da116d",
+        "ledger.source_cell.v1:662f56d0b5e4aa0bef8b99ec",
+        "ledger.source_cell.v1:eeb447fb00d785aa74ff5327",
+        "ledger.source_cell.v1:726855f7ae231f94ade489e1"
+      ],
+      "source_row_keys": [],
+      "source": {
+        "source_file": "23in25ic.xls",
+        "source_table": "Publication 1304 Table 2.5 EITC by AGI and qualifying children",
+        "source_sha256": "c6a58f637e42e83248b1f6f336fddc5d94ac91e04ccf68b1d089291d2d5fe1a5",
+        "url": "https://www.irs.gov/pub/irs-soi/23in25ic.xls",
+        "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+        "extracted_at": "2026-05-11"
+      },
+      "missing_suppression_quality_status_flags": {}
+    },
+    {
+      "source_record_id": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+      "feed_line": 27766,
+      "feed_citation": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl:27766",
+      "value": 0,
+      "value_type": "integer",
+      "unit": "usd",
+      "assertion": "observation",
+      "schema_version": "chronicle.consumer_fact.v3",
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "geography": {
+        "id": "0100000US",
+        "level": "country",
+        "name": "United States",
+        "vintage": "2020_census"
+      },
+      "source_cell_keys": [
+        "ledger.source_cell.v1:0d74aeec12c638ea228d3b42",
+        "ledger.source_cell.v1:f5ac97c57cdb509a43f6d3bb",
+        "ledger.source_cell.v1:b45a802f459714f0c8da116d",
+        "ledger.source_cell.v1:662f56d0b5e4aa0bef8b99ec",
+        "ledger.source_cell.v1:eeb447fb00d785aa74ff5327",
+        "ledger.source_cell.v1:726855f7ae231f94ade489e1"
+      ],
+      "source_row_keys": [],
+      "source": {
+        "source_file": "23in25ic.xls",
+        "source_table": "Publication 1304 Table 2.5 EITC by AGI and qualifying children",
+        "source_sha256": "c6a58f637e42e83248b1f6f336fddc5d94ac91e04ccf68b1d089291d2d5fe1a5",
+        "url": "https://www.irs.gov/pub/irs-soi/23in25ic.xls",
+        "extraction_method": "CellSelectorSpec and SourceRecordSpec resolved from cells",
+        "extracted_at": "2026-05-11"
+      },
+      "missing_suppression_quality_status_flags": {}
+    }
+  ],
+  "metric": {
+    "scale_definition": "max(abs(target), 1)",
+    "zero_target_scale": 1,
+    "objective_per_target_cap": 10,
+    "target_loss_weights": "equal",
+    "interpretation": "For a zero-valued target, the uncapped fixed-scale error equals the absolute miss divided by one unit of that measure; it is not a conventional percentage relative to a nonzero target. The capped objective bounds each such contribution at 10."
+  },
+  "source_code_evidence": [
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/ledger_targets.py:901",
+      "finding": "The numeric-fact validator rejects missing, invalid, or non-finite values; finite zero is accepted."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/ledger_targets.py:773",
+      "finding": "Identity references use the source numeric value."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/ledger_targets.py:820",
+      "finding": "The numeric value becomes the TargetSpec value."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:2130",
+      "finding": "Latest-observation selection can skip a zero only through the zero-as-missing helper."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:2148",
+      "finding": "The zero-as-missing helper applies only to specified CMS Medicaid roles, not IRS EITC."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:1245",
+      "finding": "EITC AGI-control uprating multiplies the source target value by a factor, preserving zero."
+    },
+    {
+      "citation": "packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:1259",
+      "finding": "The all-return EITC uprating fallback also multiplies the target value by a factor, preserving zero."
+    },
+    {
+      "citation": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:594",
+      "finding": "Default fixed target scales use the absolute target with a one-unit floor."
+    },
+    {
+      "citation": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:532",
+      "finding": "The reported canonical objective caps scaled absolute errors before averaging."
+    },
+    {
+      "citation": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:576",
+      "finding": "The optimization loss applies the same cap using torch.clamp."
+    }
+  ],
+  "conclusions": {
+    "declared_zero_in_consumer_feed": true,
+    "explicit_missing_or_suppression_flag_found": false,
+    "underlying_workbook_checked": true,
+    "underlying_source_cells_checked": true,
+    "zero_semantics_verified": false,
+    "interpretation": "Before the 2026-11-11 workbook check: The feed declares numeric observations equal to zero. Available metadata does not establish whether those zeros reflect the substantive source data or an extraction/source-data issue. They must not be described as suppressed or missing on this evidence.",
+    "deduction": "Capped-fit improvement can coexist with higher uncapped error because errors beyond the cap make equal contributions to the fitted objective. This alone does not establish more accurate EITC estimation.",
+    "targets_changed_for_this_audit": false,
+    "target_handling": "All targets remain unchanged across the designs in this run.",
+    "interpretation_after_workbook_check": "The 0 is IRS's published value. The workbook's own all-returns rows suggest that the cell holds about 311,000 returns; see workbook_check. IRS has not confirmed this reading."
+  },
+  "workbook_check": {
+    "checked_on": "2026-11-11",
+    "added_after_the_run": true,
+    "method": "Each workbook's first sheet, read with xlrd. Per AGI row, the sum of the four qualifying-children blocks (returns in columns Z, AP, BF and BV; EITC amount in $ thousands in AA, AQ, BG and BW) minus the all-returns EITC columns (J returns, K amount). Rows whose residual exceeds the workbook's rounding (2) are listed.",
+    "workbooks": [
+      {
+        "tax_year": 2023,
+        "chronicle_path": "db/data/irs_soi/table_2_5/23in25ic.xls",
+        "chronicle_commit": "1e42498f263323904bc5831972320e14621b1256",
+        "sha256": "c6a58f637e42e83248b1f6f336fddc5d94ac91e04ccf68b1d089291d2d5fe1a5",
+        "agi_rows_checked": 28,
+        "rows_beyond_rounding": [
+          {
+            "sheet_row": 31,
+            "agi_row": "$20,000 under $25,000",
+            "children_minus_all_returns": {
+              "returns": 1187,
+              "amount_thousands": 297
+            },
+            "child_blocks_returns": {
+              "none": 160909,
+              "one": 1048096,
+              "two": 741595,
+              "three_or_more": 407149
+            },
+            "child_blocks_amount_thousands": {
+              "none": 23243,
+              "one": 3963800,
+              "two": 4682050,
+              "three_or_more": 2919017
+            },
+            "all_returns": {
+              "returns": 2356562,
+              "amount_thousands": 11587813
+            }
+          },
+          {
+            "sheet_row": 32,
+            "agi_row": "$25,000 under $30,000",
+            "children_minus_all_returns": {
+              "returns": 310212,
+              "amount_thousands": 1723778
+            },
+            "child_blocks_returns": {
+              "none": 0,
+              "one": 958331,
+              "two": 645858,
+              "three_or_more": 635160
+            },
+            "child_blocks_amount_thousands": {
+              "none": 0,
+              "one": 2978715,
+              "two": 3574403,
+              "three_or_more": 3812252
+            },
+            "all_returns": {
+              "returns": 1929137,
+              "amount_thousands": 8641592
+            }
+          },
+          {
+            "sheet_row": 33,
+            "agi_row": "$30,000 under $35,000",
+            "children_minus_all_returns": {
+              "returns": -311398,
+              "amount_thousands": -1724074
+            },
+            "child_blocks_returns": {
+              "none": 0,
+              "one": 1024692,
+              "two": 629271,
+              "three_or_more": 0
+            },
+            "child_blocks_amount_thousands": {
+              "none": 0,
+              "one": 2406097,
+              "two": 2844637,
+              "three_or_more": 0
+            },
+            "all_returns": {
+              "returns": 1965361,
+              "amount_thousands": 6974808
+            }
+          }
+        ],
+        "rows_beyond_rounding_sum": {
+          "returns": 1,
+          "amount_thousands": 1
+        },
+        "other_rows_max_abs_residual": {
+          "returns": 1,
+          "amount_thousands": 1
+        },
+        "matches_feed_source_sha256": true,
+        "three_or_more_children_column": [
+          {
+            "sheet_row": 31,
+            "agi_row": "$20,000 under $25,000",
+            "published": {
+              "returns": 407149,
+              "amount_thousands": 2919017
+            },
+            "published_minus_residual": {
+              "returns": 405962,
+              "amount_thousands": 2918720
+            }
+          },
+          {
+            "sheet_row": 32,
+            "agi_row": "$25,000 under $30,000",
+            "published": {
+              "returns": 635160,
+              "amount_thousands": 3812252
+            },
+            "published_minus_residual": {
+              "returns": 324948,
+              "amount_thousands": 2088474
+            }
+          },
+          {
+            "sheet_row": 33,
+            "agi_row": "$30,000 under $35,000",
+            "published": {
+              "returns": 0,
+              "amount_thousands": 0
+            },
+            "published_minus_residual": {
+              "returns": 311398,
+              "amount_thousands": 1724074
+            }
+          },
+          {
+            "sheet_row": 34,
+            "agi_row": "$35,000 under $40,000",
+            "published": {
+              "returns": 312506,
+              "amount_thousands": 1408203
+            },
+            "published_minus_residual": {
+              "returns": 312506,
+              "amount_thousands": 1408203
+            }
+          }
+        ]
+      },
+      {
+        "tax_year": 2022,
+        "chronicle_path": "db/data/irs_soi/table_2_5/22in25ic.xls",
+        "chronicle_commit": "1e42498f263323904bc5831972320e14621b1256",
+        "sha256": "bd890a09ef3a35c577dcc9d94272a7ee40d836453c686d70599372b48b863884",
+        "agi_rows_checked": 28,
+        "rows_beyond_rounding": [],
+        "rows_beyond_rounding_sum": {
+          "returns": 0,
+          "amount_thousands": 0
+        },
+        "other_rows_max_abs_residual": {
+          "returns": 1,
+          "amount_thousands": 1
+        }
+      },
+      {
+        "tax_year": 2021,
+        "chronicle_path": "db/data/irs_soi/table_2_5/21in25ic.xls",
+        "chronicle_commit": "1e42498f263323904bc5831972320e14621b1256",
+        "sha256": "d4429c04a101b70cf23c6412f3246a3bc6a7244bad99f3561e54c302007f3285",
+        "agi_rows_checked": 28,
+        "rows_beyond_rounding": [
+          {
+            "sheet_row": 32,
+            "agi_row": "$25,000 under $30,000",
+            "children_minus_all_returns": {
+              "returns": 107558,
+              "amount_thousands": 26117
+            },
+            "child_blocks_returns": {
+              "none": 166385,
+              "one": 1293601,
+              "two": 749377,
+              "three_or_more": 328472
+            },
+            "child_blocks_amount_thousands": {
+              "none": 29007,
+              "one": 2894812,
+              "two": 3315702,
+              "three_or_more": 1736027
+            },
+            "all_returns": {
+              "returns": 2430277,
+              "amount_thousands": 7949431
+            }
+          },
+          {
+            "sheet_row": 36,
+            "agi_row": "$45,000 under $50,000",
+            "children_minus_all_returns": {
+              "returns": -107557,
+              "amount_thousands": -26118
+            },
+            "child_blocks_returns": {
+              "none": 0,
+              "one": 0,
+              "two": 344449,
+              "three_or_more": 244332
+            },
+            "child_blocks_amount_thousands": {
+              "none": 0,
+              "one": 0,
+              "two": 314654,
+              "three_or_more": 367367
+            },
+            "all_returns": {
+              "returns": 696338,
+              "amount_thousands": 708139
+            }
+          }
+        ],
+        "rows_beyond_rounding_sum": {
+          "returns": 1,
+          "amount_thousands": -1
+        },
+        "other_rows_max_abs_residual": {
+          "returns": 1,
+          "amount_thousands": 2
+        }
+      }
+    ],
+    "reading": "TY2023: the three-or-more cell at $30,000 to $35,000 prints a numeric 0 with no disclosure marker. The child blocks exceed the all-returns columns by 310,212 returns at $25,000 to $30,000 and by 1,187 at $20,000 to $25,000, and fall 311,398 returns ($1,724,074 thousand) short at $30,000 to $35,000; the three residuals sum to 1 return. Subtracting each residual from the three-or-more column gives a smooth column, while the other child columns already run smoothly. The likeliest reading is that IRS placed the $30,000 to $35,000 cell's returns and amount in the $25,000 to $30,000 row (and a few in the $20,000 to $25,000 row). IRS has not confirmed this. TY2021 shows the same pattern in the one-child column ($45,000 to $50,000 prints 0; its returns sit in the $25,000 to $30,000 row); TY2022 shows none.",
+    "conclusions_before_this_check": {
+      "underlying_workbook_checked": false,
+      "underlying_source_cells_checked": false,
+      "zero_semantics_verified": false
+    }
+  }
+}

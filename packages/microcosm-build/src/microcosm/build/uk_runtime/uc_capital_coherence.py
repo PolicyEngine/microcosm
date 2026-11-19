@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,7 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_spine import UC_CAPITAL_UNAVAILABLE
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -63,6 +65,12 @@ UC_CAPITAL_INVESTMENT_INCOME = (
 #: GBP 6,000, 16,000, 50,000 and 200,000 of capital yield at 4%, then above.
 UC_CAPITAL_INCOME_BAND_EDGES = (0.0, 240.0, 640.0, 2_000.0, 8_000.0)
 UC_CAPITAL_IMPLIED_YIELD = 0.04
+#: The donors a cell needs before it stops widening. It counts the cell's
+#: donor benefit-unit rows after the geographic fold, so a high-value
+#: support copy counts as a donor of its own. It is a row threshold, not a
+#: disclosure floor. Whether it should count true sources is for the
+#: geography-first move's audit of K-sensitive constants (microcosm#931),
+#: since switching it can move outputs.
 UC_CAPITAL_MINIMUM_CELL_DONORS = 20
 #: The declared order in which a cell short of donors widens; reporter status
 #: is never coarsened.
@@ -75,13 +83,18 @@ UC_CAPITAL_COARSENING = (
 _UC_CAPITAL_LEVELS = ("exact_cell", *UC_CAPITAL_COARSENING)
 #: The UC capital limits the receipt measures the redraw against.
 _UC_CAPITAL_RECEIPT_LIMITS = (6_000.0, 16_000.0)
-#: policyengine-uk 2.145.0 counts these household property values as Universal
+#: policyengine-uk 2.177.7 counts these household property values as Universal
 #: Credit capital (``property_sources`` under
 #: ``gov.dwp.universal_credit.means_test.capital``, at 90% of value less any
 #: secured debt since 2.136.1) and as Pension Credit capital (the ``sources``
 #: list under ``gov.dwp.pension_credit.income.capital``, beside ``savings`` and
-#: ``corporate_wealth``). A recorded figure of 0 or more is a unit's complete
-#: capital: it replaces every source, property included, and the engine takes
+#: ``share_like_capital``, which is ``corporate_wealth``: the WAS stage writes
+#: its share components to sum to it). From 2.173.3 Council Tax Reduction
+#: counts them too, with owned land, at the same value
+#: (``gov.local_authorities.council_tax_reduction.capital``), but takes the
+#: Universal Credit assessment for a working-age applicant with Universal
+#: Credit, and so the recorded figure. A recorded figure of 0 or more is a unit's
+#: complete capital: it replaces every source, property included, and the engine takes
 #: it as already countable, but TOTCAPB4 counts accounts and assets and no
 #: property. So the recorded figures add the household's property for the unit
 #: that holds it (uk-data#495, microcosm#1095).
@@ -122,18 +135,35 @@ PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES = ("owned_land", *UC_PROPERTY_CAPITAL_SO
 PROPERTY_CAPITAL_OWNERS = "household_reference_person_unit"
 PROPERTY_CAPITAL_OWNER_COLUMN = "is_household_head"
 #: Capital counts at its market value less 10% for the costs of sale (UC Regs
-#: 2013 reg 49(1)(a); SPC Regs 2002 reg 19(a)). Debt secured on the property
-#: is not on the frame and is not netted here (pe-uk#1969).
+#: 2013 reg 49(1)(a); SPC Regs 2002 reg 19(a)).
 PROPERTY_CAPITAL_VALUATION = 0.9
+#: Then less the debt secured on it (UC Regs 2013 reg 49(1)(b); SPC Regs 2002
+#: reg 19(b)), floored at zero class by class, as policyengine-uk values
+#: ``uc_other_residential_property_capital`` and
+#: ``uc_non_residential_property_capital`` from 2.136.1. The was_wealth stage
+#: draws both debts (microcosm#1095); owned land carries none, as the engine
+#: has no input for the debt secured on it (pe-uk#1969).
+PROPERTY_CAPITAL_SECURED_DEBT: Mapping[str, str] = MappingProxyType(
+    {
+        "other_residential_property_value": "other_residential_property_secured_debt",
+        "non_residential_property_value": "non_residential_property_secured_debt",
+    }
+)
 UC_PROPERTY_CAPITAL_SHARE = "uc_property_capital_share"
 PENSION_CREDIT_PROPERTY_CAPITAL_SHARE = "pension_credit_property_capital_share"
 
 
 def _property_share_definition(sources: tuple[str, ...]) -> str:
+    terms = " + ".join(
+        f"max(0, {PROPERTY_CAPITAL_VALUATION:g} x {source} - "
+        f"{PROPERTY_CAPITAL_SECURED_DEBT[source]})"
+        if source in PROPERTY_CAPITAL_SECURED_DEBT
+        else f"{PROPERTY_CAPITAL_VALUATION:g} x {source}"
+        for source in sources
+    )
     return (
-        f"{PROPERTY_CAPITAL_VALUATION:g} x ({' + '.join(sources)}) of the household "
-        "where the unit holds the household reference person "
-        f"({PROPERTY_CAPITAL_OWNER_COLUMN}), else 0"
+        f"({terms}) of the household where the unit holds the household "
+        f"reference person ({PROPERTY_CAPITAL_OWNER_COLUMN}), else 0"
     )
 
 
@@ -276,7 +306,11 @@ def cohere_uc_capital(
     )
     _require_columns(
         household,
-        ("household_id", *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES),
+        (
+            "household_id",
+            *PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES,
+            *PROPERTY_CAPITAL_SECURED_DEBT.values(),
+        ),
         label="household",
     )
 
@@ -318,6 +352,7 @@ def cohere_uc_capital(
         levels = _redraw_spi_capital(
             benunit,
             person=person,
+            household=household,
             weights=weights,
             reporter=reporter,
             base=base,
@@ -416,8 +451,10 @@ def uc_property_capital_share(
     """The household property each unit holds for Universal Credit.
 
     The household's ``UC_PROPERTY_CAPITAL_SOURCES`` at
-    ``PROPERTY_CAPITAL_VALUATION`` for the household reference person's unit,
-    and nothing for any other unit. In benefit-unit row order.
+    ``PROPERTY_CAPITAL_VALUATION`` less the debt secured on each
+    (``PROPERTY_CAPITAL_SECURED_DEBT``, floored at zero per class) for the
+    household reference person's unit, and nothing for any other unit. In
+    benefit-unit row order.
     """
 
     return _reference_person_unit_property(
@@ -448,8 +485,10 @@ def pension_credit_property_capital_share(
     """The household property each unit holds for Pension Credit.
 
     The household's ``PENSION_CREDIT_PROPERTY_CAPITAL_SOURCES`` at
-    ``PROPERTY_CAPITAL_VALUATION`` for the household reference person's unit,
-    and nothing for any other unit. In benefit-unit row order.
+    ``PROPERTY_CAPITAL_VALUATION`` less the debt secured on each
+    (``PROPERTY_CAPITAL_SECURED_DEBT``, floored at zero per class; owned land
+    carries none) for the household reference person's unit, and nothing for
+    any other unit. In benefit-unit row order.
     """
 
     return _reference_person_unit_property(
@@ -473,12 +512,24 @@ def _reference_person_unit_property(
     *,
     sources: tuple[str, ...],
 ) -> np.ndarray:
-    values = household[list(sources)].apply(pd.to_numeric, errors="coerce")
-    property_value = values.sum(axis=1, min_count=len(sources)).to_numpy(
-        dtype=float, na_value=np.nan
-    )
-    if not np.isfinite(property_value).all() or (property_value < 0.0).any():
-        raise ValueError(f"household {list(sources)} must be finite and nonnegative.")
+    debts = [
+        PROPERTY_CAPITAL_SECURED_DEBT[source]
+        for source in sources
+        if source in PROPERTY_CAPITAL_SECURED_DEBT
+    ]
+    values = household[[*sources, *debts]].apply(pd.to_numeric, errors="coerce")
+    raw = values.to_numpy(dtype=float, na_value=np.nan)
+    if not np.isfinite(raw).all() or (raw < 0.0).any():
+        raise ValueError(
+            f"household {[*sources, *debts]} must be finite and nonnegative."
+        )
+    property_value = np.zeros(len(household), dtype=float)
+    for source in sources:
+        net = PROPERTY_CAPITAL_VALUATION * values[source].to_numpy(dtype=float)
+        if source in PROPERTY_CAPITAL_SECURED_DEBT:
+            debt = values[PROPERTY_CAPITAL_SECURED_DEBT[source]].to_numpy(dtype=float)
+            net = np.maximum(net - debt, 0.0)
+        property_value += net
     reference_person = person[PROPERTY_CAPITAL_OWNER_COLUMN]
     if not pd.api.types.is_bool_dtype(reference_person.dtype):
         raise ValueError(f"{PROPERTY_CAPITAL_OWNER_COLUMN} must be a boolean column.")
@@ -507,7 +558,7 @@ def _reference_person_unit_property(
         .isin(person.loc[reference_person, "person_benunit_id"])
         .to_numpy(dtype=bool)
     )
-    return np.where(holds, PROPERTY_CAPITAL_VALUATION * household_value, 0.0)
+    return np.where(holds, household_value, 0.0)
 
 
 def _property_share_receipt(
@@ -527,6 +578,7 @@ def _property_share_receipt(
     receipt: dict[str, object] = {
         "owners": PROPERTY_CAPITAL_OWNERS,
         "valuation": PROPERTY_CAPITAL_VALUATION,
+        "secured_debt": dict(PROPERTY_CAPITAL_SECURED_DEBT),
     }
     for programme, (share, recorded) in shares.items():
         with_share = available & (share > 0.0)
@@ -584,6 +636,7 @@ def _redraw_spi_capital(
     benunit: pd.DataFrame,
     *,
     person: pd.DataFrame,
+    household: pd.DataFrame,
     weights: np.ndarray,
     reporter: np.ndarray,
     base: np.ndarray,
@@ -598,6 +651,10 @@ def _redraw_spi_capital(
     dependent-children band. A cell with fewer than ``minimum_cell_donors``
     donors widens in the declared ``UC_CAPITAL_COARSENING`` order; reporter
     status is never coarsened, and an empty reporter-status pool refuses.
+    Each survey benefit unit donates once, its geographic clones that agree
+    on its cell and capital folded into its first row with their weight, so
+    a cell's donor count does not grow with identical clones
+    (``household_lineage.collapse_geographic_clones``, microcosm#931).
     Returns the number of redrawn units drawn at each level.
     """
 
@@ -607,8 +664,24 @@ def _redraw_spi_capital(
     couple = frs_uc_couple_mask(person, benunit)
     income_band = _investment_income_band(investment)
     last_band = len(UC_CAPITAL_INCOME_BAND_EDGES)
-    # Domain-validated upstream: every non-sentinel value is >= 0.
-    donor = base & (capital >= 0.0) & (weights > 0.0)
+    # Domain-validated upstream: every non-sentinel value is >= 0. A donor's
+    # clones fold where they agree on its cell and the capital it donates;
+    # clones that differ donate apart, each with its clones' weight.
+    donor, donor_weight = collapse_geographic_clones(
+        {"person": person, "benunit": benunit, "household": household},
+        "benunit",
+        base & (capital >= 0.0) & (weights > 0.0),
+        weights,
+        inputs=pd.DataFrame(
+            {
+                "reporter": np.asarray(reporter),
+                "income_band": np.asarray(income_band),
+                "couple": np.asarray(couple),
+                "child_band": np.asarray(child_band),
+                "capital": np.asarray(capital),
+            }
+        ),
+    )
     target_ids = benunit["benunit_id"].to_numpy()
     draws = stable_identity_uniforms(
         target_ids,
@@ -676,7 +749,7 @@ def _redraw_spi_capital(
             {
                 "benunit_id": target_ids[donor_cell],
                 "capital": source_capital[donor_cell],
-                "weight": weights[donor_cell],
+                "weight": donor_weight[donor_cell],
             }
         ).sort_values(["capital", "benunit_id"], kind="mergesort")
         donor_values = donor_rows["capital"].to_numpy(dtype=float)

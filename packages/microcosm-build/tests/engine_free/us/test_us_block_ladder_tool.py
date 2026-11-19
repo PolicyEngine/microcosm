@@ -20,6 +20,7 @@ from microcosm.build.us_runtime import load_us_block_ladder
 from microcosm.build.us_runtime.block_ladder_sources import (
     us_block_ladder_cbsa_coverage_failures,
 )
+from microcosm.build.us_runtime.block_location import load_us_location_ladder
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -33,6 +34,15 @@ _BLOCKS = {
     "090091401011000": ("52070", "03", 10),
 }
 _DE_BLOCK = "100010401001000"
+# Tract (block[:11]) -> PUMA for the per-block ``puma`` array. The PUMA codes
+# are synthetic; only the tract keys must match the blocks above.
+_TRACT_PUMA = {
+    "09001070100": "20101",
+    "09001110100": "20102",
+    "09001020101": "20103",
+    "09009140101": "20104",
+    "10001040100": "00100",
+}
 
 # Rows copied from Census's ct_cou_to_cousub_crosswalk.txt, BOM included.
 _CT_CROSSWALK = (
@@ -151,6 +161,14 @@ def _write_cache(cache: Path, *, with_ct_mcd: bool = True) -> None:
     (cache / "ct_cou_to_cousub_crosswalk.txt").write_text(
         _CT_CROSSWALK, encoding="utf-8"
     )
+    (cache / "2020_Census_Tract_to_2020_PUMA.txt").write_text(
+        "﻿STATEFP,COUNTYFP,TRACTCE,PUMA5CE\n"
+        + "".join(
+            f"{tract[:2]},{tract[2:5]},{tract[5:]},{puma}\n"
+            for tract, puma in _TRACT_PUMA.items()
+        ),
+        encoding="utf-8",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -187,6 +205,16 @@ def test_builder_gives_connecticut_blocks_their_planning_region_cbsa(
         _DE_BLOCK: 20100,
     }
     assert us_block_ladder_cbsa_coverage_failures(ladder) == []
+    location = load_us_location_ladder(out)
+    assert {
+        f"{block:015d}": int(puma)
+        for block, puma in zip(
+            location.block_geoid.tolist(), location.puma.tolist(), strict=True
+        )
+    } == {
+        block: int(f"{block[:2]}{_TRACT_PUMA[block[:11]]}")
+        for block in (*_BLOCKS, _DE_BLOCK)
+    }
     metadata = ladder.metadata
     assert metadata["cbsa_delineated_states"] == ["09", "10"]
     assert metadata["layers"]["cbsa"]["vintage"] == "omb_2023_delineations"

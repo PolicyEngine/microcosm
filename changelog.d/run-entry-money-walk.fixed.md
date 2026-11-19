@@ -1,0 +1,1 @@
+Refuse an invalid factor context and a non-object graph row at transport run entry, for money nodes that select no factor as well as those that do, and add tests for every family factor and every money parameter form.

@@ -37,7 +37,6 @@ reaches this module as a manifest operation parameter.
 
 from __future__ import annotations
 
-import hashlib
 from importlib.resources import files
 
 import numpy as np
@@ -55,6 +54,7 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.cps_carried import (
     CPS_REPORTED_SNAP_RAW_COLUMN,
     reported_snap_receipt_by_spm_unit,
@@ -145,22 +145,7 @@ def _stable_unit_draws(units: pd.DataFrame, *, seed: int) -> np.ndarray:
         )
     else:
         keys = units[_SPM_MEMBERSHIP_COLUMN].astype(str)
-    denominator = float(2**64)
-    return np.asarray(
-        [
-            int.from_bytes(
-                hashlib.blake2b(
-                    f"{seed}:snap_take_up:{key}".encode(),
-                    digest_size=8,
-                ).digest(),
-                byteorder="big",
-                signed=False,
-            )
-            / denominator
-            for key in keys
-        ],
-        dtype=np.float64,
-    )
+    return stable_identity_uniforms(keys, seed=seed, salt="snap_take_up")
 
 
 def derive_us_snap_take_up_from_manifest(

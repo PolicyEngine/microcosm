@@ -1,0 +1,89 @@
+{
+ "excise_quantities": null,
+ "excise_shares": null,
+ "fit_weight_records": [
+  "uk_lcfs_2024_25_consumption:food_and_non_alcoholic_beverages_consumption",
+  "uk_lcfs_2024_25_consumption:alcohol_and_tobacco_consumption",
+  "uk_lcfs_2024_25_consumption:clothing_and_footwear_consumption",
+  "uk_lcfs_2024_25_consumption:housing_water_and_electricity_consumption",
+  "uk_lcfs_2024_25_consumption:household_furnishings_consumption",
+  "uk_lcfs_2024_25_consumption:health_consumption",
+  "uk_lcfs_2024_25_consumption:transport_consumption",
+  "uk_lcfs_2024_25_consumption:communication_consumption",
+  "uk_lcfs_2024_25_consumption:recreation_consumption",
+  "uk_lcfs_2024_25_consumption:education_consumption",
+  "uk_lcfs_2024_25_consumption:restaurants_and_hotels_consumption",
+  "uk_lcfs_2024_25_consumption:miscellaneous_consumption",
+  "uk_lcfs_2024_25_consumption:petrol_spending",
+  "uk_lcfs_2024_25_consumption:diesel_spending",
+  "uk_lcfs_2024_25_consumption:bus_fare_spending",
+  "uk_lcfs_2024_25_consumption:domestic_energy_consumption",
+  "uk_lcfs_2024_25_consumption:electricity_consumption",
+  "uk_lcfs_2024_25_consumption:gas_consumption",
+  "uk_lcfs_2024_25_consumption:liquid_fuel_consumption",
+  "uk_lcfs_2024_25_consumption:solid_fuel_consumption",
+  "uk_lcfs_2024_25_consumption:road_fuel_total",
+  "uk_lcfs_2024_25_consumption:petrol_share_of_road_fuel",
+  "uk_lcfs_2024_25_consumption:uses_energy_prepayment_meter",
+  "uk_lcfs_2024_25_consumption:gas_payer",
+  "uk_lcfs_2024_25_consumption:gas_payer_amount"
+ ],
+ "gates": {
+  "uk_stage_lcfs_consumption_basis": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_bus_pricing": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_energy_rake": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_recomposed_totals": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_road_fuel_incidence": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_road_fuel_level": {
+   "failures": [],
+   "passed": true
+  },
+  "uk_stage_lcfs_consumption_support": {
+   "failures": [],
+   "passed": true
+  }
+ },
+ "households": 78440,
+ "seconds": 79.0,
+ "spine": "spine-b145-treat.h5",
+ "tree": "populace-1359-base",
+ "weighted_totals": {
+  "alcohol_and_tobacco_consumption": 19959355984.09308,
+  "bus_fare_spending": 4213319387.928007,
+  "clothing_and_footwear_consumption": 29970951716.317703,
+  "communication_consumption": 24840636328.75895,
+  "diesel_spending": 10919430829.919106,
+  "domestic_energy_consumption": 48755237020.280426,
+  "education_consumption": 15900314839.150047,
+  "electricity_consumption": 29553493457.817688,
+  "food_and_non_alcoholic_beverages_consumption": 113906273128.46979,
+  "gas_consumption": 19201743562.462746,
+  "has_fuel_consumption": 21441113.692121513,
+  "health_consumption": 21599671689.87272,
+  "household_furnishings_consumption": 73854994938.5559,
+  "housing_water_and_electricity_consumption": 179339989499.86584,
+  "liquid_fuel_consumption": 1864608748.4273286,
+  "miscellaneous_consumption": 90503958600.04283,
+  "petrol_spending": 25936800863.379646,
+  "recreation_consumption": 148919519664.83423,
+  "restaurants_and_hotels_consumption": 84473828227.43405,
+  "solid_fuel_consumption": 114067143.27247077,
+  "transport_consumption": 175692353853.51312,
+  "uses_energy_prepayment_meter": 3446619.8864751486
+ }
+}

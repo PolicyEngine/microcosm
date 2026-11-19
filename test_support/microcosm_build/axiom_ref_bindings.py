@@ -1,0 +1,189 @@
+"""NZ binding inputs frozen at ``ef398616`` for the synthetic reference golden.
+
+This copy includes the entity names, periods and six complete binding rows.
+``axiom_ref_goldens.nz_document`` replaces module hashes for its synthetic
+tree. Keep this snapshot independent of NZ's live binding resource; changes
+require an explicit review of the base-reference golden.
+"""
+
+NZ_BINDINGS_SNAPSHOT = {
+    "entity_names": {"person": "Person", "household": "Household", "family": "Family"},
+    "periods": {
+        "2026-27": {"kind": "tax_year", "start": "2026-04-01", "end": "2027-03-31"}
+    },
+    "bindings": [
+        {
+            "id": "main_benefits_entitlement",
+            "rulespec_path": "nz/statutes/social_security/main_benefits/entitlement.yaml",
+            "sha256": "94332c778b3b5324798f67cb1b30f59c2af4131be8159455814f453bc814f8d0",
+            "entity": "person",
+            "engine_entity": "Person",
+            "period": "2026-27",
+            "role": "receipt_layer_eligibility",
+            "variables": [
+                "entitled_to_jobseeker_support",
+                "entitled_to_sole_parent_support",
+                "entitled_to_supported_living_payment_restricted_or_blind",
+                "entitled_to_supported_living_payment_caring",
+            ],
+            "relations_declared": False,
+            "imports_declared": False,
+            "root_input_count": 60,
+            "notes": "Entitlement predicates only; the weekly rates and income-test "
+            "reductions live in the rates module. Undetermined judgments "
+            "feed take-up through the G4 input-closure table.",
+        },
+        {
+            "id": "main_benefits_rates",
+            "rulespec_path": "nz/statutes/social_security/main_benefits/rates.yaml",
+            "sha256": "7c8ebbc3e62268722529ad790e3f561bbebf807d8a4d67bba24f93cb0809ec39",
+            "entity": "person",
+            "engine_entity": "Person",
+            "period": "2026-27",
+            "role": "receipt_layer_rates_and_as_rate_bridge",
+            "variables": [
+                "jobseeker_support_net_weekly_payment",
+                "sole_parent_support_net_weekly_payment",
+                "supported_living_payment_net_weekly_payment",
+                "jobseeker_support_gross_weekly_rate",
+                "jobseeker_support_weekly_income_test_reduction",
+            ],
+            "relations_declared": False,
+            "imports_declared": False,
+            "root_input_count": 28,
+            "notes": "Also evaluated by the reg 17/18 bridge (as_rate_bridge.json) "
+            "under declared input overrides.",
+        },
+        {
+            "id": "nz_super",
+            "rulespec_path": "nz/statutes/new_zealand_superannuation/core.yaml",
+            "sha256": "d8ea0d15d97081031dcba242e66704c800bcf295e19d73bd173c56bd92d497b4",
+            "entity": "person",
+            "engine_entity": "Person",
+            "period": "2026-27",
+            "role": "receipt_layer_eligibility",
+            "variables": [
+                "entitled_to_new_zealand_superannuation",
+                "nz_super_weekly_amount_before_tax",
+            ],
+            "relations_declared": False,
+            "imports_declared": False,
+            "root_input_count": 13,
+            "notes": "NZ Superannuation eligibility for the O4-calibrated receipt "
+            "layer (MC6).",
+        },
+        {
+            "id": "accommodation_supplement",
+            "rulespec_path": "nz/statutes/social_security/accommodation_supplement/core.yaml",
+            "sha256": "f2feca3c2f1de71623ccd577cd2aed20e8822614aac0ccfc767b5faf4eaa83cc",
+            "entity": "family",
+            "engine_entity": "Family",
+            "period": "2026-27",
+            "role": "entitlement",
+            "variables": [
+                "accommodation_supplement_rounded_weekly_payment",
+                "accommodation_supplement_weekly_amount_before_rounding",
+                "accommodation_supplement_non_rate_entitlement_requirements",
+                "accommodation_supplement_cash_assets_within_limit",
+                "accommodation_supplement_social_housing_exclusion_not_applies",
+                "accommodation_supplement_other_funding_exclusion_not_applies",
+                "accommodation_supplement_non_beneficiary_income_reduction",
+                "accommodation_supplement_weekly_qualifying_accommodation_costs",
+                "accommodation_supplement_maximum_weekly_rate",
+            ],
+            "relations_declared": False,
+            "imports_declared": False,
+            "root_input_count": 39,
+            "notes": "The module takes the reg 17 base rate and reg 18 "
+            'non-beneficiary cutout as inputs (its summary: "for later '
+            'cross-module wiring"); as_rate_bridge.json supplies them '
+            "until rulespec-nz encodes regs 17 and 18. Calibration-tier "
+            "variants add their own AS nodes.",
+        },
+        {
+            "id": "family_tax_credits",
+            "rulespec_path": "nz/statutes/income_tax/family_scheme/tax_credits.yaml",
+            "sha256": "d4bde4b4a72ec495dc516af1c95c9f438c0778d4f07cc02f64f242532a6efe05",
+            "entity": "family",
+            "engine_entity": "Family",
+            "period": "2026-27",
+            "role": "as_rate_bridge_only",
+            "variables": ["family_tax_credit_prescribed_amount"],
+            "relations_declared": False,
+            "imports_declared": False,
+            "root_input_count": 21,
+            "notes": "Used only for the eldest-child family tax credit amount in "
+            "the reg 17 base rate. The module also declares 4 rules on an "
+            "engine Child entity that the NZ schema does not map; the "
+            "bridge requests none of them, and G1/G7 must show the adapter "
+            "compiles the module under that condition or stop. The G8-w4 "
+            "review ran the real engine, at the commit the input closure's "
+            "input_surface.engine names, against the pinned rulespec "
+            "commit above and the input-surface commit: the output "
+            "returned 7921 with only the two care-unit inputs at 1 and 0 "
+            "and the other 15 Family roots at arbitrary values, dropping "
+            "either input raised missing input, AxiomEngine.variables() "
+            "listed the 17 Family roots and no Child name, and "
+            "simulate.counterfactual@1 delivered both inputs as overrides "
+            "with neither column on the frame. A second walk over the "
+            "engine's parsed model reached exactly the two inputs.",
+            "unreached_roots": {
+                "sha256": "d4bde4b4a72ec495dc516af1c95c9f438c0778d4f07cc02f64f242532a6efe05",
+                "outputs": ["family_tax_credit_prescribed_amount"],
+                "names": [
+                    "child_tax_credit_for_entitlement_period",
+                    "entitled_to_in_work_tax_credit",
+                    "family_tax_credit_entitlement_days",
+                    "in_work_tax_credit_allowed_children_count",
+                    "in_work_tax_credit_weekly_periods",
+                    "minimum_family_adjusted_income_tax_liability",
+                    "minimum_family_amount_paid",
+                    "minimum_family_amount_received",
+                    "minimum_family_full_time_earner_weeks",
+                    "minimum_family_scheme_income_attributable_to_full_time_weeks",
+                    "minimum_family_tax_credit_weekly_periods",
+                    "parental_tax_credit_additional_abatement",
+                    "parental_tax_credit_for_entitlement_period",
+                    "wff_family_credit_abatement_days",
+                    "wff_family_scheme_income_for_relationship_period",
+                ],
+                "reason": "family_tax_credit_prescribed_amount "
+                "reads only the eldest and subsequent "
+                "dependent child care units, so no "
+                "request this binding makes reaches these "
+                "15 Family roots. The axiom:nz concept "
+                "mapping binds "
+                "in_work_tax_credit_allowed_children_count, "
+                "but no requested rule reads it, so the "
+                "input-closure producer drops that "
+                "binding from the mapping it checks. A "
+                "binding that requests another output, or "
+                "a module edit that moves the SHA-256 "
+                "above, makes the producer refuse until a "
+                "reviewer re-verifies this list.",
+            },
+        },
+        {
+            "id": "income_tax_schedule_1",
+            "rulespec_path": "nz/statutes/income_tax/schedule_1/individual_income_tax.yaml",
+            "sha256": "5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a",
+            "entity": "person",
+            "engine_entity": "Person",
+            "period": "2026-27",
+            "role": "benefit_gross_up_tax_schedule",
+            "variables": ["individual_income_tax_before_credits"],
+            "relations_declared": False,
+            "imports_declared": False,
+            "root_input_count": 1,
+            "notes": "https://github.com/TheAxiomFoundation/rulespec-nz/blob/8dc2507d5f10a0467c285fed54d018ee37246798/nz/statutes/income_tax/schedule_1/individual_income_tax.yaml "
+            "(SHA-256 "
+            "5ff8e7bf645b85e3d59d612e3c6eb70e09090fb13b40d49c3c5f8a4202e0b82a); "
+            "https://www.workandincome.govt.nz/products/benefit-rates/benefit-rates-april-2026.html. "
+            "Each gross-up inverts annualised Schedule 1 before credits "
+            "over 52 weeks independently of other income, with "
+            "solver-owned taxable_income and no ACC earners levy. NZ Super "
+            "supplies before-tax amounts directly; the gross-up never "
+            "inverts it.",
+        },
+    ],
+}

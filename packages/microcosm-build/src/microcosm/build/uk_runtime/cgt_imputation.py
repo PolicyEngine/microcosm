@@ -191,7 +191,10 @@ UK_CGT_SPINE_MASS_CONSERVATION_REASON = (
 #: Persisted components of the model's ``total_income`` concept (ITA 2007
 #: s.23: taxable income after tax reliefs and before allowances).
 #: ``state_pension_reported`` stands in for ``social_security_income``; the
-#: other taxable benefits inside that concept are not persisted inputs.
+#: other taxable benefits inside that concept are not persisted inputs. ISA
+#: interest is exempt, but gross interest held it before the additive
+#: contract (microcosm#1360), so it stays beside non-ISA interest and the
+#: proxy, and every draw on it, are unchanged.
 UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS: tuple[str, ...] = (
     "employment_income",
     "self_employment_income",
@@ -199,6 +202,7 @@ UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS: tuple[str, ...] = (
     "private_pension_income",
     "property_income",
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "miscellaneous_income",
 )
@@ -2340,7 +2344,9 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "2007 s.23); state_pension_reported stands in for "
                 "social_security_income, whose other taxable benefits are "
                 "not persisted; reliefs such as pension contributions and "
-                "Gift Aid are not deducted."
+                "Gift Aid are not deducted. ISA interest is exempt but stays "
+                "beside non-ISA interest, as gross interest held it before "
+                "microcosm#1360, so the proxy is unchanged."
             ),
             "allowance": (
                 "tapered Personal Allowance from the policy_parameters artifact"

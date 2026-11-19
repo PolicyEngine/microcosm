@@ -40,6 +40,12 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+    gate_outcomes,
+)
 from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
     UKSupportClipResult,
@@ -132,6 +138,7 @@ class UKETBServicesResult:
     nhs_cells: dict[str, object] = field(default_factory=dict)
     donor_uprating: dict[str, object] | None = None
     bus_support_pricing: dict[str, object] | None = None
+    gate_outcomes: dict[str, str] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -143,6 +150,8 @@ class UKETBServicesResult:
             evidence["donor_uprating"] = dict(self.donor_uprating)
         if self.bus_support_pricing is not None:
             evidence["bus_support_pricing"] = dict(self.bus_support_pricing)
+        if self.gate_outcomes:
+            evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.gate_outcomes)
         return evidence
 
 
@@ -190,11 +199,16 @@ class UKETBServicesStageTransform:
             uprating=uprating_factors,
         )
         predictors = recipient_predictors(frame, self.engine)
+        outcomes: dict[str, str] = {}
         draws, records = impute_etb_services(
             donor,
             predictors,
             seed=_qrf_seed(self.stage),
             record_ids=frame.table("household")["household_id"].to_numpy(),
+            gate_calibration=declared_gate_calibration(
+                self.stage, "fit_weighted_qrf_chain"
+            ),
+            outcomes=outcomes,
         )
         clip_result = support_clip_to_donor(
             draws, donor, exempt=support_clip_exempt(self.stage)
@@ -244,6 +258,7 @@ class UKETBServicesStageTransform:
             nhs_cells=nhs_cells,
             donor_uprating=uprating_receipt,
             bus_support_pricing=pricing_receipt,
+            gate_outcomes=outcomes,
         )
         return result
 
@@ -450,12 +465,17 @@ def impute_etb_services(
     seed: int,
     record_ids: Sequence[object] | np.ndarray,
     n_estimators: int = 100,
+    gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
+    outcomes: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, tuple[FitWeightRecord, ...]]:
     """Chain-draw the ETB services targets from household-keyed uniforms.
 
     Each draw reads uniforms keyed on the household's own id (``record_ids``,
     in recipient row order) and the target, so a household's draws move only
     when its own predictors do, whatever happens to the other recipients.
+    ``gate_calibration`` is the chain's declared
+    :class:`~microcosm.fit.GateCalibration`; when it is not the in-sample
+    gate, ``outcomes`` (if given) is filled with each target's gate outcome.
     """
 
     from microcosm.fit import RegimeGatedQRF
@@ -466,7 +486,9 @@ def impute_etb_services(
         raise ValueError(
             "ETB record_ids must name every recipient once, in recipient row order."
         )
-    model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
+    model = RegimeGatedQRF(
+        n_estimators=n_estimators, seed=seed, gate_calibration=gate_calibration
+    )
     state = model.start_chain(
         donor,
         list(UK_ETB_SERVICES_PREDICTORS),
@@ -490,6 +512,8 @@ def impute_etb_services(
         records.append(
             FitWeightRecord(f"{UK_ETB_SERVICES_FIT_NAME}:{target}", result.weight_kind)
         )
+        if outcomes is not None and gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+            outcomes.update(gate_outcomes(UK_ETB_SERVICES_FIT_NAME, result.fitted))
         state = result.state
     return raw, tuple(records)
 

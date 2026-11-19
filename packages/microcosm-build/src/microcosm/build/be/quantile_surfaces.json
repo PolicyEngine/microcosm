@@ -1,0 +1,443 @@
+{
+  "schema_version": 1,
+  "country": "be",
+  "generated_by": "tools/generate_be_target_references.py",
+  "description": "BE-MC3's quantile-map surfaces (B4a), proposed pending d1902. Each band_document is the bands parameter transport.quantile_map@1 takes verbatim; its references name precal_references.json rows, which compile into the target surface the kernel reads. Everything else stays outside band_document, because the kernel refuses any key beside its band lists. No graph reads this resource: Belgium has no transport_graph.json and stays inactive. Counts stay in Chronicle; reference_inventory.json records the evidence.",
+  "status": "proposed_pending_d1902",
+  "method_card_row": "BE-MC3",
+  "reference_resource": "precal_references.json",
+  "wages": {
+    "status": "proposed_pending_d1902",
+    "activation": "Not read by any graph. Nothing may map donor wages onto these edges until d1902 picks the annual-to-daily conversion and the coverage rule (choices 21 to 23).",
+    "ranked_entity": "person",
+    "donor_column": "employment_income",
+    "unit": "eur_per_day",
+    "source_period": "2026-Q1",
+    "source": "RSZ/ONSS quarterly labour-market tables, T17 (daily-wage class, age and sex), record set spec rsz.t17.daily_wage_class.v1, measure employed_workers",
+    "cohort": "Employees registered with RSZ/ONSS at the end of the first quarter of 2026, a quarter-end stock on 31 March 2026. Chronicle's coverage note: it counts inbound cross-border workers and leaves out posted workers and the self-employed. BE-MC3 records that the classes rank normalized daily pay of the main job, without bonuses, 13th month or double holiday pay. It is not a distribution of resident earners over a year.",
+    "coverage": "The five known-pay classes only. T17's unknown-pay class (Onbekend-Inconnu) has no numeric interval and gets no band, so the shares rank known pay only (d1902 choice 22).",
+    "conversion": "The donor's employment_income is annual gross pay from all employee jobs, bonuses included; these edges are euros a day. Nothing may map donor wages onto them until d1902 picks the annual-to-daily conversion (choice 23).",
+    "edge_closure": "Left-closed: each class runs from its printed lower bound up to the next class's lower bound, so '100 - 149' is [100, 150).",
+    "top_band": "Open from EUR 300 a day. Uniform interpolation refuses an open top band; the tail is d1902 choice 24.",
+    "band_provenance": [
+      {
+        "reference": "rsz_employed_workers_by_daily_wage_class__lt100",
+        "printed_label": "<100",
+        "lower": 0,
+        "upper": 100
+      },
+      {
+        "reference": "rsz_employed_workers_by_daily_wage_class__100_149",
+        "printed_label": "100 - 149",
+        "lower": 100,
+        "upper": 150
+      },
+      {
+        "reference": "rsz_employed_workers_by_daily_wage_class__150_199",
+        "printed_label": "150 - 199",
+        "lower": 150,
+        "upper": 200
+      },
+      {
+        "reference": "rsz_employed_workers_by_daily_wage_class__200_299",
+        "printed_label": "200 - 299",
+        "lower": 200,
+        "upper": 300
+      },
+      {
+        "reference": "rsz_employed_workers_by_daily_wage_class__300_plus",
+        "printed_label": ">= 300",
+        "lower": 300,
+        "upper": null
+      }
+    ],
+    "band_document": {
+      "bands": [
+        {
+          "lower": 0,
+          "upper": 100,
+          "reference": "rsz_employed_workers_by_daily_wage_class__lt100"
+        },
+        {
+          "lower": 100,
+          "upper": 150,
+          "reference": "rsz_employed_workers_by_daily_wage_class__100_149"
+        },
+        {
+          "lower": 150,
+          "upper": 200,
+          "reference": "rsz_employed_workers_by_daily_wage_class__150_199"
+        },
+        {
+          "lower": 200,
+          "upper": 300,
+          "reference": "rsz_employed_workers_by_daily_wage_class__200_299"
+        },
+        {
+          "lower": 300,
+          "upper": null,
+          "reference": "rsz_employed_workers_by_daily_wage_class__300_plus"
+        }
+      ]
+    }
+  },
+  "legal_pensions": {
+    "status": "proposed_pending_d1902",
+    "activation": "Parked: its references carry activation_status requires_pension_route_d1902 and refuse compilation until shared rank_only support lands and d1902 settles the pension route (choice 25).",
+    "ranked_entity": "person",
+    "donor_column": null,
+    "donor_column_note": "None yet: the shared transport rule drops the donor's public_pension_income, so no donor column carries pension ranks until shared rank_only support keeps the receipt for ranking only.",
+    "unit": "eur_per_month",
+    "source_period": "2025-01",
+    "source": "SFPD Jaarlijkse statistiek 2025, amount bands of group 1, record set sfpd.amount_bands.jan2025.group1.recipients",
+    "cohort": "Legal-pension beneficiaries of the employee and self-employed schemes, all careers, pension categories and sexes, a stock on 1 January 2025.",
+    "coverage": "Gross monthly payment. Includes beneficiaries residing abroad and excludes public-sector pension amounts. The Totaal row and the monthly_expenditure_eur measure are not bands.",
+    "annualization": "Monthly euros, not annualized. Multiplying January by 12 repeats one month's amount rather than observing an annual pension; it is d1902's choice (25) and is not applied here.",
+    "edge_closure": "Chronicle bounds each band lower <= amount <= upper in cents; each surface band runs half-open to the next band's lower bound, one cent above, so '0,01 - 124,99' is [0.01, 125).",
+    "top_band": "Open from EUR 3,125 a month. Uniform interpolation refuses an open top band, and no d1902 choice yet names the pension tail.",
+    "band_provenance": [
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__0_01_to_125",
+        "printed_label": "0,01 - 124,99",
+        "source_lower_eur": "0.01",
+        "source_upper_eur": "124.99",
+        "lower": 0.01,
+        "upper": 125
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__125_to_250",
+        "printed_label": "125,00 - 249,99",
+        "source_lower_eur": "125",
+        "source_upper_eur": "249.99",
+        "lower": 125,
+        "upper": 250
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__250_to_375",
+        "printed_label": "250,00 - 374,99",
+        "source_lower_eur": "250",
+        "source_upper_eur": "374.99",
+        "lower": 250,
+        "upper": 375
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__375_to_500",
+        "printed_label": "375,00 - 499,99",
+        "source_lower_eur": "375",
+        "source_upper_eur": "499.99",
+        "lower": 375,
+        "upper": 500
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__500_to_625",
+        "printed_label": "500,00 - 624,99",
+        "source_lower_eur": "500",
+        "source_upper_eur": "624.99",
+        "lower": 500,
+        "upper": 625
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__625_to_750",
+        "printed_label": "625,00 - 749,99",
+        "source_lower_eur": "625",
+        "source_upper_eur": "749.99",
+        "lower": 625,
+        "upper": 750
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__750_to_875",
+        "printed_label": "750,00 - 874,99",
+        "source_lower_eur": "750",
+        "source_upper_eur": "874.99",
+        "lower": 750,
+        "upper": 875
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__875_to_1000",
+        "printed_label": "875,00 - 999,99",
+        "source_lower_eur": "875",
+        "source_upper_eur": "999.99",
+        "lower": 875,
+        "upper": 1000
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1000_to_1125",
+        "printed_label": "1.000,00 - 1.124,99",
+        "source_lower_eur": "1000",
+        "source_upper_eur": "1124.99",
+        "lower": 1000,
+        "upper": 1125
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1125_to_1250",
+        "printed_label": "1.125,00 - 1.249,99",
+        "source_lower_eur": "1125",
+        "source_upper_eur": "1249.99",
+        "lower": 1125,
+        "upper": 1250
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1250_to_1375",
+        "printed_label": "1.250,00 - 1.374,99",
+        "source_lower_eur": "1250",
+        "source_upper_eur": "1374.99",
+        "lower": 1250,
+        "upper": 1375
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1375_to_1500",
+        "printed_label": "1.375,00 - 1.499,99",
+        "source_lower_eur": "1375",
+        "source_upper_eur": "1499.99",
+        "lower": 1375,
+        "upper": 1500
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1500_to_1625",
+        "printed_label": "1.500,00 - 1.624,99",
+        "source_lower_eur": "1500",
+        "source_upper_eur": "1624.99",
+        "lower": 1500,
+        "upper": 1625
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1625_to_1750",
+        "printed_label": "1.625,00 - 1.749,99",
+        "source_lower_eur": "1625",
+        "source_upper_eur": "1749.99",
+        "lower": 1625,
+        "upper": 1750
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1750_to_1875",
+        "printed_label": "1.750,00 - 1.874,99",
+        "source_lower_eur": "1750",
+        "source_upper_eur": "1874.99",
+        "lower": 1750,
+        "upper": 1875
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1875_to_2000",
+        "printed_label": "1.875,00 - 1.999,99",
+        "source_lower_eur": "1875",
+        "source_upper_eur": "1999.99",
+        "lower": 1875,
+        "upper": 2000
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2000_to_2125",
+        "printed_label": "2.000,00 - 2.124,99",
+        "source_lower_eur": "2000",
+        "source_upper_eur": "2124.99",
+        "lower": 2000,
+        "upper": 2125
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2125_to_2250",
+        "printed_label": "2.125,00 - 2.249,99",
+        "source_lower_eur": "2125",
+        "source_upper_eur": "2249.99",
+        "lower": 2125,
+        "upper": 2250
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2250_to_2375",
+        "printed_label": "2.250,00 - 2.374,99",
+        "source_lower_eur": "2250",
+        "source_upper_eur": "2374.99",
+        "lower": 2250,
+        "upper": 2375
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2375_to_2500",
+        "printed_label": "2.375,00 - 2.499,99",
+        "source_lower_eur": "2375",
+        "source_upper_eur": "2499.99",
+        "lower": 2375,
+        "upper": 2500
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2500_to_2625",
+        "printed_label": "2.500,00 - 2.624,99",
+        "source_lower_eur": "2500",
+        "source_upper_eur": "2624.99",
+        "lower": 2500,
+        "upper": 2625
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2625_to_2750",
+        "printed_label": "2.625,00 - 2.749,99",
+        "source_lower_eur": "2625",
+        "source_upper_eur": "2749.99",
+        "lower": 2625,
+        "upper": 2750
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2750_to_2875",
+        "printed_label": "2.750,00 - 2.874,99",
+        "source_lower_eur": "2750",
+        "source_upper_eur": "2874.99",
+        "lower": 2750,
+        "upper": 2875
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2875_to_3000",
+        "printed_label": "2.875,00 - 2.999,99",
+        "source_lower_eur": "2875",
+        "source_upper_eur": "2999.99",
+        "lower": 2875,
+        "upper": 3000
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__3000_to_3125",
+        "printed_label": "3.000,00 - 3.124,99",
+        "source_lower_eur": "3000",
+        "source_upper_eur": "3124.99",
+        "lower": 3000,
+        "upper": 3125
+      },
+      {
+        "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__3125_plus",
+        "printed_label": "3.125,00 en >",
+        "source_lower_eur": "3125",
+        "source_upper_eur": null,
+        "lower": 3125,
+        "upper": null
+      }
+    ],
+    "band_document": {
+      "bands": [
+        {
+          "lower": 0.01,
+          "upper": 125,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__0_01_to_125"
+        },
+        {
+          "lower": 125,
+          "upper": 250,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__125_to_250"
+        },
+        {
+          "lower": 250,
+          "upper": 375,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__250_to_375"
+        },
+        {
+          "lower": 375,
+          "upper": 500,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__375_to_500"
+        },
+        {
+          "lower": 500,
+          "upper": 625,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__500_to_625"
+        },
+        {
+          "lower": 625,
+          "upper": 750,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__625_to_750"
+        },
+        {
+          "lower": 750,
+          "upper": 875,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__750_to_875"
+        },
+        {
+          "lower": 875,
+          "upper": 1000,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__875_to_1000"
+        },
+        {
+          "lower": 1000,
+          "upper": 1125,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1000_to_1125"
+        },
+        {
+          "lower": 1125,
+          "upper": 1250,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1125_to_1250"
+        },
+        {
+          "lower": 1250,
+          "upper": 1375,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1250_to_1375"
+        },
+        {
+          "lower": 1375,
+          "upper": 1500,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1375_to_1500"
+        },
+        {
+          "lower": 1500,
+          "upper": 1625,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1500_to_1625"
+        },
+        {
+          "lower": 1625,
+          "upper": 1750,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1625_to_1750"
+        },
+        {
+          "lower": 1750,
+          "upper": 1875,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1750_to_1875"
+        },
+        {
+          "lower": 1875,
+          "upper": 2000,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__1875_to_2000"
+        },
+        {
+          "lower": 2000,
+          "upper": 2125,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2000_to_2125"
+        },
+        {
+          "lower": 2125,
+          "upper": 2250,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2125_to_2250"
+        },
+        {
+          "lower": 2250,
+          "upper": 2375,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2250_to_2375"
+        },
+        {
+          "lower": 2375,
+          "upper": 2500,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2375_to_2500"
+        },
+        {
+          "lower": 2500,
+          "upper": 2625,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2500_to_2625"
+        },
+        {
+          "lower": 2625,
+          "upper": 2750,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2625_to_2750"
+        },
+        {
+          "lower": 2750,
+          "upper": 2875,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2750_to_2875"
+        },
+        {
+          "lower": 2875,
+          "upper": 3000,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__2875_to_3000"
+        },
+        {
+          "lower": 3000,
+          "upper": 3125,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__3000_to_3125"
+        },
+        {
+          "lower": 3125,
+          "upper": null,
+          "reference": "sfpd_legal_pension_recipients_by_monthly_amount_band__3125_plus"
+        }
+      ]
+    }
+  }
+}

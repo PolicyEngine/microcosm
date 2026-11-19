@@ -472,6 +472,8 @@ class DonorBank:
     The household table carries ``source_household_id`` only when explicit
     source year and raw household lineage are available. Its typed JSON key
     merges clones across support channels and distinguishes source vintages.
+    ``time_period`` is the donor file's recorded model ``_time_period`` year,
+    or ``None`` when absent. It does not authenticate the amounts' money basis.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -482,6 +484,7 @@ class DonorBank:
     donor_country: str = "us"
     currency: str = "USD"
     dropped_parent_cycle_edges: int = 0
+    time_period: int | None = None
 
 
 #: Line numbers and pointers are validated as float64 (pointer columns can hold
@@ -785,6 +788,19 @@ def _drop_two_person_parent_cycles(person: pd.DataFrame) -> int:
     return int(drop.sum())
 
 
+def _donor_time_period(store: pd.HDFStore) -> int | None:
+    """The exporter's one-row ``_time_period`` series, or ``None`` when absent."""
+    if "/_time_period" not in store.keys():
+        return None
+    values = store["_time_period"]
+    if not isinstance(values, pd.Series) or len(values) != 1:
+        raise ValueError("Donor _time_period must hold exactly one value.")
+    value = values.iloc[0]
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError("Donor _time_period must be an integer year.")
+    return int(value)
+
+
 def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> DonorBank:
     """Authenticate a local donor H5, then decode its person/household inputs.
 
@@ -824,7 +840,9 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
 
     Donor-only enrichment is staged before ``decode``; all work after that
     seam reads concept names. The result declares transport content with a
-    US donor and unchanged source-currency amounts and design weights.
+    US donor and unchanged source-currency amounts and design weights. The
+    exporter's ``_time_period`` (a one-row integer series) is returned as
+    ``time_period``; a file without it reads as ``None``.
     """
     path = Path(path)
     if isinstance(size, bool) or not isinstance(size, int) or size < 0:
@@ -845,6 +863,7 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
             entity: read_frame_table(store, entity)
             for entity in ("person", "household")
         }
+        time_period = _donor_time_period(store)
     staged = _donor_extras(raw["person"], raw["household"])
     tables = POLICYENGINE_US_CONCEPT_MAPPING.decode(raw)
     del raw
@@ -869,6 +888,7 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
         staged["support_strata"],
         staged["source_person_ids"],
         dropped_parent_cycle_edges=dropped,
+        time_period=time_period,
     )
 
 

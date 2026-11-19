@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -14,6 +13,7 @@ from microcosm.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
 )
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.adult_care import (
     derive_us_adult_care_from_manifest,
 )
@@ -41,6 +41,9 @@ from microcosm.build.us_runtime.eligibility_inputs import (
 from microcosm.build.us_runtime.energy_subsidy import (
     derive_us_energy_subsidy_from_manifest,
     impute_us_energy_subsidy_to_puf_support_from_manifest,
+)
+from microcosm.build.us_runtime.esi_premiums import (
+    derive_us_employer_esi_premiums_from_manifest,
 )
 from microcosm.build.us_runtime.hours_worked import (
     derive_us_hours_worked_from_manifest,
@@ -315,6 +318,9 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
             derive_us_other_health_insurance_from_manifest
         ),
         "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
+        "derive_employer_sponsored_insurance_premiums": (
+            derive_us_employer_esi_premiums_from_manifest
+        ),
         "derive_education_inputs": derive_us_education_inputs_from_manifest,
         "derive_hours_worked": derive_us_hours_worked_from_manifest,
         "derive_medicare_take_up": derive_us_medicare_take_up_from_manifest,
@@ -1312,20 +1318,11 @@ def _stable_draws(frame: pd.DataFrame, *, seed: int, salt: str) -> pd.Series:
         keys = frame["tax_unit_id"]
     else:
         keys = pd.Series(frame.index, index=frame.index)
-    denominator = float(2**64)
-    draws = [
-        int.from_bytes(
-            hashlib.blake2b(
-                f"{seed}:{salt}:{key}".encode(),
-                digest_size=8,
-            ).digest(),
-            byteorder="big",
-            signed=False,
-        )
-        / denominator
-        for key in keys
-    ]
-    return pd.Series(draws, index=frame.index, dtype=float)
+    return pd.Series(
+        stable_identity_uniforms(keys, seed=seed, salt=salt),
+        index=frame.index,
+        dtype=float,
+    )
 
 
 def _first_available_target_table(

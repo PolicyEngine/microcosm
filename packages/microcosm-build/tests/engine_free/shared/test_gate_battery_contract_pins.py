@@ -13,14 +13,18 @@ import base64
 import hashlib
 import hmac
 import json
+from collections.abc import Mapping
+from dataclasses import dataclass
 
 import pytest
 
 from microcosm.build import load_country_spec
+from microcosm.build.country_spec import GatesManifest
 from microcosm.build.gate_battery import (
     GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,
     GATE_BATTERY_PRODUCER,
     GATE_BATTERY_SCHEMA_VERSION,
+    BlockingMode,
     EvidenceContext,
     GateBatteryRun,
     GateOutcome,
@@ -31,9 +35,7 @@ from microcosm.build.gates import GateResult
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
-    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
-    uk_default_input_mass_reviewed_exclusions,
 )
 from microcosm.data import contract as data_contract
 from test_support.paths import paths_for
@@ -41,6 +43,182 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
+
+
+def _green_uk_details() -> dict[str, dict[str, object]]:
+    """Synthetic details, keyed by entry id, shaped as the exact-k checker
+    reads them; the values the checker pins come from its own mirrors."""
+
+    evaluated_on = "2026-11-13"
+    weights = dict.fromkeys(data_contract._UK_WEIGHT_SUMMARY_FIELDS, 1.0)
+    reference_build = "uk-frs-calibration-attempt-fixture"
+    reference_release = sorted(data_contract._UK_CUT_REFERENCE_RELEASES)[0]
+    exclusions = {
+        "reviewed_exclusions": {},
+        "stale_exclusions": [],
+        "dormant_exclusions": [],
+    }
+    dated_exclusions = {
+        **exclusions,
+        "expired_exclusions": [],
+        "premature_exclusions": [],
+        "exclusions_evaluated_on": evaluated_on,
+    }
+    return {
+        "uk_release_input_coverage_manifest_current": {"check": "manifest_current"},
+        "uk_release_family_build_stages": {"stage_names": ["fixture_stage"]},
+        "uk_release_input_coverage": {
+            "required_columns": 3,
+            "present_columns": 3,
+            "missing": [],
+            "degenerate_required": [],
+            **exclusions,
+        },
+        "uk_degenerate_release_surface": {
+            "columns_checked": 3,
+            "findings": {},
+            "all_null_columns": [],
+            "all_zero_columns": [],
+            "constant_columns": [],
+            **dated_exclusions,
+        },
+        "uk_zero_weight_strata": {
+            "household_rows": 3,
+            "zero_weight_rows": 0,
+            "declared_strata": [],
+            "unmatched_zero_weight_rows": 0,
+            "unmatched_household_examples": [],
+            "ambiguous_zero_weight_rows": 0,
+            "ambiguous_household_examples": [],
+        },
+        "uk_weight_ess": {
+            **weights,
+            "minimum_ess_fraction": data_contract._UK_MIN_ESS_FRACTION,
+        },
+        "uk_weight_ratio": {
+            **weights,
+            "maximum_max_to_median_ratio": data_contract._UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+        },
+        "uk_weights_audit": {
+            "fits_checked": 1,
+            "resolved_weight_kinds": {"fixture_fit": "design"},
+            "unweighted_fits": [],
+            "allowed_unweighted": [],
+            "unused_allowed_unweighted": [],
+        },
+        "uk_export_surface": {
+            "candidate_columns": 3,
+            "reference_columns": 3,
+            "missing_reference_columns": [],
+            "unexpected_candidate_columns": [],
+            "forbidden_candidate_columns": [],
+        },
+        "uk_target_surface": {
+            "candidate_targets": 3,
+            "reference_targets": 3,
+            "extra_candidate_targets": [],
+            "missing_reference_targets": [],
+        },
+        "uk_target_fit": {
+            "targets_checked": 3,
+            "max_abs_relative_error": data_contract._UK_MAX_TARGET_ABS_RELATIVE_ERROR,
+            "failing_targets": {},
+            **dated_exclusions,
+        },
+        "uk_aggregate_admin": {"anchors_checked": 3},
+        "uk_input_mass_parity": {
+            "candidate_name": "candidate",
+            "reference_name": "reference",
+            "relative_tolerance": data_contract._UK_INPUT_MASS_RELATIVE_TOLERANCE,
+            "minimum_reference_total": (
+                data_contract._UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL
+            ),
+            "maximum_relative_drop": data_contract._UK_INPUT_MASS_MAXIMUM_RELATIVE_DROP,
+            "excess_drops": [],
+            "columns_checked": 3,
+            "columns_below_reference_floor": [],
+            "candidate_only_columns": [],
+            "worst_drifts": [],
+            "unused_reviewed_exclusions": [],
+            **dated_exclusions,
+            "reference": data_contract._UK_INPUT_MASS_ACTIVE_REFERENCE,
+            "reference_scope_note": "fixture reference",
+            "reference_label": f"{reference_release}@{reference_build}",
+            "reference_identity": {
+                "filename": "fixture.h5",
+                "revision": reference_build,
+                "sha256": "d" * 64,
+                "vintage": "fixture",
+            },
+        },
+        "uk_support": {"columns_checked": 3},
+    }
+
+
+@dataclass(frozen=True)
+class _GreenBinding:
+    """Passes every entry of one gate, each with its own details and evidence.
+
+    Rows are ``(parameters, details, evidence)``; an entry is found by its
+    declared parameters, and entries that declare equal ones share a row.
+    """
+
+    name: str
+    parameter_keys: frozenset[str]
+    rows: tuple[tuple[Mapping[str, object], Mapping[str, object], object], ...]
+
+    def _row(self, parameters):
+        return next(row for row in self.rows if row[0] == parameters)
+
+    def required_artifacts(self, parameters) -> frozenset[str]:
+        return frozenset()
+
+    def requires_frame(self, parameters) -> bool:
+        return False
+
+    def evaluate(self, context, parameters) -> GateResult:
+        return GateResult(
+            name=self.name, passed=True, details=dict(self._row(parameters)[1])
+        )
+
+    def evidence_payload(self, context, parameters) -> object | None:
+        return self._row(parameters)[2]
+
+
+def _green_uk_registry(gates: GatesManifest) -> dict[str, _GreenBinding]:
+    from microcosm.build.uk_runtime.terminal_gates import (
+        uk_default_degenerate_reviewed_exclusions,
+    )
+
+    details = _green_uk_details()
+    # The checker pins the degenerate entry's evidence to the committed register.
+    committed_register = {
+        "exclusions_policy": "committed",
+        "reviewed_exclusions": {
+            name: record.policy_payload()
+            for name, record in sorted(
+                uk_default_degenerate_reviewed_exclusions().items()
+            )
+        },
+    }
+    rows: dict[str, list] = {}
+    for entry in gates.gates:
+        evidence = None
+        if entry.id == "uk_degenerate_release_surface":
+            evidence = committed_register
+        elif entry.id in data_contract._UK_GATE_BATTERY_EVIDENCE_IDS:
+            evidence = {"fixture_evidence": entry.id}
+        rows.setdefault(entry.gate, []).append(
+            (entry.parameters, details.get(entry.id, {}), evidence)
+        )
+    return {
+        gate: _GreenBinding(
+            name=gate,
+            parameter_keys=frozenset(key for row in gate_rows for key in row[0]),
+            rows=tuple(gate_rows),
+        )
+        for gate, gate_rows in rows.items()
+    }
 
 
 def _uk_run(tmp_path, **overrides) -> GateBatteryRun:
@@ -165,26 +343,12 @@ class TestMirrorConstants:
             _canonical_sha256(payload)
         )
 
-    def test_input_mass_evidence_pin_mirrors_the_wrapped_reference(self) -> None:
-        from microcosm.build.gate_battery import _canonical_sha256
+    def test_the_input_mass_evidence_is_not_pinned(self) -> None:
+        """Its digest covers the reference build's own totals, which change
+        with every cut (microcosm#1095); the report names the build."""
 
-        reference = "efrs-post-calibration"
-        records = uk_default_input_mass_reviewed_exclusions()[reference]
-        assert data_contract._UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 == (
-            _canonical_sha256(
-                {
-                    "reference": reference,
-                    "reference_evidence_sha256": (
-                        UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
-                    ),
-                    "exclusions_policy": "committed",
-                    "reviewed_exclusions": {
-                        name: record.policy_payload()
-                        for name, record in sorted(records.items())
-                    },
-                }
-            )
-        )
+        assert not hasattr(data_contract, "_UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256")
+        assert not hasattr(data_contract, "_UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256")
 
     def test_numeric_threshold_mirrors_match_the_committed_spec(self) -> None:
         spec = load_country_spec("uk")
@@ -205,14 +369,7 @@ class TestMirrorConstants:
             == (params["uk_target_fit"]["max_abs_relative_error"])
         )
         assert data_contract._UK_INPUT_MASS_ACTIVE_REFERENCE == reference
-        assert (
-            data_contract._UK_INPUT_MASS_REFERENCE_IDENTITY
-            == input_mass["reference_registry"][reference]["identity"]
-        )
-        assert (
-            data_contract._UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
-            == (input_mass["reference_registry"][reference]["totals_sha256"])
-        )
+        assert input_mass["reference_registry"][reference]["kind"] == "current_build"
         assert input_mass["reviewed_exclusions_resource"] == (
             UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
         )
@@ -248,6 +405,8 @@ class TestProducerRoundTrip:
         "signing_key_sha256 does not identify",
         "gate_outcomes_sha256 does not match",
         "exactly the declared UK entry ids",
+        "(schema 4) must contain exactly",
+        "attestation must contain exactly",
     )
 
     def test_signature_scheme_is_verifiable_across_the_shards(
@@ -306,6 +465,43 @@ class TestProducerRoundTrip:
             if any(needle in line for needle in self.MIRROR_DRIFT_NEEDLES)
         ]
         assert drifted == [], drifted
+
+    def test_a_green_report_from_the_executor_passes_the_checker(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The checker accepts, with no failure at all, what the executor writes.
+
+        Every UK entry passes with details shaped as the checker reads them,
+        so any failure is a drift between the report the executor writes and
+        the one the checker expects, such as the ``synthetic_smoke`` field the
+        test above missed.
+        """
+
+        monkeypatch.setenv(gate_signing_key_env("uk"), KEY)
+        gates = load_country_spec("uk").gates
+        run = _uk_run(
+            tmp_path,
+            release_candidate=True,
+            registry=_green_uk_registry(gates),
+            release_evidence={"calibration_diagnostics_sha256": "c" * 64},
+        )
+        for phase in gates.phases:
+            run.run_phase(phase, EvidenceContext())
+            assert run.enforce(phase, mode=BlockingMode.BLOCKS_ARTIFACT) is False
+        report = json.loads((tmp_path / "terminal_gates.json").read_text())
+        assert report["shippable"] is True
+        assert report["synthetic_smoke"] is False
+
+        failures: list[str] = []
+        data_contract._check_uk_gate_battery_report(
+            report,
+            release_id="populace-uk-2023-frs-k535080",
+            calibration_diagnostics_sha256="c" * 64,
+            build_manifest=None,
+            calibration_diagnostics={"targets": [{}, {}, {}]},
+            failures=failures,
+        )
+        assert failures == []
 
 
 class TestCertificationMirrors:
@@ -377,6 +573,24 @@ class TestCertificationMirrors:
 
         assert data_contract._UK_NATIONAL_RELEASE_ID == UK_NATIONAL_RELEASE_ID
 
+    def test_since_baseline_record_mirrors_the_build_shard(self) -> None:
+        """Round 2 of the review of microcosm#1574: where the national chain
+        starts, and why a column leaves it."""
+
+        from microcosm.build.uk_runtime.cut_reference import (
+            UK_NATIONAL_SINCE_BASELINE_ORIGIN,
+        )
+        from microcosm.build.uk_runtime.weighted_integrity import (
+            UK_SINCE_BASELINE_LEFT_REASONS,
+        )
+
+        assert data_contract._UK_NATIONAL_SINCE_BASELINE_ORIGIN == (
+            UK_NATIONAL_SINCE_BASELINE_ORIGIN
+        )
+        assert data_contract._UK_SINCE_BASELINE_LEFT_REASONS == (
+            UK_SINCE_BASELINE_LEFT_REASONS
+        )
+
 
 class TestDenseLineMirrors:
     """The dense joint line's contract mirrors (microcosm#762 A18)."""
@@ -385,10 +599,9 @@ class TestDenseLineMirrors:
         from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 
         assert data_contract._UK_DENSE_RELEASE_ID == UK_DENSE_RELEASE_ID
-        assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(
-            f"{UK_DENSE_RELEASE_ID}-20260903T105422Z-ca611e43"
-        )
-        assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(UK_DENSE_RELEASE_ID) is None
+        # Its builds publish into their own folders, with no tag to match.
+        assert data_contract.publishes_to_build_folder(UK_DENSE_RELEASE_ID)
+        assert not hasattr(data_contract, "_UK_DENSE_CUT_TAG_RE")
 
     def test_dataset_filename_mirrors_the_assembler(self) -> None:
         import importlib.util

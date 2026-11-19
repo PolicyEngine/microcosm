@@ -29,6 +29,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.receipt_counts import distinct_carriers
+
 __all__ = [
     "CATEGORIES",
     "COUNTS_SOURCE",
@@ -62,14 +64,18 @@ STREAM_EXPERIMENT = "uk-post-clone-private-rent-v1"
 #: private-rented households by region, BRMA and bedrooms (microcosm#1087).
 QUANTILES_SOURCE = "uk_brma_rent_quantiles"
 COUNTS_SOURCE = "uk_brma_private_renters"
-#: The spine's annualisation of weekly amounts (``frs_spine.WEEKS_IN_YEAR``).
-WEEKS_IN_YEAR = 365.25 / 7
+#: The spine's annualisation of weekly amounts (``frs_spine.WEEKS_IN_YEAR``),
+#: 52 weeks since María's ruling of 2026-10-23: the engine reads a rent back to
+#: a weekly one at 52. Kept here so the module imports nothing of the build;
+#: a test holds the two equal.
+WEEKS_IN_YEAR = 52
 #: A region's scale outside this band means a resource or the frame is wrong.
 SCALE_BAND = (0.25, 4.0)
 #: Below full scale, a region whose sample holds fewer FRS renters than this
 #: ranks against, and is scaled on, Great Britain's: a handful of renters is
 #: sampling noise, and its own scale could leave ``SCALE_BAND`` and refuse
-#: (microcosm#1305 re-review). A full-scale build never falls back.
+#: (microcosm#1305 re-review). A full-scale build never falls back. A
+#: statistical floor, not the disclosure floor.
 MIN_SAMPLED_REGION_RENTERS = 10
 PRIVATE_TENURE = "RENT_PRIVATELY"
 NORTHERN_IRELAND = "NORTHERN_IRELAND"
@@ -220,12 +226,15 @@ def rent_categories(num_bedrooms) -> np.ndarray:
     return out
 
 
-def _spine_rows(*, spine_key, region, category, rent, channel, weight) -> pd.DataFrame:
+def _spine_rows(
+    *, spine_key, source, region, category, rent, channel, weight
+) -> pd.DataFrame:
     """One row per spine household: its clones' summed weight and shared cell."""
 
     frame = pd.DataFrame(
         {
             "key": np.asarray(spine_key, dtype=object),
+            "source": np.asarray(source, dtype=object),
             "region": np.asarray(region).astype(str),
             "category": np.asarray(category, dtype=object),
             "rent": np.asarray(rent, dtype=float),
@@ -235,6 +244,8 @@ def _spine_rows(*, spine_key, region, category, rent, channel, weight) -> pd.Dat
     )
     grouped = frame.groupby("key", sort=True)
     spine = grouped.agg(
+        source=("source", "first"),
+        sources=("source", "nunique"),
         region=("region", "first"),
         regions=("region", "nunique"),
         category=("category", "first"),
@@ -247,16 +258,17 @@ def _spine_rows(*, spine_key, region, category, rent, channel, weight) -> pd.Dat
         weight=("weight", "sum"),
     )
     if (
-        (spine["regions"] != 1).any()
+        (spine["sources"] != 1).any()
+        or (spine["regions"] != 1).any()
         or (spine["categories"] != 1).any()
         or (spine["channels"] != 1).any()
         or (spine["rent_max"] - spine["rent_min"]).abs().max() > 1e-9
     ):
         raise ValueError(
-            "Pool clones of one spine household disagree on region, bedrooms, "
-            "channel or rent."
+            "Pool clones of one spine household disagree on source, region, "
+            "bedrooms, channel or rent."
         )
-    return spine[["region", "category", "rent", "channel", "weight"]]
+    return spine[["source", "region", "category", "rent", "channel", "weight"]]
 
 
 # ----------------------------------------------------------------------------
@@ -271,12 +283,19 @@ def sampled_thin_regions(spine: pd.DataFrame, *, strict: bool) -> frozenset[str]
     """The regions a sampled rung ranks and scales on Great Britain's renters.
 
     Those whose sample holds fewer than :data:`MIN_SAMPLED_REGION_RENTERS`
-    FRS renters; none at full scale (``strict``).
+    FRS renters, counted in true source households, so a renter's support
+    copies count once (receipt_counts); none at full scale (``strict``).
     """
 
     if strict:
         return frozenset()
-    held = _reference(spine)["region"].astype(str).value_counts()
+    reference = _reference(spine)
+    held = {
+        str(region): distinct_carriers(group["source"])
+        for region, group in reference.groupby(
+            reference["region"].astype(str), sort=True
+        )
+    }
     return frozenset(
         str(region)
         for region in spine["region"].astype(str).unique()
@@ -400,6 +419,7 @@ def _region_scale(
 def localise_rents(
     *,
     spine_key,
+    source,
     region,
     tenure_type,
     rent,
@@ -446,6 +466,7 @@ def localise_rents(
     regions = np.asarray(region).astype(str)[rows]
     spine = _spine_rows(
         spine_key=keys,
+        source=np.asarray(source, dtype=object)[rows],
         region=regions,
         category=categories,
         rent=rent[rows],

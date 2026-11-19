@@ -14,10 +14,12 @@ The archived pipeline used two primary sources for this family:
   and placed annual ``pre_subsidy_rent`` on the CPS household head.
 
 Microcosm preserves those source semantics and uses its shared design-weighted
-QRF.  Weighting the ACS fit is the sole deliberate strengthening of the
-retired implementation: the archived fit loaded ``household_weight`` but did
-not pass it through to microimpute.  No housing values are manufactured from
-defaults or from the retired eCPS output.
+QRF.  Weighting the ACS fit deliberately strengthens the retired
+implementation: the archived fit loaded ``household_weight`` but did not pass
+it through to microimpute.  Microcosm also sets rent to zero for heads outside
+renter households, because the shared QRF's zero-or-positive classifier gives
+each of them a small chance of positive rent.  No housing values are
+manufactured from defaults or from the retired eCPS output.
 """
 
 from __future__ import annotations
@@ -829,7 +831,12 @@ def impute_us_pre_subsidy_rent(
     seed: int,
     n_estimators: int = _DEFAULT_N_ESTIMATORS,
 ) -> np.ndarray:
-    """Draw annual ACS rent once per CPS household and place it on the head."""
+    """Draw annual ACS rent once per CPS household and place it on the head.
+
+    Heads of owner and no-cash-rent households get zero rent. The QRF's
+    zero-or-positive classifier gives each of them a small chance of a positive
+    draw, and the signal gate fails rent outside renter households.
+    """
 
     required = (
         *ACS_RENT_PREDICTORS,
@@ -875,6 +882,7 @@ def impute_us_pre_subsidy_rent(
 
         QRF = import_module("microcosm.fit").QRF
     features, head_mask = _recipient_head_features(frame)
+    renter = features["tenure_type"].astype(str).eq("RENTED").to_numpy()
     encoded_training, encoded_features, encoded_predictors = _encode_acs_predictors(
         fit_frame,
         features,
@@ -895,8 +903,18 @@ def impute_us_pre_subsidy_rent(
     if not np.isfinite(predicted).all():
         raise ValueError("ACS rent QRF produced nonfinite predictions.")
     predicted = np.maximum(predicted, 0.0)
+    # Every head draws, so zeroing afterwards leaves renters' draws unchanged.
+    predicted = np.where(renter, predicted, 0.0)
+    # ``features`` follows the household table, and the person table need not
+    # list heads in that order, so match each draw to its head by household id.
+    rent_by_household = pd.Series(predicted, index=features.index)
+    head_household_ids = frame.table("person")["person_household_id"].to_numpy()[
+        head_mask
+    ]
     person_rent = np.zeros(frame.n("person"), dtype=np.float64)
-    person_rent[head_mask] = predicted
+    person_rent[head_mask] = rent_by_household.loc[head_household_ids].to_numpy(
+        dtype=np.float64
+    )
     return person_rent
 
 
@@ -1154,7 +1172,13 @@ def with_us_housing_inputs(
     acs_rent_donor: pd.DataFrame,
     n_estimators: int = _DEFAULT_N_ESTIMATORS,
 ) -> Frame:
-    """Materialize source-backed housing and tenure inputs on a US frame."""
+    """Materialize source-backed housing and tenure inputs on a US frame.
+
+    A frame that already passes the signal gate returns unchanged. Any other
+    frame gets all five inputs again: ``H_TENURE``, ``SPM_CAPHOUSESUB`` and
+    ``SPM_TENMORTSTATUS`` supply tenure and assistance, and the ACS rent model
+    draws ``pre_subsidy_rent`` for renter heads. Callers gate the result.
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US housing inputs require the US schema.")
@@ -1281,7 +1305,12 @@ def us_housing_inputs_summary(frame: Frame) -> dict[str, object]:
 
 
 def us_housing_inputs_signal_gate(frame: Frame) -> GateResult:
-    """Require plausible non-default signal for all five restored inputs."""
+    """Require plausible non-default signal for all five restored inputs.
+
+    Positive rent may sit only on the head of a renter household. Rent written
+    to anyone in an owner or no-cash-rent household fails; rent moved from one
+    renter household's head to another's passes.
+    """
 
     missing: list[str] = []
     for entity, columns in (
@@ -1346,6 +1375,7 @@ def us_housing_inputs_signal_gate(frame: Frame) -> GateResult:
         ("nonfinite_rent", "nonfinite pre_subsidy_rent"),
         ("negative_rent", "negative pre_subsidy_rent"),
         ("positive_rent_nonhead", "positive rent on non-head people"),
+        ("positive_rent_nonrenter", "positive rent outside renter households"),
     ):
         count = int(summary[key])
         if count:

@@ -6,7 +6,10 @@ assumes the support group for anyone with an ESA award of their own, so the
 benefit cap's ESA exemption follows the survey's answer. Since
 policyengine-uk 2.135.0 each scheme applies its own cap: this tenant on
 income-related ESA meets Housing Benefit's, whose specified-benefit exemption
-reads the stored group.
+reads the stored group. Since 2.149.0 a claim for Universal Credit ends an
+income-related ESA award (esa_income_report_closed, pe-uk#2563), and the
+engine's default unit claims it, so the tenant, still on legacy ESA, claims
+no Universal Credit.
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ def _frame(in_support_group: bool):
             "esa_includes_support_component": [in_support_group],
         }
     )
-    benunit = pd.DataFrame({"benunit_id": [1]})
+    benunit = pd.DataFrame({"benunit_id": [1], "would_claim_uc": [False]})
     household = pd.DataFrame(
         {
             "household_id": [1],

@@ -77,8 +77,17 @@ def test_exclusion_pins_all_sha_locked_hermetic_inputs() -> None:
     build_script = (ROOT / "experiments/build_j_recert/buildj_base.sh").read_text()
     for year in (2022, 2023, 2024):
         assert f'--asec-h5 {year}="$USD/census_cps_{year}.h5"' in build_script
-    assert "buildj_base.sh lines 65-69" in evidence["hermetic_build_contract"]
-    assert "base_j.summary.json lines 55-75" in evidence["hermetic_build_contract"]
+    contract = evidence["hermetic_build_contract"]
+    assert "--asec-h5 2024=, 2023=, and 2022= arguments" in contract
+    assert "base_source.sources[].sha256" in contract
+    summary = json.loads(
+        (ROOT / "experiments/build_j_recert/base_j.summary.json").read_text()
+    )
+    assert [len(source["sha256"]) for source in summary["base_source"]["sources"]] == [
+        64,
+        64,
+        64,
+    ]
 
 
 def test_generated_release_manifest_preserves_the_evidenced_exclusion() -> None:

@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "source": {
+    "url": "https://www.workandincome.govt.nz/products/benefit-rates/benefit-rates-april-2026.html",
+    "sha256": "41817fc057388e06997657a786774015d7e9b74e98ca3104fa860ad90e31a80c",
+    "retrieved_at": "2026-10-24T18:08:25Z",
+    "licence": "CC BY 4.0 (Crown copyright, MSD; per /about-this-site/privacy-disclaimer-and-copyright-information)"
+  },
+  "weekly_main_benefits": [
+    {
+      "programme": "jobseeker_support",
+      "section": "If you don't have children",
+      "category": "Single, 18 to 19 years, at home",
+      "after_tax_at_m": "276.46",
+      "before_tax": "309.65",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you don't have children",
+      "category": "Single, 18 to 19 years, away from home",
+      "after_tax_at_m": "324.50",
+      "before_tax": "367.88",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you don't have children",
+      "category": "Single, 20 to 24 years",
+      "after_tax_at_m": "324.50",
+      "before_tax": "367.88",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you don't have children",
+      "category": "Single, 25 years or over",
+      "after_tax_at_m": "372.55",
+      "before_tax": "426.12",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you don't have children",
+      "category": "Couple (total)",
+      "after_tax_at_m": "633.94",
+      "before_tax": "717.50",
+      "individual_validation_point": false
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you don't have children",
+      "category": "Couple (each)",
+      "after_tax_at_m": "316.97",
+      "before_tax": "358.75",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you have children",
+      "category": "Sole parent",
+      "after_tax_at_m": "521.52",
+      "before_tax": "606.69",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you have children",
+      "category": "Couple (total)",
+      "after_tax_at_m": "669.40",
+      "before_tax": "760.48",
+      "individual_validation_point": false
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you have children",
+      "category": "Couple (each)",
+      "after_tax_at_m": "334.70",
+      "before_tax": "380.24",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you have children",
+      "category": "Couple with 1 partner not on benefit (total)",
+      "after_tax_at_m": "334.70",
+      "before_tax": "380.24",
+      "individual_validation_point": false
+    },
+    {
+      "programme": "jobseeker_support",
+      "section": "If you have children",
+      "category": "Couple with 1 partner on NZ Super or Veteran's Pension (total)",
+      "after_tax_at_m": "334.70",
+      "before_tax": "380.24",
+      "individual_validation_point": false
+    },
+    {
+      "programme": "sole_parent_support",
+      "section": "",
+      "category": "Sole parent",
+      "after_tax_at_m": "521.52",
+      "before_tax": "606.69",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you don't have children",
+      "category": "Single, 16-17",
+      "after_tax_at_m": "355.87",
+      "before_tax": "405.90",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you don't have children",
+      "category": "Single, 18+",
+      "after_tax_at_m": "424.60",
+      "before_tax": "489.21",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you don't have children",
+      "category": "Couple (total)",
+      "after_tax_at_m": "721.44",
+      "before_tax": "823.56",
+      "individual_validation_point": false
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you don't have children",
+      "category": "Couple (each)",
+      "after_tax_at_m": "360.72",
+      "before_tax": "411.78",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you have children",
+      "category": "Sole parent",
+      "after_tax_at_m": "581.96",
+      "before_tax": "679.95",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you have children",
+      "category": "Couple (total)",
+      "after_tax_at_m": "756.94",
+      "before_tax": "866.60",
+      "individual_validation_point": false
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you have children",
+      "category": "Couple (each)",
+      "after_tax_at_m": "378.47",
+      "before_tax": "433.30",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you have children",
+      "category": "Couple with 1 partner not on benefit (total)",
+      "after_tax_at_m": "392.94",
+      "before_tax": "450.84",
+      "individual_validation_point": true
+    },
+    {
+      "programme": "supported_living_payment",
+      "section": "If you have children",
+      "category": "Couple with 1 partner on NZ Super or Veteran's Pension (total)",
+      "after_tax_at_m": "392.94",
+      "before_tax": "450.84",
+      "individual_validation_point": false
+    }
+  ],
+  "fortnightly_nz_super": [
+    {
+      "section": "Standard rates",
+      "category": "Single, living alone",
+      "after_tax_at_m": "1110.30",
+      "after_tax_at_s": "1068.30",
+      "before_tax": "1294.74",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Standard rates",
+      "category": "Single, sharing",
+      "after_tax_at_m": "1024.90",
+      "after_tax_at_s": "982.90",
+      "before_tax": "1191.14",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Standard rates",
+      "category": "Only one of you qualifies",
+      "after_tax_at_m": "854.08",
+      "after_tax_at_s": "812.08",
+      "before_tax": "984.28",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Standard rates",
+      "category": "Both you and your partner qualify (combined)",
+      "after_tax_at_m": "1708.16",
+      "after_tax_at_s": "1624.16",
+      "before_tax": "1968.56",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Standard rates",
+      "category": "Both you and your partner qualify (each)",
+      "after_tax_at_m": "854.08",
+      "after_tax_at_s": "812.08",
+      "before_tax": "984.28",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Standard rates",
+      "category": "Only one of you qualifies and you include your partner in your payments (combined) – grandparented since November 2020",
+      "after_tax_at_m": "1624.12",
+      "after_tax_at_s": "1540.12",
+      "before_tax": "1866.32",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Standard rates",
+      "category": "Only one of you qualifies and you include your partner in your payments (each) – grandparented since November 2020",
+      "after_tax_at_m": "812.06",
+      "after_tax_at_s": "770.06",
+      "before_tax": "933.16",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Non-standard rates",
+      "category": "Couple, with non-qualified spouse included before 1 October 1991 (total)",
+      "after_tax_at_m": "1708.16",
+      "after_tax_at_s": "1624.16",
+      "before_tax": "1968.56",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Non-standard rates",
+      "category": "Couple, with non-qualified spouse included before 1 October 1991 (each)",
+      "after_tax_at_m": "854.08",
+      "after_tax_at_s": "812.08",
+      "before_tax": "984.28",
+      "diagnostic_only": true
+    },
+    {
+      "section": "Non-standard rates",
+      "category": "Hospital rate (always taxed at 'M')",
+      "after_tax_at_m": "116.68",
+      "after_tax_at_s": null,
+      "before_tax": "130.32",
+      "diagnostic_only": true
+    }
+  ],
+  "notes": "This resource retains MSD's published couple totals; the inverse validation uses the 14 individual rate points. NZ Super supplies diagnostic comparisons only; the gross-up never inverts it."
+}

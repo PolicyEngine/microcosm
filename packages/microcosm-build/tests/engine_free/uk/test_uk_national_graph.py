@@ -65,7 +65,6 @@ from microcosm.graph import ContentStore, KernelRegistry, compile_graph, run_gra
 from test_support.microcosm_build import uk_calibration_run as seam
 from test_support.microcosm_build.uk_calibration_run import (  # noqa: F401
     _cgt_projection,
-    _every_seam_row_published,
     _signing_key,
 )
 
@@ -85,6 +84,7 @@ def _patch_target_inputs(monkeypatch, registry):
         facts=None,
         facts_sha256="1" * 64,
         manifest_sha256="2" * 64,
+        fact_schema_versions=("chronicle.consumer_fact.v4",),
         provenance=lambda: {
             "facts_sha256": "1" * 64,
             "manifest_sha256": "2" * 64,
@@ -98,7 +98,9 @@ def _patch_target_inputs(monkeypatch, registry):
         full_targets,
         "require_committed_uk_chronicle_feed_pin",
         lambda facts_sha256, **kwargs: SimpleNamespace(
-            to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64}
+            facts_sha256="1" * 64,
+            consumer_fact_schema_versions=("chronicle.consumer_fact.v4",),
+            to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64},
         ),
     )
     monkeypatch.setattr(
@@ -299,6 +301,29 @@ def test_national_graph_composes_the_bound_checkpoint_line():
         "epochs": {"default": 1500, "effective": 5}
     }
     assert national.population == "uk.full.calibrated"
+
+
+def test_each_version_the_national_build_keeps_is_a_version_of_its_phase():
+    """The national build's input and gates phases keep versions they run.
+
+    ``run_graph`` refuses any other name, but only when that phase starts. The
+    input phase keeps the bound checkpoint, and the gates phase the calibrated
+    population the H5 is written from.
+    """
+    from microcosm.build.uk_runtime.full_build_cli import _through
+
+    national = uk_national_graph(
+        _config(),
+        spine=bound_spine_graph(seam._frame()),
+        spine_population="uk.full.spine_checkpoint",
+        review_date=REVIEW_DATE,
+    )
+    for endpoint, kept in (
+        ("uk.full.spine_checkpoint", "uk.full.spine_checkpoint"),
+        (NATIONAL_GATES_NODE, national.population),
+    ):
+        compiled = compile_graph(_through(national.graph, endpoint))
+        assert kept in set(compiled.versions.values())
 
 
 def test_national_graph_refuses_a_population_without_bound_provenance():
@@ -511,33 +536,28 @@ def test_national_gates_evaluate_the_seam_scope_and_record_the_evidence(
     }
 
 
-def test_national_gates_withhold_a_thin_row_and_judge_only_the_published(
-    tmp_path, monkeypatch
-):
-    """María's rule of 2026-10-21 on the seam: the fixture's one row is thin.
+def test_national_gates_judge_a_thin_row_with_its_figures(tmp_path, monkeypatch):
+    """María's ruling of 2026-10-26 on the seam: the fixture's one row rests
+    on two source households, and it keeps its figures and is judged; the
+    manifest's losses are the solve's own."""
 
-    Two source households carry it, so its figures stay in the build: the
-    evidence row is blank and flagged, the manifest's losses are read over the
-    published rows, and the fit gate, with no published row to judge, blocks
-    without naming the row.
-    """
-    from microcosm.build.uk_runtime import diagnostics
-
-    monkeypatch.setattr(diagnostics, "UK_DIAGNOSTIC_MIN_SOURCE_HOUSEHOLDS", 10)
     national, manifest, store, frame, registry = _run(tmp_path, monkeypatch)
     row_name = registry.specs[0].to_target().row_name
     evidence = json.loads(
         _payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
     )
     (row,) = evidence["diagnostics"]
-    assert row["name"] == row_name and row["model_figures_withheld"] is True
-    assert row["estimate"] is None and row["relative_error"] is None
+    assert row["name"] == row_name and "model_figures_withheld" not in row
+    assert np.isfinite(row["estimate"]) and np.isfinite(row["relative_error"])
     calibration = evidence["calibration"]
-    assert calibration["totals_basis"] == "published_rows"
-    assert calibration["model_figures_withheld"] == 1
+    assert "totals_basis" not in calibration
+    assert "model_figures_withheld" not in calibration
     report = json.loads(_payload(manifest, store, NATIONAL_GATES_NODE, "gate_report"))
-    assert report["blocking"] == ["uk_target_fit"]
-    assert row_name.split("@")[0] not in json.dumps(report["report"])
+    outcomes = {outcome["id"]: outcome for outcome in report["report"]["outcomes"]}
+    fit = outcomes["uk_target_fit"]
+    assert fit["status"] == "passed"
+    assert fit["details"]["targets_checked"] == 1
+    assert "withheld_targets" not in fit["details"]
 
 
 def test_national_problem_refuses_an_empty_register(tmp_path, monkeypatch):

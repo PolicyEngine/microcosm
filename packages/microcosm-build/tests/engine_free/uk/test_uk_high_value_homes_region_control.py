@@ -33,6 +33,7 @@ from microcosm.build.target_reference_authoring import (
     author_target_references,
 )
 from microcosm.build.uk_runtime import ledger_targets
+from microcosm.build.uk_runtime.derived_facts import uk_derived_fact_rows
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
     uk_high_value_home_thresholds,
@@ -445,7 +446,11 @@ def test_the_national_parity_compile_merges_the_derived_facts(monkeypatch):
     monkeypatch.setattr(parity_tool, "compile_uk_target_registry", compile_national)
     national = next(spec for spec in parity_tool.RECEIPTS if spec.surface == "national")
     parity_tool._compile_for_receipt(national, [{"feed": True}])
-    derived = load_uk_high_value_home_stock_facts().rows
+    # Every derived resource, the high-value home stock's rows first.
+    derived = uk_derived_fact_rows()
+    assert derived[: len(load_uk_high_value_home_stock_facts().rows)] == (
+        load_uk_high_value_home_stock_facts().rows
+    )
     assert seen["facts"] == ({"feed": True}, *derived)
 
 

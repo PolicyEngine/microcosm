@@ -12,6 +12,20 @@
     "local"
    ]
   },
+  "household.beer_draught_share": {
+   "reason": "Constant by construction: HMRC's alcohol clearances give the share of beer litres of pure alcohol cleared under draught relief, alone or with small producer relief, and the excise step writes that published ratio to every household as it is (microcosm#1359), since the LCFS records no draught or packaged split to distribute it by. policyengine-uk reads it to apply the draught duty rates. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1359",
+   "approved_on": "2026-10-27",
+   "expires_on": "2027-04-27"
+  },
+  "household.cider_draught_share": {
+   "reason": "Constant by construction: HMRC's alcohol clearances give the share of cider litres of pure alcohol cleared under draught relief, alone or with small producer relief, and the excise step writes that published ratio to every household as it is (microcosm#1359), since the LCFS records no draught or packaged split to distribute it by. policyengine-uk reads it to apply the draught duty rates. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1359",
+   "approved_on": "2026-10-27",
+   "expires_on": "2027-04-27"
+  },
   "household.source_year": {
    "reason": "Constant at the build vintage by construction on a single-vintage artifact, and fully derivable from the artifact's time_period metadata (the rowwise clone path re-derives it when absent). Retained deliberately for row-level vintage documentation and UK/US schema symmetry \u2014 the US pools three ASEC vintages, where the same column is irreducible per-row identity. Not signal.",
    "approved_by": "juaristi22",
@@ -25,6 +39,13 @@
    "adjudication": "microcosm#834",
    "approved_on": "2026-09-05",
    "expires_on": "2027-03-05"
+  },
+  "person.trading_allowance_full_relief": {
+   "reason": "All-zero by construction: the trading allowance receipts stage (microcosm#1439) places a share of the full-relief population (FRS respondents with a profit of GBP 1,000 or less who are not drawn claimants) in the group, and that share is zero by ruling, since M10 of the November event-data plan found the frame's small traders below SPI's declarers even before any full relief. Retained deliberately: the bound SPI self-employment rows read the carrier, so a row re-measured on a built file reads the same population. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1439",
+   "approved_on": "2026-11-11",
+   "expires_on": "2027-05-11"
   }
  }
 }

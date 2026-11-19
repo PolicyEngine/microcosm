@@ -33,20 +33,32 @@ The targets are HMRC's Annual Stamp Tax Statistics 2024 to 2025 (corrected),
 vendored from the pinned Chronicle feed (``hmrc_stamp_tax_facts.json``):
 
 * additional dwellings: Table 6b's higher-rates (HRAD) transactions and value
-  for 2024-25, which cover every buyer, allocated to households by
-  individuals' shares of Table 8a's residential transactions and value (what
-  other buyers would take is companies'); the price bands are Table 6b's, with
-  the five above GBP 2m combined, as uk-data#573 does;
+  for 2024-25, which cover every buyer, allocated to households band by band.
+  At or below GBP 250,000, the residential nil-rate band for all of 2024-25, a
+  purchase owes standard-rate SDLT of nil, so other buyers' Table 8a receipts
+  there are surcharge: their HRAD transactions and value are those receipts
+  over Table 6b's gross HRAD receipts per transaction and per pound of value,
+  and households take the rest of the band. Table 8a does not split out the 2%
+  non-resident surcharge, which a non-resident buyer pays on top in the band;
+  read as HRAD surcharge, it raises other buyers' implied HRAD and lowers
+  households', so households' purchases there are, if anything, understated.
+  Above GBP 250,000, households take individuals' shares of all Table 8a
+  residential transactions and value (what other buyers would take is
+  companies'), as uk-data#573 does. The price bands are Table 6b's, with the
+  five above GBP 2m combined, as uk-data#573 does, at the households' counts
+  and values;
 * non-residential: Table 8b's individuals for 2024-25, and its six bands.
 
-Households' HRAD is not published, so the allocation by individuals' shares
-of all Table 8a residential transactions is an assumption, as uk-data#573
-says, not an observed household series. uk-data#573 gives the household
-lower bounds Tables 6b and 8a imply, 87,200 transactions and GBP 33.28bn;
-the allocation probably overstates households' purchases, since nearly all
-receipts at or below the GBP 250,000 nil-rate band are surcharge, and other
-buyers' receipts there imply more higher-rates transactions than their share
-of all transactions gives them.
+Households' HRAD is not published, so the allocation is an assumption, not an
+observed household series. Allocating every band by individuals' shares of all
+Table 8a transactions, as uk-data#573 does, left other buyers about 13,400 of
+the nil-rate band's HRAD transactions, where their receipts imply about 48,000,
+so it overstated households' purchases there (microcosm#1095). Above the band
+the standard rates make up most receipts, and solving for other buyers' HRAD
+from them gives negative values above GBP 1m, so the shares remain there and
+probably still overstate households' purchases. uk-data#573 gives the
+household lower bounds Tables 6b and 8a imply, 87,200 transactions and
+GBP 33.28bn.
 
 The stage fits transactions and value only. Households' SDLT is fitted at
 build level through ``obr.sdlt``; uk-data#573 also holds its file's
@@ -73,6 +85,8 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     extreme_count,
     small_cell_share,
@@ -154,6 +168,9 @@ _HRAD_TOP_BANDS = (
     "over_gbp_10m",
 )
 _TOTAL_BAND = "all_price_bands"
+#: The band in which the 2024-25 residential nil-rate band (GBP 250,000 all
+#: year) charges no standard-rate SDLT, so other buyers' receipts are surcharge.
+_NIL_RATE_BAND = "gbp_250k_or_less"
 _BAND_ORDER = (
     "gbp_250k_or_less",
     "gbp_250k_to_500k",
@@ -438,13 +455,60 @@ def property_purchase_targets_from_rows(
     )[_TOTAL_BAND]
     count_share = individuals_count / (individuals_count + other_count)
     value_share = individuals_value / (individuals_value + other_value)
-    band_ids, band_counts, band_values = _bands(
+    # At or below the nil-rate band other buyers' receipts are surcharge, so
+    # Table 6b's gross receipts per transaction and per pound turn them into
+    # other buyers' HRAD there; households take the rest of the band.
+    hrad_receipts = _cells(
+        rows, record_set=_HRAD_RECORD_SET, concept="hmrc.sdlt.hrad_receipts_gross"
+    )
+    other_nil_receipts = _cells(
+        rows,
+        record_set=_RESIDENTIAL_OTHER_BUYERS_RECORD_SET,
+        concept="hmrc.sdlt.receipts",
+    )[_NIL_RATE_BAND]
+    other_nil_count = _cells(
+        rows,
+        record_set=_RESIDENTIAL_OTHER_BUYERS_RECORD_SET,
+        concept="hmrc.sdlt.transactions",
+    )[_NIL_RATE_BAND]
+    nil_count = hrad_count[_NIL_RATE_BAND]
+    nil_value = hrad_value[_NIL_RATE_BAND]
+    nil_receipts = hrad_receipts[_NIL_RATE_BAND]
+    if not nil_receipts > 0:
+        raise ValueError("Table 6b carries no nil-rate band HRAD receipts.")
+    other_nil_hrad_count = other_nil_receipts * nil_count / nil_receipts
+    other_nil_hrad_value = other_nil_receipts * nil_value / nil_receipts
+    if not (
+        0.0 < other_nil_hrad_count <= min(nil_count, other_nil_count)
+        and 0.0 < other_nil_hrad_value < nil_value
+    ):
+        raise ValueError(
+            "Other buyers' nil-rate band receipts imply HRAD outside Table 6b's "
+            "band or their own transactions."
+        )
+    band_ids, all_buyer_counts, all_buyer_values = _bands(
         hrad_count, hrad_value, combine=_HRAD_TOP_BANDS
+    )
+    band_counts = tuple(
+        nil_count - other_nil_hrad_count
+        if band == _NIL_RATE_BAND
+        else count * count_share
+        for band, count in zip(band_ids, all_buyer_counts, strict=True)
+    )
+    band_values = tuple(
+        nil_value - other_nil_hrad_value
+        if band == _NIL_RATE_BAND
+        else value * value_share
+        for band, value in zip(band_ids, all_buyer_values, strict=True)
     )
     additional = UKPropertyPurchaseTarget(
         property_type="additional_residential",
-        transactions=hrad_count[_TOTAL_BAND] * count_share,
-        value=hrad_value[_TOTAL_BAND] * value_share,
+        transactions=(hrad_count[_TOTAL_BAND] - nil_count) * count_share
+        + nil_count
+        - other_nil_hrad_count,
+        value=(hrad_value[_TOTAL_BAND] - nil_value) * value_share
+        + nil_value
+        - other_nil_hrad_value,
         band_ids=band_ids,
         band_transactions=band_counts,
         band_values=band_values,
@@ -480,6 +544,16 @@ def property_purchase_targets_from_rows(
             "hrad_property_value_all_buyers": hrad_value[_TOTAL_BAND],
             "residential_individuals_transaction_share": count_share,
             "residential_individuals_value_share": value_share,
+            "nil_band_hrad_receipts_gross": nil_receipts,
+            "nil_band_other_buyers_receipts": other_nil_receipts,
+            "nil_band_other_buyers_hrad_transactions": other_nil_hrad_count,
+            "nil_band_other_buyers_hrad_value": other_nil_hrad_value,
+            "nil_band_other_buyers_hrad_transaction_share": (
+                other_nil_hrad_count / other_nil_count
+            ),
+            "nil_band_households_hrad_transaction_share": (
+                1.0 - other_nil_hrad_count / nil_count
+            ),
         },
     )
 
@@ -655,8 +729,8 @@ def impute_property_purchase_prices(
     def sources(mask: np.ndarray) -> int:
         return distinct_count(ids, mask, weights)
 
-    # UKDS disclosure control (receipt_counts): a weighted figure one to nine
-    # source households carry is "<10", and so is anything derived from it.
+    # UKDS disclosure control (receipt_counts): a weighted figure one or two
+    # source households carry is "<3", and so is anything derived from it.
     fitted_sources = sources(fitted)
     at_cap_sources = sources(at_cap)
     # Copies of one source can sit on both sides, so each side is counted on
@@ -667,15 +741,17 @@ def impute_property_purchase_prices(
     # The eligible owner weight less the fitted transactions is the eligible
     # owners who do not buy, and so is that weight times one less the event
     # rate: both are given only where neither the buyers nor the others rest
-    # on one to nine sources.
-    eligible_small = 0 < min(fitted_sources, sources(eligible & ~fitted)) < 10
+    # on one or two sources.
+    eligible_small = (
+        0 < min(fitted_sources, sources(eligible & ~fitted)) < UK_DISCLOSURE_FLOOR
+    )
     fitted_value = float(np.dot(prices, weights * sdlt_mask))
     at_cap_share = float(weights[at_cap].sum()) / fitted_count if fitted_count else 0.0
     # The share at the cap is withheld where the fit or either side of it
-    # rests on one to nine sources: beside the fitted weight a small side
+    # rests on one or two sources: beside the fitted weight a small side
     # would come back, and a share of one beside a small fit still describes it.
-    at_cap_small = (
-        0 < fitted_sources < 10 or 0 < min(at_cap_sources, uncapped_sources) < 10
+    at_cap_small = 0 < fitted_sources < UK_DISCLOSURE_FLOOR or (
+        0 < min(at_cap_sources, uncapped_sources) < UK_DISCLOSURE_FLOOR
     )
     receipt: dict[str, object] = {
         "property_type": target.property_type,
@@ -688,19 +764,19 @@ def impute_property_purchase_prices(
             max(0.0, 1.0 - fitted_value / target.value), fitted_sources
         ),
         "eligible_owner_weight": (
-            "<10"
+            UK_WITHHELD
             if eligible_small
             else small_cell_share(eligible_weight, eligible_sources)
         ),
         "event_rate": (
-            "<10"
+            UK_WITHHELD
             if eligible_small
             else small_cell_share(fitted_count / eligible_weight, fitted_sources)
         ),
         "price_scale": (
             None if scale is None else small_cell_share(scale, fitted_sources)
         ),
-        "weighted_share_at_stock_cap": "<10" if at_cap_small else at_cap_share,
+        "weighted_share_at_stock_cap": UK_WITHHELD if at_cap_small else at_cap_share,
         "stock_cap_support": extreme_count(at_cap_sources),
         "purchases_outside_sdlt_regions_weight": small_cell_share(
             float(weights[outside].sum()), sources(outside)
@@ -769,9 +845,13 @@ def property_purchases_operation_parameters() -> tuple[
                     for kind in PROPERTY_PURCHASE_KINDS
                 },
                 "additional_residential_targets": (
-                    "Table 6b HRAD transactions and value, 2024-25, times "
-                    "individuals' shares of Table 8a residential transactions and "
-                    "value; Table 6b bands with the five above GBP 2m combined"
+                    "Table 6b HRAD transactions and value, 2024-25: at or below "
+                    "GBP 250,000, the band less other buyers' HRAD, their Table 8a "
+                    "receipts over Table 6b's gross HRAD receipts per transaction "
+                    "and per pound; above it, times individuals' shares of Table "
+                    "8a residential transactions and value; Table 6b bands with "
+                    "the five above GBP 2m combined, at the households' counts "
+                    "and values"
                 ),
                 "non_residential_targets": (
                     "Table 8b individuals' transactions, value and bands, 2024-25"

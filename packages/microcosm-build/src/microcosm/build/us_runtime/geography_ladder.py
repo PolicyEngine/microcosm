@@ -9,6 +9,10 @@ state legislative districts, and metro/CBSA come from block-level crosswalks
 carried in the ladder artifact. One national dataset, filter by geography,
 at any grain (microcosm #275; no per-area files, the standing rule).
 
+``county_fips_2023`` separately supplies calibration geography, mapping
+Connecticut to its nine planning regions through the packaged Census town
+crosswalk. ``county_fips`` retains the 2020 prefix required by the engine.
+
 Vintage discipline follows the country-spec geography-spine schema
 (``vintage_policy: "error"``): the ladder artifact records one vintage per
 derived layer, the loader refuses an artifact that omits any of them, and the
@@ -39,6 +43,11 @@ from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
+from microcosm.build.us_runtime.county_vintage import (
+    COUNTY_FIPS_2023_COLUMN,
+    county_fips_2023_assignment_failures,
+    county_fips_2023_from_blocks,
+)
 from microcosm.frame import Frame
 
 #: Derived (crosswalk-sourced) layers the ladder artifact must carry a
@@ -53,11 +62,12 @@ US_BLOCK_LADDER_DERIVED_LAYERS = (
 )
 
 #: Household spine columns the ladder assignment writes, in write order.
-#: Every name is a policyengine-us household input variable.
+#: The 2023 county is calibration metadata; other names are engine inputs.
 US_GEOGRAPHY_LADDER_COLUMNS = (
     "block_geoid",
     "tract_geoid",
     "county_fips",
+    COUNTY_FIPS_2023_COLUMN,
     "place_fips",
     "sldu",
     "sldl",
@@ -359,6 +369,7 @@ def assign_us_geography_ladder(
     assigned["block_geoid"] = block_str
     assigned["tract_geoid"] = np.array([value[:11] for value in block_str.tolist()])
     assigned["county_fips"] = np.array([value[:5] for value in block_str.tolist()])
+    assigned[COUNTY_FIPS_2023_COLUMN] = county_fips_2023_from_blocks(block_values)
     assigned["place_fips"] = _fips_strings(ladder.place_fips[assigned_index], width=5)
     assigned["sldu"] = ladder.sldu[assigned_index].astype(object)
     assigned["sldl"] = ladder.sldl[assigned_index].astype(object)
@@ -499,6 +510,13 @@ def us_geography_ladder_gate(
 
     non_text = non_text_county_fips_failure(
         household["county_fips"], column="county_fips"
+    )
+    failures.extend(
+        county_fips_2023_assignment_failures(
+            household[COUNTY_FIPS_2023_COLUMN],
+            household["county_fips"],
+            blocks=household["block_geoid"],
+        )
     )
     if non_text is not None:
         failures.append(non_text)

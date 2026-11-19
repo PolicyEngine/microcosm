@@ -1,6 +1,8 @@
 """Invented support controls; no survey, Census or administrative files are read."""
 
+import json
 from copy import deepcopy
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -32,6 +34,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.keys import opaque_artifact_key
+from test_support.paths import paths_for
 
 
 def support_parts(system="invented_block", *, district=True):
@@ -184,6 +187,128 @@ def test_stage_law_uses_declared_weights_at_each_level():
     index = geo._SupportIndex(supports["invented_block"])
     assert index.pick((("region", "R"),), spec["systems"][0]["stages"][0], 0.49) == "A"
     assert index.pick((("region", "R"),), spec["systems"][0]["stages"][0], 0.5) == "B"
+
+
+def test_declarations_without_weight_by_keep_their_bytes_and_draws():
+    """A stage without ``weight_by`` keeps its canonical declaration, so its
+    definition digest and every draw keyed on it stay as they were before the
+    key existed (microcosm#931); New Zealand's committed declaration too."""
+    households, spec, supports, _ = fixture()
+    assert canonical_json(geo.validate_assignment_spec(spec)) == canonical_json(spec)
+    nz = paths_for("microcosm-build").package / (
+        "src/microcosm/build/nz/geography_assignment.json"
+    )
+    declaration = json.loads(nz.read_text(encoding="utf-8"))
+    assert canonical_json(geo.validate_assignment_spec(declaration)) == (
+        canonical_json(declaration)
+    )
+    assert geo.assign_atomic(households, spec, supports)["block"].tolist() == [
+        "0003",
+        "0002",
+        "0003",
+        "0003",
+        "0002",
+        "0003",
+        "0003",
+        "0004",
+    ]
+
+
+def banded_fixture():
+    """Three invented dwelling counts: band A lies only in 0002, band B only in
+    0003 and the unbanded count only in 0001 (and all three in 0004)."""
+    metadata, arrays = support_parts()
+    for name, counts in (
+        ("band_a", [0, 5, 0, 1]),
+        ("band_b", [0, 0, 7, 1]),
+        ("unbanded", [3, 0, 0, 1]),
+    ):
+        metadata["columns"][name] = {
+            "kind": "weight",
+            "source": "invented-counts-v1",
+            "basis": "dwellings",
+        }
+        arrays[name] = np.asarray(counts)
+    support = geo.decode_atomic_support(geo.encode_atomic_support(metadata, arrays))
+    households, spec, _, _ = fixture()
+    spec["systems"][0]["stages"] = [
+        {
+            "level": "area",
+            "weight_by": {
+                "input": "observed_band",
+                "map": {"A": "band_a", "B": "band_b"},
+                "default": "unbanded",
+            },
+        }
+    ]
+    households["observed_band"] = pd.array(
+        ["A", "A", "B", "B", "A", None, "B", None], dtype="string"
+    )
+    return households, spec, {"invented_block": support}
+
+
+def test_weight_by_samples_each_household_by_its_own_weight_column():
+    households, spec, supports = banded_fixture()
+    result = complete(households, spec, supports)
+    # Each band's mass lies in one area of region R, so the draw is forced;
+    # the missing band takes the default, and region S has one area.
+    assert result["block"].tolist() == [
+        "0002",
+        "0002",
+        "0003",
+        "0003",
+        "0002",
+        "0001",
+        "0003",
+        "0004",
+    ]
+    assert geo.validate_geography(result, spec, supports)["outcome"] == "pass"
+    # The band is an input the declaration reads, so it cannot be overwritten.
+    altered = deepcopy(spec)
+    altered["outputs"]["area"] = "observed_band"
+    with pytest.raises(ValueError, match="overwritten"):
+        geo.validate_assignment_spec(altered)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "both_forms",
+        "no_default",
+        "empty_map",
+        "padded_map_code",
+        "code_column_weight",
+        "unknown_default",
+        "unmapped_code",
+        "padded_code",
+        "zero_mass_cell",
+    ],
+)
+def test_weight_by_refuses_undeclared_weights_and_codes(defect):
+    households, spec, supports = banded_fixture()
+    stage = spec["systems"][0]["stages"][0]
+    rule = stage["weight_by"]
+    if defect == "both_forms":
+        stage["weight"] = "population"
+    elif defect == "no_default":
+        del rule["default"]
+    elif defect == "empty_map":
+        rule["map"] = {}
+    elif defect == "padded_map_code":
+        rule["map"][" C"] = "band_a"
+    elif defect == "code_column_weight":
+        rule["map"]["B"] = "puma"
+    elif defect == "unknown_default":
+        rule["default"] = "missing"
+    elif defect == "unmapped_code":
+        households.loc[0, "observed_band"] = "C"
+    elif defect == "padded_code":
+        households.loc[0, "observed_band"] = "A "
+    elif defect == "zero_mass_cell":
+        # Band A has no dwellings in puma B, the only area household 2 may take.
+        households.loc[2, "observed_band"] = "A"
+    with pytest.raises(ValueError):
+        geo.assign_atomic(households, spec, supports)
 
 
 def test_qualified_observed_area_is_retained_even_with_zero_sampling_mass():
@@ -468,6 +593,21 @@ def test_graph_builder_refuses_input_overwrites_and_duplicate_inventory():
         atomic_geography_nodes(altered, columns, base="spine")
 
 
+def test_graph_builder_reads_the_weight_by_input():
+    _, spec, _ = banded_fixture()
+    columns = tuple(
+        Owned("household", c, "string")
+        for c in ("source_record", "observed_region", "observed_puma")
+    )
+    with pytest.raises(ValueError, match="missing"):
+        atomic_geography_nodes(spec, columns, base="spine")
+    nodes = atomic_geography_nodes(
+        spec, (*columns, Owned("household", "observed_band", "string")), base="spine"
+    )
+    assign = next(node for node in nodes if node.id == "geography.assign")
+    assert "observed_band" in assign.inputs[0].columns
+
+
 @pytest.mark.parametrize("defect", ("missing", "type"))
 def test_typed_geography_gate_edge_refuses_invalid_producer_contract(defect):
     _, spec, _, _ = fixture()
@@ -509,3 +649,125 @@ def test_typed_geography_gate_edge_refuses_invalid_producer_contract(defect):
                 (base, *nodes, consumer),
             )
         )
+
+
+def _person_location_run(persons, households, *, columns=None, unmatched=None):
+    from microcosm.build.transport.person_location_kernels import (
+        GEOGRAPHY_PERSON_LOCATION,
+    )
+    from microcosm.graph import Slice
+    from test_support.microcosm_frame.kernels import _context
+
+    schema = EntitySchema(group_entities=("household",))
+    frame = Frame(
+        {"person": persons, "household": households},
+        schema,
+        {"household": Weights(np.ones(len(households)), WeightKind.DESIGN)},
+    )
+    node = Node(
+        "toy.geo.person",
+        GEOGRAPHY_PERSON_LOCATION.ref,
+        inputs=(
+            Slice("household", ("household_region_code",)),
+            Slice("person", ("person_household_id",)),
+        ),
+        outputs=(Owned("person", "region_code", "string"),),
+        params={
+            "columns": canonical_json(
+                columns or {"household_region_code": "region_code"}
+            ).decode()
+        },
+    )
+    context = _context(frame, node, weighted_entities=("household",))
+    if unmatched is not None:
+        # Frame refuses a membership that names no household, so the kernel's
+        # own guard is reached only through a hand-built view.
+        person, household = unmatched
+        tables = dict(context.tables)
+        view = tables["person"].copy()
+        view.loc[view["person_id"] == person, "person_household_id"] = household
+        tables["person"] = view
+        context = replace(context, tables=tables)
+    return GEOGRAPHY_PERSON_LOCATION.run(context)
+
+
+def _location_tables():
+    # Persons sit in an order unrelated to household rows, so a projection by
+    # row position gives some persons another household's code.
+    persons = pd.DataFrame(
+        {
+            "person_id": [17, 3, 11, 5, 8],
+            "person_household_id": [30, 10, 20, 30, 10],
+        }
+    )
+    households = pd.DataFrame(
+        {
+            "household_id": [10, 20, 30],
+            "household_region_code": pd.array(["01", "99", "13"], dtype="string"),
+        }
+    )
+    return persons, households
+
+
+def test_person_location_gives_every_person_their_own_households_code():
+    persons, households = _location_tables()
+    result = _person_location_run(persons, households)
+    values = result.columns["person", "region_code"]
+    # Row order and count hold: the result indexes the persons as given.
+    assert values.index.tolist() == persons["person_id"].tolist()
+    assert str(values.dtype) == "string"
+    by_household = dict(
+        zip(
+            households["household_id"],
+            households["household_region_code"],
+            strict=True,
+        )
+    )
+    assert values.tolist() == [
+        by_household[household] for household in persons["person_household_id"]
+    ]
+    assert values.tolist() == ["13", "01", "99", "13", "01"]
+    # The household table is read, never written.
+    assert set(result.columns) == {("person", "region_code")}
+
+
+@pytest.mark.parametrize("missing", [None, pd.NA])
+def test_person_location_refuses_a_missing_household_value(missing):
+    persons, households = _location_tables()
+    households["household_region_code"] = pd.array(
+        ["01", missing, "13"], dtype="string"
+    )
+    with pytest.raises(ValueError, match=r"must hold a string.*rows \[20\]"):
+        _person_location_run(persons, households)
+
+
+def test_person_location_refuses_a_person_whose_household_is_absent():
+    persons, households = _location_tables()
+    with pytest.raises(ValueError, match=r"match no household; rows \[11\]"):
+        _person_location_run(persons, households, unmatched=(11, 40))
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"household_region_code": "person_household_id"},
+        {"household_id": "region_code"},
+    ],
+)
+def test_person_location_refuses_structural_column_maps(columns):
+    persons, households = _location_tables()
+    with pytest.raises(ValueError, match="structural"):
+        _person_location_run(persons, households, columns=columns)
+
+
+def test_person_location_registers_outside_the_shared_geography_module():
+    from microcosm.build.transport.person_location_kernels import (
+        register_person_location_kernels,
+    )
+
+    shared = KernelRegistry()
+    register_atomic_geography_kernels(shared)
+    assert "geography.person_location@1" not in shared.refs()
+    registry = register_person_location_kernels(KernelRegistry())
+    register_person_location_kernels(registry)
+    assert registry.refs() == ("geography.person_location@1",)

@@ -41,8 +41,19 @@ def json_schema_errors(document: object, schema: Mapping[str, object]) -> list[s
 
 
 def published_json_schema_errors(document: object) -> list[str]:
-    """Return the errors against the committed schema-8 file consumers read."""
+    """Return the errors against the committed schema file consumers read.
 
-    return json_schema_errors(
-        document, diagnostics.load_calibration_diagnostics_v8_json_schema()
+    A document declaring ``schema_version`` 9 is checked against the schema-9
+    file the writer's output must satisfy; any other document against the
+    schema-8 file, so a schema-8 document is still checked as before.
+    """
+
+    schema_version = (
+        document.get("schema_version") if isinstance(document, Mapping) else None
     )
+    schema = (
+        diagnostics.load_calibration_diagnostics_v9_json_schema()
+        if schema_version == 9
+        else diagnostics.load_calibration_diagnostics_v8_json_schema()
+    )
+    return json_schema_errors(document, schema)

@@ -1,11 +1,15 @@
 """Tests split from packages/microcosm-build/tests/test_uk_spi_income.py."""
 
 # ruff: noqa: F403, F405
+from dataclasses import replace as _replace
+
+from microcosm.build.uk_runtime.national_frame import uk_national_frame as _uk_frame
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 from test_support.microcosm_build.uk_spi_income import *
 
 
 def test_spi_disability_refresh_reuses_frs_derivation_for_spi_people() -> None:
-    weeks = 365.25 / 7
+    weeks = 52
     person = pd.DataFrame(
         {
             "attendance_allowance_reported": [0.0, 19 * weeks, 0.0],
@@ -92,6 +96,95 @@ def test_spi_carer_take_up_refresh_follows_the_refilled_receipt() -> None:
             bare, spi_people=pd.Series([True], index=[1])
         )
     )
+
+
+def test_spi_carer_link_is_taken_again_from_the_channels_benefits() -> None:
+    """A3 (microcosm#1095): the copies' re-imputed disability benefits decide
+    their carers' link by frs_disability's rule, outside carers drawn at the
+    FRS channel's share; the FRS rows keep their values."""
+
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_CARE_HELPER_BIT,
+        FRS_CARE_OUTSIDE_BIT,
+    )
+
+    column = frs_disability.CARER_LINK_COLUMN
+    # The carriers the twin hands its copies: the care tab lists each carer,
+    # and member 2 or someone outside gets their 35 hours.
+    member = (1 << FRS_CARE_HELPER_BIT) | (1 << 2)
+    outside = (1 << FRS_CARE_HELPER_BIT) | (1 << FRS_CARE_OUTSIDE_BIT)
+    rows = [
+        # FRS household 1: the share's only base carer, whose member qualifies,
+        # so the survey's share is one.
+        (1001, 1, member, 35.0, "NONE", True),
+        (1002, 1, 0, 0.0, "STANDARD", False),
+        # FRS household 2: a stale value the refresh leaves alone.
+        (2001, 2, outside, 35.0, "NONE", False),
+        # A copy whose member's re-imputed benefit no longer qualifies.
+        (101001, 101, member, 35.0, "NONE", True),
+        (101002, 101, 0, 0.0, "NONE", False),
+        # A copy's outside carer, drawn at the share of one.
+        (102001, 102, outside, 35.0, "NONE", False),
+        # A copy whose member's re-imputed benefit now qualifies.
+        (103001, 103, member, 35.0, "NONE", False),
+        (103002, 103, 0, 0.0, "ENHANCED", False),
+        # Care hours and no link in the care tab keep the engine's default.
+        (104001, 104, 0, 10.0, "NONE", False),
+    ]
+    person = pd.DataFrame(
+        rows,
+        columns=[
+            "person_id",
+            "person_household_id",
+            "frs_care_recipients",
+            "care_hours",
+            "pip_dl_category",
+            column,
+        ],
+    ).assign(aa_category="NONE", dla_sc_category="NONE", carers_allowance_reported=0.0)
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 101, 102, 103, 104],
+            "household_weight": [10.0, 10.0, 1.0, 1.0, 1.0, 1.0],
+            "household_source_id": [1, 2, 1, 2, 3, 4],
+            # The true source each floor counts (microcosm#931).
+            "source_household_id": [1, 2, 1, 2, 3, 4],
+        }
+    )
+    spi_channel = person["person_household_id"].ge(100)
+
+    result, receipt = spi_income._refresh_carer_link(
+        person.copy(), household, spi_channel=spi_channel, min_hours=35.0
+    )
+
+    by_id = dict(zip(result["person_id"], result[column], strict=True))
+    assert by_id == {
+        1001: True,
+        1002: False,
+        2001: False,
+        101001: False,
+        101002: False,
+        102001: True,
+        103001: True,
+        103002: False,
+        104001: True,
+    }
+    assert result[column].dtype == bool
+    # The share rests on one survey household, so the receipt withholds it.
+    assert receipt["share"] == "<3"
+    assert receipt["changed_support"] == "3-9"
+    # The refresh rides the SPI stage's QRF evidence into the HMRC replay
+    # report, whose freeze refuses row-data keys such as "records".
+    from microcosm.build.uk_runtime.hmrc_replay import _freeze_evidence_mapping
+
+    _freeze_evidence_mapping({"carer_link_refresh": receipt}, label="qrf_evidence")
+    # A frame without the link (an older synthetic manifest) passes through.
+    bare = person.drop(columns=[column])
+    passed, none = spi_income._refresh_carer_link(
+        bare, household, spi_channel=spi_channel, min_hours=35.0
+    )
+    assert none is None
+    assert column not in passed
 
 
 def test_spi_esa_group_returns_to_the_engines_default_on_redrawn_rows() -> None:
@@ -324,6 +417,67 @@ def test_spi_uc_start_up_period_holds_only_while_the_row_stays_self_employed() -
     assert "uc_is_in_startup_period" not in spi_income._refresh_uc_start_up_period(
         bare, spi_people=pd.Series([True], index=[1])
     )
+
+
+def test_a_drawn_rows_annual_income_descriptors_follow_its_drawn_incomes() -> None:
+    """Tape income is the tax year's; a twin's spell stays only beside no draw."""
+
+    person = pd.DataFrame(
+        {
+            # Row 10 drew pay, row 20 drew a record with neither pay nor
+            # profit, row 30 drew a profit only, row 40 is an undrawn copy and
+            # row 50 a base row; the last two keep their descriptors.
+            "employment_income": [30_000.0, 0.0, 0.0, 0.0, 18_000.0],
+            "self_employment_income": [0.0, 0.0, 12_000.0, 0.0, 0.0],
+            "employment_income_annual_share": [0.5, 1.0, 1.0, 0.5, 0.25],
+            "employment_income_other_spells": [4_000.0, 5_000.0, 2_000.0, 6_000.0, 0.0],
+            "self_employment_income_annual_share": [1.0, 1.0, 0.5, 1.0, 1.0],
+            "self_employment_income_other_spells": [0.0, 1_000.0, 3_000.0, 0.0, 0.0],
+            "private_pension_income_annual_share": [1.0, 0.4, 1.0, 0.4, 1.0],
+            "contributory_benefits_annual_share": [1.0, 0.6, 1.0, 0.6, 1.0],
+        },
+        index=[10, 20, 30, 40, 50],
+    )
+    spi_people = pd.Series([True, True, True, False, False], index=person.index)
+
+    result = spi_income._refresh_annual_income_descriptors(
+        person.copy(), spi_people=spi_people
+    )
+
+    for column in (
+        "employment_income_annual_share",
+        "self_employment_income_annual_share",
+        "private_pension_income_annual_share",
+        "contributory_benefits_annual_share",
+    ):
+        assert result[column].tolist()[:3] == [1.0, 1.0, 1.0], column
+        assert result[column].tolist()[3:] == person[column].tolist()[3:], column
+    assert result["employment_income_other_spells"].tolist() == [
+        0.0,
+        5_000.0,
+        2_000.0,
+        6_000.0,
+        0.0,
+    ]
+    assert result["self_employment_income_other_spells"].tolist() == [
+        0.0,
+        1_000.0,
+        0.0,
+        0.0,
+        0.0,
+    ]
+    assert result["employment_income"].tolist() == person["employment_income"].tolist()
+    bare = pd.DataFrame({"employment_income": [0.0]}, index=[1])
+    assert list(
+        spi_income._refresh_annual_income_descriptors(
+            bare, spi_people=pd.Series([True], index=[1])
+        ).columns
+    ) == ["employment_income"]
+    with pytest.raises(ValueError, match="only some annual income descriptors"):
+        spi_income._refresh_annual_income_descriptors(
+            person.drop(columns="contributory_benefits_annual_share"),
+            spi_people=spi_people,
+        )
 
 
 def test_finite_numeric_diagnostic_names_columns_and_counts() -> None:
@@ -778,17 +932,19 @@ def test_taxable_income_mask_applies_the_no_record_rule() -> None:
         "state_pension_reported": 0.0,
         "employment_status": "UNEMPLOYED",
         "savings_interest_income": 0.0,
-        "tax_free_savings_income": 0.0,
+        "individual_savings_account_interest_income": 0.0,
         "dividend_income": 0.0,
         "property_income": 0.0,
         "miscellaneous_income": 0.0,
     }
     rows = [
         dict(columns),  # nothing at all
+        # ISA interest is not taxable: 900 outside ISAs stays under the floor
+        # (microcosm#1360).
         {
             **columns,
-            "savings_interest_income": 1_500.0,
-            "tax_free_savings_income": 600.0,
+            "savings_interest_income": 900.0,
+            "individual_savings_account_interest_income": 600.0,
         },
         {**columns, "dividend_income": 1_200.0},
         {**columns, "employment_status": "FT_SELF_EMPLOYED"},
@@ -1000,3 +1156,459 @@ def test_stage_refuses_a_sign_class_mismatch_unless_sampled(
     assert seen.get("reached") is True
     if result is not None:
         assert result.stage1_transport["sign_class_mismatches"] == mismatch
+
+
+_PAY_FLOOR_2024_25 = spi_income.SPIEmploymentPayFloor(
+    age_thresholds=(0.0, 18.0, 21.0, 23.0, 25.0),
+    hourly_rates=(6.40, 8.60, 11.44, 11.44, 11.44),
+    weeks_in_year=52.0,
+    instant="2024-04-30",
+    source="fixture",
+)
+
+
+def _pay_floor_frames(
+    rows: list[dict[str, object]],
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, pd.Series]:
+    """One person per household; ``source`` names its source household.
+
+    ``twin_pay`` is a drawn row's FRS twin's employment income before the
+    draw (well paid unless given), and an FRS row (``drawn`` false) is the
+    floor's reference for the hourly-pay check.
+    """
+
+    person = pd.DataFrame(
+        {
+            "person_household_id": np.arange(1, len(rows) + 1),
+            "age": [row["age"] for row in rows],
+            "employment_status": [row.get("status", "FT_EMPLOYED") for row in rows],
+            # The spine annualises usual weekly hours at 52 (uk-data#531).
+            "hours_worked": [row["weekly_hours"] * 52.0 for row in rows],
+            SPI_HMRC_PAY_COLUMN: [row["pay"] for row in rows],
+            "self_employment_income": [row.get("trade", 0.0) for row in rows],
+        },
+        index=np.arange(10, 10 + len(rows)),
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(1, len(rows) + 1),
+            "household_source_id": [row.get("source", i) for i, row in enumerate(rows)],
+            "source_household_id": [row.get("source", i) for i, row in enumerate(rows)],
+        }
+    )
+    rows_mask = pd.Series([row.get("drawn", True) for row in rows], index=person.index)
+    weights = pd.Series(
+        [float(row.get("weight", 100.0)) for row in rows], index=person.index
+    )
+    twin_pay = pd.Series(
+        [float(row.get("twin_pay", 60_000.0)) for row in rows], index=person.index
+    )[rows_mask]
+    return person, household, rows_mask, weights, twin_pay
+
+
+def _floor(person, household, rows, weights, twin_pay):
+    return spi_income._floor_employment_pay_at_minimum_wage(
+        person,
+        rows=rows,
+        floor=_PAY_FLOOR_2024_25,
+        household=household,
+        person_weights=weights,
+        twin_pay=twin_pay,
+        reference_rows=~rows,
+    )
+
+
+def test_spi_pay_floor_rate_follows_the_age_bands() -> None:
+    rates = _PAY_FLOOR_2024_25.hourly_rate(np.array([16, 17.9, 18, 20.5, 21, 64]))
+    np.testing.assert_allclose(rates, [6.40, 6.40, 8.60, 8.60, 11.44, 11.44])
+    with pytest.raises(ValueError, match="increasing age thresholds from zero"):
+        spi_income.SPIEmploymentPayFloor(
+            age_thresholds=(16.0, 21.0),
+            hourly_rates=(6.40, 11.44),
+            weeks_in_year=52.0,
+            instant="2024-04-30",
+            source="fixture",
+        )
+    with pytest.raises(ValueError, match="hourly rates must be positive"):
+        spi_income.SPIEmploymentPayFloor(
+            age_thresholds=(0.0,),
+            hourly_rates=(0.0,),
+            weeks_in_year=52.0,
+            instant="2024-04-30",
+            source="fixture",
+        )
+
+
+def test_spi_pay_floor_lifts_only_drawn_employee_pay_below_its_floor() -> None:
+    person, household, rows, weights, twin_pay = _pay_floor_frames(
+        [
+            {"age": 30, "weekly_hours": 30, "pay": 5_000.0},  # floored, 21+
+            {"age": 19, "weekly_hours": 20, "pay": 2_000.0},  # floored, 18-20
+            {"age": 17, "weekly_hours": 10, "pay": 1_000.0},  # floored, under 18
+            # The twin's own rate, under the minimum wage, caps the floor.
+            {"age": 30, "weekly_hours": 30, "pay": 5_000.0, "twin_pay": 9_000.0},
+            # A twin without pay caps nothing.
+            {"age": 30, "weekly_hours": 30, "pay": 5_000.0, "twin_pay": 0.0},
+            {"age": 30, "weekly_hours": 30, "pay": 50_000.0},  # above the floor
+            {"age": 30, "weekly_hours": 0, "pay": 1_000.0},  # no hours
+            {"age": 30, "weekly_hours": 30, "pay": 0.0},  # no drawn pay
+            {
+                "age": 30,
+                "weekly_hours": 40,
+                "pay": 1_000.0,
+                "status": "FT_SELF_EMPLOYED",
+            },
+            {"age": 30, "weekly_hours": 40, "pay": 1_000.0, "drawn": False},  # FRS row
+        ]
+    )
+    before = person.copy()
+    floored, receipt, uplift = _floor(person, household, rows, weights, twin_pay)
+
+    pay = floored[SPI_HMRC_PAY_COLUMN].to_numpy()
+    lifted = [
+        30 * 52 * 11.44,
+        20 * 52 * 8.60,
+        10 * 52 * 6.40,
+        9_000.0,
+        30 * 52 * 11.44,
+    ]
+    np.testing.assert_allclose(pay[:5], lifted)
+    np.testing.assert_array_equal(pay[5:], before[SPI_HMRC_PAY_COLUMN].to_numpy()[5:])
+    np.testing.assert_allclose(
+        uplift.to_numpy(),
+        [
+            *(np.asarray(lifted) - [5_000.0, 2_000.0, 1_000.0, 5_000.0, 5_000.0]),
+            0,
+            0,
+            0,
+            0,
+        ],
+    )
+    assert list(uplift.index) == list(person.index[rows.to_numpy()])
+    # Only the PAY leaf moves; the input frame is not modified.
+    pd.testing.assert_frame_equal(
+        floored.drop(columns=[SPI_HMRC_PAY_COLUMN]),
+        before.drop(columns=[SPI_HMRC_PAY_COLUMN]),
+    )
+    pd.testing.assert_frame_equal(person, before)
+    # Five floored rows on five source households beside one unfloored: the
+    # floored weight, share and amount beside the eligible weight would give
+    # back that one household's, so they are withheld; the mean uplift rests
+    # on the five.
+    assert receipt["floored"] == {
+        "source_households": "3-9",
+        "weighted_people": "<3",
+        "weighted_share_of_eligible": "<3",
+        "weighted_mean_uplift_gbp": pytest.approx(float(uplift.to_numpy()[:5].mean())),
+        "weighted_amount_added_gbp": "<3",
+    }
+    assert receipt["eligible"]["source_households"] == "3-9"
+    assert receipt["rate"] == spi_income.SPI_EMPLOYMENT_PAY_FLOOR_RATE_RULE
+    assert receipt["annual_income"] == spi_income.SPI_EMPLOYMENT_PAY_FLOOR_ANNUAL_RULE
+    assert receipt["hourly_rate_by_age_from"] == {
+        "0": 6.40,
+        "18": 8.60,
+        "21": 11.44,
+        "23": 11.44,
+        "25": 11.44,
+    }
+    # Each share has a side on one source household (the unfloored row, the
+    # twin-capped row still under the minimum wage, the one FRS employee), so
+    # none is given; and no row stays below its floor.
+    assert receipt["hourly_pay_check"] == {
+        "spi_drawn_employees": {
+            "source_households": "3-9",
+            "below_minimum_wage_share_before": "<3",
+            "below_minimum_wage_share_after": "<3",
+        },
+        "frs_employees": {
+            "source_households": "<3",
+            "below_minimum_wage_share": "<3",
+        },
+        "eligible_rows_below_their_floor_after": 0,
+    }
+    # Deterministic: the same inputs floor the same rows to the same pay.
+    again, again_receipt, _ = _floor(person, household, rows, weights, twin_pay)
+    pd.testing.assert_frame_equal(again, floored)
+    assert again_receipt == receipt
+
+
+def test_spi_pay_floor_receipt_counts_source_households_not_copies() -> None:
+    # Twelve floored copies of two source households, then twelve floored
+    # rows of twelve households beside ten, then two, unfloored ones.
+    copies = [
+        {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": index % 2}
+        for index in range(12)
+    ]
+    _, receipt, _ = _floor(*_pay_floor_frames(copies))
+    assert receipt["floored"]["source_households"] == "<3"
+    assert receipt["floored"]["weighted_mean_uplift_gbp"] == "<3"
+
+    def receipt_of(unfloored: int) -> dict[str, object]:
+        rows_ = [
+            {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": 100 + index}
+            for index in range(12)
+        ] + [
+            {"age": 40, "weekly_hours": 35, "pay": 90_000.0, "source": 200 + index}
+            for index in range(unfloored)
+        ]
+        return _floor(*_pay_floor_frames(rows_))[1]
+
+    receipt = receipt_of(10)
+    minimum = 35 * 52 * 11.44
+    assert receipt["eligible"] == {"source_households": 20, "weighted_people": 2_200.0}
+    assert receipt["floored"]["source_households"] == 10
+    assert receipt["floored"]["weighted_people"] == pytest.approx(1_200.0)
+    assert receipt["floored"]["weighted_share_of_eligible"] == pytest.approx(
+        1_200.0 / 2_200.0
+    )
+    assert receipt["floored"]["weighted_mean_uplift_gbp"] == pytest.approx(
+        minimum - 1_000.0
+    )
+    assert receipt["floored"]["weighted_amount_added_gbp"] == pytest.approx(
+        1_200.0 * (minimum - 1_000.0)
+    )
+    # Before the floor twelve of the twenty-two weighted rows were below the
+    # minimum wage, after it none; the reference has no FRS rows here.
+    check = receipt["hourly_pay_check"]
+    assert check["spi_drawn_employees"]["below_minimum_wage_share_before"] == (
+        pytest.approx(1_200.0 / 2_200.0)
+    )
+    assert check["spi_drawn_employees"]["below_minimum_wage_share_after"] == 0.0
+    assert check["eligible_rows_below_their_floor_after"] == 0
+
+    # Two unfloored sources: the floored weight, share or amount beside the
+    # eligible weight would give back their weight, so none is given; nor are
+    # the hourly-pay shares, whose rest is the same two.
+    receipt = receipt_of(2)
+    assert receipt["eligible"] == {"source_households": 10, "weighted_people": 1_400.0}
+    assert receipt["floored"] == {
+        "source_households": 10,
+        "weighted_people": "<3",
+        "weighted_share_of_eligible": "<3",
+        "weighted_mean_uplift_gbp": pytest.approx(minimum - 1_000.0),
+        "weighted_amount_added_gbp": "<3",
+    }
+    assert (
+        receipt["hourly_pay_check"]["spi_drawn_employees"][
+            "below_minimum_wage_share_before"
+        ]
+        == "<3"
+    )
+
+
+def test_spi_pay_floor_compares_the_drawn_rows_with_frs_employees() -> None:
+    # Ten FRS employees on the minimum wage and ten below it beside twelve
+    # drawn rows the floor lifts: half the FRS rows are below the minimum wage.
+    frs = [
+        {
+            "age": 40,
+            "weekly_hours": 35,
+            "pay": 35 * 52 * (11.44 if index < 10 else 9.0),
+            "source": 300 + index,
+            "drawn": False,
+        }
+        for index in range(20)
+    ]
+    drawn = [
+        {"age": 40, "weekly_hours": 35, "pay": 1_000.0, "source": 100 + index}
+        for index in range(12)
+    ]
+    _, receipt, _ = _floor(*_pay_floor_frames(frs + drawn))
+    assert receipt["hourly_pay_check"]["frs_employees"] == {
+        "source_households": 20,
+        "below_minimum_wage_share": pytest.approx(0.5),
+    }
+
+
+def test_spi_pay_floor_refuses_a_frame_without_hours() -> None:
+    person, household, rows, weights, twin_pay = _pay_floor_frames(
+        [{"age": 30, "weekly_hours": 30, "pay": 5_000.0}]
+    )
+    with pytest.raises(ValueError, match="hours_worked"):
+        _floor(
+            person.drop(columns=["hours_worked"]), household, rows, weights, twin_pay
+        )
+
+
+def test_floored_rows_keep_the_tape_pay_as_their_year_of_pay() -> None:
+    person = pd.DataFrame(
+        {
+            "employment_income": [20_000.0, 30_000.0, 50_000.0],
+            "employment_income_annual_share": [1.0, 1.0, 0.4],
+        },
+        index=[10, 11, 12],
+    )
+    uplift = pd.Series([8_000.0, 0.0], index=[10, 11])
+    kept = spi_income._keep_floored_rows_year_of_pay(person.copy(), uplift=uplift)
+    # Tape pay 12,000 of a floored 20,000: a 0.6 share; the others keep theirs.
+    np.testing.assert_allclose(
+        kept["employment_income_annual_share"].to_numpy(), [0.6, 1.0, 0.4]
+    )
+    # Without the descriptors (a frame built before #1344) nothing moves.
+    bare = person.drop(columns=["employment_income_annual_share"])
+    pd.testing.assert_frame_equal(
+        spi_income._keep_floored_rows_year_of_pay(bare.copy(), uplift=uplift), bare
+    )
+    with pytest.raises(ValueError, match="must exceed its uplift"):
+        spi_income._keep_floored_rows_year_of_pay(
+            person.copy(), uplift=pd.Series([20_000.0], index=[10])
+        )
+
+
+def test_each_spi_fit_takes_its_operations_gate_calibration(
+    monkeypatch, tmp_path
+) -> None:
+    """The tape forest and the FRS reference forests take stage 1's declared
+    gate, stage 2 its own (microcosm#1359): the reference gate places a twin's
+    observed sign where the tape gate reads it, so they are calibrated alike.
+    The FRS fits fold by household; the tape's records stand alone."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    monkeypatch.setattr(_FakeQRF, "fit_gates", [])
+    _bypass_reviewed_donor_identity(monkeypatch)
+    real_cross_fit = spi_income.cross_fit_transport
+    monkeypatch.setattr(
+        spi_income,
+        "cross_fit_transport",
+        lambda *args, **kwargs: real_cross_fit(
+            *args, **{**kwargs, "allow_in_sample": True}
+        ),
+    )
+    try:
+        result = impute_uk_spi_income_support(
+            support,
+            donor_path,
+            seed=9,
+            n_estimators=3,
+            donor_sample_size=None,
+            state_pension_age=66,
+            allow_in_sample_reference=True,
+            stage1_gate_calibration="cross_fitted",
+        )
+    except ImportError:
+        result = None
+    (tape_kind, tape_gate, tape_groups), *frs_fits = _FakeQRF.fit_gates
+    assert (tape_kind, tape_gate, tape_groups) == ("design", "cross_fitted", None)
+    *reference_fits, stage2_fit = frs_fits
+    assert reference_fits
+    assert {gate for _, gate, _ in reference_fits} == {"cross_fitted"}
+    assert stage2_fit[1] == "in_sample"
+    households = set(support.person["person_household_id"])
+    for kind, _, groups in frs_fits:
+        assert kind == "importance"
+        assert groups is not None and set(groups) <= households
+    if result is not None:
+        assert result.gate_outcomes
+        assert {key.split(":", 1)[0] for key in result.gate_outcomes} == {
+            spi_income.SPI_DONOR_FIT_NAME,
+            spi_income.SPI_TRANSPORT_FIT_NAME,
+        }
+        assert set(result.gate_outcomes.values()) == {"cross_fitted"}
+
+
+def _geographic_clones_of(support):
+    """The support's tables as two geographic clones at half the weight."""
+
+    household = support.household.drop(columns="household_weight")
+    pool = with_geographic_clones(
+        _uk_frame(
+            person=support.person,
+            benunit=support.benunit,
+            household=household,
+            household_weights=support.household["household_weight"].to_numpy(),
+            weight_kind=support.household_weight_kind,
+            time_period="2023",
+            mass_log=support.mass_log,
+        )
+    )
+    cloned = pool.table("household").copy()
+    cloned["household_weight"] = pool.weights_for("household").values
+    return _replace(
+        support,
+        person=pool.table("person"),
+        benunit=pool.table("benunit"),
+        household=cloned,
+    )
+
+
+def test_a_household_table_carrying_the_artifact_clone_index_is_refused(
+    monkeypatch, tmp_path
+) -> None:
+    """No spine stage writes the artifact's bare clone_index, and a table
+    carrying it would train clone 0 at its own weight rather than the fold's
+    (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    with pytest.raises(ValueError, match="artifact's clone_index"):
+        impute_uk_spi_income_support(
+            _replace(support, household=support.household.assign(clone_index=0)),
+            donor_path,
+            seed=9,
+            n_estimators=3,
+            donor_sample_size=None,
+            state_pension_age=66,
+            allow_in_sample_reference=True,
+            stage1_gate_calibration="cross_fitted",
+        )
+
+
+def test_geographic_clones_train_the_frs_forests_as_their_survey_records(
+    monkeypatch, tmp_path
+) -> None:
+    """Two geographic clones of every household at half its weight hand the
+    reference and stage-2 forests the rows and weights the households hand
+    them alone (microcosm#931)."""
+
+    support = _dead_support()
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
+    _bypass_reviewed_donor_identity(monkeypatch)
+    real_cross_fit = spi_income.cross_fit_transport
+    monkeypatch.setattr(
+        spi_income,
+        "cross_fit_transport",
+        lambda *args, **kwargs: real_cross_fit(
+            *args, **{**kwargs, "allow_in_sample": True}
+        ),
+    )
+
+    def frs_fits(frame):
+        monkeypatch.setattr(_FakeQRF, "fit_gates", [])
+        monkeypatch.setattr(_FakeQRF, "fit_weight_values", [])
+        try:
+            impute_uk_spi_income_support(
+                frame,
+                donor_path,
+                seed=9,
+                n_estimators=3,
+                donor_sample_size=None,
+                state_pension_age=66,
+                allow_in_sample_reference=True,
+                stage1_gate_calibration="cross_fitted",
+            )
+        except ImportError:
+            pass
+        # The tape forest trains on the tape, not on the frame.
+        return list(
+            zip(_FakeQRF.fit_gates[1:], _FakeQRF.fit_weight_values[1:], strict=True)
+        )
+
+    alone = frs_fits(support)
+    cloned = frs_fits(_geographic_clones_of(support))
+    assert alone and len(cloned) == len(alone)
+    for ((kind, gate, groups), weights), (
+        (cloned_kind, cloned_gate, cloned_groups),
+        cloned_weights,
+    ) in zip(alone, cloned, strict=True):
+        assert (cloned_kind, cloned_gate) == (kind, gate)
+        np.testing.assert_array_equal(cloned_groups, groups)
+        np.testing.assert_array_equal(cloned_weights, weights)

@@ -145,11 +145,25 @@ def test_occupation_carries_match_retired_poccu2_codes() -> None:
             "PRDTRACE": [1, 2, 4, 1, 1, 1, 1],
             "PRDTHSP": [0, 1, 0, 0, 0, 0, 0],
             "POCCU2": [53, 52, 8, 41, 1, 50, 20],
+            "WEIND": [23, 22, 13, 1, 13, 7, 16],
+            "WEMIND": [15, 14, 9, 1, 9, 5, 10],
+            "WKSWORK": [0, 52, 52, 26, 52, 40, 12],
         }
     )
     result = derive_us_org_occupation_inputs(person)
 
     assert result["cps_race"].tolist() == [1, 2, 4, 1, 1, 1, 1]
+    assert result["detailed_industry_recode"].tolist() == person["WEIND"].tolist()
+    assert result["major_industry_recode"].tolist() == person["WEMIND"].tolist()
+    assert result["worked_last_year"].tolist() == [
+        False,
+        True,
+        True,
+        True,
+        True,
+        True,
+        True,
+    ]
     assert result["is_hispanic"].tolist() == [
         False,
         True,

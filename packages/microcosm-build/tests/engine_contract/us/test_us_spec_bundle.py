@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_spec_bundle.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.us_runtime.stacked_spine import (
+    PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION,
+)
 from test_support.microcosm_build.us_spec_bundle import *
 
 
@@ -291,7 +294,9 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
     assert graph["execution_receipt_contract"]["version"] == 4
     assert graph["execution_receipt_contract"]["transition_authority"]["version"] == 2
     assert graph["resource_semantics"]["schema_version"] == 2
-    assert primary_binding["schema_version"] == 5
+    assert primary_binding["schema_version"] == (
+        PRIMARY_PUF_EXECUTION_CONFIG_SCHEMA_VERSION
+    )
     assert primary_binding["qrf"]["worker_execution"] == {
         "surface": "execution_profile",
         "resolve_as": "worker_execution",

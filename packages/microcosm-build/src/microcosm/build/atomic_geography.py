@@ -175,6 +175,39 @@ def decode_atomic_support(payload: bytes) -> AtomicSupport:
     )
 
 
+def _stage_schema(stage) -> bool:
+    """A stage samples by one weight column, or by one chosen per household.
+
+    ``weight_by`` reads each household's ``input`` code and samples by the
+    weight column ``map`` names for it, or by ``default`` where the code is
+    missing (microcosm#931). A stage declares one form, never both, so a
+    declaration without ``weight_by`` keeps its canonical bytes and draws.
+    """
+    if not isinstance(stage, dict) or not _text(stage.get("level")):
+        return False
+    if set(stage) == {"level", "weight"}:
+        return _text(stage["weight"])
+    rule = stage.get("weight_by")
+    return (
+        set(stage) == {"level", "weight_by"}
+        and isinstance(rule, dict)
+        and set(rule) == {"input", "map", "default"}
+        and _text(rule["input"])
+        and _text(rule["default"])
+        and isinstance(rule["map"], dict)
+        and bool(rule["map"])
+        and all(_text(code) and _text(weight) for code, weight in rule["map"].items())
+    )
+
+
+def _stage_weights(stage: Mapping) -> tuple[str, ...]:
+    """Every weight column a stage can sample by."""
+    if "weight" in stage:
+        return (stage["weight"],)
+    rule = stage["weight_by"]
+    return (*rule["map"].values(), rule["default"])
+
+
 def validate_assignment_spec(spec: Mapping) -> dict:
     """Normalize a graph parameter mapping without accepting undeclared options.
 
@@ -269,16 +302,7 @@ def validate_assignment_spec(spec: Mapping) -> dict:
             seen.add(c["support"])
         stages = system["stages"]
         _require(isinstance(stages, list) and bool(stages), "sampling stages")
-        _require(
-            all(
-                isinstance(s, dict)
-                and set(s) == {"level", "weight"}
-                and _text(s["level"])
-                and _text(s["weight"])
-                for s in stages
-            ),
-            "stage schema",
-        )
+        _require(all(_stage_schema(s) for s in stages), "stage schema")
         _require(
             stages[-1]["level"] == "area"
             and len({s["level"] for s in stages}) == len(stages),
@@ -305,6 +329,9 @@ def validate_assignment_spec(spec: Mapping) -> dict:
     for system in systems:
         required.update(system["selector"])
         required.update(c["input"] for c in system["constraints"])
+        required.update(
+            s["weight_by"]["input"] for s in system["stages"] if "weight_by" in s
+        )
         if system["observed_area"]:
             required.add(system["observed_area"])
     _require(
@@ -343,8 +370,10 @@ def _bind(spec: Mapping, supports: Mapping[str, AtomicSupport]):
             _require(
                 s["level"] in columns
                 and columns[s["level"]]["kind"] == "code"
-                and s["weight"] in columns
-                and columns[s["weight"]]["kind"] == "weight",
+                and all(
+                    weight in columns and columns[weight]["kind"] == "weight"
+                    for weight in _stage_weights(s)
+                ),
                 "unknown stage column",
             )
         for layer in system["layers"]:
@@ -382,6 +411,19 @@ def _constraints(row, system) -> tuple:
             _require(_text(value), "observed codes require nonempty strings")
             values.append((c["support"], value))
     return tuple(sorted(values))
+
+
+def _household_stage(row, stage: Mapping) -> Mapping:
+    """The stage with the one weight column this household samples by."""
+    rule = stage.get("weight_by")
+    if rule is None:
+        return stage
+    value = row[rule["input"]]
+    if pd.isna(value):
+        return {"level": stage["level"], "weight": rule["default"]}
+    _require(_text(value), "weight-by codes require nonempty strings")
+    _require(value in rule["map"], "weight-by code has no declared weight")
+    return {"level": stage["level"], "weight": rule["map"][value]}
 
 
 class _SupportIndex:
@@ -492,7 +534,9 @@ def assign_atomic(
                 )
             else:
                 for stage, uniforms in zip(system["stages"], draws, strict=True):
-                    area = index.pick(constraints, stage, uniforms[local])
+                    area = index.pick(
+                        constraints, _household_stage(row, stage), uniforms[local]
+                    )
                     constraints = tuple(
                         sorted({**dict(constraints), stage["level"]: area}.items())
                     )

@@ -2,8 +2,13 @@ country: be
 identity_generation: 1
 seed_protocol: legacy-v1
 dataset_run:
-  target_period: 2023
-status: >-
-  Compatibility bundle for compiler-front-end expressibility. Execution still
-  requires licensed BE-SILC tables, the commune-assignment runtime, and a
-  rulespec-be Axiom module.
+  target_period: 2026
+status: Inactive Belgian donor-transport specification. Donor period 2024 uses the exact US
+  Build P artifact NZ pins (BE-MC2); target and policy period 2026 is the BE-MC0 proposal
+  pending Max's ruling d1902. Geography uses NIS 2025 communes. chronicle_feed.json pins the
+  Chronicle consumer artifact; the rulespec-be tree pin remains a declared placeholder in
+  spec/sources.yaml. B3's separated calibration, pre-calibration and holdout references carry
+  selectors only, roll 2023-2025 facts to 2026 by declared FPB ratio pairs, and stay parked
+  where a producer or ruling is missing. Unit construction, pinned engine bindings, executable
+  geography support, graph, receipt contract and release qualification remain later work.
+  Publication remains private and Max's decision.

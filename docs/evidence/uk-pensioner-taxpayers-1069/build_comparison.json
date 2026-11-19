@@ -1,0 +1,2942 @@
+{
+  "groups": {
+    "itl_age_65_and_over": {
+      "baseline": {
+        "estimate": 9437320.051829286,
+        "mean_abs_relative_error": 0.03429345751223232,
+        "rows": 12,
+        "target": 9317750.0
+      },
+      "candidate": {
+        "estimate": 9310812.331593096,
+        "mean_abs_relative_error": 0.0011125224343359887,
+        "rows": 12,
+        "target": 9317750.0
+      }
+    },
+    "itl_age_state_pension_age": {
+      "baseline": {
+        "estimate": 8932401.384570044,
+        "mean_abs_relative_error": 0.030236583645605043,
+        "rows": 12,
+        "target": 8841750.0
+      },
+      "candidate": {
+        "estimate": 8833653.961768188,
+        "mean_abs_relative_error": 0.0011114201483366191,
+        "rows": 12,
+        "target": 8841750.0
+      }
+    },
+    "spi_private_pension_amount": {
+      "baseline": {
+        "estimate": 139209954216.0734,
+        "mean_abs_relative_error": 0.008252818340748017,
+        "rows": 12,
+        "target": 140411023606.5799
+      },
+      "candidate": {
+        "estimate": 138633745034.31354,
+        "mean_abs_relative_error": 0.010994689744028889,
+        "rows": 12,
+        "target": 140411023606.5799
+      }
+    },
+    "spi_private_pension_count": {
+      "baseline": {
+        "estimate": 9824504.086063743,
+        "mean_abs_relative_error": 0.006243793433638598,
+        "rows": 12,
+        "target": 9687609.133901557
+      },
+      "candidate": {
+        "estimate": 9779871.237837382,
+        "mean_abs_relative_error": 0.004089078026561866,
+        "rows": 12,
+        "target": 9687609.133901557
+      }
+    },
+    "spi_state_pension_amount": {
+      "baseline": {
+        "estimate": 107633218266.05168,
+        "mean_abs_relative_error": 0.023933625755630166,
+        "rows": 12,
+        "target": 100843443900.58914
+      },
+      "candidate": {
+        "estimate": 106684501684.18896,
+        "mean_abs_relative_error": 0.008664046977344046,
+        "rows": 12,
+        "target": 104274133635.24219
+      }
+    },
+    "spi_state_pension_count": {
+      "baseline": {
+        "estimate": 8833496.444246415,
+        "mean_abs_relative_error": 0.01961897306130678,
+        "rows": 12,
+        "target": 8358668.002204906
+      },
+      "candidate": {
+        "estimate": 8737134.96721855,
+        "mean_abs_relative_error": 0.004963295064335954,
+        "rows": 12,
+        "target": 8641293.658088233
+      }
+    },
+    "state_pension_recipient_breakdowns": {
+      "baseline": {
+        "mean_abs_relative_error": 0.0020478256906850977,
+        "rows": 55
+      },
+      "candidate": {
+        "mean_abs_relative_error": 0.0018913328437832081,
+        "rows": 55
+      }
+    },
+    "state_pension_recipients": {
+      "baseline": {
+        "estimate": 12370840.974200724,
+        "mean_abs_relative_error": 0.001309180730878262,
+        "rows": 2,
+        "target": 12383021.5
+      },
+      "candidate": {
+        "estimate": 12371640.08592917,
+        "mean_abs_relative_error": 0.0010600156709235256,
+        "rows": 2,
+        "target": 12383021.5
+      }
+    }
+  },
+  "rows": [
+    {
+      "baseline": {
+        "estimate": 329601.74962035054,
+        "group": "state_pension_recipients",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0016530501659090455,
+        "target": 330147.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 330525.31884643016,
+        "group": "state_pension_recipients",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0011443940857651922,
+        "target": 330147.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipients",
+      "name": "dfc_ni.state_pension.recipients@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 12041239.224580374,
+        "group": "state_pension_recipients",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0009653112958474787,
+        "target": 12052874.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 12041114.76708274,
+        "group": "state_pension_recipients",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0009756372560818589,
+        "target": 12052874.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipients",
+      "name": "dwp.state_pension.recipients@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1388156.6036205348,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.00032903063340896315,
+        "target": 1388613.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1387518.4685261392,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0007885790206280172,
+        "target": 1388613.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_female_66_69_new@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 717193.4971857294,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0001603690331385532,
+        "target": 717078.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 716595.7286672164,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0006732475353585758,
+        "target": 717078.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_female_70_74_new@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 821586.4091818687,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0007013096163794072,
+        "target": 822163.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 821317.4873359896,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.001028400285600786,
+        "target": 822163.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_female_70_74_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1501357.861012132,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0006924854896949547,
+        "target": 1502398.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1500885.6459102414,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.001006793032246005,
+        "target": 1502398.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_female_75_79_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1015202.9862765679,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0009513801443430947,
+        "target": 1016169.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1016049.5896299109,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.00011824832424810295,
+        "target": 1016169.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_female_80_84_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 644280.3121531736,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.00064671882317846,
+        "target": 644697.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 645507.1768768001,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0012562902615144314,
+        "target": 644697.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_female_85_89_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 403656.9684073534,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0018589647050085184,
+        "target": 404408.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 403481.602270402,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.002292600567119247,
+        "target": 404408.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_female_90_plus_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1321301.241318442,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0012977966717829272,
+        "target": 1323018.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1322134.9190891676,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0006676634361108688,
+        "target": 1323018.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_male_66_69_new@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1221544.8195113614,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0004679835119178097,
+        "target": 1222116.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1219987.5109452493,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0017422550298493585,
+        "target": 1222116.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_male_70_74_new@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 194393.27834852785,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0011533976293125949,
+        "target": 194617.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 194271.09751018882,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0017811966781610723,
+        "target": 194617.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_male_70_74_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1331032.0628190786,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.001587547959526966,
+        "target": 1333148.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1331564.312844487,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0011883050954286734,
+        "target": 1333148.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_male_75_79_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 822829.8845608039,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.001164273180627706,
+        "target": 823789.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 822372.0281503983,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0017200664849879226,
+        "target": 823789.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_male_80_84_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 451429.0605628593,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.002455448851545715,
+        "target": 452540.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 452305.43875282817,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0005188737292911163,
+        "target": 452540.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_male_85_89_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 207274.23962194164,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0004015305839352784,
+        "target": 207357.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 207123.76057372335,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0011272291876428225,
+        "target": 207357.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_male_90_plus_pre_2016@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 221292.19976042584,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0028907286051543047,
+        "target": 221933.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 222026.17042206042,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0004164324806858585,
+        "target": 221933.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000001@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 541951.1354511995,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.000746492246422116,
+        "target": 542356.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 541002.3025395777,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.002495957379327033,
+        "target": 542356.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000002@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 405244.2587997783,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0019450124871850693,
+        "target": 406034.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 405185.84596789815,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.002088874409783059,
+        "target": 406034.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000003@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 363240.0376093853,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.000818931158083785,
+        "target": 363537.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 363149.55867880955,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0010678157115470033,
+        "target": 363537.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000004@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 416119.36863587797,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.00026519335564560947,
+        "target": 416229.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 416929.3120666612,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0016807113539125782,
+        "target": 416229.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000005@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 457335.8875883594,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.00021135015937370977,
+        "target": 457239.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 456642.0865314143,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0013060197010333187,
+        "target": 457239.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000006@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 421611.5604639556,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0003910590941988805,
+        "target": 421776.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 421245.18323957175,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0012597116255368657,
+        "target": 421776.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000007@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 658790.7816610094,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0007960779744828612,
+        "target": 658266.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 657084.3658150192,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0017962082772383155,
+        "target": 658266.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000008@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 464093.53699647635,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0016079971506894784,
+        "target": 464841.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 464330.74594342336,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0010976958929540196,
+        "target": 464841.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000009@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 124891.90852688253,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0007043726714090034,
+        "target": 124804.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 124756.21455908567,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.00038288388925301165,
+        "target": 124804.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.100_00_to_under_150_00__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 660901.1255526412,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0012385001033045162,
+        "target": 661720.6666666666,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 660339.7075136416,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0020869216008946303,
+        "target": 661720.6666666666,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.150_00_to_under_200_00__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 3303869.096088687,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.025635751829063736,
+        "target": 3390794.6666666665,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 3302861.4945851243,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.025932909752976945,
+        "target": 3390794.6666666665,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.200_00_to_under_250_00__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2484.236954957247,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0011701860386539341,
+        "target": 2481.3333333333335,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 2485.791787534952,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0017967977706684626,
+        "target": 2481.3333333333335,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.20_00_to_under_40_00__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 432944.0952526685,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.001398310724394543,
+        "target": 433550.3333333333,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 433070.7448907153,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0011061886146661033,
+        "target": 433550.3333333333,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.250_00_to_under_300_00__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 64916.832987394184,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0022669906962202234,
+        "target": 64770.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 64651.177476421,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0018345302389841196,
+        "target": 64770.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.300_00_and_over__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 24431.41892412305,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.004195988003084753,
+        "target": 24329.333333333332,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 24327.39185768366,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -7.979978830794874e-05,
+        "target": 24329.333333333332,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 31171.742159485817,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0012015296988046906,
+        "target": 31134.333333333332,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 31147.632314175367,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.00042714840557696977,
+        "target": 31134.333333333332,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.80_00_to_under_100_00__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2409.2884024381638,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0033127716982913405,
+        "target": 2401.3333333333335,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 2400.523755274713,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.00033713689281806447,
+        "target": 2401.3333333333335,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.under_20_00__new_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 444140.9761409126,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.002365314579907586,
+        "target": 445194.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 444899.9280921407,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0006605477788543772,
+        "target": 445194.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_scotland@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 254376.4185286872,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.003319736362321965,
+        "target": 253534.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 253741.12793119624,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0008140025428318705,
+        "target": 253534.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_new_wales@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 324472.50468826294,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0007240202236258407,
+        "target": 324237.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 324139.4917362463,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.00030304387368135596,
+        "target": 324237.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000001@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 834798.0072021848,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0006581005309647879,
+        "target": 835347.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 835022.4711371185,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.00038939335490096694,
+        "target": 835347.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000002@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 630222.4346212875,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0025454844967778005,
+        "target": 631830.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 631989.0374564808,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.00025052192613415257,
+        "target": 631830.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000003@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 585304.2564814668,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0014105097982075425,
+        "target": 586131.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 586205.0971561391,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0001264173983957352,
+        "target": 586131.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000004@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 681571.9244816527,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0006533197730957387,
+        "target": 682017.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 682337.8654627826,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.00046973202708517,
+        "target": 682017.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000005@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 781193.2910286579,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0018175700800067873,
+        "target": 782615.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 780794.6458183381,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0023269454795176977,
+        "target": 782615.75,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000006@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 591956.3864541501,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.001916837775256959,
+        "target": 593093.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 591783.6199933533,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.002208135072599018,
+        "target": 593093.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000007@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1134432.825650636,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0004884850903513615,
+        "target": 1134987.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1131789.8161542509,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0028171539774998573,
+        "target": 1134987.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000008@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 805543.2362557836,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0016585629292732728,
+        "target": 806881.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 805427.50198498,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0018019969661220918,
+        "target": 806881.5,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000009@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 879664.7136249486,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0005824050324533879,
+        "target": 880177.3333333334,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 879625.8287656158,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.000626583469979782,
+        "target": 880177.3333333334,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.100_00_to_under_150_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1590209.2588043027,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0005030749179428578,
+        "target": 1589409.6666666667,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1590163.905506106,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.000474540236703826,
+        "target": 1589409.6666666667,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.150_00_to_under_200_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2775260.6430547684,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.01642956629627401,
+        "target": 2730401.3333333335,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 2775171.637322474,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.01639696825612217,
+        "target": 2730401.3333333335,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.200_00_to_under_250_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 8052.884571269155,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.00125454901784019,
+        "target": 8063.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 8066.564000397921,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0004420191489421566,
+        "target": 8063.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.20_00_to_under_40_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1337669.7266893932,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.00026950558216549345,
+        "target": 1338030.3333333333,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 1338544.652002913,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.000384384910242212,
+        "target": 1338030.3333333333,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.250_00_to_under_300_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 737165.3143522572,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0011251452439550694,
+        "target": 737995.6666666666,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 738304.53004767,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.00041851652381433887,
+        "target": 737995.6666666666,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.300_00_and_over__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 12162.484144881368,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0022098067581537858,
+        "target": 12135.666666666666,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 12168.083171963692,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0026711763092558288,
+        "target": 12135.666666666666,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.40_00_to_under_60_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 17141.01969203353,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0008149407150376402,
+        "target": 17155.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 17201.761619776487,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.002725830357125465,
+        "target": 17155.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.60_00_to_under_80_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 23050.936233863235,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.00012739647098379555,
+        "target": 23048.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 22995.043105483055,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": -0.0022976785194786914,
+        "target": 23048.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.80_00_to_under_100_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 12666.081776589155,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0035454608537783586,
+        "target": 12621.333333333334,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 12636.134312570095,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0011726953758262033,
+        "target": 12621.333333333334,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.under_20_00__pre_2016_state_pension@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 619378.3205789418,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": -0.0026118015589497064,
+        "target": 621000.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 621384.5052404404,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0006187682540230357,
+        "target": 621000.25,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_scotland@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 404169.8755012825,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.0004985044865403789,
+        "relative_error": 0.0009333383720929118,
+        "target": 403793.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "candidate": {
+        "estimate": 404004.0877148397,
+        "group": "state_pension_recipient_breakdowns",
+        "loss_weight_share": 0.00048426150121065375,
+        "relative_error": 0.0005227621945891254,
+        "target": 403793.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "state_pension_recipient_breakdowns",
+      "name": "dwp.state_pension.recipients_pre_2016_wales@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 386903.87983064353,
+        "relative_error": 0.0643848138394596,
+        "target": 363500.0
+      },
+      "candidate": {
+        "estimate": 363756.48161143064,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.0007055890273195186,
+        "target": 363500.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000001@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 931475.6386735747,
+        "relative_error": -0.027687224766623553,
+        "target": 958000.0
+      },
+      "candidate": {
+        "estimate": 956639.7714565648,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0014198627802037823,
+        "target": 958000.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000002@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 757392.7610240057,
+        "relative_error": 0.03151891184747124,
+        "target": 734250.0
+      },
+      "candidate": {
+        "estimate": 733172.48069066,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0014675101250800748,
+        "target": 734250.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000003@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 655590.926914312,
+        "relative_error": -0.046413197215546265,
+        "target": 687500.0
+      },
+      "candidate": {
+        "estimate": 687627.7817643695,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.0001858643845373934,
+        "target": 687500.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000004@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 785798.8720706217,
+        "relative_error": 0.012953750655007035,
+        "target": 775750.0
+      },
+      "candidate": {
+        "estimate": 776352.9319993786,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.0007772246205331677,
+        "target": 775750.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000005@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 951472.276286589,
+        "relative_error": 0.047300249077147916,
+        "target": 908500.0
+      },
+      "candidate": {
+        "estimate": 906536.6349352105,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0021611062903572273,
+        "target": 908500.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000006@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 715993.92500934,
+        "relative_error": 0.03132002161950309,
+        "target": 694250.0
+      },
+      "candidate": {
+        "estimate": 693200.2877983041,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0015120089329433047,
+        "target": 694250.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000007@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 1359957.2009023335,
+        "relative_error": 0.0018100927457336269,
+        "target": 1357500.0
+      },
+      "candidate": {
+        "estimate": 1354672.47718353,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0020828897358894237,
+        "target": 1357500.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000008@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 936030.4454093575,
+        "relative_error": 3.2527146749616875e-05,
+        "target": 936000.0
+      },
+      "candidate": {
+        "estimate": 934932.3405174166,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0011406618403668842,
+        "target": 936000.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@E12000009@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 189978.52396183833,
+        "relative_error": -0.04413321277062476,
+        "target": 198750.0
+      },
+      "candidate": {
+        "estimate": 198737.5373260444,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -6.270527776400998e-05,
+        "target": 198750.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@N92000002@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 805203.1736875623,
+        "relative_error": 0.048441632405680224,
+        "target": 768000.0
+      },
+      "candidate": {
+        "estimate": 767648.2915041186,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.00045795377067891726,
+        "target": 768000.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@S92000003@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 456603.76079986617,
+        "relative_error": -0.006843369657713594,
+        "target": 459750.0
+      },
+      "candidate": {
+        "estimate": 460376.94498115964,
+        "group": "itl_age_state_pension_age",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.0013636649943657255,
+        "target": 459750.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_state_pension_age",
+      "name": "hmrc.itl.state_pension_age_taxpayers@W92000004@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 401218.0428894246,
+        "relative_error": 0.04483865335787662,
+        "target": 384000.0
+      },
+      "candidate": {
+        "estimate": 384312.9295479506,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.000814920697788087,
+        "target": 384000.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000001@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 987374.4589643637,
+        "relative_error": -0.022643445717036692,
+        "target": 1010250.0
+      },
+      "candidate": {
+        "estimate": 1008950.9547285987,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.001285865153577128,
+        "target": 1010250.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000002@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 787894.9741018191,
+        "relative_error": 0.019269047997178657,
+        "target": 773000.0
+      },
+      "candidate": {
+        "estimate": 772071.1846486051,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0012015722527748207,
+        "target": 773000.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000003@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 673526.7002845481,
+        "relative_error": -0.0642213264542576,
+        "target": 719750.0
+      },
+      "candidate": {
+        "estimate": 719996.7722153179,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.00034285823594016636,
+        "target": 719750.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000004@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 841771.6555969594,
+        "relative_error": 0.032531929588420105,
+        "target": 815250.0
+      },
+      "candidate": {
+        "estimate": 816134.5898224886,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.0010850534467814832,
+        "target": 815250.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000005@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 1003711.929248767,
+        "relative_error": 0.04881079336339278,
+        "target": 957000.0
+      },
+      "candidate": {
+        "estimate": 954918.3935292466,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.002175137378007773,
+        "target": 957000.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000006@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 778891.0917879269,
+        "relative_error": 0.047600661449800796,
+        "target": 743500.0
+      },
+      "candidate": {
+        "estimate": 742204.0674989782,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0017430161412532248,
+        "target": 743500.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000007@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 1423271.409789404,
+        "relative_error": -0.004705307839577677,
+        "target": 1430000.0
+      },
+      "candidate": {
+        "estimate": 1427410.6787342522,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0018107141718515878,
+        "target": 1430000.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000008@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 994900.8132459968,
+        "relative_error": 0.01339527705219945,
+        "target": 981750.0
+      },
+      "candidate": {
+        "estimate": 980669.1251341682,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": -0.0011009675231289098,
+        "target": 981750.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@E12000009@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 200975.4453158155,
+        "relative_error": -0.046379856152714116,
+        "target": 210750.0
+      },
+      "candidate": {
+        "estimate": 210778.22673509922,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.0001339346861172896,
+        "target": 210750.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@N92000002@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 857908.0170310512,
+        "relative_error": 0.05751373439883056,
+        "target": 811250.0
+      },
+      "candidate": {
+        "estimate": 811418.0234931223,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.00020711678659144462,
+        "target": 811250.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@S92000003@2025"
+    },
+    {
+      "baseline": {
+        "bound": false,
+        "estimate": 485875.5135732107,
+        "relative_error": 0.009611456775502791,
+        "target": 481250.0
+      },
+      "candidate": {
+        "estimate": 481947.38550526835,
+        "group": "itl_age_65_and_over",
+        "loss_weight_share": 0.0011904761904761906,
+        "relative_error": 0.0014491127382199485,
+        "target": 481250.0,
+        "uprating_factor": null,
+        "uprating_index": null
+      },
+      "group": "itl_age_65_and_over",
+      "name": "hmrc.itl.taxpayers_aged_65_and_over@W92000004@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 135723.06164275855,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0006915216118405387,
+        "target": 135629.27107061504,
+        "uprating_factor": "1.24430523917995",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 135382.0231126168,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0018229690099087637,
+        "target": 135629.27107061504,
+        "uprating_factor": "1.24430523917995",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_100_000_to_150_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1115707.189899099,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.00025451649075021926,
+        "target": 1115991.2280701755,
+        "uprating_factor": "1.04298245614035",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 1115503.1760994343,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.00043732599187648483,
+        "target": 1115991.2280701755,
+        "uprating_factor": "1.04298245614035",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_12_570_to_15_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 33978.75726913102,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.00503077412656442,
+        "target": 33808.67346938776,
+        "uprating_factor": "1.16581632653061",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 33763.63972837292,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.001332017390614816,
+        "target": 33808.67346938776,
+        "uprating_factor": "1.16581632653061",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_150_000_to_200_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2091370.826943408,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0015082192918740634,
+        "target": 2094529.8372513563,
+        "uprating_factor": "0.97875226039783",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 2108545.7732131016,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": 0.00669168598721815,
+        "target": 2094529.8372513563,
+        "uprating_factor": "0.97875226039783",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_15_000_to_20_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 24026.021511180326,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0029654617418902727,
+        "target": 23954.98392282958,
+        "uprating_factor": "1.19774919614148",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 23917.06450690888,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0015829447451459991,
+        "target": 23954.98392282958,
+        "uprating_factor": "1.19774919614148",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_200_000_to_300_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2810276.9090017816,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.05391196102057729,
+        "target": 2666519.6078431373,
+        "uprating_factor": "1.00245098039216",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 2748772.925878216,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": 0.030846695367678464,
+        "target": 2666519.6078431373,
+        "uprating_factor": "1.00245098039216",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_20_000_to_30_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 12001.463983953,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.002001422552854562,
+        "target": 11977.49196141479,
+        "uprating_factor": "1.19774919614148",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 11964.993571678177,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0010434897202917003,
+        "target": 11977.49196141479,
+        "uprating_factor": "1.19774919614148",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_300_000_to_500_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1625622.7916840815,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0013948865872402867,
+        "target": 1627893.5185185184,
+        "uprating_factor": "1.12268518518519",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 1626131.4258391513,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0010824373089038273,
+        "target": 1627893.5185185184,
+        "uprating_factor": "1.12268518518519",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_30_000_to_40_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 874987.4249925194,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.00047527916246950123,
+        "target": 874571.7592592592,
+        "uprating_factor": "1.12268518518519",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 874132.0555201161,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0005027646210706728,
+        "target": 874571.7592592592,
+        "uprating_factor": "1.12268518518519",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_40_000_to_50_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 4840.9179989742115,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.002253542196154948,
+        "target": 4851.851851851852,
+        "uprating_factor": "1.21296296296296",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 4845.055786376819,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0014007157849305015,
+        "target": 4851.851851851852,
+        "uprating_factor": "1.21296296296296",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_500_000_to_1_000_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 781776.4653611375,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.001097907244124387,
+        "target": 782635.7267950964,
+        "uprating_factor": "1.21716287215412",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 782242.9268734567,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.000501893675680064,
+        "target": 782635.7267950964,
+        "uprating_factor": "1.21716287215412",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_50_000_to_70_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 314192.2557757199,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0033400291773226887,
+        "target": 315245.183887916,
+        "uprating_factor": "1.21716287215412",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 314670.1777079515,
+        "group": "spi_private_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0018239967154229444,
+        "target": 315245.183887916,
+        "uprating_factor": "1.21716287215412",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_count",
+      "name": "hmrc/private_pension_income_count_income_band_70_000_to_100_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 6717165102.503161,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.001078481089262779,
+        "target": 6709928571.428572,
+        "uprating_factor": "1.23571428571429",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 6689642493.004309,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.003023292753166225,
+        "target": 6709928571.428572,
+        "uprating_factor": "1.23571428571429",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_100_000_to_150_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 4560226407.725143,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.00159246683631233,
+        "target": 4567500000.0,
+        "uprating_factor": "1.05",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 4565172413.357968,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0005095975133074263,
+        "target": 4567500000.0,
+        "uprating_factor": "1.05",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_12_570_to_15_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2108756252.6320288,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.005304818575595437,
+        "target": 2097628712.8712869,
+        "uprating_factor": "1.15891089108911",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 2095225013.5578334,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0011459126673391078,
+        "target": 2097628712.8712869,
+        "uprating_factor": "1.15891089108911",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_150_000_to_200_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 12259837322.19093,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.07748819949793495,
+        "target": 13289626556.016598,
+        "uprating_factor": "0.977178423236514",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 11810586658.545055,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.11129281106864047,
+        "target": 13289626556.016598,
+        "uprating_factor": "0.977178423236514",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_15_000_to_20_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1905240697.4381218,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.001091447794085343,
+        "target": 1903163493.8409853,
+        "uprating_factor": "1.21220604703247",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 1897611650.0241861,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0029171659895568785,
+        "target": 1903163493.8409853,
+        "uprating_factor": "1.21220604703247",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_200_000_to_300_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 30218873919.89833,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0023325479745177464,
+        "target": 30289525691.699608,
+        "uprating_factor": "1.00296442687747",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 30124840725.929306,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.005437026893274571,
+        "target": 30289525691.699608,
+        "uprating_factor": "1.00296442687747",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_20_000_to_30_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1358687193.8251176,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0007486506811532418,
+        "target": 1357670772.6763716,
+        "uprating_factor": "1.21220604703247",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 1355934924.2197053,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.001278548887993191,
+        "target": 1357670772.6763716,
+        "uprating_factor": "1.21220604703247",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_300_000_to_500_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 27836260264.736717,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0009546870506322184,
+        "target": 27862860576.923077,
+        "uprating_factor": "1.11899038461538",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 27835937090.8436,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0009662857840868753,
+        "target": 27862860576.923077,
+        "uprating_factor": "1.11899038461538",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_30_000_to_40_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 18916336488.330097,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.00028549554087930324,
+        "target": 18910937500.0,
+        "uprating_factor": "1.11899038461538",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 18894991220.035416,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0008432305360104094,
+        "target": 18910937500.0,
+        "uprating_factor": "1.11899038461538",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_40_000_to_50_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 782664612.4552324,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0018158479819822583,
+        "target": 784088397.7900552,
+        "uprating_factor": "1.22513812154696",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 783530233.5169746,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0007118639615810761,
+        "target": 784088397.7900552,
+        "uprating_factor": "1.22513812154696",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_500_000_to_1_000_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 21092971548.138638,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0019980152476135765,
+        "target": 21135200000.0,
+        "uprating_factor": "1.21466666666667",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 21104506494.69017,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0014522457942120117,
+        "target": 21135200000.0,
+        "uprating_factor": "1.21466666666667",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_50_000_to_70_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 11452934406.199888,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.00434316181900703,
+        "target": 11502893333.333332,
+        "uprating_factor": "1.21466666666667",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 11475766116.589018,
+        "group": "spi_private_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.002358295079178415,
+        "target": 11502893333.333332,
+        "uprating_factor": "1.21466666666667",
+        "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band"
+      },
+      "group": "spi_private_pension_amount",
+      "name": "hmrc/private_pension_income_income_band_70_000_to_100_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 92160.98428171128,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0008948506319809755,
+        "target": 92078.58769931663,
+        "uprating_factor": "1.24430523917995",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 79961.04762495247,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0027623114544674987,
+        "target": 80182.53676470587,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_100_000_to_150_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1188906.9153677179,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -7.828816844587496e-05,
+        "target": 1189000.0,
+        "uprating_factor": "1.04298245614035",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 1233178.1225719934,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0016728370348742703,
+        "target": 1235244.4852941176,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_12_570_to_15_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 24652.1758518219,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.006945184319494004,
+        "target": 24482.14285714286,
+        "uprating_factor": "1.16581632653061",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 22728.001679226756,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0011646923888406237,
+        "target": 22754.503676470587,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_150_000_to_200_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2056463.0457160976,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.02493015425539517,
+        "target": 2006442.1338155516,
+        "uprating_factor": "0.97875226039783",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 2218798.8182023596,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0011138476735578905,
+        "target": 2221272.9779411764,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_15_000_to_20_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 16862.017332125455,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.005577639557241939,
+        "target": 16768.488745980707,
+        "uprating_factor": "1.19774919614148",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 15146.597880823538,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0015208793708414439,
+        "target": 15169.669117647058,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_200_000_to_300_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2741015.537876415,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.17858352948062703,
+        "target": 2325686.274509804,
+        "uprating_factor": "1.00245098039216",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 2617582.9127154876,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": 0.041272478228700386,
+        "target": 2513830.882352941,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_20_000_to_30_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 9601.729501497,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0020596895857609254,
+        "target": 9581.993569131831,
+        "uprating_factor": "1.19774919614148",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 8662.44537445344,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0006849003938689732,
+        "target": 8668.382352941177,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_300_000_to_500_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1313025.8338375762,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.008224600458288154,
+        "target": 1302314.8148148148,
+        "uprating_factor": "1.12268518518519",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 1255861.5522351004,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0008384724276946947,
+        "target": 1256915.4411764706,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_30_000_to_40_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 637993.5989942064,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.000483645874463388,
+        "target": 637685.1851851852,
+        "uprating_factor": "1.12268518518519",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 615142.0138305482,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0005087831822867418,
+        "target": 615455.1470588235,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_40_000_to_50_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 3645.42403663788,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0017959184653715083,
+        "target": 3638.888888888889,
+        "uprating_factor": "1.21296296296296",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 3240.3535913396627,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.003165462895480762,
+        "target": 3250.643382352941,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_500_000_to_1_000_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 535826.5424142815,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0017554749064268014,
+        "target": 536768.826619965,
+        "uprating_factor": "1.21716287215412",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 476529.829331547,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0027514131938529045,
+        "target": 477844.57720588235,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_50_000_to_70_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 213342.6390363276,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0040987010321856384,
+        "target": 214220.66549912436,
+        "uprating_factor": "1.21716287215412",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 190303.27218071744,
+        "group": "spi_state_pension_count",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0021034625275652653,
+        "target": 190704.41176470587,
+        "uprating_factor": "1.08354779411765",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth"
+      },
+      "group": "spi_state_pension_count",
+      "name": "hmrc/state_pension_count_income_band_70_000_to_100_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 1191604899.166839,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0009975556207704691,
+        "target": 1190417391.6067786,
+        "uprating_factor": "1.40545146588758",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 1034053735.5290574,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.002477496017938612,
+        "target": 1036621962.312795,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_100_000_to_150_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 13892679495.126507,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.0006029044457350326,
+        "target": 13901060506.30619,
+        "uprating_factor": "1.17805597511069",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 14434023150.739943,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0005331484976958719,
+        "target": 14441722733.519459,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_12_570_to_15_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 351669691.0042755,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.007789919019724307,
+        "target": 348951387.9503221,
+        "uprating_factor": "1.31679769037857",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 324072587.20005894,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0007838910668938315,
+        "target": 324326824.10022515,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_150_000_to_200_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 25274994677.86411,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.029855747841881948,
+        "target": 24542266944.500935,
+        "uprating_factor": "1.10550752002256",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 27479590950.460114,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": 0.011393815909282368,
+        "target": 27170020735.94339,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_15_000_to_20_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 243613227.48228082,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.005988516919668564,
+        "target": 242163030.07933253,
+        "uprating_factor": "1.35286608982867",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 218746198.96561137,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0014944368789808822,
+        "target": 219073590.61864263,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_200_000_to_300_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 33835005036.103676,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.20009280049266728,
+        "target": 28193657209.02049,
+        "uprating_factor": "1.1322753899205",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 32335606506.918274,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": 0.06107154654071517,
+        "target": 30474482717.341908,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_20_000_to_30_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 130126676.92321113,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0019367239234848732,
+        "target": 129875144.62355264,
+        "uprating_factor": "1.35286608982867",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 117314438.41150519,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0015111086473518001,
+        "target": 117491981.56083627,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_300_000_to_500_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 15938355142.43098,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.021860174162072754,
+        "target": 15597393406.099285,
+        "uprating_factor": "1.26808076472352",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 15278525518.703932,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": 0.014937588544455822,
+        "target": 15053660137.482147,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_30_000_to_40_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 7646178918.452731,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0016155309509998906,
+        "target": 7633846203.635585,
+        "uprating_factor": "1.26808076472352",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 7370082358.135833,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": 0.0003197749638284953,
+        "target": 7367726343.710774,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_40_000_to_50_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 58989968.540260464,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.0013208185814228735,
+        "target": 58912156.269587904,
+        "uprating_factor": "1.37005014580437",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 52467711.133497015,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.003019491222035234,
+        "target": 52626616.74079125,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_500_000_to_1_000_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 6480848423.072635,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": 0.01159885239105077,
+        "target": 6406539912.292578,
+        "uprating_factor": "1.37479397259497",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 5730649778.865521,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": 0.004803075826812859,
+        "target": 5703256604.9322605,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_50_000_to_70_000@2025"
+    },
+    {
+      "baseline": {
+        "estimate": 2589152109.8841667,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00017099863201094394,
+        "relative_error": -0.003543964718083201,
+        "target": 2598360608.2045007,
+        "uprating_factor": "1.37479397259497",
+        "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_times_new_state_pension_rate_by_total_income_band"
+      },
+      "candidate": {
+        "estimate": 2309368749.1256275,
+        "group": "spi_state_pension_amount",
+        "loss_weight_share": 0.00016611295681063124,
+        "relative_error": -0.0016231896121376062,
+        "target": 2313123386.9789643,
+        "uprating_factor": "1.22387480792538",
+        "uprating_index": "hmrc.itl_2026.resident_state_pension_age_taxpayer_growth_times_new_state_pension_rate"
+      },
+      "group": "spi_state_pension_amount",
+      "name": "hmrc/state_pension_income_band_70_000_to_100_000@2025"
+    }
+  ],
+  "state_pension_recipients": {
+    "baseline": {
+      "state_pension": {
+        "non_taxpaying": 3530991.3667199854,
+        "recipients": 12370840.97438407,
+        "taxpaying": 8839849.607664086
+      },
+      "state_pension_annual": {
+        "non_taxpaying": 3530991.3667199854,
+        "recipients": 12370840.97438407,
+        "taxpaying": 8839849.607664086
+      }
+    },
+    "candidate": {
+      "state_pension": {
+        "non_taxpaying": 3628068.020062985,
+        "recipients": 12371640.0859917,
+        "taxpaying": 8743572.065928714
+      },
+      "state_pension_annual": {
+        "non_taxpaying": 3628068.020062985,
+        "recipients": 12371640.0859917,
+        "taxpaying": 8743572.065928714
+      }
+    }
+  },
+  "summary": {
+    "baseline": {
+      "effective_sample_size": 7526.693754595277,
+      "final_loss": 0.005532067450018211,
+      "fraction_within_10pct": 0.9897879025923016,
+      "initial_loss": 0.30393168330192566,
+      "n_nonzero": 78255,
+      "n_records": 78255,
+      "realized_max_weight_ratio": 10.000000000000002,
+      "top_1pct_weight_share": 0.2391203735988785
+    },
+    "candidate": {
+      "effective_sample_size": 7508.412436353523,
+      "final_loss": 0.0053615382178807056,
+      "fraction_within_10pct": 0.9884348496530455,
+      "initial_loss": 0.2965549826622009,
+      "n_nonzero": 78255,
+      "n_records": 78255,
+      "realized_max_weight_ratio": 10.000000000000002,
+      "top_1pct_weight_share": 0.23996800452299816
+    }
+  },
+  "target_count": {
+    "baseline": 1273,
+    "candidate": 1297
+  },
+  "taxpayers_region_tier_total": {
+    "baseline": {
+      "age_65_and_over": 9437320.051829286,
+      "state_pension_age": 8932401.384570044
+    },
+    "candidate": {
+      "age_65_and_over": 9310812.331607355,
+      "state_pension_age": 8833653.961782446
+    }
+  }
+}

@@ -42,6 +42,11 @@ from microcosm.data.release import (
     publish_release,
 )
 from microcosm.data.stored_inputs import register_sha256
+from test_support.microcosm_data.build_folders import (
+    UK_NATIONAL_BUILD,
+    to_build_folder_layout,
+)
+from test_support.microcosm_data.hub_errors import missing_on_hub
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +62,9 @@ JUNE_UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef"
 UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k55000"
+#: The US national release, into which every US national build publishes
+#: once the US repository records its builds in releases.json.
+US_NATIONAL_RELEASE_ID = "microcosm-us-2024-national"
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
 CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b376e"
@@ -526,7 +534,9 @@ class FakeHub:
         try:
             content = self._commits[commit][filename]
         except KeyError as exc:
-            raise FileNotFoundError(f"{filename}@{ref}") from exc
+            raise missing_on_hub(
+                repo_id, filename, ref, message=f"{filename}@{ref}"
+            ) from exc
         local = self._download_dir / ref / filename
         local.parent.mkdir(parents=True, exist_ok=True)
         local.write_bytes(content)
@@ -776,6 +786,60 @@ def _as_uk_national_line_release(release_dir: Path) -> Path:
     }
     manifest_path.write_text(json.dumps(manifest))
     return national
+
+
+def _as_uk_national_build_folder_release(release_dir: Path) -> Path:
+    """Retarget the publisher fixture to the UK national release.
+
+    The national release publishes each build into its own folder, so the
+    manifests name the release and ``UK_NATIONAL_BUILD`` in that layout, and
+    every artifact lives in the UK repository.
+    """
+    national = release_dir.with_name(UK_NATIONAL_RELEASE_ID)
+    release_dir.rename(national)
+
+    certification_path = national / "release_certification.json"
+    certification_path.write_text("{}")
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["repo_id"] = "policyengine/populace-uk-private"
+    manifest["artifacts"]["release_certification"] = {
+        "kind": "diagnostics",
+        "path": certification_path.name,
+        "repo_id": "policyengine/populace-uk-private",
+        "sha256": _sha256(certification_path),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+    return to_build_folder_layout(national, build=UK_NATIONAL_BUILD)
+
+
+def _as_us_national_build_folder_release(release_dir: Path) -> Path:
+    """Retarget the publisher fixture to the US national release.
+
+    The directory is named after the release, the build keeps the fixture's
+    ID, and the dataset and calibration weights carry the ``microcosm_``
+    names and keys new US builds declare.
+    """
+    national = release_dir.with_name(US_NATIONAL_RELEASE_ID)
+    release_dir.rename(national)
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    renamed = {
+        "populace_us_2024": "microcosm_us_2024",
+        "populace_us_2024_calibration": "microcosm_us_2024_calibration",
+    }
+    manifest["artifacts"] = {
+        renamed.get(key, key): (
+            {**entry, "path": entry["path"].replace("populace_", "microcosm_")}
+            if key in renamed
+            else entry
+        )
+        for key, entry in manifest["artifacts"].items()
+    }
+    manifest["default_datasets"] = {"national": "microcosm_us_2024"}
+    manifest_path.write_text(json.dumps(manifest))
+    return to_build_folder_layout(national, build=RELEASE_ID)
 
 
 @pytest.fixture

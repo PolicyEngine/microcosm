@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 
-from microcosm.build.gates import input_mass_parity_gate
 from microcosm.build.us_runtime.adult_care import (
     US_ADULT_CARE_OUTPUT_COLUMNS,
 )
@@ -47,6 +46,9 @@ from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
 )
 from microcosm.build.us_runtime.energy_subsidy import US_ENERGY_SUBSIDY_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.esi_premiums import (
+    US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS,
+)
 from microcosm.build.us_runtime.farm_business_income import (
     US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -73,7 +75,11 @@ from microcosm.build.us_runtime.housing_inputs import (
 from microcosm.build.us_runtime.immigration import (
     US_IMMIGRATION_NONCONSTANT_PERSON_COLUMNS,
 )
-from microcosm.build.us_runtime.input_mass import us_input_mass_totals
+from microcosm.build.us_runtime.input_mass import (
+    us_input_mass_parity_gate,
+    us_input_mass_totals,
+    us_line_32_carriers,
+)
 from microcosm.build.us_runtime.medicare_take_up import (
     US_MEDICARE_TAKE_UP_NONCONSTANT_PERSON_COLUMNS,
 )
@@ -189,6 +195,7 @@ US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS = (
     *US_QBI_NONCONSTANT_PERSON_COLUMNS,
     *US_ORG_WAGES_NONCONSTANT_PERSON_COLUMNS,
     *US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
+    *US_ESI_PREMIUMS_NONCONSTANT_PERSON_COLUMNS,
     *US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS,
     *US_ADULT_CARE_OUTPUT_COLUMNS,
     *US_FARM_BUSINESS_INCOME_NONCONSTANT_PERSON_COLUMNS,
@@ -603,9 +610,10 @@ def export_us_l0_refit_h5(
     reference_frame = (
         load_us_frame(reference_h5) if reference_h5 is not None else base_frame
     )
-    input_mass_gate = input_mass_parity_gate(
+    input_mass_gate = us_input_mass_parity_gate(
         us_input_mass_totals(export_frame),
         us_input_mass_totals(reference_frame),
+        carriers=us_line_32_carriers(export_frame, reference_frame),
         candidate_name="l0_refit_export",
         reference_name="reference_h5" if reference_h5 is not None else "base_h5",
         relative_tolerance=input_mass_relative_tolerance,

@@ -30,6 +30,14 @@ The SSI asset inputs are ``bank_account_assets``, ``stock_assets``, and
 them absent, countable resources are 0 for every record, so the SSI asset-limit
 reform probe scores $0; that is the failure the gate exists to surface.
 
+A probe that changes a list-valued parameter declares only the items it removes
+or adds under ``list_edits``; the list is resolved against the installed
+PolicyEngine-US baseline when the reform is built. Pinning the whole list in
+``parameter_changes`` is refused by the loader: a pinned copy silently reverts
+any later engine change to the list (the 2026-09-28 release failure, where
+pinned SNAP source lists re-added TANF after PolicyEngine-US 2.2.1 moved it to
+``unearned_spm_unit``).
+
 Run:  uv run python tools/build_us_release_input_coverage_manifest.py
 It rewrites packages/microcosm-build/src/microcosm/build/us/
 release_input_coverage_manifest.json. A test asserts the committed file matches
@@ -44,6 +52,7 @@ from pathlib import Path
 
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION,
     project_ecps_parity_known_gap_names,
 )
 
@@ -94,6 +103,12 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "receives_wic",
     "receives_snap",
     "receives_tanf",
+    # PolicyEngine/microcosm#719: the work-experience carries the county-file
+    # person schema commits to (industry and a working indicator, with
+    # occupation), written by the org_wages release stage.
+    "detailed_industry_recode",
+    "major_industry_recode",
+    "worked_last_year",
 )
 
 # Shared tail of the three #978 reported-receipt notes: why each is a hard
@@ -113,6 +128,20 @@ _RECEIPT_INPUT_NOTE_TAIL = (
 # from today's artifacts is the intended red gate (the #368 SSI-asset
 # pattern, extended by #462 to the capital-gain-distributions route).
 POST_REFERENCE_COLUMN_NOTES = {
+    "employer_sponsored_insurance_premiums": (
+        "Employer share of the premium for employed current ESI policyholders "
+        "(PolicyEngine/microcosm#454), written by the meps_esi_premiums "
+        "base-builder stage from Census ASEC NOW_OWNGRP / NOW_HIPAID / "
+        "NOW_GRPFTYP2 / PEMLR / NOEMP (restored from the pinned Census person "
+        "files) and MEPS-IC tier x firm-size x State cells, scaled over every "
+        "policyholder to BEA NIPA 7.8 line 17 (B4923C). A release must persist it: CBO "
+        "household market income (gov.household.cbo_market_income_additions) "
+        "and every ESI-to-wages reform bind through it. Required with NO "
+        "reviewed exclusion; absent on pre-#454 bases by construction — the "
+        "intended red gate until a base built with the stage ships. The "
+        "release also holds the anchor-universe total to the anchor "
+        "(us_esi_premiums_anchor_gate)."
+    ),
     "schedule_d_capital_gain_distributions": (
         "Schedule D line 13 route leg of the #282 capital-gain-distributions "
         "split (memo component of long_term_capital_gains, written by the "
@@ -192,6 +221,40 @@ POST_REFERENCE_COLUMN_NOTES = {
         "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
         "boolean spm_unit input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
     ),
+    **{
+        column: (
+            f"{description}, carried from ASEC {source}"
+            + (
+                " (restored before pooling by asec_census_person_columns)"
+                if source in {"WEIND", "WEMIND"}
+                else ""
+            )
+            + " by the org_wages release stage "
+            "(org_wages.derive_us_org_occupation_inputs). ACS derives the "
+            "same input from native INDP/WKWN through the shared crosswalk "
+            "in the fiscal release predictor join and native ACS mapper; "
+            "a formula-less person input in "
+            "PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per "
+            "PolicyEngine/microcosm#719: the county-file person schema "
+            "carries a working indicator, industry and occupation on every "
+            "record. Currently absent from every published US default (all "
+            "predate #719) — this is the intended red gate until the next "
+            "release is built with the carry."
+        )
+        for column, description, source in (
+            (
+                "detailed_industry_recode",
+                "Industry of the longest job last year, 23 CPS detailed groups",
+                "WEIND",
+            ),
+            (
+                "major_industry_recode",
+                "Industry of the longest job last year, 15 CPS major groups",
+                "WEMIND",
+            ),
+            ("worked_last_year", "Worked at any time last year", "WKSWORK > 0"),
+        )
+    },
 }
 
 QBI_INPUTS = (
@@ -228,6 +291,8 @@ WIC_CLAIM_INPUTS = ("takes_up_wic_if_eligible",)
 EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
 OTHER_HEALTH_INSURANCE_INPUTS = ("other_health_insurance_premiums",)
+
+ESI_PREMIUM_INPUTS = ("employer_sponsored_insurance_premiums",)
 
 PRIOR_YEAR_INCOME_INPUTS = (
     "self_employment_income_last_year",
@@ -300,6 +365,7 @@ RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS = (
     *WIC_CLAIM_INPUTS,
     *EDUCATOR_EXPENSE_INPUTS,
     *OTHER_HEALTH_INSURANCE_INPUTS,
+    *ESI_PREMIUM_INPUTS,
     *FARM_BUSINESS_INCOME_INPUTS,
     *SCF_NET_WORTH_INPUTS,
     *SIPP_VEHICLE_INPUTS,
@@ -347,6 +413,32 @@ AOTC_EDUCATION_INPUTS = (
 #: a floor far below the plausible effect but far above simulation noise, so a
 #: structural $0 fails while a real (even conservative) score passes.
 REFORM_COVERAGE_PROBES = [
+    {
+        "id": "employer_sponsored_insurance_premium_neutralization",
+        "name": "Employer-sponsored insurance premium neutralization",
+        "parameter_changes": {},
+        "neutralized_variable": "employer_sponsored_insurance_premiums",
+        "budget_measure": "cbo_household_market_income",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["employer_sponsored_insurance_premiums"],
+        "min_abs_effect": 500_000_000_000.0,
+        "reason": (
+            "PolicyEngine-US 2.2.1 adds employer_sponsored_insurance_premiums "
+            "to CBO household market income through "
+            "gov.household.cbo_market_income_additions, its only consumer, so "
+            "neutralizing it lowers cbo_household_market_income by the "
+            "weighted employer-premium total: about $864 billion at 2024 (the "
+            "employed policyholders' part of BEA NIPA 7.8 line 17's $977.0 "
+            "billion, the meps_esi_premiums anchor; the stage measured $863.9 "
+            "billion over 74.0 million weighted employed policyholders on the "
+            "default 2023-2025 pool, before calibration). The floor sits at "
+            "about half of that. A structural zero means the column was "
+            "dropped or the stage never ran."
+        ),
+        "issue": "PolicyEngine/microcosm#454",
+    },
     {
         "id": "prior_year_self_employment_neutralization",
         "name": "Prior-year self-employment support neutralization",
@@ -803,15 +895,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "qbi_farm_operations_income_exclusion",
         "name": "Exclude farm-operations income from Section 199A QBI",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.deductions.qbi.income_definition": {
-                "2026-01-01.2026-12-31": [
-                    "self_employment_income",
-                    "partnership_s_corp_income",
-                    "farm_rent_income",
-                    "rental_income",
-                    "estate_income",
-                ]
+                "period": "2026-01-01.2026-12-31",
+                "remove": ["farm_operations_income"],
             }
         },
         "budget_measure": "qualified_business_income_deduction",
@@ -837,15 +925,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "qbi_farm_rent_income_exclusion",
         "name": "Exclude farm-rent income from Section 199A QBI",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.deductions.qbi.income_definition": {
-                "2026-01-01.2026-12-31": [
-                    "self_employment_income",
-                    "partnership_s_corp_income",
-                    "farm_operations_income",
-                    "rental_income",
-                    "estate_income",
-                ]
+                "period": "2026-01-01.2026-12-31",
+                "remove": ["farm_rent_income"],
             }
         },
         "budget_measure": "qualified_business_income_deduction",
@@ -863,27 +947,40 @@ REFORM_COVERAGE_PROBES = [
         "issue": "PolicyEngine/microcosm#298",
     },
     {
+        "id": "niit_passive_pass_through_exclusion",
+        "name": "Exclude passive partnership and S-corp income from the NIIT base",
+        "parameter_changes": {},
+        "list_edits": {
+            "gov.irs.investment.income.sources": {
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["passive_partnership_s_corp_income"],
+            }
+        },
+        "budget_measure": "net_investment_income_tax",
+        "period": 2024,
+        "effect_direction": "baseline_minus_reform",
+        "expected_sign": "positive",
+        "binding_inputs": ["passive_partnership_s_corp_income"],
+        "min_abs_effect": 1_000_000.0,
+        "reason": (
+            "Removing only passive_partnership_s_corp_income from the 2024 "
+            "net investment income sources isolates the section 1411(c)(1)(A)"
+            "(ii) pass-through leg, which the PUF channel carries from "
+            "Schedule E line 28 columns (g) minus (f) (microcosm#1239). The "
+            "donor's passive leg is net positive and concentrated at high "
+            "AGI, so baseline-minus-reform NIIT must be positive; without the "
+            "leaf the reform is a structural zero."
+        ),
+        "issue": "PolicyEngine/microcosm#1239",
+    },
+    {
         "id": "domestic_production_ald_reactivation",
         "name": "Former Section 199 domestic-production deduction reactivation",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.ald.deductions": {
-                "2024-01-01.2024-12-31": [
-                    "loss_ald",
-                    "self_employment_tax_ald",
-                    "student_loan_interest_ald",
-                    "early_withdrawal_penalty",
-                    "alimony_expense_ald",
-                    "educator_expense",
-                    "health_savings_account_ald",
-                    "self_employed_health_insurance_ald",
-                    "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
-                    "qualified_adoption_assistance_expense",
-                    "us_bonds_for_higher_ed",
-                    "specified_possession_income",
-                    "puerto_rico_income",
-                    "domestic_production_ald",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "add": ["domestic_production_ald"],
             }
         },
         "budget_measure": "income_tax",
@@ -894,8 +991,8 @@ REFORM_COVERAGE_PROBES = [
         "min_abs_effect": 1_000_000.0,
         "reason": (
             "PolicyEngine-US 2.2.1 excludes the former Section 199 deduction "
-            "from current-law above-the-line deductions. This probe preserves "
-            "the exact 2024 list and adds only domestic_production_ald, so "
+            "from current-law above-the-line deductions. This probe adds only "
+            "domestic_production_ald to the installed engine's 2024 list, so "
             "baseline-minus-reform income tax must be positive. Without the "
             "restored E03240 input, reactivation is a structural zero."
         ),
@@ -988,26 +1085,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "child_support_received_snap_exclusion",
         "name": "Exclude child-support receipts from SNAP unearned income",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.income.sources.unearned": {
-                "2024-01-01.2024-12-31": [
-                    "ssi",
-                    "general_assistance",
-                    "pension_income",
-                    "veterans_benefits",
-                    "unemployment_compensation",
-                    "disability_benefits",
-                    "workers_compensation",
-                    "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
-                    "dividend_income",
-                    "interest_income",
-                    "miscellaneous_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["child_support_received"],
             }
         },
         "budget_measure": "snap",
@@ -1027,15 +1109,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "child_support_expense_snap_deduction_abolition",
         "name": "Abolish the SNAP child-support expense deduction",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.income.deductions.allowed": {
-                "2024-01-01.2024-12-31": [
-                    "snap_standard_deduction",
-                    "snap_earned_income_deduction",
-                    "snap_dependent_care_deduction",
-                    "snap_excess_medical_expense_deduction",
-                    "snap_excess_shelter_expense_deduction",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["snap_child_support_deduction"],
             }
         },
         "budget_measure": "snap",
@@ -1055,26 +1133,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "disability_benefits_snap_exclusion",
         "name": "Exclude disability benefits from SNAP unearned income",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.income.sources.unearned": {
-                "2024-01-01.2024-12-31": [
-                    "ssi",
-                    "general_assistance",
-                    "pension_income",
-                    "veterans_benefits",
-                    "unemployment_compensation",
-                    "workers_compensation",
-                    "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "child_support_received",
-                    "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
-                    "dividend_income",
-                    "interest_income",
-                    "miscellaneous_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["disability_benefits"],
             }
         },
         "budget_measure": "snap",
@@ -1094,26 +1157,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "workers_compensation_snap_exclusion",
         "name": "Exclude workers' compensation from SNAP unearned income",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.usda.snap.income.sources.unearned": {
-                "2024-01-01.2024-12-31": [
-                    "ssi",
-                    "general_assistance",
-                    "pension_income",
-                    "veterans_benefits",
-                    "unemployment_compensation",
-                    "disability_benefits",
-                    "social_security",
-                    "retirement_distributions",
-                    "rental_income",
-                    "child_support_received",
-                    "alimony_income",
-                    "financial_assistance",
-                    "survivor_benefits",
-                    "dividend_income",
-                    "interest_income",
-                    "miscellaneous_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["workers_compensation"],
             }
         },
         "budget_measure": "snap",
@@ -1129,9 +1177,10 @@ REFORM_COVERAGE_PROBES = [
             "2.2.1) the corrected list scored +$277.9M reform-minus-baseline "
             "over all 1,708 households carrying the leaf; without the measured "
             "WC_VAL carry and PUF-half QRF, the source-list reform is a "
-            "structural zero. The list must equal the engine's person-level "
-            "unearned sources minus this leaf: TANF is counted once on "
-            "unearned_spm_unit and must not be re-added here."
+            "structural zero. The probe declares only the removal, so it "
+            "resolves against the installed engine's person-level unearned "
+            "sources: the whole list it pinned before re-added TANF, which "
+            "2.2.1 counts once on unearned_spm_unit."
         ),
         "issue": "PolicyEngine/microcosm#32",
     },
@@ -1158,23 +1207,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "educator_expense_ald_abolition",
         "name": "Abolish the educator-expense above-the-line deduction",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.ald.deductions": {
-                "2024-01-01.2024-12-31": [
-                    "loss_ald",
-                    "self_employment_tax_ald",
-                    "student_loan_interest_ald",
-                    "early_withdrawal_penalty",
-                    "alimony_expense_ald",
-                    "health_savings_account_ald",
-                    "self_employed_health_insurance_ald",
-                    "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
-                    "qualified_adoption_assistance_expense",
-                    "us_bonds_for_higher_ed",
-                    "specified_possession_income",
-                    "puerto_rico_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["educator_expense"],
             }
         },
         "budget_measure": "income_tax",
@@ -1194,23 +1231,11 @@ REFORM_COVERAGE_PROBES = [
     {
         "id": "alimony_expense_ald_abolition",
         "name": "Alimony expense above-the-line deduction abolition",
-        "parameter_changes": {
+        "parameter_changes": {},
+        "list_edits": {
             "gov.irs.ald.deductions": {
-                "2024-01-01.2024-12-31": [
-                    "loss_ald",
-                    "self_employment_tax_ald",
-                    "student_loan_interest_ald",
-                    "early_withdrawal_penalty",
-                    "educator_expense",
-                    "health_savings_account_ald",
-                    "self_employed_health_insurance_ald",
-                    "self_employed_pension_contribution_ald",
-                    "traditional_ira_contributions",
-                    "qualified_adoption_assistance_expense",
-                    "us_bonds_for_higher_ed",
-                    "specified_possession_income",
-                    "puerto_rico_income",
-                ]
+                "period": "2024-01-01.2024-12-31",
+                "remove": ["alimony_expense_ald"],
             }
         },
         "budget_measure": "income_tax",
@@ -1601,7 +1626,7 @@ def build_manifest() -> dict:
     }
 
     return {
-        "schema_version": 1,
+        "schema_version": US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION,
         "issue": "PolicyEngine/microcosm#368",
         "description": (
             "Declared full-coverage contract for a US release: every input "
@@ -1609,7 +1634,11 @@ def build_manifest() -> dict:
             "non-default signal, or carry a reviewed exclusion. Enforced as a "
             "hard release gate (microcosm.build.us_runtime.release_input_"
             "coverage) that generalizes assert_required_us_release_source_"
-            "columns from 5 columns to the full eCPS input surface."
+            "columns from 5 columns to the full eCPS input surface. Its "
+            "reform-coverage probes declare list-valued parameter changes as "
+            "list_edits (items removed or added), resolved against the "
+            "installed PolicyEngine-US baseline when each reform is built; "
+            "schema_version 2 refuses a whole list pinned in parameter_changes."
         ),
         "reference": reference,
         "derivation": (
@@ -1624,7 +1653,9 @@ def build_manifest() -> dict:
             "(PolicyEngine/microcosm#462), the three ASEC reported-receipt "
             "inputs receives_wic, receives_snap, receives_tanf that the ACS "
             "local-area transfer requires in its donor "
-            "(PolicyEngine/microcosm#978 option 1), and the engine's declared "
+            "(PolicyEngine/microcosm#978 option 1), the work-experience inputs "
+            "detailed_industry_recode, major_industry_recode, worked_last_year "
+            "(PolicyEngine/microcosm#719), and the engine's declared "
             "dataset source input is_spm_independent_minor_role (the "
             "spm_independence_role base-builder stage; "
             "PolicyEngine/microcosm#893). "
