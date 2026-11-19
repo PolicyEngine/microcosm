@@ -185,6 +185,10 @@ def _move_a_sparse_block(column: pd.Series) -> None:
     column.array.sp_index.blocs[0] = 0
 
 
+def _shorten_a_sparse_block(column: pd.Series) -> None:
+    column.array.sp_index.blengths[0] = 1
+
+
 _RAW_WRITES: dict[str, tuple[str, Callable[[pd.Series], None]]] = {
     "to_numpy on Int64": ("count_complete", _write_through_to_numpy),
     "to_numpy on Float64": ("amount_complete", _write_through_to_numpy),
@@ -205,6 +209,7 @@ _RAW_WRITES: dict[str, tuple[str, Callable[[pd.Series], None]]] = {
     "mask of Int64": ("count_complete", _mark_a_value_missing),
     "mask over a stored false": ("flag_complete", _hide_a_stored_false),
     "sparse block positions": ("rare_block", _move_a_sparse_block),
+    "sparse block lengths": ("rare_block", _shorten_a_sparse_block),
 }
 
 
