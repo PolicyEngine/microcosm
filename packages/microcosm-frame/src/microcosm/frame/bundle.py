@@ -170,9 +170,9 @@ class Frame:
         checked and the same errors are raised, except that a table that is
         not a DataFrame raises ``TypeError`` before any table is stored or
         checked (the constructor calls each table's ``copy()`` and checks
-        what it returns, so it fails on a table without one). Weights are stored as given (their arrays are
-        read-only), and the strata are shallow-copied when copy-on-write is
-        on.
+        what it returns, so it fails on a table without one). Weights are
+        stored as given (their arrays are read-only), and the strata are
+        shallow-copied when copy-on-write is on.
 
         Args:
             tables: Entity and link tables, as for the constructor.
