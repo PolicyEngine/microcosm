@@ -300,23 +300,47 @@ def _reached_after(
 ) -> set[str]:
     """The tool definitions that code after a point in ``_main`` can run.
 
-    These are the definitions ``later_statements`` name, and every tool class
-    ``_main`` names anywhere, since an object built earlier, such as the
-    build's progress reporter, can run its methods later. Each is followed
-    through the definitions it names.
+    These are the definitions ``later_statements`` name, plus what code
+    before the point can leave for later. That is every tool class reachable
+    from ``_main``: an object built earlier, such as the build's progress
+    reporter, can run its methods after the point. It is also every tool
+    function ``_main`` uses as a value rather than calling it there. Each is
+    followed through the definitions it names.
     """
+    main = _tool_main(definitions)
     named_later = set().union(
         *(
             _tool_definitions_named(statement, definitions)
             for statement in later_statements
         )
     )
+    reachable_from_main = _tool_definitions_reached(
+        definitions, _tool_definitions_named(main, definitions)
+    )
     classes = {
         name
-        for name in _tool_definitions_named(_tool_main(definitions), definitions)
+        for name in reachable_from_main
         if any(isinstance(statement, ast.ClassDef) for statement in definitions[name])
     }
-    return _tool_definitions_reached(definitions, named_later | classes)
+    called = {
+        id(node.func)
+        for node in _walk_without_annotations(main)
+        if isinstance(node, ast.Call)
+    }
+    functions_as_values = {
+        node.id
+        for node in _walk_without_annotations(main)
+        if isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and id(node) not in called
+        and any(
+            isinstance(statement, ast.FunctionDef)
+            for statement in definitions.get(node.id, ())
+        )
+    }
+    return _tool_definitions_reached(
+        definitions, named_later | classes | functions_as_values
+    )
 
 
 def _walk_without_annotations(tree: ast.AST):
