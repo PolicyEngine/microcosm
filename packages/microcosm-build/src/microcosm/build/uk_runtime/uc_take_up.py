@@ -1335,10 +1335,10 @@ def assign_award_band_take_up(
     young_lcwra_status: str | None = None
     # How many rounds the joint solve took; whether it stopped on the
     # tolerance rather than the round cap; and whether its last round left
-    # every unit's claim as the round before did, which a capped stop can
-    # still reach where a ratio's log moves inside a stretch of equal claims
-    # (Vahid's review of PolicyEngine/microcosm#1663: a capped stop read as a
-    # fit).
+    # every unit's claim as the round before did (the first round, as the
+    # starting ratios did), which a capped stop can still reach where a
+    # ratio's log moves inside a stretch of equal claims (Vahid's review of
+    # PolicyEngine/microcosm#1663: a capped stop read as a fit).
     joint_rounds = 0
     joint_converged = False
     joint_claims_settled = False
@@ -1353,7 +1353,12 @@ def assign_award_band_take_up(
         def held_ratio(log: float | None) -> float | None:
             return None if log is None else float(np.exp(log))
 
-        previous_claims: np.ndarray | None = None
+        # The claims at the starting ratios, so a solve that settles in its
+        # first round shows whether that round changed any unit's claim
+        # (Vahid's final review of PolicyEngine/microcosm#1663).
+        previous_claims = realize(
+            held_ratio(log_young), float(np.exp(log_lcwra)), held_ratio(log_young_lcwra)
+        )
         for _ in range(_JOINT_ROUNDS):
             joint_rounds += 1
             before_round = (log_young, log_lcwra, log_young_lcwra)
@@ -1391,9 +1396,7 @@ def assign_award_band_take_up(
                 float(np.exp(log_lcwra)),
                 held_ratio(log_young_lcwra),
             )
-            joint_claims_settled = previous_claims is not None and bool(
-                np.array_equal(round_claims, previous_claims)
-            )
+            joint_claims_settled = bool(np.array_equal(round_claims, previous_claims))
             previous_claims = round_claims
             if all(
                 now is None or abs(now - then) <= _JOINT_TOLERANCE
@@ -1567,8 +1570,16 @@ def assign_award_band_take_up(
             },
         }
         if young_lcwra_people is not None:
-            carried = sources(entitled_gb & young_lcwra_unit)
-            drawn_young_lcwra = sources(drawable & gb & young_lcwra_unit)
+            # Support is counted on the units the count reads: with a scope,
+            # only its geography's (Vahid's final review of
+            # PolicyEngine/microcosm#1663).
+            counted = (
+                young_lcwra_unit
+                if young_lcwra_scope is None
+                else young_lcwra_unit & young_lcwra_scope
+            )
+            carried = sources(entitled_gb & counted)
+            drawn_young_lcwra = sources(drawable & gb & counted)
             before = float((young_lcwra_weight * expected_before)[entitled_gb].sum())
             receipt["young_lcwra_fit"] = {
                 "rule": UC_TAKE_UP_YOUNG_LCWRA_FIT,

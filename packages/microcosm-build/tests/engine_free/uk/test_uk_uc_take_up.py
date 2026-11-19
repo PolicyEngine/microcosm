@@ -1456,6 +1456,23 @@ def test_the_joint_solve_records_its_rounds_and_whether_it_converged(
     }
 
 
+def test_a_joint_solve_settling_in_its_first_round_says_its_claims_settled(
+    monkeypatch,
+) -> None:
+    # Vahid's final review of PolicyEngine/microcosm#1663: the first round's
+    # claims are compared with the starting ratios' claims, so a solve whose
+    # first round leaves every log and claim where they started reads as both
+    # converged and settled. Bounds at zero hold every ratio at one.
+    monkeypatch.setattr(uc_take_up, "_LOG_ODDS_BOUNDS", (0.0, 0.0))
+    _, receipt = _young_lcwra_pool()[0]
+    assert receipt["lcwra_fit"]["joint_solve"] == {
+        "rounds": 1,
+        "round_cap": uc_take_up._JOINT_ROUNDS,
+        "converged": True,
+        "claims_settled": True,
+    }
+
+
 def test_a_scoped_young_lcwra_count_is_met_inside_its_geography() -> None:
     # Part 3 of PolicyEngine/microcosm#1663: DWP's young LCWRA count is England
     # and Wales's, so the ratio is solved on the units inside that geography
@@ -1483,6 +1500,27 @@ def test_a_scoped_young_lcwra_count_is_met_inside_its_geography() -> None:
         )
     with pytest.raises(ValueError, match="one flag per benefit unit"):
         _young_lcwra_pool(young_lcwra_scope=scope[:-1])
+
+
+def test_the_young_lcwra_fits_support_is_counted_inside_its_scope() -> None:
+    # Vahid's final review of PolicyEngine/microcosm#1663: the count is the
+    # scope's, so its support is too. Two of the twenty young LCWRA units are
+    # inside the scope: on fewer than three sources the receipt withholds the
+    # count and the ratio, though all twenty together would pass the floor.
+    scope = np.asarray([True] * 2 + [False] * 18 + [True] * 80)
+    (_, receipt), _ = _young_lcwra_pool(young_lcwra_target=1.0, young_lcwra_scope=scope)
+    fit = receipt["young_lcwra_fit"]
+    assert fit["support"] == "<3"
+    assert fit["drawn_support"] == "<3"
+    assert fit["young_lcwra_people_before"] == "<3"
+    assert fit["young_lcwra_people_after"] == "<3"
+    assert fit["odds_ratio"] == "<3"
+
+    # Without the scope, the same twenty units carry the count and it prints.
+    (_, unscoped), _ = _young_lcwra_pool(young_lcwra_target=1.0)
+    assert unscoped["young_lcwra_fit"]["support"] == "10-29"
+    assert unscoped["young_lcwra_fit"]["drawn_support"] == "10-29"
+    assert isinstance(unscoped["young_lcwra_fit"]["odds_ratio"], float)
 
 
 def test_the_young_lcwra_count_is_table_28s_calendar_2025_window() -> None:
