@@ -295,17 +295,55 @@ def _tool_definitions_reached(
     return reached
 
 
+def _is_a_function_value(node: ast.AST, nested: set[str]) -> bool:
+    """Whether an expression is a lambda or a nested function, or a container
+    or conditional expression holding one. A lambda passed to a call, as to
+    shadow_gate, is not: the call runs it and returns something else."""
+    if isinstance(node, ast.Lambda):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in nested
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return any(_is_a_function_value(element, nested) for element in node.elts)
+    if isinstance(node, ast.Dict):
+        return any(_is_a_function_value(value, nested) for value in node.values)
+    if isinstance(node, ast.IfExp):
+        return _is_a_function_value(node.body, nested) or _is_a_function_value(
+            node.orelse, nested
+        )
+    return False
+
+
+def _returns_a_function(function: ast.FunctionDef) -> bool:
+    """Whether ``function`` returns a lambda or a function it defines."""
+    nested = {
+        node.name
+        for node in ast.walk(function)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node is not function
+    }
+    return any(
+        isinstance(node, ast.Return)
+        and node.value is not None
+        and _is_a_function_value(node.value, nested)
+        for node in ast.walk(function)
+    )
+
+
 def _reached_after(
     definitions: _ToolDefinitions, later_statements: list[ast.stmt]
 ) -> set[str]:
     """The tool definitions that code after a point in ``_main`` can run.
 
     These are the definitions ``later_statements`` name, plus what code
-    before the point can leave for later. That is every tool class reachable
-    from ``_main``: an object built earlier, such as the build's progress
-    reporter, can run its methods after the point. It is also every tool
-    function ``_main`` uses as a value rather than calling it there. Each is
-    followed through the definitions it names.
+    before the point can leave for later, anywhere ``_main`` reaches:
+    - every tool class, since an object built earlier, such as the build's
+      progress reporter, can run its methods after the point;
+    - every tool function used as a value rather than called there, which a
+      local or a returned mapping can hold, as _post_export_consumers does;
+    - every tool function that returns a closure or a lambda, which can run
+      later, as _reform_validation_consumer's does.
+    Each is followed through the definitions it names.
     """
     main = _tool_main(definitions)
     named_later = set().union(
@@ -317,6 +355,9 @@ def _reached_after(
     reachable_from_main = _tool_definitions_reached(
         definitions, _tool_definitions_named(main, definitions)
     )
+    roots = [main] + [
+        statement for name in reachable_from_main for statement in definitions[name]
+    ]
     classes = {
         name
         for name in reachable_from_main
@@ -324,12 +365,14 @@ def _reached_after(
     }
     called = {
         id(node.func)
-        for node in _walk_without_annotations(main)
+        for root in roots
+        for node in _walk_without_annotations(root)
         if isinstance(node, ast.Call)
     }
     functions_as_values = {
         node.id
-        for node in _walk_without_annotations(main)
+        for root in roots
+        for node in _walk_without_annotations(root)
         if isinstance(node, ast.Name)
         and isinstance(node.ctx, ast.Load)
         and id(node) not in called
@@ -338,8 +381,17 @@ def _reached_after(
             for statement in definitions.get(node.id, ())
         )
     }
+    closure_factories = {
+        name
+        for name in reachable_from_main
+        if any(
+            isinstance(statement, ast.FunctionDef) and _returns_a_function(statement)
+            for statement in definitions[name]
+        )
+    }
     return _tool_definitions_reached(
-        definitions, named_later | classes | functions_as_values
+        definitions,
+        named_later | classes | functions_as_values | closure_factories,
     )
 
 
