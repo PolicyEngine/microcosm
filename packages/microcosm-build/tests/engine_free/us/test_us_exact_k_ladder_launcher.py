@@ -296,6 +296,10 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
     artifact_root = tmp_path / "out" / "artifacts"
     assert result["release"] == "microcosm-us-2024-national"
     assert result["build"] == "populace-us-2024-k8-fixture"
+    # A build has no tier: its own files are in build/, and certification
+    # places it in the national release, since an exact-k build is never
+    # evidence (microcosm#1585 item 11).
+    assert result["build_dir"] == str(tmp_path / "out" / "build")
     assert result["release_dir"] == str(release_dir)
     assert result["artifact_root"] == str(artifact_root)
     # The build is not certified: the receipt carries the command that

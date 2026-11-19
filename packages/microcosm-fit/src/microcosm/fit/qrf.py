@@ -60,6 +60,8 @@ import json
 import math
 import numbers
 import os
+import random
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -67,7 +69,7 @@ from dataclasses import dataclass, field, replace
 import joblib
 import numpy as np
 import pandas as pd
-from quantile_forest import RandomForestQuantileRegressor
+import quantile_forest
 from sklearn.ensemble import HistGradientBoostingClassifier
 
 from microcosm.fit.model import (
@@ -1143,6 +1145,258 @@ def _locate_rows(
     return np.clip(out, 0.0, np.nextafter(1.0, 0.0))
 
 
+#: The quantile-forest release whose private leaf-array builder
+#: :class:`_InPlaceLeafQRF` reproduces. ``microcosm-fit``'s ``pyproject.toml``
+#: pins exactly this release, and a fit under any other installed release is
+#: refused, because a private method can change in any release.
+_SUPPORTED_QUANTILE_FOREST_VERSION = "1.4.2"
+
+
+def _require_supported_quantile_forest() -> None:
+    """Refuse a quantile-forest release the in-place override was not checked on.
+
+    Raises:
+        RuntimeError: If the imported ``quantile_forest`` is not
+            :data:`_SUPPORTED_QUANTILE_FOREST_VERSION`.
+    """
+    installed = getattr(quantile_forest, "__version__", None)
+    if installed != _SUPPORTED_QUANTILE_FOREST_VERSION:
+        raise RuntimeError(
+            "microcosm-fit builds QRF leaf arrays with a copy of quantile-forest "
+            f"{_SUPPORTED_QUANTILE_FOREST_VERSION}'s private "
+            "BaseForestQuantileRegressor._get_y_train_leaves, but quantile-forest "
+            f"{installed} is installed. Install quantile-forest=="
+            f"{_SUPPORTED_QUANTILE_FOREST_VERSION}, the release microcosm-fit "
+            "pins, or compare the override with the new release's method and "
+            "update the pin and _SUPPORTED_QUANTILE_FOREST_VERSION together."
+        )
+
+
+def _fill_tree_leaves(
+    tree_leaves: np.ndarray,
+    bootstrap_indices: np.ndarray,
+    draw_leaves: np.ndarray,
+    sample_weight: np.ndarray | None,
+    leaf_subsample: bool,
+    max_samples_leaf: int,
+    random_state: int,
+) -> None:
+    """Write one tree's leaf-to-training-row map into ``tree_leaves``.
+
+    The body is quantile-forest 1.4.2's
+    ``BaseForestQuantileRegressor._get_y_train_leaves_slice``, except that it
+    writes into the caller's slice of the forest-wide array instead of
+    allocating a zeroed array of its own and returning it. So it takes no
+    ``max_node_count``, which only sized that array, and it checks that the
+    array the compiled helper returns shares memory with the slice, as it does
+    when the helper writes into its argument. Every other step, including the
+    grouping helper, the global ``random.seed``/``random.shuffle`` calls and the
+    order of the writes, is the library's.
+
+    Args:
+        tree_leaves: This tree's zeroed ``(nodes, outputs, width)`` slice of the
+            forest-wide array.
+        bootstrap_indices: ``(draws, outputs)`` 1-based positions in the sorted
+            training values of this tree's bootstrap draws.
+        draw_leaves: The leaf each bootstrap draw reaches in this tree.
+        sample_weight: Sorted training weights, or ``None``.
+        leaf_subsample: Whether leaves are truncated to ``max_samples_leaf``
+            entries.
+        max_samples_leaf: The width of every leaf's row.
+        random_state: This tree's seed, which also seeds the leaf subsample.
+    """
+    from quantile_forest import _quantile_forest as library
+
+    n_outputs = bootstrap_indices.shape[1]
+
+    if sample_weight is not None:
+        sample_weight = np.squeeze(sample_weight)
+
+    leaf_indices, leaf_values_list = library.group_indices_by_value(draw_leaves)
+
+    if leaf_subsample or sample_weight is not None:
+        if leaf_subsample:
+            random.seed(random_state)
+
+        for leaf in range(len(leaf_values_list)):
+            if sample_weight is not None:
+                # quantile-forest 1.4.2's filter, copied as it is: it looks
+                # up each entry's weight by the draw's position minus one, not
+                # by the drawn row.
+                weight_mask = sample_weight[leaf_values_list[leaf] - 1] > 0
+                leaf_values_list[leaf] = leaf_values_list[leaf][weight_mask]
+            if leaf_subsample:
+                if len(leaf_values_list[leaf]) > max_samples_leaf:
+                    random.shuffle(leaf_values_list[leaf])
+                    leaf_values_list[leaf] = leaf_values_list[leaf][:max_samples_leaf]
+            if len(leaf_values_list[leaf]) == 0:
+                leaf_values_list[leaf] = [0]
+
+    if max_samples_leaf == 1:
+        sorted_positions = bootstrap_indices[leaf_values_list].reshape(-1, 1, n_outputs)
+        for output in range(n_outputs):
+            tree_leaves[leaf_indices, output, 0] = sorted_positions[:, 0, output]
+    else:
+        filled = library.map_indices_to_leaves(
+            y_train_leaves_slice=tree_leaves,
+            bootstrap_indices=bootstrap_indices,
+            leaf_indices=leaf_indices,
+            leaf_values_list=leaf_values_list,
+        )
+        # The compiled helper writes through a memoryview of its argument and
+        # returns a view of the same buffer; a copy would leave this slice zero.
+        if not np.may_share_memory(filled, tree_leaves):
+            raise RuntimeError(
+                "quantile-forest's map_indices_to_leaves returned a copy instead "
+                "of filling the array it was given."
+            )
+
+
+class _InPlaceLeafQRF(quantile_forest.RandomForestQuantileRegressor):
+    """A quantile forest whose leaf array is filled in place.
+
+    After growing its trees, quantile-forest maps every leaf to the training
+    rows it holds in one int64 array of shape ``(trees, nodes, outputs,
+    width)``, zero-padded to the widest leaf (or to ``max_samples_leaf`` when
+    that is set). quantile-forest 1.4.2 builds one zeroed array per tree and
+    then copies the list into the final array with ``np.array(list)``. That
+    copy writes every byte, padding included, so the whole padded array
+    becomes resident memory, and for a while both the per-tree arrays and the
+    copy exist.
+
+    This subclass allocates the final array once and writes each tree's
+    entries straight into that tree's slice (:func:`_fill_tree_leaves`). The
+    width, ``apply``, bootstrap replay and rank computation are the library's
+    own, as are the ``random.seed``/``random.shuffle`` calls in tree order and
+    the dtype, shape and C order of the result, so the array is byte-identical
+    to the library's and so is every prediction. It replaces the private
+    ``_get_y_train_leaves`` and wraps :meth:`fit` only to check the version:
+    both refuse any quantile-forest release other than
+    :data:`_SUPPORTED_QUANTILE_FOREST_VERSION`. scikit-learn's validation
+    messages name this class. A ``max_samples_leaf`` so large that the whole
+    forest's array exceeds the largest size numpy can describe raises numpy's
+    ``ValueError`` here, where the library, allocating one tree at a time,
+    raises ``MemoryError``. A failed allocation here comes before any tree's
+    ``random`` calls. So with a leaf cap set, if the library gets past at
+    least one tree before its own allocation or its final copy fails,
+    Python's ``random`` state can differ from the library's after that failed
+    fit.
+
+    The saving lasts while pages stay untouched. Pages of an ``np.zeros``
+    array take no memory until something touches them. A write makes a page
+    resident, and on macOS so does a read: prediction reads each leaf row it
+    reaches, and pickling or deep-copying a fitted forest reads the whole
+    array, because quantile-forest's ``QuantileForest.__reduce__`` hands all
+    of it to pickle, which also writes it out in full. On Linux a read maps a
+    shared zero page instead, but where transparent huge pages are granted a
+    first write makes a whole 2 MiB region resident.
+    """
+
+    def fit(self, X, y, sample_weight=None, sparse_pickle=False):  # noqa: N803
+        """Check the installed quantile-forest, then fit as the library does.
+
+        The check runs here, before any tree is grown, and again in
+        :meth:`_get_y_train_leaves`, which also covers a caller that runs the
+        library's own ``fit`` on this class.
+        """
+        _require_supported_quantile_forest()
+        return super().fit(
+            X, y, sample_weight=sample_weight, sparse_pickle=sparse_pickle
+        )
+
+    def _get_y_train_leaves(self, X, y, sorter=None, sample_weight=None):  # noqa: N803
+        """Return the leaf array, built as quantile-forest 1.4.2 builds it.
+
+        The signature and the steps up to the per-tree fill are quantile-forest
+        1.4.2's ``BaseForestQuantileRegressor._get_y_train_leaves``, unchanged:
+        ``X`` is the training features and ``y`` the sorted targets. The
+        per-tree fill writes into one preallocated array instead of returning
+        a list that ``np.array`` then copies, so the library's per-tree method
+        ``_get_y_train_leaves_slice`` is not called.
+        """
+        _require_supported_quantile_forest()
+        from quantile_forest import _quantile_forest as library
+
+        n_samples = X.shape[0]
+        n_outputs = y.shape[-1]
+
+        if isinstance(self.max_samples_leaf, (numbers.Integral, np.integer)):
+            max_samples_leaf = self.max_samples_leaf
+            leaf_subsample = True
+        elif isinstance(self.max_samples_leaf, numbers.Real):
+            max_samples_leaf = int(math.ceil(self.max_samples_leaf * n_samples))
+            leaf_subsample = True
+        elif self.max_samples_leaf is None:
+            max_samples_leaf = self.max_samples_leaf
+            leaf_subsample = False
+        else:
+            raise ValueError(
+                "`max_samples_leaf` must be of integer, float, or None type, "
+                f"got {type(self.max_samples_leaf)}."
+            )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            sample_leaves = self.apply(X)
+
+        if self.bootstrap:
+            arguments = (n_samples, self.max_samples)
+            if library.sklearn_version >= library.parse_version("1.9.0"):
+                arguments += (self.sample_weight_,)
+            n_samples_bootstrap = library._get_n_samples_bootstrap(*arguments)
+
+        shape = (
+            n_samples if not self.bootstrap else n_samples_bootstrap,
+            self.n_estimators,
+        )
+        bootstrap_indices = np.empty(shape, dtype=np.int64)
+        draw_leaves = np.empty(shape, dtype=np.int64)
+        for tree, estimator in enumerate(self.estimators_):
+            if self.bootstrap:
+                arguments = (estimator.random_state, n_samples, n_samples_bootstrap)
+                if library.sklearn_version >= library.parse_version("1.9.0"):
+                    arguments += (self.sample_weight_,)
+                bootstrap_indices[:, tree] = library._generate_sample_indices(
+                    *arguments
+                )
+            else:
+                bootstrap_indices[:, tree] = np.arange(n_samples)
+            draw_leaves[:, tree] = sample_leaves[bootstrap_indices[:, tree], tree]
+
+        if sorter is not None:
+            bootstrap_indices = np.argsort(sorter, axis=0)[bootstrap_indices]
+
+        bootstrap_indices = bootstrap_indices.reshape(-1, self.n_estimators, n_outputs)
+        bootstrap_indices += 1  # 0 marks an empty entry
+
+        max_node_count = 0
+        max_samples_leaf = 0 if not leaf_subsample else max_samples_leaf
+        for tree, estimator in enumerate(self.estimators_):
+            node_count = estimator.tree_.node_count
+            max_node_count = max(max_node_count, node_count)
+            if not leaf_subsample:
+                sample_count = np.max(np.bincount(draw_leaves[:, tree]))
+                max_samples_leaf = max(max_samples_leaf, sample_count)
+
+        # The library stacks one array per tree with np.array(list), which
+        # gives exactly this dtype, shape and C order.
+        leaves = np.zeros(
+            (len(self.estimators_), max_node_count, n_outputs, max_samples_leaf),
+            dtype=np.int64,
+        )
+        for tree, estimator in enumerate(self.estimators_):
+            _fill_tree_leaves(
+                leaves[tree],
+                bootstrap_indices[:, tree],
+                draw_leaves[:, tree],
+                sample_weight,
+                leaf_subsample,
+                max_samples_leaf,
+                estimator.random_state,
+            )
+        return leaves
+
+
 _SERIALIZED_FOREST_N_JOBS = 1
 
 
@@ -1150,13 +1404,13 @@ _SERIALIZED_FOREST_N_JOBS = 1
 class _Forest:
     """A fitted quantile forest plus the feature columns it was fit on."""
 
-    model: RandomForestQuantileRegressor
+    model: _InPlaceLeafQRF
     columns: tuple[str, ...]
 
     def __getstate__(self) -> dict[str, object]:
         """Return a worker-count-neutral pickle payload.
 
-        ``RandomForestQuantileRegressor.n_jobs`` controls only runtime
+        ``_InPlaceLeafQRF.n_jobs`` controls only runtime
         parallelism. A shallow model copy lets serialization pin that field
         without mutating the fitted object that will perform the first draw.
         """
@@ -1169,7 +1423,7 @@ class _Forest:
         """Restore the current runtime worker setting after trusted loading."""
 
         model = state["model"]
-        if not isinstance(model, RandomForestQuantileRegressor):
+        if not isinstance(model, _InPlaceLeafQRF):
             raise TypeError("Serialized QRF forest model has an invalid type.")
         columns = state["columns"]
         if not isinstance(columns, tuple) or any(
@@ -1520,7 +1774,9 @@ def _fit_forest(
             f"max_samples_leaf at {_DISCRETE_Y_LEAF_BOUND} for this forest.",
             flush=True,
         )
-    model = RandomForestQuantileRegressor(
+    # The in-place leaf array is byte-identical to the library's and avoids
+    # its full padded copy (see _InPlaceLeafQRF).
+    model = _InPlaceLeafQRF(
         n_estimators=n_estimators,
         max_samples_leaf=effective_max_samples_leaf,
         random_state=seed,

@@ -391,9 +391,7 @@ def test_high_quantile_draw_reaches_the_observed_max() -> None:
     1, so the observed max is drawable. This is a direct probe of the forest's
     draw at q=1 against the interior-only (winsorized) grid.
     """
-    from quantile_forest import RandomForestQuantileRegressor
-
-    from microcosm.fit.qrf import _QUANTILE_GRID, _Forest
+    from microcosm.fit.qrf import _QUANTILE_GRID, _Forest, _InPlaceLeafQRF
 
     rng = np.random.default_rng(0)
     n = 2000
@@ -403,9 +401,7 @@ def test_high_quantile_draw_reaches_the_observed_max() -> None:
     y = rng.normal(100.0, 10.0, n)
     observed_max = 1000.0
     y[0] = observed_max  # a lone extreme: the observed conditional maximum
-    model = RandomForestQuantileRegressor(
-        n_estimators=50, max_samples_leaf=None, random_state=0
-    )
+    model = _InPlaceLeafQRF(n_estimators=50, max_samples_leaf=None, random_state=0)
     model.fit(x, y)
     forest = _Forest(model=model, columns=("x",))
 

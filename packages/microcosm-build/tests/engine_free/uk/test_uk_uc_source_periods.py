@@ -450,11 +450,24 @@ def test_generator_preserves_observation_basis_and_explicit_months():
 
 def test_shipped_uc_monthly_references_preserve_each_declared_window():
     references = load_country_spec("uk").target_references
-    monthly = [
+    universal_credit = [
         reference
         for reference in references
         if reference.family == "dwp_universal_credit"
     ]
+    # Part 3 of PolicyEngine/microcosm#1663: DWP's young people with the UC
+    # health element (Table 28) is a window of two financial years, not a
+    # monthly Stat-Xplore series, and declares no source months.
+    fiscal = [
+        reference
+        for reference in universal_credit
+        if reference.value_operation == "calendar_year_window"
+    ]
+    assert [reference.name for reference in fiscal] == [
+        "dwp.uc.people_aged_16_to_24_lcwra_element"
+    ]
+    assert EXPECTED_SOURCE_MONTHS not in fiscal[0].metadata
+    monthly = [reference for reference in universal_credit if reference not in fiscal]
     # microcosm#1095: less the five-or-more-children count, a diagnostic; plus
     # Y4's three people-by-age rows (8 Nov 2026) and B5's four rows by
     # conditionality group (PR3, 12 Nov 2026), held out of the solve.
@@ -624,14 +637,17 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
     # P3 of the November event-data plan: DWP's PIP cases on the cube's four
     # quarter-end points inside calendar 2025. The award split binds (P2), and
     # since PR3 so do England's five broad age bands (B2); the other rows are
-    # held out of the solve.
+    # held out of the solve. PolicyEngine/microcosm#1663 adds England's cases
+    # aged 16 to 24 at each component's enhanced rate, held out.
     pip_months = ["2025-01", "2025-04", "2025-07", "2025-10"]
     pip_cases = [reference for reference in references if reference.family == "dwp_pip"]
-    assert len(pip_cases) == 99
+    assert len(pip_cases) == 101
     # B2's broad bands sum the thirteen fine bands' quarterly points, one
-    # operand per fine band.
+    # operand per fine band; #1663's two award rows sum 16 to 19 and 20 to 24.
     pip_broad_bands = {
         "dwp.pip.cases_england_aged_16_to_24": 2,
+        "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced": 2,
+        "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": 2,
         "dwp.pip.cases_england_aged_25_to_34": 2,
         "dwp.pip.cases_england_aged_35_to_49": 3,
         "dwp.pip.cases_england_aged_50_to_64": 3,

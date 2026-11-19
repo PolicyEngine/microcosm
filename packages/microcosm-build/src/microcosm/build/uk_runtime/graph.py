@@ -801,6 +801,7 @@ _ROOT_PERSON_STRING = {
     "gender",
     "marital_status",
     "frs_uc_lcw_status",
+    "frs_condition_limits_activities",
     "frs_uc_carer_element",
 }
 _ROOT_PERSON_BOOL = {
