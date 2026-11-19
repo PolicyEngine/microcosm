@@ -3,15 +3,19 @@
 This runbook is for the operator who runs the next US national build. That is the
 first build on policyengine-us 2.145.3, policyengine-core 3.36.1 and
 spm-calculator 1.1.0, with `block_v1` household location. The build runs through
-`tools/route_a/route_a.sh` (see [tools/route_a/README.md](../tools/route_a/README.md)).
-Since #1672 the driver builds the release and stops with `ROUTE_A_BUILT.json`;
-`route_a.sh --certify` then certifies that build and ends with a hand-off. It
-publishes nothing.
+`tools/route_a/route_a.sh` (see [tools/route_a/README.md](../tools/route_a/README.md)),
+one command for each step:
 
-Certification takes about two days, so for this build it waits. The build is
-probed on a household sample first, in about 10 hours (step 5). María then
-assesses the build and the probe and decides whether to certify it (step 6).
-The operator certifies it only when she asks (step 7).
+- `route_a.sh` builds: the base, its preflight, a dry run of the release's
+  gates, then the release, which calibrates, exports and checks the build. It
+  stops with `ROUTE_A_BUILT.json` (step 2).
+- `route_a.sh --probe` probes the build on a household sample, in about 10
+  hours (step 3).
+- `route_a.sh --certify` certifies it, in about two days, only when María asks
+  (step 6).
+
+Each step keeps its logs and records in the run directory, and one command
+collects them to send (step 4). Nothing is published at any step.
 
 The settings below come from María's rulings of 17 and 18 November 2026. On the
 hosts, staging and publication she ruled on 18 November:
@@ -34,7 +38,8 @@ hosts, staging and publication she ruled on 18 November:
 | Tools | bash, git, openssl, pgrep, uv, CPython 3.14 | `UV_SYNC_PYTHON=3.14`: the lock's torch wheels stop at cp314 |
 | Base stage | 80 GiB free RAM to start; RSS cap 100 GiB; 6 h wall cap | `route_a.sh` base config |
 | Release stage | 50 GiB free RAM to start; RSS cap 110 GiB; 45 GiB free disk to start; 96 h wall cap | `route_a.sh` release config |
-| Probe (step 5) | About 21 GiB peak; about 10 hours | The 2 October probe of the published export ([evidence](evidence/us-export-subsample-design/route-a-p005/README.md)) |
+| Release-gate dry run | The release stage's RAM admission; about 35 minutes | `route_a.sh` release-dry-run config |
+| Probe (step 3) | About 21 GiB peak; about 10 hours; RSS cap 64 GiB | The 2 October probe of the published export ([evidence](evidence/us-export-subsample-design/route-a-p005/README.md)) |
 | Certify stage | The release stage's limits (`CERTIFY_WALL_SECONDS` sets its wall cap) | `route_a.sh` certify config |
 | Disk | About 50 GiB for the base (44 GB of frame checkpoints and a 2.35 GB H5 on 16 September), plus the release's checkpoints | `route_a.sh` base notes |
 | Telemetry | `microcosm-emitter` 0.16.0 or newer on `PATH` (or `MICROCOSM_EMITTER_COMMAND`) | `minimum_emitter_version.json` |
@@ -117,7 +122,7 @@ Why each one differs from the example:
 
 ## 4. Steps
 
-Run each command from the `MAIN` checkout. Send back what each step lists.
+Run each command from the `MAIN` checkout.
 
 ### Step 1: resolve (minutes)
 
@@ -127,109 +132,94 @@ bash tools/route_a/route_a.sh --resolve
 
 - Success: `resolve.log` has no `BLOCKER` line, and `inputs.resolved.json` shows
   every input `ok`.
-- Send back: the last 40 lines of `resolve.log`.
+- On a blocker, stop and send `resolve.log` (step 4 collects it).
 
-### Step 2: base and base preflight, then stop (about 1 to 2 hours)
-
-```bash
-STOP_BEFORE_RELEASE=1 bash tools/route_a/route_a.sh
-```
-
-- The base took 2,788 s alone and 5,058 s under contention on 16 September, with
-  a 72 GB peak. The base preflight took 33 s and 10 GB.
-- Success: `run-<12-character commit>/base-sup/ACCEPTED`, `run-<12-character commit>/base.sha256`, a
-  preflight verdict of 0 or 2, and `run-<12-character commit>/release.STOPPED`.
-- Send back: the base sha256, the `preflight-base` line in `route_a.log`, and
-  `preflight-base.json` if the verdict is 2.
-
-### Step 3: dry-run the release's gates (about 35 minutes)
+### Step 2: build (about 9 to 11 hours)
 
 ```bash
-cd "$WT_ROOT/microcosm-route-a-<first 12 characters of COMMIT>"
-.venv/bin/python -B tools/dry_run_us_release_gates.py \
-  --release-config "$RUN_ROOT/run-<first 12 characters of COMMIT>/release-config.json" \
-  --json-out "$RUN_ROOT/run-<first 12 characters of COMMIT>/release-dry-run.json"
+bash tools/route_a/route_a.sh
 ```
 
-`route_a.log` prints this command, with the paths filled in, when it stops.
-
-- It replays the release's base load, input stages and pre-solve gates (at most
-  2,049 s on the September run), then grades every data-dependent register at
-  base weights. Expect RAM close to the release's base load.
-- Exit 0 is clean and 2 is AT-RISK only: go on to step 4. Exit 1 is a certain
-  failure: stop and ask (S1).
-- The QRF tail item is now exact at base weights. If
-  `domestic_production_ald` or `qualified_bdc_income` is over 0.75 there, stop and
-  ask: the planned fix skips QRF outputs no release-year engine variable reads.
-- Send back: the table the tool prints and `release-dry-run.json`.
-
-### Step 4: build the release (about 7 to 9 hours)
-
-```bash
-STOP_BEFORE_RELEASE=0 bash tools/route_a/route_a.sh
-```
-
-- The driver keeps the accepted base and preflight, builds the release (through
-  calibration, the export and the release gates) and stops. The 19 October and
+- It runs, in order, the base (2,788 s alone and 5,058 s under contention on
+  16 September, with a 72 GB peak), the base preflight (33 s and 10 GB), the
+  dry run of the release's gates on that base (about 35 minutes; at most
+  2,049 s of base load and input stages on the September run), then the
+  release: calibration, the export and the release gates. The 19 October and
   3 November runs reached their terminal gates 8.3 and 6.5 hours in.
-- The build takes no tier flag: it refuses `--evidence-release`, and
-  certification chooses the tier (section 7).
-- Success: `release-sup/ACCEPTED` is 0, `<release-out>/build_record.json`
-  exists, and the run ends with `ROUTE_A_BUILT.json`. `<release-out>` is
-  `build_dir` in `ROUTE_A_BUILT.json`.
-- A build that fails a release gate exits 3, with `release_gates_failed: true`
-  in `ROUTE_A_BUILT.json`, and keeps its H5 and record: stop and ask (S2).
-- Send back: `ROUTE_A_BUILT.json`, `route_a.log`,
-  `<release-out>/build_record.json`, the build's `calibration_diagnostics.json`,
-  `qrf_tail_concentration.json` and `input_mass_parity.json` (in
-  `<release-out>/build/`), and the `<release-out>/gate_battery_shadow`
-  directory.
-- Do not run step 7 yet.
+- The dry run grades every data-dependent register at base weights. Exit 0
+  (clean) or 2 (AT-RISK only) lets the release start; exit 1, a certain
+  failure, stops the run before the release's hours (S1). The QRF tail item is
+  exact at base weights: if `domestic_production_ald` or `qualified_bdc_income`
+  is over 0.75 there, the run stops, and the planned fix skips QRF outputs no
+  release-year engine variable reads.
+- If a stage stops, `ROUTE_A_FAILED` in `RUN_ROOT` says which: stop and ask
+  (section 5), with the evidence (step 4). When the cause is fixed, the same
+  command resumes: a rerun skips every accepted stage.
+- Success: the run ends with `ROUTE A BUILT` in `route_a.log` and
+  `ROUTE_A_BUILT.json` in `RUN_ROOT`. Its `build_dir` is the build's
+  `<release-out>`, with `build_record.json`; `release_dry_run` holds the dry
+  run's verdict.
+- Exit 3 is a build that failed a release gate. It keeps its H5 and record,
+  with `release_gates_failed: true` in `ROUTE_A_BUILT.json`: stop and ask (S2).
+- Do not certify yet.
 
-### Step 5: probe the build on a household sample (about 10 hours)
-
-From the build worktree, with `REL_OUT` set to `build_dir` in
-`ROUTE_A_BUILT.json`:
+### Step 3: probe the build (about 10 hours)
 
 ```bash
-cd "$WT_ROOT/microcosm-route-a-<first 12 characters of COMMIT>"
-.venv/bin/python -B tools/sample_us_export_households.py \
-  --export "$REL_OUT/artifacts/microcosm_us_2024.h5" \
-  --fraction 0.05 --seed 0 --out "$RUN_ROOT/probe/subsample"
-.venv/bin/python -B tools/probe_us_post_export.py \
-  --export "$RUN_ROOT/probe/subsample/microcosm_us_2024.h5" \
-  --out "$RUN_ROOT/probe/report" \
-  --reference-release-dir "$REL_OUT/build" \
-  --stages take_up_participation,reform_coverage_smoke,reform_validation,demographics,source_coverage
+bash tools/route_a/route_a.sh --probe
 ```
 
-- The sample is about 7% of the export's households, drawn by support channel
-  and source year. It keeps with certainty every household a thin smoke probe
-  rests on, and each probe's dominant households. The probe runs
-  certification's own post-export checks on it, through the release tool's
-  functions, and certifies nothing (the release build rule,
+- It samples about 7% of the export's households, drawn by support channel and
+  source year, keeping with certainty every household a thin smoke probe rests
+  on and each probe's dominant households. It then runs certification's own
+  post-export checks on the sample, through the release tool's functions, and
+  certifies nothing (the release build rule,
   [Probing an export on a household subsample](us-release-build-rule.md#probing-an-export-on-a-household-subsample)).
   On the published export on 2 October, on policyengine-us 2.2.1, the sample
   took 13 minutes and 3.1 GiB, and the probe 9 hours 40 minutes (the smoke
   5.1 hours, reform validation 2.7 hours) with a 21 GiB peak.
-- `--stages` leaves out the probe's QRF tail stage. It grades the export at
-  its final weights, while since 17 November the build decides that gate at
-  base weights (step 4's `qrf_tail_concentration.json` holds the verdict), and
-  certification does not run it.
+- It leaves out the probe's QRF tail stage, which grades the export at its
+  final weights, while since 17 November the build decides that gate at base
+  weights; certification does not run it.
 - After a build that failed its gates (exit 3), run this step only if María
-  asks. The probe takes no failed build as its reference, so replace
-  `--reference-release-dir "$REL_OUT/build"` with
-  `--target-surface national_state --calibration-diagnostics "$REL_OUT/build/calibration_diagnostics.json"`.
-- Success: `$RUN_ROOT/probe/report/probe_report.json`, with every stage
+  asks. The driver then gives the probe the build's fit and target surface,
+  since a failed build is no reference.
+- Success: `ROUTE A PROBED` in `route_a.log`, with the probe's counts of
+  authoritative, informational and probe failures, and
+  `run-<12-character commit>/probe/report/probe_report.json`, with every stage
   `completed` in `summary.stage_status`.
-- Send back: `probe_report.json` and `passes.jsonl` from
-  `$RUN_ROOT/probe/report`, and `sample_receipt.json` from
-  `$RUN_ROOT/probe/subsample`.
 
-### Step 6: wait for María's assessment
+### Step 4: send the evidence
+
+After step 2, after step 3, and after any stop, collect the run's logs and
+records in one file and send it to María. From the `MAIN` checkout, this
+reads `RUN_ROOT` from `route_a.env` and prints the file it wrote:
+
+```bash
+( . tools/route_a/route_a.env && out="$HOME/route-a-evidence-$(date -u +%Y%m%dT%H%M%SZ).tar.gz" && cd "$RUN_ROOT" && find . -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.ndjson' -o -name '*.log' -o -name '*.series.csv' -o -name '*.sha256' -o -name '*.key' -o -name ACCEPTED -o -name 'ROUTE_A_*' -o -name '*.STOPPED' -o -name '*.BLOCKED' \) -not -path '*/artifacts/*' -not -path '*checkpoints*' -print0 | tar -czf "$out" --null -T - && echo "$out" )
+```
+
+- It takes the driver's log and hand-offs (`route_a.log`, `resolve.log`,
+  `inputs.resolved.json`, `ROUTE_A_*`), each stage's configuration, supervisor
+  records and child log (`<stage>-sup/`), its resource samples
+  (`<stage>.series.csv`), and the build's records and diagnostics:
+  `build_record.json`, the files in `<release-out>/build/` (among them
+  `calibration_diagnostics.json`, `qrf_tail_concentration.json` and
+  `input_mass_parity.json`), the gate battery shadow, the local staging
+  telemetry, the dry run's report and the probe's report.
+- It leaves out every data file: the H5s, the calibration weights, the #568
+  weight evidence, the checkpoints and `artifacts/`. The PUF-derived files stay
+  on the build laptop (M2).
+- With `ROUTE_A_STAGING=1` the release and certification also upload their
+  progress and diagnostics to `policyengine/populace-us-staging` as they run,
+  so most of the build's evidence reaches us without this step. The logs do
+  not, and neither do the files of the base, the preflights, the dry run or
+  the probe.
+
+### Step 5: wait for María's assessment
 
 Leave the run as it is: certification reads the build in place. María reads
-what steps 4 and 5 sent back:
+what step 4 sent:
 
 - the build's own verdicts: `release_gates_failed` in `ROUTE_A_BUILT.json`,
   and the release-gate and artifact-integrity failures in `build_record.json`;
@@ -244,16 +234,19 @@ what steps 4 and 5 sent back:
 
 Her answer is one of:
 
-- **Certify** (step 7) at the certified tier: the build passed its gates and
+- **Certify** (step 6) at the certified tier: the build passed its gates and
   the probe found nothing certification would refuse.
-- **Build again** at a commit that fixes what failed. Certification at a later
-  commit accepts only changes to tests, docs, changelog fragments and the
-  standing evidence owners register (section 7), so a fix to code needs a new
-  build (steps 1 to 4 at the new commit).
+- **Build again.** With changed settings at the same commit,
+  `bash tools/route_a/route_a.sh --rebuild` sets the build aside, keeping it on
+  disk, and builds the release again on the same base; a rerun without
+  `--rebuild` refuses changed settings rather than keep the old build. A fix to
+  code needs a new commit: certification at a later commit accepts only
+  changes to tests, docs, changelog fragments and the standing evidence owners
+  register (section 7), so steps 1 and 2 run again at the new `COMMIT`.
 - **Certify as evidence** (`ROUTE_A_CERTIFY_TIER=evidence`), never the US
   default, when every failure has an owner.
 
-### Step 7: certify, then the two preflights (about 48 hours), when María asks
+### Step 6: certify, then the two preflights (about 48 hours), when María asks
 
 ```bash
 bash tools/route_a/route_a.sh --certify
@@ -271,17 +264,20 @@ bash tools/route_a/route_a.sh --certify
   publisher's `--preflight-only` check, and writes the hand-off
   (`ROUTE_A_DONE.json` or `ROUTE_A_BLOCKED.json`) with `published: false`.
 - A failed certification reruns alone with `--certify`; the build is never
-  rerun.
+  rerun. A gate failure it finds stops it before the manifests (S5), and goes
+  into the build's `certification_failures.json`.
 - Success: the release manifest exists, the release-gate preflight verdict is 0
-  or 2, and `publisher --preflight-only` prints `{"valid": true ...}`.
-- Send back: the hand-off file, `route_a.log` and `release_manifest.json`. Do
-  not upload or publish anything yourself.
+  or 2, and `publisher --preflight-only` prints `{"valid": true ...}`. Then
+  send the evidence again (step 4). Do not upload or publish anything
+  yourself.
 
 ## 5. Stop and ask
 
 Stop, keep every file, and report when:
 
-- **S1** a preflight or the dry run exits 1.
+- **S1** a preflight exits 1, or the release-gate dry run stops the build
+  (exit 1 there is a certain failure; its report is
+  `run-<12-character commit>/release-dry-run.json`).
 - **S2** a terminal release gate fails. Watch `partnership_income` and
   `social_security_survivors` in input-mass parity.
 - **S3** the gate shadow's comparison
@@ -289,7 +285,7 @@ Stop, keep every file, and report when:
   `<release-out>/gate_battery_shadow`) records a verdict difference or a
   shadow error, or the file is missing. Since #1635's second round the shadow
   only warns, so the release still finishes: read the file after the release
-  and report it with step 4's files.
+  and report it with the evidence (step 4).
 - **S4** the supervisor stops a stage at a cap (RSS, wall, CPU or disk).
 - **S5** certification's reform-coverage smoke fails on a probe definition.
 - **S6** the probe reports an authoritative failure or a probe failure, or a
@@ -315,7 +311,7 @@ Max's failure log (#1654) is the place for new observed stops.
   credit without another reason to file, so the probe now measures only the
   pre-take-up credit (`aca_ptc`) of voluntary filers who do not take up
   coverage. No household's received credit (`assigned_aca_ptc`) moves. Step
-  5's probe gives the first reading.
+  3's probe gives the first reading.
 - Time and memory on the new engine, which projects one more year (to 2036) in
   post-export scoring.
 
@@ -330,10 +326,12 @@ María's two rulings on it (18 November 2026):
   an owner. The build refuses `--evidence-release`.
 - **Certification may run at a later commit than the build's,** as a UK cut
   is certified at its sign-off's head, when the commits since change only
-  tests, docs, changelog fragments and the standing evidence owners register.
+  tests and their helpers (the root `conftest.py` included), docs (`docs/`,
+  `LICENSE`, and Markdown or reStructuredText outside the packages' sources),
+  changelog fragments and the standing evidence owners register.
   Any other change needs a new build. The driver certifies in the build's own
   worktree; certifying at a later commit is done by hand from a checkout of
   that commit ([tools/route_a/README.md](../tools/route_a/README.md)).
 
-Route A still stops after the build by default (`ROUTE_A_CERTIFY=0`); step 7
+Route A still stops after the build by default (`ROUTE_A_CERTIFY=0`); step 6
 asks for certification with `--certify`.
