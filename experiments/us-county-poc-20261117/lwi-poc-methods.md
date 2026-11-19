@@ -1,22 +1,36 @@
-# Methods: the 2024 county file
+---
+kind: proposal
+client: "Living Wage Institute"
+status: "draft v0.1 (2026-11-19): for María and Max to review, not for sending"
+pe-doc:
+  psl_foundation: false
+  split_tables: true
+  pdf_name: "PolicyEngine - County Files proof of concept methods"
+---
 
-This document describes how we built the 2024 county file for the County Files proof of concept (PoC), as the build ran on 17–18 November 2026. We ran the build at two commits of PolicyEngine's Microcosm code:
+# County Files proof of concept: methods
 
-- **Staging, at `72b7072bf`:** builds the household records from the American Community Survey (ACS) and a national donor file, gives each household a county, and imputes the inputs the ACS lacks.
-- **The release build, at `f8b1039f0`:** runs seven stages in order. `fills` and `agi` check the staged file first: its blank inputs, and each county's households and income. `materialize` sets program take-up, moves nine ACS households into three counties that the county draws left empty, fills reviewed defaults, and builds the targets and the holdout. Take-up means whether an eligible person or household receives a benefit. `calibrate` sets the weights. `qa` runs PolicyEngine's tax-benefit model on the calibrated file. `finalize` and `package` write the release files and run the last checks.
+**How we built and tested the 2024 county file**
 
-The PoC report gives the results. The run report on microcosm#1647 ([part 1](https://github.com/PolicyEngine/microcosm/issues/1647#issuecomment-6982547034) and [part 2](https://github.com/PolicyEngine/microcosm/issues/1647#issuecomment-6982549060)) gives the commands, environments and file digests, and the [schema manifest](https://github.com/PolicyEngine/microcosm/issues/1647#issuecomment-6990728184) lists the file's tables and columns. We have not yet produced the 2026 and 2027 files or the household measures the agreement lists (earnings, gross income and net income for each household), so this document covers neither.
+A PolicyEngine methods note · for the Living Wage Institute · November 2026
+
+This document describes how we built the 2024 county file for the County Files proof of concept (PoC), as the build ran on 17–18 November 2026. We ran the build in two parts with PolicyEngine's Microcosm code; the appendix gives the code versions, the settings and the digests of the inputs:
+
+- **Staging** builds the household records from the American Community Survey (ACS) and a national donor file, gives each household a county, and imputes the inputs the ACS lacks.
+- **The release build** runs seven stages in order. `fills` and `agi` check the staged file first: its blank inputs, and each county's households and income. `materialize` sets program take-up, moves nine ACS households into three counties that the county draws left empty, fills reviewed defaults, and builds the targets and the holdout. Take-up means whether an eligible person or household receives a benefit. `calibrate` sets the weights. `qa` runs PolicyEngine's tax-benefit model on the calibrated file. `finalize` and `package` write the release files and run the last checks.
+
+The PoC report gives the results, and the schema documentation lists the file's tables and columns; both come with this document. We have not yet produced the 2026 and 2027 files or the household measures the agreement lists (earnings, gross income and net income for each household), so this document covers neither.
 
 ## Data sources and years
 
-We built the 2024 county file from two sets of household records and from published statistics, with PolicyEngine's US tax-benefit model. We list each source at the vintage the build read on 17–18 November 2026. The run files record the SHA-256 digests of the input files, among them the target feed `consumer_facts_us_41b2fb2.jsonl` (`1d45a89c…`) and the county facts `consumer_facts_us_county_3e9d3a0.jsonl` (`67b0998a…`) (run report, part 2, section 11).
+We built the 2024 county file from two sets of household records and from published statistics, with PolicyEngine's US tax-benefit model. We list each source at the vintage the build read on 17–18 November 2026. The build records the SHA-256 digest of every input file; the appendix lists the main ones.
 
 | Source | Vintage | What the build uses it for |
 |---|---|---|
 | ACS public-use microdata, household and person files | 2024 1-year | 1,529,668 ACS household records with 3,420,942 people. Of these, 181,260 are group-quarters records: one person each, living in a place such as a nursing home or college dormitory rather than a housing unit, and counting as a household of one. These counts come after staging drops group-quarters records of children under 15 (see "What we impute onto ACS households, and from which donors") |
 | PolicyEngine's national donor file, release `populace-us-2024-spm-receipts-20260923`, in a copy we patched | See "Donor households" below the table | 57,240 donor household records with 166,321 person records; we train the imputation on their person records, tax units (the people on one tax return) and SPM units (the family unit of the Supplemental Poverty Measure) |
 | Current Population Survey Annual Social and Economic Supplement (CPS ASEC), person files `pppub23`–`pppub25` | Survey years 2023–2025 (income years 2022–2024) | The donor households' survey records; three work columns our patch adds |
-| Internal Revenue Service (IRS) Statistics of Income (SOI) public-use file (PUF), in PolicyEngine's processed version 1.8.0 | Tax year 2015, scaled forward to 2024 | An input of the donor file's national build, as that build's records name it; we did not trace what the donor records take from it |
+| Internal Revenue Service (IRS) Statistics of Income (SOI) public-use file (PUF), in PolicyEngine's processed version 1.8.0 | Tax year 2015, scaled forward to 2024 | The tax items on the donor file's tax-detail records, through PolicyEngine's national build (see "Donor households" below the table) |
 | Census 2020 tract-to-PUMA (Public Use Microdata Area) relationship file; 2020 Census redistricting (P.L. 94-171) block populations; the Census file of each block's 119th Congress district | 2020 Census; 119th Congress districts | The PUMA ladder (see "Population" below): the county and district draws within each PUMA, and every population target |
 | SOI Historic Table 2, state data | Tax year 2022; tax year 2023 for 408 rows | 4,227 state tax targets, and the state totals we split into county tax targets |
 | SOI county file (`22incyallnoagi.csv`) | Tax year 2022 | Each county's share of the sum of its state's county rows, for returns and for adjusted gross income (AGI). Each of the two has 3,143 county targets (Kalawao and Maui share one); we hold out 441 return targets and 297 AGI targets and train on the rest |
@@ -35,6 +49,7 @@ We built the 2024 county file from two sets of household records and from publis
 **Donor households.** Donor households are survey households from PolicyEngine's national donor file. We add them to the ACS households and train the imputation on their person records, tax units and SPM units. The file comes from three releases in the public Hugging Face dataset `policyengine/populace-us`: a national build and two later releases that add columns to it.
 
 - The national build, `populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z` of 28 July 2026, chose 57,240 household records from 337,704 candidates. Its records name its inputs as the CPS ASEC for income years 2022–2024 and PolicyEngine's processed PUF, version 1.8.0. In that build's code, version 1.8.0 is the 2015 public-use file, scaled forward to 2024.
+- In PolicyEngine's national build code at that build's commit (`cae8640`), each CPS ASEC household appears as two records that share its weight equally. One keeps the household as the CPS ASEC recorded it. The other, a tax-detail record, takes its tax items from the PUF: quantile regression forests trained on the PUF's tax units draw them, given the tax unit's filing status, its number of people and its incomes (wages, self-employment income, taxable interest, dividends and capital gains). The code then spreads each tax unit's amounts over its members in their CPS shares. Because the national build then chose among these records, a donor household can appear in the donor file as one of its two records or as both (see "What donor records carry").
 - Release `populace-us-2024-spm-20260915` added an SPM role flag. Release `populace-us-2024-spm-receipts-20260923` added reported receipt of SNAP, TANF and WIC (the Special Supplemental Nutrition Program for Women, Infants, and Children). Both drew on the same ASEC person files, and neither changed an existing column.
 
 For this PoC we patched a copy of the last release. We added two industry columns and a worked-last-year column from the ASEC person files. We also added two columns that hold only zeros: strike benefits, and passive partnership and S-corporation income. We kept every household and person record.
@@ -49,7 +64,7 @@ For this PoC we patched a copy of the last release. We added two industry column
 
 The other 408 come from tax year 2023: returns and AGI in the four AGI bands from $100,000 up.
 
-Before aging, we rescale some rows across tax years. Each 2023 AGI-band row keeps its share of its state's 2023 total, applied to the state's 2022 total of returns or AGI. We scale other 2022 rows to an SOI national total for tax year 2023: taxable interest (1,014 rows, in total and by AGI band) and net capital gains (102 rows, amount and returns). For the 51 net capital gains return rows, that total comes from the SOI congressional district file `22incd.csv`. In the target feed, that file carries the label tax year 2023 but the title "Congressional District Data 2022", so we could not pin its tax year.
+Before aging, we rescale some rows across tax years. Each 2023 AGI-band row keeps its share of its state's 2023 total, applied to the state's 2022 total of returns or AGI. We scale other 2022 rows to an SOI national total for tax year 2023: taxable interest (1,014 rows, in total and by AGI band) and net capital gains (102 rows, amount and returns). For the 51 net capital gains return rows, that total comes from the SOI congressional district file `22incd.csv`. In the target feed, that file carries the label tax year 2023 but the title "Congressional District Data 2022", so its tax year is uncertain.
 
 We then age every SOI dollar amount to 2024 with national growth. A dollar row that we rescaled to a 2023 national total ages from 2023; every other dollar row ages from 2022. SOI's national totals for 2022 and 2023 give the growth from 2022 to 2023, and CBO's February 2026 projections give the growth from 2023 to 2024. Most dollar amounts grow with total AGI; wages and net capital gains grow with their own series. We do not age counts.
 
@@ -69,7 +84,7 @@ Each ACS household record carries its state and its PUMA. We keep both. A PUMA c
 
 We built the ladder from 2020 Census block populations (the P.L. 94-171 redistricting file) and the Census file of each block's congressional district. Blocks nest in tracts, and each 2020 tract lies in one 2020 PUMA. Summing block populations therefore gives the number of people each PUMA shares with each 2020 county and with each district. We call that number the population overlap. Of the ladder's 2,462 PUMAs, 610 overlap more than one county and 1,276 overlap more than one district.
 
-Within its PUMA, each ACS household gets a district from one random draw, with odds proportional to the PUMA's population overlap with each district. It gets a county from a separate draw, with odds proportional to the PUMA's population overlap with each county. One random-number generator with a fixed seed (0) makes every draw. With the same inputs, row order and software versions, the code makes the same draws; we did not rebuild to check. Each household gets one district and one county and keeps its whole weight: the draw does not split a household across counties.
+Within its PUMA, each ACS household gets a district from one random draw, with odds proportional to the PUMA's population overlap with each district. It gets a county from a separate draw, with odds proportional to the PUMA's population overlap with each county. One random-number generator with a fixed seed (0) makes every draw. With the same inputs, row order and software versions, the code makes the same draws; we have not rebuilt the file to confirm this. Each household gets one district and one county and keeps its whole weight: the draw does not split a household across counties.
 
 The draws use only the PUMA's population overlaps, not the household's survey answers, and the district draw does not depend on the county draw. The code checks only that the PUMA, district and county lie in the household's state. We found no check that a household's district and county overlap.
 
@@ -81,7 +96,9 @@ The file carries two county codes. `county_fips` holds 2020 counties, which divi
 
 Donor households keep the district, county, tract and block stored in the donor file. Staging checks that each stored district and county lies in the household's state and that the county matches the tract's county. It sets the household's PUMA from the tract and takes `county_fips_2023` from the tract.
 
-We made the donor file from a copy of PolicyEngine's national release `populace-us-2024-spm-receipts-20260923`: for the PoC, we added person columns and left the household table as it was. In that release we added three variables, and in the release it came from, `populace-us-2024-spm-20260915`, we added one; none of the four is a household variable. By the two releases' published records, we left every existing column unchanged in both, so the stored geography predates both. We could not establish how the donor households got their districts, counties and tracts.
+The donor file's household table comes unchanged from PolicyEngine's 28 July 2026 national build. Our patch added only person columns. By their published records, the two later releases added no household column and changed no existing column. The stored geography is therefore the national build's.
+
+In PolicyEngine's national build code at that build's commit (`cae8640`), each household gets its geography from two draws. The first draws a congressional district within the household's state, with odds in proportion to each district's number of tax returns in the IRS congressional district data. The second draws one 2020 census block within that district, in proportion to block population. The tract and the county follow from the block. A donor household's county therefore comes from these draws, not from the county its CPS ASEC record names.
 
 ### Counties without households
 
@@ -93,7 +110,7 @@ Staging draws each ACS household's county at random and sets no minimum number o
 - It ranks candidates by a hash of a fixed key (`acs-local-county-support-v1`), the destination county and the household ID, so row order does not matter. It moves the top three, or none if fewer than three qualify.
 - A move rewrites the two county codes and nothing else. The household keeps its state, PUMA, weight and the district it drew.
 
-The `materialize` stage records each move in `county_support.json`. When the `calibrate` stage writes the calibrated file, it reloads the staged file and applies the same recorded moves again.
+The `materialize` stage records each move. When the `calibrate` stage writes the calibrated file, it reloads the staged file and applies the same recorded moves again.
 
 Each county took its three households from its one overlapping PUMA:
 
@@ -120,7 +137,7 @@ We use quantile regression forests in Microcosm's own form, with sign classifier
 - **Training records.** Donor person records, tax units or SPM units. The first two passes train on the donors' ASEC person records and the third on their tax-detail copies (both defined below). Each forest resamples the donors in proportion to their weights in the donor file. The sign classifier below uses the same weights directly.
 - **Predictors.** Age, sex and state, plus, where the ACS record has them, wages, self-employment income, Social Security, retirement income, interest, dividend and rental income, household-head status and housing tenure. Tax-unit and SPM-unit fits use the unit's number of people, of women and of household heads, its summed ages, state, housing tenure and summed incomes. Each pattern of available predictors gets its own fit, on donors that have those predictors and all of the family's columns, so the build never reads a blank as a zero.
 - **Second-pass predictors.** For child support, the second pass adds the ACS's "all other income" amount. For retirement-account distributions and for work and disability income, it swaps the donors' retirement-income measure for one closer to the ACS's definition.
-- **Joint within a family.** In this run, each family holds at most eight columns. The build splits a wider group of columns into batches, and each batch counts as its own family (the `__batch_1`, `__batch_2` names in the table below). The forests draw a family's columns in sequence, each conditioned on the predictors and on the columns already drawn. One family's draws do not enter another family's fit. For example, the forests draw the 54 person-level tax columns jointly only within each of their seven batches.
+- **Joint within a family.** In this run, each family holds at most eight columns. The build splits a wider group of columns into batches, and each batch counts as its own family. The forests draw a family's columns in sequence, each conditioned on the predictors and on the columns already drawn. One family's draws do not enter another family's fit. For example, the forests draw the 54 person-level tax columns jointly only within each of their seven batches.
 - **Random draws.** For each amount, a classifier picks the sign (negative, zero or positive), and the forest returns a value at a random quantile. The draws therefore follow the donors' distribution rather than an average. The run seed, 0, combined with each family's name and pattern of predictors, fixes every draw. Each forest in these passes has 32 trees.
 - **Blanks only.** The forests fill only blank cells. Where the ACS reports a model input, its value stays as it is. Where the ACS reports only a combined amount, the build uses that amount as a predictor and draws the model's inputs from donors (next paragraph).
 - **Weights unchanged.** Imputation passes the ACS household weights through unchanged. After imputation, staging pools the ACS and donor records and gives each group half of the donor file's household weight, 61.27 million each, before calibration.
@@ -129,25 +146,25 @@ The ACS reports Social Security, retirement income, and interest, dividend and r
 
 ### What the run imputed
 
-In the table below, "ASEC" and "PUF" name the two roles a donor person record can hold. An "ASEC" record holds a person as the CPS ASEC recorded them. A "PUF" record holds a tax-detail copy of such a person; the build code names this role `puf_tax_detail`. We did not trace how the donor file made these copies (see "Data sources and years" for the donor build's inputs).
+In the table below, "ASEC" and "PUF" name the two roles a donor person record can hold. An "ASEC" record holds a person as the CPS ASEC recorded them. A "PUF" record holds a tax-detail copy of such a person; the build code names this role `puf_tax_detail`. "Donor households", under "Data sources and years", describes how PolicyEngine's national build makes these copies.
 
-The staging summary records 101 imputed columns in 25 families:
+Staging imputed 101 columns in 25 families:
 
-| What staging imputes (family) | Columns | Unit | ACS records filled | Donor records trained on |
+| What staging imputes | Columns | Unit | ACS records filled | Donor records trained on |
 |---|---:|---|---:|---:|
-| Usual weekly hours (`source_operator_hours_worked`) | 1 | person | 39,800 | 50,490 ASEC |
-| Child support received and paid (`acs_local_child_support`) | 2 | person | 3,420,942 | 66,001 ASEC |
-| Retirement-account distributions: 401(k), 403(b), simplified employee pension (SEP), Keogh and Roth IRA (`acs_local_retirement_distributions`) | 5 | person | 3,420,942 | 66,001 ASEC |
-| Workers' compensation and disability benefits (`acs_local_work_disability_income`) | 2 | person | 3,420,942 | 66,001 ASEC |
-| Interest, dividends, capital gains, pensions, Social Security by type, and business and deduction items (`puf_tax_itemization__batch_1` to `_7`) | 54 | person | 3,420,942 | 100,320 PUF |
-| Mortgage, health savings account deduction and two other tax items (`puf_tax_itemization`) | 6 | tax unit | 2,095,799 | 48,755 PUF |
-| Health coverage, full-time student, pregnancy and WIC (`model_required_boolean__batch_1` to `_4`) | 12 | person | 3,420,942 | 100,320 PUF |
-| Assets, medical costs, tax-exempt pensions, unemployment and veterans' benefits, and hours last week (`model_required_numeric__batch_1` to `_2`) | 10 | person | 3,420,942 | 100,320 PUF |
-| Own children in household (`model_required_discrete`) | 1 | person | 3,420,942 | 100,320 PUF |
-| Care need and adult-care spending (`adult_care`) | 2 | person | 3,420,942 | 100,320 PUF |
-| Pre-subsidy rent (`housing`) | 1 | person | 3,239,682 (all but the 181,260 in group quarters) | 100,320 PUF |
-| SNAP and TANF receipt, housing assistance take-up and childcare costs (`model_required_boolean`, `benefit_participation`, `model_required_numeric`) | 4 | SPM unit | 1,529,668 | 36,614 PUF |
-| Capital gain distributions, a fixed share of imputed long-term gains, with no forest (`capital_gain_details`) | 1 | person | 3,420,942 | none |
+| Usual weekly hours | 1 | person | 39,800 | 50,490 ASEC |
+| Child support received and paid | 2 | person | 3,420,942 | 66,001 ASEC |
+| Retirement-account distributions: 401(k), 403(b), simplified employee pension (SEP), Keogh and Roth IRA | 5 | person | 3,420,942 | 66,001 ASEC |
+| Workers' compensation and disability benefits | 2 | person | 3,420,942 | 66,001 ASEC |
+| Interest, dividends, capital gains, pensions, Social Security by type, and business and deduction items | 54 | person | 3,420,942 | 100,320 PUF |
+| Mortgage, health savings account deduction and two other tax items | 6 | tax unit | 2,095,799 | 48,755 PUF |
+| Health coverage, full-time student, pregnancy and WIC | 12 | person | 3,420,942 | 100,320 PUF |
+| Assets, medical costs, tax-exempt pensions, unemployment and veterans' benefits, and hours last week | 10 | person | 3,420,942 | 100,320 PUF |
+| Own children in household | 1 | person | 3,420,942 | 100,320 PUF |
+| Care need and adult-care spending | 2 | person | 3,420,942 | 100,320 PUF |
+| Pre-subsidy rent | 1 | person | 3,239,682 (all but the 181,260 in group quarters) | 100,320 PUF |
+| SNAP and TANF receipt, housing assistance take-up and childcare costs | 4 | SPM unit | 1,529,668 | 36,614 PUF |
+| Capital gain distributions, a fixed share of imputed long-term gains, with no forest | 1 | person | 3,420,942 | none |
 
 Three rules limit or replace forest draws:
 
@@ -179,7 +196,7 @@ Rules, seeded draws and other models set these values on ACS records. One of the
 
 - **SNAP take-up.** The flag means a unit would take up SNAP if eligible; PolicyEngine's model decides eligibility. Units that report SNAP get the flag. Other units draw it at 79.8%, so that 82% of ACS SPM units, by weight, carry it: USDA's national SNAP participation rate.
 - **TANF take-up.** Units draw the flag at 21.9%, the rate in HHS's 24th Welfare Indicators report. The draw ignores imputed TANF receipt: 10,559 of the 13,536 ACS units with imputed TANF receipt drew no take-up.
-- **SSI and Medicaid take-up.** PolicyEngine's model first runs on the donor and ACS households to find who could get SSI or Medicaid. ACS people who report SSI then take up SSI, and people with ACS Medicaid or other means-tested coverage take up Medicaid. The rest draw toward SSA counts by age band and CMS enrollment counts by state, minus what the donor records already carry. The run's take-up file (`acs_local_ssi_medicaid_take_up.npz`) records the flags: 1,835,876 ACS people take up SSI if eligible, and 3,359,039 take up Medicaid if eligible. The model applies eligibility.
+- **SSI and Medicaid take-up.** PolicyEngine's model first runs on the donor and ACS households to find who could get SSI or Medicaid. ACS people who report SSI then take up SSI, and people with ACS Medicaid or other means-tested coverage take up Medicaid. The rest draw toward SSA counts by age band and CMS enrollment counts by state, minus what the donor records already carry. In all, 1,835,876 ACS people take up SSI if eligible, and 3,359,039 take up Medicaid if eligible. The model applies eligibility.
 - **Other flags.** Medicare take-up follows ACS Medicare coverage. Children aged 3 to 5 draw Head Start take-up at the donor records' weighted take-up share, 4.9%. Housing assistance receipt copies the imputed housing-assistance take-up, a forest draw, and stays false in group quarters. Adults aged 18 to 64 draw an exemption from SNAP's work time limit at 8%, the statutory cap.
 
 When the `calibrate` stage writes the calibrated file, it applies these assignments again and stops if they differ from the ones the `materialize` stage recorded.
@@ -230,7 +247,7 @@ So each concept's county targets add up to their state target; the largest count
 
 The SOI county file has no row for Kalawao County, Hawaii (15005), and neither does the county facts file the run read. The build's code cites the IRS guide to the county file, which says the IRS leaves out items with fewer than 20 returns for a county. For the two SOI concepts, one target covers Kalawao and Maui (15009) together, with Maui's published share. Kalawao keeps its own population and household targets.
 
-The run dropped no target. It passed `--county-drop-empty-soi-rows`, which drops a county SOI target when every household in that county has a zero value for it; no target met that rule.
+The run dropped no target. It ran with a setting that drops a county SOI target when every household in that county has a zero value for it, and no target met that rule.
 
 ### How we weight the targets
 
@@ -258,17 +275,17 @@ The solve starts from the design weights. Staging builds them when it pools the 
 
 The solver, Adam (a standard gradient method), works on the logarithm of each weight, so every weight stays positive. It takes 800 steps at a learning rate of 0.02, in two runs of 400 steps, with seed 0. Each step uses every trained target and every household record. The second run starts from the first run's weights, with a fresh optimizer state. No penalty pulls weights toward their design values. The file keeps the weights from the last step.
 
-The loss comes to 0.173 at the design weights, 0.0208 after the first 400 steps and 0.0159 after all 800. The run files record an `initial_loss` of 0.020786: the loss at the start of the second run, not at the design weights.
+The loss comes to 0.173 at the design weights, 0.0208 after the first 400 steps and 0.0159 after all 800.
 
 ### The weight cap
 
-No household record's final weight may exceed 5 times its design weight (`--county-max-weight-ratio 5`). A donor household's design weight equals exactly half its weight in the donor file, so its limit equals 2.5 times that weight. The cap acts on each record as a hard limit, not a penalty. After every step, the solver lowers any weight over its limit to the limit. It then rescales all weights by one factor to the fixed total and applies the limit again. Both runs measure the limit against the design weights.
+No household record's final weight may exceed 5 times its design weight. A donor household's design weight equals exactly half its weight in the donor file, so its limit equals 2.5 times that weight. The cap acts on each record as a hard limit, not a penalty. After every step, the solver lowers any weight over its limit to the limit. It then rescales all weights by one factor to the fixed total and applies the limit again. Both runs measure the limit against the design weights.
 
 A rescale factor below 1 leaves the records at the limit under it, at 5 times the factor. The largest final ratio is 4.9297, not 5, and 44,083 records end within 0.01% of it. So the last step's factor came to about 0.986 (4.9297 ÷ 5). The cap has no lower counterpart: 1,246,252 records (78.5% of 1,586,908) end with less than 1% of their design weight.
 
 ### The holdout
 
-We hold out county targets in whole holdout groups. A holdout group covers one state's county targets for one concept: SOI returns, SOI AGI or ACS households. The 153 holdout groups cover 9,430 county targets. For each group, the build hashes the group's name with a fixed key, `acs-local-county-v1`, using SHA-256, and turns the result into a number from 0 to 1. It leaves the group out of the solve when that number falls under 0.1 (`--county-holdout-fraction 0.1`). The draw depends only on the group's name and the key, never on the other groups. County population targets belong to no holdout group and always train.
+We hold out county targets in whole holdout groups. A holdout group covers one state's county targets for one concept: SOI returns, SOI AGI or ACS households. The 153 holdout groups cover 9,430 county targets. For each group, the build hashes the group's name with a fixed key, `acs-local-county-v1`, using SHA-256, and turns the result into a number from 0 to 1. It leaves the group out of the solve when that number falls under 0.1. The draw depends only on the group's name and the key, never on the other groups. County population targets belong to no holdout group and always train.
 
 The code gives its reason for holding out whole groups: "to prevent sibling leakage". A group's county targets add up to its state target, which trains. If the group's other counties trained, the state target minus their sum would give away the held-out county.
 
@@ -312,7 +329,7 @@ The build computes household earnings and income sums from stored inputs, not fr
 - **Earnings for the checks:** wages, self-employment income and farm income, plus partnership self-employment earnings on donor records.
 - **Household income for the checks:** wages, self-employment and farm income, plus the stored income inputs. Those inputs cover interest, dividends, rent, estate income, Social Security, SSI, pensions, IRA distributions, unemployment compensation, veterans' benefits, workers' compensation, alimony, child support and miscellaneous income.
 - On donor records, the build also adds partnership and S-corporation income to the income sum. On ACS records it leaves both out; the code's stated reason is that the ACS self-employment answer "already counts partnership income". The income sum also leaves out donor partnership self-employment earnings, which partnership income mostly holds already.
-- In this run, S-corporation income is zero, so it adds nothing. TANF receipt (`receives_tanf`) appears in the file only as a yes/no flag, and the stored inputs have no column for TANF or public assistance dollars (`tanf_reported`, `public_assistance_income`). So the income sum includes neither.
+- In this run, S-corporation income is zero, so it adds nothing. TANF receipt (`receives_tanf`) appears in the file only as a yes/no flag, and the stored inputs have no column for TANF or public assistance dollars. So the income sum includes neither.
 - The build marks the two income tables, B19025 and B19001, `approximate: true`. The code describes the income sum as an approximation of the ACS household income concept.
 
 ### The reliability grade
@@ -340,21 +357,47 @@ The code returns U when a county lacks that evidence or its source household ide
 
 ### Automated gates
 
-The build ran 23 gates and recorded each in the release's `gate_summary.json`; all 23 recorded `passed: true`. Seventeen stop the build when they fail:
+The build ran 23 automated checks, which the build calls gates. Seventeen stop the build when they fail, and all 17 passed:
 
 - **Geography (1):** each household's PUMA, congressional district and county must be present and must agree with its state. New York City must keep a plausible share of the weight.
 - **Household inputs (12):** the build assigns some inputs to ACS records: hours worked, program take-up, immigration status, disability, transferred income, SSI disability criteria, SSI and Medicaid take-up, and SNAP receipt. Each must be complete and must vary. Where a gate checks them against native ACS answers or plausibility ranges, they must agree. Every input left at a model default must appear on a reviewed list. ACS self-employment income must count once. Occupation, industry and worked-last-year inputs must be complete.
-- **Calibration (1):** the final loss must fall under 10, the same setting that caps each target's scaled error in the loss. It must also fall under the run files' `initial_loss` (0.020786): the loss at the start of the second 400-step run, not the loss at the design weights. The final weights must sum to within 0.1% of the design weights' sum.
+- **Calibration (1):** the final loss must fall under 10, the same setting that caps each target's scaled error in the loss. It must also fall under the loss at the start of the second 400-step run (0.0208). The final weights must sum to within 0.1% of the design weights' sum.
 - **Model readiness (3):** the file stores no input that policyengine-us 2.2.1 lacks, outside a reviewed list. Every SPM unit the model measures has an adult, so the SPM calculation cannot stop on a unit without one. The build wrote its consumer export, and the `qa` stage loaded the calibrated file as stored, with no added fills.
 
-Six gates record evidence. Five of them record `passed: true` whatever they measure:
+The other six gates record evidence and do not stop the build. Five of them record what they measure and have no pass condition:
 
-- `cd_holdout`: held-out district targets; none in this run. In the `calibration` gate's breakdown, the build uses the same label, `cd_holdout`, for the 1,052 held-out county targets.
-- `weight_origin`: the weight share and ESS of ACS and donor households.
-- `input_coverage`: a note that staging checks donor inputs; the gate itself checks nothing.
-- `spine_composition`: households and weight of ACS and donor records.
-- `spine_ssi_qa`: the `qa` stage's load and its SSI and SNAP figures.
+- held-out district targets (none in this run);
+- the weight share and ESS of ACS and donor households;
+- a note that staging checks the donor inputs;
+- the households and weight of ACS and donor records;
+- the `qa` stage's load and its SSI and SNAP figures.
 
-The sixth, `district_ess_collapse`, flags congressional districts whose ESS under the final weights fell under a quarter of their ESS under the design weights, or under 15. It stops the build only when the build runs with `--district-ess-gate-blocking`; this run did not use that flag. In this run, 271 of the 436 districts fell under the quarter floor and 155 under 15, so the gate recorded `criteria_met: false` and still recorded `passed: true`.
+The sixth flags congressional districts whose ESS under the final weights fell under a quarter of their ESS under the design weights, or under 15. It can be set to stop the build, and this run did not set it. In this run, 271 of the 436 districts fell under the quarter floor and 155 under 15, 275 districts in all, so the gate recorded that its criteria were not met.
 
 The `qa` stage loaded the calibrated file with Microcosm's own loader, not policyengine-us's dataset loader. It then ran policyengine-us 2.2.1 for 2024, with no reform, in 80 chunks of 20,000 households, for eight variables: SSI, six SNAP-related variables and the state code. For a separate test on 18 November that loaded the file with policyengine-us's standard loader, see the PoC report.
+
+## Appendix: build identifiers and settings
+
+| Item | Value |
+|---|---|
+| Build | `populace-us-2024-buildo-acs-local-f8b1039f00-20261118T011728Z`, 17–18 November 2026 |
+| File | `populace_us_2024_acs_local.h5`, 10,637,811,669 bytes, SHA-256 `82314a3b5a6a95762faf6eb4f5b499ce56608ad6a39a27b75e11c75b4945bd3c` |
+| Code | Microcosm, commit `72b7072bf` (staging) and commit `f8b1039f0` (the release build) |
+| Model | policyengine-us 2.2.1, policyengine-core 3.32.5 |
+| Donor file | Release `populace-us-2024-spm-receipts-20260923` (SHA-256 `00946972…`), in the copy we patched (SHA-256 `438f47f4…`) |
+| National build behind the donor file | `populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z`, Microcosm commit `cae8640` |
+| Target feed | `consumer_facts_us_41b2fb2.jsonl` (SHA-256 `1d45a89c…`) |
+| County facts | `consumer_facts_us_county_3e9d3a0.jsonl` (SHA-256 `67b0998a…`) |
+| Household location | The legacy rule: county and district draws within each PUMA, as in "How households get their counties" |
+| Imputation | Quantile regression forests with 32 trees; seed 0 |
+| Minimum support | Three households for each county without one; ranking key `acs-local-county-support-v1` |
+| Holdout | Whole holdout groups, held out when their hash falls under 0.1 (`--county-holdout-fraction 0.1`); key `acs-local-county-v1` |
+| Empty county SOI targets | Dropped when every household in the county has a zero value (`--county-drop-empty-soi-rows`); none was dropped |
+| Loss | Mean of the absolute scaled errors, weighted by loss weight; each error capped at 10 |
+| Weight cap | 5 times the design weight (`--county-max-weight-ratio 5`) |
+| Solver | Adam on log weights; 800 steps in two runs of 400; learning rate 0.02; seed 0 |
+| District effective-sample gate | Records evidence only; the build was not run with `--district-ess-gate-blocking` |
+
+---
+
+Sources: the table in "Data sources and years" lists every source with its vintage and its use in the build.
