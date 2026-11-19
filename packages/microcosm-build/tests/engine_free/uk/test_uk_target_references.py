@@ -140,8 +140,12 @@ _TEST_PATHS = paths_for("microcosm-build")
 # (S4), measured diagnostics; and PR2's lane Q diagnostics: DWP's people on
 # UC aged 16 to 24, 16 to 21 and 22 to 24 (Y4), 94 DWP PIP cases rows for
 # England, Wales and the English regions (P3), and ONS's NEET people aged 16
-# to 24 on a quarterly window (Y3), all held out of the solve
-ACTIVE_REFERENCE_COUNT = 1710
+# to 24 on a quarterly window (Y3), all held out of the solve;
+# PolicyEngine/microcosm#1663: RTI's pay of employees aged 18 to 24 and
+# England's PIP cases aged 16 to 24 at each component's enhanced rate, three
+# checks held out of the solve, and DWP's young people with the UC health
+# element in England and Wales (Table 28), bound
+ACTIVE_REFERENCE_COUNT = 1714
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 
@@ -954,8 +958,33 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
         if target["family"] == "dwp_universal_credit"
         and "dimension_values" in target["ledger_selector"]
         and set(target["geography_levels"]) <= {"country", "region"}
+        # A fiscal-year DWP table, not a Stat-Xplore cube: checked below.
+        and operations[target_id] != "calendar_year_window"
     }
     assert composition
+    # DWP's young people with the UC health element (Table 28 of the Young
+    # people and work interim report, PolicyEngine/chronicle#443): the
+    # calendar-2025 window of two financial years, one measure per opening
+    # year, with 2025-26 DWP's projection (part 3 of PolicyEngine/microcosm#1663).
+    young_lcwra = "dwp.uc.people_aged_16_to_24_lcwra_element"
+    assert {
+        target_id
+        for target_id, target in targets.items()
+        if target["family"] == "dwp_universal_credit"
+        and operations[target_id] == "calendar_year_window"
+    } == {young_lcwra}
+    young_selector = targets[young_lcwra]["ledger_selector"]
+    assert young_selector["source_measure_id_by_opening_year"] == {
+        "2024": "caseload_2024",
+        "2025": "caseload_2025",
+    }
+    assert young_selector["dimension_values"] == {
+        "age_band": "16_to_24",
+        "health_and_disability_benefit": "uc_health_lcwra",
+    }
+    assert young_selector["geography_id"] == "K04000001"
+    assert targets[young_lcwra]["assertion_policy"] == "allow_source_projection"
+    assert young_lcwra not in sum_target_ids
     for target_id, target in composition.items():
         selector = target["ledger_selector"]
         pins = selector["dimension_values"]
@@ -1200,8 +1229,10 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         return {**regions, **nations}[area]
 
     pip_ids = {target_id for target_id in pins if target_id.startswith("dwp.pip.")}
-    # P3's 94 rows and B2's five broad England bands (microcosm#1095 PR3).
-    assert len(pip_ids) == 99
+    # P3's 94 rows and B2's five broad England bands (microcosm#1095 PR3), and
+    # England's 16 to 24 cases at each component's enhanced rate
+    # (PolicyEngine/microcosm#1663).
+    assert len(pip_ids) == 101
     assert all(target_id.startswith("dwp.pip.cases_") for target_id in pip_ids)
     assert {target_id: pins[target_id]["geography_id"] for target_id in pip_ids} == {
         target_id: pip_area(target_id) for target_id in pip_ids
@@ -1734,9 +1765,20 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         for target_id in uc_target_ids
         if operations[target_id] == "monthly_window_average"
     } == monthly_average_ids
+    # DWP's young people with the UC health element (Table 28): a fiscal-year
+    # window the generator keeps (part 3 of PolicyEngine/microcosm#1663).
+    calendar_window_ids = {"dwp.uc.people_aged_16_to_24_lcwra_element"}
+    assert {
+        target_id
+        for target_id in uc_target_ids
+        if operations[target_id] == "calendar_year_window"
+    } == calendar_window_ids
     assert all(
         operations[target_id] == "calendar_year_average"
-        for target_id in uc_target_ids - monthly_sum_ids - monthly_average_ids
+        for target_id in uc_target_ids
+        - monthly_sum_ids
+        - monthly_average_ids
+        - calendar_window_ids
     )
     facts = _fixture_feed_rows()
     # Author the UC family alone: the fixture feed carries a 2023 SPI row whose
