@@ -897,9 +897,15 @@ def test_the_shadow_records_an_export_check_error(
 
 
 def test_main_frees_the_release_engine_after_writing_the_dataset(builder) -> None:
-    """The engine that writes the H5 is released right after the write, before
-    the written-file check, the export audit and the calibration NPZ that end
-    the build."""
+    """The engine that writes the H5 is released once the written file's
+    stored-input check has recorded its result, before the export audit and
+    the calibration NPZ that end the build.
+
+    The release does not sit between the write and that check: the stored-input
+    test (test_us_stored_input_register) holds the check right after the
+    write. The check reads only the written file's column names and the
+    module-level PolicyEngine-US system, so the engine adds nothing to the
+    memory the check uses."""
     main = _main_function(builder)
     released_at = _single_top_level_release(main, "release_engine")
     released_line = main.body[released_at].lineno
@@ -914,7 +920,16 @@ def test_main_frees_the_release_engine_after_writing_the_dataset(builder) -> Non
         and getattr(node.value.func, "attr", None) == "write_dataset"
     ]
     assert ast.unparse(write.value.func.value) == "release_engine"
-    assert released_at == main.body.index(write) + 1
+    written_file_check = main.body.index(write) + 1
+    check_result_recorded = written_file_check + 1
+    assert "_written_stored_input_verdict_mismatch" in ast.unparse(
+        main.body[written_file_check]
+    )
+    assert isinstance(main.body[check_result_recorded], ast.If)
+    assert ast.unparse(main.body[check_result_recorded].test) == (
+        "stored_input_premise_failure is not None"
+    )
+    assert released_at == check_result_recorded + 1
 
 
 def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
