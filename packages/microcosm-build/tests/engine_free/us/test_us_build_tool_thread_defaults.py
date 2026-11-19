@@ -1,9 +1,10 @@
 """The one thread setting of the US build commands, ``MICROCOSM_THREADS``.
 
-When it is set, the release, base and ACS staging commands copy it into every
-library's thread variable before numpy loads. When it is not, the base and ACS
-staging commands set nothing, so each library keeps choosing its own count,
-and the release tool keeps its default of ``min(os.cpu_count(), 16)``.
+When it is set, the release, base, ACS staging and ACS local-release commands
+copy it into every library's thread variable before numpy loads. When it is
+not, all but the release tool set nothing, so each library keeps choosing its
+own count, and the release tool keeps its default of
+``min(os.cpu_count(), 16)``.
 
 Each process-level case starts a fresh interpreter: the settings depend on what
 the process has loaded and must not reach the process that runs the tests.
@@ -29,7 +30,13 @@ RELEASE_TOOL = "tools/build_us_fiscal_refresh_release.py"
 BASE_TOOL = "tools/build_us_puf_support_base.py"
 ACS_STAGING_COMMAND = "tools/build_us_acs_multispine_base.py"
 ACS_STAGING_IMPLEMENTATION = "tools/_legacy/build_us_acs_multispine_base.py"
-BUILD_COMMANDS = (BASE_TOOL, ACS_STAGING_COMMAND, ACS_STAGING_IMPLEMENTATION)
+ACS_LOCAL_RELEASE = "tools/build_us_acs_local_release.py"
+BUILD_COMMANDS = (
+    BASE_TOOL,
+    ACS_STAGING_COMMAND,
+    ACS_STAGING_IMPLEMENTATION,
+    ACS_LOCAL_RELEASE,
+)
 EVERY_COMMAND = (*BUILD_COMMANDS, RELEASE_TOOL)
 
 THREAD_SETTING = "MICROCOSM_THREADS"
@@ -39,6 +46,7 @@ MKL = "MKL_NUM_THREADS"
 BLIS = "BLIS_NUM_THREADS"
 VECLIB = "VECLIB_MAXIMUM_THREADS"
 NUMEXPR = "NUMEXPR_NUM_THREADS"
+NUMEXPR_MAXIMUM = "NUMEXPR_MAX_THREADS"
 JOBLIB_LIMIT = "LOKY_MAX_CPU_COUNT"
 FILLED_VARIABLES = (OPENMP, OPENBLAS, MKL, BLIS, VECLIB, NUMEXPR, JOBLIB_LIMIT)
 QRF_VARIABLES = ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS")
@@ -47,7 +55,7 @@ THREAD_VARIABLES = (
     THREAD_SETTING,
     *FILLED_VARIABLES,
     "GOTO_NUM_THREADS",
-    "NUMEXPR_MAX_THREADS",
+    NUMEXPR_MAXIMUM,
     *QRF_VARIABLES,
 )
 
@@ -133,6 +141,26 @@ def test_the_thread_setting_has_no_upper_limit(helper: ModuleType) -> None:
     assert environment == {THREAD_SETTING: "64", **_every_variable("64")}
 
 
+def test_a_count_above_numexpr_s_default_maximum_also_raises_it(
+    helper: ModuleType,
+) -> None:
+    """numexpr refuses a count above NUMEXPR_MAX_THREADS (64 by default)."""
+
+    environment = _filled(helper, {THREAD_SETTING: "96"})
+
+    assert environment == {
+        THREAD_SETTING: "96",
+        **_every_variable("96"),
+        NUMEXPR_MAXIMUM: "96",
+    }
+
+
+def test_a_numexpr_maximum_already_set_is_kept(helper: ModuleType) -> None:
+    environment = _filled(helper, {THREAD_SETTING: "96", NUMEXPR_MAXIMUM: "100"})
+
+    assert environment[NUMEXPR_MAXIMUM] == "100"
+
+
 def test_leading_zeros_are_dropped_from_the_copies(helper: ModuleType) -> None:
     environment = _filled(helper, {THREAD_SETTING: "007"})
 
@@ -176,6 +204,14 @@ def test_the_default_count_applies_without_the_thread_setting(
     assert _filled(helper, default_count=16) == _every_variable("16")
 
 
+def test_the_default_count_keeps_a_blank_variable(helper: ModuleType) -> None:
+    """The release tool's default has always left a blank value as it was."""
+
+    environment = _filled(helper, {OPENMP: ""}, default_count=16)
+
+    assert environment == _every_variable("16", **{OPENMP: ""})
+
+
 def test_the_thread_setting_replaces_the_default_count(helper: ModuleType) -> None:
     environment = _filled(helper, {THREAD_SETTING: "3"}, default_count=16)
 
@@ -195,10 +231,11 @@ def test_a_second_call_changes_nothing(helper: ModuleType) -> None:
 # When the commands apply them
 # ---------------------------------------------------------------------------
 
-#: Starts one tool under ``runpy`` and stops it at its first import of a
-#: numerical library, printing the environment and import path at that moment.
-#: The tool's imports never finish, so a case costs no more than the code
-#: before them.
+#: Starts one tool under ``runpy`` from the repository root, without its folder
+#: on the import path (as ``python -P`` or ``PYTHONSAFEPATH`` would), and stops
+#: it at its first import of a numerical library, printing the environment and
+#: import path at that moment. The tool's imports never finish, so a case costs
+#: no more than the code before them.
 _START_PROBE = """
 import json
 import os
@@ -225,7 +262,6 @@ run_name = sys.argv[2]
 cpu_count = int(sys.argv[3])
 os.cpu_count = lambda: cpu_count
 os.process_cpu_count = lambda: cpu_count
-sys.path.insert(0, str(tool.parent))
 path_before = list(sys.path)
 sys.argv = [str(tool), "--help"]
 sys.meta_path.insert(0, StopAtNumericalLibrary())
@@ -282,14 +318,15 @@ def test_a_started_command_sets_nothing_without_the_thread_setting(
 def test_a_started_command_fills_every_variable_before_numerical_imports(
     tool: str,
 ) -> None:
-    environment = _state_at_first_numerical_import(
+    state = _state_at_first_numerical_import(
         tool, cpu_count=32, settings={THREAD_SETTING: "5"}
-    )["environment"]
+    )
 
-    assert _thread_variables_in(environment) == {
+    assert _thread_variables_in(state["environment"]) == {
         THREAD_SETTING: "5",
         **_every_variable("5"),
     }
+    assert state["path_unchanged"]
 
 
 @pytest.mark.parametrize("tool", EVERY_COMMAND)
@@ -401,6 +438,10 @@ print(
 """
 
 
+@pytest.mark.skipif(
+    (os.process_cpu_count() or 1) < 2,
+    reason="OpenBLAS and joblib use no more threads than the CPUs available",
+)
 def test_the_thread_setting_reaches_every_library() -> None:
     counts = _last_json_line(
         [sys.executable, "-c", _THREAD_COUNT_PROBE],
@@ -414,6 +455,31 @@ def test_the_thread_setting_reaches_every_library() -> None:
         "joblib_cpu_count": 2,
         "torch": 2,
     }
+
+
+_NUMEXPR_PROBE = """
+import json
+import sys
+
+sys.path.insert(0, "tools")
+from us_build_thread_environment import set_build_thread_environment
+
+set_build_thread_environment()
+
+import numexpr
+
+print()
+print(json.dumps({"numexpr": numexpr.utils.get_num_threads()}))
+"""
+
+
+def test_numexpr_takes_a_count_above_its_default_maximum() -> None:
+    counts = _last_json_line(
+        [sys.executable, "-c", _NUMEXPR_PROBE],
+        _clean_environment({THREAD_SETTING: "96"}),
+    )
+
+    assert counts == {"numexpr": 96}
 
 
 _SIGN_CLASSIFIER_PROBE = """
