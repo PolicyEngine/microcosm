@@ -9,10 +9,12 @@ builder, while this historical command and its helper imports keep working.
 from __future__ import annotations
 
 if __name__ == "__main__":
-    # OpenBLAS and OpenMP read these variables when they load, and the imports
-    # below load numpy before the implementation file does. This runs only for
-    # the command: tests and other tools import this file. E402 is ignored for
-    # this file in pyproject for this block.
+    # The one thread setting, MICROCOSM_THREADS, fills the OpenMP, BLAS,
+    # numexpr and joblib thread variables, and the libraries read those when
+    # they load. The imports below load numpy before the implementation file
+    # does, so this comes first. Without the setting nothing is set. This runs
+    # only for the command: tests and other tools import this file. E402 is
+    # ignored for this file in pyproject for this block.
     from us_build_thread_environment import set_build_thread_environment
 
     set_build_thread_environment()

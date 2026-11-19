@@ -30,6 +30,9 @@ dependencies = [
     # emitter release needs no change here. The socket protocol carries its
     # own version, and every emitter release accepts the versions in use.
     "microcosm-emitter-interface>=0.16.0,<1",
+    # The US base command records each loaded BLAS library's thread count in
+    # its run configuration. scikit-learn already depends on it.
+    "threadpoolctl>=3.1",
 ]
 
 [project.optional-dependencies]

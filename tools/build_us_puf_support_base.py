@@ -19,11 +19,13 @@ and a named ``--stage`` run by hand records that stage.
 from __future__ import annotations
 
 if __name__ == "__main__":
-    # OpenBLAS and OpenMP read these variables when they load, so this comes
-    # before numpy. It runs only for the command: tests and other tools import
-    # this file. Stage subprocesses inherit the values, and the run
-    # configuration records them (``_stage_run_config``). E402 is ignored for
-    # this file in pyproject for this block.
+    # The one thread setting, MICROCOSM_THREADS, fills the OpenMP, BLAS,
+    # numexpr and joblib thread variables, and the libraries read those when
+    # they load, so this comes before numpy. Without the setting nothing is
+    # set. It runs only for the command: tests and other tools import this
+    # file. Stage subprocesses inherit the values, and the run configuration
+    # records them (``_stage_run_config``). E402 is ignored for this file in
+    # pyproject for this block.
     from us_build_thread_environment import set_build_thread_environment
 
     set_build_thread_environment()
@@ -42,6 +44,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from threadpoolctl import threadpool_info
 
 from microcosm.build import FitWeightRecord, GateResult, weights_audit_gate
 from microcosm.build.frame_checkpoint import write_frame_checkpoint
@@ -1271,15 +1274,30 @@ def _pooled_income_years(args: argparse.Namespace) -> tuple[int, ...]:
 
 
 #: QRF thread counts the first run records and a resume does not compare: they
-#: change no imputed value. The BLAS and OpenMP thread counts and
-#: PYTHONHASHSEED in ``thread_environment`` stay compared: on Linux the OpenBLAS
-#: count changes output bytes, and the command fills those variables in from
-#: the host (``us_build_thread_environment``), so a resume on a host with a
-#: different CPU count is refused.
+#: change no imputed value. Everything else in ``thread_environment`` stays
+#: compared, including ``blas_threads_in_use``: on Linux the OpenBLAS count
+#: changes output bytes, and with no thread variable set it follows the host's
+#: CPUs, so a resume on a host where OpenBLAS uses a different count is refused.
 _RESUME_IGNORED_RUN_CONFIG_PATHS = (
     ("thread_environment", "POPULACE_FIT_N_JOBS"),
     ("thread_environment", "POPULACE_FIT_PREDICT_WORKERS"),
 )
+
+
+def _blas_threads_in_use() -> list[list[object]]:
+    """Each loaded BLAS library, as ``[name, thread count]``, in sorted order.
+
+    threadpoolctl reads the counts from the libraries themselves, so this holds
+    whatever chose them: a thread variable, ``MICROCOSM_THREADS`` or, with
+    neither, the CPUs OpenBLAS found on the host. It does not report Apple's
+    Accelerate, so on macOS the list is empty.
+    """
+
+    return sorted(
+        [pool["internal_api"], pool["num_threads"]]
+        for pool in threadpool_info()
+        if pool["user_api"] == "blas"
+    )
 
 
 def _open_stage_runtime(args: argparse.Namespace) -> StageRuntime:
@@ -1317,6 +1335,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             else os.environ.get(name)
         )
         for name in (
+            "MICROCOSM_THREADS",
             "OMP_NUM_THREADS",
             "OPENBLAS_NUM_THREADS",
             "MKL_NUM_THREADS",
@@ -1328,6 +1347,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             "PYTHONHASHSEED",
         )
     }
+    thread_environment["blas_threads_in_use"] = _blas_threads_in_use()
     config: dict[str, object] = {
         "allow_geography_ladder_gate_failures": bool(
             args.allow_geography_ladder_gate_failures

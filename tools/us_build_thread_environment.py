@@ -1,91 +1,96 @@
-"""Name the thread counts of the US base and ACS staging build commands.
+"""The one thread setting of the US build commands, ``MICROCOSM_THREADS``.
 
-The commands call :func:`set_build_thread_environment` before numpy loads, so
-this module uses only the standard library. Each BLAS and numexpr variable gets
-the count its library already uses when the variable is unset:
+An operator who wants to choose the thread count of the US release, base and
+ACS staging commands sets ``MICROCOSM_THREADS`` to a positive whole number.
+Each command calls :func:`set_build_thread_environment` before numpy loads,
+because the libraries read their variables when they load, so this module uses
+only the standard library. It copies the count into every variable in
+``FILLED_VARIABLES`` that is unset or blank. A variable that already has a
+value keeps it.
 
-- On Linux the OpenBLAS thread count changes output bytes. OpenBLAS splits a
-  large dot product between its threads, and the order of the additions moves
-  the last bits of the sum. Keeping the count keeps the bytes.
-- The base command records these variables in its run configuration and compares
-  them on resume. With real counts recorded, it refuses a resume on a host with a
-  different count, which two unset values could not show.
+Without the setting, the base and ACS staging commands set nothing, and each
+library chooses its own count as it always has. The release tool passes its
+own default instead, ``min(os.cpu_count(), 16)``.
 
-This limits nothing: the counts have no upper limit, and OpenMP and BLAS follow
-CPU affinity but not a CPU quota. Setting ``OMP_NUM_THREADS`` does change two
-other counts. scikit-learn then uses that value instead of its physical-core
-count limited by a CPU quota and ``LOKY_MAX_CPU_COUNT``, and torch uses it too.
+On Linux the OpenBLAS thread count changes output bytes: OpenBLAS splits a
+large dot product between its threads, and the order of the additions moves
+the last bits of the sum. So a build's output matches one made without the
+setting only when the count equals the CPUs OpenBLAS would otherwise use.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 
-#: The most threads numexpr starts when nothing configures it.
-NUMEXPR_UNCONFIGURED_THREAD_LIMIT = 16
+#: The variable that holds the one thread count.
+THREAD_SETTING = "MICROCOSM_THREADS"
 
-__all__ = ["NUMEXPR_UNCONFIGURED_THREAD_LIMIT", "set_build_thread_environment"]
+#: The variables the thread setting fills, with what reads each one.
+FILLED_VARIABLES = (
+    # OpenMP: scikit-learn's sign classifier and torch. OpenBLAS and numexpr
+    # read it when their own variable is unset. scikit-learn stops limiting
+    # itself to physical cores, a CPU quota and LOKY_MAX_CPU_COUNT once it is
+    # set.
+    "OMP_NUM_THREADS",
+    # OpenBLAS, which numpy and scipy bundle on Linux. It reads this before
+    # its older name, GOTO_NUM_THREADS.
+    "OPENBLAS_NUM_THREADS",
+    # Intel MKL, which only torch bundles here. torch also takes its own
+    # thread count from it.
+    "MKL_NUM_THREADS",
+    # BLIS, which nothing installed here uses.
+    "BLIS_NUM_THREADS",
+    # Apple's Accelerate, which numpy uses on macOS.
+    "VECLIB_MAXIMUM_THREADS",
+    # numexpr, which pandas uses for large element-wise arithmetic.
+    "NUMEXPR_NUM_THREADS",
+    # The limit on joblib.cpu_count(), which sizes the QRF's tree-building
+    # jobs and prediction workers when POPULACE_FIT_* are unset.
+    "LOKY_MAX_CPU_COUNT",
+)
+
+__all__ = [
+    "FILLED_VARIABLES",
+    "THREAD_SETTING",
+    "set_build_thread_environment",
+    "thread_setting",
+]
 
 
-def _count_or_default(setting: str | None, default: str | None) -> str | None:
-    """The count to copy from ``setting``, or ``default`` if it is unset or blank.
+def thread_setting(environment: Mapping[str, str] = os.environ) -> int | None:
+    """The count in ``MICROCOSM_THREADS``, or None if it is unset or blank.
 
-    Only a plain positive integer is copied. Libraries read other spellings
-    differently (OpenBLAS takes ``4`` from ``4,2`` and numexpr refuses it), so
-    for those this returns None and the variable that would copy the value stays
-    unset, leaving each library to read ``setting`` as it does today.
+    Only a plain positive whole number is accepted. Anything else is refused
+    rather than ignored, because the operator asked for a count.
     """
 
-    if not setting:
-        return default
-    if setting.isascii() and setting.isdigit() and int(setting) > 0:
-        return str(int(setting))
-    return None
+    value = environment.get(THREAD_SETTING, "")
+    if value == "":
+        return None
+    if value.isascii() and value.isdigit() and int(value) > 0:
+        return int(value)
+    raise ValueError(
+        f"{THREAD_SETTING} must be a positive whole number of threads, got {value!r}"
+    )
 
 
 def set_build_thread_environment(
     environment: MutableMapping[str, str] = os.environ,
+    *,
+    default_count: int | None = None,
 ) -> None:
-    """Give each unset OpenMP, BLAS and numexpr variable its current count.
+    """Copy the thread setting, or ``default_count``, into each unset variable.
 
-    The count is ``OMP_NUM_THREADS`` when that is a plain count, otherwise the
-    CPUs this process may use. Two variables have other sources, because their
-    libraries do:
-
-    - OpenBLAS reads ``GOTO_NUM_THREADS`` before ``OMP_NUM_THREADS``.
-    - numexpr uses ``OMP_NUM_THREADS``, then ``NUMEXPR_MAX_THREADS``, and with
-      neither it counts the online CPUs, up to 16. It needs its own value here
-      because the ``OMP_NUM_THREADS`` set below would otherwise replace the
-      last two.
-
-    A value already present is kept. A variable with no known count stays unset,
-    and its library keeps its own default.
+    With neither, nothing changes. A variable in ``FILLED_VARIABLES`` that
+    already has a non-blank value keeps it.
     """
 
-    usable_cpus = os.process_cpu_count()
-    usable_count = None if usable_cpus is None else str(usable_cpus)
-    openmp_setting = environment.get("OMP_NUM_THREADS")
-    count = _count_or_default(openmp_setting, usable_count)
-    online_cpus = os.cpu_count() or usable_cpus
-    numexpr_default = (
-        None
-        if online_cpus is None
-        else str(min(online_cpus, NUMEXPR_UNCONFIGURED_THREAD_LIMIT))
-    )
-    defaults = {
-        "OMP_NUM_THREADS": count,
-        "OPENBLAS_NUM_THREADS": _count_or_default(
-            environment.get("GOTO_NUM_THREADS"), count
-        ),
-        "MKL_NUM_THREADS": count,
-        "BLIS_NUM_THREADS": count,
-        "VECLIB_MAXIMUM_THREADS": count or usable_count,
-        "NUMEXPR_NUM_THREADS": _count_or_default(
-            openmp_setting,
-            _count_or_default(environment.get("NUMEXPR_MAX_THREADS"), numexpr_default),
-        ),
-    }
-    for name, value in defaults.items():
-        if value is not None:
-            environment.setdefault(name, value)
+    count = thread_setting(environment)
+    if count is None:
+        count = default_count
+    if count is None:
+        return
+    for name in FILLED_VARIABLES:
+        if not environment.get(name):
+            environment[name] = str(count)

@@ -397,43 +397,51 @@ that release's current build.
 
 ## Thread variables
 
-The base command (`tools/build_us_puf_support_base.py`) and the ACS multispine
-staging command (`tools/build_us_acs_multispine_base.py`, and
-`tools/_legacy/build_us_acs_multispine_base.py` when that file is run directly)
-set their OpenMP, BLAS and numexpr thread variables before numpy loads
-(`tools/us_build_thread_environment.py`). They do this only when started as
-commands, not when imported. A value already in the environment, from an
-operator, a plan or Modal, is kept. `tools/build_us_acs_local_release.py`, which
-builds the local-area release from the staging output, does not run this step.
+`MICROCOSM_THREADS` is the one thread setting of three US commands: the release
+command (`tools/build_us_fiscal_refresh_release.py`), the base command
+(`tools/build_us_puf_support_base.py`) and the ACS multispine staging command
+(`tools/build_us_acs_multispine_base.py`, and
+`tools/_legacy/build_us_acs_multispine_base.py` when that file is run directly).
+Set it to a positive whole number to choose the thread count of every numerical
+library these commands use. Before numpy loads, `tools/us_build_thread_environment.py`
+copies it into each of these variables that is unset or blank:
 
-The tools at `4b57d15a2` and `74f5e6123`, the commits pinned by the historical
-base plan and the ACS staging plan, predate this step and leave the variables as
-they find them. A plan made from the default-pool template runs the step once
-its commit contains it.
+- `OMP_NUM_THREADS`: OpenMP, which scikit-learn's QRF sign classifier and torch
+  use. OpenBLAS and numexpr read it when their own variable is unset.
+- `OPENBLAS_NUM_THREADS`: OpenBLAS, which numpy and scipy bundle on Linux. It
+  reads this before its older name, `GOTO_NUM_THREADS`.
+- `MKL_NUM_THREADS`: Intel MKL, which only torch bundles here. torch also takes
+  its own thread count from it.
+- `BLIS_NUM_THREADS`: BLIS, which nothing installed here uses.
+- `VECLIB_MAXIMUM_THREADS`: Apple's Accelerate, which numpy uses on macOS.
+- `NUMEXPR_NUM_THREADS`: numexpr, which pandas uses for large element-wise
+  arithmetic.
+- `LOKY_MAX_CPU_COUNT`: the limit on `joblib.cpu_count()`, which sizes the QRF's
+  tree-building jobs and prediction workers while `POPULACE_FIT_N_JOBS` and
+  `POPULACE_FIT_PREDICT_WORKERS` are unset.
 
-| Variable | Value when unset |
-| --- | --- |
-| `OMP_NUM_THREADS` | `os.process_cpu_count()` |
-| `MKL_NUM_THREADS`, `BLIS_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS` | `OMP_NUM_THREADS` if it is a plain count, otherwise `os.process_cpu_count()` |
-| `OPENBLAS_NUM_THREADS` | `GOTO_NUM_THREADS` if it is a plain count, otherwise as above |
-| `NUMEXPR_NUM_THREADS` | `OMP_NUM_THREADS` if it is a plain count, otherwise `NUMEXPR_MAX_THREADS` if that is, otherwise the online CPUs up to 16 |
+A variable that already has a value keeps it, so one library's count can still be
+set directly. A setting that is not a positive whole number, such as `0`, `+4` or
+`four`, stops the command before numpy loads. The base and ACS staging commands
+read the setting only when started as commands, not when imported.
+`tools/build_us_acs_local_release.py` does not read it.
 
-A plain count is a positive decimal integer. Libraries read other spellings, such
-as `+4` or `4,2`, in different ways, so the commands do not copy them: the
-variables that would copy the value stay unset, and each library reads the
-original as it does without this step. `VECLIB_MAXIMUM_THREADS` then takes
-`os.process_cpu_count()`. A variable whose count is unknown stays unset.
+**Without the setting.** The base and ACS staging commands set nothing, and each
+library chooses its own count, as before:
 
-**BLAS and numexpr keep their counts.** The step names the counts these libraries
-already use and does not limit them. OpenMP and BLAS have no upper limit here,
-unlike the release tool's limit of 16. They follow CPU affinity but not a CPU
-quota, so outside Modal a container held to 2 CPUs by a quota starts one BLAS
-thread per visible CPU, with or without this step. The commands do not set
-`LOKY_MAX_CPU_COUNT`, `POPULACE_FIT_N_JOBS` or `POPULACE_FIT_PREDICT_WORKERS`.
-With those unset, QRF fitting and drawing use `joblib.cpu_count()`, which does
-follow a quota. The release tool keeps its own settings: `min(os.cpu_count(), 16)`
-for `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`,
-`NUMEXPR_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS` and `LOKY_MAX_CPU_COUNT`.
+- OpenBLAS and OpenMP use the CPUs the process may run on (its CPU affinity).
+  They do not follow a CPU quota.
+- scikit-learn uses at most the physical cores, a CPU quota allows and
+  `LOKY_MAX_CPU_COUNT` allows. torch uses the physical cores (on Apple chips, the
+  performance cores).
+- numexpr uses the online CPUs, up to 16.
+- `joblib.cpu_count()`, and with it the QRF's pools, follows CPU affinity, a CPU
+  quota and `LOKY_MAX_CPU_COUNT`.
+
+The release tool instead fills the same variables with `min(os.cpu_count(), 16)`,
+as it did before for all of them but `BLIS_NUM_THREADS`, which has no effect here.
+It does this on import too, as it always has. Its calibration's exact weights
+depend on torch's thread count, so that default stays.
 
 **On Linux the BLAS thread count changes output bytes.** numpy's Linux wheels use
 OpenBLAS, which splits a large dot product between its threads, so the order of
@@ -454,50 +462,60 @@ example:
 - cross-fitted calibration of the QRF sign classifier (`microcosm.fit.qrf`),
   which uses `w @ ...` on row-length vectors.
 
-So a Linux build's output already depends on the host's thread count, and it
-still does: two hosts with different counts can write different bytes. With and
-without this step, one x86-64 container gave the same OpenBLAS, OpenMP and numexpr
-counts and the same result bytes, with no CPU limit, under a 2-CPU quota and
-under a 4-CPU affinity limit.
+So a Linux base build's output depends on the OpenBLAS thread count. Without the
+setting that count follows the host, so two hosts with different CPU counts can
+write different bytes, as before. A build made with `MICROCOSM_THREADS=N` matches
+one made without it only where OpenBLAS would otherwise use N threads.
 
-**Setting `OMP_NUM_THREADS` changes two other counts.** With the variable unset,
-scikit-learn uses `joblib.cpu_count(only_physical_cores=True)` at most, which
-follows a CPU quota and `LOKY_MAX_CPU_COUNT`. With it set, scikit-learn uses that
-value. So when nothing else has set the variable, the QRF sign classifier
-(`HistGradientBoostingClassifier`) can run on all logical CPUs where it would
-have used physical cores, and under a quota it starts one thread per visible CPU:
-2 threads became 10 in a 2-CPU container. Its probabilities were byte-identical
-at 1, 2 and 4 OpenMP threads in the tests, which does not prove it for every
-input, and its run time may change, particularly under a quota. torch follows the
-variable too (`torch.get_num_threads()`); neither command runs a torch
-calculation that review found.
+**Other effects of the setting.** Because it sets `OMP_NUM_THREADS`, scikit-learn
+no longer limits itself to physical cores, a CPU quota or `LOKY_MAX_CPU_COUNT`:
+the sign classifier uses N threads. Its probabilities were byte-identical at 1, 2
+and 4 OpenMP threads in the tests, which does not prove it for every input. torch
+uses N threads too; review found no torch calculation in the base or ACS staging
+commands. The QRF's pools use `joblib.cpu_count()`, at most N, and their imputed
+values do not depend on those counts.
 
 **When a change takes effect.**
 
-- *Base, OpenMP and BLAS variables and `NUMEXPR_NUM_THREADS`:* recorded in
-  `stage_run_context.json` under `thread_environment` and compared on resume. A
-  different value, including one that comes from a host with a different CPU
-  count, is refused, so a new value needs a new checkpoint directory.
-- *Base, `PYTHONHASHSEED`:* recorded and compared in the same way.
-- *Base, `POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS`:* recorded and
-  not compared. A new value applies from the next outer stage of a resumed run.
-- *Base runs started before this step:* they cannot resume after it. The run
+- *Base command.* Its run configuration (`stage_run_context.json`) records, under
+  `thread_environment`, `MICROCOSM_THREADS`, `OMP_NUM_THREADS`,
+  `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `BLIS_NUM_THREADS`,
+  `VECLIB_MAXIMUM_THREADS`, `NUMEXPR_NUM_THREADS`, `POPULACE_FIT_N_JOBS`,
+  `POPULACE_FIT_PREDICT_WORKERS` and `PYTHONHASHSEED`. It also records
+  `blas_threads_in_use`: each loaded BLAS library with the thread count it uses
+  once numpy has loaded, as `threadpoolctl` reports it. threadpoolctl does not
+  report Accelerate, so on macOS the list is empty.
+- *A resume of the base command* compares all of these except
+  `POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS`, and refuses a
+  difference, so a new thread setting needs a new checkpoint directory. Because
+  `blas_threads_in_use` is compared, a resume is also refused on a host where
+  OpenBLAS would use a different count. Before, with the variables unset on both
+  hosts, the configurations matched.
+- *`POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS`:* recorded and not
+  compared. A new value applies from the next outer stage of a resumed run.
+  `LOKY_MAX_CPU_COUNT` is not recorded. None of the three changes an imputed value.
+- *Base runs started before this change:* they cannot resume after it. The run
   configuration holds a digest that covers the tool's own file
   (`builder_code_identity`), and the file changed.
 - *ACS multispine staging command:* it keeps no run configuration, so the values
   apply to the process that was started.
 
-**On Modal.** A plan may set `OMP_NUM_THREADS`, `MKL_NUM_THREADS`,
-`OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS` and `BLIS_NUM_THREADS`. It may not
-set `VECLIB_MAXIMUM_THREADS`, `GOTO_NUM_THREADS` or `NUMEXPR_MAX_THREADS`. Modal
-set `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS` and
+**On Modal.** A plan may set `MICROCOSM_THREADS`, because its environment
+allowlist accepts `MICROCOSM_*` names, and it may set `OMP_NUM_THREADS`,
+`MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS` and
+`BLIS_NUM_THREADS` directly. It may not set `VECLIB_MAXIMUM_THREADS`,
+`LOKY_MAX_CPU_COUNT`, `GOTO_NUM_THREADS` or `NUMEXPR_MAX_THREADS`. Modal set
+`OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS` and
 `BLIS_NUM_THREADS` to the class's CPU request in the check class (2) and in a
 `base` run at `4b57d15a2` (4;
 `docs/evidence/us-release-reimputation-1191/receipts/build_environment.base_0fb05b67.release_417d23ae.json`).
-With those set, the commands give `VECLIB_MAXIMUM_THREADS` and
-`NUMEXPR_NUM_THREADS` the same count, so the attempts of a base run record the
-same values on any host. No record shows what Modal sets in the `acs-staging`
-class.
+Because a value already set is kept, a plan's `MICROCOSM_THREADS` does not
+replace those four. It fills only `VECLIB_MAXIMUM_THREADS`, `NUMEXPR_NUM_THREADS`
+and `LOKY_MAX_CPU_COUNT`. To change the BLAS and OpenMP counts on Modal, a plan
+sets those variables directly, as before. No record shows what Modal sets in the
+`acs-staging` class. The tools at `4b57d15a2` and `74f5e6123`, the commits pinned
+by the historical base plan and the ACS staging plan, predate the setting and
+ignore it.
 
 ## Resources and cost
 
@@ -1267,8 +1285,9 @@ digests, settings, its code identity and the thread variables it sees) and
 refuses a resume whose config differs. Code newer than the pinned
 `4b57d15a2` that contains the QRF thread-count change records
 `POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS` without comparing
-them, and code that sets the OpenMP and BLAS variables itself compares the
-counts it set (see "Thread variables"). Every path in the config is the same in
+them, and code that reads `MICROCOSM_THREADS` also records it and the BLAS
+thread counts in use, and compares them (see "Thread variables"). Every path in
+the config is the same in
 every attempt of the run, and so are the image, the plan's environment and
 the class, so a relaunch of the same plan should resume. If Modal gave the
 new container different compared thread variables, the tool would refuse,
@@ -1431,7 +1450,8 @@ Two things are reported and never refused: the interpreter string
 differs (`thread_environment_differences`). The tool reads those variables
 from its environment, and Modal sets some of them itself (see "Resources").
 These differences are reported and not refused, although a different BLAS or
-OpenMP count can change output bytes on Linux (see "Thread variables"). Only the
+OpenMP count can change output bytes on Linux (see "Thread variables"). That
+includes `blas_threads_in_use`, which is empty for a macOS run. Only the
 checkpoint digests compared above show that outputs agree. The report says
 `compared_outputs_match`, with `stages_compared` 2 of `stages_total` 24 and
 the 22 stages it did not compare (`stages_not_compared`).
