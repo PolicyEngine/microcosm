@@ -295,6 +295,30 @@ def _tool_definitions_reached(
     return reached
 
 
+def _reached_after(
+    definitions: _ToolDefinitions, later_statements: list[ast.stmt]
+) -> set[str]:
+    """The tool definitions that code after a point in ``_main`` can run.
+
+    These are the definitions ``later_statements`` name, and every tool class
+    ``_main`` names anywhere, since an object built earlier, such as the
+    build's progress reporter, can run its methods later. Each is followed
+    through the definitions it names.
+    """
+    named_later = set().union(
+        *(
+            _tool_definitions_named(statement, definitions)
+            for statement in later_statements
+        )
+    )
+    classes = {
+        name
+        for name in _tool_definitions_named(_tool_main(definitions), definitions)
+        if any(isinstance(statement, ast.ClassDef) for statement in definitions[name])
+    }
+    return _tool_definitions_reached(definitions, named_later | classes)
+
+
 def _walk_without_annotations(tree: ast.AST):
     """``ast.walk``, skipping argument, return and variable annotations."""
     pending = [tree]
@@ -901,15 +925,7 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
         "_us_build_record",
         "_assert_export_matches_calibration",
     } <= receivers
-    reached = _tool_definitions_reached(
-        definitions,
-        set().union(
-            *(
-                _tool_definitions_named(statement, definitions)
-                for statement in later_statements
-            )
-        ),
-    )
+    reached = _reached_after(definitions, later_statements)
     assert receivers <= reached
     trees: dict[str, list[ast.AST]] = {"_main": later_statements}
     for name in reached - {"_main"}:
@@ -975,15 +991,7 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     main_in_file = _tool_main(definitions)
     assert ast.unparse(main_in_file.body[check + 1]) == statements[check + 1]
     later_statements = main_in_file.body[check + 2 :]
-    reached = _tool_definitions_reached(
-        definitions,
-        set().union(
-            *(
-                _tool_definitions_named(statement, definitions)
-                for statement in later_statements
-            )
-        ),
-    )
+    reached = _reached_after(definitions, later_statements)
     trees: dict[str, list[ast.AST]] = {"_main": later_statements}
     for name in reached - {"_main"}:
         trees[name] = list(definitions[name])
