@@ -788,6 +788,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "referencing" },
     { name = "scipy" },
+    { name = "threadpoolctl" },
 ]
 
 [package.optional-dependencies]
@@ -839,6 +840,7 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.13" },
     { name = "tables", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "tables", marker = "extra == 'us'", specifier = ">=3" },
+    { name = "threadpoolctl", specifier = ">=3.6" },
 ]
 provides-extras = ["us", "uk"]
 

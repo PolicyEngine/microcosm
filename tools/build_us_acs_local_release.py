@@ -111,6 +111,25 @@ makes its own attempt ID.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+if __name__ == "__main__":
+    # The one thread setting, MICROCOSM_THREADS, fills the OpenMP, BLAS,
+    # numexpr and joblib thread variables, and the libraries read those when
+    # they load, so this comes before numpy
+    # (tools/us_build_thread_environment.py). Without the setting nothing is
+    # set here; the release tool, imported later, fills what is still unset
+    # with its own default, as before. This runs only for the command: tests
+    # import this file. The helper is loaded from this file's folder, which is
+    # not on the import path under ``python -m`` or ``python -P``. E402 is
+    # ignored for this file in pyproject for this block.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from us_build_thread_environment import set_build_thread_environment
+
+    del sys.path[0]
+    set_build_thread_environment()
+
 import argparse
 import gc
 import hashlib
@@ -118,13 +137,11 @@ import json
 import resource
 import shutil
 import subprocess
-import sys
 import threading
 import time
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
