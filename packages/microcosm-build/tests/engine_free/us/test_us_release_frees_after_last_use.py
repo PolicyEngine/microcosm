@@ -116,6 +116,14 @@ def _holds_a_freed_object(node: ast.AST) -> bool:
         return _holds_a_freed_object(node.body) or _holds_a_freed_object(node.orelse)
     if isinstance(node, ast.BoolOp):
         return any(_holds_a_freed_object(value) for value in node.values)
+    if isinstance(node, ast.Lambda):
+        # A default argument lives as long as the lambda does, so the lambda
+        # counts as holding it wherever it is kept; one passed straight to a
+        # call is gone when the call returns.
+        return any(
+            default is not None and _holds_a_freed_object(default)
+            for default in (*node.args.defaults, *node.args.kw_defaults)
+        )
     if isinstance(node, ast.Call):
         name = _called_name(node)
         if name in _CONTAINER_CALLS:
@@ -167,14 +175,15 @@ def _alias_sites(function: ast.FunctionDef) -> list[tuple[int, str]]:
         ):
             sites.append((node.lineno, ast.unparse(node)))
         elif (
-            isinstance(node, (ast.Lambda, ast.FunctionDef, ast.AsyncFunctionDef))
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and node is not function
             and any(
                 default is not None and _holds_a_freed_object(default)
                 for default in (*node.args.defaults, *node.args.kw_defaults)
             )
         ):
-            # A default argument lives as long as the function object does.
+            # A nested function is bound to a local, which keeps its default
+            # arguments as long as the function object lives.
             sites.append((node.lineno, ast.unparse(node.args)))
     return sorted(sites)
 
@@ -236,7 +245,11 @@ def _single_top_level_release(function: ast.FunctionDef, name: str) -> int:
 def _tool_functions_reached(
     functions: dict[str, ast.FunctionDef], names: set[str]
 ) -> set[str]:
-    """``names`` and every tool function they call by name, transitively."""
+    """``names`` and every tool function they name, transitively.
+
+    A function counts whether it is called or used as a value, such as one put
+    in a mapping of consumers and called through it later.
+    """
     reached: set[str] = set()
     frontier = list(names)
     while frontier:
@@ -244,14 +257,20 @@ def _tool_functions_reached(
         if name in reached:
             continue
         reached.add(name)
-        frontier.extend(
-            call.func.id
-            for call in ast.walk(functions[name])
-            if isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Name)
-            and call.func.id in functions
-        )
+        frontier.extend(_tool_functions_named(functions[name], functions))
     return reached
+
+
+def _tool_functions_named(
+    tree: ast.AST, functions: dict[str, ast.FunctionDef]
+) -> set[str]:
+    return {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and node.id in functions
+    }
 
 
 def _calls_named(tree: ast.AST, name: str) -> list[ast.Call]:
@@ -294,9 +313,27 @@ def test_the_alias_check_sees_each_way_of_keeping_an_object() -> None:
         "kept = dataclasses.replace(outcome, result=result)",
         "setattr(holder, 'frame', base_frame)",
         "callbacks.append(lambda frame=base_frame: frame)",
+        "kept = lambda frame=base_frame: frame",
         "def later(*, engine=release_engine):\n    pass",
+        "kept = copy.deepcopy(result)",
+        "kept = dict(frame=base_frame)",
+        "kept = list((base_frame,))",
+        "kept = set([release_engine])",
+        "kept = tuple([base_frame])",
+        "kept = frozenset({release_engine})",
+        "kept: object = base_frame",
+        "if (kept := base_frame) is not None:\n    pass",
     )
-    harmless = ("total = base_frame.n('household')", "loss = result.final_loss")
+    harmless = (
+        "total = base_frame.n('household')",
+        "loss = result.final_loss",
+        # A lambda passed straight to a call is freed when the call returns.
+        "shadow_gate('x', lambda frame=base_frame: gate(frame), context)",
+        "kept = copy.copy(settings)",
+        "setattr(holder, 'frame', other_frame)",
+        "kept = dataclasses.replace(options, seed=seed)",
+        "frames.append(base_frame.n('household'))",
+    )
     for source, expected_sites in (
         *((source, 1) for source in keeping),
         *((source, 0) for source in harmless),
@@ -645,22 +682,28 @@ def test_the_shadow_sees_the_export_reference_and_does_not_keep_it(
     assert stand_in.frames_freed()
 
 
+#: Each step the stand-in can make fail: the error it raises, and the line
+#: the check appends for it under earlier failures.
+_EXPORT_CHECK_ERRORS = {
+    "load": (OSError, "OSError: the reference did not open"),
+    "check": (RuntimeError, "RuntimeError: the gate failed"),
+}
+
+
 @pytest.mark.parametrize(
-    ("failing", "error", "status", "evaluations"),
-    [
-        # The check never ran: the shadow records it as not run.
-        ("load", "OSError: the reference did not open", GateStatus.EVIDENCE_ABSENT, 0),
-        # Today's check and the shadow's evaluation both hit the error, which
-        # the shadow records once, as the same verdict.
-        ("check", "RuntimeError: the gate failed", GateStatus.FAILED, 2),
-    ],
+    "earlier_failures", [True, False], ids=["earlier-failures", "clean-run"]
 )
-def test_the_shadow_records_an_export_check_error_under_earlier_failures(
-    builder, monkeypatch, tmp_path, failing, error, status, evaluations
+@pytest.mark.parametrize("failing", ["load", "check"])
+def test_the_shadow_records_an_export_check_error(
+    builder, monkeypatch, tmp_path, failing, earlier_failures
 ) -> None:
-    """Under earlier failures, a reference that does not load or a check that
-    raises becomes one failure line, after the reference's sha256 is
-    recorded, and the shadow records it with no verdict difference."""
+    """A reference that does not load, or a check that raises, comes after
+    the reference's sha256 is recorded. Under earlier failures it becomes one
+    failure line; on an otherwise-clean run it propagates. The shadow records
+    a check that raised once, as the same verdict as today's, and a reference
+    that did not load as a check that did not run only when the build goes
+    on; a build that stops leaves the entry unreached."""
+    error_type, error = _EXPORT_CHECK_ERRORS[failing]
     frames = {"export": _LargeObject(), "base": _LargeObject()}
     stand_in = _ReferenceCheckStandIn(
         builder, monkeypatch, frames["export"], frames["base"]
@@ -668,9 +711,10 @@ def test_the_shadow_records_an_export_check_error_under_earlier_failures(
     stand_in.failing = failing
     reference_h5 = _reference_h5(tmp_path)
     record: dict[str, object] = {"sha256": None}
-    failures = ["an earlier gate failed"]
-    with _armed_national_shadow(builder, monkeypatch, tmp_path) as shadow:
-        returned = builder._record_export_input_mass_gate(
+    failures = ["an earlier gate failed"] if earlier_failures else []
+
+    def check():
+        return builder._record_export_input_mass_gate(
             frames["export"],
             frames["base"],
             reference_h5=reference_h5,
@@ -678,19 +722,36 @@ def test_the_shadow_records_an_export_check_error_under_earlier_failures(
             terminal_gate_failures=failures,
             **_CHECK_OPTIONS,
         )
+
+    with _armed_national_shadow(builder, monkeypatch, tmp_path) as shadow:
+        if earlier_failures:
+            assert check() is None
+        else:
+            with pytest.raises(error_type) as raised:
+                check()
+            # The traceback holds the check's frame until it is released.
+            del raised
         outcome = shadow.outcome(_EXPORT_CHECK_ENTRY)
         differences = shadow.differences()
 
-    assert returned is None
     assert record["sha256"] == builder._sha256(reference_h5)
-    assert failures == [
-        "an earlier gate failed",
-        f"Input mass parity failed: evaluation error under earlier gate failures: "
-        f"{error}",
-    ]
-    assert outcome is not None and outcome.status is status
+    assert failures == (
+        [
+            "an earlier gate failed",
+            "Input mass parity failed: evaluation error under earlier gate "
+            f"failures: {error}",
+        ]
+        if earlier_failures
+        else []
+    )
+    if failing == "check":
+        expected_status = GateStatus.FAILED
+    else:
+        expected_status = GateStatus.EVIDENCE_ABSENT if earlier_failures else None
+    assert (outcome.status if outcome is not None else None) is expected_status
     assert differences == ()
-    assert len(stand_in.gate_calls) == evaluations
+    # Today's check and the shadow's evaluation each ran when the load did.
+    assert len(stand_in.gate_calls) == (2 if failing == "check" else 0)
     gc.collect()
     assert all(reference() is None for _, reference in stand_in.loaded)
     frames.clear()
@@ -792,7 +853,14 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     assert [
         f"{node.lineno}: {ast.unparse(node)}"
         for node in later_nodes
-        if isinstance(node, ast.Attribute) and node.attr in {"matrix", "estimates"}
+        if (isinstance(node, ast.Attribute) and node.attr in {"matrix", "estimates"})
+        or (
+            isinstance(node, ast.Call)
+            and _called_name(node) == "getattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value in {"matrix", "estimates"}
+        )
     ] == []
 
 
@@ -813,34 +881,51 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
         "resolve_probe_parameter_changes",
         "installed_list_parameter_baseline",
         "_installed_parameter_stages",
+        # The package functions that reach installed_list_parameter_baseline.
+        "us_reform_coverage_smoke_gate",
+        "_build_reform",
     }
     tool = ast.parse(Path(builder.__file__).read_text())
     functions = {
         node.name: node for node in tool.body if isinstance(node, ast.FunctionDef)
     }
-    later_calls = [
-        call
-        for call in ast.walk(main)
-        if isinstance(call, ast.Call) and call.lineno > cleared_line
-    ]
+    later_statements = [node for node in main.body if node.lineno > cleared_line]
     reached = _tool_functions_reached(
         functions,
-        {
-            call.func.id
-            for call in later_calls
-            if isinstance(call.func, ast.Name) and call.func.id in functions
-        },
+        set().union(
+            *(
+                _tool_functions_named(statement, functions)
+                for statement in later_statements
+            )
+        ),
     )
+    calls = [
+        ("_main", call)
+        for statement in later_statements
+        for call in ast.walk(statement)
+        if isinstance(call, ast.Call)
+    ]
     for name in sorted(reached - {"_main"}):
-        later_calls.extend(
-            call for call in ast.walk(functions[name]) if isinstance(call, ast.Call)
+        calls.extend(
+            (name, call)
+            for call in ast.walk(functions[name])
+            if isinstance(call, ast.Call)
         )
-    # Called by name or through a module attribute.
+    # Called by name or through a module attribute. The one call expected is
+    # the reform-coverage smoke as the post-export scoring plan runs it before
+    # export, recording requests only, which builds no reform
+    # (test_us_post_export_scoring.py::
+    # test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine).
     assert [
-        f"{call.lineno}: {ast.unparse(call)}"
-        for call in later_calls
+        (function, ast.unparse(call))
+        for function, call in calls
         if _called_name(call) in fillers
-    ] == []
+    ] == [
+        (
+            "_reform_coverage_smoke_consumer",
+            "us_reform_coverage_smoke_gate(simulate=simulate, period=PERIOD)",
+        )
+    ]
 
 
 def test_main_export_statements_leave_only_the_matrix_shape_and_nonzero_count(
