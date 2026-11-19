@@ -74,7 +74,7 @@ bash tools/route_a/route_a.sh --certify
 Each stage keeps its configuration, supervisor records, child log and
 resource samples in the run directory, beside the build's own records and
 diagnostics, so a run's evidence is collected from `RUN_ROOT` alone; the
-runbook's step 4 gives the command, which leaves every data file out.
+runbook's step 6 gives the command, which leaves every data file out.
 
 `ROUTE_A_ENV=<settings-file>` selects another settings file. The local
 `route_a.env` is ignored by git. The example uses shell defaults, so a
