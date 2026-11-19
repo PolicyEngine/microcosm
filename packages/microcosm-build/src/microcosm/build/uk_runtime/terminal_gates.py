@@ -219,6 +219,10 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # carer cares for a severely disabled person, policyengine-uk's input
     # (2.177.3, pe-uk#2860), which frs_disability writes from the FRS care tab.
     "person.cares_for_severely_disabled_person",
+    # microcosm#1095: Universal Credit's new-claimant health element draw,
+    # policyengine-uk's stored input (2.179.0, pe-uk#2877), which the
+    # uc_new_claimant_draw stage orders by claim recency.
+    "benunit.uc_new_claimant_health_element_draw",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

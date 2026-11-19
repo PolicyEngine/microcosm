@@ -781,6 +781,12 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # drops one should it appear.
         "is_severely_disabled_for_benefits",
     ),
+    "benunit": (
+        # The UC claim recency carrier (frs_spine.FRS_UC_CLAIM_MONTHS_COLUMN)
+        # the uc_new_claimant_draw stage orders its draw by (microcosm#1095);
+        # it is no engine input.
+        "frs_uc_claim_months",
+    ),
     "household": (
         "property_wealth",
         # The value the spine's regional home values replaced (microcosm#1112):

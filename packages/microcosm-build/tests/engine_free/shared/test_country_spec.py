@@ -1221,8 +1221,10 @@ class TestUKCountryPackage:
         # hmrc_spi_income_spine (PolicyEngine/uk-autumn-budget-dashboard-2026#316);
         # microcosm#1490 spi_employment_shell after it and aps_occupation next;
         # microcosm#1095 (P1) pip_points just before trading_allowance_receipts;
-        # microcosm#1095 (Y1) uc_limited_capability just before uc_take_up.
-        assert len(spec.sources.stages) == 56
+        # microcosm#1095 (Y1) uc_limited_capability just before uc_take_up;
+        # microcosm#1095 uc_new_claimant_draw last, after
+        # trading_allowance_receipts.
+        assert len(spec.sources.stages) == 57
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )

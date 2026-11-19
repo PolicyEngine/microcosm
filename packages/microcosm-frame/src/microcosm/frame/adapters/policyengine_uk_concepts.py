@@ -332,16 +332,22 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "From 6 April 2026 the LCWRA element of a claim made after that date "
         "is paid at the lower new-claimant rate (UC Regs 2013 reg. 36). Every "
         "FRS 2024-25 recipient claimed before it, and the survey cannot say who "
-        "would claim after it, so the build supplies no value and "
-        "policyengine-uk draws one: for a simulation built from data it gives "
-        "the new-claimant rate to a share of the benefit units "
-        "(gov.dwp.universal_credit.rebalancing.new_claimant_share, WPI "
-        "Economics' estimates for 2026-27 to 2029-30) on a seeded draw in "
-        "benefit-unit order. The share is zero in 2025, the calibration year. "
-        "From 2026 the share of health-element units paid the lower rate "
-        "follows the parameter on average, but which units are paid it is "
-        "random with respect to everything the file records (microcosm#1095; "
-        "for María's signature)."
+        "would claim after it, so the build supplies no status for any year, "
+        "and policyengine-uk assigns it from the draw the uc_new_claimant_draw "
+        "stage stores (uc_new_claimant_health_element_draw, policyengine-uk "
+        "2.179.0): a unit with the element gets the new-claimant rate where "
+        "its draw falls below gov.dwp.universal_credit.rebalancing."
+        "new_claimant_share (WPI Economics' estimates for 2026-27 to 2029-30, "
+        "held after). The stage orders the draw by claim recency, then age, "
+        "within the units paid the element at the calibration year, and keeps "
+        "it uniform, so at the stage's weights the share paid the lower rate "
+        "is the parameter's and the units paid it are the most recent and "
+        "youngest claims. The share is zero in 2025, the calibration year. The "
+        "calibration reweights the units, so the share at the release's "
+        "weights moves with how it reweights recent claims; a unit that has "
+        "the element only in a later year, such as one moved off "
+        "income-related ESA, is assigned at random, as the engine's own draw "
+        "assigns every unit (microcosm#1095; for María's signature)."
     ),
     "owned_company_capital": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
     "owned_company_holding_value": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
@@ -611,15 +617,6 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
             "has_non_resident_overnight_carer",
         ),
         _UK_LHA_PLACEMENTS_AT_DEFAULT,
-    ),
-    "uc_new_claimant_health_element_draw": (
-        "A uniform in [0, 1) per benefit unit that a dataset build can store "
-        "(policyengine-uk 2.179.0, policyengine-uk#2877): in each rebalancing "
-        "year a unit with the LCWRA element gets the new-claimant rate when "
-        "its draw falls below gov.dwp.universal_credit.rebalancing."
-        "new_claimant_share. The build stores none, so the engine keeps its own "
-        "seeded draw, and uc_receives_new_claimant_health_element's entry "
-        "gives the error (microcosm#1095; for María's signature)."
     ),
     "pip_phase_in_draw": (
         "The PIP phase-in scenario's draw (policyengine-uk 2.179.0): that "

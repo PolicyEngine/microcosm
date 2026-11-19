@@ -1033,6 +1033,12 @@ def build_manifest(
                 stage_name="trading_allowance_receipts",
                 candidate_source=candidate_source,
             ),
+            # microcosm#1095: UC's new-claimant health element draw, by claim
+            # recency within the units paid the LCWRA element.
+            "uc_new_claimant_draw": _source_stage_family_coverage_contract(
+                stage_name="uc_new_claimant_draw",
+                candidate_source=candidate_source,
+            ),
             # PolicyEngine/uk-autumn-budget-dashboard-2026#316: the company cars
             # declare their household-mass receipt like every other stage.
             "company_cars": _source_stage_family_coverage_contract(
