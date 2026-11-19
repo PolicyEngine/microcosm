@@ -2556,6 +2556,46 @@ def test_the_hand_off_never_overwrites_a_base(tmp_path: Path) -> None:
     assert not (modal_run / "compare-lineage.json").exists()
 
 
+#: What can sit where a base would go. ``[ -e ]`` reports a dangling link as
+#: absent, so the guards also test ``-L``.
+OCCUPANTS = ("directory", "file", "link", "dangling link")
+
+
+def _occupy(path: Path, kind: str, elsewhere: Path) -> None:
+    """Put a ``kind`` at ``path``; a link points at ``elsewhere``."""
+
+    if kind == "directory":
+        path.mkdir()
+    elif kind == "file":
+        path.write_text("")
+    else:
+        if kind == "link":
+            elsewhere.mkdir()
+        path.symlink_to(elsewhere)
+
+
+def _entries(run: Path) -> list[tuple[str, bool, bool]]:
+    return sorted(
+        (path.name, path.is_symlink(), path.exists()) for path in run.iterdir()
+    )
+
+
+@pytest.mark.parametrize("kind", OCCUPANTS)
+@pytest.mark.parametrize("name", ["base-out", "base-sup"])
+def test_the_hand_off_refuses_whatever_sits_where_a_base_would_go(
+    tmp_path: Path, name: str, kind: str
+) -> None:
+    run = tmp_path / "route-a-run"
+    run.mkdir()
+    _occupy(run / name, kind, tmp_path / "elsewhere")
+    before = _entries(run)
+    proc, run, modal_run = _hand_off(tmp_path, run=run)
+    assert proc.returncode == 1
+    assert "never overwrite a base" in proc.stderr
+    assert _entries(run) == before
+    assert not (modal_run / "compare-lineage.json").exists()
+
+
 RERUN_RECORD = ROOT / "docs" / "us-route-a-rerun-20261018.md"
 
 
@@ -2563,7 +2603,7 @@ def _rerun_record_guard() -> str:
     """What the 18 October record's hand-off block runs before its first
     tool call, verbatim: the refusal of a run directory that has a base."""
 
-    text = RERUN_RECORD.read_text()
+    text = RERUN_RECORD.read_text(encoding="utf-8")
     opening = "RUN=$RUN_ROOT/run-${C:0:12}\n(\n  set -euo pipefail\n"
     assert text.count(opening) == 1
     start = text.index(opening) + len(opening)
@@ -2573,35 +2613,54 @@ def _rerun_record_guard() -> str:
     return guard
 
 
-@pytest.mark.parametrize(
-    ("existing", "reached"),
-    [
-        ((), True),
-        # base-out alone: under `set -e`, `test A && test B` does not stop the
-        # block when the first test fails.
-        (("base-out",), False),
-        (("base-sup",), False),
-        (("base-out", "base-sup"), False),
-    ],
-)
-def test_the_rerun_record_s_hand_off_never_overwrites_a_base(
-    tmp_path: Path, existing: tuple[str, ...], reached: bool
-) -> None:
-    run = tmp_path / "route-a-run"
-    run.mkdir()
-    for name in existing:
-        (run / name).mkdir()
+def _run_rerun_record_guard(run: Path) -> subprocess.CompletedProcess[str]:
+    """The record's guard under the block's shell options, then a line that
+    prints only when the guard let the block go on."""
+
     script = f"(\n  set -euo pipefail\n{_rerun_record_guard()}  echo REACHED\n)\n"
-    proc = subprocess.run(
+    env = {name: value for name, value in os.environ.items() if name != "BASH_ENV"}
+    return subprocess.run(
         ["bash", "-c", script],
-        env={**os.environ, "RUN": str(run)},
+        env={**env, "RUN": str(run)},
         capture_output=True,
         text=True,
         check=False,
     )
-    assert ("REACHED" in proc.stdout) is reached, proc.stderr
-    assert (proc.returncode == 0) is reached
-    assert sorted(path.name for path in run.iterdir()) == sorted(existing)
+
+
+def test_the_rerun_record_s_hand_off_goes_on_without_a_base(tmp_path: Path) -> None:
+    run = tmp_path / "route-a-run"
+    run.mkdir()
+    proc = _run_rerun_record_guard(run)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "REACHED\n"
+    assert _entries(run) == []
+
+
+@pytest.mark.parametrize("kind", OCCUPANTS)
+@pytest.mark.parametrize(
+    "names",
+    [
+        # base-out alone: under `set -e`, `test A && test B` does not stop the
+        # block when the first test fails.
+        ("base-out",),
+        ("base-sup",),
+        ("base-out", "base-sup"),
+    ],
+)
+def test_the_rerun_record_s_hand_off_never_overwrites_a_base(
+    tmp_path: Path, names: tuple[str, ...], kind: str
+) -> None:
+    run = tmp_path / "route-a-run"
+    run.mkdir()
+    for name in names:
+        _occupy(run / name, kind, tmp_path / f"{name}.elsewhere")
+    before = _entries(run)
+    proc = _run_rerun_record_guard(run)
+    assert proc.returncode == 1
+    assert "REACHED" not in proc.stdout
+    assert "never overwrite a base" in proc.stderr
+    assert _entries(run) == before
 
 
 def test_the_runbook_names_every_registered_tool() -> None:
