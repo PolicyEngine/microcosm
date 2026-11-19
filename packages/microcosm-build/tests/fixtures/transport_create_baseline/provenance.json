@@ -1,5 +1,5 @@
 {
-  "base_commit": "cfd5a2a5ea8fbaa0269f434d10c50eb389eabc83",
+  "base_commit": "7ff5a26bc203c91a6f259d6efb62001aec0405a0",
   "capture_command": "python -m test_support.microcosm_build.transport_create_baseline packages/microcosm-build/tests/fixtures/transport_create_baseline",
   "capture_module": "test_support/microcosm_build/transport_create_baseline.py",
   "capture_module_sha256": "0743de62aa8208dbc00fc57a7e1bc43ad0e7f4d8a24786bc88ca31b489e300a0",

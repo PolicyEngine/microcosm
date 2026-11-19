@@ -68,7 +68,7 @@ from test_support.microcosm_build.transport_population import (
 from test_support.paths import paths_for
 
 BASELINE = paths_for("microcosm-build").tests / "fixtures/transport_create_baseline"
-BASE_COMMIT = "cfd5a2a5ea8fbaa0269f434d10c50eb389eabc83"
+BASE_COMMIT = "7ff5a26bc203c91a6f259d6efb62001aec0405a0"
 CHOICES = {
     "assisted_renter_tenure": "rented_public_authority",
     "blank_full_time_study": "read_false",
