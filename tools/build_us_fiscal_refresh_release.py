@@ -19180,9 +19180,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
-    # The writer was the engine's last use; post-export scoring builds its own.
-    # Rebound rather than deleted, as base_frame is above.
-    release_engine = None
     # microcosm#1026: the stored-input gate above graded a model of the
     # writer's output; the written bytes are graded whatever the gate reached
     # and must earn the same verdict (no refusal, if the gate could not
@@ -19205,6 +19202,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     if stored_input_premise_failure is not None:
         artifact_integrity_failures.append(stored_input_premise_failure)
         terminal_gate_failures.append(stored_input_premise_failure)
+    # The writer was the engine's last use; post-export scoring builds its own.
+    # It is released here, not between the write and the written file's check,
+    # which stays right after the write; that check reads column names and the
+    # module-level system only. Rebound rather than deleted, as base_frame is
+    # above.
+    release_engine = None
     # The build ends here (microcosm#1585 item 11, PR 4a). The optional export
     # audit and the calibration NPZ read the calibration result, which only
     # this process holds, so they run first. Every later stage scores the
