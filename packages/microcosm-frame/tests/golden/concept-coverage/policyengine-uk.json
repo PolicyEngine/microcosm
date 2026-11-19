@@ -405,8 +405,8 @@
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.177.7",
- "input_count": 378,
+ "engine_version": "2.179.2",
+ "input_count": 403,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -478,6 +478,10 @@
   {
    "entity": "person",
    "name": "admitted_patient_visits"
+  },
+  {
+   "entity": "person",
+   "name": "adopter_is_foster_parent_or_close_relative"
   },
   {
    "entity": "person",
@@ -944,6 +948,10 @@
    "name": "has_education_maintenance_funding"
   },
   {
+   "entity": "person",
+   "name": "has_non_resident_overnight_carer"
+  },
+  {
    "entity": "household",
    "name": "health_consumption"
   },
@@ -982,6 +990,10 @@
   {
    "entity": "benunit",
    "name": "housing_benefit_permitted_work_disregard"
+  },
+  {
+   "entity": "person",
+   "name": "housing_benefit_report_is_rate_rebate_only"
   },
   {
    "entity": "person",
@@ -1045,6 +1057,14 @@
   },
   {
    "entity": "person",
+   "name": "is_approved_foster_parent_without_placement"
+  },
+  {
+   "entity": "person",
+   "name": "is_before_child_benefit_terminal_date"
+  },
+  {
+   "entity": "person",
    "name": "is_blind"
   },
   {
@@ -1061,6 +1081,14 @@
   },
   {
    "entity": "person",
+   "name": "is_in_child_benefit_extension_period"
+  },
+  {
+   "entity": "person",
+   "name": "is_in_child_tax_credit_extension_period"
+  },
+  {
+   "entity": "person",
    "name": "is_in_first_year_of_apprenticeship"
   },
   {
@@ -1074,6 +1102,10 @@
   {
    "entity": "person",
    "name": "is_newly_self_employed"
+  },
+  {
+   "entity": "person",
+   "name": "is_placed_for_adoption"
   },
   {
    "entity": "household",
@@ -1420,6 +1452,10 @@
    "name": "pip_m_points"
   },
   {
+   "entity": "person",
+   "name": "pip_phase_in_draw"
+  },
+  {
    "entity": "household",
    "name": "pool_betting_net_receipts"
   },
@@ -1705,7 +1741,67 @@
   },
   {
    "entity": "benunit",
+   "name": "uc_new_claimant_health_element_draw"
+  },
+  {
+   "entity": "benunit",
    "name": "uc_receives_new_claimant_health_element"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_alcohol_and_tobacco_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_clothing_and_footwear_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_communication_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_corporate_wealth"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_education_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_food_and_non_alcoholic_beverages_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_health_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_household_furnishings_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_housing_water_and_electricity_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_miscellaneous_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_private_pension_wealth"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_recreation_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_restaurants_and_hotels_consumption"
+  },
+  {
+   "entity": "household",
+   "name": "uk_total_transport_consumption"
   },
   {
    "entity": "household",
@@ -1750,6 +1846,10 @@
   {
    "entity": "benunit",
    "name": "working_tax_credit_run_on"
+  },
+  {
+   "entity": "person",
+   "name": "would_claim_student_loan"
   },
   {
    "entity": "benunit",

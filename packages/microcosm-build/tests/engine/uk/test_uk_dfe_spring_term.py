@@ -1,4 +1,4 @@
-"""The DfE spring-term measures on hand-built households (policyengine-uk 2.177.7)."""
+"""The DfE spring-term measures on hand-built households (policyengine-uk 2.179.2)."""
 
 from __future__ import annotations
 

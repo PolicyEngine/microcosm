@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.177.7. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.179.2. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -197,6 +197,18 @@ UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {
         "is drawn at the published rate once the fact lands (María's ruling of "
         "2026-10-25, microcosm#1095)."
     ),
+    "would_claim_student_loan": (
+        "Whether a tertiary-educated person with no recorded student loan "
+        "takes one up when policyengine-uk's projection of later years makes "
+        "them a new borrower (policyengine-uk 2.179.0, a stored draw). The "
+        "build stores none, so the engine keeps its own draw, keyed on "
+        "person_id at its graduate take-up rate (0.4), as before 2.179.0: "
+        "which graduates become new borrowers is random with respect to "
+        "everything the file records beyond their education, age and region, "
+        "and the same in every year. The survey year's loans, which the "
+        "student_loans stage writes, do not move (microcosm#1095; for María's "
+        "signature)."
+    ),
 }
 
 
@@ -242,6 +254,62 @@ _UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT = (
     "born under a year apart (María's ruling of 2 November 2026). The "
     "non-parental caring exception is read from the household grid by "
     "frs_relationships (microcosm#1095; for María's signature)."
+)
+_UK_TOTALS_AT_DEFAULT = (
+    "The UK totals of the components of corporate_sector_wealth and of "
+    "consumption (policyengine-uk 2.178.0, policyengine-uk#2901). Where the "
+    "data carries them, shareholding, consumption_shareholding and the carbon "
+    "tax's corporate part divide by them, so a simulation of part of the UK "
+    "gives each household its share of the UK's totals. The build writes none, "
+    "so they stay 0, and a simulation built from the file divides by its own "
+    "households' weighted totals, as before 2.178.0. The whole released file, "
+    "and each of the build's engine blocks, whose weights the full measure "
+    "scales to the pool's mass (UK_WEIGHT_SHARE_FORMULA_INPUTS), give the "
+    "shares carried totals would give, so no figure the build reads moves. A "
+    "simulation of part of the file, such as one region or an extract, "
+    "allocates each national total over that part alone: business rates, "
+    "corporate Stamp Duty Land Tax, corporate land, consumer-incident tax "
+    "changes and the carbon tax's corporate part are then overstated for its "
+    "households by the ratio of the UK's total to the part's. "
+    "policyengine_uk.utils.uk_totals.add_uk_totals can write them at release "
+    "(microcosm#1095; for María's signature)."
+)
+_UK_LEFT_EDUCATION_ROUTES_AT_DEFAULT = (
+    "Three routes by which a young person who has left education stays a "
+    "qualifying young person for part of the year (policyengine-uk 2.178.3): "
+    "before the Child Benefit terminal date after leaving (Child Benefit "
+    "(General) Regulations 2006 reg. 7(2)), and in the 20-week extension "
+    "period of a young person registered for work or training, for Child "
+    "Benefit (reg. 5) and for Child Tax Credit (Child Tax Credit Regulations "
+    "2002 reg. 5(3)(b)). The FRS records whether a person is in full-time "
+    "education at interview, but no leaving date, registration or request for "
+    "the extension, so all three stay False, as the engine documents for "
+    "surveys. A young person who left education during the year then stops "
+    "counting from leaving, so Child Benefit, and the Housing Benefit, legacy "
+    "benefit and Council Tax Reduction young persons that follow its "
+    "conditions, are understated for the weeks the terminal date or the "
+    "extension would have kept them; Child Tax Credit closed on 5 April 2025 "
+    "(microcosm#1095; for María's signature)."
+)
+_UK_LHA_PLACEMENTS_AT_DEFAULT = (
+    "Four size-criteria and family inputs (policyengine-uk 2.178.7): a child "
+    "placed for adoption, an adopter who is the child's foster parent or close "
+    "relative, an approved foster parent between placements, and a person "
+    "with a non-resident overnight carer. The build reads none of them: its "
+    "relationship codes count an adopted child as the parent's own (FRS "
+    "relationship code 3) and record no placement, and it reads neither "
+    "foster approval nor overnight care from outside the household. So all "
+    "four stay False. A child placed for adoption then counts as the adopter's "
+    "own child: Housing Benefit, the legacy means tests, the pension-age "
+    "Council Tax Reduction schemes and Tax-Free Childcare count a child they "
+    "would leave out, and Universal Credit gives the adopter neither the "
+    "foster parent's additional bedroom nor the shared accommodation rate "
+    "exception. A foster parent between placements, and a renter whose "
+    "disabled member has a non-resident overnight carer, miss an additional "
+    "bedroom, so the Universal Credit housing element and Housing Benefit are "
+    "understated for them. adopter_is_foster_parent_or_close_relative "
+    "changes nothing while is_placed_for_adoption is False (microcosm#1095; "
+    "for María's signature)."
 )
 
 
@@ -475,7 +543,7 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "funding and whom no exception covers. It is understated for an 18- or "
         "19-year-old on the FRS adult table on such a course who reports no "
         "Universal Credit, JSA or ESA of their own and is without parental "
-        "support: policyengine-uk 2.177.7 has no input for parental support, "
+        "support: policyengine-uk 2.179.2 has no input for parental support, "
         "so it doesn't apply reg. 14(1)(a), and such a person counts as a "
         "qualifying young person. Such records are mostly young people living "
         "away from their parents (microcosm#1095, microcosm#1535; for María's "
@@ -508,6 +576,77 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "keeps. 2025, the calibration year, does not move (microcosm#1095; for "
         "María's signature)."
     ),
+    **dict.fromkeys(
+        (
+            "uk_total_corporate_wealth",
+            "uk_total_private_pension_wealth",
+            "uk_total_food_and_non_alcoholic_beverages_consumption",
+            "uk_total_alcohol_and_tobacco_consumption",
+            "uk_total_clothing_and_footwear_consumption",
+            "uk_total_housing_water_and_electricity_consumption",
+            "uk_total_household_furnishings_consumption",
+            "uk_total_health_consumption",
+            "uk_total_transport_consumption",
+            "uk_total_communication_consumption",
+            "uk_total_recreation_consumption",
+            "uk_total_education_consumption",
+            "uk_total_restaurants_and_hotels_consumption",
+            "uk_total_miscellaneous_consumption",
+        ),
+        _UK_TOTALS_AT_DEFAULT,
+    ),
+    **dict.fromkeys(
+        (
+            "is_before_child_benefit_terminal_date",
+            "is_in_child_benefit_extension_period",
+            "is_in_child_tax_credit_extension_period",
+        ),
+        _UK_LEFT_EDUCATION_ROUTES_AT_DEFAULT,
+    ),
+    **dict.fromkeys(
+        (
+            "is_placed_for_adoption",
+            "adopter_is_foster_parent_or_close_relative",
+            "is_approved_foster_parent_without_placement",
+            "has_non_resident_overnight_carer",
+        ),
+        _UK_LHA_PLACEMENTS_AT_DEFAULT,
+    ),
+    "uc_new_claimant_health_element_draw": (
+        "A uniform in [0, 1) per benefit unit that a dataset build can store "
+        "(policyengine-uk 2.179.0, policyengine-uk#2877): in each rebalancing "
+        "year a unit with the LCWRA element gets the new-claimant rate when "
+        "its draw falls below gov.dwp.universal_credit.rebalancing."
+        "new_claimant_share. The build stores none, so the engine keeps its own "
+        "seeded draw, and uc_receives_new_claimant_health_element's entry "
+        "gives the error (microcosm#1095; for María's signature)."
+    ),
+    "pip_phase_in_draw": (
+        "The PIP phase-in scenario's draw (policyengine-uk 2.179.0): that "
+        "opt-in scenario removes a person's PIP in a year from 2025 to 2029 "
+        "when the draw falls below the year's phase-in share. The build stores "
+        "none, so the scenario keeps its own seeded draw, which gives each "
+        "person the value at their row, as before 2.179.0: which recipients "
+        "lose PIP is random with respect to everything the file records and "
+        "changes with the file's row order, while the share removed follows "
+        "the scenario's on average. The baseline does not read it "
+        "(microcosm#1095; for María's signature)."
+    ),
+    "housing_benefit_report_is_rate_rebate_only": (
+        "Whether a Northern Ireland Housing Benefit report covers only a rate "
+        "rebate (policyengine-uk 2.179.2), which a Universal Credit claim ends "
+        "the day before the award, while a rent rebate or allowance runs on "
+        "for two weeks (SR 2016/226 reg. 6). The build writes "
+        "housing_benefit_reported from FRS benefit code 94 without telling the "
+        "two apart, so it stays False and the engine reads every report as a "
+        "rent rebate or allowance. Only the first-day test of the Universal "
+        "Credit education condition reads it, in Northern Ireland: for a young "
+        "person there whose own report is only a rate rebate, the engine reads "
+        "the award as still running on the first day of a Universal Credit "
+        "award, which can change whether that young person counts as a "
+        "qualifying young person on that day (microcosm#1095; for María's "
+        "signature)."
+    ),
 }
 
 
@@ -532,7 +671,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.177.7",
+    engine_version="2.179.2",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
