@@ -1273,7 +1273,7 @@ stages:
   notes: Identity-keyed seed 0 streams replace the incumbent BRMA seed 0 sequential generator. Household collapse uses salt brma:household_pick.
 - stage: frs_hmrc_spine_leaves
   survey: Family Resources Survey 2024-25
-  source: Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input
+  source: Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab, child.tab and benefits.tab, caller-supplied local input
   grain: person
   artifacts:
   - role: frs_table
@@ -1284,6 +1284,18 @@ stages:
     locator: adult.tab
     sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
     size_bytes: 34885825
+    runtime_sha256_required: true
+    tax_year_start: 2024
+    ukds_study_number: 9563
+    doi: 10.5255/UKDA-SN-9563-1
+  - role: frs_table
+    table: child
+    kind: licensed_microdata
+    format: tab
+    vintage: '2024_25'
+    locator: child.tab
+    sha256: 88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5
+    size_bytes: 2753961
     runtime_sha256_required: true
     tax_year_start: 2024
     ukds_study_number: 9563
@@ -1342,7 +1354,8 @@ stages:
         scope: full
         raw_sources:
         - ADULT.INEARNS
-        formula: max(0, ADULT.INEARNS) * 52
+        - CHILD.CHEARNS
+        formula: max(0, ADULT.INEARNS) * 52 on the adult tab, max(0, CHILD.CHEARNS) * 52 on the child tab
       hmrc_spi_unemployment_benefit_income:
         spi_concept: UBISJA
         scope: full
