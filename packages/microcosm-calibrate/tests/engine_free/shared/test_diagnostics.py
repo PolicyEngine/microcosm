@@ -1296,7 +1296,9 @@ def test_dropping_the_constraint_matrix_keeps_its_shape_and_nonzero_count(
     del result
     gc.collect()
 
-    assert [reference() for reference in references] == [None] * len(references)
+    assert [
+        index for index, reference in enumerate(references) if reference() is not None
+    ] == []
     assert isinstance(dropped.problem.matrix, DroppedConstraintMatrix)
     assert dropped.problem.matrix.shape == shape
     assert dropped.problem.matrix.nnz == nonzero_count
@@ -1331,7 +1333,9 @@ def test_dropping_an_l0_refit_result_drops_the_selection_matrix_too(
     del result
     gc.collect()
 
-    assert [reference() for reference in references] == [None] * len(references)
+    assert [
+        index for index, reference in enumerate(references) if reference() is not None
+    ] == []
     assert dropped.selection.problem.matrix.shape == selection_shape
     assert dropped.selection.problem.matrix.nnz == selection_nonzero_count
     assert dropped.refit.problem.matrix.shape == refit_shape

@@ -7,6 +7,7 @@ of its statements, to check that each large object is deleted, rebound to
 """
 
 # ruff: noqa: F403, F405
+import contextlib
 import re
 import textwrap
 import weakref
@@ -45,9 +46,19 @@ _FREED_NAMES = frozenset(
 _HOLDING_ATTRIBUTES = frozenset(
     {"frame", "matrix", "problem", "refit", "result", "selection"}
 )
-#: Calls whose result holds their arguments.
+#: Calls whose result holds their arguments, or a copy of them.
 _CONTAINER_CALLS = frozenset(
-    {"SimpleNamespace", "dict", "frozenset", "list", "set", "tuple"}
+    {
+        "SimpleNamespace",
+        "copy",
+        "deepcopy",
+        "dict",
+        "frozenset",
+        "list",
+        "partial",
+        "set",
+        "tuple",
+    }
 )
 #: Methods that store their arguments in the object they are called on.
 _STORING_METHODS = frozenset(
@@ -110,8 +121,9 @@ def _holds_a_freed_object(node: ast.AST) -> bool:
         if name in _CONTAINER_CALLS:
             return any(_holds_a_freed_object(argument) for argument in _arguments(node))
         if name == "replace":
-            # dataclasses.replace keeps every field it is not given.
-            return bool(node.args) and _holds_a_freed_object(node.args[0])
+            # dataclasses.replace keeps every field it is not given, and
+            # stores every field it is given.
+            return any(_holds_a_freed_object(argument) for argument in _arguments(node))
         if name == "getattr" and len(node.args) >= 2:
             attribute = node.args[1]
             return (
@@ -147,6 +159,23 @@ def _alias_sites(function: ast.FunctionDef) -> list[tuple[int, str]]:
             and any(_holds_a_freed_object(argument) for argument in _arguments(node))
         ):
             sites.append((node.lineno, ast.unparse(node)))
+        elif (
+            isinstance(node, ast.Call)
+            and _called_name(node) == "setattr"
+            and len(node.args) >= 3
+            and _holds_a_freed_object(node.args[2])
+        ):
+            sites.append((node.lineno, ast.unparse(node)))
+        elif (
+            isinstance(node, (ast.Lambda, ast.FunctionDef, ast.AsyncFunctionDef))
+            and node is not function
+            and any(
+                default is not None and _holds_a_freed_object(default)
+                for default in (*node.args.defaults, *node.args.kw_defaults)
+            )
+        ):
+            # A default argument lives as long as the function object does.
+            sites.append((node.lineno, ast.unparse(node.args)))
     return sorted(sites)
 
 
@@ -204,6 +233,27 @@ def _single_top_level_release(function: ast.FunctionDef, name: str) -> int:
     return function.body.index(released)
 
 
+def _tool_functions_reached(
+    functions: dict[str, ast.FunctionDef], names: set[str]
+) -> set[str]:
+    """``names`` and every tool function they call by name, transitively."""
+    reached: set[str] = set()
+    frontier = list(names)
+    while frontier:
+        name = frontier.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        frontier.extend(
+            call.func.id
+            for call in ast.walk(functions[name])
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id in functions
+        )
+    return reached
+
+
 def _calls_named(tree: ast.AST, name: str) -> list[ast.Call]:
     return [
         node
@@ -239,6 +289,12 @@ def test_the_alias_check_sees_each_way_of_keeping_an_object() -> None:
         "frames.append(base_frame)",
         "for kept in (base_frame,):\n    pass",
         "with release_engine as kept:\n    pass",
+        "kept = copy.copy(result)",
+        "kept = functools.partial(write, result=result)",
+        "kept = dataclasses.replace(outcome, result=result)",
+        "setattr(holder, 'frame', base_frame)",
+        "callbacks.append(lambda frame=base_frame: frame)",
+        "def later(*, engine=release_engine):\n    pass",
     )
     harmless = ("total = base_frame.n('household')", "loss = result.final_loss")
     for source, expected_sites in (
@@ -387,6 +443,8 @@ def test_main_leaves_the_export_reference_frame_to_its_check(builder) -> None:
     }
 
 
+#: The export input-mass check's entry in the national gate battery.
+_EXPORT_CHECK_ENTRY = "us_national_export_input_mass"
 #: The result name ``_export_input_mass_gate`` gives, which the gate battery's
 #: binding renames to the entry's declared gate.
 _EXPORT_CHECK_RESULT_NAME = "input_mass_parity"
@@ -399,126 +457,57 @@ _CHECK_OPTIONS = {
 }
 
 
-def _fake_reference_check(builder, monkeypatch, export_frame, base_frame, verdict):
-    """Stand in ``load_us_frame`` and ``_export_input_mass_gate``.
+class _ReferenceCheckStandIn:
+    """Stands in for ``load_us_frame`` and ``_export_input_mass_gate``.
 
-    Returns the loads, as each path with a weak reference to its frame, and
-    each call of the gate, with ``reference`` saying which frame it got.
+    Records each load, as its path and a weak reference to the frame it
+    returns, and each call of the check, with ``reference`` saying which frame
+    it got. It holds the export and base frames only through weak references,
+    so a test can see whether the code under test keeps them. Setting
+    ``failing`` to ``"load"`` or ``"check"`` makes that step raise.
     """
-    loaded: list[tuple[Path, weakref.ref]] = []
-    gate_calls: list[dict[str, object]] = []
 
-    def load_us_frame(path):
+    def __init__(self, builder, monkeypatch, export_frame, base_frame) -> None:
+        self.loaded: list[tuple[Path, weakref.ref]] = []
+        self.gate_calls: list[dict[str, object]] = []
+        self.failing: str | None = None
+        self.verdict = builder.GateResult(
+            name=_EXPORT_CHECK_RESULT_NAME, passed=True, details={"checked": True}
+        )
+        self._export_frame = weakref.ref(export_frame)
+        self._base_frame = weakref.ref(base_frame)
+        monkeypatch.setattr(builder, "load_us_frame", self.load_us_frame)
+        monkeypatch.setattr(builder, "_export_input_mass_gate", self.gate)
+
+    def load_us_frame(self, path):
+        if self.failing == "load":
+            raise OSError("the reference did not open")
         reference = _LargeObject()
-        loaded.append((Path(path), weakref.ref(reference)))
+        self.loaded.append((Path(path), weakref.ref(reference)))
         return reference
 
-    def gate(candidate, base, *, reference_frame, **options):
-        assert candidate is export_frame and base is base_frame
+    def gate(self, candidate, base, *, reference_frame, **options):
+        assert candidate is self._export_frame() and base is self._base_frame()
         if reference_frame is None:
             reference = None
-        elif reference_frame is loaded[-1][1]():
+        elif reference_frame is self.loaded[-1][1]():
             reference = "loaded"
         else:
             reference = "other"
-        gate_calls.append({"reference": reference, **options})
-        if options["relative_tolerance"] < 0:
+        self.gate_calls.append({"reference": reference, **options})
+        if self.failing == "check":
             raise RuntimeError("the gate failed")
-        return verdict
+        return self.verdict
 
-    monkeypatch.setattr(builder, "load_us_frame", load_us_frame)
-    monkeypatch.setattr(builder, "_export_input_mass_gate", gate)
-    return loaded, gate_calls
-
-
-def test_the_export_input_mass_check_frees_its_reference_when_it_returns(
-    builder, monkeypatch, tmp_path
-) -> None:
-    """The check loads the reference itself and holds it only while it runs,
-    whether it returns, raises, or records its error under earlier failures."""
-    export_frame, base_frame = _LargeObject(), _LargeObject()
-    verdict = builder.GateResult(
-        name=_EXPORT_CHECK_RESULT_NAME, passed=True, details={"checked": True}
-    )
-    loaded, gate_calls = _fake_reference_check(
-        builder, monkeypatch, export_frame, base_frame, verdict
-    )
-    reference_h5 = tmp_path / "reference_populace_us_2024.h5"
-    reference_h5.write_bytes(b"reference bytes")
-    gate_options = {
-        **_CHECK_OPTIONS,
-        "reviewed_exclusions": builder.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
-    }
-
-    def check(reference_h5, *, failures, **overrides):
-        record: dict[str, object] = {"sha256": None}
-        returned = builder._record_export_input_mass_gate(
-            export_frame,
-            base_frame,
-            reference_h5=reference_h5,
-            reference_record=record,
-            terminal_gate_failures=failures,
-            **{**_CHECK_OPTIONS, **overrides},
-        )
-        return returned, record
-
-    returned, record = check(reference_h5, failures=[])
-    assert returned is verdict
-    assert record["sha256"] == builder._sha256(reference_h5)
-    ((loaded_path, reference),) = loaded
-    assert loaded_path == reference_h5
-    assert gate_calls[0] == {"reference": "loaded", **gate_options}
-    gc.collect()
-    assert reference() is None
-
-    # A check that raises on an otherwise-clean run frees its reference once
-    # the error is handled.
-    with pytest.raises(RuntimeError, match="the gate failed") as raised:
-        check(reference_h5, failures=[], relative_tolerance=-1.0)
-    # The traceback holds the check's frame, and so the reference, until the
-    # error is released.
-    del raised
-    gc.collect()
-    assert len(loaded) == 2 and gate_calls[1]["reference"] == "loaded"
-    assert loaded[1][1]() is None
-
-    # Under earlier failures the error becomes one more failure line, and the
-    # reference is freed when the check returns.
-    failures = ["an earlier gate failed"]
-    returned, _ = check(reference_h5, failures=failures, relative_tolerance=-1.0)
-    assert returned is None
-    assert failures == [
-        "an earlier gate failed",
-        "Input mass parity failed: evaluation error under earlier gate failures: "
-        "RuntimeError: the gate failed",
-    ]
-    gc.collect()
-    assert len(loaded) == 3 and loaded[2][1]() is None
-
-    # Without a reference H5 the check compares against base_frame and loads
-    # nothing.
-    returned, record = check(None, failures=[])
-    assert returned is verdict and record["sha256"] is None
-    assert len(loaded) == 3
-    assert gate_calls[-1]["reference"] is None
+    def frames_freed(self) -> bool:
+        gc.collect()
+        return self._export_frame() is None and self._base_frame() is None
 
 
-def test_the_shadow_sees_the_export_reference_and_does_not_keep_it(
-    builder, monkeypatch, tmp_path
-) -> None:
-    """Every real run arms the gate battery's shadow, which evaluates the same
-    check on an evidence context holding the loaded reference. The reference
-    is still freed when the check returns."""
+@contextlib.contextmanager
+def _armed_national_shadow(builder, monkeypatch, tmp_path):
+    """Arm the national scope's gate battery shadow, as every real run does."""
     arm_us_tool_gate_shadows(monkeypatch)
-    export_frame, base_frame = _LargeObject(), _LargeObject()
-    verdict = builder.GateResult(
-        name=_EXPORT_CHECK_RESULT_NAME, passed=True, details={"checked": True}
-    )
-    loaded, gate_calls = _fake_reference_check(
-        builder, monkeypatch, export_frame, base_frame, verdict
-    )
-    reference_h5 = tmp_path / "reference_populace_us_2024.h5"
-    reference_h5.write_bytes(b"reference bytes")
     args = SimpleNamespace(
         out=tmp_path / "out",
         dry_run_gates_report=None,
@@ -534,29 +523,178 @@ def test_the_shadow_sees_the_export_reference_and_does_not_keep_it(
     )
     builder._start_national_gate_shadow(args, release_id="microcosm-us-test")
     try:
-        shadow = current_gate_shadow("us_national_export_input_mass")
+        shadow = current_gate_shadow(_EXPORT_CHECK_ENTRY)
         assert shadow is not None
+        yield shadow
+    finally:
+        builder._finish_national_gate_shadow(stopped_at="test teardown")
+
+
+def _reference_h5(tmp_path) -> Path:
+    path = tmp_path / "reference_populace_us_2024.h5"
+    path.write_bytes(b"reference bytes")
+    return path
+
+
+def test_the_export_input_mass_check_frees_its_reference_when_it_returns(
+    builder, monkeypatch, tmp_path
+) -> None:
+    """The check loads the reference itself and holds it only while it runs,
+    whether it returns, raises, or records its error under earlier failures.
+    It keeps neither the export frame nor base_frame."""
+    frames = {"export": _LargeObject(), "base": _LargeObject()}
+    stand_in = _ReferenceCheckStandIn(
+        builder, monkeypatch, frames["export"], frames["base"]
+    )
+    reference_h5 = _reference_h5(tmp_path)
+    gate_options = {
+        **_CHECK_OPTIONS,
+        "reviewed_exclusions": builder.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+    }
+
+    def check(reference_h5, *, failures):
+        record: dict[str, object] = {"sha256": None}
         returned = builder._record_export_input_mass_gate(
-            export_frame,
-            base_frame,
+            frames["export"],
+            frames["base"],
             reference_h5=reference_h5,
+            reference_record=record,
+            terminal_gate_failures=failures,
+            **_CHECK_OPTIONS,
+        )
+        return returned, record
+
+    returned, record = check(reference_h5, failures=[])
+    assert returned is stand_in.verdict
+    assert record["sha256"] == builder._sha256(reference_h5)
+    ((loaded_path, reference),) = stand_in.loaded
+    assert loaded_path == reference_h5
+    assert stand_in.gate_calls[0] == {"reference": "loaded", **gate_options}
+    gc.collect()
+    assert reference() is None
+
+    # A check that raises on an otherwise-clean run frees its reference once
+    # the error is handled.
+    stand_in.failing = "check"
+    with pytest.raises(RuntimeError, match="the gate failed") as raised:
+        check(reference_h5, failures=[])
+    # The traceback holds the check's frame, and so the reference, until the
+    # error is released.
+    del raised
+    gc.collect()
+    assert len(stand_in.loaded) == 2
+    assert stand_in.gate_calls[1]["reference"] == "loaded"
+    assert stand_in.loaded[1][1]() is None
+
+    # Under earlier failures the error becomes one more failure line, and the
+    # reference is freed when the check returns.
+    failures = ["an earlier gate failed"]
+    returned, _ = check(reference_h5, failures=failures)
+    assert returned is None
+    assert failures == [
+        "an earlier gate failed",
+        "Input mass parity failed: evaluation error under earlier gate failures: "
+        "RuntimeError: the gate failed",
+    ]
+    gc.collect()
+    assert len(stand_in.loaded) == 3 and stand_in.loaded[2][1]() is None
+
+    # Without a reference H5 the check compares against base_frame and loads
+    # nothing.
+    stand_in.failing = None
+    returned, record = check(None, failures=[])
+    assert returned is stand_in.verdict and record["sha256"] is None
+    assert len(stand_in.loaded) == 3
+    assert stand_in.gate_calls[-1]["reference"] is None
+
+    frames.clear()
+    assert stand_in.frames_freed()
+
+
+def test_the_shadow_sees_the_export_reference_and_does_not_keep_it(
+    builder, monkeypatch, tmp_path
+) -> None:
+    """Every real run arms the gate battery's shadow, which evaluates the same
+    check on an evidence context holding the loaded reference. The reference,
+    the export frame and base_frame are still freed when the check returns."""
+    frames = {"export": _LargeObject(), "base": _LargeObject()}
+    stand_in = _ReferenceCheckStandIn(
+        builder, monkeypatch, frames["export"], frames["base"]
+    )
+    with _armed_national_shadow(builder, monkeypatch, tmp_path) as shadow:
+        returned = builder._record_export_input_mass_gate(
+            frames["export"],
+            frames["base"],
+            reference_h5=_reference_h5(tmp_path),
             reference_record={"sha256": None},
             terminal_gate_failures=[],
             **_CHECK_OPTIONS,
         )
-        outcome = shadow.outcome("us_national_export_input_mass")
+        outcome = shadow.outcome(_EXPORT_CHECK_ENTRY)
         differences = shadow.differences()
-    finally:
-        builder._finish_national_gate_shadow(stopped_at="test teardown")
 
-    assert returned is verdict
+    assert returned is stand_in.verdict
     # Today's check and the shadow's evaluation each got the loaded frame.
-    assert [call["reference"] for call in gate_calls] == ["loaded", "loaded"]
+    assert [call["reference"] for call in stand_in.gate_calls] == ["loaded", "loaded"]
     assert outcome is not None and outcome.status is GateStatus.PASSED
     assert differences == ()
-    ((_, reference),) = loaded
+    ((_, reference),) = stand_in.loaded
     gc.collect()
     assert reference() is None
+    frames.clear()
+    assert stand_in.frames_freed()
+
+
+@pytest.mark.parametrize(
+    ("failing", "error", "status", "evaluations"),
+    [
+        # The check never ran: the shadow records it as not run.
+        ("load", "OSError: the reference did not open", GateStatus.EVIDENCE_ABSENT, 0),
+        # Today's check and the shadow's evaluation both hit the error, which
+        # the shadow records once, as the same verdict.
+        ("check", "RuntimeError: the gate failed", GateStatus.FAILED, 2),
+    ],
+)
+def test_the_shadow_records_an_export_check_error_under_earlier_failures(
+    builder, monkeypatch, tmp_path, failing, error, status, evaluations
+) -> None:
+    """Under earlier failures, a reference that does not load or a check that
+    raises becomes one failure line, after the reference's sha256 is
+    recorded, and the shadow records it with no verdict difference."""
+    frames = {"export": _LargeObject(), "base": _LargeObject()}
+    stand_in = _ReferenceCheckStandIn(
+        builder, monkeypatch, frames["export"], frames["base"]
+    )
+    stand_in.failing = failing
+    reference_h5 = _reference_h5(tmp_path)
+    record: dict[str, object] = {"sha256": None}
+    failures = ["an earlier gate failed"]
+    with _armed_national_shadow(builder, monkeypatch, tmp_path) as shadow:
+        returned = builder._record_export_input_mass_gate(
+            frames["export"],
+            frames["base"],
+            reference_h5=reference_h5,
+            reference_record=record,
+            terminal_gate_failures=failures,
+            **_CHECK_OPTIONS,
+        )
+        outcome = shadow.outcome(_EXPORT_CHECK_ENTRY)
+        differences = shadow.differences()
+
+    assert returned is None
+    assert record["sha256"] == builder._sha256(reference_h5)
+    assert failures == [
+        "an earlier gate failed",
+        f"Input mass parity failed: evaluation error under earlier gate failures: "
+        f"{error}",
+    ]
+    assert outcome is not None and outcome.status is status
+    assert differences == ()
+    assert len(stand_in.gate_calls) == evaluations
+    gc.collect()
+    assert all(reference() is None for _, reference in stand_in.loaded)
+    frames.clear()
+    assert stand_in.frames_freed()
 
 
 def test_main_frees_the_release_engine_after_writing_the_dataset(builder) -> None:
@@ -624,37 +762,28 @@ def test_main_drops_the_constraint_matrix_before_rebinding_the_ladder_outcome(
     functions = {
         node.name: node for node in tool.body if isinstance(node, ast.FunctionDef)
     }
-    frontier = [
+    receivers = {
         call.func.id
         for call in ast.walk(main)
         if isinstance(call, ast.Call)
         and call.lineno > dropped_line
         and isinstance(call.func, ast.Name)
         and call.func.id in functions
+        # Passed the result itself or any part of it, such as result.problem.
         and any(
-            isinstance(argument, ast.Name)
-            and argument.id in {"result", "ladder_outcome"}
+            isinstance(name, ast.Name) and name.id in {"result", "ladder_outcome"}
             for argument in _arguments(call)
+            for name in ast.walk(argument)
         )
-    ]
+    }
     assert {
         "_release_gate_failures",
         "_write_npz",
         "_write_release_calibration_diagnostics",
-    } <= set(frontier)
-    reached: set[str] = set()
-    while frontier:
-        name = frontier.pop()
-        if name in reached:
-            continue
-        reached.add(name)
-        frontier.extend(
-            call.func.id
-            for call in ast.walk(functions[name])
-            if isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Name)
-            and call.func.id in functions
-        )
+        "_us_build_record",
+        "_assert_export_matches_calibration",
+    } <= receivers
+    reached = _tool_functions_reached(functions, receivers)
     later_nodes = [
         node for node in ast.walk(main) if getattr(node, "lineno", 0) > dropped_line
     ]
@@ -674,8 +803,10 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
     check = statements.index("assert_release_input_coverage_manifest_current()")
     assert statements[check + 1] == "clear_installed_list_parameter_baseline_cache()"
     assert statements.count("clear_installed_list_parameter_baseline_cache()") == 1
-    # Nothing in _main fills the cache again; the reform-coverage smoke, after
-    # the H5 write, is the next reader.
+    # Nothing in the build fills the cache again: neither _main's later
+    # statements nor the tool functions they call, followed through the
+    # tool's own calls. The reform-coverage smoke, the next reader, runs at
+    # certification, in its own process.
     cleared_line = main.body[check + 1].lineno
     fillers = {
         "assert_release_input_coverage_manifest_current",
@@ -683,13 +814,32 @@ def test_main_clears_the_coverage_cache_after_the_start_up_check(builder) -> Non
         "installed_list_parameter_baseline",
         "_installed_parameter_stages",
     }
+    tool = ast.parse(Path(builder.__file__).read_text())
+    functions = {
+        node.name: node for node in tool.body if isinstance(node, ast.FunctionDef)
+    }
+    later_calls = [
+        call
+        for call in ast.walk(main)
+        if isinstance(call, ast.Call) and call.lineno > cleared_line
+    ]
+    reached = _tool_functions_reached(
+        functions,
+        {
+            call.func.id
+            for call in later_calls
+            if isinstance(call.func, ast.Name) and call.func.id in functions
+        },
+    )
+    for name in sorted(reached - {"_main"}):
+        later_calls.extend(
+            call for call in ast.walk(functions[name]) if isinstance(call, ast.Call)
+        )
     # Called by name or through a module attribute.
     assert [
         f"{call.lineno}: {ast.unparse(call)}"
-        for call in ast.walk(main)
-        if isinstance(call, ast.Call)
-        and _called_name(call) in fillers
-        and call.lineno > cleared_line
+        for call in later_calls
+        if _called_name(call) in fillers
     ] == []
 
 
