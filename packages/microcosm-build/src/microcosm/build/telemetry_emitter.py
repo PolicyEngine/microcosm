@@ -138,11 +138,16 @@ def _packaged_minimum_emitter_version() -> str:
     return version
 
 
-#: The oldest emitter release a build starts: 0.16.0 since 2026-11-16, the
-#: newest release then. 0.16.0 adds collector provenance on a promotion or
-#: withdrawal: once the change lands, it submits ``releases.json`` at the
-#: commit its receipt reports (for a change that writes nothing, the commit
-#: that last changed the file), and the collector points the country's
+#: The oldest emitter release a build starts: 0.17.0 since 2026-11-19, the
+#: newest release then. 0.17.0 includes ``parent_build_manifest.json`` and
+#: ``reform_validation.json``, which a release publication hands over under
+#: the roles ``parent_build_manifest`` and ``reform_validation``, in the
+#: build's ``calibration-diagnostics`` submission to the collector; 0.16.0
+#: leaves both out. 0.16.0, from 2026-11-16, added collector provenance on a
+#: promotion or withdrawal: once the change lands, it submits
+#: ``releases.json`` at the commit its receipt reports (for a change that
+#: writes nothing, the commit that last changed the file), and the collector
+#: points the country's
 #: latest calibration tree at its default release's current build when it
 #: has that build's tree. 0.15.0 accepts that provenance but drops it, so it
 #: would submit no ``releases.json``. 0.15.0, from 2026-11-13, added the
