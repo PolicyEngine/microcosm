@@ -1332,7 +1332,21 @@
           "person.uc_limited_capability_for_WRA",
           "person.uc_limited_capability_for_work",
           "person.cares_for_severely_disabled_person",
-          "benunit.uc_new_claimant_health_element_draw"
+          "benunit.uc_new_claimant_health_element_draw",
+          "household.uk_total_corporate_wealth",
+          "household.uk_total_private_pension_wealth",
+          "household.uk_total_food_and_non_alcoholic_beverages_consumption",
+          "household.uk_total_alcohol_and_tobacco_consumption",
+          "household.uk_total_clothing_and_footwear_consumption",
+          "household.uk_total_housing_water_and_electricity_consumption",
+          "household.uk_total_household_furnishings_consumption",
+          "household.uk_total_health_consumption",
+          "household.uk_total_transport_consumption",
+          "household.uk_total_communication_consumption",
+          "household.uk_total_recreation_consumption",
+          "household.uk_total_education_consumption",
+          "household.uk_total_restaurants_and_hotels_consumption",
+          "household.uk_total_miscellaneous_consumption"
         ],
         "reviewed_exclusions": {
           "household.property_wealth": "policyengine-uk derives property_wealth from main_residence_value, other_residential_property_value and non_residential_property_value; a persisted copy overrides that sum and has no uprating index, so the candidate must drop it (microcosm#1106, the uk-data#543 defect).",

@@ -255,25 +255,11 @@ _UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT = (
     "non-parental caring exception is read from the household grid by "
     "frs_relationships (microcosm#1095; for María's signature)."
 )
-_UK_TOTALS_AT_DEFAULT = (
-    "The UK totals of the components of corporate_sector_wealth and of "
-    "consumption (policyengine-uk 2.178.0, policyengine-uk#2901). Where the "
-    "data carries them, shareholding, consumption_shareholding and the carbon "
-    "tax's corporate part divide by them, so a simulation of part of the UK "
-    "gives each household its share of the UK's totals. The build writes none, "
-    "so they stay 0, and a simulation built from the file divides by its own "
-    "households' weighted totals, as before 2.178.0. The whole released file, "
-    "and each of the build's engine blocks, whose weights the full measure "
-    "scales to the pool's mass (UK_WEIGHT_SHARE_FORMULA_INPUTS), give the "
-    "shares carried totals would give, so no figure the build reads moves. A "
-    "simulation of part of the file, such as one region or an extract, "
-    "allocates each national total over that part alone: business rates, "
-    "corporate Stamp Duty Land Tax, corporate land, consumer-incident tax "
-    "changes and the carbon tax's corporate part are then overstated for its "
-    "households by the ratio of the UK's total to the part's. "
-    "policyengine_uk.utils.uk_totals.add_uk_totals can write them at release "
-    "(microcosm#1095; for María's signature)."
-)
+#: The fourteen uk_total_* inputs (policyengine-uk 2.178.0, policyengine-uk#2901)
+#: are no longer defaults: the release boundary writes the UK totals of the
+#: share keys' components at the file's weights
+#: (microcosm.build.uk_runtime.national_frame.uk_household_totals; María's call
+#: of 19 November 2026).
 _UK_LEFT_EDUCATION_ROUTES_AT_DEFAULT = (
     "Three routes by which a young person who has left education stays a "
     "qualifying young person for part of the year (policyengine-uk 2.178.3): "
@@ -581,25 +567,6 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "from July 2026 the build ends about that many awards that the saving "
         "keeps. 2025, the calibration year, does not move (microcosm#1095; for "
         "María's signature)."
-    ),
-    **dict.fromkeys(
-        (
-            "uk_total_corporate_wealth",
-            "uk_total_private_pension_wealth",
-            "uk_total_food_and_non_alcoholic_beverages_consumption",
-            "uk_total_alcohol_and_tobacco_consumption",
-            "uk_total_clothing_and_footwear_consumption",
-            "uk_total_housing_water_and_electricity_consumption",
-            "uk_total_household_furnishings_consumption",
-            "uk_total_health_consumption",
-            "uk_total_transport_consumption",
-            "uk_total_communication_consumption",
-            "uk_total_recreation_consumption",
-            "uk_total_education_consumption",
-            "uk_total_restaurants_and_hotels_consumption",
-            "uk_total_miscellaneous_consumption",
-        ),
-        _UK_TOTALS_AT_DEFAULT,
     ),
     **dict.fromkeys(
         (
