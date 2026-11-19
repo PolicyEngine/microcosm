@@ -954,6 +954,46 @@ def test_the_stage_adds_bonus_sacrifice_beside_pay(
     assert BONUS_SACRIFICE_OUTPUT in UKSalarySacrificeStageTransform.output_columns()
 
 
+def test_the_spi_bonus_draw_takes_adults_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Since PolicyEngine/microcosm#1663 a dependent child's CHILD.CHEARNS is
+    # their pay. The draw's donors are base-FRS adults and its drawers
+    # SPI-channel adults (BONUS_SACRIFICE_SPI_DRAW), so a paid child is
+    # neither: they no longer join the donors or move the pay cells' edges.
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    seen: dict[str, np.ndarray] = {}
+    real = salary_sacrifice.draw_spi_bonuses
+
+    def spy(**kwargs):
+        seen["donors"] = np.asarray(kwargs["donors"]).copy()
+        seen["spi"] = np.asarray(kwargs["spi"]).copy()
+        return real(**kwargs)
+
+    monkeypatch.setattr(salary_sacrifice, "draw_spi_bonuses", spy)
+    frame = _frame(
+        asked=[1, 0, 0, 0],
+        salary_sacrifice_values=[0.0] * 4,
+        employee_pension=[0.0] * 4,
+        channels=["frs", "frs", "spi", "spi"],
+        employment_income=[60_000.0, 3_000.0, 70_000.0, 3_000.0],
+        dependent_child=[False, True, False, True],
+        bonus=[6_000.0, 0.0, 0.0, 0.0],
+    )
+
+    result = impute_salary_sacrifice(frame, bonus_anchor=_toy_bonus_anchor())
+
+    # The FRS adult is the one donor and the SPI-channel adult the one drawer;
+    # neither child is either.
+    assert seen["donors"].tolist() == [True, False, False, False]
+    assert seen["spi"].tolist() == [False, False, True, False]
+    assert result.frame.table("person")[BONUS_SACRIFICE_OUTPUT].tolist()[1::2] == [
+        0.0,
+        0.0,
+    ]
+
+
 def test_the_stage_refuses_a_frame_without_the_bonus_carrier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

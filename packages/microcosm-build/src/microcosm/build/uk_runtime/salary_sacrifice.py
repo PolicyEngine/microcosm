@@ -772,6 +772,11 @@ def impute_salary_sacrifice(
         "person",
         stage="The salary-sacrifice stage",
     )
+    # Donors and drawers are adults, as BONUS_SACRIFICE_SPI_DRAW says. Since
+    # PolicyEngine/microcosm#1663 a dependent child's CHILD.CHEARNS is their
+    # pay, and a paid child would join the donors with no bonus and move the
+    # pay cells' edges.
+    adult_record = ~dependent_child
     spi_draw = draw_spi_bonuses(
         bonus=bonus_source,
         employment_income=employment_income,
@@ -779,9 +784,12 @@ def impute_salary_sacrifice(
         person_ids=person["person_id"].to_numpy(),
         source_ids=source_ids,
         donors=(
-            channels.eq("frs") & ~clones.astype(bool) & ~support_copies.astype(bool)
+            channels.eq("frs")
+            & ~clones.astype(bool)
+            & ~support_copies.astype(bool)
+            & adult_record
         ).to_numpy(),
-        spi=channels.ne("frs").to_numpy(),
+        spi=(channels.ne("frs") & adult_record).to_numpy(),
     )
     bonus = convert_bonuses_to_bonus_sacrifice(
         bonus=spi_draw.bonus,
