@@ -301,6 +301,44 @@ def test_agi_engine_inputs_are_the_static_closure_of_agi(check) -> None:
     assert check.agi_engine_inputs(_Index()) == {"age", "employment_income_before_lsr"}
 
 
+@dataclass(frozen=True)
+class _EdgeClosure:
+    input_leaves: tuple[str, ...]
+    edges: tuple[tuple[str, str], ...]
+
+
+def test_agi_engine_inputs_stop_at_a_deduction_the_year_does_not_list(check) -> None:
+    """Past an unread deduction the walk reads nothing; a leaf it reaches by
+    another path stays."""
+
+    class _Index:
+        def variable_dependency_closure(self, name):
+            assert name == "adjusted_gross_income"
+            return _EdgeClosure(
+                input_leaves=("age", "employment_income_before_lsr", "takes_up_x"),
+                edges=(
+                    ("adjusted_gross_income", "irs_gross_income"),
+                    ("adjusted_gross_income", "charitable_contributions_ald"),
+                    ("irs_gross_income", "employment_income_before_lsr"),
+                    ("charitable_contributions_ald", "tax_unit_itemizes"),
+                    ("tax_unit_itemizes", "takes_up_x"),
+                    ("tax_unit_itemizes", "age"),
+                    ("irs_gross_income", "age"),
+                ),
+            )
+
+    unread = ("charitable_contributions_ald",)
+    assert check.agi_engine_inputs(_Index(), unread=unread) == {
+        "age",
+        "employment_income_before_lsr",
+    }
+    assert check.agi_engine_inputs(_Index()) == {
+        "age",
+        "employment_income_before_lsr",
+        "takes_up_x",
+    }
+
+
 def _stub_release(frame: Frame) -> SimpleNamespace:
     return SimpleNamespace(_load_staging_frame=lambda path: frame)
 

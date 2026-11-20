@@ -31,7 +31,10 @@ It computes the value R2 stores, with R2's own functions and the engine:
   nulls are on ACS rows only and the AGI does not read it. It refuses every
   other null in a never-default column, as R2's fill step does: a null on a
   donor row, a null in a column that no R2 stage fills, and a null the AGI
-  reads.
+  reads. What the AGI reads is the engine's static dependency closure of
+  ``adjusted_gross_income`` in the check's year: the walk stops at an
+  above-the-line deduction that year's ``gov.irs.ald.deductions`` does not
+  list (:data:`YEAR_LISTED_DEDUCTIONS`), whose formula then reads nothing.
 - With ``--puma-ladder`` it applies R2's own minimum-support moves
   (``plan_minimum_support`` with ``--county-min-support``, default R2's 3)
   and takes the county list from the ladder, as R2 does.
@@ -120,14 +123,57 @@ def _release_tool():
     return module
 
 
-def agi_engine_inputs(index: Any) -> frozenset[str]:
+#: Above-the-line deductions whose formula reads nothing in a year whose
+#: ``gov.irs.ald.deductions`` does not list them. On policyengine-us 2.145.3
+#: the 2020-only charitable deduction for non-itemizers reads the itemization
+#: choice in 2020, and through it the inputs of every itemized deduction,
+#: among them take-up flags R2's stages fill. The static closure follows that
+#: path in every year, so in another year it would refuse those flags' nulls,
+#: which cannot change the AGI then.
+YEAR_LISTED_DEDUCTIONS = ("charitable_contributions_ald",)
+
+
+def unread_deductions(period: int, *, system: Any = None) -> tuple[str, ...]:
+    """The :data:`YEAR_LISTED_DEDUCTIONS` that ``period`` does not list.
+
+    ``system`` is a policyengine-us ``CountryTaxBenefitSystem``; it is built
+    when not given.
+    """
+
+    if system is None:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        system = CountryTaxBenefitSystem()
+    listed = set(system.parameters(f"{int(period)}-01-01").gov.irs.ald.deductions)
+    return tuple(name for name in YEAR_LISTED_DEDUCTIONS if name not in listed)
+
+
+def agi_engine_inputs(index: Any, *, unread: Collection[str] = ()) -> frozenset[str]:
     """The engine inputs ``adjusted_gross_income`` can read (static closure).
 
     ``index`` is a ``PolicyEngineUSVariableMetadataIndex`` (or a stand-in
-    with ``variable_dependency_closure``).
+    with ``variable_dependency_closure``). The walk does not go on past a
+    variable in ``unread`` (:func:`unread_deductions`), whose formula reads
+    nothing in the check's year.
     """
 
-    return frozenset(index.variable_dependency_closure(AGI_VARIABLE).input_leaves)
+    closure = index.variable_dependency_closure(AGI_VARIABLE)
+    unread = frozenset(unread)
+    if not unread:
+        return frozenset(closure.input_leaves)
+    targets: dict[str, set[str]] = defaultdict(set)
+    for consumer, target in closure.edges:
+        targets[consumer].add(target)
+    reached: set[str] = set()
+    pending = [AGI_VARIABLE]
+    while pending:
+        name = pending.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        if name not in unread:
+            pending.extend(targets[name])
+    return frozenset(reached.intersection(closure.input_leaves))
 
 
 def hold_back_null_runtime_columns(
@@ -214,22 +260,26 @@ def household_agi(
     """
 
     import build_us_fiscal_refresh_release as fiscal
-    from policyengine_us import Microsimulation
+    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
     from microcosm.frame.adapters.policyengine_us import (
         PolicyEngineUSVariableMetadataIndex,
     )
 
     period = release.PERIOD if period is None else int(period)
+    system = CountryTaxBenefitSystem()
+    unread = unread_deductions(period, system=system)
     projected, formula_owned = release.project_input_only(frame, period=period)
     projected, held = hold_back_null_runtime_columns(
         projected,
         never_default_filled=release.NEVER_DEFAULT_FILLED,
         stage_filled=reviewed_fills.stage_filled_never_default(release),
-        agi_inputs=agi_engine_inputs(PolicyEngineUSVariableMetadataIndex()),
+        agi_inputs=agi_engine_inputs(
+            PolicyEngineUSVariableMetadataIndex(), unread=unread
+        ),
     )
     fills, drift = release.fill_reviewed_nulls(
-        projected, summary_path, manifest_path=None, period=period
+        projected, summary_path, manifest_path=None, period=period, system=system
     )
     household_ids = projected.table("household")["household_id"].to_numpy()
     n_households = len(household_ids)
@@ -277,6 +327,7 @@ def household_agi(
         "chunks": chunks,
         "formula_owned_columns_held_back": sum(len(c) for c in formula_owned.values()),
         "null_runtime_columns_held_back": held,
+        "agi_closure_stops_at": list(unread),
         "reviewed_fill_columns": len(fills),
         "reviewed_fill_count_drift": len(drift),
     }

@@ -100,8 +100,11 @@ def _frame(*, with_nulls: bool) -> Frame:
 
 def test_no_column_an_r2_stage_fills_is_an_agi_input() -> None:
     """The check holds back a null stage-filled column on ACS rows because
-    the AGI does not read it; an engine release whose AGI read one would make
-    the check refuse a staging file R2 accepts (review of #1660)."""
+    the AGI does not read it in R2's year; an engine release whose AGI read
+    one would make the check refuse a staging file R2 accepts (review of
+    #1660)."""
+
+    from policyengine_us import CountryTaxBenefitSystem
 
     from microcosm.frame.adapters.policyengine_us import (
         PolicyEngineUSVariableMetadataIndex,
@@ -109,12 +112,61 @@ def test_no_column_an_r2_stage_fills_is_an_agi_input() -> None:
 
     check = _check()
     release = check._release_tool()
-    inputs = check.agi_engine_inputs(PolicyEngineUSVariableMetadataIndex())
+    unread = check.unread_deductions(release.PERIOD, system=CountryTaxBenefitSystem())
+    inputs = check.agi_engine_inputs(
+        PolicyEngineUSVariableMetadataIndex(), unread=unread
+    )
     stage_filled = check.reviewed_fills.stage_filled_never_default(release)
 
     assert "employment_income_before_lsr" in inputs
     assert stage_filled
     assert inputs.isdisjoint(column for _entity, column in stage_filled)
+
+
+def test_the_closure_stops_only_at_a_deduction_whose_year_does_not_list_it() -> None:
+    """policyengine-us 2.145.3's 2020 charitable deduction for non-itemizers
+    reads the itemization choice in 2020 alone: 2020 lists it and it lowers
+    AGI there, while in R2's year it is not listed and is 0, so the walk may
+    stop at it."""
+
+    from policyengine_us import CountryTaxBenefitSystem, Simulation
+
+    from microcosm.frame.adapters.policyengine_us import (
+        PolicyEngineUSVariableMetadataIndex,
+    )
+
+    check = _check()
+    release = check._release_tool()
+    system = CountryTaxBenefitSystem()
+    assert check.unread_deductions(2020, system=system) == ()
+    unread = check.unread_deductions(release.PERIOD, system=system)
+    assert unread == ("charitable_contributions_ald",)
+
+    index = PolicyEngineUSVariableMetadataIndex()
+    static = check.agi_engine_inputs(index)
+    assert check.agi_engine_inputs(index, unread=unread) <= static
+
+    for year, deduction in ((2020, 300.0), (release.PERIOD, 0.0)):
+        y = str(year)
+        members = {"members": ["filer"]}
+        simulation = Simulation(
+            situation={
+                "people": {
+                    "filer": {
+                        "age": {y: 40},
+                        "employment_income": {y: 50_000},
+                        "charitable_cash_donations": {y: 1_000},
+                    }
+                },
+                "tax_units": {"tax_unit": members},
+                "spm_units": {"spm_unit": members},
+                "families": {"family": members},
+                "marital_units": {"marital_unit": members},
+                "households": {"household": {**members, "state_code_str": {y: "TX"}}},
+            }
+        )
+        got = simulation.calculate("charitable_contributions_ald", year)
+        assert float(got[0]) == deduction, year
 
 
 def test_household_agi_counts_only_heads_and_spouses_as_the_soi_row_does(
