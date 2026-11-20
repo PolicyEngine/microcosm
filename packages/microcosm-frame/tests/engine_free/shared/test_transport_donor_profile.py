@@ -1524,6 +1524,18 @@ def test_the_shared_reader_names_no_country_and_no_donor_digest():
         'NODE = "us.create"',
         'NOTE = "New Zealand rules"',
         'NOTE = f"{left}-uk-{right}"',
+        # Node ids in any letter case.
+        'NODE = "BE.create"',
+        'NODE = "Nz.create"',
+        # A hex run of eight or more letters, and a 64-character run of
+        # digits or of letters alone.
+        'KNOWN = "deadbeef"',
+        f'KNOWN = "{"1" * 64}"',
+        f'KNOWN = "{"ab" * 32}"',
+        # "gb" as a whole string, and "gbr" anywhere.
+        'COUNTRY = "GB"',
+        'COUNTRY = "gb"',
+        'NOTE = "GBR rules"',
     ],
 )
 def test_the_literal_guard_finds_a_planted_country_or_digest(planted):
@@ -1539,6 +1551,14 @@ def test_the_literal_guard_finds_a_planted_country_or_digest(planted):
         'NAME = "populace-us-cps-asec"',
         'DAY = "20260101"',
         'COLUMN = "A_ENRLW"',
+        # Runs of fewer than 64 digits are dates and counts.
+        'COUNT = "12345678"',
+        f'COUNT = "{"9" * 63}"',
+        # "GB" in prose is a unit.
+        'NOTE = "Memory budget of 32 GB"',
+        # The donor's own code passes, even in a branch: the module
+        # docstring names this as something the heuristic does not catch.
+        'chosen = country == "us"',
     ],
 )
 def test_the_literal_guard_passes_ordinary_strings(allowed):

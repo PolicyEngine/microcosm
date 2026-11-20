@@ -1,9 +1,12 @@
 """Frozen CREATE baselines: canonical bytes with no donor profile set.
 
-Each scenario builds a toy donor or a composed toy graph, runs CREATE on its
-declared parameters and sources, and loads the same donor through the donor
-codec. :func:`scenario_bytes` returns the canonical bytes of CREATE's frame
-and receipt and of the codec's frame. The committed fixtures under
+Each scenario builds a toy donor or a composed toy graph and runs CREATE on
+its declared parameters and sources. Every scenario except ``toy_v2`` also
+loads the same donor through the donor codec; ``toy_v2`` runs
+``transport.create@2`` on a donor written by the same call as ``toy``'s, and
+its ``codec`` field is null. :func:`scenario_bytes` returns the canonical
+bytes of CREATE's frame and receipt and, where the scenario loads it, of the
+codec's frame. The committed fixtures under
 ``packages/microcosm-build/tests/fixtures/transport_create_baseline/`` were
 captured at the commit their provenance file names, before CREATE accepted a
 donor profile, so a test that recomputes them shows that a graph setting no

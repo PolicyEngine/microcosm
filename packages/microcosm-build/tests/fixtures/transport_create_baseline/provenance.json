@@ -2,7 +2,7 @@
   "base_commit": "7ff5a26bc203c91a6f259d6efb62001aec0405a0",
   "capture_command": "python -m test_support.microcosm_build.transport_create_baseline packages/microcosm-build/tests/fixtures/transport_create_baseline",
   "capture_module": "test_support/microcosm_build/transport_create_baseline.py",
-  "capture_module_sha256": "0743de62aa8208dbc00fc57a7e1bc43ad0e7f4d8a24786bc88ca31b489e300a0",
+  "capture_module_sha256": "6861491acb7dc8afade146561374956d8cdef42920b457f8c8206e26308febcc",
   "captured": "2026-11-19",
   "environment": {
     "numpy": "2.4.6",
@@ -21,5 +21,5 @@
   "kind": "transport_create_no_profile_baseline",
   "reproduction": "The capture module with this SHA-256, run with the base commit's microcosm/frame/transport.py and microcosm/build/transport/population_kernels.py in place of the edited ones, writes every file listed here byte for byte.",
   "schema_version": 1,
-  "scope": "Captured on the unedited base commit, before CREATE accepted a donor_profile. Each file holds the canonical bytes of transport.create's frame and receipt on its declared params and sources, and of the populace-us-h5-v1 codec's frame, for one toy donor or composed toy graph. No file holds real donor data."
+  "scope": "Captured on the unedited base commit, before CREATE accepted a donor_profile. Each file holds the canonical bytes of transport.create's frame and receipt on its declared params and sources, for one toy donor or composed toy graph. Four files (toy, toy_profile_columns, composed and nz_toy) also hold the populace-us-h5-v1 codec's frame of the same donor. toy_v2 runs transport.create@2 on a donor written by the same call as toy's, and its codec field is null. No file holds real donor data."
 }
