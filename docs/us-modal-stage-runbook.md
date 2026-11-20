@@ -1378,7 +1378,10 @@ CONTEXT=./modal-runs/$R/stage_run_context.json
 LINEAGE=./modal-runs/$R/compare-lineage.json
 (
   set -euo pipefail
-  if [ -e "$RUN/base-sup" ] || [ -e "$RUN/base-out" ]; then
+  # -L refuses a dangling link, which -e reports as absent. The tests name
+  # each path, so the guard assigns no variable.
+  if [ -e "$RUN/base-sup" ] || [ -L "$RUN/base-sup" ] ||
+    [ -e "$RUN/base-out" ] || [ -L "$RUN/base-out" ]; then
     echo "refusing: $RUN already has base-sup or base-out; never overwrite a base" >&2
     exit 1
   fi
