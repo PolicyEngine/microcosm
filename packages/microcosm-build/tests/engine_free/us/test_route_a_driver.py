@@ -1888,9 +1888,79 @@ def test_a_build_rerun_with_other_settings_is_refused_until_rebuild() -> None:
         '[ "$RELEASE_PENDING" = 0 ]; then'
     )
     check = source.index('release_ran "${RELEASE_ARGV[@]}"')
+    inputs = source.index("inputs_now=$(release_inputs_key)")
     handoff = source.index('if [ "$ROUTE_A_CERTIFY" != 1 ]; then\n  "$PY" -')
-    assert rid < guard < check < handoff
-    assert "rerun with --rebuild" in source[check:handoff]
+    assert rid < guard < check < inputs < handoff
+    assert "rerun with --rebuild" in source[check:inputs]
+    assert "Rerun with --rebuild" in source[inputs:handoff]
+    # The key the guard compares is the one the release was launched with,
+    # and the dry run's key carries it too.
+    launched = source.index('echo "$INPUTS_KEY" > "$RUN/release-inputs.key"')
+    config = source.index('write_config release 110 "$RELEASE_RAM_GIB"')
+    assert config < launched < rid
+    assert '"inputs=$INPUTS_KEY"' in source
+
+
+def _inputs_key(tmp_path: Path, **changes: str) -> str:
+    """release_inputs_key over a fixture's inputs, with ``changes`` applied."""
+    reference = tmp_path / "reference.h5"
+    if not reference.exists():
+        reference.write_bytes(b"reference")
+    settings = {
+        "STORAGE": "/fixture/storage",
+        "EDU": "/fixture/edu",
+        "BASE_LEDGER_FACTS": "/fixture/feed.jsonl",
+        "BASE_LEDGER_FACTS_SHA": "a" * 64,
+        "LADDER": "/fixture/ladder.npz",
+        "LADDER_SHA": "b" * 64,
+        "LADDER_BYTES": "1",
+        "FEED": "/fixture/feed.jsonl",
+        "FEED_SHA": "a" * 64,
+        "FEED_BYTES": "1",
+        "TAIL": "/fixture/tail.json",
+        "QRF_TAIL_EXCLUSIONS_SHA": "c" * 64,
+        "SSI": "/fixture/ssi.json",
+        "SSI_SHA": "d" * 64,
+        "SCF": "/fixture/scf.dta",
+        "BASE_SHA": "e" * 64,
+        "EXPORT_MASS_REF_H5": str(reference),
+    }
+    for name in (
+        "ASEC_2025_SHA",
+        "ASEC_2024_SHA",
+        "ASEC_2023_SHA",
+        "ASEC_EDU_2023_SHA",
+        "ASEC_EDU_2024_SHA",
+        "ASEC_EDU_2025_SHA",
+    ):
+        settings[name] = "f" * 64
+    settings.update(changes)
+    result = _run_functions(
+        ["input_rows", "sha_of", "release_inputs_key"],
+        settings,
+        "release_inputs_key\n",
+    )
+    assert result.returncode == 0, result.stderr
+    key = result.stdout.strip()
+    assert re.fullmatch(r"[0-9a-f]{64}", key), key
+    return key
+
+
+def test_the_rerun_guard_keys_the_files_the_release_reads(tmp_path: Path) -> None:
+    """The rerun guard compares the digests of what the release reads by
+    path beside its command: a QRF tail register edited in place with a new
+    QRF_TAIL_EXCLUSIONS_SHA, an export reference replaced in place or a
+    rebuilt base changes the key; a base-only input does not (review of
+    #1676)."""
+    same = _inputs_key(tmp_path)
+    assert _inputs_key(tmp_path) == same
+    assert _inputs_key(tmp_path, QRF_TAIL_EXCLUSIONS_SHA="9" * 64) != same
+    assert _inputs_key(tmp_path, BASE_SHA="8" * 64) != same
+    assert _inputs_key(tmp_path, SSI_SHA="7" * 64) != same
+    # The base's own inputs belong to the base, which --rebuild keeps.
+    assert _inputs_key(tmp_path, LADDER_SHA="6" * 64) == same
+    (tmp_path / "reference.h5").write_bytes(b"replaced in place")
+    assert _inputs_key(tmp_path) != same
 
 
 def _rebuild(
@@ -2056,6 +2126,52 @@ def test_the_probe_reads_its_export_and_reference_from_the_build_record(
         ]
 
 
+@pytest.mark.parametrize(
+    ("register", "reference"),
+    [
+        (None, True),
+        ("this build", False),
+        ("no record", False),
+        ("another build", True),
+        ("unreadable", False),
+    ],
+)
+def test_a_build_whose_certification_failed_is_no_reference_to_the_probe(
+    tmp_path: Path, register: str | None, reference: bool
+) -> None:
+    """A build that passed its gates and then failed certification is no
+    reference (certification_failures.json), so the probe gets its fit and
+    target surface instead; only attempts on this build's record count
+    (review of #1676)."""
+    rel_out = _probe_record(tmp_path)
+    record_path = rel_out / "build_record.json"
+    record = json.loads(record_path.read_text())
+    record["record_sha256"] = "r" * 64
+    record_path.write_text(json.dumps(record))
+    attempt = {"failures": ["Reform coverage smoke failed: x"]}
+    contents = {
+        "this build": json.dumps(
+            {"attempts": [{**attempt, "record_sha256": "r" * 64}]}
+        ),
+        "no record": json.dumps({"attempts": [attempt]}),
+        "another build": json.dumps(
+            {"attempts": [{**attempt, "record_sha256": "o" * 64}]}
+        ),
+        "unreadable": "{",
+    }
+    if register is not None:
+        (rel_out / "certification_failures.json").write_text(contents[register])
+    result = _run_functions(
+        ["probe_record_arguments"],
+        {"PY": sys.executable, "REL_OUT": str(rel_out)},
+        "probe_record_arguments 0\n",
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert ("--reference-release-dir" in lines) is reference
+    assert ("--calibration-diagnostics" in lines) is not reference
+
+
 def test_the_probe_runs_only_on_an_accepted_build_and_stops_after_it() -> None:
     """--probe needs an accepted build, hashes no input, runs its two stages
     after the build is identified and before any certification, and stops;
@@ -2174,3 +2290,155 @@ def test_the_flag_checker_refuses_a_source_without_the_named_parser() -> None:
     )
     assert present.returncode == 0, present.stderr
     assert run("x = 1\n").returncode == 0
+
+
+def test_check_commit_refuses_a_driver_that_is_not_the_build_commits(
+    tmp_path: Path,
+) -> None:
+    """The driver loads itself and its helpers from the checkout it runs in,
+    so check_commit compares that copy with tools/route_a at the build commit
+    and refuses another commit's driver: main's has no STOP_BEFORE_RELEASE and
+    no --probe (review of #1676)."""
+    own = {"route_a.sh": "echo driver\n", "README.md": "readme\n"}
+    main, sha = _tiny_main(
+        tmp_path / "with-driver",
+        {f"tools/route_a/{name}": text for name, text in own.items()},
+    )
+    # run_driver_settings runs its copy of the driver from tmp_path.
+    for name, text in own.items():
+        (tmp_path / name).write_text(text)
+
+    def lines(main_repo: Path, commit: str) -> list[str]:
+        result = run_driver_settings(
+            tmp_path,
+            {"MAIN": str(main_repo)},
+            _report_lines(f"\ncheck_commit {commit} {commit}\n"),
+        )
+        assert result.returncode == 0, result.stderr.decode()
+        return result.stdout.decode().splitlines()
+
+    assert f"NOTE this driver is the build commit's own (tools/route_a at {sha})" in (
+        lines(main, sha)
+    )
+    (tmp_path / "README.md").write_text("another commit's readme\n")
+    [blocker] = [
+        line for line in lines(main, sha) if line.startswith("BLOCKER this driver")
+    ]
+    assert "differs from tools/route_a at" in blocker
+    assert blocker.split("in:")[1].split(".")[0].split() == ["README"]
+    assert f"git checkout --detach {sha}" in blocker
+    bare, bare_sha = _tiny_main(tmp_path / "without-driver", {"x.txt": "x\n"})
+    assert any(
+        line.startswith("BLOCKER") and "has no tools/route_a" in line
+        for line in lines(bare, bare_sha)
+    )
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_the_export_reference_is_read_before_any_stage(
+    tmp_path: Path, present: bool
+) -> None:
+    """The rerun key hashes the export input-mass reference, so the input
+    check reads it first, at --resolve and before the base, with no pin to
+    match: a file it cannot read stops the run in minutes, not after the
+    base (review of #1676)."""
+    reference = tmp_path / "reference.h5"
+    if present:
+        reference.write_bytes(b"reference")
+    # RUN_ROOT under tmp_path: the driver writes inputs.resolved.json there.
+    run_root = tmp_path / "root"
+    result = run_driver_settings(
+        tmp_path,
+        {"EXPORT_MASS_REF_H5": str(reference), "RUN_ROOT": str(run_root)},
+        "\nverify_inputs\n"
+        'for x in ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}; do printf \'PROBLEM %s\\n\' "$x"; done\n'
+        'cat "$RUN_ROOT/inputs.resolved.json"\n',
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    out = result.stdout.decode()
+    problems = [
+        line
+        for line in out.splitlines()
+        if line.startswith("PROBLEM export_input_mass_reference")
+    ]
+    resolved = json.loads(out[out.index("{") :])
+    [row] = [
+        row
+        for row in resolved["inputs"]
+        if row["role"] == "export_input_mass_reference"
+    ]
+    assert row["expected_sha256"] == "-"
+    if present:
+        assert problems == []
+        assert row["status"] == "ok"
+        assert row["observed_sha256"] == hashlib.sha256(b"reference").hexdigest()
+    else:
+        assert problems == [f"PROBLEM export_input_mass_reference missing: {reference}"]
+        assert row["status"] == "missing"
+
+
+def _rerun_guard(
+    tmp_path: Path, *, ran: list[str], key_file: str | None, key_now: str
+) -> subprocess.CompletedProcess[str]:
+    """Run the driver's build-mode rerun guard on an accepted release."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    start = source.index(
+        'if [ "$MODE" = run ] && [ "$ROUTE_A_CERTIFY" != 1 ] && '
+        '[ "$RELEASE_PENDING" = 0 ]; then\n'
+    )
+    end = source.index("\nfi\n", start) + len("\nfi\n")
+    run_root = tmp_path / "run-root"
+    run = run_root / "run-abc"
+    (run / "release-sup").mkdir(parents=True)
+    (run / "release-sup" / "COMMAND.json").write_text(json.dumps({"argv": ran}))
+    if key_file is not None:
+        (run / "release-inputs.key").write_text(key_file + "\n")
+    settings = {
+        "MODE": "run",
+        "ROUTE_A_CERTIFY": "0",
+        "RELEASE_PENDING": "0",
+        "RUN": str(run),
+        "RUN_ROOT": str(run_root),
+        "RID": "populace-us-2024-x",
+        "PY": sys.executable,
+        "KEY_NOW": key_now,
+        "LOG": str(run_root / "route_a.log"),
+    }
+    helpers = source[source.index("log() {") : source.index("free_bytes() {")]
+    script = "set -u\n" + "".join(
+        f"{key}={shlex.quote(value)}\n" for key, value in settings.items()
+    )
+    script += helpers + _function("release_ran") + "\n"
+    script += "release_command() { RELEASE_ARGV=(/w/python -B release.py --seed 0); }\n"
+    script += "release_inputs_key() { printf '%s\\n' \"$KEY_NOW\"; }\n"
+    script += source[start:end] + "echo PASSED\n"
+    return subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=30
+    )
+
+
+def test_the_rerun_guard_compares_the_command_and_the_inputs(tmp_path: Path) -> None:
+    """Run, not read: a build-mode rerun on an accepted release passes only
+    when both the command and the release inputs' key are the ones the
+    release was launched with, and names --rebuild otherwise (review of
+    #1676)."""
+    command = ["/w/python", "-B", "release.py", "--seed", "0"]
+    same = _rerun_guard(tmp_path / "a", ran=command, key_file="k1", key_now="k1")
+    assert same.returncode == 0, same.stdout + same.stderr
+    assert "PASSED" in same.stdout
+
+    moved = _rerun_guard(tmp_path / "b", ran=command, key_file="k1", key_now="k2")
+    assert moved.returncode == 1
+    assert "other release inputs" in moved.stdout
+    assert "Rerun with --rebuild" in moved.stdout
+    assert (tmp_path / "b" / "run-root" / "ROUTE_A_FAILED").is_file()
+
+    other = _rerun_guard(
+        tmp_path / "c", ran=[*command[:-1], "1"], key_file="k1", key_now="k1"
+    )
+    assert other.returncode == 1
+    assert "other release settings" in other.stdout
+
+    older = _rerun_guard(tmp_path / "d", ran=command, key_file=None, key_now="k1")
+    assert older.returncode == 0, older.stdout + older.stderr
+    assert "release inputs not compared" in older.stdout

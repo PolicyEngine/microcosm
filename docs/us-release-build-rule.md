@@ -205,11 +205,15 @@ A US national build and its certification are two steps (microcosm#1585 item
   certification's counts as a failed build for every reference check
   above, until a certification ships it.
 - **A build that stopped before its record.** The build writes
-  `build_incomplete.json` in its `--out` just before its H5 and removes it
-  once its record is written. A build that stopped in between, at a full
-  disk during the calibration NPZ write or the base copy for example,
-  leaves an H5 that no record pins, and the file makes it no reference
-  either.
+  `build_incomplete.json` in its `--out` as it creates it, before any file
+  there, and removes it once its record is written. A build that stopped in
+  between, at a full disk during the calibration NPZ write or the base copy
+  for example, leaves diagnostics or an H5 that no record pins, and the file
+  makes them no reference either.
+- **One build's certification attempts.** Each attempt in
+  `certification_failures.json` names the build and its record's digest. A
+  later build into the same `--out` writes a new record, so the earlier
+  build's attempts no longer count, and the next attempt drops them.
 - **What the written file fails.** A written-file stored-input failure or an
   export-audit error after the H5 write is recorded with the release-gate
   failures, on a green build too, so the H5 never stands without a record

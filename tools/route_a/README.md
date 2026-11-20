@@ -97,7 +97,12 @@ All machine locations come from the settings file:
 | `AGENT_SECRET` | Credential helper executable used by the release wrapper |
 | `EXPORT_MASS_REF_H5`, `QRF_TAIL_EXCLUSIONS` | Export-mass reference and optional tail exclusion register |
 
-Choose a pushed `COMMIT`; the example deliberately leaves it empty. By default
+Choose a pushed `COMMIT`; the example deliberately leaves it empty, and run
+the driver from a checkout of it: the driver loads itself and its helpers
+from the directory it runs in, and the commit check refuses a copy that
+differs from `tools/route_a/` at `COMMIT`. With `EXPORT_MASS_REF_H5` set,
+the input check also reads that file, which no setting pins, so a
+reference it cannot read stops the run before the base. By default
 the build commit must be reachable from `origin/main`, carry the SPM role stage,
 pin the expected feed and ASEC inputs, carry the expected district crosswalk,
 and declare the driver's base and release flags. `PREFLIGHT_COMMIT` defaults to
@@ -281,7 +286,7 @@ overnight chain is alive, unless `EARLY_START_AFTER_HEAVY=1` and its log records
 | `release-dry-run` | With `ROUTE_A_DRY_RUN=1`, the default, and before the release starts: runs `tools/dry_run_us_release_gates.py --release-config <run>/release-config.json`, which replays the release's base load, input stages and pre-solve gates and grades every data-dependent register at base weights, with the release stage's launcher. Accepts 0 (clean) or 2 (AT-RISK only); 1, a certain failure, stops the run before the release. It holds for the release settings it checked: `<run>/release-dry-run.key` is their digest without the build ID, and other settings dry-run again. |
 | `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Accepts exit 0, or 3 for a build that failed its release gates once its H5 and record were written, and requires `<release-out>/build_record.json`. Staging telemetry is enabled for this stage. Without `--certify` the run ends here with `ROUTE_A_BUILT.json`. |
 | `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>`, with `--evidence-release` (and `--evidence-failure-owners`) when `ROUTE_A_CERTIFY_TIER=evidence`; the commit check, before any stage and on every run, since each build is certified at its commit later, requires `tools/certify_us_national_build.py` and the certification parser at the build commit, declaring them. Certification stages where its build staged, in a run of its own, so with `ROUTE_A_STAGING=1` it gets the release stage's staging credential; with `ROUTE_A_STAGING=0` it runs as the release stage does, online without the HF credential variables, and with `--no-staging`. Requires exit 0 and `<release-out>/releases/<release>/release_manifest.json`, `<release>` being `microcosm-us-2024-national` or, at the evidence tier, `microcosm-us-2024-evidence`. |
-| `probe-sample`, `probe` | With `--probe` only, on an accepted build: `tools/sample_us_export_households.py` draws a 5% household sample of the written H5 into `<run>/probe/subsample`, and `tools/probe_us_post_export.py` runs certification's post-export checks on it into `<run>/probe/report`, without the QRF tail and stored-input stages. A build that passed its gates is the probe's reference (its build directory); a failed build is none, so its fit and its target surface come from its record. Both require exit 0, and the run then stops. |
+| `probe-sample`, `probe` | With `--probe` only, on an accepted build: `tools/sample_us_export_households.py` draws a 5% household sample of the written H5 into `<run>/probe/subsample`, and `tools/probe_us_post_export.py` runs certification's post-export checks on it into `<run>/probe/report`, without the QRF tail and stored-input stages. A build that passed its gates is the probe's reference (its build directory). A failed build is none, nor is one whose certification found gates failing (`certification_failures.json`, counting only attempts on its own record), so their fit and target surface come from the record. Both require exit 0, and the run then stops. |
 | `preflight-release` | Repeats the release-gate preflight with the candidate's release manifest. Accepts 0 or 2. |
 | `publisher-preflight` | Runs `microcosm-publish-release-build --preflight-only` against the release directory certification placed the build in, `<release-out>/releases/<release>`, and the artifacts. Requires exit 0. The command checks the build with its release contract (the evidence contract for the evidence release), prints what it would publish, and starts no emitter. It takes no `--extra-file`: the command publishes every artifact the release manifest lists, including the two SCF education-debt fit tables of a release run with `--scf-education-debt` in `RELEASE_EXTRA_ARGS`. |
 
@@ -330,6 +335,11 @@ release ID while retaining the shared checkpoint root. A rerun without
 `--certify` or `--probe` keeps an accepted build only for the release
 settings it was built with: with others, which its
 `release-sup/COMMAND.json` tells apart, it stops and names `--rebuild`.
+It also compares `<run>/release-inputs.key`, the digest of what the
+release read by path when it was launched (the base H5, the release's
+pinned inputs and the export input-mass reference), so a file replaced
+in place under the same path stops it too. The dry run's settings key
+carries the same digest.
 `--rebuild` moves the accepted release, its probe and its
 `ROUTE_A_BUILT.json` aside (`*.set-aside-<time>`), so the release builds again on the accepted base
 under a new ID, and the dry run's settings key decides whether the dry run
