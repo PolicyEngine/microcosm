@@ -828,10 +828,13 @@ def test_every_real_create_column_is_a_canonical_concept_or_unit_output():
     # The one dtype gap: the concept schema says the reference person is never
     # null, but CREATE emits nullable Int64. Graph compile checks dtypes on
     # rewrites, row masks and the mass partition (microcosm.graph.decl), and
-    # the NZ graph compiles with this gap; a new gap fails here.
+    # the NZ graph compiles with this gap; a new gap, or another dtype in
+    # this one, fails here.
     assert {
-        key for key in real.keys() & canonical.keys() if real[key] != canonical[key]
-    } == {("household", "reference_person_id")}
+        key: real[key]
+        for key in real.keys() & canonical.keys()
+        if real[key] != canonical[key]
+    } == {("household", "reference_person_id"): "Int64"}
 
 
 def test_the_create_inventory_fixture_is_the_pinned_donors_stored_payload():
