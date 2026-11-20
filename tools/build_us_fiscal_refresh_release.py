@@ -19648,11 +19648,13 @@ def _record_certification_failures(
     :data:`US_CERTIFICATION_FAILURES_FILENAME` sits beside the build record,
     which never changes once written, and gains one attempt per
     certification that finds gates failing, at either tier. Each attempt
-    names the build and its record's digest, and an earlier build's attempts
-    in the same --out are dropped, so a later build there inherits none
-    (review of #1681). Written before the certified tier refuses, or the
-    evidence tier checks owners, so the build is no reference while no
-    certification has shipped it (:func:`_failed_build_holding`).
+    names the build and its record's digest. An earlier build's attempts in
+    the same --out are dropped, so a later build there inherits none (review
+    of #1681), and the register keeps what its readers count: this record's
+    attempts and any that name no record (review of #1676). Written before
+    the certified tier refuses, or the evidence tier checks owners, so the
+    build is no reference while no certification has shipped it
+    (:func:`_failed_build_holding`).
     """
 
     path = Path(record.release_root) / US_CERTIFICATION_FAILURES_FILENAME
@@ -19665,7 +19667,7 @@ def _record_certification_failures(
                 attempt
                 for attempt in payload["attempts"]
                 if isinstance(attempt, dict)
-                and attempt.get("record_sha256") == record_sha256
+                and attempt.get("record_sha256") in (None, record_sha256)
             ]
     except (OSError, ValueError):
         pass

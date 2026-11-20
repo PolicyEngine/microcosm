@@ -137,7 +137,16 @@ Why each one differs from the example:
 
 ## 4. Steps
 
-Run each command from the `MAIN` checkout.
+Run each command from the `MAIN` checkout, checked out at `COMMIT`. The
+driver runs from the checkout it is started in, so it must be that commit's
+own: `main`'s has no `STOP_BEFORE_RELEASE` and no `--probe`. Before step 1:
+
+```bash
+git fetch origin && git checkout --detach <the COMMIT SHA>
+```
+
+`route_a.env` is not tracked, so it stays as it is. Step 1 refuses a driver
+that differs from the build commit's `tools/route_a/`.
 
 ### Step 1: resolve (minutes)
 

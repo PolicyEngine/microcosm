@@ -2290,3 +2290,153 @@ def test_the_flag_checker_refuses_a_source_without_the_named_parser() -> None:
     )
     assert present.returncode == 0, present.stderr
     assert run("x = 1\n").returncode == 0
+
+
+def test_check_commit_refuses_a_driver_that_is_not_the_build_commits(
+    tmp_path: Path,
+) -> None:
+    """The driver loads itself and its helpers from the checkout it runs in,
+    so check_commit compares that copy with tools/route_a at the build commit
+    and refuses another commit's driver: main's has no STOP_BEFORE_RELEASE and
+    no --probe (review of #1676)."""
+    own = {"route_a.sh": "echo driver\n", "README.md": "readme\n"}
+    main, sha = _tiny_main(
+        tmp_path / "with-driver",
+        {f"tools/route_a/{name}": text for name, text in own.items()},
+    )
+    # run_driver_settings runs its copy of the driver from tmp_path.
+    for name, text in own.items():
+        (tmp_path / name).write_text(text)
+
+    def lines(main_repo: Path, commit: str) -> list[str]:
+        result = run_driver_settings(
+            tmp_path,
+            {"MAIN": str(main_repo)},
+            _report_lines(f"\ncheck_commit {commit} {commit}\n"),
+        )
+        assert result.returncode == 0, result.stderr.decode()
+        return result.stdout.decode().splitlines()
+
+    assert f"NOTE this driver is the build commit's own (tools/route_a at {sha})" in (
+        lines(main, sha)
+    )
+    (tmp_path / "README.md").write_text("another commit's readme\n")
+    [blocker] = [
+        line for line in lines(main, sha) if line.startswith("BLOCKER this driver")
+    ]
+    assert "differs from tools/route_a at" in blocker
+    assert blocker.split("in:")[1].split(".")[0].split() == ["README"]
+    assert f"git checkout --detach {sha}" in blocker
+    bare, bare_sha = _tiny_main(tmp_path / "without-driver", {"x.txt": "x\n"})
+    assert any(
+        line.startswith("BLOCKER") and "has no tools/route_a" in line
+        for line in lines(bare, bare_sha)
+    )
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_the_export_reference_is_read_before_any_stage(
+    tmp_path: Path, present: bool
+) -> None:
+    """The rerun key hashes the export input-mass reference, so the input
+    check reads it first, at --resolve and before the base, with no pin to
+    match: a file it cannot read stops the run in minutes, not after the
+    base (review of #1676)."""
+    reference = tmp_path / "reference.h5"
+    if present:
+        reference.write_bytes(b"reference")
+    result = run_driver_settings(
+        tmp_path,
+        {"EXPORT_MASS_REF_H5": str(reference)},
+        '\nRUN_ROOT=$(pwd)/root; mkdir -p "$RUN_ROOT"; verify_inputs\n'
+        'for x in ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}; do printf \'PROBLEM %s\\n\' "$x"; done\n'
+        'cat "$RUN_ROOT/inputs.resolved.json"\n',
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    out = result.stdout.decode()
+    problems = [
+        line
+        for line in out.splitlines()
+        if line.startswith("PROBLEM export_input_mass_reference")
+    ]
+    resolved = json.loads(out[out.index("{") :])
+    [row] = [
+        row
+        for row in resolved["inputs"]
+        if row["role"] == "export_input_mass_reference"
+    ]
+    assert row["expected_sha256"] == "-"
+    if present:
+        assert problems == []
+        assert row["status"] == "ok"
+        assert row["observed_sha256"] == hashlib.sha256(b"reference").hexdigest()
+    else:
+        assert problems == [f"PROBLEM export_input_mass_reference missing: {reference}"]
+        assert row["status"] == "missing"
+
+
+def _rerun_guard(
+    tmp_path: Path, *, ran: list[str], key_file: str | None, key_now: str
+) -> subprocess.CompletedProcess[str]:
+    """Run the driver's build-mode rerun guard on an accepted release."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    start = source.index(
+        'if [ "$MODE" = run ] && [ "$ROUTE_A_CERTIFY" != 1 ] && '
+        '[ "$RELEASE_PENDING" = 0 ]; then\n'
+    )
+    end = source.index("\nfi\n", start) + len("\nfi\n")
+    run_root = tmp_path / "run-root"
+    run = run_root / "run-abc"
+    (run / "release-sup").mkdir(parents=True)
+    (run / "release-sup" / "COMMAND.json").write_text(json.dumps({"argv": ran}))
+    if key_file is not None:
+        (run / "release-inputs.key").write_text(key_file + "\n")
+    settings = {
+        "MODE": "run",
+        "ROUTE_A_CERTIFY": "0",
+        "RELEASE_PENDING": "0",
+        "RUN": str(run),
+        "RUN_ROOT": str(run_root),
+        "RID": "populace-us-2024-x",
+        "PY": sys.executable,
+        "KEY_NOW": key_now,
+        "LOG": str(run_root / "route_a.log"),
+    }
+    helpers = source[source.index("log() {") : source.index("free_bytes() {")]
+    script = "set -u\n" + "".join(
+        f"{key}={shlex.quote(value)}\n" for key, value in settings.items()
+    )
+    script += helpers + _function("release_ran") + "\n"
+    script += "release_command() { RELEASE_ARGV=(/w/python -B release.py --seed 0); }\n"
+    script += "release_inputs_key() { printf '%s\\n' \"$KEY_NOW\"; }\n"
+    script += source[start:end] + "echo PASSED\n"
+    return subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=30
+    )
+
+
+def test_the_rerun_guard_compares_the_command_and_the_inputs(tmp_path: Path) -> None:
+    """Run, not read: a build-mode rerun on an accepted release passes only
+    when both the command and the release inputs' key are the ones the
+    release was launched with, and names --rebuild otherwise (review of
+    #1676)."""
+    command = ["/w/python", "-B", "release.py", "--seed", "0"]
+    same = _rerun_guard(tmp_path / "a", ran=command, key_file="k1", key_now="k1")
+    assert same.returncode == 0, same.stdout + same.stderr
+    assert "PASSED" in same.stdout
+
+    moved = _rerun_guard(tmp_path / "b", ran=command, key_file="k1", key_now="k2")
+    assert moved.returncode == 1
+    assert "other release inputs" in moved.stdout
+    assert "Rerun with --rebuild" in moved.stdout
+    assert (tmp_path / "b" / "run-root" / "ROUTE_A_FAILED").is_file()
+
+    other = _rerun_guard(
+        tmp_path / "c", ran=[*command[:-1], "1"], key_file="k1", key_now="k1"
+    )
+    assert other.returncode == 1
+    assert "other release settings" in other.stdout
+
+    older = _rerun_guard(tmp_path / "d", ran=command, key_file=None, key_now="k1")
+    assert older.returncode == 0, older.stdout + older.stderr
+    assert "release inputs not compared" in older.stdout

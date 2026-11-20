@@ -21672,11 +21672,20 @@ def test_a_later_build_in_the_same_out_inherits_no_certification_failures(
     assert "which failed 1 gate(s) of its certification" in (
         builder._failed_build_holding(h5)
     )
-    # An attempt that names no record counts against any build.
+    # An attempt that names no record counts against any build, and the
+    # next attempt keeps it, as the readers count it (review of #1676).
     register.write_text(
         json.dumps({"attempts": [{"failures": ["Source coverage failed: b"]}]})
     )
     assert builder._failed_build_holding(h5) is not None
+    builder._record_certification_failures(
+        later, certified_tier, ["Source coverage failed: c"]
+    )
+    kept = json.loads(register.read_text())["attempts"]
+    assert [entry.get("record_sha256") for entry in kept] == [
+        None,
+        later.payload["record_sha256"],
+    ]
 
 
 def test_a_build_that_stopped_before_its_record_is_no_reference(

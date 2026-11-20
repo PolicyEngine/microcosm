@@ -213,6 +213,7 @@ release_ledger_facts|$FEED|$FEED_SHA|$FEED_BYTES|us/chronicle_feed.json facts_sh
 ${TAIL:+qrf_tail_exclusions|$TAIL|${QRF_TAIL_EXCLUSIONS_SHA:-9bd497dc0d03dd793b53a228979e99408e62fdd2430bdd0d04df5fc7576e6229}|-|operator-supplied register; the release records its sha in diagnostics}
 ssi_take_up_prior_basis|$SSI|$SSI_SHA|4782|--ssi-take-up-prior-weight-basis-sha256
 scf_summary_extract|$SCF|6ff73d5206ed9344a955ba66f8edee2d9f74297188f03e823346413cfacfc4e0|34487960|us/source_stages.json, us_runtime/scf_wealth.py (the Fed's 2026-10-09 republication, microcosm#1368)
+${EXPORT_MASS_REF_H5:+export_input_mass_reference|$EXPORT_MASS_REF_H5|-|-|no pin: read here so the rerun key can hash it (release_inputs_key)}
 EOF
 }
 
@@ -253,7 +254,7 @@ verify_inputs() {  # fills INPUT_PROBLEMS; writes $RUN_ROOT/inputs.resolved.json
       fi
       if ! actual=$(sha_of "$path"); then
         status=unreadable; INPUT_PROBLEMS+=("$role could not be read to hash it: $path")
-      elif [ "$actual" != "$sha" ]; then
+      elif [ "$sha" != "-" ] && [ "$actual" != "$sha" ]; then
         status=sha_mismatch; INPUT_PROBLEMS+=("$role sha256 $actual != $sha: $path")
       fi
     fi
@@ -303,6 +304,26 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
     COMMIT_BLOCKERS+=("build commit $full is on no origin branch (not pushed)")
   else
     COMMIT_NOTES+=("build commit $full is on: $branches")
+  fi
+  # The driver loads itself and its helpers from the checkout it was started
+  # in, so that copy must be the build commit's own: another commit's driver
+  # runs other stages under these settings (main's, for example, has no
+  # STOP_BEFORE_RELEASE and no --probe; review of #1676). The untracked
+  # settings file is not compared.
+  local driver_differs= driver_file driver_files
+  driver_files=$(git -C "$MAIN" ls-tree --name-only "$full" tools/route_a/ 2>/dev/null)
+  if [ -z "$driver_files" ]; then
+    COMMIT_BLOCKERS+=("the build commit $full has no tools/route_a, so this driver ($SCRIPT_DIR) cannot be its own")
+  else
+    while IFS= read -r driver_file; do
+      git -C "$MAIN" show "$full:$driver_file" 2>/dev/null | cmp -s - "$SCRIPT_DIR/${driver_file#tools/route_a/}" \
+        || driver_differs="$driver_differs ${driver_file#tools/route_a/}"
+    done <<< "$driver_files"
+    if [ -n "$driver_differs" ]; then
+      COMMIT_BLOCKERS+=("this driver ($SCRIPT_DIR) is not the build commit's: it differs from tools/route_a at $full in:$driver_differs. Run it from a checkout of that commit (in MAIN: git checkout --detach $full)")
+    else
+      COMMIT_NOTES+=("this driver is the build commit's own (tools/route_a at $full)")
+    fi
   fi
   if ! git -C "$MAIN" merge-base --is-ancestor "$full" origin/main; then
     if [ "$REQUIRE_ON_MAIN" = 1 ]; then

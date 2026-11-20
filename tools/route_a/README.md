@@ -97,7 +97,12 @@ All machine locations come from the settings file:
 | `AGENT_SECRET` | Credential helper executable used by the release wrapper |
 | `EXPORT_MASS_REF_H5`, `QRF_TAIL_EXCLUSIONS` | Export-mass reference and optional tail exclusion register |
 
-Choose a pushed `COMMIT`; the example deliberately leaves it empty. By default
+Choose a pushed `COMMIT`; the example deliberately leaves it empty, and run
+the driver from a checkout of it: the driver loads itself and its helpers
+from the directory it runs in, and the commit check refuses a copy that
+differs from `tools/route_a/` at `COMMIT`. With `EXPORT_MASS_REF_H5` set,
+the input check also reads that file, which no setting pins, so a
+reference it cannot read stops the run before the base. By default
 the build commit must be reachable from `origin/main`, carry the SPM role stage,
 pin the expected feed and ASEC inputs, carry the expected district crosswalk,
 and declare the driver's base and release flags. `PREFLIGHT_COMMIT` defaults to
