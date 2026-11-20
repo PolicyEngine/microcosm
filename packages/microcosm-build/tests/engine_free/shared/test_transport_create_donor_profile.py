@@ -10,9 +10,7 @@ the same parsed profile. Synthetic donors only.
 
 from __future__ import annotations
 
-import ast
 import json
-import re
 from functools import partial
 from hashlib import sha256
 from pathlib import Path
@@ -64,6 +62,9 @@ from test_support.microcosm_build.transport_population import (
     donor_pin,
     population_registry,
     write_population_sources,
+)
+from test_support.microcosm_frame.shared_source_literals import (
+    country_or_digest_literals,
 )
 from test_support.paths import paths_for
 
@@ -508,13 +509,6 @@ def test_a_profile_on_a_donor_without_profile_answers_refuses(tmp_path):
 
 def test_create_names_no_country_node_id_or_donor_digest():
     """CREATE selects a profile only through its param: its module holds no
-    country name, node id or donor digest literal."""
+    country name or code, node id, or donor digest or digest prefix."""
     source = Path(population_kernels_module.__file__).read_text()
-    strings = [
-        node.value
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-    ]
-    assert not [s for s in strings if re.search(r"[0-9a-f]{64}", s)]
-    assert not [s for s in strings if re.search(r"(?i)zealand|belgi", s)]
-    assert not [s for s in strings if re.search(r"\b(nz|be|uk|us)\.[a-z_]", s)]
+    assert country_or_digest_literals(source) == []

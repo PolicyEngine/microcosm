@@ -7,7 +7,6 @@ tenure, and records what it did. The property tests drive the staging
 against an independent oracle. No test opens a real donor.
 """
 
-import ast
 import itertools
 import json
 import re
@@ -34,6 +33,9 @@ from microcosm.frame.transport import (
     DonorProfile,
     parse_donor_profile,
     read_populace_us_donor,
+)
+from test_support.microcosm_frame.shared_source_literals import (
+    country_or_digest_literals,
 )
 from test_support.paths import paths_for
 
@@ -1327,16 +1329,42 @@ def test_assistance_must_be_boolean_with_no_nulls(assistance):
 
 
 def test_the_shared_reader_names_no_country_and_no_donor_digest():
-    """No country name, node id or donor digest literal in the shared module."""
+    """No country name or code, node id, or donor digest or digest prefix."""
     source = Path(transport_module.__file__).read_text()
-    strings = [
-        node.value
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-    ]
-    assert not [s for s in strings if re.search(r"[0-9a-f]{64}", s)]
-    assert not [s for s in strings if re.search(r"(?i)zealand|belgi", s)]
-    # A country-scoped node id such as "nz.create".
-    assert not [s for s in strings if re.search(r"\b(nz|be|uk|us)\.[a-z_]", s)]
+    assert country_or_digest_literals(source) == []
     for name, _ in DONOR_PROFILE_CHOICES:
         assert not re.search(r"(?i)\b(nz|be|uk)\b", name)
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        'chosen = country == "nz"',
+        'BY_COUNTRY = {"be": 1}',
+        'BY_COUNTRY = {"BE": 1, "us": 2}',
+        'KNOWN = "48b9d479"',
+        'KNOWN = "sha256:48B9D479FB"',
+        'KNOWN = b"48b9d479fb4f"',
+        f'KNOWN = "{"a1" * 32}"',
+        'NODE = "us.create"',
+        'NOTE = "New Zealand rules"',
+        'NOTE = f"{left}-uk-{right}"',
+    ],
+)
+def test_the_literal_guard_finds_a_planted_country_or_digest(planted):
+    assert country_or_digest_literals(planted)
+
+
+@pytest.mark.parametrize(
+    "allowed",
+    [
+        'MESSAGE = "must be finite"',
+        'ALPHABET = "0123456789abcdef"',
+        'DONOR_COUNTRY = "us"',
+        'NAME = "populace-us-cps-asec"',
+        'DAY = "20260101"',
+        'COLUMN = "A_ENRLW"',
+    ],
+)
+def test_the_literal_guard_passes_ordinary_strings(allowed):
+    assert country_or_digest_literals(allowed) == []
