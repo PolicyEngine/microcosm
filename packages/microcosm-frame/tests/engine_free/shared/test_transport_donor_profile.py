@@ -1536,6 +1536,14 @@ def test_the_shared_reader_names_no_country_and_no_donor_digest():
         'COUNTRY = "GB"',
         'COUNTRY = "gb"',
         'NOTE = "GBR rules"',
+        # Other names for the countries the guard watches, in any case.
+        'NOTE = "United Kingdom rules"',
+        'KEY = "united_kingdom"',
+        'NOTE = "Britain"',
+        'NOTE = "british"',
+        'NOTE = "England"',
+        'NOTE = "SCOTLAND"',
+        'NOTE = "Aotearoa"',
     ],
 )
 def test_the_literal_guard_finds_a_planted_country_or_digest(planted):

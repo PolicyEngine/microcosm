@@ -7,7 +7,11 @@ or digest prefix, so no branch can key on one.
 The check is a heuristic over the module's string and bytes constants
 (f-string parts included). It flags a string that holds:
 
-- a country name (Zealand, Belgium), anywhere;
+- one of these country names or parts of names, in any letter case,
+  anywhere in the string: ``zealand``, ``belgi`` (Belgium, Belgian),
+  ``united kingdom`` (with a space, hyphen, underscore or nothing between
+  the words), ``britain``, ``british``, ``england``, ``scotland`` or
+  ``aotearoa``;
 - the code ``nz``, ``nzl``, ``bel``, ``uk`` or ``gbr`` standing alone, or
   ``be`` or ``gb`` as the whole string (both are also English, as in "must
   be" and "32 GB");
@@ -21,8 +25,9 @@ passes runs of fewer than 64 digits (dates and counts look like them), so a
 digest prefix made only of digits passes, as does any prefix shorter than
 eight characters. It does not see a literal assembled at run time from
 shorter parts or read from a parameter or file, a name in an identifier,
-comment or non-string constant, ``be`` or ``gb`` inside a longer string, or a
-country named in another language or by a numeric code.
+comment or non-string constant, ``be`` or ``gb`` inside a longer string, any
+country name or spelling not listed above (Wales, Canada, a French or German
+name for New Zealand), or a country named by a numeric code.
 """
 
 from __future__ import annotations
@@ -36,7 +41,10 @@ _HEX_ALPHABET = "0123456789abcdef"
 _HEX_RUN = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{8,}")
 # A SHA-256 is 64 hex characters.
 _SHA256_LENGTH = 64
-_COUNTRY_NAME = re.compile(r"(?i)zealand|belgi")
+_COUNTRY_NAME = re.compile(
+    r"(?i)zealand|belgi|united[\s_-]*kingdom|britain|british|england"
+    r"|scotland|aotearoa"
+)
 # Codes that are not English words, wherever they stand in a string.
 _COUNTRY_CODE = re.compile(r"(?i)(?<![a-z0-9])(nz|nzl|bel|uk|gbr)(?![a-z0-9])")
 # "be" and "gb" are also words, so they count only as a whole string.
