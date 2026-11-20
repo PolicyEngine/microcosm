@@ -33,7 +33,8 @@
           "kind": "read_tables",
           "tables": [
             "person",
-            "household"
+            "household",
+            "spm_unit"
           ],
           "weight": "household_weight"
         }

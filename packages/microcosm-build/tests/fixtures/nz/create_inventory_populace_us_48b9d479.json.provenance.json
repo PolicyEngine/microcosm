@@ -1,20 +1,49 @@
 {
-  "awaiting_donor_staging": "household.tenure, person.enrolled_full_time and person.legal_marital_status are read by the NZ graph but absent here; ruling d3058 rules 2, 4 and 5 stage them. test_nz_transport_declarations.py declares them in _AWAITING_DONOR_STAGING until that staging lands.",
   "captured": {
-    "commit": "67ab33e8a3fb0679dee1d3c842df2c80d4c8fbd0",
-    "date": "2026-11-16",
-    "how": "NZ step 4 attempt 7: prepare_create_outputs on the pinned donor; that run then refused at graph compile, because the NZ graph needed columns this inventory lacks"
+    "commit": "main 7ff5a26bc2 plus #1688, #1698 and #1699",
+    "date": "2026-11-20",
+    "how": "One in-memory probe: prepare_create_outputs(spec, sources, resume='forbid') with no inventory store, on the pinned donor and the NZ Chronicle feed artifact, with NZ's packaged spec selecting donor_profile.json. CREATE did not refuse."
   },
+  "create_implementation_hash": "bd47b92814e5c0ad01571b43ff1665563ae3ea85cedc6d8168bde75523b3de0f",
   "create_kernel": "transport.create@1",
   "donor": {
     "revision": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
     "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
     "size_bytes": 462915783
   },
+  "donor_profile": {
+    "choices": {
+      "assisted_renter_tenure": "rented_public_authority",
+      "blank_full_time_study": "read_false",
+      "housing_cost_contradicting_tenure": "tenure_wins"
+    },
+    "document_sha256": "2229e09f725405ae03d228a1e497b9aec1c952c32e7eacdb08b3755d057d81c2",
+    "profile": "populace-us-cps-asec",
+    "receipt_counts": {
+      "blank_a_enrlw_by_source_year": {
+        "2022": 54464,
+        "2023": 54654,
+        "2024": 0
+      },
+      "mortgage_interest_zeroed_households": 6310,
+      "rent_zeroed_households": 10739,
+      "spm_units": 59900,
+      "spm_units_without_members": 0,
+      "tenure_households": {
+        "owned_outright": 17649,
+        "owned_with_mortgage": 22938,
+        "rent_free": 567,
+        "rented_nonprofit_social": 0,
+        "rented_private": 15256,
+        "rented_public_authority": 830
+      }
+    },
+    "version": 1
+  },
   "kind": "nz_create_inventory_fixture",
-  "note": "Two of create@1's hashed modules, build/country_spec.py and build/reference_factors.py, changed additively between the capture commit and 402c3587df, so the store's inventory key differs; no column-producing module changed (frame/transport.py, frame/concepts.py, transport/population_kernels.py, the US concept mapping). At 402c3587df, under the locked numpy 2.4.6, pandas 3.0.3 and tables 3.11.1, create@1's implementation hash is 02279dc47292426997e1d4f477411b860475c00d299cd508f41f21fbf5ae0677.",
+  "note": "Measured at capture under the locked numpy 2.4.6, pandas 3.0.3 and tables 3.11.1: create@1's implementation hash is the value above. The staged columns household.tenure (string), person.enrolled_full_time (bool) and person.legal_marital_status (string) are the three columns this payload adds to the attempt-7 inventory (payload sha256 305107d61aacfbeebfb1c693dc9440f652441d273257a0460e1f7291203d6b6d); every other column and dtype is unchanged.",
   "payload_format": "microcosm.transport.create-inventory/1 store payload: CREATE's non-structural output columns with dtypes (transport/cli.py prepare_create_outputs)",
-  "payload_sha256": "305107d61aacfbeebfb1c693dc9440f652441d273257a0460e1f7291203d6b6d",
-  "refresh": "Rerun prepare_create_outputs(spec, sources, resume='forbid') on the pinned donor and replace both files whenever the donor pin or CREATE's staging changes; the staging change must also empty _AWAITING_DONOR_STAGING.",
+  "payload_sha256": "b5f6ee552ec53f655af43da45221e3224d49c1c95e7e9e93adfe00e931349047",
+  "refresh": "Rerun prepare_create_outputs(spec, sources, resume='forbid') on the pinned donor and replace both files whenever the donor pin, donor_profile.json or CREATE's staging changes.",
   "schema_version": 1
 }
