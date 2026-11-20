@@ -33,9 +33,12 @@ It computes the value R2 stores, with R2's own functions and the engine:
   other null in a never-default column, as R2's fill step does: a null on a
   donor row, a null in a column that no R2 stage fills, and a null the AGI
   reads. What the AGI reads is the engine's static dependency closure of
-  ``adjusted_gross_income`` in the check's year: the walk stops at an
-  above-the-line deduction that year's ``gov.irs.ald.deductions`` does not
-  list (:data:`YEAR_LISTED_DEDUCTIONS`), whose formula then reads nothing.
+  ``adjusted_gross_income`` in the check's year, through the reads inside
+  the engine's helper functions as well (``follow_helpers``): the walk stops
+  at an above-the-line deduction that year's ``gov.irs.ald.deductions`` does
+  not list (:data:`YEAR_LISTED_DEDUCTIONS`), whose formula then reads
+  nothing, and at the behavioral responses an engine pass without a reform
+  does not read through (:data:`NO_REFORM_UNREAD`).
 - With ``--puma-ladder`` it applies R2's own minimum-support moves
   (``plan_minimum_support`` with ``--county-min-support``, default R2's 3,
   and the AGI it computed, as R2 passes its own) and takes the county list
@@ -136,6 +139,25 @@ def _release_tool():
 YEAR_LISTED_DEDUCTIONS = ("charitable_contributions_ald",)
 
 
+#: Variables an engine pass without a reform, as R2's and this check's are,
+#: does not read through. ``labor_supply_behavioral_response`` and
+#: ``capital_gains_behavioral_response`` return 0 before reading anything
+#: while the simulation has no baseline (``simulation.baseline is None``,
+#: which policyengine-core sets when no reform is applied). The labor supply
+#: elasticity effects are computed only where
+#: ``labor_supply_behavioral_response`` is nonzero. Each reads
+#: ``household_net_income`` on a measurement branch through the engine's
+#: ``get_behavioral_response_measurements`` helper, so a closure that
+#: follows helpers reaches every benefit through them, the take-up flags R2's
+#: stages fill among them.
+NO_REFORM_UNREAD = (
+    "capital_gains_behavioral_response",
+    "income_elasticity_lsr",
+    "labor_supply_behavioral_response",
+    "substitution_elasticity_lsr",
+)
+
+
 def unread_deductions(period: int, *, system: Any = None) -> tuple[str, ...]:
     """The :data:`YEAR_LISTED_DEDUCTIONS` that ``period`` does not list.
 
@@ -151,13 +173,21 @@ def unread_deductions(period: int, *, system: Any = None) -> tuple[str, ...]:
     return tuple(name for name in YEAR_LISTED_DEDUCTIONS if name not in listed)
 
 
+def unread_variables(period: int, *, system: Any = None) -> tuple[str, ...]:
+    """Where the AGI walk stops in ``period``: :func:`unread_deductions`, then
+    :data:`NO_REFORM_UNREAD`."""
+
+    return (*unread_deductions(period, system=system), *NO_REFORM_UNREAD)
+
+
 def agi_engine_inputs(index: Any, *, unread: Collection[str] = ()) -> frozenset[str]:
     """The engine inputs ``adjusted_gross_income`` can read (static closure).
 
     ``index`` is a ``PolicyEngineUSVariableMetadataIndex`` (or a stand-in
-    with ``variable_dependency_closure``). The walk does not go on past a
-    variable in ``unread`` (:func:`unread_deductions`), whose formula reads
-    nothing in the check's year.
+    with ``variable_dependency_closure``); the check passes one with
+    ``follow_helpers``. The walk does not go on past a variable in ``unread``
+    (:func:`unread_variables`), which the check's engine pass does not read
+    through in its year.
     """
 
     closure = index.variable_dependency_closure(AGI_VARIABLE)
@@ -271,14 +301,14 @@ def household_agi(
 
     period = release.PERIOD if period is None else int(period)
     system = CountryTaxBenefitSystem()
-    unread = unread_deductions(period, system=system)
+    unread = unread_variables(period, system=system)
     projected, formula_owned = release.project_input_only(frame, period=period)
     projected, held = hold_back_null_runtime_columns(
         projected,
         never_default_filled=release.NEVER_DEFAULT_FILLED,
         stage_filled=reviewed_fills.stage_filled_never_default(release),
         agi_inputs=agi_engine_inputs(
-            PolicyEngineUSVariableMetadataIndex(), unread=unread
+            PolicyEngineUSVariableMetadataIndex(follow_helpers=True), unread=unread
         ),
     )
     fills, drift = release.fill_reviewed_nulls(

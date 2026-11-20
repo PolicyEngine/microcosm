@@ -102,7 +102,9 @@ def test_no_column_an_r2_stage_fills_is_an_agi_input() -> None:
     """The check holds back a null stage-filled column on ACS rows because
     the AGI does not read it in R2's year; an engine release whose AGI read
     one would make the check refuse a staging file R2 accepts (review of
-    #1660)."""
+    #1660). The closure follows reads inside the engine's helper functions:
+    the self-employed health insurance deduction reads its two Form 7206
+    inputs only in the module-level ``form_7206_line_13`` (microcosm#1675)."""
 
     from policyengine_us import CountryTaxBenefitSystem
 
@@ -112,15 +114,90 @@ def test_no_column_an_r2_stage_fills_is_an_agi_input() -> None:
 
     check = _check()
     release = check._release_tool()
-    unread = check.unread_deductions(release.PERIOD, system=CountryTaxBenefitSystem())
+    unread = check.unread_variables(release.PERIOD, system=CountryTaxBenefitSystem())
     inputs = check.agi_engine_inputs(
+        PolicyEngineUSVariableMetadataIndex(follow_helpers=True), unread=unread
+    )
+    gapped = check.agi_engine_inputs(
         PolicyEngineUSVariableMetadataIndex(), unread=unread
     )
     stage_filled = check.reviewed_fills.stage_filled_never_default(release)
 
     assert "employment_income_before_lsr" in inputs
+    form_7206 = {
+        "s_corp_shareholder_medicare_wages",
+        "self_employed_health_insurance_plan_business",
+    }
+    assert form_7206 <= inputs - gapped
     assert stage_filled
     assert inputs.isdisjoint(column for _entity, column in stage_filled)
+
+
+def test_the_closure_stops_at_the_behavioral_responses_a_pass_without_a_reform_skips() -> (
+    None
+):
+    """Through the engine's ``get_behavioral_response_measurements`` helper,
+    the behavioral responses read ``household_net_income``, and through it
+    the take-up flags R2's stages fill. An engine pass without a reform has no
+    baseline, so the responses return 0 before reading anything and the labor
+    supply elasticity effects are never computed (microcosm#1675)."""
+
+    from policyengine_us import CountryTaxBenefitSystem, Simulation
+
+    from microcosm.frame.adapters.policyengine_us import (
+        PolicyEngineUSVariableMetadataIndex,
+    )
+
+    check = _check()
+    release = check._release_tool()
+    system = CountryTaxBenefitSystem()
+    index = PolicyEngineUSVariableMetadataIndex(follow_helpers=True)
+    stage_filled = {
+        column
+        for _entity, column in check.reviewed_fills.stage_filled_never_default(release)
+    }
+    deductions = check.unread_deductions(release.PERIOD, system=system)
+    through_responses = check.agi_engine_inputs(index, unread=deductions)
+    assert not through_responses.isdisjoint(stage_filled)
+    assert check.unread_variables(release.PERIOD, system=system) == (
+        *deductions,
+        *check.NO_REFORM_UNREAD,
+    )
+    stopped = check.agi_engine_inputs(
+        index, unread=check.unread_variables(release.PERIOD, system=system)
+    )
+    assert stopped.isdisjoint(stage_filled)
+
+    y = str(release.PERIOD)
+    members = {"members": ["filer"]}
+    simulation = Simulation(
+        situation={
+            "people": {
+                "filer": {
+                    "age": {y: 40},
+                    "employment_income_before_lsr": {y: 50_000},
+                    "self_employment_income_before_lsr": {y: 10_000},
+                    "long_term_capital_gains_before_response": {y: 20_000},
+                    "weekly_hours_worked_before_lsr": {y: 40},
+                }
+            },
+            "tax_units": {"tax_unit": members},
+            "spm_units": {"spm_unit": members},
+            "families": {"family": members},
+            "marital_units": {"marital_unit": members},
+            "households": {"household": {**members, "state_code_str": {y: "TX"}}},
+        }
+    )
+    assert simulation.baseline is None
+    for name in (
+        "labor_supply_behavioral_response",
+        "capital_gains_behavioral_response",
+        "weekly_hours_worked_behavioural_response",
+    ):
+        assert float(simulation.calculate(name, release.PERIOD)[0]) == 0.0, name
+    assert float(simulation.calculate("adjusted_gross_income", release.PERIOD)[0]) > 0
+    for name in ("income_elasticity_lsr", "substitution_elasticity_lsr"):
+        assert simulation.get_holder(name).get_known_periods() == [], name
 
 
 def test_the_closure_stops_only_at_a_deduction_whose_year_does_not_list_it() -> None:
@@ -142,7 +219,7 @@ def test_the_closure_stops_only_at_a_deduction_whose_year_does_not_list_it() -> 
     unread = check.unread_deductions(release.PERIOD, system=system)
     assert unread == ("charitable_contributions_ald",)
 
-    index = PolicyEngineUSVariableMetadataIndex()
+    index = PolicyEngineUSVariableMetadataIndex(follow_helpers=True)
     static = check.agi_engine_inputs(index)
     assert check.agi_engine_inputs(index, unread=unread) <= static
 
