@@ -305,15 +305,17 @@ def test_cell_support_collector_manifest_survives_a_raise_in_the_battery_checkpo
         ancestors |= fresh
         frontier += fresh
     assert victim not in ancestors
-    kernel = type(fixture.registry.kernels.get(graph.node(victim).kernel))
+    # Patch the registered instance, which other tests also patch: an
+    # instance attribute left by their teardown would shadow a class patch.
+    kernel = fixture.registry.kernels.get(graph.node(victim).kernel)
     original = kernel.run
 
-    def run(self, context):
+    def run(context):
         if context.node.id == victim:
             raise RuntimeError("injected failure")
-        return original(self, context)
+        return original(context)
 
-    monkeypatch.setattr(kernel, "run", run)
+    monkeypatch.setitem(vars(kernel), "run", run)
     out = tmp_path / "out"
     with pytest.raises(NodeRejectedError, match="injected failure"):
         execute_transport_graph(
