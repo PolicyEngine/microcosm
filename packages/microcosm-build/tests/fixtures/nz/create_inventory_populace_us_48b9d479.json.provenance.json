@@ -1,0 +1,20 @@
+{
+  "awaiting_donor_staging": "household.tenure, person.enrolled_full_time and person.legal_marital_status are read by the NZ graph but absent here; ruling d3058 rules 2, 4 and 5 stage them. test_nz_transport_declarations.py declares them in _AWAITING_DONOR_STAGING until that staging lands.",
+  "captured": {
+    "commit": "67ab33e8a3fb0679dee1d3c842df2c80d4c8fbd0",
+    "date": "2026-11-16",
+    "how": "NZ step 4 attempt 7: prepare_create_outputs on the pinned donor; that run then refused at graph compile, because the NZ graph needed columns this inventory lacks"
+  },
+  "create_kernel": "transport.create@1",
+  "donor": {
+    "revision": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
+    "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+    "size_bytes": 462915783
+  },
+  "kind": "nz_create_inventory_fixture",
+  "note": "Two of create@1's hashed modules, build/country_spec.py and build/reference_factors.py, changed additively between the capture commit and 402c3587df, so the store's inventory key differs; no column-producing module changed (frame/transport.py, frame/concepts.py, transport/population_kernels.py, the US concept mapping). At 402c3587df, under the locked numpy 2.4.6, pandas 3.0.3 and tables 3.11.1, create@1's implementation hash is 02279dc47292426997e1d4f477411b860475c00d299cd508f41f21fbf5ae0677.",
+  "payload_format": "microcosm.transport.create-inventory/1 store payload: CREATE's non-structural output columns with dtypes (transport/cli.py prepare_create_outputs)",
+  "payload_sha256": "305107d61aacfbeebfb1c693dc9440f652441d273257a0460e1f7291203d6b6d",
+  "refresh": "Rerun prepare_create_outputs(spec, sources, resume='forbid') on the pinned donor and replace both files whenever the donor pin or CREATE's staging changes; the staging change must also empty _AWAITING_DONOR_STAGING.",
+  "schema_version": 1
+}
