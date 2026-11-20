@@ -233,6 +233,48 @@ def test_a_donor_row_with_raw_fields_and_no_record_id_is_refused() -> None:
         prepare_acs_local_esi_premium_donor(_replace_person(donor, person))
 
 
+def test_a_donor_row_that_lost_its_raw_fields_and_record_id_is_refused() -> None:
+    # Both kinds of evidence lost together, on a source record and its PUF
+    # clone, whose households hold no weight. Graded by row kind, the pair is
+    # two transferred rows without mass, so the signal gate passes it, and
+    # the observation role would still hand the source record to the fit.
+    donor = dense_donor(80)
+    person = donor.table("person").copy()
+    first = person.loc[person["person_support_clone_index"].eq(0), "person_source_id"]
+    pair = person["person_source_id"].eq(first.iloc[0]).to_numpy()
+    assert pair.sum() == 2
+    for column in RAW:
+        person[column] = person[column].astype(np.float64)
+    person["PERIDNUM"] = person["PERIDNUM"].astype(object)
+    person.loc[pair, list(RAW)] = np.nan
+    person.loc[pair, "PERIDNUM"] = None
+    household = donor.table("household")
+    weights = np.asarray(donor.weights_for("household").values, dtype=float).copy()
+    weights[
+        household["household_id"]
+        .isin(person.loc[pair, "person_household_id"])
+        .to_numpy()
+    ] = 0.0
+    damaged = Frame(
+        {
+            entity: person if entity == "person" else donor.table(entity)
+            for entity in donor.entities
+        },
+        donor.schema,
+        {"household": Weights(weights, WeightKind.CALIBRATED)},
+        donor.strata,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"2 row\(s\) without every raw ASEC field and 2 row\(s\) without a "
+            r"CPS record id"
+        ),
+    ):
+        prepare_acs_local_esi_premium_donor(damaged)
+
+
 def test_a_donor_without_wages_is_refused() -> None:
     with pytest.raises(ValueError, match="conditions the premium on"):
         prepare_acs_local_esi_premium_donor(_donor_without(WAGES))

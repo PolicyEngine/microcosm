@@ -79,6 +79,7 @@ from microcosm.build.us_runtime.esi_premiums import (
     US_ESI_PREMIUMS_POOL_ANCHOR_PERSON_INPUTS,
     US_ESI_PREMIUMS_REQUIRED_SOURCE_COLUMNS,
     US_ESI_PREMIUMS_WAGE_COLUMN,
+    _cps_record_evidence,
     us_esi_premiums_anchor_gate,
     us_esi_premiums_signal_gate,
     with_us_esi_premium_pool_anchor,
@@ -221,9 +222,10 @@ def prepare_acs_local_esi_premium_donor(
     """Qualify the dense donor and select the rows the lane's transfer fits on.
 
     Refuses a donor that lacks the stage's output or the raw ASEC fields it
-    read, that fails the stage's signal gate, or whose support roles cannot be
-    told apart. Returns the ASEC observation role (support clone 0) and a
-    receipt. The donor frame itself is not changed.
+    read, that has a row without every raw field or without a CPS record id,
+    that fails the stage's signal gate, or whose support roles cannot be told
+    apart. Returns the ASEC observation role (support clone 0) and a receipt.
+    The donor frame itself is not changed.
     """
 
     if frame.schema != US_SCHEMA:
@@ -260,9 +262,33 @@ def prepare_acs_local_esi_premium_donor(
             "roles; unclassified or multispine records need their own source "
             "lineage."
         )
-    # Graded as the pooled frame will be: a donor row that carries the raw
-    # fields without a record id is refused here, before any fit, and not
-    # only once the anchor reads the pooled frame.
+    # Every donor row is a CPS record the stage derived its premium from, so
+    # it carries every raw field and a record id, refused here before any fit.
+    # The gate below grades by row kind, as it grades the pooled frame: a row
+    # that lost both would pass it as a transferred row, without a ratio check
+    # when its household holds no weight, and its observation role would
+    # still reach the fit.
+    complete = (
+        person[list(_RAW_EVIDENCE_COLUMNS)].notna().all(axis=1).to_numpy(dtype=bool)
+    )
+    recorded = _cps_record_evidence(person)
+    gaps = [
+        f"{int(count)} row(s) {what}"
+        for count, what in (
+            ((~complete).sum(), "without every raw ASEC field"),
+            (
+                (~recorded).sum(),
+                f"without a CPS record id ({_CPS_RECORD_ID_COLUMN!r})",
+            ),
+        )
+        if count
+    ]
+    if gaps:
+        raise ValueError(
+            f"Local ESI premium donor has {' and '.join(gaps)}. Every donor row "
+            "is a CPS record whose premium the stage derived, so it carries "
+            "both; the lane never fits the transfer on a row that lost them."
+        )
     gate = us_esi_premiums_signal_gate(
         _narrow_view(
             frame,

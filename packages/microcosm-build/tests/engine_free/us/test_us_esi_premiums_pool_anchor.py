@@ -1108,6 +1108,202 @@ def test_a_transferred_side_whose_mass_share_rounds_to_zero_is_still_gated(
     assert any("per unit of household mass" in failure for failure in anchor.failures)
 
 
+def _cps_policyholder_without_a_job(frame: Frame) -> np.ndarray:
+    """One CPS policyholder without a job whose employer pays all: a raw
+    MEPS-IC share outside the employed universe."""
+
+    person = frame.table("person")
+    candidates = np.flatnonzero(
+        cps_rows(frame)
+        & person["NOW_OWNGRP"].eq(1).to_numpy()
+        & person["NOW_HIPAID"].eq(1).to_numpy()
+        & ~person["PEMLR"].isin([1, 2]).to_numpy()
+    )
+    assert candidates.size
+    rows = np.zeros(len(person), dtype=bool)
+    rows[candidates[0]] = True
+    return rows
+
+
+def test_cps_rows_whose_employed_policyholders_hold_no_weight_fail_both_gates(
+    mixed,
+) -> None:
+    # Weight stays on one CPS policyholder without a job and on the
+    # transferred rows; every employed CPS policyholder holds none. The CPS
+    # rows' raw anchor-universe total is then positive and their employed
+    # share of it zero, which the transferred rows' total would be divided by.
+    cps = cps_rows(mixed)
+    kept = _cps_policyholder_without_a_job(mixed)
+    starved = reweighted(mixed, np.where(households_of(mixed, cps & ~kept), 0.0, 1.0))
+
+    for gate in _gates(starved):
+        assert not gate.passed
+        assert gate.failures == (gate.details["structural_error"],)
+        assert (
+            "give their employed policyholders no weighted MEPS-IC employer share"
+            in gate.failures[0]
+        )
+        assert "hold no household mass" not in gate.failures[0]
+
+
+def test_cps_rows_without_weight_fail_both_gates(mixed) -> None:
+    # Selection can leave the CPS side without weight. The transferred rows
+    # then have nothing to be priced against, and the CPS rows' raw mean has
+    # no weight to divide by.
+    cps = households_of(mixed, cps_rows(mixed))
+    transferred_only = reweighted(mixed, np.where(cps, 0.0, 2.0))
+
+    for gate in _gates(transferred_only):
+        assert not gate.passed
+        assert gate.failures == (gate.details["structural_error"],)
+        assert "hold no household mass (0.0)" in gate.failures[0]
+        assert "employed policyholders no weighted" in gate.failures[0]
+
+
+def test_a_cps_side_whose_mass_share_rounds_to_zero_still_gets_a_verdict(
+    mixed,
+) -> None:
+    # Household masses about 1e340 apart, the CPS side the small one: its
+    # share of the frame underflows to zero though it holds mass. The anchor
+    # gate still grades the frame, and its private-sector cross-check, which
+    # scales the CPS rows' sector total by that share, is recorded without a
+    # value instead of dividing by zero.
+    cps = cps_rows(mixed)
+    tilted = reweighted(mixed, np.where(households_of(mixed, cps), 1e-170, 1e170))
+
+    summary = us_esi_premiums_summary(tilted, allow_transferred_rows=True)
+    _signal, anchor = _gates(tilted)
+
+    assert summary["source_household_mass_share"] == 0.0
+    assert summary["source_household_mass"] > 0
+    assert anchor.details[
+        "transferred_to_source_per_household_mass_ratio"
+    ] == pytest.approx(1.0, rel=1e-9)
+    cross_check = anchor.details["private_active_cross_check"]
+    assert np.isnan(cross_check["employer_premium_private_sector"])
+    assert np.isnan(cross_check["ratio"])
+    assert "share of household mass (0.0)" in cross_check["unavailable"]
+    # Nearly all the mass sits on the transferred rows at 1e170 times their
+    # weight, so the total is far off the anchor: a red verdict, not a crash.
+    assert not anchor.passed
+    assert any("from BEA NIPA 7.8" in failure for failure in anchor.failures)
+
+
+@pytest.mark.parametrize(
+    ("private", "share", "named", "not_named"),
+    [
+        # A share of household mass that scales normally: the sector total is
+        # what has no value, and the share is not blamed.
+        (
+            float("nan"),
+            None,
+            "private-sector employer total (nan) is not finite",
+            "share of household mass",
+        ),
+        (
+            float("inf"),
+            None,
+            "private-sector employer total (inf) is not finite",
+            "share of household mass",
+        ),
+        # Both finite, but the quotient overflows.
+        (
+            1e10,
+            5e-324,
+            "total (10000000000.0) over their share of household mass (5e-324) "
+            "is not finite",
+            "is not a positive number",
+        ),
+    ],
+)
+def test_the_cross_check_names_the_term_without_a_finite_value(
+    mixed, monkeypatch, private, share, named, not_named
+) -> None:
+    # The private-sector cross-check is recorded, not gated. When it has no
+    # finite value its reason names the term at fault, which is not always
+    # the CPS rows' share of household mass.
+    real = esi.us_esi_premiums_summary
+
+    def summary(frame, **kwargs):
+        result = dict(real(frame, **kwargs))
+        result["employer_premium_by_sector"] = dict(
+            result["employer_premium_by_sector"], private=private
+        )
+        if share is not None:
+            result["source_household_mass_share"] = share
+        return result
+
+    monkeypatch.setattr(esi, "us_esi_premiums_summary", summary)
+    anchor = us_esi_premiums_anchor_gate(
+        mixed, time_period=YEAR, allow_transferred_rows=True
+    )
+
+    cross_check = anchor.details["private_active_cross_check"]
+    assert np.isnan(cross_check["employer_premium_private_sector"])
+    assert np.isnan(cross_check["ratio"])
+    assert named in cross_check["unavailable"]
+    assert not_named not in cross_check["unavailable"]
+
+
+def _cps_households_tilted(frame: Frame, small: np.ndarray, large: np.ndarray) -> Frame:
+    """CPS households of ``small`` rows at 1e-200 times their weight and of
+    ``large`` rows at 1e200 times it; transferred households unchanged."""
+
+    return reweighted(
+        frame,
+        np.where(
+            households_of(frame, small),
+            1e-200,
+            np.where(households_of(frame, large), 1e200, 1.0),
+        ),
+    )
+
+
+def test_a_cps_side_whose_premium_per_mass_rounds_to_zero_still_gets_a_verdict(
+    mixed,
+) -> None:
+    # CPS policyholders at 1e-200 times their weight, the rest of the CPS
+    # side at 1e200: the CPS rows' premium per unit of household mass rounds
+    # to zero though both its terms are positive. Their own evidence is
+    # intact (the policyholders compare among themselves), so the frame is
+    # graded, and the per-mass ratio, which divides by that rate, has no value
+    # and fails the anchor gate instead of dividing by zero.
+    cps = cps_rows(mixed)
+    holder = mixed.table("person")["NOW_OWNGRP"].eq(1).to_numpy()
+    tilted = _cps_households_tilted(mixed, cps & holder, cps & ~holder)
+
+    summary = us_esi_premiums_summary(tilted, allow_transferred_rows=True)
+    signal, anchor = _gates(tilted)
+
+    assert summary["source_employer_premium_total"] > 0
+    assert summary["source_household_mass"] > 0
+    assert np.isnan(summary["transferred_to_source_per_household_mass_ratio"])
+    for gate in (signal, anchor):
+        assert not gate.passed
+        assert "structural_error" not in gate.details
+    assert any("per unit of household mass" in failure for failure in anchor.failures)
+
+
+def test_cps_rows_whose_employed_share_rounds_to_zero_fail_both_gates(
+    mixed,
+) -> None:
+    # CPS premium holders at 1e-200 times their weight, every other CPS
+    # person, policyholders without a job among them, at 1e200: the employed
+    # policyholders' part of the CPS rows' weighted MEPS-IC share is positive
+    # but rounds to zero, and the transferred rows' total would be divided by
+    # it. The frame is refused, not crashed.
+    cps = cps_rows(mixed)
+    held = cps & (mixed.table("person")[EMPLOYER].to_numpy(dtype=float) > 0)
+    tilted = _cps_households_tilted(mixed, held, cps & ~held)
+
+    for gate in _gates(tilted):
+        assert not gate.passed
+        assert gate.failures == (gate.details["structural_error"],)
+        assert "that rounds to zero" in gate.failures[0]
+        assert "no weighted" not in gate.failures[0]
+        assert "no household mass" not in gate.failures[0]
+
+
 def test_a_row_with_only_some_raw_columns_fails_both_gates(mixed) -> None:
     transferred = np.flatnonzero(~cps_rows(mixed))
     broken = with_person_cells(mixed, transferred[:1], RAW[0], 2)

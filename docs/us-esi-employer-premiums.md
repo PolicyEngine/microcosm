@@ -360,11 +360,13 @@ and to fewer workers
 `prepare_acs_local_esi_premium_donor` qualifies the donor before the staging
 build loads the SIPP donor or fetches the ACS sources. It refuses a donor
 without the column, the raw coverage columns, the CPS record id (`PERIDNUM`),
-wages or legacy support roles, one whose ASEC observations have a missing
-wage, and one that fails the stage's signal gate. That gate grades the donor
-as the pooled frame will be graded (see "The gates grade the lane's frame by
-row kind"), so a donor row that carries the raw columns without a record id
-stops the build here, in minutes, not after the transfer.
+wages or legacy support roles, one with a row that lacks any raw coverage
+column or a record id, one whose ASEC observations have a missing wage, and
+one that fails the stage's signal gate. Every donor row is a CPS record, so a
+row that lost those fields stops the build here, in minutes, not after the
+transfer, even one that lost both: the signal gate grades the donor as the
+pooled frame will be graded (see "The gates grade the lane's frame by row
+kind") and would read such a row as a transferred one.
 
 ### The ACS rows are held to the donor rows' scale
 
@@ -494,8 +496,15 @@ donor and red gates into records in `local_esi_premiums` instead of failures.
 From a refused donor the lane transfers nothing: if the donor lacks the
 column, no row carries it; if it carries the column but fails qualification,
 the ACS rows stay null and `fill_reviewed_nulls` refuses the frame. In
-finalize and package the flag records a red verdict without failing, and the
-gate entries keep the failures. A release packaged that way still fails the
+finalize the flag records a red verdict without failing, and the gate entry
+keeps the failures with `enforced: false`. Package takes a red verdict only as
+that recorded waiver: with the flag it still refuses a red verdict finalize
+enforced. The gate battery's shadow records the waiver on each ESI entry as
+the finalize run that evaluated it had it, so a package run with other flags
+does not rewrite it. Finalize keeps that record beside its shadow
+observations; a finalize checkpoint saved before it did has observations and
+no record, and the shadow then records the ESI entries' waiver as unknown
+rather than as none. A release packaged that way still fails the
 local-area release contract (`microcosm.data.contract`), which accepts only
 gates that passed. A Modal plan can set the waiver for the release tool
 (`allow_esi_premium_gaps`) but not for staging: the staging runner owns the
@@ -538,7 +547,17 @@ What the gates need, and what they do not catch:
   column; and a row without them in a frame that has no id column. The signal
   gate also fails when a transferred person's support clones disagree. When
   the transferred rows hold no household mass, the gates skip the comparison
-  between the two kinds: there is no second half to compare. Under the
+  between the two kinds: there is no second half to compare. When the rows
+  with the raw columns hold no household mass, or their policyholders or
+  employed policyholders carry no weighted MEPS-IC share, or the employed
+  policyholders' part of it rounds to zero, there is nothing to price the
+  transferred rows against, and both gates fail with that refusal. When those
+  rows' premium per unit of household mass rounds to zero, the per-mass
+  comparison has no value and the anchor gate fails it. The anchor gate's
+  private-sector cross-check scales those rows' sector total by their share
+  of household mass. When that share rounds to zero, or the sector total or
+  the scaled total is not finite, the cross-check is recorded without a value
+  and its `unavailable` reason names which. Under the
   default, which the base build and the release tool keep, every row must
   carry every raw coverage column and the record id is not read (see "The
   gates grade the lane's frame by row kind").

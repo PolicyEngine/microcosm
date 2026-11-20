@@ -151,6 +151,74 @@ def test_the_esi_premium_waiver_is_recorded_on_its_two_entries(
     assert payload["waivers"] == waived
 
 
+@pytest.mark.parametrize(
+    ("finalize_waived", "package_waived"), [(False, True), (True, False)]
+)
+def test_an_esi_entry_keeps_the_waiver_finalize_ran_with(
+    tmp_path, monkeypatch, acs, finalize_waived, package_waived
+) -> None:
+    # The stages may run as separate processes with different flags. The ESI
+    # entries are evaluated at finalize, so the comparison the package stage
+    # rebuilds records finalize's waiver on them, never the package stage's.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in STAGE_ENTRIES:
+        args.allow_esi_premium_gaps = (
+            package_waived if stage == "package" else finalize_waived
+        )
+        _run_stage(acs, args, stage)
+
+    payload = _comparison(args)
+    flags = ["--allow-esi-premium-gaps"] if finalize_waived else []
+    waived_by = {row["id"]: row["waived_by"] for row in payload["entries"]}
+    assert payload["run_completed"] is True
+    assert waived_by["us_local_esi_premiums_signal"] == flags
+    assert waived_by["us_local_esi_premiums_anchor"] == flags
+    assert payload["waivers"] == (
+        {
+            "us_local_esi_premiums_signal": flags,
+            "us_local_esi_premiums_anchor": flags,
+        }
+        if finalize_waived
+        else {}
+    )
+    # Rerunning an earlier stage discards finalize's record with its
+    # observations.
+    record = acs_directory(args) / "finalize.waivers.json"
+    assert record.is_file()
+    _run_stage(acs, args, "calibrate")
+    assert not record.exists()
+
+
+def test_a_finalize_checkpoint_without_a_waiver_record_marks_the_waiver_unknown(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # A finalize checkpoint saved before finalize kept a waiver record has
+    # its observations and no record. Package cannot tell which waiver that
+    # finalize ran with, so the ESI entries record it as unknown, not as
+    # none, and the comparison is still rebuilt.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa", "finalize"):
+        _run_stage(acs, args, stage)
+    (acs_directory(args) / "finalize.waivers.json").unlink()
+    assert (acs_directory(args) / "finalize.observations.json").is_file()
+    _run_stage(acs, args, "package")
+
+    payload = _comparison(args)
+    unknown = ["unknown: the finalize stage saved no waiver record"]
+    esi = {"us_local_esi_premiums_signal", "us_local_esi_premiums_anchor"}
+    waived_by = {row["id"]: row["waived_by"] for row in payload["entries"]}
+    assert payload["run_completed"] is True
+    assert {entry_id: waived_by[entry_id] for entry_id in esi} == dict.fromkeys(
+        esi, unknown
+    )
+    assert all(
+        flags == [] for entry_id, flags in waived_by.items() if entry_id not in esi
+    )
+    assert payload["waivers"] == dict.fromkeys(esi, unknown)
+
+
 def test_with_the_switch_off_a_stage_touches_no_shadow_file(
     tmp_path, monkeypatch, acs
 ) -> None:

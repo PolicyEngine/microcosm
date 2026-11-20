@@ -5647,10 +5647,12 @@ def _require_esi_premium_gates(gates, *, h5_sha: str, allow_gaps: bool) -> None:
 
     Without ``--allow-esi-premium-gaps`` both gates must be present, passing
     and bound to the bytes being packaged, the check every other finalize
-    gate gets (:func:`_require_bound_finalize_gate`). With it, a red gate
-    packages as a recorded waiver, but each gate must still carry a boolean
-    verdict bound to these bytes: a report finalized before the gates existed
-    carries neither and is always refused.
+    gate gets (:func:`_require_bound_finalize_gate`). With it, each gate must
+    still carry a boolean verdict bound to these bytes: a report finalized
+    before the gates existed carries neither and is always refused. A red
+    gate then packages only as the waiver finalize recorded (``enforced:
+    false``), so the shipped report says the waiver was taken; a red gate
+    finalize enforced is refused, whatever this stage's flag says.
     """
 
     for name in ESI_PREMIUM_GATE_NAMES:
@@ -5669,6 +5671,14 @@ def _require_esi_premium_gates(gates, *, h5_sha: str, allow_gaps: bool) -> None:
                 f"The {name} gate is missing its artifact binding or certifies "
                 "different H5 bytes. Re-run --stage finalize against the "
                 "current artifact."
+            )
+        if not gate["passed"] and gate.get("enforced") is not False:
+            raise SystemExit(
+                f"The {name} gate is red and finalize did not record a waiver "
+                "for it (enforced is not false), so the report would ship a "
+                "red verdict marked enforced. --allow-esi-premium-gaps at "
+                "package admits only a waiver finalize recorded: re-run --stage "
+                "finalize with --allow-esi-premium-gaps."
             )
 
 
@@ -7352,7 +7362,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "the stage's national anchor -- without failing finalize or "
             "package (for example on a staging H5 built from a donor that "
             "predates the meps_esi_premiums stage). The failures are still "
-            "written to the gate report. Release builds must leave this unset."
+            "written to the gate report. Package takes a red gate only as the "
+            "waiver finalize recorded, so finalize needs the flag too. Release "
+            "builds must leave this unset."
         ),
     )
     parser.add_argument(
@@ -7480,29 +7492,104 @@ def _local_stage_observations(args, stage: str) -> Path:
 
 
 #: The --allow-* flags that waive one of this scope's entries today, by
-#: argparse destination: (destination, flag, entry ids). The shadow records
-#: them by entry id; the battery evaluates every entry as if unwaived.
-_LOCAL_GATE_WAIVERS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+#: argparse destination: (destination, flag, stage, entry ids), where the
+#: stage is the one that evaluates those entries. The shadow records them by
+#: entry id; the battery evaluates every entry as if unwaived. The stages may
+#: run as separate processes with different flags, so an entry's waiver is
+#: the one its own stage ran with (:func:`_recorded_local_gate_waivers`).
+_LOCAL_GATE_WAIVERS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
     (
         "allow_esi_premium_gaps",
         "--allow-esi-premium-gaps",
+        "finalize",
         ("us_local_esi_premiums_signal", "us_local_esi_premiums_anchor"),
     ),
 )
 
 
-def _local_gate_waivers(args) -> dict[str, list[str]]:
-    """The waivers this stage's flags apply, by entry id."""
+def _local_gate_waivers(args, *, stage: str | None = None) -> dict[str, list[str]]:
+    """The waivers these flags apply, by entry id.
+
+    With ``stage``, only to the entries that stage evaluates.
+    """
 
     waivers: dict[str, list[str]] = {}
-    for destination, flag, entry_ids in _LOCAL_GATE_WAIVERS:
+    for destination, flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
+        if stage is not None and evaluated_at != stage:
+            continue
         if getattr(args, destination, False):
             for entry_id in entry_ids:
                 waivers.setdefault(entry_id, []).append(flag)
     return waivers
 
 
-def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
+def _local_stage_waivers(args, stage: str) -> Path:
+    return _local_gate_shadow_directory(args) / f"{stage}.waivers.json"
+
+
+def _save_local_stage_waivers(args, stage: str) -> None:
+    """Record the waivers ``stage`` applied to its own entries, for later stages."""
+
+    path = _local_stage_waivers(args, stage)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_name(f"{path.name}.tmp")
+    staging.write_text(
+        json.dumps(_local_gate_waivers(args, stage=stage), indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    staging.replace(path)
+
+
+#: What the shadow records as the waiver of an entry whose stage saved its
+#: observations without a waiver record, as a checkpoint written before the
+#: stages kept one does: the flags that stage ran with are unknown.
+_UNRECORDED_STAGE_WAIVER = "unknown: the {stage} stage saved no waiver record"
+
+
+def _recorded_local_gate_waivers(args, stage: str) -> dict[str, list[str]]:
+    """Each entry's waivers as the stage that evaluated it ran, by entry id.
+
+    This stage's come from ``args``, and an earlier stage's from the record it
+    saved beside its observations (:func:`_local_gate_shadow_stage`), so a
+    later stage's flags never rewrite the waivers an earlier stage took or
+    refused. This code saves a stage's record before its observations, so it
+    leaves no observations without one. A checkpoint saved by earlier code
+    can: the flags that stage ran with are then unknown, so each entry it
+    can waive records :data:`_UNRECORDED_STAGE_WAIVER` instead of no waiver,
+    and the comparison is still rebuilt. An earlier stage with neither file
+    contributes none.
+    """
+
+    waivers = _local_gate_waivers(args, stage=stage)
+    for name in _LOCAL_GATE_SHADOW_STAGES[: _LOCAL_GATE_SHADOW_STAGES.index(stage)]:
+        path = _local_stage_waivers(args, name)
+        if not path.is_file():
+            if _local_stage_observations(args, name).is_file():
+                unknown = _UNRECORDED_STAGE_WAIVER.format(stage=name)
+                for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
+                    if evaluated_at == name:
+                        for entry_id in entry_ids:
+                            waivers.setdefault(entry_id, []).append(unknown)
+                log(
+                    f"WARNING: gate battery shadow: the {name} stage's observations "
+                    "have no waiver record; its waivers are recorded as unknown."
+                )
+            continue
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(saved, dict) or not all(
+            isinstance(flags, list) and all(isinstance(flag, str) for flag in flags)
+            for flags in saved.values()
+        ):
+            raise ValueError(f"{path.name} is not a stage waiver record.")
+        for entry_id, flags in saved.items():
+            waivers.setdefault(str(entry_id), []).extend(flags)
+    return waivers
+
+
+def _local_gate_shadow(
+    args, directory: Path, *, waivers: dict[str, list[str]] | None = None
+) -> GateBatteryShadow:
     gates = us_scoped_gate_manifest(US_LOCAL_GATE_SCOPE)
     report_path, comparison_path = shadow_file_paths(directory, US_LOCAL_GATE_SCOPE)
     return GateBatteryShadow(
@@ -7512,7 +7599,7 @@ def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
         report_path=report_path,
         comparison_path=comparison_path,
         registry=us_gate_registry(US_LOCAL_GATE_SCOPE, tool=globals()),
-        waivers=_local_gate_waivers(args),
+        waivers=_local_gate_waivers(args) if waivers is None else waivers,
         overrides=us_flag_overrides(gates, us_gate_specs(US_LOCAL_GATE_SCOPE), args),
     )
 
@@ -7531,7 +7618,11 @@ def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
         stages_run = _LOCAL_GATE_SHADOW_STAGES[
             : _LOCAL_GATE_SHADOW_STAGES.index(stage) + 1
         ]
-        shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args))
+        shadow = _local_gate_shadow(
+            args,
+            _local_gate_shadow_directory(args),
+            waivers=_recorded_local_gate_waivers(args, stage),
+        )
         for name in _LOCAL_GATE_SHADOW_STAGES:
             observations = _local_stage_observations(args, name)
             if observations.is_file():
@@ -7557,11 +7648,12 @@ def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
 def _local_gate_shadow_stage(args, stage: str):
     """Observe one stage's gates in shadow, then bring the scope's files up to date.
 
-    The stages may run as separate processes, so each saves what it observed
-    beside the checkpoint, and rerunning a stage discards its own and every
-    later stage's observations. Afterwards the scope's report and comparison
-    are rebuilt from every stage saved so far. With the switch off (the test
-    suite) the stage runs without a shadow and touches no shadow file.
+    The stages may run as separate processes, so each saves what it observed,
+    and the waivers its flags applied to its own entries, beside the
+    checkpoint; rerunning a stage discards its own and every later stage's
+    files. Afterwards the scope's report and comparison are rebuilt from every
+    stage saved so far. With the switch off (the test suite) the stage runs
+    without a shadow and touches no shadow file.
     """
 
     if not tool_gate_shadows_enabled():
@@ -7570,6 +7662,7 @@ def _local_gate_shadow_stage(args, stage: str):
     try:
         for name in _LOCAL_GATE_SHADOW_STAGES[_LOCAL_GATE_SHADOW_STAGES.index(stage) :]:
             _local_stage_observations(args, name).unlink(missing_ok=True)
+            _local_stage_waivers(args, name).unlink(missing_ok=True)
         # The scope's report and comparison were built from observations just
         # discarded, so they go too: a stage that never reaches its end, killed
         # before it rebuilds them, must not leave an earlier run's verdict.
@@ -7583,6 +7676,9 @@ def _local_gate_shadow_stage(args, stage: str):
 
     def save() -> None:
         try:
+            # The waiver record first, so observations this code saves always
+            # have one (:func:`_recorded_local_gate_waivers`).
+            _save_local_stage_waivers(args, stage)
             shadow.save_observations(_local_stage_observations(args, stage))
         except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
             log(f"WARNING: gate battery shadow could not save {stage}: {error}")

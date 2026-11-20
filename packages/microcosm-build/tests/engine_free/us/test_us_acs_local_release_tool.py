@@ -8329,6 +8329,13 @@ def _sibling_refusal(name: str) -> str:
         ("truthy", True, "carries no esi_premiums_anchor verdict"),
         ("unbound", True, "esi_premiums_anchor gate is missing its artifact binding"),
         ("stale", True, "esi_premiums_signal gate is missing its artifact binding"),
+        # Nor a red verdict finalize enforced (``enforced: true``): only the
+        # waiver finalize itself recorded ships.
+        (
+            "failed",
+            True,
+            "esi_premiums_anchor gate is red and finalize did not record a waiver",
+        ),
     ],
 )
 def test_package_requires_the_esi_premium_verdict_bound_to_the_packaged_bytes(

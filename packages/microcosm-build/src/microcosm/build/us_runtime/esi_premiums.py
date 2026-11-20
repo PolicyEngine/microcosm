@@ -1421,7 +1421,10 @@ def _clone_disagreements(person: pd.DataFrame, rows: np.ndarray) -> int:
         person.columns
     ):
         return 0
-    person = person.loc[rows]
+    # A frame of source rows is read as it is, as a single-source frame is:
+    # only a mixed frame is subset.
+    if not rows.all():
+        person = person.loc[rows]
     keys = _stable_person_keys(person)
     work = person[list(US_ESI_PREMIUMS_OUTPUT_COLUMNS)].copy()
     work["_key"] = keys.to_numpy()
@@ -1489,6 +1492,11 @@ def _transferred_row_summary(
         )
     # Transferred rows that hold no household mass cannot be compared.
     weighed = transferred_mass > 0
+    # The source-derived rows' premium per unit of household mass. It rounds
+    # to zero when their premium holders carry far less weight than the rest
+    # of their side, and then, as when they hold no premium, there is no
+    # ratio to grade.
+    source_rate = source_total / source_mass if source_mass > 0 else 0.0
     return {
         "source_rows": int(source.sum()),
         "transferred_rows": int(transferred.sum()),
@@ -1514,8 +1522,8 @@ def _transferred_row_summary(
         ),
         "transferred_to_source_band": list(_TRANSFERRED_TO_SOURCE_BAND),
         "transferred_to_source_per_household_mass_ratio": (
-            (transferred_total / transferred_mass) / (source_total / source_mass)
-            if source_total and source_mass > 0 and weighed
+            (transferred_total / transferred_mass) / source_rate
+            if source_rate and weighed
             else float("nan")
         ),
         "transferred_per_household_mass_band": list(_TRANSFERRED_PER_MASS_BAND),
@@ -1524,6 +1532,63 @@ def _transferred_row_summary(
         "transferred_source_records_with_premium_and_no_wages": without_wages,
         "transferred_source_records_with_premium_and_missing_wages": missing_wages,
     }
+
+
+def _refuse_unusable_source_anchor_evidence(
+    *,
+    source_household_mass: float,
+    raw_anchor_total: float,
+    raw_universe_total: float,
+    raw_positive_weight: float,
+    employed_share: float,
+) -> None:
+    """Refuse a mixed frame whose source-derived rows cannot anchor the rest.
+
+    A mixed frame's anchor-universe total prices the transferred rows' column
+    at the source-derived rows' employed share of the anchor universe, and
+    the raw mean divides by their weight. Both need source-derived rows that
+    hold household mass, policyholders among them with a weighted MEPS-IC
+    employer share, and employed ones with a positive part of it, large
+    enough that their share of the whole does not round to zero. Without
+    that weighted evidence there is no total to compare, so the frame is
+    refused here and both gates record the refusal as a red verdict.
+    """
+
+    gaps = [
+        reason
+        for unusable, reason in (
+            (
+                not source_household_mass > 0,
+                f"hold no household mass ({source_household_mass!r})",
+            ),
+            (
+                not raw_anchor_total > 0,
+                "give their policyholders no weighted MEPS-IC employer share "
+                f"({raw_anchor_total!r})",
+            ),
+            (
+                not (raw_universe_total > 0 and raw_positive_weight > 0),
+                "give their employed policyholders no weighted MEPS-IC employer "
+                f"share ({raw_universe_total!r} over weight {raw_positive_weight!r})",
+            ),
+            (
+                raw_anchor_total > 0
+                and raw_universe_total > 0
+                and not employed_share > 0,
+                "give their employed policyholders a part of the policyholders' "
+                "weighted MEPS-IC employer share that rounds to zero "
+                f"({raw_universe_total!r} of {raw_anchor_total!r})",
+            ),
+        )
+        if unusable
+    ]
+    if gaps:
+        raise SourceRuntimeError(
+            "US ESI premium stage: the source-derived rows of this mixed frame "
+            f"{'; they '.join(gaps)}. Their weighted raw ASEC fields are what "
+            "the rows without them are priced against, so there is no "
+            "anchor-universe total to grade."
+        )
 
 
 def us_esi_premiums_summary(
@@ -1543,8 +1608,13 @@ def us_esi_premiums_summary(
     the transferred rows are summarized against them, and
     ``anchor_universe_employer_total`` adds the transferred column at the CPS
     rows' employed share of the anchor universe: those rows have no
-    policyholder flag to price the other policyholders from. When every row is
-    a CPS row, every figure is computed as for a single-source frame.
+    policyholder flag to price the other policyholders from. A mixed frame
+    whose CPS rows hold no household mass, or give their policyholders or
+    their employed policyholders no weighted MEPS-IC share (or the employed a
+    part of it that rounds to zero), has no such total and is refused
+    (``SourceRuntimeError``), which both gates record as red.
+    When every row is a CPS row, every figure is computed as for a
+    single-source frame.
     """
 
     person = frame.table("person")
@@ -1607,6 +1677,13 @@ def us_esi_premiums_summary(
         raw_universe_total / raw_anchor_total if raw_anchor_total else float("nan")
     )
     if mixed:
+        _refuse_unusable_source_anchor_evidence(
+            source_household_mass=float(summary["source_household_mass"]),
+            raw_anchor_total=raw_anchor_total,
+            raw_universe_total=raw_universe_total,
+            raw_positive_weight=float(weights[raw_positive].sum()),
+            employed_share=employed_share,
+        )
         scale = (
             _weighted(weights, employer) / raw_universe_total
             if raw_universe_total
@@ -1850,7 +1927,12 @@ def us_esi_premiums_anchor_gate(
     CPS rows' employed share, and the gate also fails when the transferred
     rows' column per unit of household mass leaves
     ``_TRANSFERRED_PER_MASS_BAND`` of the CPS rows', because the total then
-    rests on halves that no longer compare.
+    rests on halves that no longer compare. CPS rows without the weighted
+    evidence that total needs fail it as a refusal. The private-sector
+    cross-check is scaled by the CPS rows' share of household mass. When that
+    share rounds to zero, or the CPS rows' sector total or the scaled total is
+    not finite, it is recorded without a value and with an ``unavailable``
+    reason that names which.
     """
 
     person = frame.table("person")
@@ -1943,9 +2025,7 @@ def us_esi_premiums_anchor_gate(
                 f"employed policyholders carry {employed_share:.4f} of the "
                 f"anchor-universe employer total, outside [{low}, {high}]."
             )
-        population_share = 1.0
         if "transferred_rows" in summary:
-            population_share = float(summary["source_household_mass_share"])
             details |= {
                 key: summary[key]
                 for key in (
@@ -1979,18 +2059,49 @@ def us_esi_premiums_anchor_gate(
             details["cross_check_ratio"] = universe_total / float(nhe)
         active = dict(summary["meps_ic_private_active_employer_total"])
         if year in active:
-            # The sector split reads the raw columns, so in a mixed frame it
-            # covers the source-derived rows; their share of household mass
-            # scales it to the population.
-            private = (
-                float(dict(summary["employer_premium_by_sector"])["private"])
-                / population_share
-            )
-            details["private_active_cross_check"] = {
+            private = float(dict(summary["employer_premium_by_sector"])["private"])
+            unavailable: str | None = None
+            if "transferred_rows" in summary:
+                # The sector split reads the raw columns, so in a mixed frame it
+                # covers the source-derived rows; their share of household mass
+                # scales it to the population. That share can round to zero
+                # while those rows hold mass, and then scales nothing. The
+                # cross-check is recorded, not gated, so when the scaled total
+                # has no finite value it goes without one, naming the term at
+                # fault, rather than divide by zero.
+                share = float(summary["source_household_mass_share"])
+                causes = []
+                if not np.isfinite(private):
+                    causes.append(
+                        "the source-derived rows' private-sector employer total "
+                        f"({private!r}) is not finite"
+                    )
+                if not share > 0:
+                    causes.append(
+                        "the source-derived rows' share of household mass "
+                        f"({share!r}) is not a positive number, so it scales "
+                        "nothing"
+                    )
+                if not causes:
+                    scaled = private / share
+                    if not np.isfinite(scaled):
+                        causes.append(
+                            "the source-derived rows' private-sector employer "
+                            f"total ({private!r}) over their share of household "
+                            f"mass ({share!r}) is not finite"
+                        )
+                    private = scaled
+                if causes:
+                    private = float("nan")
+                    unavailable = "; ".join(causes)
+            cross_check: dict[str, object] = {
                 "meps_ic_private_active_employer_total": active[year],
                 "employer_premium_private_sector": private,
                 "ratio": private / active[year],
             }
+            if unavailable is not None:
+                cross_check["unavailable"] = unavailable
+            details["private_active_cross_check"] = cross_check
     return GateResult(
         name="esi_premiums_anchor",
         passed=not failures,
