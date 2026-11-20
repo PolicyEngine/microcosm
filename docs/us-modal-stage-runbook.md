@@ -1378,13 +1378,13 @@ CONTEXT=./modal-runs/$R/stage_run_context.json
 LINEAGE=./modal-runs/$R/compare-lineage.json
 (
   set -euo pipefail
-  # -L refuses a dangling link, which -e reports as absent.
-  for base in "$RUN/base-sup" "$RUN/base-out"; do
-    if [ -e "$base" ] || [ -L "$base" ]; then
-      echo "refusing: $RUN already has base-sup or base-out; never overwrite a base" >&2
-      exit 1
-    fi
-  done
+  # -L refuses a dangling link, which -e reports as absent. The tests name
+  # each path, so the guard assigns no variable.
+  if [ -e "$RUN/base-sup" ] || [ -L "$RUN/base-sup" ] ||
+    [ -e "$RUN/base-out" ] || [ -L "$RUN/base-out" ]; then
+    echo "refusing: $RUN already has base-sup or base-out; never overwrite a base" >&2
+    exit 1
+  fi
   # Step 6, required: exits 1 (and ends the block) on any problem, which it
   # prints to stderr; its JSON report goes to $LINEAGE.
   python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \

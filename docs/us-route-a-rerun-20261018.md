@@ -461,13 +461,12 @@ RUN=$RUN_ROOT/run-${C:0:12}
   set -euo pipefail
   # An explicit if: under `set -e`, `test A && test B` does not stop the block
   # when the first test fails. -L refuses a dangling link, which -e reports
-  # as absent.
-  for base in "$RUN/base-sup" "$RUN/base-out"; do
-    if [ -e "$base" ] || [ -L "$base" ]; then
-      echo "refusing: $RUN already has base-sup or base-out; never overwrite a base" >&2
-      exit 1
-    fi
-  done
+  # as absent. The tests name each path, so the guard assigns no variable.
+  if [ -e "$RUN/base-sup" ] || [ -L "$RUN/base-sup" ] ||
+    [ -e "$RUN/base-out" ] || [ -L "$RUN/base-out" ]; then
+    echo "refusing: $RUN already has base-sup or base-out; never overwrite a base" >&2
+    exit 1
+  fi
   python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
     --state-root "$FETCH/state" --prefix base-out --strict
   python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \
@@ -530,7 +529,8 @@ CLASS=$LOCAL/lineage-class-check-stage001.json
 The fetched file must hash to the receipt's digest for it, the same digest
 `compare-lineage` printed for Modal. The scratch copy is removed on any exit.
 Exit 0 means the difference is inside the class. Then run the rest of the step 5
-block by hand: its refusal first (the `for` loop), then everything from `mkdir -p
+block in one `( set -euo pipefail; ... )` subshell, so a refusal stops it: the
+`if` that refuses an occupied path first, then everything from `mkdir -p
 "$RUN/base-out"`. Copy `$CLASS` and the check script into `$RUN/base-sup/`.
 Add a `lineage_exception` entry (ruling, check file, verdict) to `RESULT.json`
 and name the exception in `ACCEPTED`. Exit 1 stops for Max.
