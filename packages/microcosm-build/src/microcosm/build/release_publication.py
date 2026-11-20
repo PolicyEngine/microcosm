@@ -645,6 +645,7 @@ def publish_release_build(
     parent_h5: Path | str | None = None,
     compatibility_wheels: tuple[Path | str, ...] = (),
     collector_wait_seconds: float = COLLECTOR_SUBMISSION_WAIT_SECONDS,
+    source_parent_replay=None,
 ) -> ReleasePublication:
     """Check a build and hand it to the emitter to publish into its folder.
 
@@ -675,6 +676,7 @@ def publish_release_build(
         repository=repository,
         parent_h5=parent_h5,
         compatibility_wheels=tuple(compatibility_wheels),
+        source_parent_replay=source_parent_replay,
     )
     from microcosm.data import compatibility_recertification
 
@@ -684,6 +686,7 @@ def publish_release_build(
             prepared.release_dir,
             repo_id=prepared.repository,
             artifact_root=artifact_root,
+            source_parent_replay=source_parent_replay,
         )
     from microcosm.data import annual_projections
 
@@ -840,6 +843,7 @@ def _parser() -> argparse.ArgumentParser:
             "the emitter, or make a published build current. " + TAGGED_RELEASE_ADVICE
         ),
     )
+    parser.add_argument("--source-parent-replay-config", type=Path)
     parser.add_argument("release_dir", type=Path, help="The local release directory.")
     parser.add_argument(
         "--repo-id",
@@ -985,6 +989,12 @@ def _print_claim_records(records: Mapping[str, Any]) -> None:
 
 def _run(args: argparse.Namespace) -> int:
     release_dir: Path = args.release_dir
+    from microcosm.data.source_parent_replay import SourceParentReplayContext
+
+    config = getattr(args, "source_parent_replay_config", None)
+    replay = SourceParentReplayContext.from_json(config) if config else None
+    if args.promote and replay is not None:
+        raise ValueError("source-parent replay does not authorize promotion")
     if args.promote:
         outcome = promote_release_build(
             release_dir,
@@ -1013,6 +1023,7 @@ def _run(args: argparse.Namespace) -> int:
                 repository=args.repo_id,
                 parent_h5=args.parent_h5,
                 compatibility_wheels=tuple(args.compatibility_wheel),
+                source_parent_replay=replay,
             )
             verdict: dict[str, Any] = {
                 "valid": True,
@@ -1034,6 +1045,7 @@ def _run(args: argparse.Namespace) -> int:
             make_current=args.make_current,
             parent_h5=args.parent_h5,
             compatibility_wheels=tuple(args.compatibility_wheel),
+            source_parent_replay=replay,
             wait_seconds=(
                 PUBLICATION_WAIT_SECONDS
                 if args.wait_seconds is None

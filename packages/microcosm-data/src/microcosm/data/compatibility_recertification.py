@@ -54,8 +54,9 @@ serve exactly the carried manifest bytes.
 **Scope.** National-default parents only: :data:`SUPPORTED_PARENT_ROLES`. The
 identity mechanism does not depend on the role, so a local-area parent is an
 additive follow-up. A parent must itself be a calibration release; a
-recertification of a recertification or of a source enrichment is refused, so
-every child is one hop from the build its calibration evidence describes.
+recertification of a recertification is refused. Ordinary parents are calibration
+releases. The separately reviewed v2 path admits only the pinned national SPM
+source enrichment after fresh original-runtime and current qualification.
 
 See ``docs/us-compatibility-recertification.md``.
 """
@@ -86,6 +87,14 @@ from microcosm.data.contract import (
     publishes_to_build_folder,
     release_artifact_role,
     required_release_files,
+)
+from microcosm.data.source_parent_replay import (
+    SOURCE_PARENT_EVIDENCE_FILE,
+    SOURCE_PARENT_EVIDENCE_KEY,
+    SourceParentReplayContext,
+    build_source_parent_artifact_map,
+    describe_source_parent_profile,
+    verify_source_parent_evidence,
 )
 
 RECERTIFICATION_RELEASE_TYPE = "compatibility_recertification"
@@ -182,6 +191,8 @@ PRODUCER_SOURCE_FILES = (
     "packages/microcosm-data/src/microcosm/data/contract.py",
     "packages/microcosm-data/src/microcosm/data/build_folder_manifests.py",
 )
+
+
 SCORING_PERIOD = 2024
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marital_unit")
@@ -936,6 +947,7 @@ def describe_parent(
     parent_artifact_root: Path | str,
     *,
     dataset_file: str | None = None,
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> dict:
     """The parent block a child records, read from the parent's published files.
 
@@ -998,7 +1010,24 @@ def describe_parent(
         reference = {"build_id": parent_id, "repo_id": REPO_ID, "revision": parent_id}
     if not parent_id.startswith(US_RELEASE_PREFIX):
         raise ValueError("only a US release can be recertified by this lane")
-    if manifest.get("release_type") not in PARENT_RELEASE_TYPES:
+    source_parent = manifest.get("release_type") == "source_enrichment"
+    if source_parent:
+        if not isinstance(source_parent_replay, SourceParentReplayContext):
+            raise ValueError(
+                "parent is not a calibration release; source enrichment parent "
+                "requires explicit original replay context"
+            )
+        source_profile = describe_source_parent_profile(parent_release_dir)
+        source_map = build_source_parent_artifact_map(
+            manifest,
+            child_dataset_key="microcosm_us_2024",
+            child_dataset_filename="microcosm_us_2024.h5",
+        )
+    elif source_parent_replay is not None:
+        raise ValueError(
+            "source-parent replay context is misplaced for a calibration parent"
+        )
+    if not source_parent and manifest.get("release_type") not in PARENT_RELEASE_TYPES:
         raise ValueError(
             f"parent release_type {manifest.get('release_type')!r} is not a "
             "calibration release; recertify the calibration release itself"
@@ -1024,7 +1053,7 @@ def describe_parent(
                     f"parent artifact {path!r} is missing or differs from its pin"
                 )
             continue
-        if key in _RESERVED_PARENT_ARTIFACT_KEYS:
+        if key in _RESERVED_PARENT_ARTIFACT_KEYS and not source_parent:
             raise ValueError(
                 f"parent artifact key {key!r} is one the child writes its own "
                 "files under; the parent artifact would leave the child manifest"
@@ -1048,7 +1077,7 @@ def describe_parent(
                 f"parent artifact {key!r} must pin {REPO_ID} at the parent tag"
             )
         if Path(path).name == path and (parent_release_dir / path).is_file():
-            if path in CHILD_OWNED_FILES:
+            if path in CHILD_OWNED_FILES and not source_parent:
                 raise ValueError(
                     f"parent artifact {path!r} collides with a file the child writes"
                 )
@@ -1075,6 +1104,14 @@ def describe_parent(
             raise ValueError(f"parent manifest must declare its required file {name!r}")
     return {
         **reference,
+        **(
+            {
+                "source_parent_profile": source_profile,
+                "source_parent_artifact_map": list(source_map),
+            }
+            if source_parent
+            else {}
+        ),
         "release_type": manifest.get("release_type", "calibration"),
         "dataset_role": role,
         "release_manifest_sha256": sha256_file(manifest_path),
@@ -1128,6 +1165,18 @@ def child_artifact_path(parent: Mapping, release: str, path: str) -> str:
     Only the H5 moves: to ``release``'s dataset file name.
     """
 
+    if parent.get("release_type") == "source_enrichment":
+        matches = [
+            row
+            for row in parent.get("source_parent_artifact_map", ())
+            if row.get("source_path") == path
+        ]
+        if len(matches) != 1:
+            raise ValueError("source-parent path has no unique inverse mapping")
+        carried = matches[0].get("carried_path")
+        if not _bare_release_filename(carried):
+            raise ValueError("unsafe source-parent carried filename")
+        return carried
     if path == _mapping(parent.get("dataset")).get("filename"):
         return child_dataset(parent, release)["filename"]
     return path
@@ -1160,6 +1209,32 @@ def carried_artifacts(
     """
 
     dataset = child_dataset(parent, release)
+    if parent.get("release_type") == "source_enrichment":
+        from microcosm.data.source_parent_replay import (
+            verify_source_parent_artifact_map,
+        )
+
+        rows = parent.get("source_parent_artifact_map")
+        verify_source_parent_artifact_map(
+            parent_manifest,
+            rows,
+            child_dataset_key=dataset["artifact"],
+            child_dataset_filename=dataset["filename"],
+        )
+        return {
+            row["carried_key"]: {
+                **{
+                    name: value
+                    for name, value in parent_manifest["artifacts"][
+                        row["source_key"]
+                    ].items()
+                    if name not in {"revision", "role", "path"}
+                },
+                "path": row["carried_path"],
+                "role": release_artifact_role(row["carried_key"], row["kind"]),
+            }
+            for row in rows
+        }
     parent_key = _mapping(parent.get("dataset")).get("artifact")
     artifacts: dict[str, dict] = {}
     for key, raw in _mapping(parent_manifest.get("artifacts")).items():
@@ -1209,6 +1284,21 @@ def _reconstructed_parent(release_dir: Path, parent: Mapping, staging: Path) -> 
     """
 
     _, directory_name, _ = _parent_identity(parent)
+    if parent.get("release_type") == "source_enrichment":
+        from microcosm.data.source_parent_replay import (
+            verify_source_parent_artifact_map,
+        )
+
+        carried_manifest = json.loads(
+            (release_dir / PARENT_RELEASE_MANIFEST_FILE).read_text()
+        )
+        dataset = child_dataset(parent, release_dir.name)
+        verify_source_parent_artifact_map(
+            carried_manifest,
+            parent.get("source_parent_artifact_map"),
+            child_dataset_key=dataset["artifact"],
+            child_dataset_filename=dataset["filename"],
+        )
     names = list(_mapping(parent.get("release_files")))
     if not all(_bare_release_filename(name) for name in names):
         raise ValueError("parent release_files must be bare file names")
@@ -1224,7 +1314,10 @@ def _reconstructed_parent(release_dir: Path, parent: Mapping, staging: Path) -> 
         release_dir / PARENT_BUILD_MANIFEST_FILE, directory / "build_manifest.json"
     )
     for name in _mapping(parent.get("release_files")):
-        shutil.copyfile(release_dir / name, directory / name)
+        shutil.copyfile(
+            release_dir / child_artifact_path(parent, release_dir.name, name),
+            directory / name,
+        )
     return directory
 
 
@@ -1239,7 +1332,11 @@ PARENT_CONTRACT_STORED_INPUT_EVIDENCE_REPLACED = (
 
 
 def replay_parent_contract(
-    release_dir: Path | str, parent: Mapping, *, artifact_root: Path | str | None
+    release_dir: Path | str,
+    parent: Mapping,
+    *,
+    artifact_root: Path | str | None,
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> dict:
     """Run today's release contract on the parent rebuilt from the carried bytes.
 
@@ -1263,6 +1360,21 @@ def replay_parent_contract(
     from microcosm.data import contract
 
     release_dir = Path(release_dir)
+    if parent.get("release_type") == "source_enrichment":
+        if source_parent_replay is None or artifact_root is None:
+            raise ValueError(
+                "source-parent replay requires explicit original context and artifact_root"
+            )
+        return verify_source_parent_evidence(
+            release_dir,
+            parent,
+            artifact_root=artifact_root,
+            context=source_parent_replay,
+        )
+    if source_parent_replay is not None:
+        raise ValueError(
+            "source-parent replay context is misplaced for a calibration parent"
+        )
     key = contract.US_STORED_INPUTS_EVIDENCE_KEY
     with tempfile.TemporaryDirectory(prefix=".recertification-parent-") as staging:
         parent_dir = _reconstructed_parent(release_dir, parent, Path(staging))
@@ -2527,6 +2639,7 @@ def validate_recertification_candidate(
     artifact_root: Path | str | None,
     require_compatibility: bool = False,
     compatibility_wheels: tuple[Path | str, ...] = (),
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> dict:
     """Check a recertification child; return its report or raise.
 
@@ -2568,13 +2681,17 @@ def validate_recertification_candidate(
         failures.append(
             f"release_manifest.json must declare release_type={RECERTIFICATION_RELEASE_TYPE}"
         )
+    expected_schema = (
+        2
+        if parent.get("release_type") == "source_enrichment"
+        else REPORT_SCHEMA_VERSION
+    )
     if (
-        report.get("schema_version") != REPORT_SCHEMA_VERSION
+        (expected_schema == 2 and type(report.get("schema_version")) is not int)
+        or report.get("schema_version") != expected_schema
         or report.get("release_type") != RECERTIFICATION_RELEASE_TYPE
     ):
-        failures.append(
-            f"{REPORT_FILE} must be a schema-{REPORT_SCHEMA_VERSION} report"
-        )
+        failures.append(f"{REPORT_FILE} must be a schema-{expected_schema} report")
     if release_id != CHILD_RELEASE:
         failures.append(
             "a recertification is a build of the national release "
@@ -2620,7 +2737,11 @@ def validate_recertification_candidate(
     with tempfile.TemporaryDirectory(prefix=".recertification-describe-") as staging:
         try:
             described = _describe_carried_parent(
-                release_dir, parent, artifact_root, Path(staging)
+                release_dir,
+                parent,
+                artifact_root,
+                Path(staging),
+                source_parent_replay=source_parent_replay,
             )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise ReleaseContractError(
@@ -2655,13 +2776,24 @@ def validate_recertification_candidate(
         failures.append(str(exc))
         expected_artifacts = {}
     for key, name in CHILD_ARTIFACT_KEYS.items():
-        expected_artifacts[key] = child_artifact_entry(
+        child_entry = child_artifact_entry(
             key,
             name,
             kind="evidence",
             sha256=sha256_file(release_dir / name)
             if (release_dir / name).is_file()
             else None,
+        )
+        if key in expected_artifacts and expected_artifacts[key] != child_entry:
+            failures.append(f"child artifact {key} would alter carried parent metadata")
+        expected_artifacts[key] = child_entry
+    if parent.get("release_type") == "source_enrichment":
+        evidence = release_dir / SOURCE_PARENT_EVIDENCE_FILE
+        expected_artifacts[SOURCE_PARENT_EVIDENCE_KEY] = child_artifact_entry(
+            SOURCE_PARENT_EVIDENCE_KEY,
+            SOURCE_PARENT_EVIDENCE_FILE,
+            kind="evidence",
+            sha256=sha256_file(evidence) if evidence.is_file() else None,
         )
     compatibility = _mapping(report.get("compatibility"))
     passed = compatibility.get("status") == "passed"
@@ -2682,7 +2814,11 @@ def validate_recertification_candidate(
             "child's own evidence, each hashing to its file"
         )
     for name, sha in _mapping(parent.get("release_files")).items():
-        if not (release_dir / name).is_file() or sha256_file(release_dir / name) != sha:
+        carried_name = child_artifact_path(parent, release_id, name)
+        if (
+            not (release_dir / carried_name).is_file()
+            or sha256_file(release_dir / carried_name) != sha
+        ):
             failures.append(f"carried parent file {name} must keep the parent bytes")
     if artifact_root is None:
         failures.append(
@@ -2709,7 +2845,15 @@ def validate_recertification_candidate(
         *CHILD_ARTIFACT_KEYS.values(),
         "release_manifest.json",
         "build_manifest.json",
-        *_mapping(parent.get("release_files")),
+        *(
+            child_artifact_path(parent, release_id, name)
+            for name in _mapping(parent.get("release_files"))
+        ),
+        *(
+            (SOURCE_PARENT_EVIDENCE_FILE,)
+            if parent.get("release_type") == "source_enrichment"
+            else ()
+        ),
         *(CERTIFIED_ARTIFACT_KEYS.values() if passed else ()),
     }
     present = {path.name for path in release_dir.iterdir()}
@@ -2722,7 +2866,10 @@ def validate_recertification_candidate(
 
     # 3. The parent passes today's contract on the carried bytes.
     parent_contract = replay_parent_contract(
-        release_dir, parent, artifact_root=artifact_root
+        release_dir,
+        parent,
+        artifact_root=artifact_root,
+        source_parent_replay=source_parent_replay,
     )
     if parent_contract["other_failures"]:
         failures.append(
@@ -2822,7 +2969,12 @@ def validate_recertification_candidate(
 
 
 def _describe_carried_parent(
-    release_dir: Path, parent: Mapping, artifact_root: Path | None, staging: Path
+    release_dir: Path,
+    parent: Mapping,
+    artifact_root: Path | None,
+    staging: Path,
+    *,
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> dict:
     """:func:`describe_parent` on the parent rebuilt from the carried bytes.
 
@@ -2837,6 +2989,7 @@ def _describe_carried_parent(
         directory,
         artifact_root,
         dataset_file=child_dataset(parent, release_dir.name)["filename"],
+        source_parent_replay=source_parent_replay,
     )
 
 
@@ -2997,6 +3150,7 @@ def certify_recertification(
     counterfactual_scores: Path | str | None,
     compatible_model_specifier: str,
     compatibility_claim_declared_by: str,
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> Path:
     """Write a certified child next to the pending candidate, or raise.
 
@@ -3023,7 +3177,9 @@ def certify_recertification(
     )
     check_compatibility_claim_declarer(compatibility_claim_declared_by)
     report = validate_recertification_candidate(
-        release_dir, artifact_root=artifact_root
+        release_dir,
+        artifact_root=artifact_root,
+        source_parent_replay=source_parent_replay,
     )
     if report["compatibility"] != {"status": "pending"}:
         raise ValueError("certify a pending candidate, not a certified bundle")
@@ -3104,6 +3260,7 @@ def certify_recertification(
             artifact_root=artifact_root,
             require_compatibility=True,
             compatibility_wheels=compatibility_wheels,
+            source_parent_replay=source_parent_replay,
         )
         for path in staged.iterdir():
             path.chmod(0o400)
@@ -3128,6 +3285,7 @@ def require_parent_publication(
     *,
     repo_id: str,
     artifact_root: Path | str | None,
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> None:
     """Refuse unless the published parent on the Hub serves what the child carries.
 
@@ -3162,6 +3320,15 @@ def require_parent_publication(
     release_dir = Path(release_dir)
     report = json.loads((release_dir / REPORT_FILE).read_text())
     parent = _mapping(report.get("parent"))
+    if parent.get("release_type") == "source_enrichment":
+        replay_parent_contract(
+            release_dir,
+            parent,
+            artifact_root=artifact_root,
+            source_parent_replay=source_parent_replay,
+        )
+    elif source_parent_replay is not None:
+        raise ValueError("source-parent replay context is misplaced")
     location, _, parent_id = _parent_identity(parent)
     revision = location.revision
     build_folder = parent.get("release") is not None
@@ -3212,7 +3379,10 @@ def require_parent_publication(
     expected = {}
     forbidden = set()
     for name, sha in _mapping(parent.get("release_files")).items():
-        expected[f"{location.folder}/{name}"] = (sha, release_dir / name)
+        expected[f"{location.folder}/{name}"] = (
+            sha,
+            release_dir / child_artifact_path(parent, release_dir.name, name),
+        )
         if not build_folder:
             forbidden.add(name)
     root = Path(artifact_root) if artifact_root is not None else None
@@ -3307,6 +3477,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="python -m microcosm.data.compatibility_recertification",
         description=__doc__.split("\n\n")[0],
     )
+    parser.add_argument("--source-parent-replay-config", type=Path)
     parser.add_argument("--release-dir", required=True, type=Path)
     parser.add_argument("--artifact-root", required=True, type=Path)
     parser.add_argument("--certify", action="store_true")
@@ -3325,6 +3496,11 @@ def main(argv: list[str] | None = None) -> int:
         help="who declares the claim, recorded in the bundle",
     )
     args = parser.parse_args(argv)
+    replay = (
+        SourceParentReplayContext.from_json(args.source_parent_replay_config)
+        if args.source_parent_replay_config
+        else None
+    )
     if args.certify and (
         args.output_dir is None
         or args.baseline_scores is None
@@ -3343,6 +3519,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.output_dir,
                 artifact_root=args.artifact_root,
                 compatibility_wheels=tuple(args.compatibility_wheel),
+                source_parent_replay=replay,
                 baseline_scores=args.baseline_scores,
                 tested_scores=args.tested_scores,
                 counterfactual_scores=args.counterfactual_scores,
@@ -3364,6 +3541,7 @@ def main(argv: list[str] | None = None) -> int:
                 artifact_root=args.artifact_root,
                 require_compatibility=args.require_compatibility,
                 compatibility_wheels=tuple(args.compatibility_wheel),
+                source_parent_replay=replay,
             )
             verdict = {
                 "valid": True,

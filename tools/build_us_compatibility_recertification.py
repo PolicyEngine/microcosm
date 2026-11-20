@@ -56,6 +56,13 @@ from microcosm.data import (  # noqa: E402
     stored_inputs,
 )
 from microcosm.data import compatibility_recertification as recert  # noqa: E402
+from microcosm.data.source_parent_replay import (  # noqa: E402 - after bytecode isolation
+    SOURCE_PARENT_EVIDENCE_FILE,
+    SOURCE_PARENT_EVIDENCE_KEY,
+    SourceParentReplayContext,
+    qualify_source_parent,
+    source_parent_contract_record,
+)
 
 _PRODUCER_FILES = recert.PRODUCER_SOURCE_FILES
 _ROOT = Path(__file__).resolve().parents[1]
@@ -122,6 +129,7 @@ def fetch_parent(
     release: str | None = None,
     repo_id: str = recert.REPO_ID,
     api=None,
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> dict:
     """Download a published parent into ``output_dir``; verify it.
 
@@ -222,7 +230,9 @@ def fetch_parent(
                     download(path, artifact_root / path)
     finally:
         shutil.rmtree(downloads, ignore_errors=True)
-    return recert.describe_parent(release_dir, artifact_root)
+    return recert.describe_parent(
+        release_dir, artifact_root, source_parent_replay=source_parent_replay
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +274,7 @@ def build_candidate(
     parent_artifact_root: Path,
     output_dir: Path,
     build_id: str,
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> dict:
     """Package a pending recertification of the parent; return its report.
 
@@ -274,7 +285,11 @@ def build_candidate(
     the build-folder layout before the contract runs.
     """
 
-    parent = recert.describe_parent(parent_release_dir, parent_artifact_root)
+    parent = recert.describe_parent(
+        parent_release_dir,
+        parent_artifact_root,
+        source_parent_replay=source_parent_replay,
+    )
     parent_id = recert.parent_build_id(parent)
     release = recert.CHILD_RELEASE
     if (
@@ -291,6 +306,15 @@ def build_candidate(
         (parent_release_dir / "release_manifest.json").read_text()
     )
     dataset = recert.child_dataset(parent, release)
+    source_evidence = (
+        qualify_source_parent(
+            parent_release_dir,
+            artifact_root=parent_artifact_root,
+            context=source_parent_replay,
+        )
+        if parent.get("release_type") == "source_enrichment"
+        else None
+    )
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".recertification-", dir=output_dir.parent))
     try:
@@ -311,7 +335,10 @@ def build_candidate(
             destination.parent.mkdir(parents=True, exist_ok=True)
             _place(parent_artifact_root / path, destination)
         for name in parent["release_files"]:
-            shutil.copyfile(parent_release_dir / name, release_dir / name)
+            shutil.copyfile(
+                parent_release_dir / name,
+                release_dir / recert.child_artifact_path(parent, release, name),
+            )
         shutil.copyfile(
             parent_release_dir / "release_manifest.json",
             release_dir / recert.PARENT_RELEASE_MANIFEST_FILE,
@@ -320,14 +347,26 @@ def build_candidate(
             parent_release_dir / "build_manifest.json",
             release_dir / recert.PARENT_BUILD_MANIFEST_FILE,
         )
+        if source_evidence is not None:
+            recert.write_json(
+                release_dir / SOURCE_PARENT_EVIDENCE_FILE, source_evidence.to_dict()
+            )
         report = {
-            "schema_version": recert.REPORT_SCHEMA_VERSION,
+            "schema_version": 2
+            if source_evidence is not None
+            else recert.REPORT_SCHEMA_VERSION,
             "release_type": recert.RECERTIFICATION_RELEASE_TYPE,
             "parent": parent,
             "dataset": dataset,
             "transformation": "none",
-            "parent_contract": recert.replay_parent_contract(
-                release_dir, parent, artifact_root=artifact_root
+            "parent_contract": (
+                source_parent_contract_record(release_dir / SOURCE_PARENT_EVIDENCE_FILE)
+                if source_evidence is not None
+                else recert.replay_parent_contract(
+                    release_dir,
+                    parent,
+                    artifact_root=artifact_root,
+                )
             ),
             "compatibility": {"status": "pending"},
         }
@@ -395,11 +434,23 @@ def build_candidate(
         }
         artifacts = recert.carried_artifacts(parent_manifest, parent, release)
         for key, name in recert.CHILD_ARTIFACT_KEYS.items():
-            artifacts[key] = recert.child_artifact_entry(
+            child_entry = recert.child_artifact_entry(
                 key,
                 name,
                 kind="evidence",
                 sha256=recert.sha256_file(release_dir / name),
+            )
+            if key in artifacts and artifacts[key] != child_entry:
+                raise ValueError(
+                    f"child artifact {key} would alter carried parent metadata"
+                )
+            artifacts[key] = child_entry
+        if source_evidence is not None:
+            artifacts[SOURCE_PARENT_EVIDENCE_KEY] = recert.child_artifact_entry(
+                SOURCE_PARENT_EVIDENCE_KEY,
+                SOURCE_PARENT_EVIDENCE_FILE,
+                kind="evidence",
+                sha256=recert.sha256_file(release_dir / SOURCE_PARENT_EVIDENCE_FILE),
             )
         manifest["artifacts"] = artifacts
         recert.write_json(release_dir / "release_manifest.json", manifest)
@@ -409,7 +460,9 @@ def build_candidate(
         for path in release_dir.iterdir():
             path.chmod(0o400)
         recert.validate_recertification_candidate(
-            release_dir, artifact_root=artifact_root
+            release_dir,
+            artifact_root=artifact_root,
+            source_parent_replay=source_parent_replay,
         )
         if (
             _producer_identity()["source_files_sha256"]
@@ -669,6 +722,7 @@ def score_candidate(
     compatibility_wheels: Sequence[Path],
     batch_households: int = _DEFAULT_BATCH_HOUSEHOLDS,
     microsimulation_cls=None,
+    source_parent_replay: SourceParentReplayContext | None = None,
 ) -> dict:
     """Score the candidate's H5 under the installed engine; write the document.
 
@@ -679,6 +733,17 @@ def score_candidate(
     verified trees before the document is written.
     """
 
+    report_probe = json.loads((release_dir / recert.REPORT_FILE).read_text())
+    parent_probe = report_probe.get("parent", {})
+    if parent_probe.get("release_type") == "source_enrichment":
+        recert.replay_parent_contract(
+            release_dir,
+            parent_probe,
+            artifact_root=artifact_root,
+            source_parent_replay=source_parent_replay,
+        )
+    elif source_parent_replay is not None:
+        raise ValueError("source-parent replay context is misplaced for this score")
     if type(batch_households) is not int or batch_households <= 0:
         raise ValueError("--batch-households must be a positive integer")
     runtime = scoring_runtime(compatibility_wheels)
@@ -885,7 +950,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         required=True,
         help="the installed country, Core and calculator wheels (all three)",
     )
+    for subcommand in (fetch, build, score):
+        subcommand.add_argument("--source-parent-replay-config", type=Path)
     args = parser.parse_args(argv)
+    replay = (
+        SourceParentReplayContext.from_json(args.source_parent_replay_config)
+        if args.source_parent_replay_config
+        else None
+    )
     try:
         if args.command == "fetch-parent":
             result = fetch_parent(
@@ -893,6 +965,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 release=args.release,
                 output_dir=args.output_dir,
                 repo_id=args.repo_id,
+                source_parent_replay=replay,
             )
             print(
                 json.dumps(
@@ -908,6 +981,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parent_artifact_root=args.parent_artifact_root,
                 output_dir=args.output_dir,
                 build_id=args.build_id,
+                source_parent_replay=replay,
             )
             print(
                 json.dumps(
@@ -930,6 +1004,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 variant=args.variant,
                 compatibility_wheels=tuple(args.compatibility_wheel),
                 batch_households=args.batch_households,
+                source_parent_replay=replay,
             )
             print(
                 json.dumps(
