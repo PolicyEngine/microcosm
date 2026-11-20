@@ -3,7 +3,7 @@
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
 a registered tool run on Modal from a pinned commit, with inputs fetched by
-digest and outputs listed with sha256 receipts. Six tools are registered
+digest and outputs listed with sha256 receipts. Seven tools are registered
 (`TOOLS` in the plan module): `tools/build_us_acs_local_release.py` (tool
 `us-acs-local-release`, stages `materialize`, `calibrate`, `qa`,
 `finalize`, `package`, or `all`), Route A's PUF-support base,
