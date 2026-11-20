@@ -396,6 +396,9 @@ it hours later. Run both after the staging (R1) and before R2:
 
 ## Full-run requirements and command
 
+The final County Files build's operator steps, from the national donor to
+the preflight, are in [the final build runbook](us-county-files-final-build.md).
+
 A full run needs the pinned main feed and its SHA256, the pinned county facts
 file and its SHA256,
 a staging H5 and summary with household support in every county (after the
