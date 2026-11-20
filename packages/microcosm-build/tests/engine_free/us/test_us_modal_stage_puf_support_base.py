@@ -2383,7 +2383,7 @@ GATE_SHADOW_FILES = (
 def _hand_off_block() -> str:
     """Step 7 of the runbook's base section, verbatim, as a bash script."""
 
-    text = RUNBOOK.read_text()
+    text = RUNBOOK.read_text(encoding="utf-8")
     start = text.index("```bash\n# 7. $RUN is Route A's")
     end = text.index("\n```", start + 3)
     block = text[start + len("```bash\n") : end]
@@ -2449,7 +2449,8 @@ def _hand_off(
         shim.write_text('#!/bin/sh\nshift 2\nexec sha256sum "$@"\n')
         shim.chmod(0o755)
     env = {
-        **os.environ,
+        # BASH_ENV would run a file of the host's before the block.
+        **{name: value for name, value in os.environ.items() if name != "BASH_ENV"},
         "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
         "R": RUN_ID,
         "RECEIPT": f"./modal-runs/{RUN_ID}/receipts/{receipt_name}",
@@ -2554,6 +2555,174 @@ def test_the_hand_off_never_overwrites_a_base(tmp_path: Path) -> None:
     assert sorted(path.name for path in run.iterdir()) == ["base-out"]
     # Refused before compare-lineage ran.
     assert not (modal_run / "compare-lineage.json").exists()
+
+
+#: What can sit where a base would go. ``[ -e ]`` reports a dangling link as
+#: absent, so the guards also test ``-L``.
+OCCUPANTS = ("directory", "file", "link", "dangling link")
+
+
+def _occupy(path: Path, kind: str, elsewhere: Path) -> None:
+    """Put a ``kind`` at ``path``; a link points at ``elsewhere``."""
+
+    if kind == "directory":
+        path.mkdir()
+    elif kind == "file":
+        path.write_text("")
+    else:
+        if kind == "link":
+            elsewhere.mkdir()
+        path.symlink_to(elsewhere)
+
+
+def _entries(run: Path) -> list[tuple[str, bool, bool]]:
+    return sorted(
+        (path.name, path.is_symlink(), path.exists()) for path in run.iterdir()
+    )
+
+
+@pytest.mark.parametrize("kind", OCCUPANTS)
+@pytest.mark.parametrize("name", ["base-out", "base-sup"])
+def test_the_hand_off_refuses_whatever_sits_where_a_base_would_go(
+    tmp_path: Path, name: str, kind: str
+) -> None:
+    run = tmp_path / "route-a-run"
+    run.mkdir()
+    _occupy(run / name, kind, tmp_path / "elsewhere")
+    before = _entries(run)
+    proc, run, modal_run = _hand_off(tmp_path, run=run)
+    assert proc.returncode == 1
+    assert "never overwrite a base" in proc.stderr
+    assert _entries(run) == before
+    assert not (modal_run / "compare-lineage.json").exists()
+
+
+RERUN_RECORD = ROOT / "docs" / "us-route-a-rerun-20261018.md"
+
+
+def _rerun_record_guard() -> str:
+    """What the 18 October record's hand-off block runs before its first
+    tool call, verbatim: the refusal of a run directory that has a base."""
+
+    text = RERUN_RECORD.read_text(encoding="utf-8")
+    opening = "RUN=$RUN_ROOT/run-${C:0:12}\n(\n  set -euo pipefail\n"
+    assert text.count(opening) == 1
+    start = text.index(opening) + len(opening)
+    end = text.index("  python3 tools/modal_us_stage_plan.py verify-receipt", start)
+    guard = text[start:end]
+    assert guard.strip()
+    return guard
+
+
+def _run_rerun_record_guard(run: Path) -> subprocess.CompletedProcess[str]:
+    """The record's guard under the block's shell options, then a line that
+    prints only when the guard let the block go on."""
+
+    script = f"(\n  set -euo pipefail\n{_rerun_record_guard()}  echo REACHED\n)\n"
+    env = {name: value for name, value in os.environ.items() if name != "BASH_ENV"}
+    return subprocess.run(
+        ["bash", "-c", script],
+        env={**env, "RUN": str(run)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_the_rerun_record_s_hand_off_goes_on_without_a_base(tmp_path: Path) -> None:
+    run = tmp_path / "route-a-run"
+    run.mkdir()
+    proc = _run_rerun_record_guard(run)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "REACHED\n"
+    assert _entries(run) == []
+
+
+@pytest.mark.parametrize("kind", OCCUPANTS)
+@pytest.mark.parametrize(
+    "names",
+    [
+        # base-out alone: under `set -e`, `test A && test B` does not stop the
+        # block when the first test fails.
+        ("base-out",),
+        ("base-sup",),
+        ("base-out", "base-sup"),
+    ],
+)
+def test_the_rerun_record_s_hand_off_never_overwrites_a_base(
+    tmp_path: Path, names: tuple[str, ...], kind: str
+) -> None:
+    run = tmp_path / "route-a-run"
+    run.mkdir()
+    for name in names:
+        _occupy(run / name, kind, tmp_path / f"{name}.elsewhere")
+    before = _entries(run)
+    proc = _run_rerun_record_guard(run)
+    assert proc.returncode == 1
+    assert "REACHED" not in proc.stdout
+    assert "never overwrite a base" in proc.stderr
+    assert _entries(run) == before
+
+
+def _runbook_guard() -> str:
+    """What step 7 of the runbook runs before its first tool call, verbatim."""
+
+    text = RUNBOOK.read_text(encoding="utf-8")
+    opening = "LINEAGE=./modal-runs/$R/compare-lineage.json\n(\n  set -euo pipefail\n"
+    assert text.count(opening) == 1
+    start = text.index(opening) + len(opening)
+    guard = text[start : text.index("  # Step 6, required:", start)]
+    assert guard.strip()
+    return guard
+
+
+@pytest.mark.parametrize("occupied", [False, True])
+@pytest.mark.parametrize(
+    "declared",
+    [
+        # An integer variable evaluates what it is assigned as arithmetic. A
+        # guard that assigned this run's path to one would stop under `set -u`
+        # on the path's first name, and with those names set it would test a
+        # number.
+        "declare -i base=0",
+        # A readonly one cannot be assigned, so such a guard would stop a
+        # clean run.
+        "readonly base=kept",
+    ],
+)
+@pytest.mark.parametrize("guard", [_rerun_record_guard, _runbook_guard])
+def test_a_hand_off_guard_checks_its_paths_whatever_the_caller_declared(
+    tmp_path: Path, guard, declared: str, occupied: bool
+) -> None:
+    """Each block is a subshell of the operator's shell and inherits its
+    variables with their attributes, so the guards assign none."""
+
+    run = tmp_path / "route-a-run"
+    run.mkdir()
+    if occupied:
+        (run / "base-out").mkdir()
+    before = _entries(run)
+    script = f"{declared}\n(\n  set -euo pipefail\n{guard()}  echo REACHED\n)\n"
+    env = {name: value for name, value in os.environ.items() if name != "BASH_ENV"}
+    proc = subprocess.run(
+        ["bash", "-c", script],
+        cwd=tmp_path,
+        # A relative path, which parses as arithmetic: names, subtraction and
+        # a division.
+        env={**env, "RUN": "route-a-run"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if occupied:
+        assert proc.returncode == 1
+        assert "REACHED" not in proc.stdout
+        assert "never overwrite a base" in proc.stderr
+    else:
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout == "REACHED\n"
+        assert "never overwrite a base" not in proc.stderr
+    assert _entries(run) == before
 
 
 def test_the_runbook_names_every_registered_tool() -> None:
