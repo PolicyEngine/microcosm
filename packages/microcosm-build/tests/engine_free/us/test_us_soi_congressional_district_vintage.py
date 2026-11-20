@@ -460,7 +460,7 @@ def _parity(cd_families: dict[str, str]):
     and statuses are ``cd_families``."""
     others = {
         "ssa_ssi_monthly.ssi_federal_payment_recipients": COMPILED_STATUS,
-        "ssa_supplement.ssi_recipients": COMPILED_STATUS,
+        "ssa_supplement.ssi_federal_payment_recipients": COMPILED_STATUS,
         "bea_nipa.total_wages_salaries": COMPILED_STATUS,
         "usda_snap.state_benefits": COMPILED_STATUS,
     }
@@ -585,7 +585,7 @@ def test_regenerated_manifest_keeps_the_district_note_and_red_line(
     tool = _load_tool("build_us_target_parity_manifest")
     feed_families = {
         "ssa_ssi_monthly.ssi_federal_payment_recipients",
-        "ssa_supplement.ssi_recipients",
+        "ssa_supplement.ssi_federal_payment_recipients",
         "bea_nipa.total_wages_salaries",
         "irs_soi.congressional_district_2024",
     }

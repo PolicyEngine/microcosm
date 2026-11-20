@@ -426,6 +426,76 @@ def _ssa_ssi_by_area_fact(
     )
 
 
+#: Record-set token -> (period token, (period type, period value), measure id)
+#: for the by-area record sets of SSA Supplement Tables 7.B3 (December 2024
+#: recipients and average monthly payments) and 7.B7 (calendar 2024
+#: payments), as Chronicle's packages emit them.
+SSA_SUPPLEMENT_BY_AREA_RECORD_SETS: dict[str, tuple[str, tuple[str, object], str]] = {
+    "ssi_federal_payment_recipients": (
+        "month2024_12",
+        ("month", "2024-12"),
+        "recipient_count",
+    ),
+    "ssi_federal_average_monthly_payment": (
+        "month2024_12",
+        ("month", "2024-12"),
+        "average_monthly_payment",
+    ),
+    "ssi_state_supplementation_recipients": (
+        "month2024_12",
+        ("month", "2024-12"),
+        "recipient_count",
+    ),
+    "ssi_state_supplementation_average_monthly_payment": (
+        "month2024_12",
+        ("month", "2024-12"),
+        "average_monthly_payment",
+    ),
+    "ssi_federal_payments": ("cy2024", ("calendar_year", 2024), "payment_amount"),
+    "ssi_state_supplementation_payments": (
+        "cy2024",
+        ("calendar_year", 2024),
+        "payment_amount",
+    ),
+}
+
+
+def _ssa_supplement_by_area_fact(
+    *,
+    record_set: str,
+    area: str,
+    value: float,
+    geography_level: str = "state",
+    geography_id: str = "0400000US01",
+    measure_id: str | None = None,
+) -> dict[str, object]:
+    """A synthetic fact shaped like one row of SSA Supplement Table 7.B3 or 7.B7.
+
+    ``record_set`` is a key of ``SSA_SUPPLEMENT_BY_AREA_RECORD_SETS`` and
+    ``area`` the geography groupby value id (``all_areas``, ``alabama`` …).
+    ``measure_id`` overrides the record set's own measure.
+    """
+    period_token, (period_type, period_value), default_measure_id = (
+        SSA_SUPPLEMENT_BY_AREA_RECORD_SETS[record_set]
+    )
+    measure_id = measure_id or default_measure_id
+    record_set_id = f"ssa_supplement.{period_token}.{record_set}.by_area"
+    fact = _dynamic_ledger_fact(
+        source_record_id=f"{record_set_id}.{area}.{measure_id}",
+        source_name="ssa",
+        measure_id=measure_id,
+        value=value,
+        period_value=period_value,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        groupby_dimension="geography",
+        groupby_value_id=area,
+        layout_record_set_id=record_set_id,
+    )
+    fact["period"] = {"type": period_type, "value": period_value}
+    return fact
+
+
 def _ssa_ssi_by_age_fact(
     *,
     groupby_value_id: str,
