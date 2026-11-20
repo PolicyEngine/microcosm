@@ -18,7 +18,17 @@ from microcosm.build.us_runtime.acs_sources import (
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puf_support import support_channel_column
 from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
-from microcosm.data.build_folder_manifests import ReferencedBuild, referenced_build
+from microcosm.data.build_folder_manifests import (
+    ReferencedBuild,
+    referenced_build,
+    rewrite_release_dir,
+)
+from microcosm.data.contract import (
+    US_EVIDENCE_RELEASE_ID,
+    US_NATIONAL_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
+    _check_local_area_donor_reference,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -1831,6 +1841,79 @@ def test_donor_release_identity_verifies_sha_and_pins_provenance(
         folder="releases/populace-us-2024-buildo-sparse-x",
     )
     assert module._donor_release_identity(None, sha) is None
+
+
+@pytest.mark.parametrize(
+    ("release", "build"),
+    [
+        (US_NATIONAL_RELEASE_ID, "populace-us-2024-20261121T010000Z-d596fcb60"),
+        (
+            US_EVIDENCE_RELEASE_ID,
+            "populace-us-2024-evidence-20261121T010000Z-d596fcb60",
+        ),
+    ],
+    ids=["certified", "evidence"],
+)
+def test_a_certified_national_build_is_a_donor_staging_can_name(
+    tmp_path: Path, release: str, build: str
+) -> None:
+    """Certification writes the national build's manifests in the tagged
+    shape and rewrites them into its tier's build folder (microcosm#1570,
+    #1585 item 11). The rewritten release manifest is one staging accepts as
+    --donor-release-manifest, and the reference it records is one the
+    local-area release contract accepts, at either tier."""
+
+    module = _load_builder_module()
+    sha = "a" * 64
+    dataset = US_RELEASE_DATASET_FILES[release]
+    release_dir = tmp_path / "releases" / release
+    release_dir.mkdir(parents=True)
+
+    def entry(path: str, digest: str, kind: str) -> dict[str, str]:
+        # The national release tool's _artifact_entry.
+        return {
+            "kind": kind,
+            "path": path,
+            "repo_id": "policyengine/populace-us",
+            "revision": build,
+            "sha256": digest,
+        }
+
+    (release_dir / "release_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "dataset_role": "national_default",
+                "is_default": False,
+                "build": {"build_id": build, "built_at": "2026-11-21T01:00:00Z"},
+                "artifacts": {
+                    Path(dataset).stem: entry(dataset, sha, "microdata"),
+                    "calibration": entry("calibration.npz", "b" * 64, "calibration"),
+                    "us_source_coverage": entry(
+                        "us_source_coverage.json", "c" * 64, "diagnostics"
+                    ),
+                },
+            }
+        )
+    )
+    rewrite_release_dir(release_dir, build=build)
+
+    identity = module._donor_release_identity(
+        release_dir / "release_manifest.json", sha
+    )
+
+    assert identity["release"] == release
+    assert identity["build"] == build
+    assert identity["artifact"] == Path(dataset).stem
+    assert "revision" not in identity
+    assert referenced_build(identity) == ReferencedBuild(
+        repo_id="policyengine/populace-us",
+        revision="main",
+        folder=f"releases/{release}/{build}",
+    )
+    failures: list[str] = []
+    _check_local_area_donor_reference(identity, failures)
+    assert failures == []
 
 
 def _build_folder_donor_manifest(sha: str) -> dict:
