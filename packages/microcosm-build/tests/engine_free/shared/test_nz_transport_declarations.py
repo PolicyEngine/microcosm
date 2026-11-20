@@ -835,7 +835,12 @@ def test_every_real_create_column_is_a_canonical_concept_or_unit_output():
 
 
 def test_the_create_inventory_fixture_is_the_pinned_donors_stored_payload():
-    """A donor re-pin or a CREATE change must refresh the fixture."""
+    """The fixture's bytes, donor identity and kernel ref match the package.
+
+    A donor re-pin or a new CREATE kernel ref fails here. A staging change
+    under the same kernel ref does not: this test cannot see what CREATE
+    returns, so the fixture's provenance says to rerun the probe then.
+    """
     provenance = json.loads(
         _CREATE_INVENTORY.with_name(
             _CREATE_INVENTORY.name + ".provenance.json"
