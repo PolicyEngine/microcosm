@@ -1,1 +1,1 @@
-The US county-pin guard allows one named main-feed cut on the split pin `41b2fb2` (today `60266a3`, for microcosm#880) until the combined re-pin moves both Chronicle pins to one commit.
+The US county-pin guard allows one named main-feed cut on the split pin `41b2fb2` (today `60266a3`, for microcosm#880) while the county pin names `3e9d3a0`; once the county pin moves, the guard accepts only matching pins.

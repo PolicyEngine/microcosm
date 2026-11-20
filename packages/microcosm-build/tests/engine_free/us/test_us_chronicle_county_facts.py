@@ -129,43 +129,56 @@ def test_the_county_pin_is_not_the_main_pin() -> None:
 #: their own, at 3e9d3a0 (docs/us-chronicle-feed-repin.md).
 _MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT = "41b2fb2b864a28c0eda03322b77a97ef147dfa3c"
 
-#: The one feed cut on the split pin that the US feed owner allows until the
-#: combined re-pin ("The two pins move together" in
-#: docs/us-chronicle-feed-repin.md says what a cut may be). A later cut replaces
-#: it, so the main pin cannot drift back to an older cut. 60266a3 is 41b2fb2
-#: plus chronicle#430's five packages, for microcosm#880 (microcosm#1610;
-#: branch feed/us-41b2fb2-household-880, tag microcosm-us-feed-880-v1).
+#: The county pin's own commit when it split from the main pin (microcosm#922).
+#: Both exceptions below hold only while the county pin names this commit.
+#: Once the county pin moves, the main pin names the county pin's commit.
+_COUNTY_PIN_AT_THE_SPLIT = "3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0"
+
+#: The one feed cut on the split pin that the US feed owner allows while the
+#: county pin names 3e9d3a0 ("The two pins move together" in
+#: docs/us-chronicle-feed-repin.md says what a cut may be and the evidence it
+#: owes). A later cut replaces it, so the main pin cannot drift back to an older
+#: cut. 60266a3 is 41b2fb2 plus chronicle#430's five packages, for microcosm#880
+#: (microcosm#1610; branch feed/us-41b2fb2-household-880, tag
+#: microcosm-us-feed-880-v1).
 _FEED_CUT_ON_THE_SPLIT_PIN: str | None = "60266a3088319c909cf7fc89c9d00d3b055dc6e1"
 
 
 def test_the_county_pin_moves_with_the_next_main_pin() -> None:
-    """The two pins move together. The main feed may stay at the commit it
-    had when the county facts were pinned separately, or name the one allowed
-    feed cut on it; once a change re-pins it anywhere else, the same change
-    re-pins the county facts to that commit, so a US build reads one Chronicle
-    base."""
+    """The two pins move together. While the county pin stays at its split
+    commit 3e9d3a0, the main feed may stay at the commit it had when the county
+    facts were pinned separately, or name the one allowed feed cut on it. Any
+    other main pin, and every main pin once the county pin moves, names the
+    county pin's commit, so a US build reads one Chronicle base."""
 
     main = load_us_chronicle_feed()
     county = load_us_chronicle_county_facts_pin()
-    allowed = {_MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT, county.source_commit}
-    if _FEED_CUT_ON_THE_SPLIT_PIN is not None:
-        allowed.add(_FEED_CUT_ON_THE_SPLIT_PIN)
+    allowed = {county.source_commit}
+    if county.source_commit == _COUNTY_PIN_AT_THE_SPLIT:
+        allowed.add(_MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT)
+        if _FEED_CUT_ON_THE_SPLIT_PIN is not None:
+            allowed.add(_FEED_CUT_ON_THE_SPLIT_PIN)
     assert main.source_commit in allowed, (
-        f"The main Chronicle feed pin moved to {main.source_commit}, which is "
-        "neither the split pin 41b2fb2 nor the allowed feed cut on it; re-pin "
-        "the county facts to the same commit in the same change."
+        f"The main Chronicle feed pin names {main.source_commit} and the county "
+        f"pin {county.source_commit}. Only while the county pin names 3e9d3a0 "
+        "may the main pin stay at the split pin 41b2fb2 or name the allowed feed "
+        "cut on it; otherwise re-pin both to one commit in the same change."
     )
 
 
 def test_the_combined_repin_retires_the_feed_cut() -> None:
-    """Once both pins name one Chronicle commit, no feed cut stays allowed."""
+    """Once both pins name one Chronicle commit, or the county pin leaves
+    3e9d3a0, no feed cut stays allowed."""
 
     main = load_us_chronicle_feed()
     county = load_us_chronicle_county_facts_pin()
-    if main.source_commit == county.source_commit:
+    if (
+        main.source_commit == county.source_commit
+        or county.source_commit != _COUNTY_PIN_AT_THE_SPLIT
+    ):
         assert _FEED_CUT_ON_THE_SPLIT_PIN is None, (
-            "Both pins name one Chronicle commit; set _FEED_CUT_ON_THE_SPLIT_PIN "
-            "to None in the same change."
+            "Both pins name one Chronicle commit or the county pin has left "
+            "3e9d3a0; set _FEED_CUT_ON_THE_SPLIT_PIN to None in the same change."
         )
 
 
@@ -181,6 +194,95 @@ def test_the_feed_cut_is_a_full_commit_id_other_than_the_pins() -> None:
         _MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT,
         county.source_commit,
     )
+
+
+_PIN_GUARDS = (
+    test_the_county_pin_moves_with_the_next_main_pin,
+    test_the_combined_repin_retires_the_feed_cut,
+    test_the_feed_cut_is_a_full_commit_id_other_than_the_pins,
+)
+
+
+def _pin_guards_refusing(monkeypatch, *, main, county, cut) -> tuple[str, ...]:
+    """Run the three pin guards on these commits as data, without editing a pin,
+    and name the guards that refuse them, in ``_PIN_GUARDS`` order."""
+
+    main_pin = dataclasses.replace(load_us_chronicle_feed(), source_commit=main)
+    county_pin = dataclasses.replace(
+        load_us_chronicle_county_facts_pin(), source_commit=county
+    )
+    namespace = globals()
+    monkeypatch.setitem(namespace, "load_us_chronicle_feed", lambda: main_pin)
+    monkeypatch.setitem(
+        namespace, "load_us_chronicle_county_facts_pin", lambda: county_pin
+    )
+    monkeypatch.setitem(namespace, "_FEED_CUT_ON_THE_SPLIT_PIN", cut)
+    refusing = []
+    for guard in _PIN_GUARDS:
+        try:
+            guard()
+        except AssertionError:
+            refusing.append(guard.__name__)
+    return tuple(refusing)
+
+
+_MOVES = test_the_county_pin_moves_with_the_next_main_pin.__name__
+_RETIRES = test_the_combined_repin_retires_the_feed_cut.__name__
+_FULL_ID = test_the_feed_cut_is_a_full_commit_id_other_than_the_pins.__name__
+_SPLIT = _MAIN_PIN_WHEN_THE_COUNTY_PIN_SPLIT
+_COUNTY = _COUNTY_PIN_AT_THE_SPLIT
+#: A feed cut on the split pin (60266a3, the first allowed cut).
+_CUT = "60266a3088319c909cf7fc89c9d00d3b055dc6e1"
+#: A later Chronicle main commit: chronicle#430's merge b428468d, the earliest
+#: commit the combined re-pin may name (docs/us-chronicle-feed-repin.md).
+_LATER = "b428468dc8a1fad6d21fd4d703b822d5cb687e09"
+
+
+@pytest.mark.parametrize(
+    ("main", "county", "cut", "refusing"),
+    [
+        # While the county pin names 3e9d3a0.
+        (_SPLIT, _COUNTY, _CUT, ()),
+        (_CUT, _COUNTY, _CUT, ()),
+        (_SPLIT, _COUNTY, None, ()),
+        (_COUNTY, _COUNTY, None, ()),
+        (_CUT, _COUNTY, None, (_MOVES,)),
+        (_LATER, _COUNTY, _CUT, (_MOVES,)),
+        (_COUNTY, _COUNTY, _CUT, (_RETIRES,)),
+        (_SPLIT, _COUNTY, _SPLIT, (_FULL_ID,)),
+        # Once the combined re-pin has moved the county pin.
+        (_LATER, _LATER, None, ()),
+        (_LATER, _LATER, _CUT, (_RETIRES,)),
+        (_SPLIT, _LATER, None, (_MOVES,)),
+        (_SPLIT, _LATER, _CUT, (_MOVES, _RETIRES)),
+        (_CUT, _LATER, _CUT, (_MOVES, _RETIRES)),
+    ],
+    ids=[
+        "split-pin",
+        "cut",
+        "split-pin-no-cut",
+        "both-at-3e9d3a0",
+        "cut-withdrawn",
+        "main-moves-alone",
+        "both-at-3e9d3a0-cut-kept",
+        "cut-names-the-split-pin",
+        "combined-repin",
+        "combined-repin-cut-kept",
+        "back-to-the-split-pin",
+        "back-to-the-split-pin-cut-kept",
+        "county-moves-alone-main-keeps-the-cut",
+    ],
+)
+def test_the_split_exceptions_end_when_the_county_pin_moves(
+    monkeypatch, main, county, cut, refusing
+) -> None:
+    """Review r2 P2-1: the split pin and the cut stay allowed only while the
+    county pin names 3e9d3a0. Once the county pin moves, the main pin can
+    neither return to the split pin nor keep the cut. Each case names the
+    guards that refuse it, so it fails if any guard starts or stops refusing."""
+
+    refused_by = _pin_guards_refusing(monkeypatch, main=main, county=county, cut=cut)
+    assert refused_by == refusing
 
 
 def test_the_feed_builder_accepts_the_county_scope() -> None:
