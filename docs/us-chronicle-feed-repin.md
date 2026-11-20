@@ -21,8 +21,10 @@ PEP county population vintage 2024, and the ACS 2020-2024 5-year county tables
 B01003, B11001, B19001, B19013, B19025, B19051 and B19061. They have their own
 pin, `us/chronicle_county_facts.json`, with scope
 `us/chronicle_county_facts_scope.json` (scope name `us_county_facts`), beside
-the main pin. No fiscal compile reads them, and the main feed, its scope and
-the target-parity resources do not move when they do.
+the main pin. No fiscal compile reads them. When microcosm#922 gave them their
+own pin, the main feed, its scope and the target-parity resources stayed as
+they were. From then on, the county pin moves only with the main pin (see the
+joint re-pin rule, "The two pins move together", below).
 
 They are separate because of size. The ACS county rows keep both estimate and
 margin-of-error rows in one record set, about 5.2 KB per row, and the eight
@@ -122,18 +124,45 @@ report keeps every earlier row byte for byte, or the operator brings a reviewed
 check of the rows the cut changes. Either way, the cut adds, removes or changes
 no target that the ACS local lane selects from the main feed, in any
 `--soi-mode` the lane accepts: `state`, `totals`, `full`, `state_cd` and
-`state_county`. The operator cites compiles of the cut and of the main feed it
-replaces, both at one microcosm commit: the head of the change that pins the
-cut, after its last merge of main. A later commit on that change that touches
-no file under `tools/`, `packages/*/src` or `uv.lock` keeps the evidence. In
-each mode, `state_admin_surface` with SNAP, Medicaid and SOI selects the same
-targets from both feeds, equal in every `TargetSpec` field and in the same
-order, with the same SOI receipt and substitution records.
+`state_county`. In each mode, `state_admin_surface` with SNAP, Medicaid and
+SOI selects the same targets from both feeds, equal in every `TargetSpec` field
+and in the same order, with the same SOI receipt and substitution records.
 `acs_local_ssi_medicaid_take_up_targets`, which takes no mode, returns the same
 SSI age-band counts, Medicaid enrollment table and substitution records from
 both. While `soi_surface_predicate` maps `state_county` to `state` and
 `state_admin_surface` branches only on `state_cd`, those two modes select the
 same main-feed targets, so one comparison covers both.
+
+The operator compiles the cut and the main feed it replaces on the tree that
+will merge (the merge tree). The operator first merges main into the change
+that pins the cut, then compiles at the change's new head, the tested commit.
+In the evidence, the operator records the tested commit and both feeds'
+digests. The operator also records how they built the compile environment, for
+example from the tested commit's `uv.lock`, and any package they swapped in by
+hand.
+
+The operator compiles both feeds again if main moves after the compiles or the
+change gains a commit beyond recording the result in the docs or the
+changelog. The change's reviewer can skip that rerun on finding that the tested
+commit and the merge tree share their compile inputs and dependency
+configuration. The two match when no file differs under `tools/` or
+`packages/*/src`, or in `uv.lock`, the workspace `pyproject.toml` or any
+package's `pyproject.toml`. GitHub does not refresh its test merge,
+`refs/pull/<number>/merge`, while the change conflicts with main. So just
+before the merge, the reviewer builds the merge tree from main's tip and runs
+the check:
+
+```bash
+git fetch origin main
+git merge-tree --write-tree origin/main <change head>
+git diff --stat <tested commit> <merge tree> -- tools uv.lock pyproject.toml 'packages/*/src/**' 'packages/*/pyproject.toml'
+```
+
+`git merge-tree` prints the merge tree's id on its first line, and exits with
+status 1 if the change conflicts with main. The `git diff` prints nothing when
+the two match. Keep the trailing `/**`: without it, git's `packages/*/src`
+pathspec matches no file, so the command misses every change under
+`packages/*/src`.
 
 The lane's county rung (`--soi-mode state_county`) is the only build path that
 consumes both feeds. It loads the county facts the county pin names and checks
@@ -157,9 +186,9 @@ and so in `state`, the lane selects the same 4,380 targets on it as on
 `41b2fb2` (102 SNAP, 51 Medicaid enrollment and 4,227 IRS SOI), with the same
 SSI age bands and Medicaid enrollment table. Compiles of both feeds at main
 `5499382` on 17 November 2026 showed this, before microcosm#1610's compiler
-changes. No comparison has been run in `totals`, `full` or `state_cd`, and none
-at microcosm#1610's head. Before it merges, microcosm#1610 owes the comparison
-in every mode at the commit the rule above names. The change that runs the
+changes. No run yet covers `totals`, `full` or `state_cd`, or any mode at
+microcosm#1610's head. Before it merges, microcosm#1610 owes the comparison in
+every mode, on the merge tree the rule above names. The change that runs the
 comparison replaces this paragraph with the result and its evidence path. The
 guard compares commit ids only, so it cannot check this evidence.
 

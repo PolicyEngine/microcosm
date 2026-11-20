@@ -1,7 +1,8 @@
 """The US county facts pin and its loader (microcosm#922).
 
-The county facts sit in their own pin beside the main US feed pin, so the main
-feed, its scope and the parity resources do not move when county facts do.
+The county facts sit in their own pin beside the main US feed pin. Giving them
+their own pin left the main feed, its scope and the parity resources as they
+were; the pin guards below refuse a county pin that moves without the main pin.
 """
 
 from __future__ import annotations
@@ -183,7 +184,9 @@ def test_the_combined_repin_retires_the_feed_cut() -> None:
 
 
 def test_the_feed_cut_is_a_full_commit_id_other_than_the_pins() -> None:
-    """The allowed cut is a full 40-character commit id, distinct from both pins."""
+    """When set, the allowed cut is a full commit id of 40 lowercase hex
+    characters, distinct from both pins. ``None`` is valid too, and the combined
+    re-pin requires it."""
 
     if _FEED_CUT_ON_THE_SPLIT_PIN is None:
         return
@@ -256,6 +259,7 @@ _LATER = "b428468dc8a1fad6d21fd4d703b822d5cb687e09"
         (_SPLIT, _LATER, None, (_MOVES,)),
         (_SPLIT, _LATER, _CUT, (_MOVES, _RETIRES)),
         (_CUT, _LATER, _CUT, (_MOVES, _RETIRES)),
+        (_LATER, _LATER, _LATER, (_RETIRES, _FULL_ID)),
     ],
     ids=[
         "split-pin",
@@ -271,6 +275,7 @@ _LATER = "b428468dc8a1fad6d21fd4d703b822d5cb687e09"
         "back-to-the-split-pin",
         "back-to-the-split-pin-cut-kept",
         "county-moves-alone-main-keeps-the-cut",
+        "combined-repin-cut-names-the-new-pin",
     ],
 )
 def test_the_split_exceptions_end_when_the_county_pin_moves(
@@ -283,6 +288,50 @@ def test_the_split_exceptions_end_when_the_county_pin_moves(
 
     refused_by = _pin_guards_refusing(monkeypatch, main=main, county=county, cut=cut)
     assert refused_by == refusing
+
+
+#: A later feed cut on the split pin, as a made-up full commit id. When the US
+#: feed owner allows one, it takes 60266a3's place.
+_NEXT_CUT = "0f" * 20
+
+
+@pytest.mark.parametrize(
+    ("main", "refusing"),
+    [(_NEXT_CUT, ()), (_CUT, (_MOVES,))],
+    ids=["next-cut", "first-cut-after-the-next-cut"],
+)
+def test_a_later_cut_replaces_the_first(monkeypatch, main, refusing) -> None:
+    """Review r3 P2-2: once the allowance names a later cut, the main pin may
+    name that cut and can no longer name 60266a3."""
+
+    refused_by = _pin_guards_refusing(
+        monkeypatch, main=main, county=_COUNTY, cut=_NEXT_CUT
+    )
+    assert refused_by == refusing
+
+
+@pytest.mark.parametrize(
+    "cut",
+    [_CUT[:7], _CUT + "0", _CUT[:39] + "g", _CUT.upper(), _COUNTY],
+    ids=[
+        "short-cut",
+        "long-cut",
+        "non-hex-cut",
+        "upper-case-cut",
+        "cut-names-the-county-commit",
+    ],
+)
+def test_a_cut_that_is_not_a_full_id_other_than_the_pins_is_refused(
+    monkeypatch, cut
+) -> None:
+    """Review r3 P2-2: the full-id guard alone refuses each of these cuts. A
+    7- or 41-character id fails the length check, a 'g' or upper-case letters
+    fail the lowercase-hex check, and the county commit fails the distinct-id
+    check. The main pin stays at the split pin, which every other guard
+    accepts."""
+
+    refused_by = _pin_guards_refusing(monkeypatch, main=_SPLIT, county=_COUNTY, cut=cut)
+    assert refused_by == (_FULL_ID,)
 
 
 def test_the_feed_builder_accepts_the_county_scope() -> None:
