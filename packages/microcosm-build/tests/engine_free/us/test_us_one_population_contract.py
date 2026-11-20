@@ -47,6 +47,22 @@ assembled population. Lead call L7 (11-18) adds two more strict expected
 failures on verdicts: one clone-only defect each (a clone's ``MCARE``
 mismatch, a clone's weeks with no unemployment compensation) fails Route
 A's gate and passes the assembled one, so PR 3 owns six.
+
+The PR #1685 review (round 1) adds: R6's refusal of ``pd.NA`` in an exempt
+column, with None and NaN still passing (blocking 1); staging's lineage
+keyed by native ids, so a ``SERIALNO`` or ``SPORDER`` swap that keeps the
+set of pairs refuses (blocking 2); P6c, every group unit inside one
+household (each of the four group entities on CPS rows) and each ACS
+household one SPM unit (blocking 3); each ACS role
+re-derived from ``RELSHIPP`` (should-fix 1); nullable lineage values
+refused before they are compared (should-fix 2); R2's ids and clone indices
+parsed as R1 parses them (should-fix 3); an index whose inputs omit a
+known column refused (should-fix 4); a negative per-spine fill count
+refused (should-fix 5); written zeros counted on a nullable numeric column
+(should-fix 6); a spine assembly record count the validator would coerce
+refused at R1 (nit 1); and tests that pin R11 between R1 and R2 in the
+clause order, with a real location clone and a repeated ``SERIALNO``
+reporting their earlier clause (nit 2).
 """
 
 from __future__ import annotations
@@ -73,7 +89,10 @@ from microcosm.build.us_runtime import one_population_selection as selection
 from microcosm.build.us_runtime.acs_local_hours import prepare_acs_local_hours_donor
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.base_pool import ASEC_PUF_SPINE
-from microcosm.build.us_runtime.block_location import LOCATION_CLONE_INDEX_COLUMN
+from microcosm.build.us_runtime.block_location import (
+    LOCATION_CLONE_INDEX_COLUMN,
+    clone_frame_for_location,
+)
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_ENGINE_INPUT_PROJECTION_CONTRACT,
 )
@@ -359,12 +378,16 @@ class TestDefaultAdapter:
             ("structural", "inputs include structural columns"),
             ("unknown", "inputs not known"),
             ("absent", "names columns no table holds"),
+            # PR #1685 review, should-fix 4: the other direction.
+            ("omitted", "inputs omit known columns that are neither computed"),
         ],
     )
     def test_incoherent_answers_are_refused(self, broken, message) -> None:
         class Broken(StandInVariableIndex):
             def inputs_at_2024(self, tables):
                 inputs = set(super().inputs_at_2024(tables))
+                if broken == "omitted":
+                    return frozenset(inputs - {"age"})
                 extra = {
                     "computed": "ssi",
                     "structural": "person_household_id",
@@ -760,17 +783,27 @@ def _acs_rows(table: pd.DataFrame, entity: str) -> pd.DataFrame:
     return table[table[support_channel_column(entity)] == ACS_SUPPORT_CHANNEL]
 
 
-def _person_lineage(frame: Frame) -> set[tuple[str, int]]:
+def _person_lineage(frame: Frame) -> dict[tuple[int, int], tuple[str, int]]:
+    """The frame's ACS lineage in staging's keyed form, read off the frame.
+
+    Each ACS person's native (household id, person id), its household's and
+    its own ``<entity>_spine_source_id`` after the rewrite, to its
+    (``SERIALNO``, ``SPORDER``).
+    """
+
     household = frame.table("household").set_index("household_id")
     person = _acs_rows(frame.table("person"), "person")
-    serial = person["person_household_id"].map(household["SERIALNO"])
-    return set(
-        zip(
-            serial.tolist(),
-            (int(value) for value in person["SPORDER"].tolist()),
+    link = person["person_household_id"]
+    return {
+        (int(native_household), int(native_person)): (serial, int(sporder))
+        for native_household, native_person, serial, sporder in zip(
+            link.map(household[spine_source_id_column("household")]).tolist(),
+            person[spine_source_id_column("person")].tolist(),
+            link.map(household["SERIALNO"]).tolist(),
+            person["SPORDER"].tolist(),
             strict=True,
         )
-    )
+    }
 
 
 class TestProvenanceRewrite:
@@ -935,6 +968,35 @@ class TestProvenanceRewrite:
             assembled_frame(population).weights_for("household").values,
         )
 
+    def test_a_serialno_swap_cannot_trade_weights(self, population) -> None:
+        # PR #1685 review, blocking 2: two households of equal size, weighted
+        # 10 and 90, trade SERIALNO. The persons' (SERIALNO, SPORDER) set is
+        # unchanged, which is all the old set-of-pairs check compared, and
+        # the weights stay keyed by SERIALNO, so each household would have
+        # taken the other's weight. Staging's lineage, keyed by native ids,
+        # refuses the swap before any weight is looked up.
+        acs = _serialno_swaps_between_households(population)["acs"]
+        before = population.acs_tables["household"]["SERIALNO"]
+        swapped = acs["household"]["SERIALNO"].ne(before).to_numpy()
+        assert int(swapped.sum()) == 2
+        weights = population.keyed_acs_household_weights.copy()
+        low, high = (selection.acs_unit_key(serial) for serial in before[swapped])
+        weights.loc[low], weights.loc[high] = 10.0, 90.0
+        moved = staging_lineage(dataclasses.replace(population, acs_tables=acs))
+        assert set(moved.values()) == set(staging_lineage(population).values())
+        assert moved != staging_lineage(population)
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape("0 extra (such as []), 4 moved (such as ["),
+        ):
+            to_assembled_provenance(
+                population.cps_tables,
+                acs,
+                cps_household_weights=population.keyed_cps_household_weights,
+                acs_household_weights=weights,
+                staging_lineage=staging_lineage(population),
+            )
+
     def test_inputs_are_not_mutated(self, population) -> None:
         cps = {entity: table.copy() for entity, table in population.cps_tables.items()}
         acs = {entity: table.copy() for entity, table in population.acs_tables.items()}
@@ -1083,7 +1145,7 @@ def test_role_readers_match_route_a_with_no_acs_row(route_a, population) -> None
             route_a.table("household"), route_a.weights_for("household").values
         ),
         acs_household_weights={},
-        staging_lineage=frozenset(),
+        staging_lineage={},
     )
     for entity in US_SCHEMA.entities:
         before, after = tables[entity], frame.table(entity)
@@ -1407,17 +1469,173 @@ def _source_year_moves(p):
     return {"acs": acs}
 
 
+def _with_pd_na(table: pd.DataFrame, column: str, dtype: str) -> None:
+    """``column`` in pandas' nullable ``dtype``, with ``pd.NA`` in its first row."""
+
+    values = table[column].astype(dtype)
+    values.iloc[0] = pd.NA
+    table[column] = values
+
+
+def _source_year_pd_na(p):
+    # PR #1685 review, should-fix 2: an Int64 pd.NA, which the old year
+    # check's mismatch sum skipped.
+    acs = _copies(p, "acs")
+    _with_pd_na(acs["person"], "source_year", "Int64")
+    return {"acs": acs}
+
+
+def _source_person_id_pd_na(p):
+    # Should-fix 2: a nullable string's pd.NA, which the old comparison met
+    # with a bare TypeError.
+    acs = _copies(p, "acs")
+    _with_pd_na(acs["person"], "source_person_id", "string")
+    return {"acs": acs}
+
+
+def _source_household_id_pd_na(p):
+    acs = _copies(p, "acs")
+    _with_pd_na(acs["person"], "source_household_id", "Int64")
+    return {"acs": acs}
+
+
+def _minor_head_household(tables) -> object:
+    """The id of the generated ACS household headed by a 17-year-old (two persons)."""
+
+    person = tables["person"]
+    heads = person.loc[
+        person["person_support_channel"].eq(ACS_SUPPORT_CHANNEL).to_numpy()
+        & person["is_household_head"].to_numpy(dtype=bool)
+        & person["age"].eq(17).to_numpy(),
+        "person_household_id",
+    ]
+    assert len(heads) == 1
+    household = heads.iloc[0]
+    assert int(person["person_household_id"].eq(household).sum()) == 2
+    return household
+
+
+def _swap_serialno(household: pd.DataFrame, first: int, second: int) -> None:
+    serials = household["SERIALNO"].tolist()
+    _set(household, first, "SERIALNO", serials[second])
+    _set(household, second, "SERIALNO", serials[first])
+
+
+def _two_person_acs_households(tables) -> tuple[int, int]:
+    """Rows of the first two ACS households with two persons each.
+
+    Their persons hold SPORDER 1 and 2, so a SERIALNO trade between them
+    keeps the set of (SERIALNO, SPORDER) pairs.
+    """
+
+    person = tables["person"]
+    acs = person["person_support_channel"].eq(ACS_SUPPORT_CHANNEL).to_numpy()
+    sizes = person.loc[acs, "person_household_id"].value_counts(sort=False)
+    pairs = sizes.index[sizes.eq(2).to_numpy()]
+    rows = np.flatnonzero(tables["household"]["household_id"].isin(pairs).to_numpy())
+    first, second = (int(row) for row in rows[:2])
+    return first, second
+
+
+def _serialno_swaps_between_households(p):
+    # PR #1685 review, blocking 2: two households trade SERIALNO. Their
+    # persons' (SERIALNO, SPORDER) set holds, so the old set check passed
+    # the frame and each household took the other's weight (weights are
+    # keyed by SERIALNO). Keyed by native ids, all four persons' pairs
+    # moved. The review's households hold one person each; two persons each
+    # keep this case's count apart from the SPORDER swap's.
+    acs = _copies(p, "acs")
+    _swap_serialno(acs["household"], *_two_person_acs_households(acs))
+    return {"acs": acs}
+
+
+def _sporder_swaps_within_a_household(p):
+    # Blocking 2's second shape: two persons of one household trade SPORDER
+    # and, to keep source_person_id = str(SPORDER), source_person_id.
+    acs = _copies(p, "acs")
+    person = acs["person"]
+    first, second = (
+        int(row)
+        for row in np.flatnonzero(
+            person["person_household_id"].eq(_minor_head_household(acs)).to_numpy()
+        )
+    )
+    for column in ("SPORDER", "source_person_id"):
+        values = person[column].tolist()
+        _set(person, first, column, values[second])
+        _set(person, second, column, values[first])
+    return {"acs": acs}
+
+
 def _staging_has_a_person_the_selection_lost(p):
-    return {"lineage": staging_lineage(p) | {("2024HU9999999", 1)}}
+    return {"lineage": {**staging_lineage(p), (999_999, 1): ("2024HU9999999", 1)}}
 
 
 def _staging_lacks_a_selected_person(p):
-    lineage = sorted(staging_lineage(p))
-    return {"lineage": frozenset(lineage[1:])}
+    lineage = staging_lineage(p)
+    first = min(lineage)
+    return {"lineage": {key: pair for key, pair in lineage.items() if key != first}}
 
 
 def _staging_pair_malformed(p):
-    return {"lineage": [*staging_lineage(p), ("2024HU0000001",)]}
+    return {"lineage": {**staging_lineage(p), (999_999, 1): ("2024HU0000001",)}}
+
+
+def _staging_key_malformed(p):
+    # A key that is not native ids (here a SERIALNO) cannot tie a pair to
+    # its person.
+    return {"lineage": {**staging_lineage(p), "2024HU0000001": ("2024HU0000001", 1)}}
+
+
+def _acs_tax_unit_spans_households(p):
+    # PR #1685 review, blocking 3: one ACS person joins a tax unit of another
+    # household. Its own tax unit keeps a member, so every id resolves (P6b)
+    # and every channel matches (the validator).
+    acs = _copies(p, "acs")
+    person = acs["person"]
+    row = int(np.flatnonzero(_household_sizes(person, "person_tax_unit_id") > 1)[0])
+    household = person["person_household_id"].iloc[row]
+    elsewhere = person.loc[
+        person["person_household_id"].ne(household), "person_tax_unit_id"
+    ]
+    _set(person, row, "person_tax_unit_id", elsewhere.iloc[0])
+    return {"acs": acs}
+
+
+def _cps_unit_spans_households(p, group: str):
+    # Blocking 3 on CPS rows: a native person joins another native
+    # household's ``group`` unit. Its own unit keeps a member, so every id
+    # resolves (P6b) and every channel matches (the validator).
+    cps = _copies(p, "cps")
+    person = cps["person"]
+    column = f"person_{group}_id"
+    native = person["person_support_clone_index"].eq(0).to_numpy()
+    sizes = _household_sizes(person, column)
+    row = int(np.flatnonzero(native & (sizes > 1))[0])
+    household = person["person_household_id"].iloc[row]
+    elsewhere = native & person["person_household_id"].ne(household).to_numpy()
+    _set(person, row, column, person[column].iloc[int(np.flatnonzero(elsewhere)[0])])
+    return {"cps": cps}
+
+
+def _cps_family_spans_households(p):
+    return _cps_unit_spans_households(p, "family")
+
+
+def _acs_household_holds_two_spm_units(p):
+    # Blocking 3's partition: one person of a two-or-more-person ACS
+    # household moves to an SPM unit of its own, inside the household.
+    # Staging's ACS role rule is defined only on one SPM unit per household.
+    acs = _copies(p, "acs")
+    person, spm_unit = acs["person"], acs["spm_unit"]
+    row = int(np.flatnonzero(_household_sizes(person, "person_household_id") > 1)[0])
+    extra = spm_unit.iloc[[-1]].copy()
+    shift = int(spm_unit["spm_unit_id"].max()) + 1 - int(extra["spm_unit_id"].iloc[0])
+    extra["spm_unit_id"] += shift
+    extra["spm_unit_source_id"] += shift
+    acs["spm_unit"] = pd.concat([spm_unit, extra], ignore_index=True)
+    _set(person, row, "person_spm_unit_id", int(extra["spm_unit_id"].iloc[0]))
+    return {"acs": acs}
 
 
 _REFUSALS = [
@@ -1525,17 +1743,66 @@ _REFUSALS = [
         _source_year_moves,
         "ACS lineage does not survive: source_year must be 2024 on every ACS person; 1 differ",
     ),
+    # A pandas nullable dtype's pd.NA in a lineage column (review should-fix 2).
+    (
+        _source_year_pd_na,
+        "ACS lineage does not survive: every ACS person needs an integral "
+        "source_year: 1 value(s) are null",
+    ),
+    (
+        _source_person_id_pd_na,
+        "ACS lineage does not survive: source_person_id is null on 1 ACS person(s)",
+    ),
+    (
+        _source_household_id_pd_na,
+        "ACS lineage does not survive: every ACS person needs an integral "
+        "source_household_id: 1 value(s) are null",
+    ),
+    # Staging's lineage, person by person under native ids (review blocking 2).
+    (
+        _serialno_swaps_between_households,
+        "keyed by native (household id, person id); 0 missing (such as []), 0 "
+        "extra (such as []), 4 moved",
+    ),
+    (
+        _sporder_swaps_within_a_household,
+        "keyed by native (household id, person id); 0 missing (such as []), 0 "
+        "extra (such as []), 2 moved",
+    ),
     (
         _staging_has_a_person_the_selection_lost,
-        "differs from staging's for the selected households; 1 missing",
+        "keyed by native (household id, person id); 1 missing (such as [(999999, 1)])",
     ),
     (
         _staging_lacks_a_selected_person,
-        "differs from staging's for the selected households; 0 missing (such as []), 1 extra",
+        "keyed by native (household id, person id); 0 missing (such as []), 1 extra",
     ),
     (
         _staging_pair_malformed,
-        "ACS lineage does not survive: staging's lineage holds ('2024HU0000001',), not a (SERIALNO, SPORDER) pair",
+        "ACS lineage does not survive: staging's lineage maps (999999, 1) to "
+        "('2024HU0000001',), not a (SERIALNO, SPORDER) pair",
+    ),
+    (
+        _staging_key_malformed,
+        "ACS lineage does not survive: staging's lineage has the key "
+        "'2024HU0000001', not a native (household id, person id) pair of integers",
+    ),
+    # P6c: group units nest in households; ACS SPM units are the households
+    # (review blocking 3).
+    (
+        _acs_tax_unit_spans_households,
+        "Group units do not nest in households: 1 ACS tax_unit unit(s) hold "
+        "persons of more than one household",
+    ),
+    (
+        _cps_family_spans_households,
+        "Group units do not nest in households: 1 CPS family unit(s) hold "
+        "persons of more than one household",
+    ),
+    (
+        _acs_household_holds_two_spm_units,
+        "ACS SPM units must be the households (staging's one-SPM-unit-per-"
+        "household partition): 1 ACS household(s) hold more than one SPM unit",
     ),
     # Each household's weight found by its key, after P7 checked SERIALNO.
     (
@@ -1583,6 +1850,20 @@ def test_each_rule_refuses_with_its_own_message(population, corrupt, message) ->
 def test_refusal_messages_are_distinct() -> None:
     messages = [message for _, message in _REFUSALS]
     assert len(set(messages)) == len(messages)
+
+
+@pytest.mark.parametrize("group", ["tax_unit", "spm_unit", "family", "marital_unit"])
+def test_a_cps_group_unit_across_households_refuses(population, group) -> None:
+    # P6c reads every group entity on CPS rows, not only the family; on ACS
+    # rows the one-SPM-unit partition would also catch a split SPM unit.
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            f"Group units do not nest in households: 1 CPS {group} unit(s) hold "
+            "persons of more than one household"
+        ),
+    ):
+        _rewrite(population, _cps_unit_spans_households(population, group))
 
 
 def test_union_form_refuses_a_fractional_sporder(population) -> None:
@@ -1867,7 +2148,7 @@ class TestRequireOnePopulation:
             empty_acs,
             cps_household_weights=population.keyed_cps_household_weights,
             acs_household_weights={},
-            staging_lineage=frozenset(),
+            staging_lineage={},
         )
         manifest = dataclasses.replace(
             selection_manifest(population),
@@ -1875,7 +2156,7 @@ class TestRequireOnePopulation:
             selected_acs_keys_sha256=selection.keys_sha256(()),
         )
         assert "SERIALNO" not in frame.table("household")
-        _require(population, frame, manifest=manifest, staging_lineage=frozenset())
+        _require(population, frame, manifest=manifest, staging_lineage={})
 
     def test_a_frame_with_no_acs_row_still_checks_staging_lineage(
         self, population
@@ -1889,7 +2170,7 @@ class TestRequireOnePopulation:
             empty_acs,
             cps_household_weights=population.keyed_cps_household_weights,
             acs_household_weights={},
-            staging_lineage=frozenset(),
+            staging_lineage={},
         )
         manifest = dataclasses.replace(
             selection_manifest(population),
@@ -1901,8 +2182,8 @@ class TestRequireOnePopulation:
             OnePopulationContractError,
             match=re.escape(
                 "ACS lineage does not survive: the selected ACS persons' (SERIALNO, "
-                "SPORDER) set differs from staging's for the selected households; "
-                f"{len(lineage)} missing"
+                "SPORDER) lineage differs from staging's, keyed by native "
+                f"(household id, person id); {len(lineage)} missing"
             ),
         ):
             _require(population, frame, manifest=manifest, staging_lineage=lineage)
@@ -2043,6 +2324,132 @@ class TestRequireOnePopulation:
             match=re.escape("'spm_unit.takes_up_snap_if_eligible'"),
         ):
             _require(population, not_exempt)
+
+    @pytest.mark.parametrize(
+        ("null", "dtype", "filled"),
+        [(None, object, True), (np.nan, object, True), (np.nan, "float64", 1.0)],
+        ids=["none", "nan in object", "nan in float64"],
+    )
+    def test_a_release_written_null_may_be_none_or_nan(
+        self, population, assembled, null, dtype, filled
+    ) -> None:
+        # PR #1685 review, blocking 1: the release's first engine pass loads
+        # a boolean None as False and a NaN as True (numpy's casts), so both
+        # stay allowed in an exempt column; only pd.NA refuses (next test).
+        person = assembled.table("person")
+        acs = _origin_mask(person, "person", "acs")
+        values = pd.Series(
+            [null if row else filled for row in acs], index=person.index, dtype=dtype
+        )
+        _require(
+            population,
+            _with_column(assembled, "person", "takes_up_ssi_if_eligible", values),
+        )
+
+    @pytest.mark.parametrize(
+        ("column", "dtype", "filled"),
+        [
+            ("takes_up_ssi_if_eligible", "boolean", True),
+            ("would_file_taxes_voluntarily", "boolean", True),
+            ("bank_account_assets", "Float64", 1_000.0),
+        ],
+    )
+    def test_a_pd_na_in_a_release_written_input_refuses(
+        self, population, assembled, column, dtype, filled
+    ) -> None:
+        # Blocking 1: a pandas nullable dtype holds its null as pd.NA, which
+        # the H5 codec keeps and the first engine pass cannot cast to bool
+        # (bool(pd.NA) raises TypeError). The SSI December pass loads the
+        # twelve booleans before their producers write them; R6 refuses a
+        # pd.NA in every exempt column, the SCF wealth amounts included,
+        # fail closed. Before the fix R6 left exempt columns unread.
+        entity = lock_engine_inputs()[column]
+        table = assembled.table(entity)
+        acs = _origin_mask(table, entity, "acs")
+        values = pd.array([pd.NA if row else filled for row in acs], dtype=dtype)
+        frame = _with_column(
+            assembled, entity, column, pd.Series(values, index=table.index)
+        )
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "A pd.NA in a release-written input: "
+                f"{{'{entity}.{column}': {int(acs.sum())}}}"
+            ),
+        ):
+            _require(population, frame)
+
+    def test_r2_parses_cps_clone_indices_as_r1_does(
+        self, population, assembled
+    ) -> None:
+        # PR #1685 review, should-fix 3: R1 and the assembly validator take
+        # digit-string clone indices through the integral parser (lead call
+        # L5's leniency). R2 compared the raw values with 0, found no clone-0
+        # household and refused every CPS key as orphaned.
+        tables = _tables(assembled)
+        household = tables["household"]
+        column = support_clone_index_column("household")
+        household[column] = [str(int(value)) for value in household[column]]
+        assert not pd.api.types.is_numeric_dtype(household[column].dtype)
+        _require(population, _rebuild(assembled, tables))
+
+    def test_r2_parses_string_household_ids(self, population) -> None:
+        # Should-fix 3's second shape, on R2 itself: string household ids
+        # with matching string memberships on a frame with no ACS row.
+        # cps_unit_ids keys households by int64, which a raw string index
+        # joined to nothing.
+        empty_acs = {
+            entity: population.acs_tables[entity].iloc[:0]
+            for entity in US_SCHEMA.entities
+        }
+        frame = to_assembled_provenance(
+            population.cps_tables,
+            empty_acs,
+            cps_household_weights=population.keyed_cps_household_weights,
+            acs_household_weights={},
+            staging_lineage={},
+        )
+        manifest = dataclasses.replace(
+            selection_manifest(population),
+            n_acs=0,
+            selected_acs_keys_sha256=selection.keys_sha256(()),
+        )
+        tables = _tables(frame)
+        for entity, column in (
+            ("household", "household_id"),
+            ("person", "person_household_id"),
+        ):
+            tables[entity][column] = [
+                str(int(value)) for value in tables[entity][column]
+            ]
+        contract._require_selected_keys(contract._split_origins(tables), manifest)
+
+    def test_an_index_that_omits_an_input_cannot_hide_its_null(
+        self, population, assembled
+    ) -> None:
+        # PR #1685 review, should-fix 4: an index that leaves a known,
+        # non-computed column out of its inputs hid that column's null from
+        # R6 (which reads only the inputs) and R10 (which skips every known
+        # column). The coherence check now refuses the index itself.
+        class OmitsTipIncome(StandInVariableIndex):
+            def inputs_at_2024(self, tables):
+                return frozenset(super().inputs_at_2024(tables) - {"tip_income"})
+
+        frame = _cell(assembled, "person", "tip_income", None, origin="acs")
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "The engine variable index answers do not cohere (the inputs must "
+                "be exactly the known columns not computed at 2024 and not "
+                "structural): inputs omit known columns that are neither computed "
+                "at 2024 nor structural: ['tip_income']"
+            ),
+        ):
+            _require(
+                population,
+                frame,
+                variable_index=OmitsTipIncome(inputs=frozenset(lock_engine_inputs())),
+            )
 
     @pytest.mark.parametrize("column", _MOVED_OFF_THE_EXEMPT_LIST)
     def test_a_moved_input_null_on_an_acs_row_refuses(
@@ -2495,6 +2902,27 @@ def _r1_record_two_channels(p, f):
     return _rebuild(f, _tables(f), metadata=metadata), {}
 
 
+def _record_with_count(f, value_of):
+    """``f`` whose record's ACS household count is ``value_of(count)``."""
+
+    record = clone_zero_assembly_record(f)[SPINE_ASSEMBLY_MANIFEST_KEY]
+    counts = {
+        entity: dict(by_channel)
+        for entity, by_channel in record["native_row_counts"].items()
+    }
+    counts["household"][ACS_2024_1YR_SPINE] = value_of(
+        counts["household"][ACS_2024_1YR_SPINE]
+    )
+    metadata = {SPINE_ASSEMBLY_MANIFEST_KEY: {**record, "native_row_counts": counts}}
+    return _rebuild(f, _tables(f), metadata=metadata)
+
+
+def _r1_record_fractional_count(p, f):
+    # Review nit 1: the validator reads a count through int(), so N + 0.5
+    # passed for N live rows.
+    return _record_with_count(f, lambda count: count + 0.5), {}
+
+
 def _r1_cross_grain(p, f):
     # A clone-1 person moves into its clone-0 household (the clone-1
     # household keeps another member): only the validator's cross-grain
@@ -2608,8 +3036,73 @@ def _p7_serialno_null(p, f):
 
 
 def _p7_staging_lacks_a_person(p, f):
-    lineage = sorted(staging_lineage(p))
-    return f, {"staging_lineage": frozenset(lineage[1:])}
+    lineage = staging_lineage(p)
+    first = min(lineage)
+    return f, {
+        "staging_lineage": {key: pair for key, pair in lineage.items() if key != first}
+    }
+
+
+def _p7_serialno_swapped(p, f):
+    # Review blocking 2 on the frame R1 reads: see
+    # _serialno_swaps_between_households.
+    tables = _tables(f)
+    household = tables["household"]
+    _swap_serialno(household, *_two_person_acs_households(tables))
+    return _rebuild(f, tables), {"staging_lineage": staging_lineage(p)}
+
+
+def _p7_source_year_pd_na(p, f):
+    # Review should-fix 2 on the frame R1 reads: an Int64 pd.NA on one ACS
+    # person, which R10 would otherwise let a declaration cover.
+    tables = _tables(f)
+    person = tables["person"]
+    values = person["source_year"].astype("Int64")
+    values.iloc[_row(person, "person", "acs")] = pd.NA
+    person["source_year"] = values
+    return _rebuild(f, tables), {}
+
+
+def _p6c_tax_unit_spans_households(p, f):
+    # Review blocking 3 on the frame R1 reads: see
+    # _acs_tax_unit_spans_households.
+    tables = _tables(f)
+    person = tables["person"]
+    acs = _origin_mask(person, "person", "acs")
+    row = int(
+        np.flatnonzero(acs & (_household_sizes(person, "person_tax_unit_id") > 1))[0]
+    )
+    household = person["person_household_id"].iloc[row]
+    elsewhere = acs & person["person_household_id"].ne(household).to_numpy()
+    _set(
+        person,
+        row,
+        "person_tax_unit_id",
+        person["person_tax_unit_id"].iloc[int(np.flatnonzero(elsewhere)[0])],
+    )
+    return _rebuild(f, tables), {}
+
+
+def _p6c_acs_household_holds_two_spm_units(p, f):
+    # Review blocking 3's partition on the frame R1 reads, with the clone-0
+    # record recounted so the validator passes the extra unit.
+    tables = _tables(f)
+    person, spm_unit = tables["person"], tables["spm_unit"]
+    acs = _origin_mask(person, "person", "acs")
+    row = int(
+        np.flatnonzero(acs & (_household_sizes(person, "person_household_id") > 1))[0]
+    )
+    extra = spm_unit.iloc[[-1]].copy()
+    assert extra["spm_unit_support_channel"].iloc[0] == ACS_SUPPORT_CHANNEL
+    for column in ("spm_unit_id", "spm_unit_source_id", "spm_unit_spine_source_id"):
+        extra[column] += 1
+    tables["spm_unit"] = pd.concat([spm_unit, extra], ignore_index=True)
+    _set(person, row, "person_spm_unit_id", int(extra["spm_unit_id"].iloc[0]))
+    frame = _rebuild(f, tables)
+    return (
+        _rebuild(frame, _tables(frame), metadata=clone_zero_assembly_record(frame)),
+        {},
+    )
 
 
 def _r11_location_clone_column(p, f):
@@ -2903,6 +3396,11 @@ _FRAME_REFUSALS = [
         _r1_record_two_channels,
         "Incomplete assembled provenance: the spine assembly record must declare",
     ),
+    (
+        _r1_record_fractional_count,
+        "Incomplete assembled provenance: the spine assembly record's native row "
+        "counts must be nonnegative integers; ['household.acs_2024_1yr=",
+    ),
     (_r1_cross_grain, "cross-grain provenance disagrees with the assembly manifest"),
     # P5: each origin's value rules on the assembled frame.
     (_p5_cps_clone_three, "CPS clone indices must be 0, 1 or 2"),
@@ -2953,7 +3451,29 @@ _FRAME_REFUSALS = [
     ),
     (
         _p7_staging_lacks_a_person,
-        "differs from staging's for the selected households; 0 missing",
+        "keyed by native (household id, person id); 0 missing (such as []), 1 extra",
+    ),
+    (
+        _p7_serialno_swapped,
+        "keyed by native (household id, person id); 0 missing (such as []), 0 "
+        "extra (such as []), 4 moved",
+    ),
+    (
+        _p7_source_year_pd_na,
+        "ACS lineage does not survive: every ACS person needs an integral "
+        "source_year: 1 value(s) are null",
+    ),
+    # P6c, after the assembly validator: groups nest in households, and ACS
+    # SPM units are the households.
+    (
+        _p6c_tax_unit_spans_households,
+        "Group units do not nest in households: 1 ACS tax_unit unit(s) hold "
+        "persons of more than one household",
+    ),
+    (
+        _p6c_acs_household_holds_two_spm_units,
+        "ACS SPM units must be the households (staging's one-SPM-unit-per-"
+        "household partition): 1 ACS household(s) hold more than one SPM unit",
     ),
     # R11.
     (_r11_location_clone_column, "A household with more than one location"),
@@ -3135,10 +3655,25 @@ def test_every_clause_has_a_corruption() -> None:
 @pytest.mark.parametrize(
     ("corruptions", "message"),
     [
+        # Within R1, the assembly validator before P6c (nesting): a person
+        # moved across households is a cross-grain move first.
+        (
+            (_p6c_tax_unit_spans_households, _r1_cross_grain),
+            "cross-grain provenance disagrees",
+        ),
         # R1 (P5) before R2, R6 and R12.
         (
             (_p5_acs_clone_index, _r2_peridnum_disagrees, _r12_null_district),
             "ACS rows must carry clone index 0",
+        ),
+        # R1 before R11, and R11 before R2 (review nit 2: no case held R11).
+        (
+            (_r11_location_clone_column, _p5_acs_clone_index),
+            "ACS rows must carry clone index 0",
+        ),
+        (
+            (_r2_peridnum_disagrees, _r11_location_clone_column),
+            "A household with more than one location",
         ),
         # R2 before R12 and T1.
         (
@@ -3169,6 +3704,76 @@ def test_clauses_run_in_their_fixed_order(
         assert overrides == {}
     with pytest.raises(OnePopulationContractError, match=re.escape(message)):
         _require(population, frame)
+
+
+def _acs_serialno_repeats(frame: Frame) -> Frame:
+    """The second ACS household takes the first's ``SERIALNO``."""
+
+    tables = _tables(frame)
+    household = tables["household"]
+    acs = np.flatnonzero(_origin_mask(household, "household", "acs"))
+    _set(household, int(acs[1]), "SERIALNO", household["SERIALNO"].iloc[int(acs[0])])
+    return _rebuild(frame, tables)
+
+
+def test_a_real_location_clone_refuses_at_r1_first(population, assembled) -> None:
+    # Review nit 2: block_location's own cloning remaps every pooled id and
+    # keeps the provenance ids, so P5 (R1) reads the clone before R11 reads
+    # the location-clone columns it also adds. The documented precedence.
+    frame = clone_frame_for_location(assembled, 2)
+    marked = [
+        entity
+        for entity in US_SCHEMA.entities
+        if f"{entity}_location_clone_index" in frame.table(entity)
+    ]
+    assert marked == list(US_SCHEMA.entities)
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape("ACS rows' source id must equal their pooled id"),
+    ):
+        _require(population, frame)
+
+
+def test_a_repeated_serialno_refuses_at_r1_before_r2(population, assembled) -> None:
+    # Review nit 2: P7 (R1) reads a repeated SERIALNO before R2's
+    # repeated-key branch, which stays as a guard; called on its own, R2
+    # refuses the same households.
+    frame = _acs_serialno_repeats(assembled)
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            "ACS lineage does not survive: SERIALNO repeats across ACS households"
+        ),
+    ):
+        _require(population, frame)
+    tables = _tables(frame)
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape("An ACS household with more than one row"),
+    ):
+        contract._require_selected_keys(
+            contract._split_origins(tables), selection_manifest(population)
+        )
+
+
+@pytest.mark.parametrize(
+    "value_of",
+    [str, float, lambda count: -1],
+    ids=["digit string", "integral float", "negative"],
+)
+def test_r1_refuses_a_record_count_the_validator_would_coerce(
+    population, assembled, value_of
+) -> None:
+    # Review nit 1, the other forms: the validator's int() reads "N" and
+    # N.0 as N; a negative count it refuses itself, but R1's check reads
+    # every count first, so the message is one.
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            "the spine assembly record's native row counts must be nonnegative integers"
+        ),
+    ):
+        _require(population, _record_with_count(assembled, value_of))
 
 
 # Property: a null in any checked cell refuses. "Checked" means some clause
@@ -3258,6 +3863,32 @@ def _swap_cps_roles(frame: Frame) -> Frame:
     role = person[SPM_ROLE].to_numpy(dtype=bool)
     holder = int(np.flatnonzero(cps & role)[0])
     other = int(np.flatnonzero(cps & ~role)[0])
+    values = role.copy()
+    values[[holder, other]] = values[[other, holder]]
+    person[SPM_ROLE] = values
+    return _rebuild(frame, tables)
+
+
+def _swap_acs_roles(frame: Frame) -> Frame:
+    """An adult ACS role holder and an adult of its household without it trade.
+
+    PR #1685 review, should-fix 1 (its example: a 40-year-old reference
+    person and a 25-year-old adult child): every count holds, so staging's
+    receipt still covers the rows and the role gate's counts are unchanged;
+    only the persons' ``RELSHIPP`` says which of them holds the role.
+    """
+
+    tables = _tables(frame)
+    person = tables["person"]
+    adult_acs = _origin_mask(person, "person", "acs") & person["age"].ge(18).to_numpy()
+    role = person[SPM_ROLE].to_numpy(dtype=bool)
+    household = person["person_household_id"].to_numpy()
+    holder = next(
+        int(row)
+        for row in np.flatnonzero(adult_acs & role)
+        if (adult_acs & ~role & (household == household[row])).any()
+    )
+    other = int(np.flatnonzero(adult_acs & ~role & (household == household[holder]))[0])
     values = role.copy()
     values[[holder, other]] = values[[other, holder]]
     person[SPM_ROLE] = values
@@ -3363,7 +3994,7 @@ class TestCombinedSpmRoleRecord:
             empty_acs,
             cps_household_weights=population.keyed_cps_household_weights,
             acs_household_weights={},
-            staging_lineage=frozenset(),
+            staging_lineage={},
         )
         record = combined_spm_role_record(*_role_inputs(frame), frame)
         assert record["origins"]["ACS"]["persons"] == 0
@@ -3378,6 +4009,28 @@ class TestCombinedSpmRoleRecord:
         ):
             value = ast.literal_eval(_module_assignment(source, constant))
             assert contract._ACS_ROLE_RECEIPT_IDENTITY[key] == value, constant
+
+    def test_the_relshipp_codes_are_staging_constants(self) -> None:
+        # The codes the row-level ACS role check reads (review should-fix 1)
+        # are copies of the rule's own constants (d2283 lead call L8).
+        from microcosm.build.us_runtime import acs_inputs
+
+        assert contract._ACS_ROLE_RELSHIPP == {
+            acs_inputs._ACS_REFERENCE_PERSON,
+            *acs_inputs._ACS_SPOUSE_OF_REFERENCE,
+            *acs_inputs._ACS_GROUP_QUARTERS_PERSON,
+        }
+        assert contract._ACS_RELSHIPP_CODES == acs_inputs._ACS_RELSHIPP_CODES
+
+    def test_a_swap_of_acs_roles_keeps_every_count(self, assembled) -> None:
+        # Why the receipt and the counts cannot catch should-fix 1's swap:
+        # the gate's counts and the receipt's coverage are unchanged.
+        swapped = _swap_acs_roles(assembled)
+        before, after = (spm_role_gate_record(frame) for frame in (assembled, swapped))
+        assert {
+            key: before[key] for key in before if key != "person_role_binding_sha256"
+        } == {key: after[key] for key in after if key != "person_role_binding_sha256"}
+        assert staging_role_receipt(swapped) == staging_role_receipt(assembled)
 
     def test_the_receipt_keys_are_staging_receipts(self) -> None:
         # The dict acs_inputs.with_acs_spm_independence_role assigns to
@@ -3574,6 +4227,33 @@ _ROLE_RECORD_REFUSALS = [
         "Staging's ACS role receipt covers fewer rows than the frame's ACS rows: "
         "{'persons'",
     ),
+    # Each ACS person's role is the one its RELSHIPP gives (review
+    # should-fix 1): the receipt states counts only.
+    (
+        "acs roles traded",
+        lambda f: (cps_role_record(f), staging_role_receipt(f), _swap_acs_roles(f)),
+        "The ACS persons' SPM roles are not staging's RELSHIPP rule's: 2 of ",
+    ),
+    (
+        "relshipp missing",
+        lambda f: (
+            cps_role_record(f),
+            staging_role_receipt(f),
+            _without_column(f, "person", "RELSHIPP"),
+        ),
+        "The ACS persons' SPM roles are not staging's RELSHIPP rule's: the person "
+        "table lacks 'RELSHIPP'",
+    ),
+    (
+        "relshipp off-domain",
+        lambda f: (
+            cps_role_record(f),
+            staging_role_receipt(f),
+            _cell(f, "person", "RELSHIPP", 19, origin="acs"),
+        ),
+        "The ACS persons' SPM roles are not staging's RELSHIPP rule's: 1 ACS "
+        "person(s) hold a blank or off-domain RELSHIPP",
+    ),
 ]
 
 
@@ -3659,6 +4339,8 @@ _GENERATED_ABSENCES = {
     ("household", "SERIALNO", "raw source column", "CPS"),
     ("household", "TYPEHUGQ", "raw source column", "CPS"),
     ("person", "PERIDNUM", "raw source column", "ACS"),
+    # The ACS role rule's source column, kept on ACS rows (review should-fix 1).
+    ("person", "RELSHIPP", "raw source column", "CPS"),
     ("person", "SPORDER", "raw source column", "CPS"),
     ("person", "SSI_VAL", "raw source column", "ACS"),
     ("person", "takes_up_ssi_if_eligible", "release-written", "ACS"),
@@ -3840,6 +4522,45 @@ class TestAbsences:
             assert entry["entity_weight_share"] is None
             assert "names no rows" in entry["rows_rule"]
 
+    def test_a_zero_spine_count_files_no_entry(self, assembled) -> None:
+        # Review should-fix 5's bound is nonnegative, not positive: a spine
+        # the fill did not touch may count zero, and files nothing.
+        fill = {
+            **_acs_fill(assembled, "tip_income", rows=3),
+            "missing_rows_by_spine": {CPS_SPINE_TAG: 0, ACS_2024_1YR_SPINE: 3},
+        }
+        keyed = _keyed(_absences(assembled, fills=[fill]))
+        assert (
+            keyed[("person", "tip_income", "reviewed default fill", "ACS")]["rows"] == 3
+        )
+        assert ("person", "tip_income", "reviewed default fill", "CPS") not in keyed
+
+    def test_zero_written_on_a_nullable_numeric_column(self, assembled) -> None:
+        # Review should-fix 6: a Float64 origin-native amount, pd.NA on CPS
+        # rows and zeros on two ACS rows. eq(0) on it is a nullable boolean,
+        # which used to reach the weight lookup as an object array.
+        column = "acs_social_security_income"
+        frame = _acs_only(assembled, "person", column, 120.0)
+        tables = _tables(frame)
+        person = tables["person"]
+        acs = _origin_mask(person, "person", "acs")
+        values = person[column].astype("Float64")
+        zeros = np.flatnonzero(acs)[:2]
+        values.iloc[zeros] = 0.0
+        person[column] = values
+        frame = _rebuild(frame, tables)
+        assert str(frame.table("person")[column].dtype) == "Float64"
+        assert int(frame.table("person")[column].isna().sum()) == int((~acs).sum())
+        record = _absences(frame, zero_written={column: "receipt"})
+        entry = _keyed(record)[("person", column, "zero written", "ACS")]
+        mask = np.zeros(len(person), dtype=bool)
+        mask[zeros] = True
+        assert entry["rows"] == 2
+        assert entry["rows_by_channel"] == {ACS_2024_1YR_SPINE: 2}
+        assert entry["entity_weight_share"] == pytest.approx(
+            _share(frame, "person", mask)
+        )
+
     def test_zero_written_counts_acs_zeros_as_an_upper_bound(self, assembled) -> None:
         receipt = "acs_transfer cells_kept_at_zero (U/acs_transfer.py:2440-2468)"
         record = _absences(assembled, zero_written={"tip_income": receipt})
@@ -3880,7 +4601,7 @@ class TestAbsences:
             empty_acs,
             cps_household_weights=population.keyed_cps_household_weights,
             acs_household_weights={},
-            staging_lineage=frozenset(),
+            staging_lineage={},
         )
         record = _absences(frame)
         assert record["entries"] == []
@@ -3946,6 +4667,25 @@ _ABSENCE_REFUSALS = [
         },
         "The fill manifest does not describe this frame: 'person'.'tip_income''s rows "
         "by spine {'acs_2024_1yr': 3}",
+    ),
+    (
+        # Review should-fix 5: the sum matches, and the origin-capacity check
+        # rejects only counts above capacity, so -1 became a CPS entry's rows.
+        "fill negative count",
+        lambda f: {
+            "fills": [
+                {
+                    **_acs_fill(f, "tip_income", rows=3),
+                    "missing_rows_by_spine": {
+                        CPS_SPINE_TAG: -1,
+                        ACS_2024_1YR_SPINE: 4,
+                    },
+                }
+            ]
+        },
+        "The fill manifest does not describe this frame: 'person'.'tip_income''s rows "
+        "by spine {'asec_puf': -1, 'acs_2024_1yr': 4} must count its 3 filled rows, "
+        "in nonnegative integers",
     ),
     (
         "fill beyond the origin",
@@ -4490,7 +5230,7 @@ class TestOneDeclarationsMapping:
             empty_acs,
             cps_household_weights=population.keyed_cps_household_weights,
             acs_household_weights={},
-            staging_lineage=frozenset(),
+            staging_lineage={},
         )
         manifest = dataclasses.replace(
             selection_manifest(population),
@@ -4505,7 +5245,7 @@ class TestOneDeclarationsMapping:
             population,
             frame,
             manifest=manifest,
-            staging_lineage=frozenset(),
+            staging_lineage={},
             declared_absences=declared,
         )
         record = _absences(frame, declared=declared)
@@ -4577,12 +5317,24 @@ _TYPE_REFUSALS = [
     (
         "rewrite staging lineage",
         lambda p, f: _rewrite_with(p, staging_lineage="2024HU0000001"),
-        "staging_lineage must be a collection of (SERIALNO, SPORDER) pairs, got str.",
+        "staging_lineage must map each staged ACS person's native (household id, "
+        "person id) to its (SERIALNO, SPORDER), got str.",
     ),
     (
         "require staging lineage",
         lambda p, f: _require(p, f, staging_lineage=5),
-        "staging_lineage must be a collection of (SERIALNO, SPORDER) pairs, got int.",
+        "staging_lineage must map each staged ACS person's native (household id, "
+        "person id) to its (SERIALNO, SPORDER), got int.",
+    ),
+    (
+        # PR #1685 review, blocking 2: the old set of (SERIALNO, SPORDER)
+        # pairs cannot tie a SERIALNO to its household, so it is refused.
+        "rewrite staging lineage as a set of pairs",
+        lambda p, f: _rewrite_with(
+            p, staging_lineage=frozenset(staging_lineage(p).values())
+        ),
+        "staging_lineage must map each staged ACS person's native (household id, "
+        "person id) to its (SERIALNO, SPORDER), got frozenset.",
     ),
     (
         "role record frame",

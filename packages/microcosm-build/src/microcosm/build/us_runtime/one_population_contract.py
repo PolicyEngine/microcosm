@@ -74,17 +74,31 @@ What the later d2283 PRs owe this library:
   ``takes_up_medicaid_if_eligible``, since their producers rewrite them and
   no earlier pass's result depends on them (the ACA pass's two reads of the
   Medicaid flag are masked by Medicaid eligibility in policyengine-us
-  2.2.1). ``health_insurance_premiums`` and ``is_self_employed``
-  need a reviewed source, since the ACA, Medicaid and SNAP-state passes
-  compute from them on ACS rows before their producer runs and staging
-  writes neither. Which source is a lead call still owed, the US data
-  owner deciding (d2283 Q2's owner). The candidate is the producer's own
-  pinned rule, ``other_health_insurance.attribute_us_se_health_premiums``,
-  run in prepare on the ACS rows' filled
-  ``health_insurance_premiums_without_medicare_part_b``, self-employment
-  income, age, ``social_security_disability`` and ``has_esi``. A null PR 4
-  leaves in an exempt boolean column must be NaN or None, never ``pd.NA``,
-  which the first engine pass refuses at load.
+  2.2.1). ``health_insurance_premiums`` and ``is_self_employed`` take the
+  producer's own pinned rule, so the ACA, Medicaid and SNAP-state passes,
+  which compute from them on ACS rows before their producer runs (staging
+  writes neither), see there the values the producer later ships (the
+  11-19 call of the US data owner, who owns d2283 Q2). Prepare runs
+  ``other_health_insurance.attribute_us_se_health_premiums_from_manifest``
+  with the one operation of kind ``attribute_self_employed_health_premiums``
+  in the packaged stage (``us_other_health_insurance_stage_spec()``; by
+  kind, never by position, and never the function's defaults), on the
+  joined person table after the reviewed default fill and before this
+  contract. That fill holds both columns out, as it holds out the SSI and
+  Medicaid take-up columns, or it would write 0/False and file fills the
+  attribution then overwrites. Prepare writes the two outputs on ACS rows
+  only, as float64 and bool; refuses unless the rule reproduces every CPS
+  row's carried values (premiums within the export gate's 1e-9, the flag
+  exactly), a parity check that the binding and inputs reproduce the
+  parent's producer; and records the operation, its parameters and the
+  ``us/source_stages.json`` sha256 in its manifest. Nothing after it may
+  write the rule's inputs or outputs. A null PR 4 leaves in an exempt
+  column must be NaN or None, never ``pd.NA``. The first engine pass
+  cannot load a ``pd.NA`` in the twelve flags it reads before their
+  producers write them; the other six (the four SCF amounts,
+  ``meets_ssi_disability_criteria`` and ``takes_up_head_start_if_eligible``)
+  have producers that run before that pass and rewrite a non-finite
+  value. R6 refuses a ``pd.NA`` in all 18 as a fail-closed rule.
 - PR 4 writes on ACS rows every raw predictor of
   ``acs_release_predictors._MODEL_PREDICTORS``, all fourteen
   (:data:`RAW_COLUMN_READERS` names each one's readers): ``PEDISDRS``,
@@ -114,7 +128,19 @@ What the later d2283 PRs owe this library:
   ``with_us_spm_independence_role`` on the selected CPS rows, in the joined
   frame's row order and dtypes (the digest is dtype-sensitive); builds the
   selection keys with :func:`cps_unit_ids`; builds ``staging_lineage`` from
-  staging's output, not from the ACS tables it passes; supplies
+  staging's output, not from the ACS tables it passes, keyed by each
+  person's native (household id, person id) (staging's
+  ``household_source_id`` of its household and its ``person_source_id``)
+  with its (``SERIALNO``, ``SPORDER``) as the value; keeps staging's
+  ``RELSHIPP`` on every ACS person row, from which
+  :func:`combined_spm_role_record` re-derives each ACS role (inferred, to
+  confirm at spike step 0: staging's pooled tables keep it, as they keep
+  ``TYPEHUGQ``; if they drop it, prepare joins it from the ACS PUMS
+  person source, which requires it, by (``SERIALNO``, ``SPORDER``), the
+  pair the lineage check ties to each person). Nothing ties the retained
+  ``RELSHIPP`` itself to staging, so a swap of both ``RELSHIPP`` and the
+  role between two persons passes; a keyed staging role projection would
+  catch it. PR 4 also supplies
   :func:`absences` with the reviewed default fill's manifest for the
   joined frame and the ``zero_written`` receipts; and declares (or fills)
   each CPS-only register entry the first live run of :func:`absences`
@@ -123,10 +149,26 @@ What the later d2283 PRs owe this library:
   :func:`_integral_ids`, which today passes object-held digit strings and
   booleans through ``pd.to_numeric`` and refuses only a boolean dtype
   (lead call L5).
-- PR 5 (the loader) recomputes the role record after the H5 load rather
-  than trusting a pre-write digest, and joins the absences file to the
-  release's ``us_register_consistency_gate``. The absences record names no
-  frame or H5 digest, so PR 5 binds it to its file by the run folder.
+- PR 4 writes both frame records into the population manifest: the spine
+  assembly record :func:`to_assembled_provenance` puts under
+  ``SPINE_ASSEMBLY_MANIFEST_KEY`` and the record
+  :func:`combined_spm_role_record` returns, with the CPS role record and
+  staging's receipt it keeps under ``evidence``. The shared H5 writer
+  stores tables, household weights, the period and its own small metadata
+  row, never ``Frame.metadata`` (``h5_io``'s module docstring;
+  ``_artifact_metadata``), so a record left only in the frame is lost at
+  the write.
+- PR 5 (the loader) restores both records from the population manifest
+  into ``Frame.metadata`` (``us_spine_assembly_manifest`` and
+  ``spm_independence_role``) and checks each on the loaded frame: the
+  assembly record through
+  :func:`~microcosm.build.us_runtime.support_provenance.validate_assembly_provenance`
+  (a loader that restores only the role record leaves every reader of the
+  assembly record without one), and the role record recomputed after the
+  load rather than trusted by its pre-write digest. It also joins the
+  absences file to the release's ``us_register_consistency_gate``. The
+  absences record names no frame or H5 digest, so PR 5 binds it to its
+  file by the run folder.
 - PR 5's continuity anchor compares the CPS row set and the native and
   clone structure both ways against the parent export. Whether a clone
   row's values cohere with its native row's is out of this library's
@@ -328,10 +370,19 @@ _ACS_HOUSEHOLD_TYPES = (1, 2, 3)
 #: (``_ssi_person_uncapped_amount``). Like every pass built from the frame,
 #: it loads each frame column that is an engine variable, whether or not it
 #: computes anything from it.
-_SSI_DECEMBER_PASS = "tools/build_us_fiscal_refresh_release.py:15416"
+#:
+#: Release-tool citations here and below name the function or statement
+#: and give its line in ``tools/build_us_fiscal_refresh_release.py`` at
+#: this module's commit (blob ``f672b8465``, unchanged by the merge of main
+#: ``cfd5a2a5e``); the name holds when the tool's lines move. The stage
+#: order the verdicts read is pinned by name in the tests.
+_SSI_DECEMBER_PASS = (
+    "the _ssi_person_uncapped_amount call, "
+    "tools/build_us_fiscal_refresh_release.py:17060"
+)
 _NO_EARLIER_READER = (
     "Earlier readers: none; no engine pass runs before this stage (the first, "
-    f"the SSI December pass, is at {_SSI_DECEMBER_PASS}) and no pool-arm stage "
+    f"the SSI December pass, is {_SSI_DECEMBER_PASS}) and no pool-arm stage "
     "before it names the column"
 )
 #: How policyengine-core 3.32.5 (the lock's pin) loads a null boolean input:
@@ -382,8 +433,9 @@ _ORG_EVIDENCE = (
 #: rewrite that one on every SPM unit and raise on a null
 #: (U/snap_state_take_up.py:282-290), but the SNAP take-up stage before it
 #: passes ACS nulls through (U/snap_take_up.py:231-239, :274-277), and the
-#: release's SNAP take-up gate (tools/build_us_fiscal_refresh_release.py:14819)
-#: grades that frame through ``to_numpy(dtype=bool)``
+#: release's SNAP take-up gate (``us_snap_take_up_signal_gate(base_frame)``,
+#: tools/build_us_fiscal_refresh_release.py:16463) grades that frame through
+#: ``to_numpy(dtype=bool)``
 #: (U/snap_take_up.py:319), which reads a NaN as take-up, a None as no
 #: take-up and refuses a ``pd.NA``: it misgrades ACS nulls.
 #:
@@ -393,21 +445,27 @@ _ORG_EVIDENCE = (
 #: :276-291, a static read), so a null in ``cps_race``, ``hourly_wage``,
 #: ``fsla_overtime_premium``, ``detailed_occupation_recode``,
 #: ``detailed_industry_recode``, ``major_industry_recode`` (org_wages,
-#: tools/build_us_fiscal_refresh_release.py:15684),
+#: ``with_us_org_wages_inputs``, tools/build_us_fiscal_refresh_release.py:17328),
 #: ``selected_marketplace_plan_benchmark_ratio`` (aca_marketplace_inputs,
-#: :15716), ``other_health_insurance_premiums`` or
-#: ``health_insurance_premiums`` (other_health_insurance_premiums, :15823)
-#: stops the build at the SSI December pass (:15416). The ACA, Medicaid and
-#: SNAP-state passes (:15716, :15751, :15786) also compute from
+#: ``_with_aca_marketplace_source_outputs``, :17360),
+#: ``other_health_insurance_premiums`` or ``health_insurance_premiums``
+#: (other_health_insurance_premiums, ``with_us_other_health_insurance_inputs``,
+#: :17467) stops the build at the SSI December pass
+#: (``_ssi_person_uncapped_amount``, :17060). The ACA, Medicaid and
+#: SNAP-state passes (``_with_aca_marketplace_source_outputs``, :17360;
+#: ``_with_medicaid_take_up_outputs``, :17395;
+#: ``_with_snap_state_take_up_outputs``, :17430) also compute from
 #: ``health_insurance_premiums`` and ``is_self_employed`` (the self-employed
 #: health insurance deduction into AGI and MAGI, and medical expenses), and
 #: a boolean null there reads silently as True or False. Staging writes the
 #: three integer recodes natively on ACS rows (U/acs_inputs.py:105-120,
 #: ``ACS_WORK_EXPERIENCE_NATIVE_MAPPINGS``) and none of the other seven.
 #:
-#: And ``takes_up_medicaid_if_eligible`` (medicaid_take_up, :15751; moved
-#: by the lead-call review, fail closed): the ACA stage's pass (:15716)
-#: computes ``medicaid_enrolled`` from it before Medicaid writes it, by two
+#: And ``takes_up_medicaid_if_eligible`` (medicaid_take_up,
+#: ``_with_medicaid_take_up_outputs``, :17395; moved by the lead-call
+#: review, fail closed): the ACA stage's pass
+#: (``_with_aca_marketplace_source_outputs``, :17360) computes
+#: ``medicaid_enrolled`` from it before Medicaid writes it, by two
 #: routes in policyengine-us 2.2.1. One is the ineligible-coverage sum's
 #: qualifying non-marketplace coverage; the other is CHIP's disqualifying
 #: coverage, into ``is_chip_eligible_child`` and so ``is_chip_eligible``,
@@ -428,7 +486,8 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
             "on every household when any value is not finite "
             "(U/scf_wealth.py:1048, :1129; rewrite, :1157). "
             f"{_NO_EARLIER_READER} (sipp_vehicles reads it later, "
-            "tools/build_us_fiscal_refresh_release.py:15554)"
+            "with_us_sipp_vehicle_inputs, "
+            "tools/build_us_fiscal_refresh_release.py:17198)"
         ),
         "meets_ssi_disability_criteria": (
             "ssi_disability_criteria stage: with_us_ssi_disability_criteria "
@@ -449,7 +508,8 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
             "boolean column with no null equal to its assignment, else writes "
             "the assignment on every person (U/ssi_take_up.py:1260-1261, "
             f":1268). {_LOADED_NOT_COMPUTED}; the pass's docstring says the "
-            "same (tools/build_us_fiscal_refresh_release.py:4275-4277)"
+            "same (_ssi_person_uncapped_amount, "
+            "tools/build_us_fiscal_refresh_release.py:4564-4565)"
         ),
         "would_file_taxes_voluntarily": (
             "voluntary_filing_input stage: with_us_voluntary_filing_input "
@@ -474,9 +534,10 @@ RELEASE_WRITTEN_INPUTS: Mapping[str, str] = MappingProxyType(
         "takes_up_aca_if_eligible": (
             "aca_marketplace_inputs stage: _with_aca_marketplace_source_outputs "
             "raises if the output misses a tax unit and writes it on every tax "
-            "unit (tools/build_us_fiscal_refresh_release.py:4134, :4140). "
+            "unit (tools/build_us_fiscal_refresh_release.py:4422, :4428). "
             f"{_LOADED_NOT_COMPUTED}; the stage's own pass reads the potential "
-            "aca_ptc, not the take-up flag (:3928-3930)"
+            "aca_ptc, not the take-up flag "
+            "(_aca_source_tax_unit_table_from_simulation, :4216-4222)"
         ),
     }
 )
@@ -593,6 +654,15 @@ _ACS_SPM_ROLE_RULE = (
     "on the one-SPM-unit-per-household ACS partition"
 )
 _ACS_SPM_ROLE_PARTITION = "household (ACS PUMS carries no SPM_ID)"
+#: That rule's ``RELSHIPP`` codes: the role holders (20 the reference
+#: person, 21/23 the spouse, 37/38 the sole group-quarters person) and the
+#: codes it reads at all (20 to 38). Copies of ``acs_inputs``'
+#: ``_ACS_REFERENCE_PERSON``, ``_ACS_SPOUSE_OF_REFERENCE``,
+#: ``_ACS_GROUP_QUARTERS_PERSON`` and ``_ACS_RELSHIPP_CODES``, which a test
+#: pins, by lead call L8.
+_RELSHIPP = "RELSHIPP"
+_ACS_ROLE_RELSHIPP = frozenset({20, 21, 23, 37, 38})
+_ACS_RELSHIPP_CODES = frozenset(range(20, 39))
 
 #: The keys staging's ACS role receipt carries
 #: (``acs_inputs.with_acs_spm_independence_role``, :478-511; a test pins the
@@ -1079,6 +1149,62 @@ def _require_disjoint_ids(origins: Mapping[str, Mapping[str, pd.DataFrame]]) -> 
                 )
 
 
+def _require_nested_groups(origins: Mapping[str, Mapping[str, pd.DataFrame]]) -> None:
+    """P6c: every group unit inside one household; each ACS household one SPM unit.
+
+    A tax unit, SPM unit, family or marital unit whose persons sit in two
+    households resolves every id and keeps every channel, so P6b and the
+    assembly validator pass it, but the release reads it as one unit split
+    across households (the ACA pass refuses one, and a tax unit whose
+    households carry unequal weights has no single weight). ACS rows must
+    also keep staging's partition, one SPM unit per household
+    (``acs_inputs.ACS_SPM_ROLE_PARTITION``), the only partition the ACS role
+    rule and its receipt are defined on (PR #1685 review, blocking 3). It
+    runs after P6b, which resolves every membership within its origin.
+    """
+
+    household_column = US_SCHEMA.membership_column("household")
+    for origin, tables in origins.items():
+        person = tables[US_SCHEMA.person_entity]
+        if not len(person):
+            continue
+        households = person[household_column].to_numpy()
+        for group in US_SCHEMA.group_entities:
+            if group == "household":
+                continue
+            units = pd.DataFrame(
+                {
+                    "unit": person[US_SCHEMA.membership_column(group)].to_numpy(),
+                    "household": households,
+                }
+            )
+            spans = units.groupby("unit", sort=True)["household"].nunique()
+            split = spans.index[spans.to_numpy() > 1].tolist()
+            if split:
+                raise OnePopulationContractError(
+                    f"Group units do not nest in households: {len(split)} {origin} "
+                    f"{group} unit(s) hold persons of more than one household, "
+                    f"such as {split[:5]}; every tax unit, SPM unit, family and "
+                    "marital unit lies inside one household."
+                )
+        if origin != _ACS:
+            continue
+        spm_units = pd.DataFrame(
+            {
+                "household": households,
+                "unit": person[US_SCHEMA.membership_column("spm_unit")].to_numpy(),
+            }
+        )
+        per_household = spm_units.groupby("household", sort=True)["unit"].nunique()
+        several = per_household.index[per_household.to_numpy() > 1].tolist()
+        if several:
+            raise OnePopulationContractError(
+                "ACS SPM units must be the households (staging's one-SPM-unit-"
+                f"per-household partition): {len(several)} ACS household(s) hold "
+                f"more than one SPM unit, such as {several[:5]}."
+            )
+
+
 def _require_unique_source_ranks(
     origins: Mapping[str, Mapping[str, pd.DataFrame]],
 ) -> None:
@@ -1124,55 +1250,87 @@ def _require_unique_source_ranks(
             )
 
 
-def _lineage_pairs(
-    staging_lineage: Collection[tuple[str, int]],
-) -> frozenset[tuple[str, int]]:
-    """Staging's (SERIALNO, SPORDER) pairs, with SPORDER as an int."""
+#: Staging's lineage for the selected ACS persons: each person's native
+#: (household id, person id) to its (``SERIALNO``, ``SPORDER``).
+_Lineage = dict[tuple[int, int], tuple[str, int]]
+
+
+def _integral_value(value: object) -> int | None:
+    """``value`` as an int when it is a non-boolean integral number, else None."""
+
+    if isinstance(value, bool | np.bool_) or not isinstance(value, numbers.Real):
+        return None
+    if isinstance(value, numbers.Integral):
+        return int(value)
+    as_float = float(value)
+    return int(as_float) if as_float.is_integer() else None
+
+
+def _lineage_rows(staging_lineage: object) -> _Lineage:
+    """Staging's lineage, keyed by each ACS person's native ids, checked.
+
+    A set of (``SERIALNO``, ``SPORDER``) pairs is refused: it cannot tie a
+    ``SERIALNO`` to its household, so two households that swap serial
+    numbers would keep the set and trade weights (PR #1685 review,
+    blocking 2).
+    """
 
     rule = "ACS lineage does not survive"
-    if isinstance(staging_lineage, str | bytes) or not isinstance(
-        staging_lineage, Collection
-    ):
+    if not isinstance(staging_lineage, Mapping):
         raise TypeError(
-            "staging_lineage must be a collection of (SERIALNO, SPORDER) pairs, "
-            f"got {type(staging_lineage).__name__}."
+            "staging_lineage must map each staged ACS person's native (household "
+            "id, person id) to its (SERIALNO, SPORDER), got "
+            f"{type(staging_lineage).__name__}."
         )
-    pairs: set[tuple[str, int]] = set()
-    for pair in staging_lineage:
-        if not isinstance(pair, tuple) or len(pair) != 2:
+    rows: _Lineage = {}
+    for key, value in staging_lineage.items():
+        household_id = person_id = None
+        if isinstance(key, tuple) and len(key) == 2:
+            household_id, person_id = (_integral_value(part) for part in key)
+        if household_id is None or person_id is None:
             raise OnePopulationContractError(
-                f"{rule}: staging's lineage holds {pair!r}, not a "
-                "(SERIALNO, SPORDER) pair."
+                f"{rule}: staging's lineage has the key {key!r}, not a native "
+                "(household id, person id) pair of integers."
             )
-        serial, sporder = pair
+        pair = value if isinstance(value, tuple) and len(value) == 2 else None
+        sporder = None if pair is None else _integral_value(pair[1])
         if (
-            not isinstance(serial, str)
-            or not serial
-            or isinstance(sporder, bool)
-            or not isinstance(sporder, numbers.Real)
-            or not float(sporder).is_integer()
+            pair is None
+            or not isinstance(pair[0], str)
+            or not pair[0]
+            or sporder is None
         ):
             raise OnePopulationContractError(
-                f"{rule}: staging's lineage holds {pair!r}; SERIALNO must be a "
-                "non-empty string and SPORDER an integer."
+                f"{rule}: staging's lineage maps {key!r} to {value!r}, not a "
+                f"({_SERIALNO}, {_SPORDER}) pair; {_SERIALNO} must be a non-empty "
+                f"string and {_SPORDER} an integer."
             )
-        pairs.add((serial, int(sporder)))
-    return frozenset(pairs)
+        native = (household_id, person_id)
+        if native in rows:
+            raise OnePopulationContractError(
+                f"{rule}: staging's lineage repeats the native key {native!r}."
+            )
+        rows[native] = (pair[0], sporder)
+    return rows
 
 
 def _require_acs_lineage(
     tables: Mapping[str, pd.DataFrame],
-    staging: frozenset[tuple[str, int]] | None,
+    staging: Mapping[tuple[int, int], tuple[str, int]] | None,
 ) -> None:
     """P7: every ACS row's ``SERIALNO``/``SPORDER`` lineage survives.
 
     ``SERIALNO`` is a non-empty string, unique per ACS household; ``SPORDER``
     an integer, with (``SERIALNO``, ``SPORDER``) unique per ACS person through
-    the household link; ``source_household_id`` equals the linked
-    household's ``household_spine_source_id`` (staging's native id);
-    ``source_person_id`` is ``str(SPORDER)``; ``source_year`` is 2024; and,
-    when ``staging`` is given, the persons' (``SERIALNO``, ``SPORDER``) set
-    equals staging's.
+    the household link; ``source_household_id`` an integer equal to the
+    linked household's ``household_spine_source_id`` (staging's native id);
+    ``source_person_id`` the string ``str(SPORDER)``; ``source_year`` the
+    integer 2024. A null in any of them refuses before a comparison reads it
+    (pandas' nullable dtypes hold ``pd.NA``, which a sum skips and a
+    comparison cannot decide). When ``staging`` is given, each ACS person's
+    (``SERIALNO``, ``SPORDER``), keyed by its native (household id, person
+    id), must equal staging's, person by person: the same keys, and the
+    same pair under each key.
     """
 
     rule = "ACS lineage does not survive"
@@ -1220,25 +1378,47 @@ def _require_acs_lineage(
             f"{rule}: ({_SERIALNO}, {_SPORDER}) repeats on "
             f"{int(repeated.sum())} ACS person(s)."
         )
-    native = link.map(by_household[spine_source_id_column("household")])
-    source_household = pd.to_numeric(person[_SOURCE_HOUSEHOLD_ID], errors="coerce")
-    differs = int((source_household.to_numpy() != native.to_numpy()).sum())
+    household_spine = spine_source_id_column("household")
+    native = _integral_ids(
+        link.map(by_household[household_spine]),
+        refusal=f"{rule}: every ACS person's household needs an integral "
+        f"{household_spine}",
+    )
+    # Nullable dtypes hold pd.NA, which a comparison cannot decide and a sum
+    # skips, so every lineage value is parsed or null-checked before it is
+    # compared (PR #1685 review, should-fix 2).
+    source_household = _integral_ids(
+        person[_SOURCE_HOUSEHOLD_ID],
+        refusal=f"{rule}: every ACS person needs an integral {_SOURCE_HOUSEHOLD_ID}",
+    )
+    differs = int(np.count_nonzero(source_household != native))
     if differs:
         raise OnePopulationContractError(
             f"{rule}: {_SOURCE_HOUSEHOLD_ID} differs from the linked household's "
-            f"native id ({spine_source_id_column('household')}) on {differs} ACS "
-            "person(s)."
+            f"native id ({household_spine}) on {differs} ACS person(s)."
+        )
+    nulls = int(person[_SOURCE_PERSON_ID].isna().sum())
+    if nulls:
+        raise OnePopulationContractError(
+            f"{rule}: {_SOURCE_PERSON_ID} is null on {nulls} ACS person(s)."
         )
     expected = [str(value) for value in sporder.tolist()]
     actual = person[_SOURCE_PERSON_ID].tolist()
-    differs = sum(1 for want, got in zip(expected, actual, strict=True) if want != got)
+    differs = sum(
+        1
+        for want, got in zip(expected, actual, strict=True)
+        if not (isinstance(got, str) and got == want)
+    )
     if differs:
         raise OnePopulationContractError(
             f"{rule}: {_SOURCE_PERSON_ID} differs from str({_SPORDER}) on {differs} "
             "ACS person(s)."
         )
-    years = pd.to_numeric(person[_SOURCE_YEAR], errors="coerce")
-    wrong_year = int((years != _ACS_SOURCE_YEAR).sum())
+    years = _integral_ids(
+        person[_SOURCE_YEAR],
+        refusal=f"{rule}: every ACS person needs an integral {_SOURCE_YEAR}",
+    )
+    wrong_year = int(np.count_nonzero(years != _ACS_SOURCE_YEAR))
     if wrong_year:
         raise OnePopulationContractError(
             f"{rule}: {_SOURCE_YEAR} must be {_ACS_SOURCE_YEAR} on every ACS person; "
@@ -1246,27 +1426,54 @@ def _require_acs_lineage(
         )
     if staging is None:
         return
-    _require_staging_lineage(
-        frozenset(
-            zip(lineage["serial"].tolist(), lineage["sporder"].tolist(), strict=True)
-        ),
-        staging,
+    person_spine = spine_source_id_column("person")
+    native_person = _integral_ids(
+        person[person_spine],
+        refusal=f"{rule}: every ACS person needs an integral {person_spine}",
     )
+    selected = dict(
+        zip(
+            zip(native.tolist(), native_person.tolist(), strict=True),
+            zip(lineage["serial"].tolist(), lineage["sporder"].tolist(), strict=True),
+            strict=True,
+        )
+    )
+    if len(selected) != len(person):
+        raise OnePopulationContractError(
+            f"{rule}: a native (household id, person id) repeats on the ACS "
+            "persons, so staging's lineage cannot be matched person by person."
+        )
+    _require_staging_lineage(selected, staging)
 
 
 def _require_staging_lineage(
-    selected: frozenset[tuple[str, int]], staging: frozenset[tuple[str, int]]
+    selected: Mapping[tuple[int, int], tuple[str, int]],
+    staging: Mapping[tuple[int, int], tuple[str, int]],
 ) -> None:
-    """P7's last rule: the selected ACS persons' pairs are staging's."""
+    """P7's last rule: each selected ACS person's pair is staging's, by key.
 
-    if selected != staging:
-        missing = sorted(staging - selected)
-        extra = sorted(selected - staging)
+    The key is the person's native (household id, person id), so a
+    ``SERIALNO`` swapped between two households, or a ``SPORDER`` swapped
+    between two persons, is a moved pair even when the set of pairs holds
+    (PR #1685 review, blocking 2).
+    """
+
+    missing = sorted(set(staging) - set(selected))
+    extra = sorted(set(selected) - set(staging))
+    moved = sorted(
+        key for key in set(selected) & set(staging) if selected[key] != staging[key]
+    )
+    if missing or extra or moved:
+        examples = [
+            f"{key}: {selected[key]} here, {staging[key]} in staging"
+            for key in moved[:3]
+        ]
         raise OnePopulationContractError(
-            f"ACS lineage does not survive: the selected ACS persons' "
-            f"({_SERIALNO}, {_SPORDER}) set differs from staging's for the "
-            f"selected households; {len(missing)} missing (such as "
-            f"{missing[:3]}), {len(extra)} extra (such as {extra[:3]})."
+            "ACS lineage does not survive: the selected ACS persons' "
+            f"({_SERIALNO}, {_SPORDER}) lineage differs from staging's, keyed by "
+            f"native (household id, person id); {len(missing)} missing (such as "
+            f"{missing[:3]}), {len(extra)} extra (such as {extra[:3]}), "
+            f"{len(moved)} moved (such as {examples})."
         )
 
 
@@ -1304,7 +1511,7 @@ def to_assembled_provenance(
     *,
     cps_household_weights: pd.Series | Mapping[object, float],
     acs_household_weights: pd.Series | Mapping[object, float],
-    staging_lineage: Collection[tuple[str, int]],
+    staging_lineage: Mapping[tuple[int, int], tuple[str, int]],
 ) -> Frame:
     """Join CPS and ACS rows in the assembled provenance form (d2283 K-1).
 
@@ -1343,9 +1550,15 @@ def to_assembled_provenance(
       :func:`~microcosm.build.us_runtime.support_provenance.support_copy_rank_series`'s
       (P6);
     - the ACS rows' ``SERIALNO``/``SPORDER`` lineage, against
-      ``staging_lineage`` (P7; see :func:`_require_acs_lineage`);
+      ``staging_lineage`` person by person, keyed by native ids, before any
+      weight is looked up by ``SERIALNO`` (P7; see
+      :func:`_require_acs_lineage`);
     - one weight per household, found by its key: no household without a
-      weight, no weight without a household.
+      weight, no weight without a household;
+    - after the frame and its record pass the assembly validator, every
+      tax unit, SPM unit, family and marital unit inside one household of
+      its origin, and each ACS household one SPM unit (staging's partition;
+      see :func:`_require_nested_groups`).
 
     The spine assembly record (P8) is
     :func:`~microcosm.build.us_runtime.support_provenance.spine_assembly_manifest`
@@ -1373,10 +1586,15 @@ def to_assembled_provenance(
             ``StartingWeights.acs`` comes in selection order and staging's
             households in id order, and no later clause would see the
             permutation (d2283 lead call L3's check).
-        staging_lineage: Staging's (``SERIALNO``, ``SPORDER``) pairs for the
-            persons of the selected ACS households, read from staging's
-            output, not from ``acs_tables``. ``SPORDER`` may be an integral
-            float (staging's pooled form).
+        staging_lineage: Staging's lineage for the persons of the selected
+            ACS households, read from staging's output, not from
+            ``acs_tables``: each person's native (household id, person id),
+            that is staging's ``household_source_id`` of the person's
+            household and the person's ``person_source_id``, mapped to its
+            (``SERIALNO``, ``SPORDER``). Ids and ``SPORDER`` may be integral
+            floats (staging's pooled form). Empty when no ACS household is
+            selected. A set of pairs is refused (TypeError): it cannot tie a
+            ``SERIALNO`` to its household.
 
     Returns:
         A :class:`~microcosm.frame.Frame` of the CPS rows then the ACS rows,
@@ -1385,13 +1603,16 @@ def to_assembled_provenance(
         :attr:`~microcosm.frame.WeightKind.IMPORTANCE` weights (a pool
         assembly's starting weights, the kind staging gives its pooled
         weights). ``metadata`` holds only the spine assembly record, under
-        ``SPINE_ASSEMBLY_MANIFEST_KEY``; the mass log is empty.
+        ``SPINE_ASSEMBLY_MANIFEST_KEY``; the mass log is empty. The H5
+        writer does not keep the record, so PR 4 writes it into the
+        population manifest and PR 5's loader restores it.
 
     Raises:
         OnePopulationContractError: Naming the first clause the inputs break,
             or if the joined tables fail the frame's invariants or the
             assembly validator.
-        TypeError: If the tables are not a mapping of DataFrames.
+        TypeError: If the tables are not a mapping of DataFrames, or
+            ``staging_lineage`` is not a mapping.
     """
 
     cps = _origin_tables(cps_tables, origin=_CPS)
@@ -1400,14 +1621,15 @@ def to_assembled_provenance(
     _require_acs_support_metadata(acs)
     cps_keyed = _keyed_weights(cps_household_weights, origin=_CPS)
     acs_keyed = _keyed_weights(acs_household_weights, origin=_ACS)
-    staging = _lineage_pairs(staging_lineage)
+    staging = _lineage_rows(staging_lineage)
 
     origins = {_CPS: _assembled_cps(cps), _ACS: _assembled_acs(acs)}
     _require_spine_tags(origins)
     _require_disjoint_ids(origins)
     _require_unique_source_ranks(origins)
     _require_acs_lineage(origins[_ACS], staging)
-    # After P7, which checked each ACS household's SERIALNO.
+    # After P7, which tied each ACS household's SERIALNO to staging's by
+    # native id, so a weight keyed by SERIALNO lands on its own household.
     cps_weights = _aligned_weights(
         cps_keyed,
         cps["household"][US_SCHEMA.id_column("household")].tolist(),
@@ -1440,6 +1662,7 @@ def to_assembled_provenance(
         raise OnePopulationContractError(
             f"The joined one-population frame is not valid: {exc}"
         ) from exc
+    _require_nested_groups(origins)
     return frame
 
 
@@ -1450,9 +1673,10 @@ def to_assembled_provenance(
 class EngineVariableIndex(Protocol):
     """What the contract asks of the engine's variable metadata, at 2024.
 
-    The answers must cohere: every input is known, is not computed at 2024
-    and is not a structural column. The contract refuses an index whose
-    answers do not.
+    The answers must cohere: the inputs at 2024 are exactly the known
+    columns that are neither computed at 2024 nor structural, so no input is
+    left out of R6's null check. The contract refuses an index whose answers
+    do not.
     """
 
     def known_variables(self, columns: Iterable[str]) -> frozenset[str]:
@@ -1464,7 +1688,7 @@ class EngineVariableIndex(Protocol):
         ...
 
     def inputs_at_2024(self, tables: Mapping[str, pd.DataFrame]) -> frozenset[str]:
-        """The tables' known, non-structural columns not computed at 2024."""
+        """Every known, non-structural column of the tables not computed at 2024."""
         ...
 
 
@@ -1571,10 +1795,19 @@ def _engine_columns(
         problems.append(
             f"inputs include structural columns: {sorted(inputs & STRUCTURAL_COLUMNS)}"
         )
+    # The other direction: R6 reads only the inputs, and R10 skips every
+    # known column, so an input the index leaves out would be checked by
+    # neither (PR #1685 review, should-fix 4).
+    omitted = known - computed - STRUCTURAL_COLUMNS - inputs
+    if omitted:
+        problems.append(
+            "inputs omit known columns that are neither computed at 2024 nor "
+            f"structural: {sorted(omitted)[:5]}"
+        )
     if problems:
         raise OnePopulationContractError(
-            "The engine variable index answers do not cohere (an input must be "
-            "known, not computed at 2024 and not structural): "
+            "The engine variable index answers do not cohere (the inputs must be "
+            "exactly the known columns not computed at 2024 and not structural): "
             + "; ".join(problems)
             + "."
         )
@@ -1762,6 +1995,25 @@ def _require_assembly_record(frame: Frame) -> None:
             f"Incomplete assembled provenance: the spine assembly record must "
             f"declare the channels {list(ASSEMBLED_CHANNELS)}, got {channels!r}."
         )
+    # The validator reads each count through int(), so 24.5, "24" or 24.0
+    # would pass for 24 live rows; the writer emits integers, so anything
+    # else is refused here first (PR #1685 review, nit 1). A malformed
+    # mapping is left to the validator's own message.
+    counts = record.get("native_row_counts") if isinstance(record, Mapping) else None
+    if isinstance(counts, Mapping):
+        coerced = sorted(
+            f"{entity}.{channel}={value!r}"
+            for entity, by_channel in counts.items()
+            if isinstance(by_channel, Mapping)
+            for channel, value in by_channel.items()
+            if not (_is_count(value) and value >= 0)
+        )
+        if coerced:
+            raise OnePopulationContractError(
+                "Incomplete assembled provenance: the spine assembly record's "
+                "native row counts must be nonnegative integers; "
+                f"{coerced[:5]} are not."
+            )
     try:
         validate_assembly_provenance(frame, boundary=_BOUNDARY)
     except ValueError as exc:
@@ -1773,9 +2025,9 @@ def _require_assembly_record(frame: Frame) -> None:
 def _require_provenance(
     frame: Frame,
     tables: Mapping[str, pd.DataFrame],
-    staging: frozenset[tuple[str, int]] | None,
+    staging: Mapping[tuple[int, int], tuple[str, int]] | None,
 ) -> dict[str, dict[str, pd.DataFrame]]:
-    """R1: the assembled form, complete; P5's value rules, Q3, P6b, P6, P7.
+    """R1: the assembled form, complete; P5's value rules, Q3, P6b, P6, P7, P6c.
 
     Returns each origin's rows.
     """
@@ -1799,8 +2051,11 @@ def _require_provenance(
         _require_acs_lineage(acs, staging)
     elif staging is not None:
         # No ACS row to read, but staging's lineage still has to match.
-        _require_staging_lineage(frozenset(), staging)
+        _require_staging_lineage({}, staging)
     _require_assembly_record(frame)
+    # After the validator, so a cross-grain move reports the validator's
+    # reason first; nesting reads memberships P6b resolved.
+    _require_nested_groups(origins)
     return origins
 
 
@@ -1868,8 +2123,21 @@ def _require_selected_keys(
             {"income_year": [], "unit_id": [], "key": []},
             index=pd.Index([], dtype=np.int64, name="household_id"),
         )
-    household = cps["household"].set_index(US_SCHEMA.id_column("household"))
-    clone = household[support_clone_index_column("household")].reindex(units.index)
+    # Ids and clone indices through the integral parser R1 applies, so a
+    # representation R1 accepts (digit strings, integral floats; lead call
+    # L5) joins cps_unit_ids' int64 household index (PR #1685 review,
+    # should-fix 3).
+    household = cps["household"]
+    household_ids = _integral_ids(
+        household[US_SCHEMA.id_column("household")],
+        refusal="CPS 'household_id' must hold ids",
+    )
+    clone_column = support_clone_index_column("household")
+    clones = _integral_ids(
+        household[clone_column],
+        refusal=f"CPS {clone_column!r} must hold clone indices",
+    )
+    clone = pd.Series(clones, index=pd.Index(household_ids)).reindex(units.index)
     native = units.loc[clone.eq(0).to_numpy()]
     counts = native["key"].value_counts()
     repeated = sorted(counts.index[counts.gt(1)].tolist())
@@ -2009,10 +2277,30 @@ def _null_counts(
     }
 
 
+def _pd_na_rows(values: pd.Series) -> int:
+    """How many of ``values`` are ``pd.NA`` (not None, not NaN)."""
+
+    return sum(1 for value in values[values.isna()].tolist() if value is pd.NA)
+
+
 def _require_filled_inputs(
     tables: Mapping[str, pd.DataFrame], inputs: frozenset[str]
 ) -> None:
-    """R6: no null in an engine input at 2024, outside the release-written list."""
+    """R6: no null in an engine input at 2024, outside the release-written list.
+
+    A release-written column may be null only as None or NaN, never as
+    ``pd.NA`` (a pandas nullable dtype's null): policyengine-core 3.32.5
+    loads a boolean None as False and a NaN as True but cannot cast a
+    ``pd.NA``, and the release's first engine pass, the SSI December pass,
+    loads twelve of these columns before their producers write them (PR
+    #1685 review, blocking 1). The refusal covers all of
+    :data:`RELEASE_WRITTEN_INPUTS` present, fail closed: the other six
+    columns' producers (``scf_wealth``, ``ssi_disability_criteria``,
+    ``sipp_head_start``) run before that pass and read each value through
+    ``pd.to_numeric(...).to_numpy(dtype=np.float64)``, so a ``pd.NA``
+    there is probably rewritten like a NaN, and the refusal is stricter
+    than those stages need.
+    """
 
     gaps = _null_counts(tables, inputs - set(RELEASE_WRITTEN_INPUTS))
     if gaps:
@@ -2021,6 +2309,19 @@ def _require_filled_inputs(
             "Prepare must fill every engine input on every row; only the "
             "always-on producers' outputs in RELEASE_WRITTEN_INPUTS may be left "
             "null."
+        )
+    pd_na = {
+        f"{entity}.{column}": rows
+        for entity, table in tables.items()
+        for column in sorted(set(RELEASE_WRITTEN_INPUTS).intersection(table.columns))
+        if (rows := _pd_na_rows(table[column]))
+    }
+    if pd_na:
+        raise OnePopulationContractError(
+            f"A pd.NA in a release-written input: {pd_na} (pd.NA rows per column). "
+            "A column in RELEASE_WRITTEN_INPUTS may be null only as None or NaN; "
+            "the release's first engine pass loads twelve of them before their "
+            "producers write them, and policyengine-core cannot cast a pd.NA."
         )
 
 
@@ -2209,14 +2510,24 @@ def require_one_population(
     *,
     parent_tail_donor_ids: frozenset[int],
     declared_absences: Mapping[str, str] | None = None,
-    staging_lineage: Collection[tuple[str, int]] | None = None,
+    staging_lineage: Mapping[tuple[int, int], tuple[str, int]] | None = None,
     variable_index: EngineVariableIndex | None = None,
     register: Mapping[str, str] | None = None,
 ) -> None:
     """Refuse a joined frame that breaks any clause of the contract.
 
     The clauses run in a fixed order, so a corrupted cell refuses for its own
-    reason, and each message names its clause's rule:
+    reason, and each message names its clause's rule. An input that breaks
+    two clauses reports the earlier one. Two such inputs are expected: a
+    real location clone
+    (:func:`~microcosm.build.us_runtime.block_location.clone_frame_for_location`)
+    remaps every pooled id and keeps the provenance ids, so it refuses at
+    R1 (P5's ACS source id = pooled id) before R11 reads its
+    ``*_location_clone_index`` columns, and R11 itself reports a marker on a
+    frame R1 accepts; and a ``SERIALNO`` repeated across ACS households
+    refuses at R1 (P7) before R2's repeated-key branch, which stays as a
+    guard: no input reaches it through this function, since ``acs_unit_key``
+    is one-to-one on the serial numbers P7 accepts (PR #1685 review, nit 2).
 
     - R1, incomplete assembled provenance: every entity assembled (none
       mixed), complete source id, channel, clone index and spine source id,
@@ -2226,10 +2537,15 @@ def require_one_population(
       one id offset from the native id, tag ``acs_2024_1yr``); a non-null
       spine tag on every row; P6b (ids and memberships within an origin); P6
       (no repeated (source id, rank)); P7 (the ACS rows' ``SERIALNO`` and
-      ``SPORDER`` lineage, against ``staging_lineage`` when given, which on
-      a frame with no ACS row must then be empty); and the
-      clone-0 spine assembly record declaring the three channels, checked by
-      :func:`~microcosm.build.us_runtime.support_provenance.validate_assembly_provenance`.
+      ``SPORDER`` lineage, no null among its values, and, when
+      ``staging_lineage`` is given, each person's pair equal to staging's
+      under its native (household id, person id); on a frame with no ACS
+      row it must then be empty); the clone-0 spine assembly record
+      declaring the three channels, with nonnegative integer counts (the
+      validator would truncate 24.5 to 24), checked by
+      :func:`~microcosm.build.us_runtime.support_provenance.validate_assembly_provenance`;
+      and P6c, after it (every group unit inside one household, and each
+      ACS household one SPM unit).
     - R11, more than one location: no table carries a
       ``*_location_clone_index`` column. Location cloning is the only
       multi-location mechanism, and geography columns are household-level.
@@ -2243,7 +2559,9 @@ def require_one_population(
       integral ``congressional_district_geoid`` whose state prefix
       (geoid // 100) is the household's ``state_fips``, as staging checks
       donor districts. The release's CD-vintage preflight needs only one
-      positive district (REL:13862-13866, check at :3521-3543), and its
+      positive district (``_assert_cd_vintage_support_matches``, called at
+      tools/build_us_fiscal_refresh_release.py:15502-15506, its check at
+      :3822-3826), and its
       every-household rule (``_integer_geography_codes``) runs only when CD
       targets are materialized, which Route A's national surface drops. The
       clause keeps every household's district for a future CD surface and
@@ -2261,7 +2579,8 @@ def require_one_population(
       returning FAIL, or unable to run, refuses).
     - R6: no null in an engine input at 2024 (known, not structural, not
       computed at 2024, so a variable whose only formula starts after 2024
-      counts) on any row, except :data:`RELEASE_WRITTEN_INPUTS`.
+      counts) on any row, except :data:`RELEASE_WRITTEN_INPUTS`, which may
+      be null only as None or NaN, never ``pd.NA``.
     - R7: the six :data:`PUF_TAIL_TAX_UNIT_COLUMNS` on every tax unit, never
       null.
     - R8: the ids of the tail donors applied on the frame's tax units equal
@@ -2291,8 +2610,10 @@ def require_one_population(
         declared_absences: Column to the owner's decision, for each register
             column ACS rows lack by decision: the mapping :func:`absences`
             takes as ``declared``.
-        staging_lineage: Staging's (``SERIALNO``, ``SPORDER``) pairs for the
-            selected ACS persons; ``None`` checks the lineage's form only.
+        staging_lineage: Staging's lineage for the selected ACS persons, in
+            :func:`to_assembled_provenance`'s keyed form (native household
+            and person id to (``SERIALNO``, ``SPORDER``)); ``None`` checks
+            the lineage's form only.
         variable_index: The engine's variable classes at 2024. ``None`` uses
             :class:`PolicyEngineUSVariableIndex`, built at call time.
         register: The stored non-variable register. ``None`` uses
@@ -2316,7 +2637,7 @@ def require_one_population(
         )
     parent_donors = _tail_donor_set(parent_tail_donor_ids)
     declared = _declarations(declared_absences, name="declared_absences")
-    staging = None if staging_lineage is None else _lineage_pairs(staging_lineage)
+    staging = None if staging_lineage is None else _lineage_rows(staging_lineage)
     if register is None:
         from microcosm.data.stored_inputs import US_STORED_NON_VARIABLE_COLUMNS
 
@@ -2484,6 +2805,45 @@ def _require_staging_receipt(
         )
 
 
+def _require_acs_roles_by_rule(
+    person: pd.DataFrame, acs_rows: np.ndarray, role: pd.Series
+) -> None:
+    """Each ACS person's stored role is staging's ``RELSHIPP`` rule's, row by row.
+
+    Staging's receipt states counts over every staged person, which two
+    persons trading roles keep, so the receipt alone cannot tie a role to a
+    person. Re-deriving each selected person's role from the ``RELSHIPP``
+    staging kept on the row can (PR #1685 review, should-fix 1).
+    """
+
+    if not acs_rows.any():
+        return
+    rule = "The ACS persons' SPM roles are not staging's RELSHIPP rule's"
+    if _RELSHIPP not in person:
+        raise OnePopulationContractError(
+            f"{rule}: the person table lacks {_RELSHIPP!r}, which the rule reads "
+            "(prepare keeps staging's raw column on ACS rows)."
+        )
+    codes = pd.to_numeric(person.loc[acs_rows, _RELSHIPP], errors="coerce").to_numpy(
+        dtype=np.float64, na_value=np.nan
+    )
+    off_domain = ~np.isin(codes, sorted(_ACS_RELSHIPP_CODES))
+    if off_domain.any():
+        raise OnePopulationContractError(
+            f"{rule}: {int(off_domain.sum())} ACS person(s) hold a blank or "
+            f"off-domain {_RELSHIPP} (the rule reads the codes 20 to 38)."
+        )
+    derived = np.isin(codes, sorted(_ACS_ROLE_RELSHIPP))
+    wrong = derived != role[acs_rows].to_numpy(dtype=bool)
+    if wrong.any():
+        raise OnePopulationContractError(
+            f"{rule}: {int(wrong.sum())} of {int(acs_rows.sum())} ACS person(s) "
+            f"hold a role their {_RELSHIPP} does not give ({_ACS_SPM_ROLE_RULE}). "
+            "Staging's receipt states counts only, so it cannot vouch for which "
+            "persons hold the role."
+        )
+
+
 def combined_spm_role_record(
     cps_record: Mapping[str, Any],
     staging_receipt: Mapping[str, Any],
@@ -2507,6 +2867,10 @@ def combined_spm_role_record(
       keys, for the RELSHIPP rule's identity (column, entity, source column,
       the ACS rule and its partition, the ASEC and adult rules, provenance)
       and for counts at least the selected ACS rows', never for equality.
+      Counts cannot tie a role to a person, so each ACS person's role must
+      also be the one its ``RELSHIPP`` gives under the receipt's rule (a
+      code from 20 to 38 on every ACS person; the role holders 20, 21, 23,
+      37 and 38).
     - The frame's role must come from its source column (``role_source ==
       "source_column"`` under
       :func:`~microcosm.build.us_runtime.spm_composition.spm_independence_role`),
@@ -2518,8 +2882,10 @@ def combined_spm_role_record(
     channel and per origin (with each origin's digest), and both inputs as
     plain builtins under ``evidence``. The gate still grades the bands and
     the classified-adult rule; this function records, it does not grade.
-    A loader must recompute the record after an H5 round trip (PR 5), since
-    a dtype change moves the digest.
+    The H5 writer does not keep frame metadata, so PR 4 writes the record
+    into the population manifest and PR 5's loader restores it; the loader
+    must also recompute it after the H5 round trip, since a dtype change
+    moves the digest.
 
     Args:
         cps_record: The CPS rows' role record in the gate's keys.
@@ -2532,7 +2898,8 @@ def combined_spm_role_record(
 
     Raises:
         OnePopulationContractError: If the frame's role is not its source
-            column's, or either origin's evidence disagrees with the frame.
+            column's, either origin's evidence disagrees with the frame, or
+            an ACS person's role is not the one its ``RELSHIPP`` gives.
         TypeError: If an argument has the wrong type.
     """
 
@@ -2599,6 +2966,7 @@ def combined_spm_role_record(
         if origin == _CPS:
             _require_cps_role_record(cps_record, counts)
     _require_staging_receipt(staging_receipt, origins[_ACS])
+    _require_acs_roles_by_rule(person, persons[ACS_SUPPORT_CHANNEL], role)
 
     return {
         **_role_counts(person, frame.n("spm_unit"), role),
@@ -2694,17 +3062,20 @@ def _fills(
                 f"{rule}: its {entity!r} table had {fill['rows']!r} rows; the "
                 f"frame's has {len(table)} (prepare fills the joined frame)."
             )
+        # Each count a nonnegative integer before the sum: a negative count
+        # can balance the sum and would be filed as an entry's rows (PR
+        # #1685 review, should-fix 5).
         if (
             not isinstance(by_spine, Mapping)
             or set(by_spine) - {CPS_SPINE_TAG, ACS_SUPPORT_CHANNEL}
-            or not all(_is_count(value) for value in by_spine.values())
+            or not all(_is_count(value) and value >= 0 for value in by_spine.values())
             or sum(by_spine.values()) != fill["filled_rows"]
         ):
             raise OnePopulationContractError(
                 f"{rule}: {entity!r}.{column!r}'s rows by spine "
                 f"{_plain(by_spine)!r} must count its {fill['filled_rows']!r} "
-                f"filled rows under the spine tags {CPS_SPINE_TAG!r} and "
-                f"{ACS_SUPPORT_CHANNEL!r}."
+                f"filled rows, in nonnegative integers, under the spine tags "
+                f"{CPS_SPINE_TAG!r} and {ACS_SUPPORT_CHANNEL!r}."
             )
         if table[column].isna().any():
             raise OnePopulationContractError(
@@ -2874,14 +3245,16 @@ def absences(
     - "reviewed default fill": each fill of ``fill_manifest``, the reviewed
       default fill's manifest (``tools/build_us_acs_local_release.py``
       ``fill_reviewed_nulls``, :1151-1165), checked against the frame
-      (table rows, no null left, counts adding up, spine tags known). The
+      (table rows, no null left, per-spine counts nonnegative integers adding
+      up, spine tags known). The
       fill writes in place and the manifest counts rows by spine tag without
       naming them, so per-channel rows and weighted shares are given only
       when the fill covered every row of that origin; otherwise they are
       ``None`` and ``rows_rule`` says why.
     - "zero written": each column of ``zero_written``, which maps it to the
       receipt recording staging's written zeros. Its rows are the ACS rows
-      holding zero, an upper bound: a measured zero is not told apart.
+      holding zero (a null, in any numeric dtype, is not a zero), an upper
+      bound: a measured zero is not told apart.
 
     ``declared`` is the mapping :func:`require_one_population` takes, so a declaration this frame does not use is recorded, never
     refused (d2283 lead call (b), 11-18): ``needless_declarations`` lists
@@ -3063,7 +3436,13 @@ def absences(
                 f"is {values.dtype}."
             )
         mass = masses[entity]
-        zero = values.eq(0).to_numpy() & mass.origin_rows(_ACS)
+        # A plain boolean mask: on a nullable dtype (Float64, Int64) eq(0) is
+        # a nullable boolean whose to_numpy() is an object array, which the
+        # weight lookup cannot index with; a null is not a zero (PR #1685
+        # review, should-fix 6).
+        zero = values.eq(0).to_numpy(dtype=bool, na_value=False) & mass.origin_rows(
+            _ACS
+        )
         entries.append(
             _entry(
                 entity,

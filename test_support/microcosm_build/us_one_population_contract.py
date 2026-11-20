@@ -291,6 +291,7 @@ _DTYPES: Mapping[str, object] = MappingProxyType(
         "SERIALNO": object,
         "TYPEHUGQ": "int64",
         "SPORDER": "int64",
+        "RELSHIPP": "int64",
         "source_year": "int64",
         "source_household_id": "int64",
         "source_person_id": object,
@@ -350,6 +351,21 @@ class _Household:
 
 _ROLE_KINDS = frozenset({"head", "spouse", "roommate", "minor_head", "gq"})
 _HEAD_KINDS = frozenset({"head", "minor_head", "gq"})
+#: ACS persons' RELSHIPP by kind (20 reference person, 21 spouse, 25 child,
+#: 34 roommate; a group-quarters person is 37 or 38 by TYPEHUGQ). The ACS
+#: role is staging's RELSHIPP rule, so an ACS roommate holds none: it is a
+#: member of the household's one SPM unit, not the head of its own.
+_ACS_RELSHIPP = MappingProxyType(
+    {
+        "head": 20,
+        "spouse": 21,
+        "child": 25,
+        "adult_child": 25,
+        "roommate": 34,
+        "minor_head": 20,
+    }
+)
+_ACS_ROLE_RELSHIPP = frozenset({20, 21, 23, 37, 38})
 _PATTERN = ("couple", "single_parent", "single", "couple_adult_child", "roommates")
 
 
@@ -389,8 +405,14 @@ def _household(
     )
 
 
-def _unit_groups(members: tuple[_Member, ...]) -> dict[str, list[list[int]]]:
-    """Member positions per unit, for each group entity but the household."""
+def _unit_groups(
+    members: tuple[_Member, ...], *, acs: bool = False
+) -> dict[str, list[list[int]]]:
+    """Member positions per unit, for each group entity but the household.
+
+    ACS households are one SPM unit each, staging's partition (ACS PUMS
+    carries no SPM_ID); CPS roommates head SPM units of their own.
+    """
 
     if members[0].kind in ("minor_head", "gq"):
         everyone = [list(range(len(members)))]
@@ -432,7 +454,7 @@ def _unit_groups(members: tuple[_Member, ...]) -> dict[str, list[list[int]]]:
     ]
     return {
         "tax_unit": [core, *outsiders],
-        "spm_unit": [family, *roommates],
+        "spm_unit": [list(range(len(members)))] if acs else [family, *roommates],
         "family": [family, *roommates],
         "marital_unit": [couple, *singles],
     }
@@ -443,10 +465,13 @@ def _native_tables(
     rng: np.random.Generator,
     *,
     first_person_id: int,
+    acs: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], list[list[int]]]:
     """Native tables (ids from 1, persons from ``first_person_id``).
 
-    Returns the tables and, per household, its persons' row positions.
+    ACS persons also carry ``RELSHIPP``, and their SPM role is staging's
+    RELSHIPP rule's. Returns the tables and, per household, its persons'
+    row positions.
     """
 
     person_rows: list[dict[str, object]] = []
@@ -466,7 +491,7 @@ def _native_tables(
             }
         )
         unit_ids: dict[str, list[int]] = {}
-        for group, units in _unit_groups(household.members).items():
+        for group, units in _unit_groups(household.members, acs=acs).items():
             ids = [0] * len(household.members)
             for unit in units:
                 unit_id = len(groups[group]) + 1
@@ -478,6 +503,18 @@ def _native_tables(
         for position, member in enumerate(household.members):
             adult = member.age >= 22
             mine.append(len(person_rows))
+            if acs:
+                relationship = (
+                    (37 if household.typehugq == 2 else 38)
+                    if member.kind == "gq"
+                    else _ACS_RELSHIPP[member.kind]
+                )
+                origin_columns: dict[str, object] = {
+                    "RELSHIPP": relationship,
+                    SPM_ROLE: relationship in _ACS_ROLE_RELSHIPP,
+                }
+            else:
+                origin_columns = {SPM_ROLE: member.kind in _ROLE_KINDS}
             person_rows.append(
                 {
                     "person_id": first_person_id + len(person_rows),
@@ -489,7 +526,7 @@ def _native_tables(
                     "age": member.age,
                     "is_female": member.female,
                     "is_household_head": member.kind in _HEAD_KINDS,
-                    SPM_ROLE: member.kind in _ROLE_KINDS,
+                    **origin_columns,
                     "employer_sponsored_insurance_premiums": (
                         float(rng.integers(10, 80) * 100)
                         if adult and member.age < 65 and rng.random() < 0.5
@@ -673,7 +710,7 @@ def _acs_tables(
     order = sorted(range(len(households)), key=serials.__getitem__)
     households = [households[index] for index in order]
     serials = [serials[index] for index in order]
-    native, positions = _native_tables(households, rng, first_person_id=0)
+    native, positions = _native_tables(households, rng, first_person_id=0, acs=True)
     native["household"]["SERIALNO"] = serials
     native["household"]["TYPEHUGQ"] = [household.typehugq for household in households]
     person = native["person"]
@@ -881,25 +918,34 @@ def with_staging_union_columns(population: GeneratedPopulation) -> GeneratedPopu
 # ------------------------------------------------------ joined frame
 
 
-def staging_lineage(population: GeneratedPopulation) -> frozenset[tuple[str, int]]:
-    """The ACS persons' (``SERIALNO``, ``SPORDER``) pairs, as staging holds them.
+def staging_lineage(
+    population: GeneratedPopulation,
+) -> dict[tuple[int, int], tuple[str, int]]:
+    """The ACS persons' (``SERIALNO``, ``SPORDER``) lineage, as staging holds it.
 
-    The generated ACS tables are staging's rows for the selected households,
-    so their pairs are what the prepare step would read from staging.
+    Keyed by each person's native (household id, person id), staging's
+    ``<entity>_source_id`` before the rewrite, so a ``SERIALNO`` cannot move
+    between households without the key's pair changing. The generated ACS
+    tables are staging's rows for the selected households, so this is what
+    the prepare step would read from staging.
     """
 
     household = population.acs_tables["household"]
     person = population.acs_tables["person"]
-    serial = person["person_household_id"].map(
-        household.set_index("household_id")["SERIALNO"]
-    )
-    return frozenset(
-        zip(
+    by_household = household.set_index("household_id")
+    link = person["person_household_id"]
+    serial = link.map(by_household["SERIALNO"])
+    native_household = link.map(by_household[support_source_id_column("household")])
+    return {
+        (int(household_id), int(person_id)): (str(serial_number), int(sporder))
+        for household_id, person_id, serial_number, sporder in zip(
+            native_household.tolist(),
+            person[support_source_id_column("person")].tolist(),
             serial.tolist(),
-            (int(value) for value in person["SPORDER"].tolist()),
+            person["SPORDER"].tolist(),
             strict=True,
         )
-    )
+    }
 
 
 def assembled_frame(population: GeneratedPopulation) -> Frame:
@@ -1651,7 +1697,7 @@ def reader_population(*, clone_defect: str | None = None) -> ReaderPopulation:
             route_a.table("household"), route_a.weights_for("household").values
         ),
         acs_household_weights={},
-        staging_lineage=frozenset(),
+        staging_lineage={},
     )
     return ReaderPopulation(
         route_a=route_a,
