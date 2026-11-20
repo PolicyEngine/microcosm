@@ -6,17 +6,20 @@ nothing builds units from it yet. These tests pin what the declaration says,
 that the bindings' ``entity_names`` matches its schema as the registry
 requires, that a ``transport.create@2`` node can select it, that no income
 default still ties the unit to another pull request, and what it does to a
-few households and, as a property, to every valid frame. Every value is a
+few households. A property over generated valid frames pins who is a
+dependent child and which unit each dependent child joins. Every value is a
 METHOD-CARD-BE proposal under d1902.
 """
 
 import copy
 import json
+from collections import Counter
 
 import numpy as np
 import pandas as pd
 import pytest
 from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.transport.compose import (
     load_transport_spec,
@@ -73,12 +76,15 @@ def test_the_rule_states_the_method_card_proposal() -> None:
     assert rule.unparented_child.value == "reference_person_unit"
     assert rule.split_parents.value == "first_parent_unit"
     assert rule.refuse_dependent_reference_person is False
-    # The status reads as a proposal until the card records Max's ruling.
+    # The status says where the values were proposed and where the ruling is
+    # recorded, in words that stay true after the ruling: a later edit to
+    # this text would re-key a transport.create@2 node that reads the file.
     status = rule.provenance["status"]
     assert "d1902" in status
     assert "METHOD-CARD-BE" in status
-    assert "is a proposal" in status
-    assert "until that card records his ruling" in status
+    assert "as a proposal" in status
+    assert "records whether Max adopted each value" in status
+    assert "No value is a statement of Belgian law" in status
     # Each declared option carries its reason.
     assert {
         "max_age",
@@ -91,7 +97,8 @@ def test_the_rule_states_the_method_card_proposal() -> None:
 
 
 def test_entity_names_cover_exactly_the_declared_schema() -> None:
-    # build_transport_registry's own check, on the committed files.
+    # The condition build_transport_registry checks (transport/registry.py),
+    # restated on the committed files.
     schema, nesting = transport_entity_schema(_declaration())
     names = json.loads((_BE / "axiom_rules_bindings.json").read_text())["entity_names"]
     assert set(names) == set(schema.entities) == {"person", "household", ENTITY}
@@ -101,7 +108,9 @@ def test_entity_names_cover_exactly_the_declared_schema() -> None:
     assert "Child" not in names.values()
 
 
-def test_the_engine_name_attaches_no_rule_and_no_binding() -> None:
+def test_the_engine_name_carries_no_input_and_no_binding() -> None:
+    # The committed input surface stands in for the rule tree: no module in
+    # it reads an input on this entity, and no binding lands on it.
     mapping = axiom_concept_mapping("be")
     surface = load_axiom_input_surface(_SURFACE)
     assert ENGINE not in mapping.entity_correspondence.values()
@@ -142,10 +151,23 @@ def test_no_income_default_ties_the_unit_to_another_pull_request() -> None:
     reasons = [entry["reason"] for entry in closure["entries"] if "reason" in entry]
     assert not [reason for reason in reasons if "PR 3" in reason]
     assert not [reason for reason in reasons if "legal unit" in reason]
-    naming = [reason for reason in reasons if UNITS_PATH.name in reason]
-    # Four Brussels, three Flemish and three Walloon income reasons.
-    assert len(naming) == 10
-    assert all("a proposed stand-in" in reason for reason in naming)
+    naming = [
+        entry
+        for entry in closure["entries"]
+        if UNITS_PATH.name in entry.get("reason", "")
+    ]
+    assert Counter(entry["input"] for entry in naming) == {
+        "brussels_family_benefits_social_supplement_household_annual_income": 4,
+        "flanders_family_benefits_family_annual_income": 3,
+        "wallonia_family_benefits_household_annual_income": 3,
+    }
+    # Each leaves the income node to decide whether it sums over the unit or
+    # the household, as the declaration's not_expressed note says.
+    assert all(
+        "or over the survey household, as that node's declaration decides"
+        in entry["reason"]
+        for entry in naming
+    )
 
 
 NA = pd.NA
@@ -169,13 +191,14 @@ PEOPLE = [
     (502, 5, 36, NA, NA, NA, 502, "head"),
     (503, 5, 6, NA, 501, 502, 501, "dependent_child"),  # non-partner co-parents
     (601, 6, 23, NA, NA, NA, 601, "head"),  # a young reference person alone
-    (701, 7, 17, NA, NA, NA, 701, "head"),  # a minor parent anchors a unit
+    (700, 7, 45, NA, NA, NA, 700, "head"),
+    (701, 7, 17, NA, 700, NA, 701, "head"),  # a minor parent anchors a unit
     (702, 7, 1, NA, 701, NA, 701, "dependent_child"),
     (801, 8, 21, 802, 803, NA, 802, "partner"),  # partnered: never a dependent
     (802, 8, 23, 801, NA, NA, 802, "head"),  # the older adult of the couple
     (803, 8, 55, NA, NA, NA, 803, "head"),  # the parent, reference person
 ]
-REFERENCE = {1: 101, 2: 201, 3: 301, 4: 401, 5: 501, 6: 601, 7: 701, 8: 803}
+REFERENCE = {1: 101, 2: 201, 3: 301, 4: 401, 5: 501, 6: 601, 7: 700, 8: 803}
 
 
 def test_the_declaration_builds_the_stated_units() -> None:
@@ -216,10 +239,22 @@ def _row_of(person: pd.DataFrame, pointer: pd.Series) -> np.ndarray:
     return rows
 
 
-@settings(max_examples=150, deadline=None, database=None)
-@given(tables=concept_frames(max_households=4, max_members=6))
-def test_the_declaration_decides_dependency_the_stated_way_on_any_frame(tables) -> None:
-    person, household = tables["person"], tables["household"]
+# The shared generator draws each age evenly from 0 to 130 and ties it to no
+# pointer, so ages are redrawn here around the limit: every run then holds
+# dependent children aged 24 and adults aged 25.
+AGES = st.sampled_from([0, 9, 16, 17, 18, 23, 24, 25, 26, 40, 70])
+
+
+@settings(max_examples=150, deadline=None, database=None, derandomize=True)
+@given(tables=concept_frames(max_households=4, max_members=6), data=st.data())
+def test_the_declaration_decides_dependency_the_stated_way_on_any_frame(
+    tables, data
+) -> None:
+    household = tables["household"]
+    person = tables["person"].copy()
+    count = len(person)
+    ages = data.draw(st.lists(AGES, min_size=count, max_size=count))
+    person["age"] = np.array(ages, dtype=np.int64)
     # The rule refuses nothing on membership, so every valid frame builds.
     (built,) = build_declared_units(person, household, _declaration()).values()
     unit = built.person_unit.to_numpy()
