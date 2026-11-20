@@ -22,6 +22,9 @@ This check runs in seconds after the staging (R1), before R2:
   never-default column (immigration, disability, income transfers, SSI
   disability criteria); its reason for those says to re-run staging.
 - A null in an ESI premium output is refused, as materialize refuses it.
+- A staging summary whose ``engine_versions`` names another policyengine-us
+  than the installed one, or none, is refused, as materialize refuses it
+  before it loads the staging file.
 - Every other null becomes the fill record R2 writes, with the fill value R2
   resolves from the installed engine, and R2's own gate grades the records.
   A null that one of R2's stages fills before the fill step counts as a fill
@@ -176,8 +179,13 @@ def grade(
     never_default_filled: Collection[tuple[str, str]],
     installed_engine_version: str,
     document: object | None = None,
+    staging_refusals: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Run R2's finalize gate on the expected fills; add materialize's refusals."""
+    """Run R2's finalize gate on the expected fills; add materialize's refusals.
+
+    ``staging_refusals`` are materialize's refusals of the staging run itself
+    (:func:`staging_engine_refusal`).
+    """
 
     manifest = {"fills": list(split["fills"]), "unregistered_violations": []}
     gate = acs_local_reviewed_fill_consumer_gate(
@@ -189,6 +197,7 @@ def grade(
         installed_engine_version=installed_engine_version,
     )
     refusals = [
+        *staging_refusals,
         *(_denied_refusal(item) for item in split["denied"]),
         *(
             f"{item['column']}: null ESI employer premium (materialize refuses it)"
@@ -207,6 +216,20 @@ def grade(
             "failures": list(gate.failures),
         },
     }
+
+
+def staging_engine_refusal(summary: Mapping[str, Any], *, release, installed: str):
+    """Materialize's refusal of a staging run made on another engine, or None.
+
+    R2 refuses it before it loads the staging file
+    (``_require_staging_engine``), as the nulls it audited are that engine's.
+    """
+
+    try:
+        release._require_staging_engine(dict(summary), installed=installed)
+    except SystemExit as refusal:
+        return f"staging: {refusal} (materialize refuses it)"
+    return None
 
 
 def _denied_refusal(item: Mapping[str, Any]) -> str:
@@ -258,11 +281,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         stage_filled=stage_filled,
         resolve_default=lambda column: release._resolve_engine_default(system, column),
     )
+    installed = _engine_version(release)
+    engine_refusal = staging_engine_refusal(
+        summary, release=release, installed=installed
+    )
     report = {
         "tool": TOOL,
         "issue": ISSUE,
         "staging_summary": str(args.staging_summary),
         "staged_null_columns": len(nulls),
+        "staging_engine_versions": summary.get("engine_versions"),
         "r2_stage_filled_never_default": sorted(
             f"{entity}.{column}" for entity, column in stage_filled
         ),
@@ -270,7 +298,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             split,
             manifest_names=release.REVIEWED_FILL_MANIFESTS,
             never_default_filled=release.NEVER_DEFAULT_FILLED,
-            installed_engine_version=_engine_version(release),
+            installed_engine_version=installed,
+            staging_refusals=[engine_refusal] if engine_refusal else [],
         ),
     }
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"

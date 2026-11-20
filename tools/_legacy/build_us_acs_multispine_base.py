@@ -485,6 +485,25 @@ def _attribute_text(value: object) -> str:
     return str(value)
 
 
+def _engine_versions() -> dict[str, str | None]:
+    """The engine this staging runs, for R2 to match before it loads the file.
+
+    Staging audits the nulls of every input the installed policyengine-us
+    defines (``reviewed_engine_input_nulls``), so its summary only holds for
+    that engine. A package that is not installed is recorded as ``None``.
+    """
+
+    from importlib.metadata import PackageNotFoundError, version
+
+    versions: dict[str, str | None] = {}
+    for package in ("policyengine-us", "policyengine-core"):
+        try:
+            versions[package.replace("-", "_")] = version(package)
+        except PackageNotFoundError:
+            versions[package.replace("-", "_")] = None
+    return versions
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
@@ -686,6 +705,14 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
         base_mass=base_mass,
         base_sha256=base_sha256,
         donor_release=donor_release,
+        # The legacy rule keeps a donor's assigned tract, district and county,
+        # a block_v1 base's among them, so the summary records which rule
+        # located the donors under either rule.
+        base_location=(
+            base_location
+            if base_location is not None
+            else _base_location_rule(args.base_h5)
+        ),
         manifest_sha256=manifest_sha256,
         result=result,
         weights_audit=weights_audit,
@@ -2011,6 +2038,7 @@ def _build_summary(
     base_mass: float,
     base_sha256: str,
     donor_release: dict[str, object] | None,
+    base_location: dict[str, object],
     manifest_sha256: str,
     result: AcsMultispineResult,
     weights_audit: dict[str, object],
@@ -2085,7 +2113,9 @@ def _build_summary(
             "rows": base_rows,
             "household_weight_total": base_mass,
             "donor_release": donor_release,
+            "location": base_location,
         },
+        "engine_versions": _engine_versions(),
         "acs_sources": _source_provenance(
             manifest,
             source,

@@ -370,6 +370,54 @@ def test__given_donor_assigned_geography__then_pool_preserves_it_and_derives_pum
     assert acs_row["county_fips"].tolist() == ["01001"]
 
 
+def test__given_a_block_v1_donor__then_the_legacy_pool_keeps_its_block_geography() -> (
+    None
+):
+    # Given: a block_v1 base's donors carry a block and the geography derived
+    # from it beside the assigned triple. The County Files staging may run
+    # the legacy rule on such a base, so the legacy pool must keep each
+    # donor's own location rather than draw one.
+    tracts = ["01001000100", "01001000100"]
+    base = _assigned_geography_base_frame(
+        tracts=tracts, congressional_districts=[101, 102], counties=["01001", "01001"]
+    )
+    tables = {entity: base.table(entity).copy() for entity in base.entities}
+    blocks = ["010010001001000", "010010001002001"]
+    tables["household"]["block_geoid"] = blocks
+    tables["household"]["cbsa_code"] = ["33860", "33860"]
+    base = Frame(
+        tables,
+        US_SCHEMA,
+        {entity: base.weights_for(entity) for entity in base.weighted_entities},
+        base.strata,
+    )
+
+    # When
+    result = with_optional_acs_spine(
+        base,
+        _acs_frame(),
+        puma_ladder=_test_puma_ladder(),
+        geography_seed=17,
+        expected_congressional_district_vintage="119th_congress",
+    )
+
+    # Then: the donors keep their block, its tract, district and county, and
+    # their 2023 county follows the tract; ACS rows get no block.
+    household = result.table("household")
+    donor = household[household[spine_column("household")].eq(ASEC_PUF_SPINE)]
+    assert donor["block_geoid"].tolist() == blocks
+    assert donor["cbsa_code"].tolist() == ["33860", "33860"]
+    assert donor["tract_geoid"].tolist() == tracts
+    assert donor["congressional_district_geoid"].tolist() == [101, 102]
+    assert donor["county_fips"].tolist() == ["01001", "01001"]
+    np.testing.assert_array_equal(
+        donor[COUNTY_FIPS_2023_COLUMN], county_fips_2023_from_tracts(tracts)
+    )
+    acs = household[household[spine_column("household")].eq(ACS_2024_1YR_SPINE)]
+    assert acs["block_geoid"].isna().all()
+    assert acs["county_fips"].tolist() == ["01001"]
+
+
 def _single_puma_ladder(
     puma: str, tracts: list[str], counties: list[str], district: int
 ) -> UsPumaLadder:

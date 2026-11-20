@@ -470,6 +470,16 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     }
 
     monkeypatch.setattr(builder, "_load_base_frame", lambda path: base)
+    # A block_v1 donor under the legacy rule: the summary records the rule its
+    # base recorded, and the engine the staging ran on.
+    base_location = {
+        "location_rule": "block_v1",
+        "recorded": True,
+        "attributes": {"populace_location_rule": "block_v1"},
+    }
+    monkeypatch.setattr(builder, "_base_location_rule", lambda path: base_location)
+    engine_versions = {"policyengine_us": "9.9.9", "policyengine_core": "8.8.8"}
+    monkeypatch.setattr(builder, "_engine_versions", lambda: engine_versions)
     monkeypatch.setattr(
         builder,
         "prepare_acs_local_hours_donor",
@@ -639,6 +649,8 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["artifact_kind"] == "nullable_precalibration_staging_h5"
+    assert summary["base"]["location"] == base_location
+    assert summary["engine_versions"] == engine_versions
     assert summary["calibration_applied"] is False
     assert summary["simulation_ready"] is False
     assert summary["simulation_ready_except_calibration"] is True

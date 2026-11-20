@@ -2300,6 +2300,7 @@ def do_materialize(args) -> None:
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
     _require_local_receipt_anchors(staging_summary)
+    _require_staging_engine(staging_summary)
     # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
     # and compile path, before the staging frame is loaded.
     ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
@@ -5439,6 +5440,32 @@ REVIEWED_FILL_MANIFESTS = (
     "reviewed_null_fills.json",
     "consumer_reviewed_null_fills.json",
 )
+
+
+def _require_staging_engine(
+    staging_summary: dict, *, installed: str | None = None
+) -> None:
+    """Refuse a staging run made on another policyengine-us than this one.
+
+    Staging audits the nulls of every input its own engine defines
+    (``reviewed_engine_input_nulls``), so on another engine the fill step
+    meets inputs that audit never listed, hours into materialize, and package
+    refuses the columns that engine retired. A staging summary that records
+    no engine predates the record, so it is refused too: re-run staging on
+    this engine. ``installed`` defaults to the installed policyengine-us (the
+    reviewed-fill pre-check passes its own).
+    """
+
+    recorded = (staging_summary.get("engine_versions") or {}).get("policyengine_us")
+    if installed is None:
+        installed = _installed_engine_version()
+    if recorded != installed:
+        raise SystemExit(
+            f"The staging summary records policyengine-us {recorded!r} and this "
+            f"release runs {installed!r}. Staging audits the nulls of the "
+            "inputs its own engine defines, so re-run staging on this engine "
+            "(the summary's engine_versions)."
+        )
 
 
 def _installed_engine_version() -> str:

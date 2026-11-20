@@ -191,9 +191,13 @@ def test_command_exits_2_on_an_unregistered_fill(
     monkeypatch.setattr(check, "_engine_version", lambda _release: "2.2.1")
     summary = tmp_path / "staging.summary.json"
     out = tmp_path / "report.json"
+    engine = {"policyengine_us": "2.2.1", "policyengine_core": "3.32.5"}
     summary.write_text(
         json.dumps(
-            {"reviewed_engine_input_nulls": [_null("strike_benefits", {_ACS: 7})]}
+            {
+                "engine_versions": engine,
+                "reviewed_engine_input_nulls": [_null("strike_benefits", {_ACS: 7})],
+            }
         )
     )
 
@@ -203,13 +207,49 @@ def test_command_exits_2_on_an_unregistered_fill(
     summary.write_text(
         json.dumps(
             {
+                "engine_versions": engine,
                 "reviewed_engine_input_nulls": [
                     _null("strike_benefits", {_ACS: 7}),
                     _null("not_a_registered_input", {_ACS: 2}),
-                ]
+                ],
             }
         )
     )
     assert check.main(["--staging-summary", str(summary), "--out", str(out)]) == 2
     refusals = json.loads(out.read_text())["refusals"]
     assert any("not_a_registered_input" in refusal for refusal in refusals)
+
+
+@pytest.mark.parametrize(
+    "engine",
+    [None, {"policyengine_us": "2.145.3", "policyengine_core": "3.36.1"}],
+    ids=["no-record", "another-engine"],
+)
+def test_command_exits_2_on_a_staging_run_on_another_engine(
+    check, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, engine
+) -> None:
+    """Materialize refuses a staging run whose engine is not the installed
+    one before it loads the file, so the pre-check does too."""
+
+    monkeypatch.setattr(
+        check,
+        "_tax_benefit_system",
+        lambda: SimpleNamespace(
+            variables={"strike_benefits": SimpleNamespace(default_value=0)}
+        ),
+    )
+    monkeypatch.setattr(check, "_engine_version", lambda _release: "2.2.1")
+    summary = tmp_path / "staging.summary.json"
+    out = tmp_path / "report.json"
+    payload = {"reviewed_engine_input_nulls": [_null("strike_benefits", {_ACS: 7})]}
+    if engine is not None:
+        payload["engine_versions"] = engine
+    summary.write_text(json.dumps(payload))
+
+    assert check.main(["--staging-summary", str(summary), "--out", str(out)]) == 2
+    report = json.loads(out.read_text())
+    assert report["staging_engine_versions"] == engine
+    assert any(
+        refusal.startswith("staging:") and "re-run staging on this engine" in refusal
+        for refusal in report["refusals"]
+    )

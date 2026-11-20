@@ -2363,6 +2363,34 @@ def test_receipt_anchor_consumers_accept_a_current_staging_run() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "summary",
+    [
+        {},
+        {"engine_versions": None},
+        {"engine_versions": {"policyengine_us": None}},
+        {"engine_versions": {"policyengine_us": "0.0.1"}},
+    ],
+    ids=["no-record", "null-record", "not-installed", "another-engine"],
+)
+def test_materialize_refuses_a_staging_run_on_another_engine(summary) -> None:
+    """Staging audits the nulls of its own engine's inputs, so R2 refuses
+    another engine's staging before it loads the file, and a staging that
+    records none."""
+
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"re-run staging on this engine"):
+        module._require_staging_engine(summary)
+
+
+def test_materialize_accepts_a_staging_run_on_its_own_engine() -> None:
+    module = _load_tool_module()
+    installed = module._installed_engine_version()
+    module._require_staging_engine(
+        {"engine_versions": {"policyengine_us": installed, "policyengine_core": "x"}}
+    )
+
+
 def test_materialize_refuses_a_pre_anchor_staging_before_hashing_it(
     tmp_path, monkeypatch
 ) -> None:
@@ -2590,6 +2618,9 @@ def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
             {
                 "reviewed_engine_input_nulls": [{"entity": "person"}],
                 **_staging_receipt_anchor_summary(),
+                "engine_versions": {
+                    "policyengine_us": module._installed_engine_version()
+                },
             }
         )
     )
