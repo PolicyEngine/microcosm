@@ -125,10 +125,12 @@ def _raw_tables() -> dict[str, pd.DataFrame]:
     return tables
 
 
-def _write(path: Path, tables: dict[str, pd.DataFrame]) -> dict:
+def _write(path: Path, tables: dict[str, pd.DataFrame], *, fixed=()) -> dict:
+    """Write and pin a donor. Tables named in ``fixed`` use PyTables' fixed
+    format, which can hold an object column of mixed types."""
     with pd.HDFStore(path, mode="w") as store:
         for name, table in tables.items():
-            store.put(name, table, format="table")
+            store.put(name, table, format="fixed" if name in fixed else "table")
     return {
         "sha256": sha256(path.read_bytes()).hexdigest(),
         "size": path.stat().st_size,
@@ -495,6 +497,41 @@ def test_refuse_accepts_a_donor_with_no_blank_answers(tmp_path):
     }
 
 
+@pytest.mark.filterwarnings("ignore::pandas.errors.PerformanceWarning")
+def test_an_integer_year_and_its_string_spelling_count_as_one_year(tmp_path):
+    """The lineage contract admits an exact integer or a nonempty string as a
+    source year, so one donor can spell 2022 both ways. The counts key each
+    year by its text and count every blank answer once, in the record and in
+    the refusal."""
+    tables = _raw_tables()
+    # One spelling per household, as lineage requires.
+    tables["person"]["source_year"] = pd.Series(
+        [2022, 2022, 2022, "2022", "2022", "2022"], dtype=object
+    )
+    tables["person"]["A_ENRLW"] = [np.nan, 1.0, 1.0, np.nan, 0.0, 1.0]
+    tables["person"]["A_FTPT"] = [np.nan, 1.0, 1.0, np.nan, 0.0, 2.0]
+    path = tmp_path / "donor.h5"
+    pin = _write(path, tables, fixed={"person"})
+    with pd.HDFStore(path, mode="r") as store:
+        stored = store["person"]["source_year"].tolist()
+    assert [type(value) for value in stored] == [int] * 3 + [str] * 3
+    donor = read_populace_us_donor(
+        path, **pin, profile=_profile(pin["sha256"], blank_full_time_study="read_false")
+    )
+    assert donor.donor_profile["full_time_study"] == {
+        "enrolled_full_time": 2,
+        "blank_a_enrlw_by_source_year": {"2022": 2},
+        "blank_a_ftpt_by_source_year": {"2022": 2},
+        "read_false_by_source_year": {"2022": 2},
+    }
+    with pytest.raises(
+        ValueError, match=r"by source year \{'2022': 2\}, which this donor profile"
+    ):
+        read_populace_us_donor(
+            path, **pin, profile=_profile(pin["sha256"], blank_full_time_study="refuse")
+        )
+
+
 def test_tenure_wins_zeroes_contradicting_costs_and_refuse_refuses_them(tmp_path):
     donor = _read(tmp_path, housing_cost_contradicting_tenure="tenure_wins")
     assert donor.tables["household"]["rent"].tolist() == [0.0, 0.0]
@@ -518,6 +555,46 @@ def test_refuse_keeps_costs_that_agree_with_tenure(tmp_path):
         assert rent["column"] == "present"
         assert rent["contradicting_households"] == 0
         assert rent["zeroed"] is False
+
+
+@pytest.mark.parametrize("choice", OFFERED["housing_cost_contradicting_tenure"])
+@pytest.mark.parametrize(
+    ("column", "values", "violation"),
+    [
+        # Owner household 101 carries a negative rent.
+        (
+            "pre_subsidy_rent",
+            [-12.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "household.rent: rent is below 0.0.",
+        ),
+        # Renter household 202 carries negative mortgage interest.
+        (
+            "home_mortgage_interest",
+            [12.0, 0.0, 0.0, -5.0, 0.0, 0.0],
+            "household.mortgage_interest: mortgage_interest is below 0.0.",
+        ),
+    ],
+)
+def test_a_cost_below_its_bound_refuses_as_without_a_profile(
+    tmp_path, column, values, violation, choice
+):
+    """A cost that contradicts tenure is checked against its own concept's
+    bounds before reconciliation, so ``tenure_wins`` cannot zero it out of
+    sight. Under ``refuse`` the bound refuses first: the amount is invalid
+    whatever the tenure, and the reader without a profile refuses it with
+    the same message."""
+    tables = _raw_tables()
+    tables["person"][column] = values
+    path = tmp_path / "donor.h5"
+    pin = _write(path, tables)
+    message = f"Invalid donor concepts: {violation}"
+    with pytest.raises(ValueError) as plain:
+        read_populace_us_donor(path, **pin)
+    assert str(plain.value) == message
+    profile = _profile(pin["sha256"], housing_cost_contradicting_tenure=choice)
+    with pytest.raises(ValueError) as profiled:
+        read_populace_us_donor(path, **pin, profile=profile)
+    assert str(profiled.value) == message
 
 
 def test_a_profile_naming_other_bytes_refuses_before_the_file_is_opened(
@@ -617,9 +694,27 @@ def _drop(table, column):
             _set("spm_unit", "spm_unit_tenure_type", ["RENTER", "RENTER", "RENTER"]),
             "owner households have SPM renter tenure",
         ),
+        # The cost's own concept check refuses before reconciliation reads it.
         (
             _set("person", "pre_subsidy_rent", [np.inf, 0, 0, 0, 0, 0]),
-            "rent must be finite before reconciliation",
+            r"Invalid donor concepts: household\.rent: rent must be finite\.",
+        ),
+        # Complex storage refuses in the id, label and assistance checks too.
+        (
+            _set("spm_unit", "spm_unit_id", np.array([11, 21, 22], dtype=complex)),
+            "integer ids",
+        ),
+        (
+            _set("household", "tenure_type", np.array([1, 2], dtype=complex)),
+            "labels outside",
+        ),
+        (
+            _set(
+                "spm_unit",
+                "receives_housing_assistance",
+                np.array([0, 0, 1], dtype=complex),
+            ),
+            "must be boolean",
         ),
     ],
 )
@@ -648,6 +743,35 @@ def test_unexpected_values_and_failed_joins_refuse(tmp_path, edit, message):
 def test_raw_checks_fire_before_any_comparison_reads_the_value(tmp_path, edit, message):
     with pytest.raises(ValueError, match=message):
         _read(tmp_path, _edited(edit))
+
+
+@pytest.mark.parametrize("imaginary", [99.0, 0.0])
+@pytest.mark.parametrize(
+    ("table", "column"),
+    [
+        ("person", "A_MARITL"),
+        ("person", "A_ENRLW"),
+        ("person", "A_FTPT"),
+        ("household", "H_TENURE"),
+    ],
+)
+def test_a_complex_survey_code_refuses_through_the_reader(
+    tmp_path, table, column, imaginary
+):
+    """Complex storage refuses whatever its values. A cast to float would
+    drop ``1+99j`` onto the valid code 1 before any check saw it."""
+    tables = _raw_tables()
+    values = tables[table][column].to_numpy(dtype=np.float64).astype(complex)
+    values[0] += 1j * imaginary
+    tables[table][column] = values
+    path = tmp_path / "donor.h5"
+    pin = _write(path, tables)
+    with pd.HDFStore(path, mode="r") as store:
+        assert store[table][column].dtype.kind == "c"
+    with pytest.raises(
+        ValueError, match=rf"{column} must hold numeric survey codes in real"
+    ):
+        read_populace_us_donor(path, **pin, profile=_profile(pin["sha256"]))
 
 
 def test_a_memberless_spm_unit_is_counted_and_stages_nothing(tmp_path):
@@ -1299,6 +1423,57 @@ def test_survey_codes_refuse_anything_outside_the_codebook(values, missing_ok):
     assert codes.tolist() == [
         -1 if m else int(v) for v, m in zip(numbers, blank, strict=True)
     ]
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pd.Series([1, 2, 3], dtype="int8"),
+        pd.Series([3, 1, 2], dtype="uint64"),
+        pd.Series([1.0, 2.0, 3.0], dtype="float32"),
+        pd.Series([1, None, 3], dtype="Int64"),
+        pd.Series([2.0, None, 1.0], dtype="Float64"),
+    ],
+    ids=lambda values: str(values.dtype),
+)
+def test_survey_codes_read_from_real_integer_or_float_storage(values):
+    codes, blank = transport_module._profile_codes(
+        values.rename("A_TEST"), frozenset({1, 2, 3}), missing_ok=True
+    )
+    assert blank.tolist() == values.isna().tolist()
+    assert codes.tolist() == [-1 if pd.isna(v) else int(v) for v in values]
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pd.Series([1 + 99j, 2, 3]),
+        pd.Series([1 + 0j, 2, 3]),
+        pd.Series([True, False, True]),
+        pd.Series([True, None, True], dtype="boolean"),
+        pd.Series([1, 2, 3], dtype=object),
+        pd.Series(["1", "2", "3"], dtype="string"),
+    ],
+    ids=lambda values: str(values.dtype),
+)
+def test_survey_codes_refuse_storage_that_is_not_real_numbers(values):
+    with pytest.raises(ValueError, match="A_TEST must hold numeric survey codes"):
+        transport_module._profile_codes(
+            values.rename("A_TEST"), frozenset({1, 2, 3}), missing_ok=True
+        )
+
+
+def test_survey_codes_compare_in_their_own_storage():
+    """An integer next to a code is never rounded onto it: 2**53 + 1 is
+    compared as an integer, where a float cast would read 2**53."""
+    big = 2**53
+    values = pd.Series([big + 1, 1], dtype="int64", name="A_TEST")
+    with pytest.raises(ValueError, match="A_TEST holds codes outside"):
+        transport_module._profile_codes(values, frozenset({big, 1}))
+    codes, _ = transport_module._profile_codes(
+        pd.Series([big, 1], dtype="int64", name="A_TEST"), frozenset({big, 1})
+    )
+    assert codes.tolist() == [big, 1]
 
 
 @pytest.mark.parametrize("missing", [None, np.nan, pd.NA, 3])

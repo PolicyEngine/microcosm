@@ -999,30 +999,31 @@ def _profile_codes(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Whole-number survey codes, checked before any comparison reads them.
 
-    Returns the codes, with -1 where blank, and the blank mask. A blank
-    refuses unless ``missing_ok``; every other value must be a finite whole
-    number in ``allowed``.
+    Returns the codes, with -1 where blank, and the blank mask. The column
+    must have real integer or float storage, plain or pandas nullable;
+    boolean, complex and text storage refuse. A blank refuses unless
+    ``missing_ok``. Every other value must equal a code in ``allowed`` when
+    compared in its own storage, so no cast can turn it into a code first.
     """
-    if pd.api.types.is_bool_dtype(values.dtype) or not pd.api.types.is_numeric_dtype(
-        values.dtype
-    ):
-        raise ValueError(f"Donor {values.name} must hold numeric survey codes.")
-    numbers = values.to_numpy(dtype=np.float64, na_value=np.nan)
-    blank = np.isnan(numbers)
+    if values.dtype.kind not in "iuf":
+        raise ValueError(
+            f"Donor {values.name} must hold numeric survey codes in real integer "
+            f"or float storage, found dtype {values.dtype}."
+        )
+    blank = values.isna().to_numpy(dtype=bool)
     if blank.any() and not missing_ok:
         raise ValueError(
             f"Donor {values.name} has {int(blank.sum())} blank values, which this "
             "donor profile refuses."
         )
-    present = numbers[~blank]
-    if (
-        not np.isfinite(present).all()
-        or np.any(present != np.floor(present))
-        or not np.isin(present, sorted(allowed)).all()
-    ):
+    codes = np.full(len(values), -1, dtype=np.int64)
+    matched = np.zeros(len(values), dtype=bool)
+    for code in sorted(allowed):
+        equal = (values == code).to_numpy(dtype=bool, na_value=False)
+        codes[equal] = code
+        matched |= equal
+    if np.any(~blank & ~matched):
         raise ValueError(f"Donor {values.name} holds codes outside {sorted(allowed)}.")
-    codes = np.full(len(numbers), -1, dtype=np.int64)
-    codes[~blank] = present.astype(np.int64)
     return codes, blank
 
 
@@ -1051,15 +1052,26 @@ def _profile_ids(values: pd.Series) -> np.ndarray:
     return values.to_numpy(dtype=np.int64)
 
 
-def _by_source_year(person: pd.DataFrame, mask: np.ndarray) -> dict[str, int]:
-    """Counts of ``mask`` for each donor source year, zeros included."""
+def _source_years(person: pd.DataFrame) -> np.ndarray | None:
+    """Each person's source year as its receipt key, or ``None`` if unrecorded.
+
+    The key is the year's text under the lineage contract that the reader
+    already applies to this column (:func:`_source_id_payloads`): an exact
+    integer's decimal digits, or the nonempty string itself. Counts group on
+    this key, so an integer year and the same year spelled as a string are
+    one year, and every person is counted once.
+    """
     if "source_year" not in person:
+        return None
+    payloads = _source_id_payloads(person["source_year"])
+    return np.asarray([text for _, text in payloads], dtype=object)
+
+
+def _by_source_year(years: np.ndarray | None, mask: np.ndarray) -> dict[str, int]:
+    """Counts of ``mask`` for each source year key, zeros included."""
+    if years is None:
         return {"unrecorded": int(mask.sum())}
-    counts = (
-        pd.Series(mask.astype(np.int64))
-        .groupby(person["source_year"].to_numpy(), dropna=False, sort=True)
-        .sum()
-    )
+    counts = pd.Series(mask.astype(np.int64)).groupby(years, sort=True).sum()
     return {str(year): int(count) for year, count in counts.items()}
 
 
@@ -1117,10 +1129,11 @@ def _stage_donor_profile(
         person["A_FTPT"], _ENROLLMENT_CODES, missing_ok=True
     )
     blank = enrolled_blank | full_time_blank
+    years = _source_years(person)
     if blank.any() and not read_false:
         raise ValueError(
             "Donor A_ENRLW or A_FTPT is blank for persons by source year "
-            f"{_by_source_year(person, blank)}, which this donor profile refuses."
+            f"{_by_source_year(years, blank)}, which this donor profile refuses."
         )
     unit_ids = pd.Index(_profile_ids(spm_unit["spm_unit_id"]))
     member_ids = _profile_ids(person["person_spm_unit_id"])
@@ -1236,9 +1249,9 @@ def _stage_donor_profile(
             },
             "full_time_study": {
                 "enrolled_full_time": int(((enrolled == 1) & (full_time == 1)).sum()),
-                "blank_a_enrlw_by_source_year": _by_source_year(person, enrolled_blank),
-                "blank_a_ftpt_by_source_year": _by_source_year(person, full_time_blank),
-                "read_false_by_source_year": _by_source_year(person, blank),
+                "blank_a_enrlw_by_source_year": _by_source_year(years, enrolled_blank),
+                "blank_a_ftpt_by_source_year": _by_source_year(years, full_time_blank),
+                "read_false_by_source_year": _by_source_year(years, blank),
             },
             "legal_marital_status": {
                 value: int((statuses == value).sum()) for value in MARITAL_STATUS_DOMAIN
@@ -1290,6 +1303,20 @@ def _attach_donor_profile(
     tenure = staged["tenure"][household_rows]
     household_weights = np.asarray(weights, dtype=np.float64)[household_rows]
     refuse = profile.choices["housing_cost_contradicting_tenure"] == "refuse"
+    # Each cost must meet its own concept's contract (dtype, nulls, finite,
+    # bounds) before reconciliation reads or zeroes it, so the record never
+    # counts, and tenure never hides, an amount the reader refuses without a
+    # profile. The tenure rules come after; final validation still runs.
+    costs = [column for column, _ in _TENURE_COSTS if column in household_table]
+    violations = validate_concept_tables(
+        {
+            "person": person_table[[PERSON_ID_COLUMN, PERSON_HOUSEHOLD_ID_COLUMN]],
+            "household": household_table[[HOUSEHOLD_ID_COLUMN, *costs]],
+        }
+    )
+    if violations:
+        details = "; ".join(f"{v.entity}.{v.column}: {v.message}" for v in violations)
+        raise ValueError(f"Invalid donor concepts: {details}")
     reconciliation: dict[str, dict] = {}
     contradicted: dict[str, int] = {}
     reconciled: dict[str, np.ndarray] = {}
@@ -1298,8 +1325,6 @@ def _attach_donor_profile(
             reconciliation[column] = {"column": "absent"}
             continue
         amounts = household_table[column].to_numpy(dtype=np.float64, copy=True)
-        if not np.isfinite(amounts).all():
-            raise ValueError(f"Donor {column} must be finite before reconciliation.")
         contradicting = ~np.isin(tenure, payers) & (amounts != 0)
         count = int(contradicting.sum())
         reconciliation[column] = {
