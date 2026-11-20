@@ -277,7 +277,7 @@
       "input": "brussels_family_benefits_social_supplement_household_annual_income",
       "class": "defaulted",
       "value": 45000.0,
-      "reason": "No income reaches the Child entity until W3 derives household income over the allocataire's unit (PR 3). Set at the article 9, 2\u00b0 upper bound (brussels_family_benefits_social_supplement_middle_income_upper_bound is 45000 at rulespec-be 632e1da), so both `income < bound` tests fail and no child receives a social supplement: a lower bound on spending.",
+      "reason": "No income reaches the Child entity until W3's income node derives household income for each child from the family benefit unit that unit_declarations.json declares (a proposed stand-in for the allocataire's household; METHOD-CARD-BE). Set at the article 9, 2\u00b0 upper bound (brussels_family_benefits_social_supplement_middle_income_upper_bound is 45000 at rulespec-be 632e1da), so both `income < bound` tests fail and no child receives a social supplement: a lower bound on spending.",
       "citation": "Brussels ordinance of 25 April 2019 regulating family benefits, article 9 (brussels_family_benefits_article_9_social_supplement_monthly_amount, social_supplements.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/9",
       "new_default": true
     },
@@ -348,7 +348,7 @@
       "input": "brussels_family_benefits_social_supplement_household_annual_income",
       "class": "defaulted",
       "value": 45000.0,
-      "reason": "No income reaches the Child entity until W3 derives household income over the allocataire's unit (PR 3). Set at the article 9, 2\u00b0 upper bound (brussels_family_benefits_social_supplement_middle_income_upper_bound is 45000 at rulespec-be 632e1da), so both `income < bound` tests fail and no child receives a social supplement: a lower bound on spending.",
+      "reason": "No income reaches the Child entity until W3's income node derives household income for each child from the family benefit unit that unit_declarations.json declares (a proposed stand-in for the allocataire's household; METHOD-CARD-BE). Set at the article 9, 2\u00b0 upper bound (brussels_family_benefits_social_supplement_middle_income_upper_bound is 45000 at rulespec-be 632e1da), so both `income < bound` tests fail and no child receives a social supplement: a lower bound on spending.",
       "citation": "Brussels ordinance of 25 April 2019 regulating family benefits, article 9 (brussels_family_benefits_article_9_social_supplement_monthly_amount, social_supplements.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/9",
       "new_default": true
     },
@@ -395,7 +395,7 @@
       "input": "brussels_family_benefits_social_supplement_household_annual_income",
       "class": "defaulted",
       "value": 45000.0,
-      "reason": "No income reaches the Child entity until W3 derives household income over the allocataire's unit (PR 3). Set at the article 9, 2\u00b0 upper bound (brussels_family_benefits_social_supplement_middle_income_upper_bound is 45000 at rulespec-be 632e1da), so both `income < bound` tests fail and no child receives a social supplement: a lower bound on spending.",
+      "reason": "No income reaches the Child entity until W3's income node derives household income for each child from the family benefit unit that unit_declarations.json declares (a proposed stand-in for the allocataire's household; METHOD-CARD-BE). Set at the article 9, 2\u00b0 upper bound (brussels_family_benefits_social_supplement_middle_income_upper_bound is 45000 at rulespec-be 632e1da), so both `income < bound` tests fail and no child receives a social supplement: a lower bound on spending.",
       "citation": "Brussels ordinance of 25 April 2019 regulating family benefits, article 9 (brussels_family_benefits_article_9_social_supplement_monthly_amount, social_supplements.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/9",
       "new_default": true
     },
@@ -856,7 +856,7 @@
       "input": "flanders_family_benefits_family_annual_income",
       "class": "defaulted",
       "value": 70000.0,
-      "reason": "No income exists for the beneficiaries' family until W3's income node builds it over the legal unit PR 3 defines. 70000 exceeds the article 18 middle threshold (flanders_family_benefits_social_middle_income_threshold is 60000 at rulespec-be 632e1da1), so at those unindexed thresholds the social supplement pays nothing for any family size: a lower bound that leaves out every low-income supplement. The module's own base-amount test supplies the same value.",
+      "reason": "No income exists for the beneficiaries' family until W3's income node builds it from the family benefit unit that unit_declarations.json declares (a proposed stand-in for that family; METHOD-CARD-BE). 70000 exceeds the article 18 middle threshold (flanders_family_benefits_social_middle_income_threshold is 60000 at rulespec-be 632e1da1), so at those unindexed thresholds the social supplement pays nothing for any family size: a lower bound that leaves out every low-income supplement. The module's own base-amount test supplies the same value.",
       "citation": "Flemish decree of 27 April 2018 regulating family-policy allowances, article 18 (flanders_family_benefits_social_supplement_before_shared_housing_monthly_amount); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/18, recorded on the threshold and amount parameters the rule reads, not on the rule",
       "new_default": true
     },
@@ -1057,7 +1057,7 @@
       "input": "flanders_family_benefits_family_annual_income",
       "class": "defaulted",
       "value": 70000.0,
-      "reason": "No income exists for the beneficiaries' family until W3's income node builds it over the legal unit PR 3 defines. 70000 exceeds the article 18 middle threshold (flanders_family_benefits_social_middle_income_threshold is 60000 at rulespec-be 632e1da1), so at those unindexed thresholds the social supplement pays nothing for any family size: a lower bound that leaves out every low-income supplement. The module's own base-amount test supplies the same value.",
+      "reason": "No income exists for the beneficiaries' family until W3's income node builds it from the family benefit unit that unit_declarations.json declares (a proposed stand-in for that family; METHOD-CARD-BE). 70000 exceeds the article 18 middle threshold (flanders_family_benefits_social_middle_income_threshold is 60000 at rulespec-be 632e1da1), so at those unindexed thresholds the social supplement pays nothing for any family size: a lower bound that leaves out every low-income supplement. The module's own base-amount test supplies the same value.",
       "citation": "Flemish decree of 27 April 2018 regulating family-policy allowances, article 18 (flanders_family_benefits_social_supplement_before_shared_housing_monthly_amount); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/18, recorded on the threshold and amount parameters the rule reads, not on the rule",
       "new_default": true
     },
@@ -1161,7 +1161,7 @@
       "input": "wallonia_family_benefits_household_annual_income",
       "class": "defaulted",
       "value": 70000.0,
-      "reason": "No income node exists yet. 70,000 exceeds the 50,000 upper ceiling (wallonia_family_benefits_income_middle_threshold at rulespec-be 632e1da1), so the large-family and single-parent supplements and the income-tested social supplement all pay 0 (the 65 EUR article 14 supplement for a household with a disabled member reads no income, and its own default withholds it), and the child gets the base amount alone, as in the module's own base-only test case. W3's income node, built over the legal unit around the allocataire, will replace it; until then the default understates spending on households under the ceilings.",
+      "reason": "No income node exists yet. 70,000 exceeds the 50,000 upper ceiling (wallonia_family_benefits_income_middle_threshold at rulespec-be 632e1da1), so the large-family and single-parent supplements and the income-tested social supplement all pay 0 (the 65 EUR article 14 supplement for a household with a disabled member reads no income, and its own default withholds it), and the child gets the base amount alone, as in the module's own base-only test case. W3's income node, built from the family benefit unit that unit_declarations.json declares (a proposed stand-in for the allocataire's household; METHOD-CARD-BE), will replace it; until then the default understates spending on households under the ceilings.",
       "citation": "Walloon decree of 8 February 2018 on management and payment of family benefits, articles 11, 12, 13 and 14 (wallonia_family_benefits_large_family_supplement_monthly_amount, wallonia_family_benefits_single_parent_supplement_monthly_amount, wallonia_family_benefits_social_or_disabled_household_member_supplement_monthly_amount); corpus_citation_path be-wal/statute/decret/2018/02/08/2018201006/article/13 (recorded on the two income-threshold parameters)",
       "new_default": true
     },
@@ -1439,7 +1439,7 @@
       "input": "wallonia_family_benefits_household_annual_income",
       "class": "defaulted",
       "value": 70000.0,
-      "reason": "No income node exists yet. 70,000 exceeds the 50,000 upper ceiling (wallonia_family_benefits_income_middle_threshold at rulespec-be 632e1da1), so the large-family and single-parent supplements and the income-tested social supplement all pay 0 (the 65 EUR article 14 supplement for a household with a disabled member reads no income, and its own default withholds it), and the child gets the base amount alone, as in the module's own base-only test case. W3's income node, built over the legal unit around the allocataire, will replace it; until then the default understates spending on households under the ceilings.",
+      "reason": "No income node exists yet. 70,000 exceeds the 50,000 upper ceiling (wallonia_family_benefits_income_middle_threshold at rulespec-be 632e1da1), so the large-family and single-parent supplements and the income-tested social supplement all pay 0 (the 65 EUR article 14 supplement for a household with a disabled member reads no income, and its own default withholds it), and the child gets the base amount alone, as in the module's own base-only test case. W3's income node, built from the family benefit unit that unit_declarations.json declares (a proposed stand-in for the allocataire's household; METHOD-CARD-BE), will replace it; until then the default understates spending on households under the ceilings.",
       "citation": "Walloon decree of 8 February 2018 on management and payment of family benefits, articles 11, 12, 13 and 14 (wallonia_family_benefits_large_family_supplement_monthly_amount, wallonia_family_benefits_single_parent_supplement_monthly_amount, wallonia_family_benefits_social_or_disabled_household_member_supplement_monthly_amount); corpus_citation_path be-wal/statute/decret/2018/02/08/2018201006/article/13 (recorded on the two income-threshold parameters)",
       "new_default": true
     },
@@ -1888,7 +1888,7 @@
       "input": "brussels_family_benefits_social_supplement_household_annual_income",
       "class": "defaulted",
       "value": 45000.0,
-      "reason": "No income reaches the Child entity until W3 derives household income over the allocataire's unit (PR 3). Set at the article 9, 2\u00b0 upper bound (brussels_family_benefits_social_supplement_middle_income_upper_bound is 45000 at rulespec-be 632e1da), so both `income < bound` tests fail and no child receives a social supplement: a lower bound on spending.",
+      "reason": "No income reaches the Child entity until W3's income node derives household income for each child from the family benefit unit that unit_declarations.json declares (a proposed stand-in for the allocataire's household; METHOD-CARD-BE). Set at the article 9, 2\u00b0 upper bound (brussels_family_benefits_social_supplement_middle_income_upper_bound is 45000 at rulespec-be 632e1da), so both `income < bound` tests fail and no child receives a social supplement: a lower bound on spending.",
       "citation": "Brussels ordinance of 25 April 2019 regulating family benefits, article 9 (brussels_family_benefits_article_9_social_supplement_monthly_amount, social_supplements.yaml); the rule records no corpus_citation_path of its own, the module's source_verification gives be-bru/statute/ordonnance/2019/04/25/2019012118/article/9",
       "new_default": true
     },
@@ -2059,7 +2059,7 @@
       "input": "flanders_family_benefits_family_annual_income",
       "class": "defaulted",
       "value": 70000.0,
-      "reason": "No income exists for the beneficiaries' family until W3's income node builds it over the legal unit PR 3 defines. 70000 exceeds the article 18 middle threshold (flanders_family_benefits_social_middle_income_threshold is 60000 at rulespec-be 632e1da1), so at those unindexed thresholds the social supplement pays nothing for any family size: a lower bound that leaves out every low-income supplement. The module's own base-amount test supplies the same value.",
+      "reason": "No income exists for the beneficiaries' family until W3's income node builds it from the family benefit unit that unit_declarations.json declares (a proposed stand-in for that family; METHOD-CARD-BE). 70000 exceeds the article 18 middle threshold (flanders_family_benefits_social_middle_income_threshold is 60000 at rulespec-be 632e1da1), so at those unindexed thresholds the social supplement pays nothing for any family size: a lower bound that leaves out every low-income supplement. The module's own base-amount test supplies the same value.",
       "citation": "Flemish decree of 27 April 2018 regulating family-policy allowances, article 18 (flanders_family_benefits_social_supplement_before_shared_housing_monthly_amount); corpus_citation_path be-vlg/statute/decreet/2018/04/27/2018040369/article/18, recorded on the threshold and amount parameters the rule reads, not on the rule",
       "new_default": true
     },
@@ -2641,7 +2641,7 @@
       "input": "wallonia_family_benefits_household_annual_income",
       "class": "defaulted",
       "value": 70000.0,
-      "reason": "No income node exists yet. 70,000 exceeds the 50,000 upper ceiling (wallonia_family_benefits_income_middle_threshold at rulespec-be 632e1da1), so the large-family and single-parent supplements and the income-tested social supplement all pay 0 (the 65 EUR article 14 supplement for a household with a disabled member reads no income, and its own default withholds it), and the child gets the base amount alone, as in the module's own base-only test case. W3's income node, built over the legal unit around the allocataire, will replace it; until then the default understates spending on households under the ceilings.",
+      "reason": "No income node exists yet. 70,000 exceeds the 50,000 upper ceiling (wallonia_family_benefits_income_middle_threshold at rulespec-be 632e1da1), so the large-family and single-parent supplements and the income-tested social supplement all pay 0 (the 65 EUR article 14 supplement for a household with a disabled member reads no income, and its own default withholds it), and the child gets the base amount alone, as in the module's own base-only test case. W3's income node, built from the family benefit unit that unit_declarations.json declares (a proposed stand-in for the allocataire's household; METHOD-CARD-BE), will replace it; until then the default understates spending on households under the ceilings.",
       "citation": "Walloon decree of 8 February 2018 on management and payment of family benefits, articles 11, 12, 13 and 14 (wallonia_family_benefits_large_family_supplement_monthly_amount, wallonia_family_benefits_single_parent_supplement_monthly_amount, wallonia_family_benefits_social_or_disabled_household_member_supplement_monthly_amount); corpus_citation_path be-wal/statute/decret/2018/02/08/2018201006/article/13 (recorded on the two income-threshold parameters)",
       "new_default": true
     },
