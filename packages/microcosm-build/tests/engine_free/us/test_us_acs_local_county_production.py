@@ -1094,6 +1094,153 @@ def test_recorded_moves_reapply_to_a_fresh_frame_and_refuse_a_changed_plan(
         county.apply_support_moves(stale, moves)
 
 
+# --- SOI support (microcosm#1661) -----------------------------------------------
+
+
+def _soi_support_fixture():
+    """01001 (eight households, AGI on the ACS ones) beside 01003, whose four
+    households all store an AGI of 0, in one PUMA."""
+    cells = [(100001, 1001)] * 8 + [(100001, 1003)] * 4
+    households = _support_households(cells)
+    agi = np.where(
+        (households["county_fips"] == "01001")
+        & (households["household_spine"] == "acs_2024_1yr"),
+        25_000.0,
+        0.0,
+    )
+    populations = {1001: 80.0, 1003: 40.0}
+    overlaps = _county().puma_overlaps([100001, 100001], [1001, 1003], [80.0, 40.0])
+    return households, agi, populations, overlaps
+
+
+def test_soi_support_moves_households_with_agi_into_a_county_without_it() -> None:
+    county = _county()
+    households, agi, populations, overlaps = _soi_support_fixture()
+    assert county.counties_without_agi(households, agi, populations) == [1003]
+
+    moves, receipt = county.plan_minimum_support(
+        households, populations, overlaps, per_county=1, household_agi=agi
+    )
+
+    soi = receipt["soi_support"]
+    assert soi["needed"] == ["01003"]
+    assert soi["counties"]["01003"]["status"] == "moved"
+    assert soi["still_without_agi"] == []
+    assert len(moves) == 1
+    (move,) = moves
+    assert move["reason"] == "soi_support"
+    assert (move["from_county"], move["to_county"]) == ("01001", "01003")
+    position = households.index[households["household_id"] == move["household_id"]]
+    assert agi[position[0]] > 0
+    # The recorded moves replay as the first pass's do.
+    applied = county.apply_support_moves(households, moves)
+    assert county.counties_without_agi(applied, agi, populations) == []
+    assert receipt["moved_counties"] == ["01003"]
+
+
+def test_soi_support_keeps_each_donor_county_an_agi_household() -> None:
+    county = _county()
+    households, agi, populations, overlaps = _soi_support_fixture()
+    # 01001 keeps one household with an AGI: moving it would leave 01001
+    # without one, so nothing moves and 01003 is named.
+    only = households.index[
+        (households["county_fips"] == "01001")
+        & (households["household_spine"] == "acs_2024_1yr")
+    ][0]
+    agi = np.where(np.arange(len(agi)) == only, agi, 0.0)
+
+    moves, receipt = county.plan_minimum_support(
+        households, populations, overlaps, per_county=1, household_agi=agi
+    )
+
+    assert moves == []
+    soi = receipt["soi_support"]
+    assert soi["counties"]["01003"]["status"] == "insufficient_eligible_donors"
+    assert soi["still_without_agi"] == ["01003"]
+
+
+def test_first_pass_ranks_households_with_agi_first() -> None:
+    county = _county()
+    cells = [(100001, 1001)] * 12
+    households = _support_households(cells)
+    # Two of 01001's eligible households carry an AGI.
+    agi = np.zeros(len(households))
+    agi[[4, 10]] = 1_000.0
+    populations = {1001: 90.0, 1003: 10.0}
+    overlaps = county.puma_overlaps([100001, 100001], [1001, 1003], [90.0, 10.0])
+
+    without, _ = county.plan_minimum_support(
+        households, populations, overlaps, per_county=2
+    )
+    moves, receipt = county.plan_minimum_support(
+        households, populations, overlaps, per_county=2, household_agi=agi
+    )
+
+    # Moving both would leave 01001 without an AGI household, so one of them
+    # moves, ranked first, and the second move is the best-ranked other one.
+    moved = {move["household_id"] for move in moves}
+    assert len(moved & {1004, 1010}) == 1
+    assert receipt["soi_support"]["needed"] == []
+    assert receipt["soi_support"]["still_without_agi"] == []
+    assert (
+        "soi_support"
+        not in county.plan_minimum_support(
+            households, populations, overlaps, per_county=2
+        )[1]
+    )
+    assert {move["to_county"] for move in without} == {"01003"}
+
+
+def test_check_support_refuses_a_county_without_agi_before_the_engine_pass(
+    monkeypatch, tmp_path
+) -> None:
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    county = _county()
+    households, agi, populations, overlaps = _soi_support_fixture()
+    agi = np.zeros(len(households))
+    ids = households["household_id"].to_numpy()
+    tables = {
+        "household": households,
+        "person": pd.DataFrame(
+            {
+                "person_id": ids,
+                "person_household_id": ids,
+                **{f"person_{group}_id": ids for group in US_SCHEMA.group_entities},
+            }
+        ),
+    }
+    for group in US_SCHEMA.group_entities:
+        tables.setdefault(group, pd.DataFrame({f"{group}_id": ids}))
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.ones(len(ids)), WeightKind.DESIGN)},
+    )
+    monkeypatch.setattr(
+        county, "county_puma_overlaps", lambda _path, _column="county_fips": overlaps
+    )
+    args = SimpleNamespace(
+        county_column="county_fips",
+        county_min_support=1,
+        ladder=tmp_path / "ladder.npz",
+        checkpoint_dir=tmp_path,
+        allow_partial_geography=False,
+        sample_fraction=1.0,
+    )
+
+    with pytest.raises(SystemExit, match="none with a nonzero AGI"):
+        county.check_support(frame, {"county": populations}, args, household_agi=agi)
+    report = json.loads((tmp_path / county.SUPPORT_FILENAME).read_text())
+    assert report["minimum_support"]["soi_support"]["still_without_agi"] == [
+        "01001",
+        "01003",
+    ]
+    # Without the AGI the same frame passes this check (R2 then refuses the
+    # empty AGI rows after its engine pass).
+    county.check_support(frame, {"county": populations}, args)
+
+
 def test_check_support_applies_minimum_support_before_refusing(
     monkeypatch, tmp_path
 ) -> None:

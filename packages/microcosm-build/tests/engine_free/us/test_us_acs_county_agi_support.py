@@ -156,7 +156,9 @@ def test_ladder_support_moves_no_household_when_a_county_is_outside_the_ladder(
     monkeypatch.setattr(puma_ladder, "load_us_puma_ladder", lambda path: "ladder")
     monkeypatch.setattr(surface, "county_puma_overlaps", lambda path, column: {})
 
-    def plan(households, populations, overlaps, *, county_column, per_county):
+    def plan(
+        households, populations, overlaps, *, county_column, per_county, household_agi
+    ):
         planned.append(sorted(populations))
         return [], {"rewritten_columns": [county_column], "moves": []}
 
@@ -400,7 +402,7 @@ def test_command_exits_3_when_r2_refuses_before_its_engine_pass(
     )
     calls = []
 
-    def ladder(households, path, *, county_column, county_min_support):
+    def ladder(households, path, *, county_column, county_min_support, household_agi):
         calls.append((path, county_column, county_min_support))
         # 01005 is not in this ladder.
         return households, {1001: 10.0, 1003: 5.0}, None

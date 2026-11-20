@@ -211,3 +211,38 @@ def test_household_agi_counts_only_heads_and_spouses_as_the_soi_row_does(
     np.testing.assert_array_equal(
         target_frame.table("household")["agi_amount"].to_numpy(dtype=np.float64), agi
     )
+
+
+def test_r2s_own_agi_pass_stores_the_soi_rows_agi(tmp_path) -> None:
+    """R2 computes each household's AGI before minimum support on a county
+    SOI surface (microcosm#1661), one chunk at a time; it must be the value
+    the state SOI AGI row stores, as the pre-check's is."""
+
+    check = _check()
+    release = check._release_tool()
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {
+                        "entity": "person",
+                        "column": "taxable_interest_income",
+                        "missing_rows": 1,
+                        "rows": 10,
+                    }
+                ]
+            }
+        )
+    )
+
+    # R2's stages have filled the take-up flags by then, so its pass holds
+    # nothing back; the registered interest null is filled chunk by chunk.
+    frame = _frame(with_nulls=True)
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["spm_unit"] = tables["spm_unit"].assign(takes_up_snap_if_eligible=True)
+    frame = Frame(tables, frame.schema, {"household": frame.weights_for("household")})
+
+    agi = release._household_agi(frame, summary, hh_chunk=2)
+
+    np.testing.assert_array_equal(agi, _EXPECTED_AGI)

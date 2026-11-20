@@ -6,8 +6,9 @@ state SOI rows for the county's households (``split_state_rows``). The state
 AGI row stores no zero, so when every household of a county has an AGI of
 exactly 0 the county's AGI row is empty. ``attach_surface`` then refuses the
 run, after the materialize stage's engine pass (microcosm#1630 review,
-finding 1). Minimum county support fills only counties with no household, so
-it does not help here.
+finding 1). On a county SOI surface R2's minimum support now also moves
+households with an AGI into such a county, and refuses one it cannot fill
+before the engine pass (microcosm#1661).
 
 This check runs on the staging H5 (R1's output) and its summary, before R2.
 It computes the value R2 stores, with R2's own functions and the engine:
@@ -36,8 +37,9 @@ It computes the value R2 stores, with R2's own functions and the engine:
   above-the-line deduction that year's ``gov.irs.ald.deductions`` does not
   list (:data:`YEAR_LISTED_DEDUCTIONS`), whose formula then reads nothing.
 - With ``--puma-ladder`` it applies R2's own minimum-support moves
-  (``plan_minimum_support`` with ``--county-min-support``, default R2's 3)
-  and takes the county list from the ladder, as R2 does.
+  (``plan_minimum_support`` with ``--county-min-support``, default R2's 3,
+  and the AGI it computed, as R2 passes its own) and takes the county list
+  from the ladder, as R2 does.
 - A county is **at risk** when it has households but none with a nonzero AGI
   as R2 stores it (float32). Return-count rows count every tax unit, so they
   are never empty.
@@ -54,10 +56,11 @@ The check needs memory for the full staging frame, as R2's materialize stage
 does, and runs the engine for the AGI alone (minutes, not R2's full pass).
 
 Exit status 0: no county at risk and none that R2 refuses. Exit status 2: at
-least one county at risk; the JSON report (``--out``) lists them. R2 would
-refuse each one's empty AGI row after its engine pass, so each needs a fix
-before R2 runs. Exit status 3: R2 would refuse the run in materialize before
-its engine pass (a county outside the ladder, or without a household-universe
+least one county at risk after R2's minimum-support moves; the JSON report
+(``--out``) lists them. R2 refuses such a county: before its engine pass on a
+county SOI surface with minimum support on, else after it, when its AGI row
+is empty. Exit status 3: R2 would refuse the run in materialize before its
+engine pass (a county outside the ladder, or without a household-universe
 record); fix the staging file or the ladder first. Status 3 takes precedence
 over 2 and needs ``--puma-ladder``.
 
@@ -471,6 +474,7 @@ def ladder_support(
     *,
     county_column: str,
     county_min_support: int,
+    household_agi: np.ndarray | None = None,
 ) -> tuple[pd.DataFrame, dict[int, float], dict[str, Any] | None]:
     """R2's ladder county populations and minimum-support moves.
 
@@ -478,6 +482,8 @@ def ladder_support(
     after the moves, as ``check_support`` rewrites them, and the moves'
     receipt (None when nothing was planned). As in R2, no household moves
     when one names a county outside the ladder; R2 then refuses the run.
+    With ``household_agi`` (in ``households`` order) the moves include R2's
+    SOI support moves (microcosm#1661).
     """
 
     from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
@@ -494,7 +500,7 @@ def ladder_support(
         households, populations, county_column=county_column
     )
     support = None
-    if county_min_support > 0 and needed and not outside:
+    if county_min_support > 0 and not outside and (needed or household_agi is not None):
         overlaps = county_surface.county_puma_overlaps(ladder_path, county_column)
         moves, support = county_surface.plan_minimum_support(
             households,
@@ -502,6 +508,7 @@ def ladder_support(
             overlaps,
             county_column=county_column,
             per_county=county_min_support,
+            household_agi=household_agi,
         )
         households = county_surface.apply_support_moves(
             households,
@@ -547,6 +554,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.puma_ladder,
             county_column=args.county_column,
             county_min_support=args.county_min_support,
+            household_agi=agi,
         )
     report = county_agi_report(
         households,
@@ -569,6 +577,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "moves": len(support.get("moves", [])),
                     "moves_sha256": support.get("moves_sha256"),
                     "moved_counties": support.get("moved_counties", []),
+                    "soi_support": support.get("soi_support"),
                 }
             ),
             "seconds": round(time.time() - started, 1),

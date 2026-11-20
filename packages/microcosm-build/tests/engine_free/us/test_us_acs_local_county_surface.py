@@ -956,6 +956,16 @@ def _materialize_county_fixture(
     monkeypatch.setattr(module, "_require_local_income_transfer", lambda *_a: None)
     monkeypatch.setattr(module, "_require_local_ssi_disability", lambda *_a: None)
     monkeypatch.setattr(module, "_require_local_receipt_anchors", lambda *_a: None)
+    # Nor the engine it ran on; this test checks county hooks only.
+    monkeypatch.setattr(module, "_require_staging_engine", lambda *_a, **_k: None)
+    # microcosm#1661: on a county SOI surface materialize computes each
+    # household's AGI with the engine before minimum support; every household
+    # here has one, so no county needs SOI support.
+    monkeypatch.setattr(
+        module,
+        "_household_agi",
+        lambda current, *_a, **_k: np.ones(current.n("household")),
+    )
     # microcosm#1022: the ACS SSI/Medicaid take-up stage compiles SSA and CMS
     # counts from the ledger feed and runs an engine pre-pass this fixture
     # cannot support; this test checks county hooks only.

@@ -1044,6 +1044,7 @@ def fill_reviewed_nulls(
     *,
     engine=None,
     system=None,
+    quiet: bool = False,
 ):
     """Apply the nullable-artifact contract for the engine pass (H5 untouched).
 
@@ -1056,7 +1057,9 @@ def fill_reviewed_nulls(
     one, or a null one, raises :class:`DeclaredSourceInputNullError`. Nor
     is the ESI employer premium input, registered or not: a null there
     refuses the build. ``engine`` and ``system`` default to the
-    PolicyEngine-US adapter and tax-benefit system.
+    PolicyEngine-US adapter and tax-benefit system. ``quiet`` logs nothing,
+    for a pass over one household chunk of the frame, whose null counts
+    never match the register's.
     """
 
     denied = [
@@ -1182,16 +1185,17 @@ def fill_reviewed_nulls(
                 indent=2,
             )
         )
-    log(
-        f"reviewed-null fill: {len(fills)} registered column(s), "
-        f"{sum(f['filled_rows'] for f in fills):,} values (engine pass only)"
-    )
-    for drift in drift_warnings:
+    if not quiet:
         log(
-            f"  WARNING count drift {drift['entity']}.{drift['column']}: "
-            f"actual {drift['filled_rows']} vs register "
-            f"{drift['register_missing_rows']}"
+            f"reviewed-null fill: {len(fills)} registered column(s), "
+            f"{sum(f['filled_rows'] for f in fills):,} values (engine pass only)"
         )
+        for drift in drift_warnings:
+            log(
+                f"  WARNING count drift {drift['entity']}.{drift['column']}: "
+                f"actual {drift['filled_rows']} vs register "
+                f"{drift['register_missing_rows']}"
+            )
     if violations:
         detail = "; ".join(
             f"{v['entity']}.{v['column']} ({v['missing_rows']} null rows, "
@@ -1310,6 +1314,109 @@ def _household_codes(release_tool, households, column: str) -> np.ndarray:
         ),
         dtype=np.int64,
     )
+
+
+def _needs_county_soi_support(args, geographies) -> bool:
+    """Whether minimum support must give county SOI rows support too.
+
+    Only a county SOI surface (``--soi-mode state_county`` with county
+    geography) builds county AGI rows, and ``--county-min-support 0`` turns
+    minimum support off altogether (microcosm#1661).
+    """
+
+    return (
+        getattr(args, "soi_mode", None) == SOI_MODE_STATE_COUNTY
+        and "county" in geographies
+        and int(getattr(args, "county_min_support", 0) or 0) > 0
+    )
+
+
+#: Households per chunk of the AGI pass: the AGI's dependencies alone are
+#: light (the pre-R2 AGI check's chunk).
+AGI_PASS_HH_CHUNK = 100_000
+
+
+def _household_agi(
+    frame,
+    summary_path: Path,
+    *,
+    hh_chunk: int = AGI_PASS_HH_CHUNK,
+    period: int = PERIOD,
+) -> np.ndarray:
+    """Each household's AGI as the state SOI AGI row stores it, before the
+    engine pass (microcosm#1661).
+
+    The household sum of ``adjusted_gross_income`` over its tax units, in the
+    household table's order, from the same input projection and reviewed-null
+    fill as :func:`materialize_chunked`, one household chunk at a time so no
+    second copy of the frame is held. Minimum support reads it to give a
+    county whose households all store an AGI of 0 households with an AGI. In
+    the build's year the AGI does not read a household's county, so the moves
+    that follow leave it unchanged.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    engine = PolicyEngineUSEngine()
+    system = CountryTaxBenefitSystem()
+    household_ids = frame.table("household")["household_id"].to_numpy()
+    n_households = len(household_ids)
+    positions = pd.Index(household_ids)
+    if not positions.is_unique:
+        raise ValueError("Household ids must be unique.")
+    person_position = positions.get_indexer(
+        frame.table("person")["person_household_id"].to_numpy()
+    )
+    if (person_position < 0).any():
+        raise RuntimeError(
+            "person rows reference household ids absent from the household "
+            "table; frame is invalid."
+        )
+    if n_households > hh_chunk:
+        release_tool._assert_group_entities_nest_in_households(frame)
+    agi = np.zeros(n_households, dtype=np.float64)
+    started = time.time()
+    for low in range(0, n_households, hh_chunk):
+        high = min(low + hh_chunk, n_households)
+        chunk = frame.select((person_position >= low) & (person_position < high))
+        projected, _held = project_input_only(chunk, period=period)
+        fill_reviewed_nulls(
+            projected,
+            summary_path,
+            manifest_path=None,
+            period=period,
+            engine=engine,
+            system=system,
+            quiet=True,
+        )
+        simulation = Microsimulation(
+            dataset=release_tool._dataset_from_frame(
+                projected, assert_no_formula_owned_columns=False, period_only=True
+            )
+        )
+        got = np.asarray(simulation.calculate("household_id", period).values)
+        if not np.array_equal(got, household_ids[low:high]):
+            raise RuntimeError(
+                "The AGI pass's engine chunk does not carry its households in "
+                "frame order; refusing to place its AGI."
+            )
+        agi[low:high] = np.asarray(
+            simulation.calculate(
+                "adjusted_gross_income", period, map_to="household"
+            ).values,
+            dtype=np.float64,
+        )
+        del simulation, projected, chunk
+        gc.collect()
+    log(
+        f"household AGI for county SOI support: {n_households} households, "
+        f"{int((agi.astype(np.float32) != 0).sum())} with a nonzero AGI "
+        f"({time.time() - started:.1f}s)"
+    )
+    return agi
 
 
 def materialize_chunked(
@@ -2361,8 +2468,18 @@ def do_materialize(args) -> None:
         Path(args.gate_report).unlink(missing_ok=True)
     # microcosm#922: a county with ladder population but no household gets a
     # fixed number of same-PUMA households before any measure is built; the
-    # frame returned carries their rewritten county columns.
-    frame = county_surface.check_support(frame, populations, args)
+    # frame returned carries their rewritten county columns. On a county SOI
+    # surface, a county whose households all store an AGI of 0 gets
+    # households with an AGI too (microcosm#1661), so the AGI comes first.
+    household_agi = (
+        _household_agi(frame, summary_path, period=PERIOD)
+        if _needs_county_soi_support(args, geographies)
+        else None
+    )
+    frame = county_surface.check_support(
+        frame, populations, args, household_agi=household_agi
+    )
+    del household_agi
     materialized = materialize_chunked(
         frame,
         registry.specs,
