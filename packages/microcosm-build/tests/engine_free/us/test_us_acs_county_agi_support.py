@@ -100,7 +100,7 @@ def test_report_lists_counties_with_households_but_no_nonzero_agi(check) -> None
     assert check.exit_status(report) == check.EXIT_R2_REFUSES
 
 
-def test_report_lists_the_counties_r2_refuses_whatever_the_drop_flag(check) -> None:
+def test_report_lists_the_counties_r2_refuses_before_its_engine_pass(check) -> None:
     households = _frame().table("household").copy()
     # 01005 keeps only its group-quarters record, and one household names
     # 01009, a county outside the ladder.
@@ -343,7 +343,7 @@ def test_command_exits_2_and_reports_an_at_risk_county(
     assert check.main(["--h5", str(staging), "--county-column", "county_fips"]) == 0
 
 
-def test_command_exits_3_when_r2_refuses_whatever_the_drop_flag(
+def test_command_exits_3_when_r2_refuses_before_its_engine_pass(
     check, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     staging = tmp_path / "staging.h5"

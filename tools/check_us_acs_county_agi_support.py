@@ -39,8 +39,8 @@ It computes the value R2 stores, with R2's own functions and the engine:
   as R2 stores it (float32). Return-count rows count every tax unit, so they
   are never empty.
 - R2's ``check_support`` (materialize, after the staging load and the
-  SSI/Medicaid pre-pass) refuses the run, with or without
-  ``--county-drop-empty-soi-rows``, when a household names a county outside
+  SSI/Medicaid pre-pass, before its engine pass) refuses the run when a
+  household names a county outside
   the ladder or a ladder county has no household-universe record after the
   minimum-support moves. With ``--puma-ladder`` the check lists both
   (``counties_outside_ladder``, ``unsupported_counties``) with R2's set
@@ -51,12 +51,12 @@ The check needs memory for the full staging frame, as R2's materialize stage
 does, and runs the engine for the AGI alone (minutes, not R2's full pass).
 
 Exit status 0: no county at risk and none that R2 refuses. Exit status 2: at
-least one county at risk; the JSON report (``--out``) lists them. Each needs
-a ruling before R2 (drop the county's AGI row with a receipt, or give it a
-declared SOI cell). Exit status 3: R2 would refuse the run in materialize
-whatever the drop flag (a county outside the ladder, or without a
-household-universe record); fix the staging file or the ladder first. Status
-3 takes precedence over 2 and needs ``--puma-ladder``.
+least one county at risk; the JSON report (``--out``) lists them. R2 would
+refuse each one's empty AGI row after its engine pass, so each needs a fix
+before R2 runs. Exit status 3: R2 would refuse the run in materialize before
+its engine pass (a county outside the ladder, or without a household-universe
+record); fix the staging file or the ladder first. Status 3 takes precedence
+over 2 and needs ``--puma-ladder``.
 
 Usage::
 
@@ -100,7 +100,7 @@ ISSUE = "microcosm#922"
 #: The engine variable whose household sum R2's state SOI AGI row stores.
 AGI_VARIABLE = "adjusted_gross_income"
 EXIT_AT_RISK = 2
-#: R2's ``check_support`` refuses the run whatever the drop flag.
+#: R2's ``check_support`` refuses the run, before its engine pass.
 EXIT_R2_REFUSES = 3
 #: Households per engine chunk; the AGI closure alone is light.
 DEFAULT_HH_CHUNK = 100_000
@@ -462,7 +462,7 @@ def ladder_support(
 
 
 def exit_status(report: Mapping[str, Any]) -> int:
-    """3 when R2 refuses whatever the drop flag, else 2 when a county is at risk."""
+    """3 when R2's ``check_support`` refuses the run, else 2 when one is at risk."""
 
     if report.get("counties_outside_ladder") or report.get("unsupported_counties"):
         return EXIT_R2_REFUSES
