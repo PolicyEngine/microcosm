@@ -97,26 +97,36 @@ def test_the_rule_states_the_method_card_proposal() -> None:
 
 
 def test_entity_names_cover_exactly_the_declared_schema() -> None:
-    # The condition build_transport_registry checks (transport/registry.py),
-    # restated on the committed files.
+    # The conditions build_transport_registry puts on entity_names
+    # (transport/registry.py), restated on the committed files: the schema's
+    # entities exactly, each name a non-empty string, all names distinct.
     schema, nesting = transport_entity_schema(_declaration())
     names = json.loads((_BE / "axiom_rules_bindings.json").read_text())["entity_names"]
     assert set(names) == set(schema.entities) == {"person", "household", ENTITY}
     assert dict(nesting) == {ENTITY: "household"}
+    assert all(isinstance(name, str) and name for name in names.values())
     assert len(set(names.values())) == len(names)
     assert names[ENTITY] == ENGINE
     assert "Child" not in names.values()
 
 
 def test_the_engine_name_carries_no_input_and_no_binding() -> None:
-    # The committed input surface stands in for the rule tree: no module in
-    # it reads an input on this entity, and no binding lands on it.
+    # What the committed files can show: no concept binding, no person-role
+    # entity, no transport binding row or view, and no root input recorded in
+    # the committed input surface names this entity. Rule outputs are not in
+    # these files; that no rulespec-be module declares the entity was read at
+    # the pinned commit, not tested here.
     mapping = axiom_concept_mapping("be")
     surface = load_axiom_input_surface(_SURFACE)
     assert ENGINE not in mapping.entity_correspondence.values()
     assert ENGINE not in mapping.person_role_entities()
     assert all(binding.engine_entity != ENGINE for binding in mapping.bindings)
     assert all(ENGINE not in module.inputs for module in surface.modules.values())
+    rows = json.loads((_BE / "axiom_rules_bindings.json").read_text())["bindings"]
+    assert rows
+    for row in rows:
+        assert row["engine_entity"] != ENGINE
+        assert all(view["logical_entity"] != ENGINE for view in row["views"])
 
 
 def test_a_create_2_node_can_select_the_declaration() -> None:
@@ -144,6 +154,14 @@ def test_a_create_2_node_can_select_the_declaration() -> None:
         validate_transport_activation(stub)
     assert "benefit_unit_rule.json" not in str(after.value)
     assert "unit declarations" not in str(after.value)
+    # Activation reads the node's own declaration, not the file's presence: a
+    # create@2 node with no unit_rule is refused on that gap.
+    broken = copy.deepcopy(stub)
+    del broken["resources"]["transport_graph"]["nodes"][0]["params"]["unit_rule"]
+    with pytest.raises(ValueError, match="not activated") as refused:
+        validate_transport_activation(broken)
+    assert "benefit_unit_rule.json" not in str(refused.value)
+    assert "unit declarations:" in str(refused.value)
 
 
 def test_no_income_default_ties_the_unit_to_another_pull_request() -> None:
@@ -164,7 +182,8 @@ def test_no_income_default_ties_the_unit_to_another_pull_request() -> None:
     # Each leaves the income node to decide whether it sums over the unit or
     # the household, as the declaration's not_expressed note says.
     assert all(
-        "or over the survey household, as that node's declaration decides"
+        "over the family benefit unit that unit_declarations.json declares or "
+        "over the survey household, as that node's declaration decides"
         in entry["reason"]
         for entry in naming
     )
@@ -197,8 +216,21 @@ PEOPLE = [
     (801, 8, 21, 802, 803, NA, 802, "partner"),  # partnered: never a dependent
     (802, 8, 23, 801, NA, NA, 802, "head"),  # the older adult of the couple
     (803, 8, 55, NA, NA, NA, 803, "head"),  # the parent, reference person
+    (901, 9, 30, NA, NA, NA, 901, "head"),
+    (902, 9, 17, NA, NA, NA, 902, "head"),  # a minor parent 2, not 901's partner
+    (903, 9, 1, NA, 901, 902, 901, "dependent_child"),  # follows parent 1
 ]
-REFERENCE = {1: 101, 2: 201, 3: 301, 4: 401, 5: 501, 6: 601, 7: 700, 8: 803}
+REFERENCE = {
+    1: 101,
+    2: 201,
+    3: 301,
+    4: 401,
+    5: 501,
+    6: 601,
+    7: 700,
+    8: 803,
+    9: 901,
+}
 
 
 def test_the_declaration_builds_the_stated_units() -> None:
