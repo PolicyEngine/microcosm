@@ -808,6 +808,70 @@ def test_a_build_folder_donor_is_named_by_its_build_in_the_limitations(
     assert "social_security_cps_reporters_erased_inherited" not in by_id()
 
 
+def test_a_national_donor_outside_the_build_o_lineage_needs_its_review(
+    monkeypatch,
+) -> None:
+    """A US national build in a build folder is not of the Build O lineage
+    the inherited limitations describe: staging from one is refused until a
+    review lists the limitations that hold for it, and only those stay
+    (microcosm#1661)."""
+
+    module = _load_tool_module()
+    build = "populace-us-2024-20261121T010000Z-d596fcb60"
+    staging_summary = {
+        "base": {
+            "donor_release": {
+                "repo_id": "policyengine/populace-us",
+                "release": "microcosm-us-2024-national",
+                "build": build,
+            }
+        },
+        "reviewed_limitations": [],
+    }
+    diagnostics = {"effective_sample_size": 1.0, "ess_fraction": 0.5}
+    with pytest.raises(SystemExit, match="REVIEWED_DONOR_LINEAGES"):
+        module._require_reviewed_donor_lineage(staging_summary)
+
+    monkeypatch.setattr(
+        module,
+        "REVIEWED_DONOR_LINEAGES",
+        {build: frozenset({"miscellaneous_income_loss_side_donor_defect"})},
+    )
+    module._require_reviewed_donor_lineage(staging_summary)
+    ids = {
+        item["id"]
+        for item in module.finalize_reviewed_limitations(
+            staging_summary, diagnostics, {}
+        )
+    }
+    assert ids & set(module.BUILD_O_LINEAGE_LIMITATIONS) == {
+        "miscellaneous_income_loss_side_donor_defect"
+    }
+
+
+def test_a_build_o_lineage_donor_keeps_every_inherited_limitation() -> None:
+    module = _load_tool_module()
+    assert module.REVIEWED_DONOR_LINEAGES == {}
+    staging_summary = {
+        "base": {
+            "donor_release": {
+                "repo_id": "policyengine/populace-us",
+                "release": "microcosm-us-2024-receipt-donor",
+                "build": "populace-us-2024-spm-receipts-20261201",
+            }
+        },
+        "reviewed_limitations": [],
+    }
+    module._require_reviewed_donor_lineage(staging_summary)
+    ids = {
+        item["id"]
+        for item in module.finalize_reviewed_limitations(
+            staging_summary, {"effective_sample_size": 1.0, "ess_fraction": 0.5}, {}
+        )
+    }
+    assert set(module.BUILD_O_LINEAGE_LIMITATIONS) <= ids
+
+
 def test_the_acs_wic_assumption_is_disclosed_exactly_when_it_was_applied() -> None:
     """microcosm#1263: the limitation follows the consumer export's receipt."""
 

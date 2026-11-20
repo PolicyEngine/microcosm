@@ -122,9 +122,11 @@ import sys
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -233,9 +235,11 @@ from microcosm.data.build_folder_manifests import (
     rewrite_release_dir,
 )
 from microcosm.data.contract import (
+    US_EVIDENCE_RELEASE_ID,
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
     US_LOCAL_RELEASE_ID,
+    US_NATIONAL_RELEASE_ID,
     US_RELEASE_DATASET_FILES,
     US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
@@ -2408,6 +2412,7 @@ def do_materialize(args) -> None:
     _require_local_ssi_disability(staging_summary)
     _require_local_receipt_anchors(staging_summary)
     _require_staging_engine(staging_summary)
+    _require_reviewed_donor_lineage(staging_summary)
     # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
     # and compile path, before the staging frame is loaded.
     ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
@@ -4196,6 +4201,53 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
 #: release discloses the inherited erasure.
 DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
 
+#: The inherited limitations ``finalize_reviewed_limitations`` writes about
+#: the donor. Each describes the Build O lineage (the certified Build O sparse
+#: release and the enrichments built on it): its aged SSI take-up, its
+#: miscellaneous income loss side, its tip-return count, its 57,240-household
+#: selection and its Social Security erasure.
+BUILD_O_LINEAGE_LIMITATIONS = (
+    "ssi_aged_band_collapse_inherited",
+    "miscellaneous_income_loss_side_donor_defect",
+    "tips_return_count_carrier_deficit_inherited",
+    "donor_sparse_selection_training_set",
+    "social_security_cps_reporters_erased_inherited",
+)
+#: Donor builds outside the Build O lineage, each with the
+#: :data:`BUILD_O_LINEAGE_LIMITATIONS` that a review of its own evidence found
+#: to hold for it; the others leave its releases' register (microcosm#1661).
+REVIEWED_DONOR_LINEAGES: Mapping[str, frozenset[str]] = MappingProxyType({})
+#: A national build published into a build folder of these releases (since
+#: microcosm#1570 and #1585 item 11) is not of the Build O lineage, so a
+#: staging from one is refused until it has a :data:`REVIEWED_DONOR_LINEAGES`
+#: entry.
+_REVIEWED_LINEAGE_DONOR_RELEASES = frozenset(
+    {US_NATIONAL_RELEASE_ID, US_EVIDENCE_RELEASE_ID}
+)
+
+
+def _require_reviewed_donor_lineage(staging_summary: dict) -> None:
+    """Refuse a national donor whose inherited limitations nobody reviewed.
+
+    A release's register says what its donor carries. Without this, a donor
+    of another lineage would publish the Build O lineage's limitations as its
+    own (microcosm#1661).
+    """
+
+    donor = (staging_summary.get("base") or {}).get("donor_release") or {}
+    if donor.get("release") not in _REVIEWED_LINEAGE_DONOR_RELEASES:
+        return
+    build = _donor_build_id(donor)
+    if build not in REVIEWED_DONOR_LINEAGES:
+        raise SystemExit(
+            f"The staging's donor is national build {build!r} of "
+            f"{donor.get('release')!r}, which is not of the Build O lineage "
+            "that the release's inherited limitations "
+            f"({', '.join(BUILD_O_LINEAGE_LIMITATIONS)}) describe. Review each "
+            "against the donor's own evidence and add the build to "
+            "REVIEWED_DONOR_LINEAGES with those that hold (microcosm#1661)."
+        )
+
 
 def _donor_build_id(donor_release: dict) -> str | None:
     """The donor build's ID from either reference form (microcosm#1570).
@@ -4890,6 +4942,15 @@ def finalize_reviewed_limitations(
     acs_wic = _acs_wic_takeup_limitation(consumer_export)
     if acs_wic is not None:
         limitations.append(acs_wic)
+    # A donor outside the Build O lineage keeps only the inherited
+    # limitations its review found to hold (microcosm#1661).
+    reviewed = REVIEWED_DONOR_LINEAGES.get(_donor_build_id(donor_release))
+    if reviewed is not None:
+        limitations = [
+            item
+            for item in limitations
+            if item["id"] not in BUILD_O_LINEAGE_LIMITATIONS or item["id"] in reviewed
+        ]
     deduped: dict[str, dict] = {}
     for limitation in limitations:
         deduped[limitation["id"]] = limitation
@@ -5771,6 +5832,7 @@ def do_finalize(args) -> None:
     from microcosm.calibrate import TargetRegistry
 
     staging_summary = _load_json(_staging_summary_path(args))
+    _require_reviewed_donor_lineage(staging_summary)
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     if not diagnostics:
         raise SystemExit(
