@@ -126,7 +126,9 @@ def test_the_engine_name_carries_no_input_and_no_binding() -> None:
     assert rows
     for row in rows:
         assert row["engine_entity"] != ENGINE
-        assert all(view["logical_entity"] != ENGINE for view in row["views"])
+        # The registry accepts a row with no views.
+        views = row.get("views", ())
+        assert all(view["logical_entity"] != ENGINE for view in views)
 
 
 def test_a_create_2_node_can_select_the_declaration() -> None:
@@ -162,6 +164,13 @@ def test_a_create_2_node_can_select_the_declaration() -> None:
         validate_transport_activation(broken)
     assert "benefit_unit_rule.json" not in str(refused.value)
     assert "unit declarations:" in str(refused.value)
+    # A selected declaration that is present but fails the parser is refused
+    # on the declaration itself, so activation parses what the node selects.
+    unparsed = copy.deepcopy(stub)
+    unparsed["resources"]["unit_declarations"]["format"] = "microcosm.unit_rule.v0"
+    with pytest.raises(ValueError, match="not activated") as invalid:
+        validate_transport_activation(unparsed)
+    assert "unit declarations: Declared units must declare format" in str(invalid.value)
 
 
 def test_no_income_default_ties_the_unit_to_another_pull_request() -> None:
