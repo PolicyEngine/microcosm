@@ -162,8 +162,10 @@ differences from the final run:
   the donor's `REVIEWED_DONOR_LINEAGES` entry, and finalize writes the Build
   O limitations.
 - The preflight refuses `donor_release` null. Any other refusal is a finding.
-- Until the register is re-reviewed, finalize refuses the engine mismatch.
-  Materialize, calibrate and qa still run.
+- Until the re-reviewed register is in the checkout, finalize refuses the
+  engine mismatch. It writes `gate_summary.json` first, so read the other
+  gates there. Package and the preflight then need a run whose calibrate ran
+  at a commit with the register, since package refuses another commit.
 
 The PUF-derived donor stays on the build laptop until it is published, so
 the rehearsal runs there.
