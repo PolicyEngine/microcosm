@@ -63,12 +63,22 @@ refused (should-fix 5); written zeros counted on a nullable numeric column
 refused at R1 (nit 1); and tests that pin R11 between R1 and R2 in the
 clause order, with a real location clone and a repeated ``SERIALNO``
 reporting their earlier clause (nit 2).
+
+Round 2 adds: complex and temporal ids, lineage values and ``RELSHIPP``
+codes refused before any conversion to real numbers, and a timedelta key
+in staging's lineage refused (should-fix 1); R6's release-written nulls
+limited to None and a float NaN, a float32 column and a numpy float32 NaN
+included, with ``pd.NaT`` and numpy's ``NaT`` refused (nit 1); the lineage
+diagnostic ahead of a missing weight (nit 2); an ACS SPM unit merger on
+both paths and a CPS crossing at R1 (nit 3); and a lone CPS ``pd.NA`` at
+R6 and an ACS ``pd.NA`` beside written zeros (nit 4).
 """
 
 from __future__ import annotations
 
 import ast
 import dataclasses
+import datetime
 import hashlib
 import inspect
 import json
@@ -997,6 +1007,26 @@ class TestProvenanceRewrite:
                 staging_lineage=staging_lineage(population),
             )
 
+    def test_the_lineage_refusal_precedes_a_missing_weight(self, population) -> None:
+        # PR #1685 review r2, nit 2: the serial swap plus a keyed weight map
+        # missing one household. P7 compares the lineage before any weight is
+        # looked up, so its moved-pair diagnostic comes first; a keyed
+        # comparison delayed past the weight lookup would report the missing
+        # weight instead.
+        acs = _serialno_swaps_between_households(population)["acs"]
+        before = population.acs_tables["household"]["SERIALNO"]
+        swapped = acs["household"]["SERIALNO"].ne(before).to_numpy()
+        traded = {selection.acs_unit_key(serial) for serial in before[swapped]}
+        weights = population.keyed_acs_household_weights
+        dropped = next(key for key in weights.index if key not in traded)
+        weights = weights.drop(dropped)
+        assert len(weights) == len(acs["household"]) - 1
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape("0 extra (such as []), 4 moved (such as ["),
+        ):
+            _rewrite(population, {"acs": acs, "acs_weights": weights})
+
     def test_inputs_are_not_mutated(self, population) -> None:
         cps = {entity: table.copy() for entity, table in population.cps_tables.items()}
         acs = {entity: table.copy() for entity, table in population.acs_tables.items()}
@@ -1587,6 +1617,17 @@ def _staging_key_malformed(p):
     return {"lineage": {**staging_lineage(p), "2024HU0000001": ("2024HU0000001", 1)}}
 
 
+def _staging_key_timedelta(p):
+    # PR #1685 review r2, should-fix 1, on staging's lineage: numpy derives
+    # timedelta64 from signedinteger, so int() read this key as the native
+    # ids it replaces and the lineage matched.
+    lineage = staging_lineage(p)
+    first = min(lineage)
+    pair = lineage.pop(first)
+    lineage[tuple(np.timedelta64(part, "ns") for part in first)] = pair
+    return {"lineage": lineage}
+
+
 def _acs_tax_unit_spans_households(p):
     # PR #1685 review, blocking 3: one ACS person joins a tax unit of another
     # household. Its own tax unit keeps a member, so every id resolves (P6b)
@@ -1635,6 +1676,42 @@ def _acs_household_holds_two_spm_units(p):
     extra["spm_unit_source_id"] += shift
     acs["spm_unit"] = pd.concat([spm_unit, extra], ignore_index=True)
     _set(person, row, "person_spm_unit_id", int(extra["spm_unit_id"].iloc[0]))
+    return {"acs": acs}
+
+
+def _merge_acs_spm_units(
+    person: pd.DataFrame, spm_unit: pd.DataFrame, acs: np.ndarray
+) -> pd.DataFrame:
+    """Move every person of the first ACS household into the second's SPM unit.
+
+    Edits ``person`` in place and returns ``spm_unit`` without the emptied
+    unit's row, so every membership still resolves and every unit holds a
+    person. Each household still holds one SPM unit, so only the forward
+    check (no unit holds persons of two households) sees the merger.
+    """
+
+    households = person.loc[acs, "person_household_id"].unique()
+    moved = acs & person["person_household_id"].eq(households[0]).to_numpy()
+    kept = acs & person["person_household_id"].eq(households[1]).to_numpy()
+    emptied = person.loc[moved, "person_spm_unit_id"].unique()
+    assert len(emptied) == 1
+    person.loc[moved, "person_spm_unit_id"] = person.loc[
+        kept, "person_spm_unit_id"
+    ].iloc[0]
+    return spm_unit.loc[spm_unit["spm_unit_id"].ne(emptied[0]).to_numpy()].reset_index(
+        drop=True
+    )
+
+
+def _acs_spm_units_merge(p):
+    # PR #1685 review r2, nit 3: one ACS household's persons join another
+    # household's SPM unit; the reverse check (one SPM unit per household)
+    # passes it.
+    acs = _copies(p, "acs")
+    person = acs["person"]
+    acs["spm_unit"] = _merge_acs_spm_units(
+        person, acs["spm_unit"], np.ones(len(person), dtype=bool)
+    )
     return {"acs": acs}
 
 
@@ -1787,6 +1864,10 @@ _REFUSALS = [
         "ACS lineage does not survive: staging's lineage has the key "
         "'2024HU0000001', not a native (household id, person id) pair of integers",
     ),
+    (
+        _staging_key_timedelta,
+        "ACS lineage does not survive: staging's lineage has the key (np.timedelta64(",
+    ),
     # P6c: group units nest in households; ACS SPM units are the households
     # (review blocking 3).
     (
@@ -1803,6 +1884,11 @@ _REFUSALS = [
         _acs_household_holds_two_spm_units,
         "ACS SPM units must be the households (staging's one-SPM-unit-per-"
         "household partition): 1 ACS household(s) hold more than one SPM unit",
+    ),
+    (
+        _acs_spm_units_merge,
+        "Group units do not nest in households: 1 ACS spm_unit unit(s) hold "
+        "persons of more than one household",
     ),
     # Each household's weight found by its key, after P7 checked SERIALNO.
     (
@@ -1878,6 +1964,132 @@ def test_union_form_refuses_a_fractional_sporder(population) -> None:
         ),
     ):
         _rewrite(union, {"acs": acs, "lineage": staging_lineage(population)})
+
+
+def _with_source_year(person: pd.DataFrame, form: str) -> None:
+    """``source_year`` held as complex or temporal data, each value's real part 2024."""
+
+    years = person["source_year"]
+    if form == "complex128 column":
+        values = years.astype(np.complex128)
+        values.iloc[0] = complex(int(years.iloc[0]), 1)
+        person["source_year"] = values
+    elif form == "complex in object":
+        _set(person, 0, "source_year", complex(int(years.iloc[0]), 1))
+    elif form == "timedelta64 column":
+        person["source_year"] = pd.to_timedelta(years.to_numpy(), unit="ns")
+    else:
+        # The last person, not the first: pd.to_numeric reads a leading
+        # numpy timedelta64 in an object column as NaN but a later one as
+        # its count of units.
+        _set(person, -1, "source_year", np.timedelta64(int(years.iloc[-1]), "ns"))
+
+
+_COMPLEX_OR_TEMPORAL_FORMS = {
+    "complex128 column": "it holds complex128 values, not integers",
+    "complex in object": "it holds 1 complex or temporal value(s), such as [(2024+1j)]",
+    "timedelta64 column": "it holds timedelta64[ns] values, not integers",
+    "numpy timedelta64 in object": (
+        "it holds 1 complex or temporal value(s), such as [np.timedelta64(2024,"
+    ),
+}
+
+
+@pytest.mark.parametrize("form", list(_COMPLEX_OR_TEMPORAL_FORMS))
+def test_a_complex_or_temporal_source_year_refuses(population, form) -> None:
+    # PR #1685 review r2, should-fix 1: pd.to_numeric keeps 2024+1j complex
+    # and the float64 conversion after it drops the imaginary part, and it
+    # reads a timedelta64 of 2024 units as 2024, as a column or as a value
+    # on a later row of an object column, so P7 saw 2024 and passed the
+    # frame. On the first row of an object column it read as NaN and
+    # refused as not an integer, by its position alone.
+    acs = _copies(population, "acs")
+    _with_source_year(acs["person"], form)
+    if "object" in form:
+        assert acs["person"]["source_year"].dtype == np.dtype(object)
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            "ACS lineage does not survive: every ACS person needs an integral "
+            f"source_year: {_COMPLEX_OR_TEMPORAL_FORMS[form]}"
+        ),
+    ):
+        _rewrite(population, {"acs": acs})
+
+
+@pytest.mark.parametrize(
+    ("values", "found"),
+    [
+        (pd.Series(np.array([7 + 0j, 7 + 1j])), "complex128 values"),
+        (pd.Series(np.array([7 + 0j], dtype=np.complex64)), "complex64 values"),
+        (pd.Series([7, complex(7, 0)], dtype=object), "1 complex or temporal value(s)"),
+        (
+            pd.Series([7, np.complex64(7)], dtype=object),
+            "1 complex or temporal value(s)",
+        ),
+        (pd.Series(pd.to_datetime(["2024-01-01"])), "datetime64["),
+        (pd.Series(pd.to_datetime(["2024-01-01"]).tz_localize("UTC")), "datetime64["),
+        (pd.Series(pd.to_timedelta([7], unit="ns")), "timedelta64[ns] values"),
+        (
+            pd.Series(pd.period_range("2024", periods=1, freq="Y")),
+            "period[Y-DEC] values",
+        ),
+        (
+            pd.Series([7, pd.Timestamp(7)], dtype=object),
+            "1 complex or temporal value(s)",
+        ),
+        (
+            pd.Series([7, pd.Timedelta(7)], dtype=object),
+            "1 complex or temporal value(s)",
+        ),
+        (
+            pd.Series([7, np.datetime64(7, "ns")], dtype=object),
+            "1 complex or temporal value(s)",
+        ),
+        (
+            pd.Series([7, np.timedelta64(7, "ns")], dtype=object),
+            "1 complex or temporal value(s)",
+        ),
+        (
+            pd.Series([7, pd.Period("2024", freq="Y")], dtype=object),
+            "1 complex or temporal value(s)",
+        ),
+        (
+            pd.Series([7, datetime.date(2024, 1, 1)], dtype=object),
+            "1 complex or temporal value(s)",
+        ),
+        (pd.Series([7 + 1j], dtype="category"), "categories of complex128 values"),
+    ],
+    ids=lambda value: value if isinstance(value, str) else None,
+)
+def test_integral_ids_refuse_complex_and_temporal_data(values, found) -> None:
+    # Review r2, should-fix 1: the shared id parser refuses each before
+    # pd.to_numeric and the float64 conversion read it. Before the fix the
+    # complex cases, the datetime64 and timedelta64 columns, the object
+    # column holding np.timedelta64 and the category passed as numbers; the
+    # period column and the object columns holding a Timestamp, Timedelta,
+    # np.datetime64, Period or date refused as "not integers".
+    with pytest.raises(
+        OnePopulationContractError, match=re.escape(f"ids: it holds {found}")
+    ):
+        contract._integral_ids(values, refusal="ids")
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pd.Series([7, 8]),
+        pd.Series([7.0, 8.0]),
+        pd.Series([7, 8], dtype="Int64"),
+        pd.Series([7, "8"], dtype=object),
+        pd.Series([7, 8], dtype="category"),
+    ],
+    ids=["int64", "integral float64", "Int64", "object", "category"],
+)
+def test_integral_ids_still_read_real_ids(values) -> None:
+    np.testing.assert_array_equal(
+        contract._integral_ids(values, refusal="ids"), np.array([7, 8])
+    )
 
 
 def test_a_cross_grain_channel_mismatch_fails_the_validator(population) -> None:
@@ -2327,24 +2539,142 @@ class TestRequireOnePopulation:
 
     @pytest.mark.parametrize(
         ("null", "dtype", "filled"),
-        [(None, object, True), (np.nan, object, True), (np.nan, "float64", 1.0)],
-        ids=["none", "nan in object", "nan in float64"],
+        [
+            (None, object, True),
+            (np.nan, object, True),
+            (np.nan, "float64", 1.0),
+            (np.nan, "float32", 1.0),
+            (np.float32("nan"), object, True),
+        ],
+        ids=[
+            "none",
+            "nan in object",
+            "nan in float64",
+            "nan in float32",
+            "numpy float32 nan in object",
+        ],
     )
     def test_a_release_written_null_may_be_none_or_nan(
         self, population, assembled, null, dtype, filled
     ) -> None:
         # PR #1685 review, blocking 1: the release's first engine pass loads
         # a boolean None as False and a NaN as True (numpy's casts), so both
-        # stay allowed in an exempt column; only pd.NA refuses (next test).
+        # stay allowed in an exempt column; pd.NA and every other null refuse
+        # (the tests below). Review r2: a float32 column's NaN passes by its
+        # dtype, and a numpy float32 NaN in an object column, which is not a
+        # Python float, passes as a float NaN.
         person = assembled.table("person")
         acs = _origin_mask(person, "person", "acs")
         values = pd.Series(
             [null if row else filled for row in acs], index=person.index, dtype=dtype
         )
+        if dtype is object:
+            assert type(values[acs].iloc[0]) is type(null)
         _require(
             population,
             _with_column(assembled, "person", "takes_up_ssi_if_eligible", values),
         )
+
+    @pytest.mark.parametrize("dtype", ["Float32", "Float64"])
+    def test_a_nullable_float_nan_that_is_not_pd_na_passes(
+        self, population, assembled, dtype
+    ) -> None:
+        # Review r2, the lead's call on nit 1: a nullable Float column can
+        # hold a NaN unmasked, which pandas does not count as null, so R6
+        # passes it; only the column's masked null, pd.NA, refuses.
+        person = assembled.table("person")
+        acs = _origin_mask(person, "person", "acs")
+        values = pd.Series(
+            pd.arrays.FloatingArray(
+                np.where(acs, np.nan, 1.0).astype(dtype.lower()),
+                np.zeros(len(acs), dtype=bool),
+            ),
+            index=person.index,
+        )
+        assert str(values.dtype) == dtype
+        assert not values.isna().any() and np.isnan(values.to_numpy()[acs]).all()
+        _require(
+            population,
+            _with_column(assembled, "person", "takes_up_ssi_if_eligible", values),
+        )
+
+    @pytest.mark.parametrize(
+        ("null", "origin", "dtype", "filled"),
+        [
+            (pd.NaT, "acs", object, True),
+            (np.datetime64("NaT"), "cps", object, True),
+            (np.timedelta64("NaT"), "acs", object, True),
+            (
+                np.datetime64("NaT", "ns"),
+                "acs",
+                "datetime64[ns]",
+                np.datetime64(1, "ns"),
+            ),
+            (
+                np.timedelta64("NaT", "ns"),
+                "acs",
+                "timedelta64[ns]",
+                np.timedelta64(1, "ns"),
+            ),
+        ],
+        ids=[
+            "pd.NaT on ACS rows",
+            "numpy NaT on a CPS row",
+            "timedelta NaT on ACS rows",
+            "datetime64 column",
+            "timedelta64 column",
+        ],
+    )
+    def test_a_null_other_than_none_or_nan_refuses(
+        self, population, assembled, null, origin, dtype, filled
+    ) -> None:
+        # Review r2, nit 1: R6 lets a release-written column be null only as
+        # None or a float NaN. Pandas also counts pd.NaT and numpy's NaT as
+        # null; R6 used to refuse only pd.NA, so they passed. They refuse on
+        # either origin, in an object column or in a datetime64 or
+        # timedelta64 column, whose only null is NaT.
+        person = assembled.table("person")
+        rows = _origin_mask(person, "person", origin)
+        if origin == "cps":
+            rows = np.arange(len(person)) == int(np.flatnonzero(rows)[0])
+        values = pd.Series(
+            [null if row else filled for row in rows], index=person.index, dtype=dtype
+        )
+        assert values.dtype == np.dtype(dtype)
+        assert int(values.isna().sum()) == int(rows.sum()) > 0
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "A null other than None or NaN in a release-written input: "
+                f"{{'person.takes_up_ssi_if_eligible': {int(rows.sum())}}}"
+            ),
+        ):
+            _require(
+                population,
+                _with_column(assembled, "person", "takes_up_ssi_if_eligible", values),
+            )
+
+    def test_a_lone_pd_na_on_a_cps_row_refuses(self, population, assembled) -> None:
+        # Review r2, nit 4: R6 reads every row of a release-written column,
+        # not only ACS rows; an ACS-only scan would pass this frame.
+        person = assembled.table("person")
+        row = _row(person, "person", "cps")
+        values = pd.array([True] * len(person), dtype="boolean")
+        values[row] = pd.NA
+        frame = _with_column(
+            assembled,
+            "person",
+            "takes_up_ssi_if_eligible",
+            pd.Series(values, index=person.index),
+        )
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                "A pd.NA in a release-written input: "
+                "{'person.takes_up_ssi_if_eligible': 1}"
+            ),
+        ):
+            _require(population, frame)
 
     @pytest.mark.parametrize(
         ("column", "dtype", "filled"),
@@ -3105,6 +3435,21 @@ def _p6c_acs_household_holds_two_spm_units(p, f):
     )
 
 
+def _p6c_acs_spm_units_merge(p, f):
+    # Review r2, nit 3, on the frame R1 reads: see _acs_spm_units_merge, with
+    # the clone-0 record recounted so the validator passes the lost unit.
+    tables = _tables(f)
+    person = tables["person"]
+    tables["spm_unit"] = _merge_acs_spm_units(
+        person, tables["spm_unit"], _origin_mask(person, "person", "acs")
+    )
+    frame = _rebuild(f, tables)
+    return (
+        _rebuild(frame, _tables(frame), metadata=clone_zero_assembly_record(frame)),
+        {},
+    )
+
+
 def _r11_location_clone_column(p, f):
     return _with_column(f, "household", "household_location_clone_index", 0), {}
 
@@ -3475,6 +3820,11 @@ _FRAME_REFUSALS = [
         "ACS SPM units must be the households (staging's one-SPM-unit-per-"
         "household partition): 1 ACS household(s) hold more than one SPM unit",
     ),
+    (
+        _p6c_acs_spm_units_merge,
+        "Group units do not nest in households: 1 ACS spm_unit unit(s) hold "
+        "persons of more than one household",
+    ),
     # R11.
     (_r11_location_clone_column, "A household with more than one location"),
     # R2.
@@ -3637,6 +3987,34 @@ def test_each_clause_refuses_with_its_own_message(
 def test_frame_refusal_messages_are_distinct() -> None:
     messages = [message for _, message in _FRAME_REFUSALS]
     assert len(set(messages)) == len(messages)
+
+
+@pytest.mark.parametrize("group", ["tax_unit", "spm_unit", "family", "marital_unit"])
+def test_a_cps_group_unit_across_households_refuses_at_r1(
+    population, assembled, group
+) -> None:
+    # PR #1685 review r2, nit 3: R1 runs P6c on both origins. Its other P6c
+    # fixtures are all ACS, so a call on the ACS rows alone would pass a CPS
+    # crossing made after assembly. As _cps_unit_spans_households, on the
+    # frame R1 reads.
+    tables = _tables(assembled)
+    person = tables["person"]
+    column = f"person_{group}_id"
+    native = _origin_mask(person, "person", "cps") & (
+        person["person_support_clone_index"].to_numpy() == 0
+    )
+    row = int(np.flatnonzero(native & (_household_sizes(person, column) > 1))[0])
+    household = person["person_household_id"].iloc[row]
+    elsewhere = native & person["person_household_id"].ne(household).to_numpy()
+    _set(person, row, column, person[column].iloc[int(np.flatnonzero(elsewhere)[0])])
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            f"Group units do not nest in households: 1 CPS {group} unit(s) hold "
+            "persons of more than one household"
+        ),
+    ):
+        _require(population, _rebuild(assembled, tables))
 
 
 def test_every_clause_has_a_corruption() -> None:
@@ -3892,6 +4270,31 @@ def _swap_acs_roles(frame: Frame) -> Frame:
     values = role.copy()
     values[[holder, other]] = values[[other, holder]]
     person[SPM_ROLE] = values
+    return _rebuild(frame, tables)
+
+
+def _relshipp_as(frame: Frame, form: str) -> Frame:
+    """The first ACS person's ``RELSHIPP`` as complex or temporal data.
+
+    Each value keeps its code as the real part (or the count of time units),
+    so a conversion to real numbers reads the person's own code and role
+    (PR #1685 review r2, should-fix 1).
+    """
+
+    tables = _tables(frame)
+    person = tables["person"]
+    row = _row(person, "person", "acs")
+    code = int(person["RELSHIPP"].iloc[row])
+    if form == "complex128 column":
+        values = person["RELSHIPP"].astype(np.complex128)
+        values.iloc[row] = complex(code, 1)
+        person["RELSHIPP"] = values
+    elif form == "complex in object":
+        _set(person, row, "RELSHIPP", complex(code, 1))
+    elif form == "timedelta64 column":
+        person["RELSHIPP"] = pd.to_timedelta(person["RELSHIPP"].to_numpy(), unit="ns")
+    else:
+        _set(person, row, "RELSHIPP", np.timedelta64(code, "ns"))
     return _rebuild(frame, tables)
 
 
@@ -4254,6 +4657,31 @@ _ROLE_RECORD_REFUSALS = [
         "The ACS persons' SPM roles are not staging's RELSHIPP rule's: 1 ACS "
         "person(s) hold a blank or off-domain RELSHIPP",
     ),
+    # Review r2, should-fix 1: each keeps the person's code as its real part
+    # or count of units. The complex forms and the timedelta64 column passed,
+    # read as the person's own code; one numpy timedelta64 in an object
+    # column already refused as off-domain, and now gets this message.
+    *(
+        (
+            f"relshipp {form}",
+            lambda f, form=form: (
+                cps_role_record(f),
+                staging_role_receipt(f),
+                _relshipp_as(f, form),
+            ),
+            "The ACS persons' SPM roles are not staging's RELSHIPP rule's: RELSHIPP "
+            f"on ACS rows holds {found}",
+        )
+        for form, found in (
+            ("complex128 column", "complex128 values, not integer codes"),
+            ("complex in object", "1 complex or temporal value(s), such as [("),
+            ("timedelta64 column", "timedelta64[ns] values, not integer codes"),
+            (
+                "numpy timedelta64 in object",
+                "1 complex or temporal value(s), such as [np.timedelta64(",
+            ),
+        )
+    ),
 ]
 
 
@@ -4538,19 +4966,22 @@ class TestAbsences:
     def test_zero_written_on_a_nullable_numeric_column(self, assembled) -> None:
         # Review should-fix 6: a Float64 origin-native amount, pd.NA on CPS
         # rows and zeros on two ACS rows. eq(0) on it is a nullable boolean,
-        # which used to reach the weight lookup as an object array.
+        # which used to reach the weight lookup as an object array. Review r2,
+        # nit 4: a third ACS row holds pd.NA, so a mask that read a null as a
+        # zero would count three ACS rows, not two.
         column = "acs_social_security_income"
         frame = _acs_only(assembled, "person", column, 120.0)
         tables = _tables(frame)
         person = tables["person"]
         acs = _origin_mask(person, "person", "acs")
         values = person[column].astype("Float64")
-        zeros = np.flatnonzero(acs)[:2]
+        zeros, null = np.flatnonzero(acs)[:2], np.flatnonzero(acs)[2]
         values.iloc[zeros] = 0.0
+        values.iloc[null] = pd.NA
         person[column] = values
         frame = _rebuild(frame, tables)
         assert str(frame.table("person")[column].dtype) == "Float64"
-        assert int(frame.table("person")[column].isna().sum()) == int((~acs).sum())
+        assert int(frame.table("person")[column].isna().sum()) == int((~acs).sum()) + 1
         record = _absences(frame, zero_written={column: "receipt"})
         entry = _keyed(record)[("person", column, "zero written", "ACS")]
         mask = np.zeros(len(person), dtype=bool)

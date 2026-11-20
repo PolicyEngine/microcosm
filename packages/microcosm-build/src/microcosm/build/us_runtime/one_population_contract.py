@@ -93,12 +93,13 @@ What the later d2283 PRs owe this library:
   parent's producer; and records the operation, its parameters and the
   ``us/source_stages.json`` sha256 in its manifest. Nothing after it may
   write the rule's inputs or outputs. A null PR 4 leaves in an exempt
-  column must be NaN or None, never ``pd.NA``. The first engine pass
-  cannot load a ``pd.NA`` in the twelve flags it reads before their
-  producers write them; the other six (the four SCF amounts,
+  column must be None or a float NaN, never ``pd.NA``, ``pd.NaT``, numpy's
+  ``NaT`` or any other null. The first engine pass cannot load a
+  ``pd.NA`` in the twelve flags it reads before their producers write
+  them; the other six (the four SCF amounts,
   ``meets_ssi_disability_criteria`` and ``takes_up_head_start_if_eligible``)
   have producers that run before that pass and rewrite a non-finite
-  value. R6 refuses a ``pd.NA`` in all 18 as a fail-closed rule.
+  value. R6 refuses every other null in all 18 as a fail-closed rule.
 - PR 4 writes on ACS rows every raw predictor of
   ``acs_release_predictors._MODEL_PREDICTORS``, all fourteen
   (:data:`RAW_COLUMN_READERS` names each one's readers): ``PEDISDRS``,
@@ -147,8 +148,8 @@ What the later d2283 PRs owe this library:
   lists, the US data owner deciding.
 - PR 4 reads the id dtypes of staging's real pooled tables, then tightens
   :func:`_integral_ids`, which today passes object-held digit strings and
-  booleans through ``pd.to_numeric`` and refuses only a boolean dtype
-  (lead call L5).
+  booleans through ``pd.to_numeric`` and refuses a boolean dtype and
+  complex or temporal data (lead call L5).
 - PR 4 writes both frame records into the population manifest: the spine
   assembly record :func:`to_assembled_provenance` puts under
   ``SPINE_ASSEMBLY_MANIFEST_KEY`` and the record
@@ -184,7 +185,9 @@ The module certifies no numbers: no build calls it yet.
 
 from __future__ import annotations
 
+import datetime
 import json
+import math
 import numbers
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
@@ -778,6 +781,53 @@ def _provenance_columns(entity: str) -> tuple[str, str, str, str, str]:
     )
 
 
+#: Scalar types a real-number read changes: ``pd.to_numeric`` keeps a
+#: complex value complex and the float64 conversion after it drops the
+#: imaginary part (``2024+1j`` reads as 2024), and it reads a
+#: ``numpy.timedelta64`` as its count of time units. ``pd.Timestamp`` and
+#: ``pd.Timedelta`` subclass the ``datetime`` types.
+_COMPLEX_OR_TEMPORAL_VALUES: tuple[type, ...] = (
+    complex,
+    np.complexfloating,
+    datetime.date,
+    datetime.time,
+    datetime.timedelta,
+    np.datetime64,
+    np.timedelta64,
+    pd.Period,
+)
+
+
+def _complex_or_temporal(series: pd.Series) -> str | None:
+    """What complex or temporal data ``series`` holds, or None if none.
+
+    A complex, datetime, timedelta or period dtype; a categorical whose
+    categories hold one; or such a value in an object column (PR #1685
+    review r2, should-fix 1). Each must refuse before any conversion to real
+    numbers, which would drop an imaginary part or turn a time into a count.
+    """
+
+    dtype = series.dtype
+    if isinstance(dtype, pd.CategoricalDtype):
+        found = _complex_or_temporal(pd.Series(dtype.categories))
+        return None if found is None else f"categories of {found}"
+    if getattr(dtype, "kind", None) in ("c", "m", "M") or isinstance(
+        dtype, pd.PeriodDtype
+    ):
+        return f"{dtype} values"
+    if not pd.api.types.is_object_dtype(dtype):
+        return None
+    values = series.to_numpy()
+    if not any(
+        issubclass(kind, _COMPLEX_OR_TEMPORAL_VALUES) for kind in set(map(type, values))
+    ):
+        return None
+    found = [
+        value for value in values if isinstance(value, _COMPLEX_OR_TEMPORAL_VALUES)
+    ]
+    return f"{len(found)} complex or temporal value(s), such as {found[:3]!r}"
+
+
 def _integral_ids(series: pd.Series, *, refusal: str) -> np.ndarray:
     """``series`` as int64 if every value is a non-null integer, else refuse.
 
@@ -785,12 +835,20 @@ def _integral_ids(series: pd.Series, *, refusal: str) -> np.ndarray:
     integral and inside int64 (staging's pooled form turns an origin's
     integer column into float64 when the other origin lacks it). Object
     values go through ``pd.to_numeric``, so digit strings (``"601"``,
-    ``"6.0"``) and booleans held in an object column pass as their numbers;
-    only a boolean dtype refuses.
+    ``"6.0"``) and booleans held in an object column pass as their numbers.
+    A boolean dtype refuses, and so does complex or temporal data, as a
+    dtype or as values, before that conversion reads it
+    (:func:`_complex_or_temporal`).
     """
 
     if pd.api.types.is_bool_dtype(series.dtype):
         raise OnePopulationContractError(f"{refusal}: it holds booleans, not ids.")
+    found = _complex_or_temporal(series)
+    if found is not None:
+        raise OnePopulationContractError(
+            f"{refusal}: it holds {found}, not integers; a conversion to real "
+            "numbers would drop an imaginary part or turn a time into a count."
+        )
     nulls = int(series.isna().sum())
     if nulls:
         raise OnePopulationContractError(f"{refusal}: {nulls} value(s) are null.")
@@ -1256,9 +1314,16 @@ _Lineage = dict[tuple[int, int], tuple[str, int]]
 
 
 def _integral_value(value: object) -> int | None:
-    """``value`` as an int when it is a non-boolean integral number, else None."""
+    """``value`` as an int when it is a non-boolean integral number, else None.
 
-    if isinstance(value, bool | np.bool_) or not isinstance(value, numbers.Real):
+    A ``numpy.timedelta64`` registers as an integer (numpy derives it from
+    ``signedinteger``), and ``int()`` reads it as its count of time units, so
+    it is refused like a boolean (PR #1685 review r2, should-fix 1).
+    """
+
+    if isinstance(value, bool | np.bool_ | np.timedelta64) or not isinstance(
+        value, numbers.Real
+    ):
         return None
     if isinstance(value, numbers.Integral):
         return int(value)
@@ -2277,10 +2342,29 @@ def _null_counts(
     }
 
 
-def _pd_na_rows(values: pd.Series) -> int:
-    """How many of ``values`` are ``pd.NA`` (not None, not NaN)."""
+def _refused_nulls(values: pd.Series) -> tuple[int, list[object]]:
+    """The nulls R6 refuses in a release-written column: ``pd.NA`` and the rest.
 
-    return sum(1 for value in values[values.isna()].tolist() if value is pd.NA)
+    Returns how many values are ``pd.NA`` and the other refused nulls. Only
+    None and a float NaN (a Python float or a numpy floating value) pass, so
+    a numpy float column, whose only null is NaN, passes by its dtype before
+    any value is read. A nullable ``Float32``/``Float64`` column's masked
+    null is ``pd.NA``; a NaN it holds unmasked is not a null to pandas.
+    """
+
+    if isinstance(values.dtype, np.dtype) and values.dtype.kind == "f":
+        return 0, []
+    pd_na, others = 0, []
+    for value in values[values.isna()].tolist():
+        if value is None or (
+            isinstance(value, float | np.floating) and math.isnan(value)
+        ):
+            continue
+        if value is pd.NA:
+            pd_na += 1
+        else:
+            others.append(value)
+    return pd_na, others
 
 
 def _require_filled_inputs(
@@ -2288,14 +2372,18 @@ def _require_filled_inputs(
 ) -> None:
     """R6: no null in an engine input at 2024, outside the release-written list.
 
-    A release-written column may be null only as None or NaN, never as
-    ``pd.NA`` (a pandas nullable dtype's null): policyengine-core 3.32.5
-    loads a boolean None as False and a NaN as True but cannot cast a
-    ``pd.NA``, and the release's first engine pass, the SSI December pass,
-    loads twelve of these columns before their producers write them (PR
-    #1685 review, blocking 1). The refusal covers all of
-    :data:`RELEASE_WRITTEN_INPUTS` present, fail closed: the other six
-    columns' producers (``scf_wealth``, ``ssi_disability_criteria``,
+    A release-written column may be null only as None or a float NaN (a
+    Python float or a numpy floating value, so any null of a numpy float
+    column); every other value pandas counts as null refuses, on any row of
+    either origin. ``pd.NA`` (a pandas nullable dtype's null) refuses with
+    its own message: policyengine-core 3.32.5 loads a boolean None as False
+    and a NaN as True but cannot cast a ``pd.NA``, and the release's first
+    engine pass, the SSI December pass, loads twelve of these columns before
+    their producers write them (PR #1685 review, blocking 1). ``pd.NaT``,
+    numpy's ``NaT`` and any other null refuse too, fail closed: nothing here
+    traces how the release loads them (review r2, nit 1). The rule covers
+    all of :data:`RELEASE_WRITTEN_INPUTS` present: the other six columns'
+    producers (``scf_wealth``, ``ssi_disability_criteria``,
     ``sipp_head_start``) run before that pass and read each value through
     ``pd.to_numeric(...).to_numpy(dtype=np.float64)``, so a ``pd.NA``
     there is probably rewritten like a NaN, and the refusal is stricter
@@ -2310,18 +2398,28 @@ def _require_filled_inputs(
             "always-on producers' outputs in RELEASE_WRITTEN_INPUTS may be left "
             "null."
         )
-    pd_na = {
-        f"{entity}.{column}": rows
+    refused = {
+        f"{entity}.{column}": _refused_nulls(table[column])
         for entity, table in tables.items()
         for column in sorted(set(RELEASE_WRITTEN_INPUTS).intersection(table.columns))
-        if (rows := _pd_na_rows(table[column]))
     }
+    pd_na = {name: rows for name, (rows, _) in refused.items() if rows}
     if pd_na:
         raise OnePopulationContractError(
             f"A pd.NA in a release-written input: {pd_na} (pd.NA rows per column). "
             "A column in RELEASE_WRITTEN_INPUTS may be null only as None or NaN; "
             "the release's first engine pass loads twelve of them before their "
             "producers write them, and policyengine-core cannot cast a pd.NA."
+        )
+    others = {name: values for name, (_, values) in refused.items() if values}
+    if others:
+        counts = {name: len(values) for name, values in others.items()}
+        examples = [values[0] for values in others.values()][:3]
+        raise OnePopulationContractError(
+            f"A null other than None or NaN in a release-written input: {counts} "
+            f"(rows per column), such as {examples!r}. A column in "
+            "RELEASE_WRITTEN_INPUTS may be null only as None or a float NaN; "
+            "pd.NaT, numpy's NaT and any other null refuse."
         )
 
 
@@ -2580,7 +2678,8 @@ def require_one_population(
     - R6: no null in an engine input at 2024 (known, not structural, not
       computed at 2024, so a variable whose only formula starts after 2024
       counts) on any row, except :data:`RELEASE_WRITTEN_INPUTS`, which may
-      be null only as None or NaN, never ``pd.NA``.
+      be null only as None or a float NaN, never ``pd.NA``, ``pd.NaT``,
+      numpy's ``NaT`` or any other null.
     - R7: the six :data:`PUF_TAIL_TAX_UNIT_COLUMNS` on every tax unit, never
       null.
     - R8: the ids of the tail donors applied on the frame's tax units equal
@@ -2824,7 +2923,17 @@ def _require_acs_roles_by_rule(
             f"{rule}: the person table lacks {_RELSHIPP!r}, which the rule reads "
             "(prepare keeps staging's raw column on ACS rows)."
         )
-    codes = pd.to_numeric(person.loc[acs_rows, _RELSHIPP], errors="coerce").to_numpy(
+    relshipp = person.loc[acs_rows, _RELSHIPP]
+    # Before the conversion below, which reads 20+1j as code 20 and a
+    # timedelta64 of 20 units as 20 (PR #1685 review r2, should-fix 1).
+    found = _complex_or_temporal(relshipp)
+    if found is not None:
+        raise OnePopulationContractError(
+            f"{rule}: {_RELSHIPP} on ACS rows holds {found}, not integer codes; a "
+            "conversion to real numbers would drop an imaginary part or turn a "
+            "time into a count."
+        )
+    codes = pd.to_numeric(relshipp, errors="coerce").to_numpy(
         dtype=np.float64, na_value=np.nan
     )
     off_domain = ~np.isin(codes, sorted(_ACS_RELSHIPP_CODES))
