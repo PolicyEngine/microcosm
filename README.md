@@ -62,7 +62,7 @@ change:
 ```bash
 uv tool install microcosm-emitter   # once per machine
 uv tool upgrade microcosm-emitter   # to take a new release
-microcosm-emitter version           # the installed release; builds need 0.15.0 or later
+microcosm-emitter version           # the installed release; builds need 0.16.0 or later
 ```
 
 The build finds the `microcosm-emitter` command through
@@ -75,12 +75,15 @@ no remote staging, and measures no Orrery publication inventory; a UK build give
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
 the build reads its version from `microcosm-emitter version` and does not
-start one older than 0.15.0. That release adds the setting that switches
-the Hugging Face module's collector submissions on, which every emitter a
-build starts sets, so staged bundles and release publications that name
-their build reach the collector; collector provenance on a release
-publication; and a `skipped` collector receipt when the emitter refuses its
-collector settings. 0.14.0 added the build machine's
+start one older than 0.16.0. That release adds collector provenance on a
+promotion or withdrawal, so the emitter submits the `releases.json` the
+change wrote once it lands; 0.15.0 accepts that provenance but drops it.
+0.15.0 added the setting that switches the Hugging Face module's collector
+submissions on, which every emitter a build starts sets, so staged bundles
+and release publications that name their build reach the collector;
+collector provenance on a release publication; and a `skipped` collector
+receipt when the emitter refuses its collector settings. 0.14.0 added the
+build machine's
 readings: each heartbeat carries the machine's memory, CPU and disk use and
 the build's processes, a heartbeat after the machine wakes carries the sleep,
 the run's first event describes the machine, each stage's end says how long
@@ -94,12 +97,12 @@ which builds read as package data and the Modal image's install step reads
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
-collector's hostname, which stays the same. 0.13.0, 0.14.0 and 0.15.0 were
-each the newest release when practically no machine ran the emitter yet, so
+collector's hostname, which stays the same. 0.13.0, 0.14.0, 0.15.0 and 0.16.0
+were each the newest release when practically no machine ran the emitter yet, so
 requiring them cost nothing (see
 [graph publication](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
-upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.15.0'`,
+upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.16.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
@@ -122,7 +125,7 @@ if the emitter cannot be prepared or is missing, its
 `microcosm-emitter version` times out or fails, it is older than the
 minimum, it lists no protocol version 1, its `hello` fails, it exits or
 times out before it is ready, or it starts without its telemetry module.
-Every emitter a build starts (0.15.0 and later, the minimum) reads a given
+Every emitter a build starts (0.16.0 and later, the minimum) reads a given
 collector token, and exits at that point when the collector-token
 variables it inherits (`MICROCOSM_COLLECTOR_TOKEN`,
 `MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT`, `MICROCOSM_COLLECTOR_ORIGIN`) are set
@@ -169,6 +172,13 @@ python tools/build_us_fiscal_refresh_release.py \
 
 This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` in the staging repository.
+The build stops once its H5 and its own gates' verdicts are written, at
+`<out>/build_record.json`, so it can be evaluated first; nothing it writes is
+publishable. To publish it, certify it with
+`tools/certify_us_national_build.py <out>`, which chooses its tier (certified,
+or `--evidence-release`), runs the release's post-export checks and writes the
+manifests
+([Build, then certify](docs/us-release-build-rule.md#build-then-certify)).
 Nothing is published to `policyengine/populace-us`: the build is published
 only by the commands described in [Releasing & alerts](#releasing--alerts).
 
@@ -322,8 +332,8 @@ never as a release refusal. The checks:
   `--evidence-release`, `owned`), and every verdict the solve could still
   reach. A register file that does not load is a certain failure here: the
   release reads it only at its terminal gates. Under `--evidence-release` it
-  is AT-RISK when an owner matches the release's degraded-mode line, because
-  with other terminal failures on record the release ships it.
+  is AT-RISK when an owner matches the build's degraded-mode line, because
+  with other terminal failures on record an evidence certification ships it.
 - **`export_input_mass`** runs the export input-mass gate with the staged
   frame standing in for the export. It classifies the
   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
@@ -347,13 +357,15 @@ never as a release refusal. The checks:
   and again on the export. Neither reads weights, so on the full-pool path the
   re-grade repeats the staged verdict. On the L0 path it can flip, and the
   check flags each signal a selection could empty.
-- Under `--evidence-release`, a certain failure whose every release line
-  matches an owner pattern (the release's own matching rule) becomes AT-RISK,
-  marked OWNED, because the evidence tier ships it as a known failure. Any
-  unowned line still refuses. The exception is the input-mass-reference,
-  degenerate-input and eCPS gates when no earlier terminal failure is on
-  record: the release raises on them before the solve, outside the evidence
-  batch, so they stay certain failures.
+- `--evidence-release` previews an evidence-tier certification: a build has
+  no tier, and certification chooses it after the build (microcosm#1585 item
+  11), so the flag is a dry run's only. Under it, a certain failure whose
+  every release line matches an owner pattern (certification's own matching
+  rule) becomes AT-RISK, marked OWNED, because an evidence certification
+  ships it as a known failure. Any unowned line still refuses. The exception
+  is the input-mass-reference, degenerate-input and eCPS gates when no
+  earlier terminal failure is on record: the build raises on them before the
+  solve, so no build is left to certify, and they stay certain failures.
 - **`not_previewable`** lists every gate that depends on the solve, on target
   materialization or on the written H5, so the report never implies coverage
   it lacks.
@@ -566,7 +578,23 @@ to accept them before it closes the emitter. The printed outcome's
 submissions not yet accepted when the wait ends, are warnings and never fail
 the command. Once the collector has accepted them, its own processing decides
 whether it builds a tree from them or rejects them (for example
-`provenance_mismatch`); the command doesn't wait for that. The calibration diagnostics dashboard posts
+`provenance_mismatch`); the command doesn't wait for that. A promotion names
+its build for the collector in the same way, so once it has landed the
+emitter submits `releases.json` at the commit its receipt reports, naming the
+build now current, and the command waits for the collector to accept it,
+with the same `collector_submission` output and warnings, less the advice
+about files on disk (the emitter keeps the `releases.json` it sends). A
+change that writes nothing, such as promoting the build already current,
+sends the same record as the change that last wrote `releases.json`; when
+another Hugging Face user sent that one, the collector refuses the copy and
+the command warns `COLLECTOR_REFUSED_403`, although the collector already
+holds the record. For a promotion
+that has not landed the command says nothing of the collector: a refused one
+sends nothing, and a pending one is sent by the emitter that lands it later. The collector then reads `releases.json` at the repository's
+head and points the country's latest calibration tree at the current build
+of its default release, older or newer, when it has that build's tree.
+`--make-current` needs no separate record: the publication's calibration
+diagnostics already name the build it made current. The calibration diagnostics dashboard posts
 these releases' Slack alerts from changes to `releases.json`. The UK
 assemblers, the US national builder and the US ACS package stage print the
 exact commands; the UK
@@ -592,14 +620,19 @@ current: `--promote` is refused, and publishing it again with
 offline and while a `latest*.json` file exists, before it starts an emitter,
 checks the emitter's write access first, waits up to five minutes, prints
 the receipt as JSON with `"change": "withdraw"` and `"withdrawn"`, and exits
-1 unless the build is withdrawn. The publish and promote commands' JSON
+1 unless the build is withdrawn. Like a promotion, the withdrawal names its
+build for the collector: once it has landed, the emitter submits
+`releases.json`, naming the release's current build, and the command waits
+for the collector to accept it (`collector_submission`). A release left with
+no current build sends nothing (`NO_CURRENT_BUILD`), which the command
+reports as a warning. The publish and promote commands' JSON
 carries `"change"` too, and `"withdrawn": null`: they cannot tell. `microcosm.data.load` loads a withdrawn build only when `build=`
 pins it, with a warning. A compatibility recertification or an annual
 projection whose parent or base is a build-folder build is refused before
 anything is handed over when `releases.json` withdrew or no longer lists that
 build, and the UK cut reference refuses a withdrawn build.
 
-**The US releases.** `policyengine/populace-us` has five releases
+**The US releases.** `policyengine/populace-us` has six releases
 (`microcosm.data.contract.US_RELEASES`):
 
 | Release | Role in `releases.json` | Builds | Dataset file a new build declares |
@@ -609,6 +642,7 @@ build, and the UK cut reference refuses a withdrawn build.
 | `microcosm-us-2024-receipt-donor` | `national`, never the default | receipt-qualified donors | `microcosm_us_2024_receipt_qualified.h5` |
 | `microcosm-us-2024-evidence` | `national`, never the default | evidence-tier builds | `microcosm_us_2024.h5` |
 | `microcosm-us-2024-annual` | `national`, never the default | annual projections of a national build: its files, one H5 per later year and the projection receipts ([the annual guide](docs/us-annual-static-aging.md)) | the base build's dataset file, and `microcosm_us_<year>.h5` for each later year |
+| `microcosm-us-2024-local-annual` | `local_area` | annual projections of an ACS local-area build (the County Files, microcosm#922): its files, one H5 per projected year and the projection receipts ([the local projection guide](docs/us-local-annual-projection.md)) | the base build's dataset file, and `microcosm_us_<year>_acs_local.h5` for each projected year |
 
 The national builder writes a build's calibration weights as
 `microcosm_us_2024_calibration.npz`, for national and evidence-tier builds
@@ -665,7 +699,10 @@ command takes only the releases above, and the tagged publisher refuses
 a repository that has `releases.json`. A US annual-projection build publishes
 into `microcosm-us-2024-annual`, carrying its base national build's files
 ([the annual guide](docs/us-annual-static-aging.md)); its base is a
-calibrated national build, not yet a source enrichment.
+calibrated national build, not yet a source enrichment. An annual projection
+of an ACS local-area build publishes into `microcosm-us-2024-local-annual`,
+carrying its base local build's files
+([the local projection guide](docs/us-local-annual-projection.md)).
 
 **The switch.** `microcosm.build.build_folder_switch` moves a repository over,
 once, in two steps, and a third step later deletes what the old layout left
@@ -809,9 +846,11 @@ that run the contract on one again are re-certifications: a publish retry of
 its local directory, and an annual build, which carries a national base's
 files into `microcosm-us-2024-annual`. Every
 published US national base already fails the unchanged calibration-diagnostics
-schema rule, and local-area releases cannot be annual bases. So publishing one
-again means rebuilding or re-packaging it, which runs the check. An
-evidence-tier run that ships a stored-input refusal needs a per-run
+schema rule. A local-annual build carries its base local build's gate, which
+must certify that build's H5, so its base must have been packaged with the
+check. So publishing one again means rebuilding or re-packaging it, which runs
+the check. An
+evidence-tier certification that ships a stored-input refusal needs a per-run
 `--evidence-failure-owners` entry naming its owner; the standing owner register
 covers none.
 
@@ -837,10 +876,11 @@ declaring a range.
 
 US exact-k ladder builds are builds of the national release. Run
 `tools/build_us_exact_k_ladder_release.py`. It runs the national builder,
-which writes the build to `<out>/releases/microcosm-us-2024-national/`, and
-records in `package_result.json` the release, the build, the release
-directory, `publish_command`, `promote_command` and `promotion`, a sentence
-saying that promoting makes the build the US default. The launcher runs
+which writes the build's own files to `<out>/build/`, and records in
+`package_result.json` the release, the build, its directory, the release
+directory certification places it in, `<out>/releases/microcosm-us-2024-national/`,
+the command that certifies it, `publish_command`, `promote_command` and
+`promotion`, a sentence saying that promoting makes the build the US default. The launcher runs
 neither command (`automatic_publish: false`, `makes_current: false`), and it
 forces `--no-staging`, so the build sends no staging run files.
 `publish_command` lists the build in the national release without making it
@@ -849,12 +889,14 @@ with `microcosm.data.load("us", build="<build>")`.
 
 Evidence-tier builds (microcosm#506) are builds of their own release,
 `microcosm-us-2024-evidence`: the best available artifact when the release's
-validation checks failed, built with
-`tools/build_us_fiscal_refresh_release.py --evidence-release`, which records
-every failed check with an owner issue in the release manifest's
-`known_failures` block, or refuses. The builder writes the build to
-`<out>/releases/microcosm-us-2024-evidence/` and prints the same two
-commands. `microcosm-publish-release-build` checks a build of that release
+validation checks failed. A build has no tier (microcosm#1585 item 11):
+`tools/certify_us_national_build.py <out> --evidence-release` certifies a
+finished build at the evidence tier, recording every failed check with an
+owner issue, from `--evidence-failure-owners` or the standing register
+(`us_runtime/data/evidence_failure_owners.json`), in the release manifest's
+`known_failures` block, or refuses. It places the build in
+`<out>/releases/microcosm-us-2024-evidence/`, under its build ID with an
+`-evidence-` segment, and prints the same two commands. `microcosm-publish-release-build` checks a build of that release
 with the evidence contract, which refuses a build in the certified shape; the
 certified contract refuses the evidence shape, so an evidence build can't be
 published into the national release. The evidence release is never the

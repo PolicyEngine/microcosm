@@ -238,6 +238,7 @@ def run_cell(args: argparse.Namespace, *, law: str, k: int):
         store=ContentStore(args.graph_store),
         kernels=prepared.kernels,
         resume="auto",
+        retain_populations=("uk.full.expand",),
     )
     wall = time.perf_counter() - started
     population = manifest.population("uk.full.expand")

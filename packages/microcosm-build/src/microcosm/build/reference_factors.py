@@ -69,6 +69,33 @@ _VALIDATION_FIELDS = frozenset(
         "source_column_id",
     }
 )
+#: A second operation: the target schedule reads a projection the source
+#: published, so nothing is projected here and no growth operand is declared.
+PUBLISHED_PROJECTION_OPERATION = "published_projection_period_average_ratio"
+PUBLISHED_PROJECTION_OPERATION_VERSION = 1
+#: A subset of FACTOR_PURPOSES: published projections age money only.
+_PUBLISHED_PROJECTION_PURPOSES = frozenset({"money_normalization_input"})
+#: Version 1's fields without growth and projection_policy.
+_PUBLISHED_PROJECTION_FIELDS = frozenset(
+    {
+        "schema_version",
+        "id",
+        "operation",
+        "operation_version",
+        "purpose",
+        "feed_identity",
+        "source_period",
+        "target_period",
+        "source_schedule",
+        "target_schedule",
+        "subperiods_per_year",
+        "rounding",
+        "expected_operational_factor",
+        "validity",
+        "evidence",
+        "decision_references",
+    }
+)
 
 
 def factor_document_sha256(document: object) -> str:
@@ -174,6 +201,11 @@ def _round_nearest(value: Fraction, digits: int) -> int:
 
 
 def _declaration(declaration: object) -> dict:
+    if (
+        isinstance(declaration, Mapping)
+        and declaration.get("operation") == PUBLISHED_PROJECTION_OPERATION
+    ):
+        return _published_projection_declaration(declaration)
     row = _closed(declaration, _DECLARATION_FIELDS, "factor declaration")
     missing = _DECLARATION_FIELDS - row.keys()
     if missing:
@@ -241,6 +273,107 @@ def _declaration(declaration: object) -> dict:
     for key in ("evidence", "decision_references"):
         if any(not isinstance(item, str) or not item for item in _list(row[key], key)):
             raise ValueError(f"{key} must contain nonempty text.")
+    row["feed_identity"] = _closed_feed_identity(
+        row["feed_identity"], "factor declaration feed identity"
+    )
+    return row
+
+
+def _published_projection_schedules(
+    row: dict, frequency: int
+) -> tuple[list[dict], list[dict]]:
+    """Observed source slots and published-projection target slots, no offsets."""
+    source = _schedule(row["source_schedule"], frequency, target=False)
+    target = _schedule(row["target_schedule"], frequency, target=False)
+    if any(slot["validation"]["assertion"] != "observation" for slot in source):
+        raise ValueError("Source schedule requires observations.")
+    if any(slot["validation"]["assertion"] != "source_projection" for slot in target):
+        raise ValueError(
+            "Published-projection target schedules require source_projection slots."
+        )
+    return source, target
+
+
+def _published_projection_declaration(declaration: Mapping) -> dict:
+    """Check a published-projection declaration: version 1's rules, narrowed.
+
+    The checks copy version 1's, so version 1's own lines stay as they are.
+    Schedules are checked here too, so context validation refuses a projected
+    source or an observed target without facts.
+    """
+    row = _closed(declaration, _PUBLISHED_PROJECTION_FIELDS, "factor declaration")
+    missing = _PUBLISHED_PROJECTION_FIELDS - row.keys()
+    if missing:
+        raise ValueError(f"Factor declaration missing fields: {sorted(missing)}.")
+    if type(row["schema_version"]) is not int or row["schema_version"] != 1:
+        raise ValueError("Factor declaration requires schema_version 1.")
+    if (
+        type(row["operation_version"]) is not int
+        or row["operation_version"] != PUBLISHED_PROJECTION_OPERATION_VERSION
+    ):
+        raise ValueError("Unknown factor operation or operation version.")
+    if not isinstance(row["id"], str) or not row["id"]:
+        raise ValueError("Factor id must be nonempty text.")
+    if row["purpose"] not in FACTOR_PURPOSES:
+        raise ValueError("Unknown factor purpose.")
+    if row["purpose"] not in _PUBLISHED_PROJECTION_PURPOSES:
+        raise ValueError(
+            f"Factor purpose {row['purpose']!r} is not admitted by "
+            f"{PUBLISHED_PROJECTION_OPERATION}, which ages money only."
+        )
+    label = row["source_period"]
+    if type(label) not in {str, int} or isinstance(label, str) and not label:
+        raise ValueError("Factor period labels require nonempty text or integers.")
+    if type(row["target_period"]) is not int:
+        raise ValueError(
+            f"{PUBLISHED_PROJECTION_OPERATION} requires an integer target_period."
+        )
+    frequency = row["subperiods_per_year"]
+    if type(frequency) is not int or not 1 <= frequency <= _MAX_SUBPERIODS_PER_YEAR:
+        raise ValueError(
+            "subperiods_per_year must be an integer from 1 to "
+            f"{_MAX_SUBPERIODS_PER_YEAR} for serializable exact receipts."
+        )
+    rounding = _closed(row["rounding"], {"digits", "mode"}, "factor rounding")
+    if (
+        type(rounding.get("digits")) is not int
+        or not 0 <= rounding["digits"] <= _MAX_ROUNDING_DIGITS
+    ):
+        raise ValueError(
+            "Factor rounding digits must be an integer from 0 to "
+            f"{_MAX_ROUNDING_DIGITS} for serializable exact receipts."
+        )
+    if rounding.get("mode") != "nearest_half_even":
+        raise ValueError("Factor rounding must be nearest_half_even.")
+    expected = _read_rational(row["expected_operational_factor"], "expected factor")
+    if (
+        expected <= 0
+        or row["expected_operational_factor"]["denominator"] != 10 ** rounding["digits"]
+    ):
+        raise ValueError("Expected operational factor must be positive p / 10**digits.")
+    validity = _closed(
+        row["validity"],
+        {"declared_on", "valid_from", "valid_until", "as_of"},
+        "factor validity",
+    )
+    try:
+        dates = {
+            key: date.fromisoformat(validity[key])
+            for key in ("declared_on", "valid_from", "valid_until", "as_of")
+        }
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Factor validity requires explicit ISO dates.") from exc
+    if (
+        not dates["declared_on"] <= dates["as_of"]
+        or not dates["valid_from"] <= dates["as_of"] <= dates["valid_until"]
+    ):
+        raise ValueError(
+            "Factor declaration is expired or not yet valid at its declared as_of."
+        )
+    for key in ("evidence", "decision_references"):
+        if any(not isinstance(item, str) or not item for item in _list(row[key], key)):
+            raise ValueError(f"{key} must contain nonempty text.")
+    _published_projection_schedules(row, frequency)
     row["feed_identity"] = _closed_feed_identity(
         row["feed_identity"], "factor declaration feed identity"
     )
@@ -471,6 +604,8 @@ def resolve_reference_factor(
 ) -> tuple[dict, dict]:
     """Resolve one closed operation, returning its operational rational and proof."""
     row = _declaration(declaration)
+    if row["operation"] == PUBLISHED_PROJECTION_OPERATION:
+        return _resolve_published_projection(row, facts, feed_identity)
     feed_identity = chronicle_feed_identity(
         _mapping(feed_identity, "factor feed identity")
     )
@@ -659,6 +794,79 @@ def resolve_reference_factor(
             "lower": _rational(factor_lower),
             "upper": _rational(factor_upper),
         },
+        "rounding": row["rounding"],
+        "operational_factor": factor,
+        "validity": row["validity"],
+        "evidence": row["evidence"],
+        "decision_references": row["decision_references"],
+    }
+    receipt["receipt_sha256"] = factor_document_sha256(receipt)
+    return factor, receipt
+
+
+def _resolve_published_projection(
+    row: dict, facts: Iterable, feed_identity: Mapping
+) -> tuple[dict, dict]:
+    """Average observed source and published-projection target operands exactly.
+
+    ``N / D`` is an exact rational, rounded once; no root is enclosed. The
+    receipt records the operation's target assertion and each slot's.
+    """
+    # Rebind to the seven-field normalization, so the receipt never records the
+    # caller's raw pin.
+    feed_identity = chronicle_feed_identity(
+        _mapping(feed_identity, "factor feed identity")
+    )
+    if canonical_json(row["feed_identity"]) != canonical_json(feed_identity):
+        raise ValueError("Factor feed identity mismatch; re-declaration is required.")
+    fact_rows = tuple(facts)
+    frequency = row["subperiods_per_year"]
+    source, target = _published_projection_schedules(row, frequency)
+
+    def mean(slots, policy, message):
+        values, rows = [], []
+        for slot in slots:
+            value, evidence = _operand(slot, fact_rows, assertion_policy=policy)
+            if value <= 0:
+                raise ValueError(message)
+            values.append((value, _decimal(slot["weight"], "schedule weight")))
+            evidence.update({"weight": slot["weight"], "sequence": slot["sequence"]})
+            rows.append(evidence)
+        return sum(v * w for v, w in values) / sum(w for _, w in values), rows
+
+    denominator, source_evidence = mean(
+        source, "observed_only", "Factor denominator operands must be positive."
+    )
+    numerator, target_evidence = mean(
+        target,
+        "allow_source_projection",
+        "Published-projection target operands must be positive.",
+    )
+    unrounded = numerator / denominator
+    digits = row["rounding"]["digits"]
+    factor = {"numerator": _round_nearest(unrounded, digits), "denominator": 10**digits}
+    if factor["numerator"] <= 0:
+        raise ValueError("Operational factor must be positive.")
+    if factor != row["expected_operational_factor"]:
+        raise ValueError(
+            f"Declared expected factor mismatch: computed {factor}; re-declaration is required."
+        )
+    receipt = {
+        "schema_version": 1,
+        "operation": PUBLISHED_PROJECTION_OPERATION,
+        "operation_version": PUBLISHED_PROJECTION_OPERATION_VERSION,
+        "factor_id": row["id"],
+        "declaration_sha256": factor_document_sha256(row),
+        "feed_identity": dict(feed_identity),
+        "source_period": row["source_period"],
+        "target_period": row["target_period"],
+        "target_assertion": "source_projection",
+        "source_schedule": source_evidence,
+        "target_schedule": target_evidence,
+        "subperiods_per_year": frequency,
+        "denominator_mean": _rational(denominator),
+        "numerator_mean": _rational(numerator),
+        "unrounded_factor": _rational(unrounded),
         "rounding": row["rounding"],
         "operational_factor": factor,
         "validity": row["validity"],

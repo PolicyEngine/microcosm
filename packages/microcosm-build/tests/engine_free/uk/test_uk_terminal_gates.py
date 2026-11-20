@@ -494,7 +494,8 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
     # in-household care hours carrier (microcosm#1418), the admin UC limited
-    # capability carrier (microcosm#1095, Y1), the company car carriers
+    # capability carrier (microcosm#1095, Y1), the limiting condition carrier
+    # its imputation reads (PolicyEngine/microcosm#1663), the company car carriers
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value the
     # regional home values replaced (microcosm#1112) and the household ISA
     # totals policyengine-uk sums from the person balances (microcosm#1415),
@@ -506,6 +507,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         FRS_BONUS_CARRIER_COLUMN,
         FRS_CARE_RECIPIENTS_COLUMN,
         FRS_COMPANY_CAR_CARRIER_COLUMNS,
+        FRS_CONDITION_LIMITS_COLUMN,
         FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
         FRS_LANDLORD_CARRIER_COLUMN,
         FRS_UC_CARER_ELEMENT_COLUMN,
@@ -534,6 +536,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
         | {f"person.{FRS_CARE_RECIPIENTS_COLUMN}"}
         | {f"person.{FRS_UC_LCW_STATUS_COLUMN}"}
+        | {f"person.{FRS_CONDITION_LIMITS_COLUMN}"}
         | {f"person.{FRS_UC_CARER_ELEMENT_COLUMN}"}
         | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
         | {f"household.{RANK_BASIS_COLUMN}"}
@@ -715,7 +718,9 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # to +23.4 % across the C3 and final arms, inside the bound, and the gate
     # fails the deferral as stale.
     assert set(register) == {
+        "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_19_200_to_20_400@2025",
         "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000@2025",
+        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570@2025",
         "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000@2025",
         "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000@2025",
         "hmrc.spi_region.taxpayers_by_region_200000_plus@S92000003@2025",
@@ -727,6 +732,7 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
         "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
         "hmrc/property_income_income_band_12_570_to_15_000@2025",
         "hmrc/property_income_income_band_15_000_to_20_000@2025",
+        "hmrc/state_pension_count_income_band_500_000_to_1_000_000@2025",
         "ons.population.female_19@2025",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
@@ -755,33 +761,36 @@ def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
         "age_structure/E06000023/age/20_30",
         "age_structure/E07000008/age/20_30",
         "age_structure/E07000178/age/20_30",
+        "age_structure/E07000212/age/20_30",
         "age_structure/E14001080/age/20_30",
-        "age_structure/E14001081/age/20_30",
-        "age_structure/E14001096/age/20_30",
+        "age_structure/E14001116/age/20_30",
+        "age_structure/E14001123/age/20_30",
         "age_structure/E14001131/age/20_30",
         "age_structure/E14001149/age/20_30",
         "age_structure/E14001182/age/20_30",
         "age_structure/E14001231/age/20_30",
         "age_structure/E14001319/age/20_30",
-        "age_structure/E14001327/age/20_30",
         "age_structure/E14001338/age/20_30",
-        "age_structure/E14001346/age/20_30",
         "age_structure/E14001352/age/20_30",
         "age_structure/E14001353/age/20_30",
+        "age_structure/E14001410/age/20_30",
         "age_structure/E14001412/age/20_30",
+        "age_structure/E14001459/age/20_30",
         "age_structure/E14001467/age/20_30",
+        "age_structure/S14000085/age/20_30",
         "age_structure/W07000091/age/20_30",
         "council_tax/E06000014/council_tax/band_a",
         "council_tax/E08000028/council_tax/band_f",
+        "council_tax/E09000019/council_tax/band_b",
         "council_tax/E09000020/council_tax/band_b",
         "council_tax/E09000020/council_tax/band_c",
-        "council_tax/E09000033/council_tax/band_c",
-        "council_tax/E09000033/council_tax/band_g",
-        "domestic_energy/S12000023/energy/electricity_kwh",
+        "council_tax/E09000033/council_tax/band_b",
+        "council_tax/E09000033/council_tax/band_f",
+        "council_tax/S12000013/council_tax/band_c",
         "hmrc_income_by_area/E09000020/hmrc/self_employment_income/amount",
+        "hmrc_income_by_area/E14001175/hmrc/self_employment_income/count",
         "hmrc_income_by_area/E14001310/hmrc/self_employment_income/amount",
-        "hmrc_income_by_area/E14001535/hmrc/higher_rate_taxpayers/count",
-        "hmrc_income_by_area/E14001576/hmrc/self_employment_income/count",
+        "tenure/E09000033/tenure/owned_mortgage",
         "uc_households/E14001098/uc_hh_3plus_children",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}

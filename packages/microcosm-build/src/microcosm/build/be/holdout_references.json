@@ -95,7 +95,7 @@
         "reference_set": "holdout",
         "method_card_row": "BE-MC5",
         "method_card_status": "proposed_pending_d1902",
-        "parking_reason": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+        "parking_reason": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902).",
         "ageing": "rolled_forward_by_ratio",
         "ageing_pair": "fpb_t17_direct_taxes_households",
         "ageing_source": "FPB Economic Outlook 2026-2031, June 2026 annex",
@@ -103,7 +103,7 @@
         "target_period": "2026",
         "holdout_use": "validation_comparator"
       },
-      "notes": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro conversion of the donor inputs it reads.",
+      "notes": "Held out of calibration; compared, never fitted. Accrual national-accounts revenue held out against assessed tax (BE-MC5). W3: needs a pinned rulespec-be binding for be/statutes/income_tax/individual/final_tax.yaml on the transported frame, the S5 pre-calibration allowlist entry for it, and B4's euro donor inputs it reads: the columns money_normalization.json converts once at the donor-year rate, and wages, which an RSZ/ONSS quantile map writes from raw donor values (d1902 items 18 and 19, proposed pending d1902).",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -113,7 +113,7 @@
           "role": "numerator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t17.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t17.direct_taxes_households",
           "entity_name": "government",
           "period_type": "calendar_year",
           "period_value": 2026,
@@ -122,14 +122,14 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.general_government_account.direct_taxes_households",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:09dcccdb13ecc60173a18079",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:fa7f06ea5e0b9904a56972eb",
           "assertion": "source_projection"
         },
         {
           "role": "denominator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t17.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t17.direct_taxes_households",
           "entity_name": "government",
           "period_type": "calendar_year",
           "period_value": 2025,
@@ -138,7 +138,7 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.general_government_account.direct_taxes_households",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:ebae7d68bab03979e30b2b5e",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:e95b487dc45cf3160ec4d0b9",
           "assertion": "observation"
         }
       ],
@@ -195,7 +195,7 @@
           "role": "numerator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t06.net_national_disposable_income",
           "entity_name": "institutional_sector",
           "period_type": "calendar_year",
           "period_value": 2026,
@@ -204,14 +204,14 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.national_income_account.net_national_disposable_income",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:63c570cc58902f2813b3bde9",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6e4d6b226aad0905cc37a4f8",
           "assertion": "source_projection"
         },
         {
           "role": "denominator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t06.net_national_disposable_income",
           "entity_name": "institutional_sector",
           "period_type": "calendar_year",
           "period_value": 2024,
@@ -220,7 +220,7 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.national_income_account.net_national_disposable_income",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:5148b5898c391c11ff484930",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6afbcabff50434464a75425f",
           "assertion": "observation"
         }
       ],
@@ -294,7 +294,7 @@
           "role": "numerator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t06.net_national_disposable_income",
           "entity_name": "institutional_sector",
           "period_type": "calendar_year",
           "period_value": 2026,
@@ -303,14 +303,14 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.national_income_account.net_national_disposable_income",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:63c570cc58902f2813b3bde9",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6e4d6b226aad0905cc37a4f8",
           "assertion": "source_projection"
         },
         {
           "role": "denominator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t06.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t06.net_national_disposable_income",
           "entity_name": "institutional_sector",
           "period_type": "calendar_year",
           "period_value": 2024,
@@ -319,7 +319,7 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.national_income_account.net_national_disposable_income",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:5148b5898c391c11ff484930",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6afbcabff50434464a75425f",
           "assertion": "observation"
         }
       ],
@@ -394,7 +394,7 @@
           "role": "numerator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.social_benefits",
           "entity_name": "household",
           "period_type": "calendar_year",
           "period_value": 2026,
@@ -403,14 +403,14 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.social_benefits",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:bf52974b05acf19d1d3ccb28",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:22e426217cdab8e38484dc91",
           "assertion": "source_projection"
         },
         {
           "role": "denominator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.social_benefits",
           "entity_name": "household",
           "period_type": "calendar_year",
           "period_value": 2024,
@@ -419,7 +419,7 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.social_benefits",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:e87808ae0b585214ec608b92",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:3cefc3f023b9aad52491c952",
           "assertion": "observation"
         }
       ],
@@ -494,7 +494,7 @@
           "role": "numerator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.social_contributions",
           "entity_name": "household",
           "period_type": "calendar_year",
           "period_value": 2026,
@@ -503,14 +503,14 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.social_contributions",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:4c597d6ad755576b4e1faf01",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:952e3583001cf5af223e99b8",
           "assertion": "source_projection"
         },
         {
           "role": "denominator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.social_contributions",
           "entity_name": "household",
           "period_type": "calendar_year",
           "period_value": 2024,
@@ -519,7 +519,7 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.social_contributions",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:deed6d1fc86e5e7032cbfa5e",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:d3393435f11deabddbc8d3a4",
           "assertion": "observation"
         }
       ],
@@ -594,7 +594,7 @@
           "role": "numerator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.current_taxes_on_income_and_wealth",
           "entity_name": "household",
           "period_type": "calendar_year",
           "period_value": 2026,
@@ -603,14 +603,14 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.current_taxes_on_income_and_wealth",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:67bb0b178a502334a5798bfa",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:1bbbd7c1fa2df49c183d8c87",
           "assertion": "source_projection"
         },
         {
           "role": "denominator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.current_taxes_on_income_and_wealth",
           "entity_name": "household",
           "period_type": "calendar_year",
           "period_value": 2024,
@@ -619,7 +619,7 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2024.household_account.current_taxes_on_income_and_wealth",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:d3638106fd28d6f6d119c0d5",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0a30adbf2deccca7c4fdd0c2",
           "assertion": "observation"
         }
       ],
@@ -630,7 +630,7 @@
       "ledger_selector": {
         "source_name": "fpb_economic_outlook",
         "source_measure_id": "amount_meur",
-        "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+        "source_concept": "fpb.economic_outlook_2026_2031.t11.gross_wages_and_salaries",
         "entity_name": "household",
         "period_type": "calendar_year",
         "period_value": 2025,
@@ -639,7 +639,7 @@
         "geography_vintage": "current",
         "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.household_account.gross_wages_and_salaries",
         "dimensions": [],
-        "aggregate_fact_key": "ledger.aggregate_fact.v2:1b99b4161fa76ca1069ad5e7",
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:6f2ce9ba247d92e9db540c55",
         "assertion": "observation"
       },
       "entity": "person",
@@ -658,7 +658,7 @@
         "reference_set": "holdout",
         "method_card_row": "BE-MC5",
         "method_card_status": "proposed_pending_d1902",
-        "parking_reason": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until B4's currency bridge.",
+        "parking_reason": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until a transport quantile map writes it from RSZ/ONSS's daily-wage classes; d1902 item 18 proposes mapping wages from raw donor values, never converted at the rate.",
         "ageing_target_equals": "FPB's 2026 projection of the base's own row",
         "ageing": "rolled_forward_by_ratio",
         "ageing_pair": "fpb_t11_gross_wages_and_salaries",
@@ -667,7 +667,7 @@
         "target_period": "2026",
         "holdout_use": "validation_comparator"
       },
-      "notes": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until B4's currency bridge.",
+      "notes": "Held out of calibration; compared, never fitted. The card's wage-headline comparator (BE-MC5): gross wages, not compensation including employer contributions. The euro wage column has no producer until a transport quantile map writes it from RSZ/ONSS's daily-wage classes; d1902 item 18 proposes mapping wages from raw donor values, never converted at the rate.",
       "value_operation": "rolled_forward_by_ratio",
       "value_operands": [
         {
@@ -677,7 +677,7 @@
           "role": "numerator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.gross_wages_and_salaries",
           "entity_name": "household",
           "period_type": "calendar_year",
           "period_value": 2026,
@@ -686,14 +686,14 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2026.household_account.gross_wages_and_salaries",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:f17958efe84e42471bf68f80",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:044628832522c2f679db2dd3",
           "assertion": "source_projection"
         },
         {
           "role": "denominator",
           "source_name": "fpb_economic_outlook",
           "source_measure_id": "amount_meur",
-          "source_concept": "fpb.economic_outlook_2026_2031.t11.published_cell",
+          "source_concept": "fpb.economic_outlook_2026_2031.t11.gross_wages_and_salaries",
           "entity_name": "household",
           "period_type": "calendar_year",
           "period_value": 2025,
@@ -702,7 +702,7 @@
           "geography_vintage": "current",
           "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.household_account.gross_wages_and_salaries",
           "dimensions": [],
-          "aggregate_fact_key": "ledger.aggregate_fact.v2:1b99b4161fa76ca1069ad5e7",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:6f2ce9ba247d92e9db540c55",
           "assertion": "observation"
         }
       ],

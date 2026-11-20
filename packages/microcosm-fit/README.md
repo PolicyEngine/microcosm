@@ -53,7 +53,15 @@ doing only calibration never pulls them.
 
 `scikit-learn` is unpinned on the upper side (`>=1.5`): the shard's test suite
 passes on both 1.8 and 1.9, so it coexists in one environment with a
-`scikit-learn>=1.9` consumer. This requires `quantile-forest>=1.4.2`, the first
-release that tracks the sklearn-1.9 tree ABI
+`scikit-learn>=1.9` consumer. That needs quantile-forest 1.4.2 or later, the
+first release that tracks the sklearn-1.9 tree ABI
 (zillow/quantile-forest#152, #153); older `quantile-forest` fails to import
 under sklearn 1.9.
+
+`quantile-forest` is pinned exactly (`==1.4.2`). `microcosm.fit.qrf` builds
+each forest with a subclass that replaces quantile-forest's private
+`BaseForestQuantileRegressor._get_y_train_leaves` with a copy of 1.4.2's that
+fills the leaf array in place instead of copying a list of per-tree arrays,
+and its `fit` refuses any other installed release. A scikit-learn release
+that breaks quantile-forest 1.4.2 therefore needs the pin, the copied method
+and `_SUPPORTED_QUANTILE_FOREST_VERSION` moved together.

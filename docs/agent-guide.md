@@ -371,15 +371,20 @@ data and credentials, and cannot run from forks. Release publication is a
 deliberate human step. The UK national and dense releases, each UK local-area
 release that the dataset registry names, and the US releases
 (`microcosm-us-2024-national`, the US default, `-local`,
-`-receipt-donor`, `-evidence` and `-annual`) publish each build into its own folder
+`-receipt-donor`, `-evidence`, `-annual` and `-local-annual`) publish each build into its own folder
 through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate
 call to the same command with `--promote`, and withdrawing one is
 `microcosm-withdraw-release-build <repository> <release> <build>`, which sets
 its `withdrawn` flag through the same release writer. Each US builder writes its build to
-`releases/<release>/`; the national builder and the ACS package stage also
-print both commands.
+`releases/<release>/`, except the national builder, whose build has no tier:
+it builds into `<out>/build/` and stops at `<out>/build_record.json`, printing
+the commands that certify the build. `tools/certify_us_national_build.py`
+chooses the tier (certified, or `--evidence-release`), runs the release's
+post-export checks, places the build in that tier's release directory, writes
+the manifests and prints both commands (microcosm#1585 item 11). The ACS
+package stage prints both commands itself.
 `tools/preflight_us_release_gates.py` runs the US national release checks that
 need no calibration on the base before a build, and again with the finished
 build's `--release-manifest`. The emitter changes
@@ -419,8 +424,9 @@ The versioned Route A driver is `tools/route_a/route_a.sh`; see its
 [runbook](../tools/route_a/README.md) for configuration, preserved admission
 and release gates, and the Modal-base hand-off. Its release stage enables
 staging telemetry by default, obtains the HF credential only in a runtime
-wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It looks for the
-build in `releases/microcosm-us-2024-national/`, runs only
+wrapper, and accepts `ROUTE_A_STAGING=0` as the opt-out. It certifies the
+build at the tier `ROUTE_A_CERTIFY_TIER` chooses and looks for it in that
+tier's `releases/<release>/`, runs only
 `microcosm-publish-release-build --preflight-only`, which checks the build
 offline, and leaves publication to Max.
 
@@ -463,7 +469,16 @@ Before a release rerun, run the small-H5 guard sweep described in
 [the release build rule](us-release-build-rule.md#post-export-scoring).
 That fixture check is separate from full-export timing and release
 certification.
-To check the post-export stages on a written export without a full rerun,
+A US national build stops before its post-export checks; certify it with
+`tools/certify_us_national_build.py <out>` only when it is to be published
+(the release build rule's
+[Build, then certify](us-release-build-rule.md#build-then-certify)). A build
+has no tier: certification chooses it, and `--evidence-release` with an owner
+for every failure certifies a build whose release gates failed. It may run at
+a later commit than the build's only when that commit changes nothing but
+tests, docs, changelog fragments and the standing evidence owners register
+(`us_runtime/data/evidence_failure_owners.json`). To check
+the post-export stages on a written export without certifying it,
 subsample it and probe it as
 [the release build rule](us-release-build-rule.md#probing-an-export-on-a-household-subsample)
 describes (`tools/sample_us_export_households.py`,
@@ -581,8 +596,11 @@ The ACS local-area release can build its fresh staging H5 on Modal with
 `us-acs-multispine-staging`, then consume its verified H5 and summary through
 `us-acs-local-release`; see [the Modal stage runbook](us-modal-stage-runbook.md#acs-multispine-staging).
 Its optional [county calibration rung](us-acs-local-county-rung.md) uses
-`--geographies state,cd,county --soi-mode state_county`, a county-inclusive
-Ledger feed, and matching county boundaries. Full runs require all 3,144
+`--geographies state,cd,county --soi-mode state_county`, the separately
+pinned county facts (`--county-facts` and `--county-facts-sha256`;
+`us/chronicle_county_facts.json`, microcosm#922) beside the main feed, and
+matching county boundaries. County materialize runs are local: the Modal stage
+runner cannot pass `--county-facts`. Full runs require all 3,144
 county-equivalents and write `county_reliability.json`; the base year is 2024.
 County solves use a run-level loss cap of 10 and a per-record weight cap of 5,
 configurable with `--county-target-loss-cap` and `--county-max-weight-ratio`

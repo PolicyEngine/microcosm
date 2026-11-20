@@ -74,7 +74,7 @@
         "max_dropped_published_share": 0.1
       }
     ],
-    "reason": "Zero-support floor: a row in one of the floor's scopes (the UC payment-distribution and benefit-cap amount bands, the HMRC SPI income bands by total income and SPI Table 3.10's self-employment income bands, and the band-H council-tax rows by English region) whose compiled matrix row reaches no source household (household_source_id) with a positive prior weight cannot be fitted by any weights (the solver's initialiser refuses a nonzero target with no support), so it is dropped from the solve, not pooled. A row that some households carry stays bound however few they are; when one or two distinct source households carry it, its model figures are withheld from every written surface (CD171's absolute floor of three, receipt_counts.UK_DISCLOSURE_FLOOR, to which María's ruling of 2026-10-29 moved the floor of ten). Each scope holds one unit, because its share ceiling sums published values. The floor's receipt reports each target's dropped published total and each scope's dropped share, and the run refuses when a scope's drops pass either of its ceilings or when a per-row exclusion names a row the floor drops.",
+    "reason": "Zero-support floor: a row in one of the floor's scopes (the UC payment-distribution and benefit-cap amount bands, the HMRC SPI income bands by total income and SPI Table 3.10's self-employment income bands, and the band-H council-tax rows by English region) whose compiled matrix row reaches no source household (source_household_id) with a positive prior weight cannot be fitted by any weights (the solver's initialiser refuses a nonzero target with no support), so it is dropped from the solve, not pooled. A row that some households carry stays bound however few they are; when one or two distinct source households carry it, its model figures are withheld from every written surface (CD171's absolute floor of three, receipt_counts.UK_DISCLOSURE_FLOOR, to which María's ruling of 2026-10-29 moved the floor of ten). Each scope holds one unit, because its share ceiling sums published values. The floor's receipt reports each target's dropped published total and each scope's dropped share, and the run refuses when a scope's drops pass either of its ceilings or when a per-row exclusion names a row the floor drops.",
     "tracking": "microcosm#1095",
     "approved_by": "juaristi22",
     "adjudication": "microcosm#1095 U3, ruled 2026-10-16 with the fifth ports PR (floor 10) and revised 2026-10-21 with #1333: a cell that rests on fewer than 10 records is no reason to leave a row out, only a measured distortion of the calibration is. The floor drops only rows no household carries, the benefit-cap amount bands join its scope and their per-row entries retire, and the figures of rows under 10 source households are withheld, as the BRMA rows' are (under three since María's ruling of 2026-10-29). The thirteen entries it retired (the eleven benefit-cap amount bands and the two HMRC £500k to £1m cells) and the A/B that retired them: experiments/1095-uk-thin-row-binding-receipts.md. Extended on 2026-10-22 (María's ruling on the next policyengine-uk bump) to the HMRC SPI income-band families and the band-H council-tax rows by region, in scopes of one unit each with their own ceilings. On #1333's policyengine-uk 2.145.0 spine every HMRC £1m-and-over cell and every band-H region cell has carriers. The three band-H region entries retire and their rows bind, with their figures withheld where fewer than 10 source households carry them (fewer than three since María's ruling of 2026-10-29, receipt_counts.UK_DISCLOSURE_FLOOR); the ten HMRC £1m-and-over cells, bound on arm 1, distorted their neighbours and stay held on that measurement, so the HMRC scopes cover the bands below them. Extended on 2026-10-29 in microcosm#1420, in answer to the independent review's finding 7 and pending María's confirmation, to the SPI families microcosm#1418 binds, Table 3.7's other income by total-income band and Table 3.10's self-employment bands from GBP 1 to GBP 10,000: a row of theirs that no household carries is dropped and receipted as its siblings' rows are, not refused. The ceilings are unchanged, so the HMRC amounts scope's 2-row cap, signed for seven families, now covers nine, and the counts scope's, signed for seven, now covers eight; María confirms or re-sizes them (the re-reviews of microcosm#1420, H and 4). Extended on 2026-11-01 in microcosm#1428, in answer to its independent review's finding 11, to Table 3.10's employment-income counts by self-employment band, which #1428 binds over the same bands: a row of theirs no household carries is dropped and receipted, not refused. The counts scope's 2-row cap now covers nine families.",
@@ -560,121 +560,130 @@
       "expires_on": "2027-02-09"
     },
     {
-      "name": "dwp.pip.cases_england_aged_16_to_19",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "name": "dwp.pip.cases_england_aged_16_to_24",
+      "reason": "The sum of England's PIP cases at 16 to 19 and 20 to 24 (chronicle#420 item 6), which bind in its place since María's call of 2026-11-17: the young people work review's measures cut PIP at 18, inside this band, and on build fcfac709 the split within it ran 17.6 per cent high at 16 to 19 and 15.9 per cent low at 20 to 24 while the band itself fitted (PolicyEngine/uk-milburn-review-dashboard#1). The solve binds the two published bands; this row, their sum, stays held out as the check on the solve, since binding it too would weight the same cases twice.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band, and keep 16 to 24 held out as their sum. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad bands, 16 to 24 among them.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
-      "name": "dwp.pip.cases_england_aged_20_to_24",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
-      "tracking": "microcosm#1095",
+      "name": "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced",
+      "reason": "A check on the young award mix: DWP's PIP cases with entitlement in England aged 16 to 24 with the daily living component at enhanced (PolicyEngine/chronicle#420 item 6), against the model's people with a PIP award at that age and award. England's PIP binds at 16 to 19 and 20 to 24, every award; this row checks the share at the enhanced rate within them, which sets the young award level. On the November builds the model's mix met DWP's within about a point, so it is a monitor, not a weight question. That each cell and its complement rest on three or more survey households was read on the control build, not enforced: the signed support floor for these rows is one, so the read is repeated before either row could bind (Vahid's review of #1663).",
+      "tracking": "PolicyEngine/microcosm#1663",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's go of 2026-11-18 on the Milburn review's gaps (\"lets start UC parts 1-2 but also the wider fixes you noted above\"; \"they can all go into 1663\"), on the fix put to her as: a check, then a target, on the award mix at 16 to 24 in England, with rows only where every cell and its complement rest on three or more households. Measured on the control build, the mix needs no target, so the row stays a held-out check.",
+      "approved_on": "2026-11-18",
+      "expires_on": "2027-02-18"
+    },
+    {
+      "name": "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced",
+      "reason": "A check on the young award mix: DWP's PIP cases with entitlement in England aged 16 to 24 with the mobility component at enhanced (PolicyEngine/chronicle#420 item 6), against the model's people with a PIP award at that age and award. England's PIP binds at 16 to 19 and 20 to 24, every award; this row checks the share at the enhanced rate within them, which sets the young award level. On the November builds the model's mix met DWP's within about a point, so it is a monitor, not a weight question. That each cell and its complement rest on three or more survey households was read on the control build, not enforced: the signed support floor for these rows is one, so the read is repeated before either row could bind (Vahid's review of #1663).",
+      "tracking": "PolicyEngine/microcosm#1663",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-18 on the Milburn review's gaps (\"lets start UC parts 1-2 but also the wider fixes you noted above\"; \"they can all go into 1663\"), on the fix put to her as: a check, then a target, on the award mix at 16 to 24 in England, with rows only where every cell and its complement rest on three or more households. Measured on the control build, the mix needs no target, so the row stays a held-out check.",
+      "approved_on": "2026-11-18",
+      "expires_on": "2027-02-18"
     },
     {
       "name": "dwp.pip.cases_england_aged_25_to_29",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_30_to_34",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_35_to_39",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_40_to_44",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_45_to_49",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_50_to_54",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_55_to_59",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_60_to_64",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_65_to_69",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_70_to_74",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_england_aged_75_and_over",
-      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. Since María's call of 2026-11-11 the five broad England bands (16 to 24, 25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, bind; these thirteen stay held out, since the split within a broad band follows the survey's ages, which no weight can move without moving the broad band. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
+      "reason": "Checks on the split within the bound broad bands: DWP's PIP cases with entitlement in England by published age band (chronicle#420 item 6), against the model's people with a PIP award. England binds four broad bands (25 to 34, 35 to 49, 50 to 64, 65 and over), each the sum of these bands, and, since María's call of 2026-11-17, the published bands 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven stay held out as checks on the split within their broad bands. The award-by-age cross rests on fewer than three survey households in some English cells, so only single breakdowns are rows.",
       "tracking": "microcosm#1095",
       "approved_by": "juaristi22",
-      "adjudication": "María's call 7 of 2026-11-11 on PR3's B2 (microcosm#1095): bind England's PIP cases in five broad age bands; the thirteen published bands stay held out as checks on the split within them (María's signature of 2026-11-11). Before it, her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-09"
+      "adjudication": "María's call of 2026-11-17 (\"do the pip age-split and lcwra in a single pr\"): bind England's PIP cases at 16 to 19 and 20 to 24 in place of the 16 to 24 band; these eleven published bands stay held out. Before it, her call 7 of 2026-11-11 on PR3's B2 (microcosm#1095) bound five broad age bands with the thirteen published bands held out as checks (María's signature of 2026-11-11), and her calls of 2026-11-08 (PR2, item P3) held every single breakdown out of the solve.",
+      "approved_on": "2026-11-17",
+      "expires_on": "2027-02-15"
     },
     {
       "name": "dwp.pip.cases_wales",
@@ -1299,21 +1308,21 @@
     },
     {
       "name": "ons.paye_rti.employees_aged_0_to_17",
-      "reason": "Diagnostic, not a weight question: PAYE RTI's payrolled employees by age monitor the employee base of the employer NICs relief for employees under 21, whose 2024-25 outturn the build matches within 4 percent at 2024-25 rules (B1 of the November event-data plan's PR3, microcosm#1095). The model counts anyone with employment income in the year against a monthly average, so the rows read high by job turnover and are not bound as they stand.",
-      "tracking": "microcosm#1095",
+      "reason": "A check, not a weight question: PAYE RTI's payrolled employees aged 0 to 17 against the model's employees at the FRS interview (employment_status FT_EMPLOYED or PT_EMPLOYED) and its dependent children with pay (CHILD, from CHILD.CHEARNS), each in work (PolicyEngine/microcosm#1663). Most under-18s on a payroll are dependent children whose spare-time jobs the FRS records only as pay, with no hours or employer, so the row checks how far that measure covers them and stays held out (María's go of 2026-11-18). It monitors the employee base of the employer NICs relief for employees under 21 (B1 of the November event-data plan's PR3, microcosm#1095). Its sibling at 18 to 24 binds.",
+      "tracking": "PolicyEngine/microcosm#1663",
       "approved_by": "juaristi22",
-      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (María's signature of 2026-11-11).",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-11"
+      "adjudication": "María's go of 2026-11-18 on the Milburn review's gaps (\"lets start UC parts 1-2 but also the wider fixes you noted above\"; \"they can all go into 1663\"), on the fix put to her as: count employees at interview, which matches RTI's monthly count, and bind 18 to 24. This row, 0 to 17, stays held out as the check.",
+      "approved_on": "2026-11-18",
+      "expires_on": "2027-02-18"
     },
     {
-      "name": "ons.paye_rti.employees_aged_18_to_24",
-      "reason": "Diagnostic, not a weight question: PAYE RTI's payrolled employees by age monitor the employee base of the employer NICs relief for employees under 21, whose 2024-25 outturn the build matches within 4 percent at 2024-25 rules (B1 of the November event-data plan's PR3, microcosm#1095). The model counts anyone with employment income in the year against a monthly average, so the rows read high by job turnover and are not bound as they stand.",
-      "tracking": "microcosm#1095",
+      "name": "ons.paye_rti.pay_aged_18_to_24",
+      "reason": "A check, not yet a weight question: PAYE RTI's pay bill of employees aged 18 to 24 (employees times mean gross monthly pay times 12, averaged over 2025) against the model's employment income of its employees at the FRS interview aged 18 to 24 (PolicyEngine/microcosm#1663). Their count binds in ons.paye_rti.employees_aged_18_to_24, so this row reads pay per young employee, which the static cost of the employer NICs relief for young employees rests on. Whether pay at that age binds is a later call on the row's measured fit.",
+      "tracking": "PolicyEngine/microcosm#1663",
       "approved_by": "juaristi22",
-      "adjudication": "María's go of 2026-11-11 on B1 of the November event-data plan's PR3, as recommended: measure PAYE RTI's payrolled employees aged 0 to 17 and 18 to 24, averaged over 2025, on every build and hold them out of the solve (María's signature of 2026-11-11).",
-      "approved_on": "2026-11-11",
-      "expires_on": "2027-02-11"
+      "adjudication": "María's go of 2026-11-18 on the Milburn review's gaps (\"lets start UC parts 1-2 but also the wider fixes you noted above\"; \"they can all go into 1663\"), on the fix put to her as: count employees at interview and bind 18 to 24, and add young pay checks from RTI's pay by age. This is the pay check, held out.",
+      "approved_on": "2026-11-18",
+      "expires_on": "2027-02-18"
     },
     {
       "name": "dwp.uc.people_aged_16_to_21_no_work_requirements",

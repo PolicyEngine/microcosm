@@ -51,7 +51,8 @@ Declared options, each a real feature (and each its own test):
   ``mass="conserve"``; ``max_weight_ratio`` remains the hard safety bound.
   This penalty is only implemented by ``method="adam"``. In the two-stage
   :func:`calibrate_l0_refit` path it applies to both stages unless
-  ``refit_l2_lambda`` overrides the refit stage — the stage whose weights ship.
+  ``refit_l2_lambda`` overrides the refit stage, whose weights that function
+  returns.
 - ``l2_basis`` selects the penalty's functional form. ``"record"`` (default)
   is the record-weighted ``mean(r ** 2)`` above, ``r = w / anchor``. Under
   ``mass="conserve"`` its target-free minimizer is ``w ∝ anchor ** 2``, and
@@ -450,8 +451,8 @@ class L0RefitResult:
     hard-concrete L0 gates. The :attr:`refit` stage keeps either the legacy
     weight-threshold support or a caller-supplied exact-k support, removes the
     gates and L0 penalty, and runs ordinary calibration on the resulting frame.
-    Convenience properties delegate to :attr:`refit`, because the refit frame
-    and weights are the production artifact.
+    Convenience properties delegate to :attr:`refit`, because the refit stage
+    produces the calibrated frame and weights.
     """
 
     selection: CalibrationResult
@@ -548,7 +549,7 @@ class L0RefitResult:
 
     @property
     def effective_sample_size(self) -> float:
-        """Kish ESS of the post-L0 refit weights (the shipped vector)."""
+        """Kish ESS of the post-L0 refit weights (the returned vector)."""
         return self.refit.effective_sample_size
 
     @property
@@ -568,7 +569,7 @@ class L0RefitResult:
 
     @property
     def options(self) -> Mapping[str, object]:
-        """Combined production options and selection provenance."""
+        """Combined refit options and selection provenance."""
         return {
             **dict(self.refit.options),
             "post_l0_refit": True,
@@ -1640,7 +1641,7 @@ def _optimize_proximal(
 
     final = (torch.clamp(ratio, min=0.0) * w0_t).detach().numpy().astype(np.float64)
     # Make sub-threshold residuals exact zeros so the reported n_nonzero and the
-    # shipped dataset agree on which records survived.
+    # returned weights agree on which records survived.
     final[final <= prune_atol] = 0.0
     if max_weight_ratio is not None:
         final = np.minimum(final, max_weight_ratio * w0)
@@ -3414,21 +3415,21 @@ def refit_l0_selection(
     explicitly selects the existing thresholded path and leaves its starting
     weights unchanged.
     ``l2_lambda`` applies the soft concentration penalty to the refit itself —
-    the stage that produces the shipped weights; the default ``0.0`` keeps the
-    refit unpenalized.
+    the stage whose weights this function returns; the default ``0.0`` keeps
+    the refit unpenalized.
 
     On the legacy path, the refit's starting weights are the *selection stage's
     calibrated weights*, which are already concentrated — so with
     ``l2_anchor="initial"`` a strong penalty pulls toward their square (more
     concentration, lower ESS). Pass ``l2_anchor="uniform"`` when the penalty's
-    job is to spread the shipped weights, or ``l2_anchor="design"`` to anchor at
+    job is to spread the returned weights, or ``l2_anchor="design"`` to anchor at
     the *pre-selection* initial weights of the surviving records — "stay near
     the survey design", the natural choice when the candidate frame carries
     real design weights rather than a uniform reset. On the explicit exact-k
     path, the starting weights and design anchor instead use the original-frame
     design weights after the same normalized Horvitz--Thompson projection.
     ``l2_basis`` selects the refit penalty's form (see :func:`calibrate`);
-    ``"chi_square"`` with the ``"design"`` anchor pulls the shipped weights
+    ``"chi_square"`` with the ``"design"`` anchor pulls the returned weights
     toward the survivors' design weights themselves rather than their square.
     ``mass_parametrization`` applies to the refit, which has no gates (see
     :func:`calibrate`).
@@ -3617,11 +3618,12 @@ def calibrate_l0_refit(
 ) -> L0RefitResult:
     """Select a sparse support with L0 gates, then refit ordinary calibration.
 
-    This is the production "generate big, then prune" path when the final
-    artifact should be a sparse calibrated frame rather than the raw gated L0
-    weights. The first stage is exactly :func:`calibrate` with L0 pruning
-    enabled by ``target_records`` or a positive fixed ``l0_lambda``. The second
-    stage delegates to :func:`refit_l0_selection`.
+    Use it for a "generate big, then prune" solve whose result should be a
+    sparse calibrated frame rather than the raw gated L0 weights. The first
+    stage is exactly :func:`calibrate` with L0 pruning enabled by
+    ``target_records`` or a positive fixed ``l0_lambda``. The second stage
+    delegates to :func:`refit_l0_selection`, and the result's frame and
+    weights are the refit stage's.
 
     ``l2_lambda`` applies the soft concentration penalty to both stages.
     ``refit_l2_lambda`` overrides the refit stage only (the ``refit_epochs`` /
@@ -3630,7 +3632,7 @@ def calibrate_l0_refit(
     override) penalties are both expressible. ``l2_anchor`` /
     ``refit_l2_anchor`` follow the same inherit-or-override pattern; note the
     refit starts from the selection stage's concentrated weights, so a
-    penalized refit whose goal is spreading the shipped weights should anchor
+    penalized refit whose goal is spreading the returned weights should anchor
     ``"uniform"`` (see :func:`refit_l0_selection`). ``l2_basis`` /
     ``refit_l2_basis`` follow the same pattern for the penalty's form.
     ``refit_mass_parametrization`` applies to the refit stage only: the

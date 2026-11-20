@@ -376,11 +376,12 @@ def test_spi_qrf_stages_use_typed_weights_and_keep_isa_interest_apart(
         allow_in_sample_reference=True,
     )
 
-    # The reference forest is fitted once per cross-fit fold in use (the
-    # transport receipt's ``folds``), all under its one fit record.
+    # The reference forest is fitted once per cross-fit fold that scores a
+    # recipient (the transport receipt's fold receipts), all under its one
+    # fit record.
     assert _FakeQRF.fit_weight_kinds == [
         "design",
-        *["importance"] * result.stage1_transport["folds"],
+        *["importance"] * len(result.stage1_transport["fold_receipts"]),
         "importance",
     ]
     assert [
@@ -390,20 +391,12 @@ def test_spi_qrf_stages_use_typed_weights_and_keep_isa_interest_apart(
         ("uk_frs_reference_conditional", "importance"),
         ("uk_frs_only_spi_fill", "importance"),
     ]
-    # The reference forest trains on the clone-0 FRS claimants and partners
-    # with taxable income: two of the fixture's four households are clone 0.
-    clone_zero = support.household.loc[
-        support.household["clone_index"] == 0, "household_id"
-    ]
+    # The reference forest trains on the FRS claimants and partners with
+    # taxable income, in every one of the fixture's four households.
     assert (
         result.reference_training_rows
-        == int(
-            (
-                (support.person[support_channel_column("person")] == "frs")
-                & support.person["person_household_id"].isin(clone_zero)
-            ).sum()
-        )
-        == 2
+        == int((support.person[support_channel_column("person")] == "frs").sum())
+        == 4
     )
     assert result.state_pension_age == 66
     assert result.stage1_transport["draw"] == "twin_conditional_quantiles"
@@ -923,17 +916,10 @@ def test_undrawn_twins_keep_their_values_and_are_receipted(
     assert domain["recipient_rows"] == len(others) == result.spi_prediction_rows
     assert domain["unearned_income_floor_gbp"] == 1_000.0
     assert "no tax record" in domain["income_rule"]
-    # The reference forest trains on the clone-0 FRS rows with taxable income
-    # only: two of the fixture's households are clone 0, and one twin is kept.
-    clone_zero = support.household.loc[
-        support.household["clone_index"] == 0, "household_id"
-    ]
-    reference_rows = (
-        (person[channel] == "frs")
-        & person["person_household_id"].isin(clone_zero)
-        & ~person.index.isin(twin)
-    )
-    assert result.reference_training_rows == int(reference_rows.sum()) == 1
+    # The reference forest trains on the FRS rows with taxable income only:
+    # every FRS row but the kept twin's.
+    reference_rows = (person[channel] == "frs") & ~person.index.isin(twin)
+    assert result.reference_training_rows == int(reference_rows.sum()) == 3
     # A reserved band carrier is drawn whatever its twin reports.
     carrier = person.copy()
     carrier["person_is_spi_income_band_carrier"] = False

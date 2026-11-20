@@ -47,7 +47,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from .. import stage_evidence, stochastic_assignment
+from .. import source_lineage, stage_evidence, stochastic_assignment
 from . import (
     bus_use_incidence,
     cgt_imputation,
@@ -70,10 +70,12 @@ from . import (
     receipt_counts,
     rowwise_geography,
     spi_income,
+    spi_rank_transport,
     spi_support,
     uc_capital_coherence,
     uc_deduction_attributes,
     uc_relationships,
+    uc_take_up,
     was_wealth,
 )
 from .national_frame import UK_NATIONAL_SCHEMA
@@ -166,8 +168,9 @@ _STAGE_HELPER_MODULES = {
     # (microcosm#1164).
     "frs_annual_income_spells": (receipt_counts,),
     # The SPI income stage's imputation, band-donor resample and receipt live
-    # in spi_income, so an edit there moves the stage's hash (microcosm#1278).
-    "hmrc_spi_income_spine": (spi_income,),
+    # in spi_income, so an edit there moves the stage's hash (microcosm#1278),
+    # and its twin transport in spi_rank_transport (microcosm#840).
+    "hmrc_spi_income_spine": (spi_income, spi_rank_transport),
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),
@@ -208,10 +211,19 @@ _STAGE_HELPER_MODULES = {
     ),
     "uc_capital_coherence": (uc_relationships,),
     # The Universal Credit redraw reads the award through the adapter, the
-    # One engine materialization of the proxy, the claimant role and carer
-    # status; the frs_spine carrier's codes; the receipt's support counts
-    # (microcosm#1095, Y1).
-    "uc_limited_capability": (uk_engine_adapter, frs_spine, receipt_counts),
+    # One engine materialization of the proxy, the claimant role, carer status
+    # and own ESA awards; the frs_spine carrier's codes; the receipt's support
+    # counts (microcosm#1095, Y1); the imputation's age source, the take-up
+    # redraw's young ages and its identity-keyed draw (María's call of
+    # 2026-11-17).
+    "uc_limited_capability": (
+        uk_engine_adapter,
+        frs_spine,
+        receipt_counts,
+        frs_take_up,
+        uc_take_up,
+        stochastic_assignment,
+    ),
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
     # its pools and receipt on the source lineage (microcosm#1334).
@@ -304,6 +316,51 @@ _STAGE_HELPER_MODULES = {
     ),
 }
 
+# The receipts' counting rules and the shared lineage readers: every floor
+# counts true source households through receipt_counts, and the FRS-trained
+# fits fold geographic clones through household_lineage, both reading
+# source_lineage on household_lineage's declaration (microcosm#931). An edit
+# to any of the three moves the hash of every stage whose module or helpers
+# import one of them; test_uk_graph derives this set from the imports.
+_COUNTING_MODULES = (receipt_counts, household_lineage, source_lineage)
+_COUNTING_STAGES = frozenset(
+    {
+        "frs_take_up",
+        "frs_person_draws",
+        "frs_household_draws",
+        "frs_annual_income_spells",
+        "hmrc_spi_income_spine",
+        "company_cars",
+        "spi_housing_shell",
+        "high_value_home_support",
+        "regional_home_values",
+        "property_components",
+        "property_purchases",
+        "nts_bus_travel",
+        "lcfs_consumption",
+        "etb_vat",
+        "uc_reporter_redraw",
+        "spi_benefit_coherence",
+        "uc_capital_coherence",
+        "uc_take_up",
+        "uc_legacy_closure_take_up",
+        "pension_credit_take_up",
+        "child_benefit_take_up",
+        "salary_sacrifice",
+        "carers_allowance_take_up",
+        "childcare_copy_take_up",
+        "isa_subscriptions",
+        "trading_allowance_receipts",
+        "frs_spine",
+        "frs_council_tax",
+        "frs_disability",
+        "spi_employment_shell",
+        "aps_occupation",
+        "uc_limited_capability",
+        "pip_points",
+    }
+)
+
 _COMPUTE = Capabilities(
     determinism=Determinism.DETERMINISTIC,
     numeric=Numeric.BITWISE,
@@ -357,6 +414,7 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
         _mass_log_payload,
         _stage_module(stage),
         *_STAGE_HELPER_MODULES.get(stage, ()),
+        *(_COUNTING_MODULES if stage in _COUNTING_STAGES else ()),
         *(dependencies() if callable(dependencies) else ()),
     )
 
@@ -378,7 +436,12 @@ def _mass_log_payload(before: Frame, after: Frame) -> list[dict[str, object]]:
 
 
 def _stage_artifacts(
-    stage: str, transform: object | None, before: Frame | None, after: Frame
+    stage: str,
+    transform: object | None,
+    before: Frame | None,
+    after: Frame,
+    *,
+    release: bool = False,
 ) -> dict[str, bytes]:
     document = stage_evidence.snapshot_stage_evidence(stage, transform)
     document["frame_mass_log_append"] = (
@@ -397,7 +460,12 @@ def _stage_artifacts(
     )
     if before is None:
         document["frame_context"] = {"metadata": dict(after.metadata)}
-    return {"stage_evidence": stage_evidence.encode_stage_evidence(document)}
+    artifacts = {"stage_evidence": stage_evidence.encode_stage_evidence(document)}
+    if release:
+        # The bytes above are all that later steps read of this stage, so the
+        # result it kept, output Frame included, need not live for the run.
+        stage_evidence.release_stage_results(transform)
+    return artifacts
 
 
 def _invoke_transform(transform: object, frame: Frame, context: KernelContext):
@@ -1115,8 +1183,14 @@ class UKCreateKernel(KernelBase):
     ref = "uk.create@1"
     capabilities = _CREATE
 
-    def __init__(self, transform: object | None = None) -> None:
+    def __init__(
+        self,
+        transform: object | None = None,
+        *,
+        release_stage_results: bool = False,
+    ) -> None:
         self.transform = transform
+        self.release_stage_results = release_stage_results
 
     def implementation_hash(self) -> str:
         return _implementation_hash(self, "frs_spine", self.transform)
@@ -1137,7 +1211,13 @@ class UKCreateKernel(KernelBase):
             )
         return KernelResult(
             frame=_normalize_create_frame(frame, context),
-            artifacts=_stage_artifacts("frs_spine", self.transform, None, frame),
+            artifacts=_stage_artifacts(
+                "frs_spine",
+                self.transform,
+                None,
+                frame,
+                release=self.release_stage_results,
+            ),
         )
 
 
@@ -1191,10 +1271,13 @@ class UKStageKernel(KernelBase):
         stage: str,
         transform: object | None = None,
         fixture_resolver: _FixtureTransformResolver | None = None,
+        *,
+        release_stage_results: bool = False,
     ) -> None:
         self.stage = stage
         self.transform = transform
         self.fixture_resolver = fixture_resolver
+        self.release_stage_results = release_stage_results
         self.ref = f"uk.stage.{stage}@1"
 
     def implementation_hash(self) -> str:
@@ -1226,7 +1309,13 @@ class UKStageKernel(KernelBase):
         }
         return KernelResult(
             columns=MappingProxyType(columns),
-            artifacts=_stage_artifacts(self.stage, transform, before, after),
+            artifacts=_stage_artifacts(
+                self.stage,
+                transform,
+                before,
+                after,
+                release=self.release_stage_results,
+            ),
             receipt={
                 "stage": self.stage,
                 "frame_mass_log_append": _mass_log_payload(before, after),
@@ -1318,10 +1407,13 @@ class UKExpandStageKernel(KernelBase):
         stage: str,
         transform: object | None = None,
         fixture_resolver: _FixtureTransformResolver | None = None,
+        *,
+        release_stage_results: bool = False,
     ) -> None:
         self.stage = stage
         self.transform = transform
         self.fixture_resolver = fixture_resolver
+        self.release_stage_results = release_stage_results
         self.ref = f"uk.stage.expand.{stage}@1"
 
     def implementation_hash(self) -> str:
@@ -1397,7 +1489,13 @@ class UKExpandStageKernel(KernelBase):
             columns=MappingProxyType(columns),
             expand=MappingProxyType(expand),
             weights=after_weights,
-            artifacts=_stage_artifacts(self.stage, transform, before, after),
+            artifacts=_stage_artifacts(
+                self.stage,
+                transform,
+                before,
+                after,
+                release=self.release_stage_results,
+            ),
             receipt=receipt,
         )
 
@@ -1450,8 +1548,18 @@ def _declared_mass_receipt(
 def build_uk_registry(
     graph: Graph,
     implementations: Mapping[str, object],
+    *,
+    release_stage_results: bool = False,
 ) -> KernelRegistry:
-    """Bind graph refs to supplied transforms or the hermetic H2 descriptor."""
+    """Bind graph refs to supplied transforms or the hermetic H2 descriptor.
+
+    With ``release_stage_results``, each stage kernel drops the result its
+    transform kept as soon as the stage's evidence is captured
+    (:func:`~microcosm.build.stage_evidence.release_stage_results`). The
+    default keeps it, for a caller that reads ``last_result`` after the run.
+    The setting enters no key: it changes what a live transform holds, never
+    what a node computes or stores.
+    """
 
     stage_names = {
         str(node.params["stage"]) for node in graph.nodes if "stage" in node.params
@@ -1467,7 +1575,12 @@ def build_uk_registry(
             )
 
     registry = KernelRegistry()
-    registry.register(UKCreateKernel(implementations.get("frs_spine")))
+    registry.register(
+        UKCreateKernel(
+            implementations.get("frs_spine"),
+            release_stage_results=release_stage_results,
+        )
+    )
     registry.register(UKIdentityKernel())
     registry.register(UKClaimKernel())
     fixture_resolver = _FixtureTransformResolver()
@@ -1482,9 +1595,23 @@ def build_uk_registry(
             "cgt_incidence_anchor",
             "cgt_residential_split",
         }:
-            registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
+            registry.register(
+                UKExpandStageKernel(
+                    stage,
+                    transform,
+                    fixture_resolver,
+                    release_stage_results=release_stage_results,
+                )
+            )
         else:
-            registry.register(UKStageKernel(stage, transform, fixture_resolver))
+            registry.register(
+                UKStageKernel(
+                    stage,
+                    transform,
+                    fixture_resolver,
+                    release_stage_results=release_stage_results,
+                )
+            )
 
     # Gate bindings carry the live rules engine and are registered separately
     # after population-stage construction by the composing build.

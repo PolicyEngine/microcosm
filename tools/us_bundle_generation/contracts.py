@@ -1466,7 +1466,7 @@ def build_calibration_contract() -> dict[str, object]:
             },
         },
         "refit_contracts": {
-            "default_sparse": {
+            "l0_refit": {
                 "support": "selection_weight_above_prune_relative_atol",
                 "subset_source": "selection_stage_frame",
                 "starting_weights": "selection_stage_calibrated_weights",
@@ -1493,14 +1493,24 @@ def build_calibration_contract() -> dict[str, object]:
                 "seed": {"source": "run_request", "default": None},
             },
         },
+        # One mode per builder arm. The first two keys are the
+        # dataset.default.method values the builder writes for its arms:
+        # l0_refit when the caller sets neither --exact-k nor
+        # --dense-default-dataset, and dense_no_l0 for
+        # --dense-default-dataset. The third is the --exact-k arm. Every
+        # mode shares the solver block. Its kernel and l0_contract.default_mode
+        # are set by hand to the l0_refit arm's, and
+        # _fiscal_release_cli_defaults reads its other defaults from a builder
+        # parse with neither flag set. solver.l0.mode keeps the approved binding
+        # literal exact_k_projection, which neither of those sets.
         "release_modes": {
-            "default_sparse_l0_refit": {
+            "l0_refit": {
                 "kernel": _kernel_ref(solve.calibrate_l0_refit),
                 "solver_ref": "solver",
                 "selection_contract_ref": "solver.l0_contract",
-                "refit_contract_ref": "refit_contracts.default_sparse",
+                "refit_contract_ref": "refit_contracts.l0_refit",
             },
-            "dense_diagnostic": {
+            "dense_no_l0": {
                 "kernel": _kernel_ref(solve.calibrate),
                 "solver_ref": "solver",
                 "l0_mode": "none",

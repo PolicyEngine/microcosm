@@ -7,6 +7,10 @@ area using identified, versioned mappings. Distinct clones may receive different
 areas subject to their observed source constraints. The assigned location then
 remains fixed through subsequent enrichment, calibration and analysis views.
 
+> These US passages describe the work of PolicyEngine/microcosm#893, which
+> closed unmerged on 9 October 2026. Its modules, graphs and receipts never
+> reached main.
+
 The earlier block-before-clone implementation and its passing controls remain
 historical evidence. They do not demonstrate this corrected ordering. Geographic
 assignment must use a stable post-clone identity, including a clone discriminator
@@ -142,7 +146,12 @@ cross-platform equivalence has not been established.
 The version-1 declaration lists `identity`, `stream`, three assignment `outputs`
 (`area`, `system`, `basis`), and `systems`. Each system supplies its atomic
 identity and source, a selector, observed constraints, an optional observed-area
-column, sampling stages and derived layers. Geographic codes use nullable
+column, sampling stages and derived layers. A stage samples by one `weight`
+column, or declares `weight_by` (`input`, `map`, `default`) instead: each
+household samples by the weight column `map` names for its `input` code, or by
+`default` where the code is missing, and a code `map` does not name is refused
+(microcosm#931). A declaration without `weight_by` keeps its canonical bytes,
+so its definition digest and draws are unchanged. Geographic codes use nullable
 strings throughout, retaining leading zeroes. An engine that needs integer
 storage must declare that conversion separately. A system without a particular
 layer produces missing values for that layer, which the integrity gate checks.
@@ -158,6 +167,10 @@ admit a Census/ONS source or certify any population's geographic fit. The gate
 checks mapping integrity, while the executor and build own structural lineage
 and population-quality acceptance. The country's chosen identity still needs
 verification across actual sampling rungs.
+
+> These US passages describe the work of PolicyEngine/microcosm#893, which
+> closed unmerged on 9 October 2026. Its modules, graphs and receipts never
+> reached main.
 
 The US development composed graph attaches geography after harmonization, but
 `us_runtime/graph_geography.py` selects a joint tract/congressional-district cell
@@ -182,11 +195,50 @@ on a shared seeded stream) remains available as `--geography-assignment
 legacy` for measurement builds only, and still supplies the rosters and
 dispersion checks used by target compilation.
 
+Each support also has a conditioned form for the geography-first draw
+(microcosm#931), which only that move binds. It is declared in
+`uk/spec/sources.yaml` with role `uk_atomic_area_conditioned_support`, beside
+the support it extends, and recorded in
+`uk/uk_atomic_area_conditioned_supports.provenance.json`;
+`tools/build_uk_conditioned_area_supports.py` builds it from the registered
+support's bytes, chronicle#412's raw-only registrations and, from the pinned UK
+Chronicle feed, NRS's dwellings by band and 2022 data zone (chronicle#421). It
+adds two kinds of column:
+
+- **`imd_decile`**, an exact-match constraint code. It is the area's
+  deprivation decile within its own nation, at the 2019 vintage the FRS
+  2024-25 deciles follow (IoD 2019, WIMD 2019, SIMD 2020v2 and NIMDM 2017). An
+  area takes the decile that most of its live residential postcodes carry in
+  the May 2026 NSPL. A tie goes to its parent area's plurality, and an area
+  without such a postcode takes its parent's decile. The relation is
+  `inferred_modal`.
+- **`households_band_a`, `households_band_b` and so on**, weight columns. Each is
+  the area's households in that council-tax band times 10^6, which a `weight_by`
+  stage chooses per household:
+  - England and Wales take bands A to I from the area's LSOA mix in VOA
+    CTSOP1.1. Only Wales has band I.
+  - Scotland takes bands A to H from its 2022 data zone's dwellings by band in
+    NRS's December 2024 estimates, as Chronicle emits them; its output areas
+    nest in those zones.
+  - Northern Ireland has domestic rates, so its support carries no bands.
+
+The provenance lists every zero-mass draw cell (FRS region by decile, and
+region alone, for each weight column), so the move can choose a draw's fallback
+ahead of time instead of meeting an empty cell. `spine.yaml` declares the FRS
+channel's `observed_constraints: [imd_decile]`, and the UK country adapter
+refuses a spec in which the supports, their conditioned forms and that
+declaration disagree. The shared pieces (`atomic_support_conditioning`: modal
+codes, exact apportionment and zero-mass cells) name no country's columns.
+
 The Northern Ireland source builder currently infers Data Zone constituencies
 using the modal active-postcode constituency. Review the official
 [NISRA constituency aggregation and lookup resources](https://www.nisra.gov.uk/publications/census-2021-output-geography-information-papers)
 before choosing or replacing that approximation. Source existence is not
 acceptance of a particular lookup or its application to the population.
+
+> These US passages describe the work of PolicyEngine/microcosm#893, which
+> closed unmerged on 9 October 2026. Its modules, graphs and receipts never
+> reached main.
 
 The US block adapter in `us_runtime/atomic_block_support.py` now preserves each
 supplied block, leading zeroes, population weight and the source-labeled

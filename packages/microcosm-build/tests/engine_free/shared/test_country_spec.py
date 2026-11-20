@@ -529,6 +529,7 @@ class TestBelgianPackage:
             "target_references.json",
             "precal_references.json",
             "holdout_references.json",
+            "money_normalization.json",
             "quantile_surfaces.json",
             "reference_aging.json",
             "reference_intervals.json",
@@ -1087,6 +1088,8 @@ class TestUKCountryPackage:
             "dwp_uc_people_by_age_facts.json",
             # microcosm#1095 B3: uc_take_up's LCWRA fit.
             "dwp_uc_lcwra_households_facts.json",
+            # PolicyEngine/microcosm#1663 part 3: uc_take_up's young LCWRA fit.
+            "dwp_uc_young_lcwra_people_facts.json",
             # microcosm#1095 P1: pip_points' Pathways to Work tables.
             "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1161,6 +1164,7 @@ class TestUKCountryPackage:
             "local_area_crosswalk.json",
             "local_authority_names.json",
             "uk_atomic_area_supports.provenance.json",
+            "uk_atomic_area_conditioned_supports.provenance.json",
             "target_references.json",
             "target_reference_membership.json",
             "local_target_references.json",
@@ -1273,6 +1277,8 @@ class TestExistingPackagesGeneralize:
             "dwp_uc_people_by_age_facts.json",
             # microcosm#1095 B3: uc_take_up's LCWRA fit.
             "dwp_uc_lcwra_households_facts.json",
+            # PolicyEngine/microcosm#1663 part 3: uc_take_up's young LCWRA fit.
+            "dwp_uc_young_lcwra_people_facts.json",
             # microcosm#1095 P1: pip_points' Pathways to Work tables.
             "dwp_pip_points_facts.json",
             "obr_hvcts_costing_facts.json",
@@ -1347,6 +1353,7 @@ class TestExistingPackagesGeneralize:
             "local_area_crosswalk.json",
             "local_authority_names.json",
             "uk_atomic_area_supports.provenance.json",
+            "uk_atomic_area_conditioned_supports.provenance.json",
             "target_references.json",
             "target_reference_membership.json",
             "local_target_references.json",

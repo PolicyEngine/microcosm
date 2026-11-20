@@ -54,7 +54,8 @@ candidate bytes (C1's digest bindings).
   `microcosm-publish-release-build` publishes a build, and only that command
   makes one current (`--promote`, or `--make-current` at publication). Since
   microcosm#1571 merged on 2026-11-11, the UK national, dense and local-area
-  releases and the five US releases publish only this way.
+  releases and the US releases publish only this way (six since
+  microcosm#922 added `microcosm-us-2024-local-annual`).
 - **One registry.** `microcosm.data.registry` names every file any consumer
   serves, and policyengine.py's bundle mirrors it.
 - **Publishing refuses** any release that does not conform (from 2026-11-06, in
@@ -148,13 +149,14 @@ the local release manifest names.
 The validator reads the release's name from the directory. For a release that
 publishes each build into its own folder, the directory carries the release's
 name, such as `microcosm-us-2024-national`. `publishes_to_build_folder` lists
-those releases: the UK national, dense and local-area releases and the five US
+those releases: the UK national, dense and local-area releases and the six US
 releases in `US_RELEASES`. For a build in the tagged layout the directory
 carries the build id, such as `populace-us-2024-<sha>-<date>`. Before it
 dispatches, the validator refuses two kinds of misplaced build.
 `_refuse_misplaced_annual_years` refuses a build-folder build that declares
-annual years outside `microcosm-us-2024-annual`, and a build of that release
-that declares none. `_refuse_a_receipt_donor_that_is_not_an_enrichment`
+annual years outside the two annual releases (`US_ANNUAL_BASE_RELEASES`:
+`microcosm-us-2024-annual` and `microcosm-us-2024-local-annual`), and a build
+of either that declares none. `_refuse_a_receipt_donor_that_is_not_an_enrichment`
 refuses a build of `microcosm-us-2024-receipt-donor` that declares any release
 type but a source enrichment. The validator then dispatches in three steps:
 
@@ -171,17 +173,26 @@ type but a source enrichment. The validator then dispatches in three steps:
    build, or by build id and tag for a parent that kept only its tag. An absent
    `release_type`, or `calibration`, means a calibration build; the validator
    refuses any other value. When the manifest declares an annual-projection
-   extension, `validate_annual_projection_extension` checks it next.
+   extension, `validate_annual_projection_extension` checks it next. For a
+   build of `microcosm-us-2024-local-annual` it takes the local-area branch:
+   the base is a build of `microcosm-us-2024-local`, the release claims no
+   default dataset, the base-year H5 is the one microdata artifact that is
+   not a projected year, the projected years need not be consecutive, and
+   the H5s are read in their fixed-format layout through h5py.
 2. **Dataset role.** `dataset_role` is `national_default` (also when absent) or
    `non_default_local_area`. A local-area release goes to
    `_validate_local_area_release_dir`, or to `_validate_uk_dense_release_dir`
-   when its name is the UK dense release's.
+   when its name is the UK dense release's. A local-annual build is in the
+   local-area role: that validator accepts its base H5 plus one
+   `microcosm_us_<year>_acs_local.h5` per projected year in place of the one
+   microdata artifact, and holds the carried stored-input and SPM gates to
+   the base H5.
 3. **The release name.** Everything else keys on the directory name:
    - `required_release_files(release_id)` adds `us_source_coverage.json` for a
      US release, `terminal_gates.json` for a UK exact-k id
      (`populace-uk-<year>-<tier>-k<N>`), and `release_certification.json` for
      the literal `microcosm-uk-2024-25-national`. `is_us_release` decides the
-     first: it accepts the five `US_RELEASES` names and any `populace-us-`
+     first: it accepts the six `US_RELEASES` names and any `populace-us-`
      build id. For any other name `required_release_files` returns the three
      base files: `build_manifest.json`, `release_manifest.json` and
      `calibration_diagnostics.json`. The UK dense and local-area names are
@@ -315,7 +326,7 @@ both:
   weakest contract by default.
 - **No other country can publish into a build folder.**
   `publishes_to_build_folder` names only the UK national, dense and local-area
-  releases and the five US releases. `microcosm-publish-release-build` refuses
+  releases and the six US releases. `microcosm-publish-release-build` refuses
   any other name, for publication and promotion alike: its `main` checks
   `publishes_to_build_folder` before anything else, and `build_folder_identity`
   refuses the same names inside `publish_release_build` and
@@ -445,8 +456,10 @@ The 2026-10-09 report's plan brings the US to this shape by adapter at M2: the
 fiscal-refresh tool declares its gates in `us/gates.json`, projects its own
 verdicts through the gate battery under `BlockingMode.MARKS_ARTIFACT`, and
 composes the certification from the projected reports. It projects; it does not
-re-evaluate. On 2026-11-12 neither `us/gates.json` nor that adapter exists, and
-no US build carries a certification. The US national golden,
+re-evaluate. microcosm#1585 item 11 takes another route: `us/gates.json` exists,
+and the four US build tools re-evaluate its entries in shadow beside their own
+gates, comparing verdicts (see the gate-battery contract), before a later step
+makes the battery authoritative. No US build carries a certification. The US national golden,
 [`v1/c1/microcosm-us-2024-national/`](#golden-fixtures), therefore freezes
 the two manifests the US fiscal-refresh tool writes today for a run that
 passes `_build_manifests` only its required arguments and a staging block. A
@@ -835,7 +848,7 @@ either. No publication command reads a Logbook row.
 
 #### Today
 
-The UK national, dense and local-area releases and the five US releases
+The UK national, dense and local-area releases and the six US releases
 publish each build into its own folder, `releases/<release>/<build>/`. The
 repository's `releases.json` records each release's builds and names the
 current one. For those releases the `latest*.json` pointer files survive as
@@ -847,7 +860,7 @@ repository that has no `releases.json`.
   `microcosm-uk-2024-25-national`, the dense release
   `microcosm-uk-2024-25-dense`, each local-area release
   `microcosm-uk-2024-25-local-k<N>` that a UK registry entry names as its
-  `release`, and the five US releases in `US_RELEASES`. The function reads
+  `release`, and the six US releases in `US_RELEASES`. The function reads
   the registry on each call. `validate_release_dir` and
   `validate_evidence_release_dir` refuse every layout of a local-area name
   that no entry names, and neither publisher takes one (microcosm#1586).
@@ -855,10 +868,12 @@ repository that has no `releases.json`.
   calibrated builds, SPM source enrichments, compatibility recertifications
   and exact-k builds. `microcosm-us-2024-local` holds the ACS local-area
   builds, `microcosm-us-2024-receipt-donor` the reported-receipt source
-  enrichments, `microcosm-us-2024-evidence` the evidence-tier builds and
-  `microcosm-us-2024-annual` the annual projections. `US_RELEASES` gives each
-  its role in `releases.json`: `local_area` for the local release and
-  `national` for the other four. `RELEASE_ROLES` maps a build's
+  enrichments, `microcosm-us-2024-evidence` the evidence-tier builds,
+  `microcosm-us-2024-annual` the annual projections of a national build and
+  `microcosm-us-2024-local-annual` the annual projections of a local-area
+  build (the County Files, microcosm#922). `US_RELEASES` gives each its role
+  in `releases.json`: `local_area` for the local and local-annual releases
+  and `national` for the other four. `RELEASE_ROLES` maps a build's
   `dataset_role` onto those two roles. The registry reads the June 2023 UK
   build as the one build of release `populace-uk-2023`, which
   `publishes_to_build_folder` does not name, so that release takes no new
@@ -885,8 +900,13 @@ repository that has no `releases.json`.
      (`prepare_build_folder_release`);
   8. a recertification whose parent the Hub does not serve as the child
      carries it (`require_parent_publication`), and an annual build whose
-     base national build the Hub does not serve
-     (`require_base_publication`);
+     base build the Hub does not serve as the annual build carries it
+     (`require_base_publication`; for a local-annual build, every carried
+     artifact entry and inherited manifest claim, read from the Hub into a
+     new cache, and no artifact the published base and the annual projection
+     do not declare); for either, a build-folder parent or base build that
+     `releases.json` has withdrawn or does not list, or a repository with no
+     `releases.json` (`require_offered_build`);
   9. an emitter whose credential cannot write the repository
      (`write_access_problem`).
 
@@ -1019,7 +1039,8 @@ work.
   The lines in service on 2026-11-12:
   - UK: `national` and `dense`, and a local-area line `local-k<N>` for each
     `N` that the registry names;
-  - US: `national`, `local`, `receipt-donor`, `evidence` and `annual`.
+  - US: `national`, `local`, `receipt-donor`, `evidence`, `annual` and
+    `local-annual`.
 
   `evidence` is a registered line on the retire list. A UK local-area release
   takes the name `microcosm-uk-2024-25-local-k<N>` for each `N` that the
@@ -1033,7 +1054,7 @@ work.
   facts, not rules: a UK national build takes its calibration attempt's id
   (`uk-frs-calibration-attempt-<stamp>-<hex8>`), a UK dense build takes the
   `build_id` of its Logbook row, a US build takes a `populace-us-2024-…` id,
-  and an annual build takes `<base build>-annual-<stamp>-<hex8>`.
+  and an annual or local-annual build takes `<base build>-annual-<stamp>-<hex8>`.
 - **Every country and line publishes into build folders.** A new country's
   release joins `publishes_to_build_folder` and the registry in the pull
   request that authorizes its first publication. The gaps on 2026-11-12:
@@ -1142,7 +1163,7 @@ version 1 takes that shape.
 | --- | --- | --- | --- | --- |
 | M0 | 2026-10-16 | This document and the golden fixtures; nothing refuses | Max's session | microcosm#1285, which adds this document |
 | M1 | 2026-10-23 | A UK national cut on policyengine-uk ≥ 2.122.2 with staging version 3, a Logbook row and a certification; the registry's UK default flips to it | juaristi22 | The registry flip, in microcosm#1432 (merged 2026-11-02). Since microcosm#1505 the entry also names release `microcosm-uk-2024-25-national`, and the loader reads that release's current build from `releases.json` where the repository has one. microcosm#1574 (merged 2026-11-11) moved the national certification to schema 2, which adds `reference` and `since_baseline`, and renamed the score receipt to `score_vs_reference.json`. This document does not check the current build's staging, Logbook row or certification on the Hub |
-| M2 | 2026-10-30 | `us/gates.json` and the US adapter (C1); the US writes staging version 3 and a Logbook row and records `producer` (C3, C4); staging version 1 goes; the registry gains an entry for the US local-area release, which carries the state and district file (C5); one compatibility rule in both loaders and, at publication, for every role (C2) | Max's session, PavelMakarchuk, anth-volk | None of it: only am, be, nz and uk carry a `gates.json`; the fiscal-refresh tool composes no certification, still writes staging version 1 through `StagingRunBundleWriter` and records no Logbook row; no release manifest records a `producer`; the registry has no entry for `microcosm-us-2024-local`; `_check_local_area_release_manifest` checks no compatibility list; and microcosm.data's loader keeps today's containment rule. policyengine.py, at 5b6d7901c on 2026-11-11, keeps its three bases and the `legacy_compatible_model_package` label |
+| M2 | 2026-10-30 | `us/gates.json` and the US adapter (C1); the US writes staging version 3 and a Logbook row and records `producer` (C3, C4); staging version 1 goes; the registry gains an entry for the US local-area release, which carries the state and district file (C5); one compatibility rule in both loaders and, at publication, for every role (C2) | Max's session, PavelMakarchuk, anth-volk | Only `us/gates.json`, which the US tools evaluate in shadow without the adapter (microcosm#1585 item 11); the fiscal-refresh tool composes no certification, still writes staging version 1 through `StagingRunBundleWriter` and records no Logbook row; no release manifest records a `producer`; the registry has no entry for `microcosm-us-2024-local`; `_check_local_area_release_manifest` checks no compatibility list; and microcosm.data's loader keeps today's containment rule. policyengine.py, at 5b6d7901c on 2026-11-11, keeps its three bases and the `legacy_compatible_model_package` label |
 | M3 | 2026-11-06 | Release manifest schema 2 and declared-country dispatch; the validator refuses unknown countries, which also closes a new country's tagged publish; `microcosm-publish-release-build` refuses non-conforming builds, derived builds included; the staging re-delivery command; policyengine.py's registry check | Max's session, juaristi22, anth-volk | None of it: `RELEASE_MANIFEST_SCHEMA_VERSION` is 1; `required_release_files`, `_expected_model_package` and `publishes_to_build_folder` still key on the release name, and an unknown name still gets the base file set; `microcosm-publish-release-build` runs the nine checks that C5 lists under "Order" and adds none of M3's: no check it runs asks for a `run_outcome`, a Logbook row or a manifest's declared `country`, and `required_release_files` names `release_certification.json` for `microcosm-uk-2024-25-national` alone; C1's other certification rule keys on the gate files a directory carries, not on a declared country. `test_release_contract_keying.py`, which arrives with this document, pins today's keying. This document has not looked for policyengine.py's registry check |
 
 Max's rulings still decide anything that changes published numbers, such as
@@ -1370,7 +1391,7 @@ fixtures:
   roles or retired fields;
 - the emitter interface's `add_build`, `make_current` or
   `ReleasesRecord.serialize` (the repository requires
-  `microcosm-emitter-interface>=0.14.0,<1`);
+  `microcosm-emitter-interface>=0.16.0,<1`);
 - the registry;
 - the generator's `WRITERS` table, or one of its synthetic inputs, such as a
   build name, the fixture instant or a runtime version. A change of that kind
@@ -1402,7 +1423,7 @@ release and the tagged publisher joined the table on 2026-11-11.
 | `tools/build_uk_rowwise_dataset.py` | Kept. The report's reason, that the graph driver already takes `--candidate-clone-counts`, does not settle it: both drivers accept the flag only for a dry run. `docs/uk-full-build-graph.md` keeps the row-wise driver as a separate driver, and Max had not ruled on UK-3 (dense or local-k) by 2026-10-15 | Both drivers still accept the flag only for a dry run |
 | `format_uk_release_id`, `apply_uk_release_identity` | This milestone deletes them, with `UKReleaseIdentity`, which builds on `format_uk_release_id`: none had a caller outside its own tests and the `uk_runtime` re-export. The tier vocabulary and the line ids stay | On main none has a caller outside its own tests and the `uk_runtime` re-export |
 | Stale text, microcosm.institute `/calibration`, the evidence tier | A separate task owns them (task_d2b70813) | Not read again. For the evidence tier, see the next row |
-| The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/build_us_fiscal_refresh_release.py` writes its builds under `--evidence-release`. `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. No module under `packages/*/src` or `tools/` calls `latest_evidence_release`. Whoever retires the release must first find, from code, the readers of the evidence release and of `latest_evidence_release` |
+| The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/certify_us_national_build.py --evidence-release` places its builds there: a build has no tier, and certification chooses it (microcosm#1585 item 11). `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. No module under `packages/*/src` or `tools/` calls `latest_evidence_release`. Whoever retires the release must first find, from code, the readers of the evidence release and of `latest_evidence_release` |
 | The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. It refuses every release that `publishes_to_build_folder` names and every repository that has `releases.json`. Its removal waits on the refusal of a new country's tagged publish (C5 version 1, M3). Loading a tagged build that never moved into a folder stays |
 | microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; proposed as a separate task (task_18c2af98) | Not read again |
 | cos d816 | Ruled 2026-10-09 (per-country Core pins, microcosm#1143) | The same |

@@ -565,7 +565,7 @@ def _frame(time_period: str = "2024"):
         {
             "household_id": [1, 2, 3, 4],
             "region": ["WALES", "WALES", "WALES", "NORTHERN_IRELAND"],
-            "household_source_id": [101, 102, 103, 104],
+            "source_household_id": [101, 102, 103, 104],
         }
     )
     return uk_national_frame(
@@ -645,6 +645,7 @@ def test_committed_manifest_declares_the_stage_and_its_rewrite() -> None:
         UC_TAKE_UP_RESOURCE,
         UC_TAKE_UP_AGE_RESOURCE,
         UC_TAKE_UP_LCWRA_RESOURCE,
+        uc_take_up.UC_TAKE_UP_YOUNG_LCWRA_RESOURCE,
     ]
     transform = UKUCTakeUpStageTransform(
         stage=stage,
@@ -653,7 +654,22 @@ def test_committed_manifest_declares_the_stage_and_its_rewrite() -> None:
         targets=_targets(SINGLE_0=10.0),
         closure_rates={"all": 0.8},
     )
-    transform(_frame())
+    # The stage passes DWP's young LCWRA count, so the frame carries the flag
+    # uc_limited_capability stores before it (part 3 of
+    # PolicyEngine/microcosm#1663).
+    frame = _frame()
+    person = frame.table("person").copy()
+    person["uc_limited_capability_for_WRA"] = False
+    transform(
+        uk_national_frame(
+            person=person,
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            household_weights=frame.weights_for("household").values,
+            weight_kind=WeightKind.IMPORTANCE,
+            time_period="2024",
+        )
+    )
     assert transform.checkpoint_metadata()["evidence"]["stage"] == UC_TAKE_UP_STAGE_NAME
     # The stage runs after the last writer of the capital and UC reports and
     # the UC limited capability flags (microcosm#1095, Y1), and before the
@@ -1240,3 +1256,301 @@ def test_redraw_reads_the_lcwra_element_for_the_lcwra_fit() -> None:
     assert fit["odds_ratio"] == "<3"
     assert fit["lcwra_households_after"] == "<3"
     assert "lcwra_fit" not in _redraw(_frame(), engine).evidence()
+
+
+def _young_lcwra_pool(**overrides):
+    """A hundred drawn singles in one band, in five groups of twenty.
+
+    In order: young with the element held by a young claimant; young with the
+    element held by an older partner; young only; the element only; neither.
+    At base odds 1, the age fit's ratio 1/3, the LCWRA fit's 3 and the young
+    LCWRA fit's 1, the groups claim 5, 10, 5, 15 and 10: DWP's pool count of 45,
+    20 young claimants, 30 LCWRA households and 5 young people with the element.
+    """
+
+    count = 100
+    young = np.asarray([1.0] * 60 + [0.0] * 40)
+    lcwra = np.asarray([True] * 40 + [False] * 20 + [True] * 20 + [False] * 20)
+    young_lcwra = np.asarray([1.0] * 20 + [0.0] * 80)
+    rng = np.random.default_rng(11)
+    arguments = {
+        "award": np.full(count, 600.0),
+        "draws": rng.permutation(np.linspace(0.005, 0.995, count)),
+        "targets": _targets(SINGLE_0=45.0),
+        "young_people": young,
+        "young_target": 20.0,
+        "lcwra_units": lcwra,
+        "lcwra_target": 30.0,
+        "young_lcwra_people": young_lcwra,
+        "young_lcwra_target": 5.0,
+        **overrides,
+    }
+    return _assign(**arguments), (young, lcwra, young_lcwra)
+
+
+def test_the_young_lcwra_fit_meets_dwps_three_counts_together() -> None:
+    (would_claim, receipt), (young, lcwra, young_lcwra) = _young_lcwra_pool()
+
+    assert float(would_claim.sum()) == pytest.approx(45.0, abs=1.0)
+    assert float((young * would_claim).sum()) == pytest.approx(20.0, abs=1.0)
+    assert float(would_claim[lcwra].sum()) == pytest.approx(30.0, abs=1.0)
+    assert float((young_lcwra * would_claim).sum()) == pytest.approx(5.0, abs=1.0)
+    fit = receipt["young_lcwra_fit"]
+    assert fit["dwp_young_lcwra_people"] == pytest.approx(5.0)
+    assert fit["young_lcwra_people_after"] == pytest.approx(5.0, abs=1.0)
+    assert fit["target_unreachable"] is None
+    # Young people with the element claim below the LCWRA fit's ratio.
+    assert 0.0 < fit["odds_ratio"] < receipt["lcwra_fit"]["odds_ratio"]
+    assert receipt["age_fit"]["target_unreachable"] is None
+    assert receipt["lcwra_fit"]["target_unreachable"] is None
+
+
+def test_without_the_young_lcwra_count_the_redraw_is_the_two_fits_alone() -> None:
+    (fitted, receipt), (young, lcwra, young_lcwra) = _young_lcwra_pool(
+        young_lcwra_people=None, young_lcwra_target=None
+    )
+    plain, plain_receipt = _assign(
+        award=np.full(100, 600.0),
+        draws=np.random.default_rng(11).permutation(np.linspace(0.005, 0.995, 100)),
+        targets=_targets(SINGLE_0=45.0),
+        young_people=young,
+        young_target=20.0,
+        lcwra_units=lcwra,
+        lcwra_target=30.0,
+    )
+
+    assert fitted.tolist() == plain.tolist()
+    assert "young_lcwra_fit" not in receipt
+    assert receipt == plain_receipt
+    # Tied to the LCWRA fit's ratio, young people with the element claim about
+    # six; given a young count of two, the third ratio brings them down to it
+    # while the pool, young and LCWRA counts still hold.
+    (held, held_receipt), _ = _young_lcwra_pool(young_lcwra_target=2.0)
+    assert float((young_lcwra * fitted).sum()) >= 5.0
+    assert float((young_lcwra * held).sum()) == pytest.approx(2.0, abs=1.0)
+    assert held_receipt["young_lcwra_fit"]["target_unreachable"] is None
+    assert float(held.sum()) == pytest.approx(45.0, abs=1.0)
+    assert float((young * held).sum()) == pytest.approx(20.0, abs=1.0)
+    assert float(held[lcwra].sum()) == pytest.approx(30.0, abs=1.0)
+
+
+def test_the_young_lcwra_fit_needs_its_inputs_and_both_other_fits() -> None:
+    with pytest.raises(ValueError, match="needs both young_lcwra_people"):
+        _young_lcwra_pool(young_lcwra_target=None)
+    with pytest.raises(ValueError, match="beside the age and LCWRA fits"):
+        _young_lcwra_pool(young_people=None, young_target=None)
+    with pytest.raises(ValueError, match="must align"):
+        _young_lcwra_pool(young_lcwra_people=np.ones(3))
+    with pytest.raises(ValueError, match="only in young units"):
+        _young_lcwra_pool(young_lcwra_people=np.asarray([0.0] * 60 + [1.0] * 40))
+    with pytest.raises(ValueError, match="positive and finite"):
+        _young_lcwra_pool(young_lcwra_target=0.0)
+
+
+def test_redraw_counts_young_people_holding_the_element_for_its_fit() -> None:
+    engine = _StubEngine(
+        {1: 900.0, 2: 900.0, 3: 0.0, 4: 900.0}, lcwra={1: 4_800.0, 2: 4_800.0}
+    )
+    frame = _frame()
+    person = frame.table("person").copy()
+    person["age"] = [20, 22, 50, 35]
+    person["uc_limited_capability_for_WRA"] = [True, True, False, False]
+    young_frame = uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
+        household_weights=frame.weights_for("household").values,
+        weight_kind=WeightKind.IMPORTANCE,
+        time_period="2024",
+    )
+
+    result = redraw_uc_take_up(
+        young_frame,
+        engine=engine,
+        population_policy=_POLICY,
+        targets=_targets(SINGLE_0=10.0),
+        closure_rates={"all": 0.8},
+        minimum_pool_sources=1,
+        young_target=10.0,
+        lcwra_target=10.0,
+        young_lcwra_target=10.0,
+    )
+
+    fit = result.evidence()["young_lcwra_fit"]
+    # The reporter (unit 1, aged 20, with the flag and the element) is a young
+    # person with the element whatever the ratios; one source household
+    # carries the drawn one, so the counts are withheld.
+    assert fit["drawn_support"] == "<3"
+    assert fit["odds_ratio"] == "<3"
+    with pytest.raises(ValueError, match="needs the age fit's and the LCWRA"):
+        redraw_uc_take_up(
+            young_frame,
+            engine=engine,
+            population_policy=_POLICY,
+            targets=_targets(SINGLE_0=10.0),
+            closure_rates={"all": 0.8},
+            minimum_pool_sources=1,
+            lcwra_target=10.0,
+            young_lcwra_target=10.0,
+        )
+    with pytest.raises(ValueError, match="uc_limited_capability_for_WRA"):
+        redraw_uc_take_up(
+            _frame(),
+            engine=engine,
+            population_policy=_POLICY,
+            targets=_targets(SINGLE_0=10.0),
+            closure_rates={"all": 0.8},
+            minimum_pool_sources=1,
+            young_target=10.0,
+            lcwra_target=10.0,
+            young_lcwra_target=10.0,
+        )
+
+
+def test_a_units_young_people_holding_the_element_are_its_young_and_flagged() -> None:
+    # Vahid's review of PolicyEngine/microcosm#1663: the count is young people
+    # who hold the flag, in units whose award includes the element; counting
+    # the young alone or the flagged alone would not give these.
+    person = pd.DataFrame(
+        {
+            "person_benunit_id": [1, 1, 2, 2, 3, 4],
+            uc_take_up.UC_TAKE_UP_LCWRA_FLAG: [True, True, False, True, True, True],
+        }
+    )
+    # Unit 1: two young people with the flag. Unit 2: a young person without it
+    # and an older partner with it. Unit 3: a young person with it, whose award
+    # would not include the element. Unit 4: an older person with it.
+    young = np.asarray([True, True, True, False, True, False])
+    lcwra_units = np.asarray([True, True, False, True])
+
+    counts = uc_take_up.young_people_holding_the_element(
+        person, np.asarray([1, 2, 3, 4]), young, lcwra_units
+    )
+
+    assert counts.tolist() == [2.0, 0.0, 0.0, 0.0]
+
+
+def test_the_joint_solve_records_its_rounds_and_whether_it_converged(
+    monkeypatch,
+) -> None:
+    # Two fits: the logs settle inside the cap.
+    _, two = _young_lcwra_pool(young_lcwra_people=None, young_lcwra_target=None)[0]
+    solve = two["lcwra_fit"]["joint_solve"]
+    assert solve["converged"] is True
+    assert solve["claims_settled"] is True
+    assert 1 < solve["rounds"] < solve["round_cap"] == uc_take_up._JOINT_ROUNDS
+
+    # Three fits: a log keeps moving inside a stretch of equal claims, so the
+    # cap stops the solve, but its last round changed no unit's claim.
+    _, three = _young_lcwra_pool()[0]
+    assert three["lcwra_fit"]["joint_solve"]["claims_settled"] is True
+
+    # Stopped by the cap after one round, the receipt says neither.
+    monkeypatch.setattr(uc_take_up, "_JOINT_ROUNDS", 1)
+    _, capped = _young_lcwra_pool()[0]
+    assert capped["lcwra_fit"]["joint_solve"] == {
+        "rounds": 1,
+        "round_cap": 1,
+        "converged": False,
+        "claims_settled": False,
+    }
+
+
+def test_a_joint_solve_settling_in_its_first_round_says_its_claims_settled(
+    monkeypatch,
+) -> None:
+    # Vahid's final review of PolicyEngine/microcosm#1663: the first round's
+    # claims are compared with the starting ratios' claims, so a solve whose
+    # first round leaves every log and claim where they started reads as both
+    # converged and settled. Bounds at zero hold every ratio at one.
+    monkeypatch.setattr(uc_take_up, "_LOG_ODDS_BOUNDS", (0.0, 0.0))
+    _, receipt = _young_lcwra_pool()[0]
+    assert receipt["lcwra_fit"]["joint_solve"] == {
+        "rounds": 1,
+        "round_cap": uc_take_up._JOINT_ROUNDS,
+        "converged": True,
+        "claims_settled": True,
+    }
+
+
+def test_a_scoped_young_lcwra_count_is_met_inside_its_geography() -> None:
+    # Part 3 of PolicyEngine/microcosm#1663: DWP's young LCWRA count is England
+    # and Wales's, so the ratio is solved on the units inside that geography
+    # and applies to every unit with such a person.
+    scope = np.asarray([True] * 10 + [False] * 10 + [True] * 80)
+    (would_claim, receipt), (young, lcwra, young_lcwra) = _young_lcwra_pool(
+        young_lcwra_target=2.5, young_lcwra_scope=scope
+    )
+
+    inside = float((young_lcwra * would_claim)[scope].sum())
+    assert inside == pytest.approx(2.5, abs=1.0)
+    assert receipt["young_lcwra_fit"]["young_lcwra_people_after"] == pytest.approx(
+        2.5, abs=1.0
+    )
+    # The scope does not split the group: its units claim in the order of
+    # their uniform whatever their geography, at the one ratio.
+    draws = np.random.default_rng(11).permutation(np.linspace(0.005, 0.995, 100))
+    group = young_lcwra > 0.0
+    claimers = group & would_claim
+    assert claimers[~scope].any()
+    assert draws[claimers].max() < draws[group & ~would_claim].min()
+    with pytest.raises(ValueError, match="needs the young LCWRA fit"):
+        _young_lcwra_pool(
+            young_lcwra_people=None, young_lcwra_target=None, young_lcwra_scope=scope
+        )
+    with pytest.raises(ValueError, match="one flag per benefit unit"):
+        _young_lcwra_pool(young_lcwra_scope=scope[:-1])
+
+
+def test_the_young_lcwra_fits_support_is_counted_inside_its_scope() -> None:
+    # Vahid's final review of PolicyEngine/microcosm#1663: the count is the
+    # scope's, so its support is too. Two of the twenty young LCWRA units are
+    # inside the scope: on fewer than three sources the receipt withholds the
+    # count and the ratio, though all twenty together would pass the floor.
+    scope = np.asarray([True] * 2 + [False] * 18 + [True] * 80)
+    (_, receipt), _ = _young_lcwra_pool(young_lcwra_target=1.0, young_lcwra_scope=scope)
+    fit = receipt["young_lcwra_fit"]
+    assert fit["support"] == "<3"
+    assert fit["drawn_support"] == "<3"
+    assert fit["young_lcwra_people_before"] == "<3"
+    assert fit["young_lcwra_people_after"] == "<3"
+    assert fit["odds_ratio"] == "<3"
+
+    # Without the scope, the same twenty units carry the count and it prints.
+    (_, unscoped), _ = _young_lcwra_pool(young_lcwra_target=1.0)
+    assert unscoped["young_lcwra_fit"]["support"] == "10-29"
+    assert unscoped["young_lcwra_fit"]["drawn_support"] == "10-29"
+    assert isinstance(unscoped["young_lcwra_fit"]["odds_ratio"], float)
+
+
+def test_the_young_lcwra_count_is_table_28s_calendar_2025_window() -> None:
+    # Part 3 of PolicyEngine/microcosm#1663: DWP's Young people and work interim
+    # report, Table 28 (PolicyEngine/chronicle#443), England and Wales, the UC
+    # health element at 16 to 24: three twelfths of 2024-25 and nine of 2025-26.
+    rows = uc_take_up.vendored_young_lcwra_rows()
+    by_year = {
+        int(row["period"]["value"]): float(row["value"])
+        for row in rows
+        if row["dimensions"]["health_and_disability_benefit"] == "uc_health_lcwra"
+    }
+    assert set(by_year) == {2024, 2025}
+    assert uc_take_up.load_uc_young_lcwra_people_target() == pytest.approx(
+        0.25 * by_year[2024] + 0.75 * by_year[2025]
+    )
+
+
+def test_the_young_lcwra_count_refuses_another_geography_or_a_missing_year() -> None:
+    rows = [dict(row) for row in uc_take_up.vendored_young_lcwra_rows()]
+    lcwra = [
+        row
+        for row in rows
+        if row["dimensions"]["health_and_disability_benefit"] == "uc_health_lcwra"
+    ]
+    with pytest.raises(ValueError, match="England and Wales"):
+        uc_take_up.uc_young_lcwra_people_target_from_rows(
+            [{**lcwra[0], "geography": {"id": "K03000001"}}, lcwra[1]]
+        )
+    with pytest.raises(ValueError, match="years opening"):
+        uc_take_up.uc_young_lcwra_people_target_from_rows(lcwra[:1])
+    with pytest.raises(ValueError, match="repeat"):
+        uc_take_up.uc_young_lcwra_people_target_from_rows([lcwra[0], lcwra[0]])

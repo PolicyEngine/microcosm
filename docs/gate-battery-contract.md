@@ -303,9 +303,9 @@ the tree show how far the same executor stretches on declaration alone:
 | | BE | UK |
 | --- | --- | --- |
 | phases | `terminal` | `preflight`, `assembled`, `transferred`, `terminal` |
-| entries | 9 | 94 (85 national-line entries, 7 local-candidate entries and 2 local diagnostics) |
-| incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles replace self-parity | full — export surface, input coverage and input mass against the current build of the cut's own line (microcosm#1095; until then the pinned enhanced-FRS incumbent) |
-| criticality mix | 8 blocking + 1 diagnostic | 92 blocking + 2 local diagnostics |
+| entries | 10 (2 declared not applicable) | 94 (85 national-line entries, 7 local-candidate entries and 2 local diagnostics) |
+| incumbent posture | none — incumbent-comparison gates deliberately not selected; external oracles, planned in microcosm#264, are to replace self-parity | full — export surface, input coverage and input mass against the current build of the cut's own line (microcosm#1095; until then the pinned enhanced-FRS incumbent) |
+| criticality mix | 9 blocking + 1 diagnostic | 92 blocking + 2 local diagnostics |
 
 The differences are entirely in the two country inputs — the spec file
 and the registry — which is the point. The UK national build is the
@@ -326,7 +326,54 @@ local publication work in #146; they are evaluated in their own signed
 `local_candidate` report rather than silently disappearing from union
 accounting.
 
-US adoption is in progress (microcosm#1585 item 11).
+US adoption is in progress (microcosm#1585 item 11), in four steps, and
+`us/gates.json` now declares 143 entries, each US build tool's share of
+them a scope of its own (`us_runtime/gate_scopes.py`): `us_base` (Route
+A's base, 37), `us_pool` (the multispine pool's stacked path, 6),
+`us_national` (the national release, 76) and `us_local` (ACS local, 24). A
+scope owns the entries whose id starts with its name, checked
+closed-world. In this step the battery runs **in shadow**: each tool still
+gates as it did, and beside each gate it evaluates the declared entry
+through its scope's `GateBatteryRun` on the same evidence, with the
+record-without-enforce posture, then compares the verdicts
+(`us_runtime/gate_shadow.py`). Verdicts are compared, not enforcement: a
+gate an `--allow-*` flag waives today matches if it fails in both, a crash
+in today's code matches an `evaluation_error`, and a gate today's code did
+not evaluate matches `evidence_absent`. The shadow writes its scope's
+report and the comparison beside the tool's outputs (never inside a
+release directory), and, once armed, never fails the build. A finished run flags a
+verdict difference in the comparison (`verdict_difference`) and prints a
+warning, because today's gates decide until the flip, and today's own
+exception always propagates unchanged. If the comparison cannot be
+written, the warning says so and still lists the differences. When today's code stops, the phase it stopped in is recorded
+only if every entry there without an outcome is one today's code never
+reached. The run refuses a phase that marks unreached an entry it
+evaluated, but a scope rebuilt from stages run as separate processes
+(Route A's checkpointed base, ACS local) holds only their outcomes, so each
+stage's saved observations also name every entry it reached, and a stage
+that ran and saved none leaves the stopped phase unrecorded. A finished run
+names that stage where it would otherwise call an unobserved entry unwired,
+and Route A's base locks the switch in its run config when it is off, so a
+resume cannot mix stages run with and without the shadow. The national
+release's shadow is armed before its preflight gates, which run ahead of
+the refusal to reuse a certified release directory, so it holds its files
+until that refusal has passed: a refused rerun leaves the certified
+build's shadow files as they were, and each
+release keeps its own, in `<out>/gate_battery_shadow/<release>`. Real
+builds always arm the shadow. The test suite turns it off for every test
+(`MICROCOSM_US_GATE_SHADOW=off`, in `packages/microcosm-build/tests/conftest.py`),
+because its tests stand stubs in for whole stages, and the shadow's own
+tests turn it back on.
+
+Most US entries are `stage_health` entries whose `check` names the gate,
+and `us_runtime/battery_bindings.py` binds each check to the gate function
+its site calls, looked up in the tool's own globals or the runtime module
+where the site runs, so a test that patches one reaches both verdicts. A
+threshold the gate takes as a keyword is routed from the entry; one it
+reads from a module constant is declared at today's value and pinned equal
+to it until the flip, when the spec becomes the only source. The flip,
+signing, the verifier and head-to-head certification are the next three
+steps.
 
 ## The reference rule
 

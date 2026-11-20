@@ -122,12 +122,14 @@ import sys
 import threading
 import time
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.program_telemetry import program_telemetry
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
@@ -201,7 +203,24 @@ from microcosm.build.us_runtime.acs_local_work_disability import (
 )
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.battery_bindings import (
+    us_flag_overrides,
+    us_gate_registry,
+    us_gate_specs,
+)
 from microcosm.build.us_runtime.esi_premiums import refuse_unassigned_us_esi_premiums
+from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+from microcosm.build.us_runtime.gate_shadow import (
+    GATE_BATTERY_SHADOW_DIRECTORY,
+    GateBatteryShadow,
+    LegacyVerdict,
+    active_gate_shadow,
+    shadow_file_paths,
+    shadow_gate,
+    shadow_not_run,
+    shadow_value,
+    tool_gate_shadows_enabled,
+)
 from microcosm.build.us_runtime.org_wages import (
     US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
     require_us_occupation_and_work_experience_inputs,
@@ -1557,7 +1576,9 @@ PERSON_STRUCT = [
 ]
 
 
-def ladder_population(ladder_path: Path, geographies: list[str]):
+def ladder_population(
+    ladder_path: Path, geographies: list[str], *, county_column: str = "county_fips"
+):
     from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
 
     ladder = load_us_puma_ladder(ladder_path)
@@ -1575,7 +1596,9 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
             )
             for cd in np.unique(ladder.cd_overlap_cd)
         }
-    return county_surface.with_county_populations(ladder, populations, geographies)
+    return county_surface.with_county_populations(
+        ladder, populations, geographies, county_column=county_column
+    )
 
 
 def household_sizes(frame) -> np.ndarray:
@@ -1739,15 +1762,19 @@ TARGET_MATRIX_FILENAME = "target_matrix.npz"
 TARGET_ROLES_FILENAME = "target_roles.json"
 
 
-def extract_struct_tables(frame, *, county_column="county_fips"):
-    """Small structural/geography copies so the big frame can be freed early."""
+def extract_struct_tables(frame, *, county_column="county_fips", county_run=False):
+    """Small structural/geography copies so the big frame can be freed early.
+
+    ``county_run`` keeps what county reliability needs after a reload
+    (:func:`us_acs_local_county_surface.struct_columns`).
+    """
 
     households = frame.table("household")
     struct_columns = [
         column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
     struct_columns += county_surface.struct_columns(
-        households, struct_columns, county_column=county_column
+        households, struct_columns, county_column=county_column, county_run=county_run
     )
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
@@ -2069,7 +2096,13 @@ def _with_local_ssi_medicaid_take_up(
         hh_chunk=hh_chunk,
         peak_rss_gb=round(rss(), 2),
     )
-    gate = acs_local_ssi_medicaid_take_up_signal_gate(frame, receipt=receipt)
+    gate = shadow_gate(
+        "us_local_ssi_medicaid_take_up_materialize",
+        lambda: acs_local_ssi_medicaid_take_up_signal_gate(frame, receipt=receipt),
+        lambda: EvidenceContext(
+            frame=frame, artifacts={"ssi_medicaid_receipt": receipt}
+        ),
+    )
     receipt["gate"] = {
         "name": gate.name,
         "passed": gate.passed,
@@ -2244,7 +2277,11 @@ def do_materialize(args) -> None:
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
         f"RI substitution records={len(surface.ri_substitutions)}"
     )
-    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    populations = ladder_population(
+        args.ladder,
+        sorted(set(geographies) | {"cd"}),
+        county_column=getattr(args, "county_column", "county_fips"),
+    )
     county_surface.prepare_run(args, geographies, populations, surface=surface)
     require_one_label_per_geography(registry, populations, geographies)
     summary_path = _staging_summary_path(args)
@@ -2270,8 +2307,17 @@ def do_materialize(args) -> None:
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
-    _require_local_hours(frame, staging_summary)
-    _require_acs_self_employment_identity(frame)
+    _shadow_local_refusal(
+        "us_local_hours_materialize",
+        lambda frame=frame: _require_local_hours(frame, staging_summary),
+        frame,
+        staging_summary=staging_summary,
+    )
+    _shadow_local_refusal(
+        "us_local_self_employment_identity_materialize",
+        lambda frame=frame: _require_acs_self_employment_identity(frame),
+        frame,
+    )
     # microcosm#1019: seed ACS take-up on the full staging frame, before
     # any development rung is drawn, so a rung keeps the flags the full
     # build assigns and the export can re-derive them the same way.
@@ -2312,7 +2358,10 @@ def do_materialize(args) -> None:
         (args.checkpoint_dir / name).unlink(missing_ok=True)
     if getattr(args, "gate_report", None) is not None:
         Path(args.gate_report).unlink(missing_ok=True)
-    county_surface.check_support(frame, populations, args)
+    # microcosm#922: a county with ladder population but no household gets a
+    # fixed number of same-PUMA households before any measure is built; the
+    # frame returned carries their rewritten county columns.
+    frame = county_surface.check_support(frame, populations, args)
     materialized = materialize_chunked(
         frame,
         registry.specs,
@@ -2378,7 +2427,9 @@ def do_materialize(args) -> None:
     matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
     del admin_matrix, pop_matrix
     struct = extract_struct_tables(
-        frame, county_column=getattr(args, "county_column", "county_fips")
+        frame,
+        county_column=getattr(args, "county_column", "county_fips"),
+        county_run=any(role.get("geography_level") == "county" for role in roles),
     )
     n_households = frame.n("household")
     del frame
@@ -2485,6 +2536,7 @@ CALIBRATION_OUTPUT_FILENAMES = (
     "calibration_summary.json",
     "calibration_diagnostics.json",
     "county_reliability.json",
+    "county_reliability.csv",
     "consumer_export.json",
     "consumer_reviewed_null_fills.json",
     "spine_qa.json",
@@ -2913,12 +2965,16 @@ def calibration_evidence(
     design_weights: np.ndarray,
     weights: np.ndarray,
     target_loss_cap: float,
+    checkpoint_dir: Path | None = None,
+    identity: dict | None = None,
 ) -> dict:
     """The sparse-surface evidence the calibration summary adds.
 
     The CD holdout scored against the pro-rata baseline, and ESS over rows
     and distinct households with household-weight share by spine, at the
-    design and the calibrated weights.
+    design and the calibrated weights. With the checkpoint directory and run
+    identity, a county run also scores its held-out ACS validation families
+    (microcosm#922), which never reach the loss.
     """
 
     origin = _origin_columns(frame)
@@ -2942,7 +2998,14 @@ def calibration_evidence(
             cap=target_loss_cap,
         ),
         **county_surface.calibration_evidence(
-            frame, roles, matrix, design_weights, weights, target_loss_cap
+            frame,
+            roles,
+            matrix,
+            design_weights,
+            weights,
+            target_loss_cap,
+            checkpoint_dir=checkpoint_dir,
+            identity=identity,
         ),
     }
 
@@ -3041,6 +3104,36 @@ def do_calibrate(args) -> None:
             and _stamped_settings(previous.get("solver_settings")) == settings
             and previous.get("weights_sha256") == _weights_digest(warm)
         ):
+            # The summary's evidence must be what this code computes from the
+            # checkpoint and these weights. Otherwise the shortcut ships what
+            # an older build wrote, such as county reliability grades that
+            # counted group quarters as support from a checkpoint without
+            # TYPEHUGQ. Recomputing it refuses that checkpoint exactly as a
+            # fresh solve does (review of #1630).
+            evidence = calibration_evidence(
+                frame=frame,
+                roles=roles,
+                matrix=matrix,
+                design_weights=design_weights,
+                weights=np.asarray(warm, dtype=np.float64),
+                target_loss_cap=args.target_loss_cap,
+                checkpoint_dir=args.checkpoint_dir,
+                identity=identity,
+            )
+            stale = sorted(
+                key
+                for key, value in evidence.items()
+                if json.dumps(previous.get(key), sort_keys=True)
+                != json.dumps(value, sort_keys=True)
+            )
+            if stale:
+                raise SystemExit(
+                    f"calibration_summary.json records {stale} evidence that "
+                    "this code does not compute from the checkpoint and the "
+                    "weights_latest.npz weights, so another build wrote it. "
+                    "Delete weights_latest.npz or run without --resume to "
+                    "recalibrate."
+                )
             log(
                 f"calibration already complete at {done} epochs and "
                 "the calibration summary exists; nothing to do (delete "
@@ -3152,6 +3245,8 @@ def do_calibrate(args) -> None:
             design_weights=design_weights,
             weights=np.asarray(result.weights, dtype=np.float64),
             target_loss_cap=args.target_loss_cap,
+            checkpoint_dir=args.checkpoint_dir,
+            identity=identity,
         ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
@@ -3328,8 +3423,17 @@ def _write_calibrated_artifact(
         identity, args.checkpoint_dir
     )
     frame = _load_staging_frame(args.staging_h5)
-    _require_local_hours(frame, staging_summary)
-    _require_acs_self_employment_identity(frame)
+    _shadow_local_refusal(
+        "us_local_hours_calibrate",
+        lambda frame=frame: _require_local_hours(frame, staging_summary),
+        frame,
+        staging_summary=staging_summary,
+    )
+    _shadow_local_refusal(
+        "us_local_self_employment_identity_calibrate",
+        lambda frame=frame: _require_acs_self_employment_identity(frame),
+        frame,
+    )
     frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
     if take_up["assigned_sha256"] != recorded_take_up["assigned_sha256"]:
         raise SystemExit(
@@ -3341,6 +3445,9 @@ def _write_calibrated_artifact(
     # microcosm#1022: apply the ACS SSI/Medicaid take-up materialize recorded
     # on the same rung; it must reproduce the recorded digest.
     frame = _with_recorded_ssi_medicaid_take_up(frame, ssi_medicaid, ssi_medicaid_path)
+    # microcosm#922: re-apply the county support moves materialize recorded,
+    # so the published file carries the county codes calibration saw.
+    frame = county_surface.apply_recorded_support(frame, identity, args.checkpoint_dir)
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -4908,6 +5015,36 @@ def district_ess_collapse_gate(
     }
 
 
+def district_ess_collapse_failures(gate: dict) -> list[str]:
+    """The district ESS gate entry's failure lines; none when it passes.
+
+    An entry that could not be evaluated names why. A blocking entry whose
+    criteria are not met records only its counts, so its line is made from
+    them, naming each check that is on, as the reviewed limitation does. Both
+    verdicts in the gate battery's shadow (microcosm#1585 item 11) read it.
+    """
+
+    if gate.get("passed"):
+        return []
+    if gate.get("failures"):
+        return [str(line) for line in gate["failures"]]
+    n = gate["n_districts"]
+    checks = []
+    if gate["relative_floor"] > 0:
+        checks.append(
+            f"{gate['n_collapsed']} of {n} below {gate['relative_floor']:g} x "
+            "their design-weight Kish ESS"
+        )
+    if gate["absolute_floor"] > 0:
+        checks.append(
+            f"{gate['n_below_floor']} of {n} below {gate['absolute_floor']:g}"
+        )
+    return [
+        "blocking district ESS gate: congressional districts with a calibrated "
+        "Kish ESS " + "; ".join(checks)
+    ]
+
+
 def district_ess_collapse_limitation(gate: dict) -> dict:
     """The reviewed-limitations entry stating the district ESS gate's result."""
 
@@ -5541,11 +5678,23 @@ def do_finalize(args) -> None:
         stage="finalize",
     )
     frame = _load_staging_frame(args.out_h5)
-    local_hours_gate = _local_hours_gate(frame, staging_summary)
+    local_hours_gate = shadow_gate(
+        "us_local_hours_finalize",
+        lambda frame=frame: _local_hours_gate(frame, staging_summary),
+        lambda frame=frame: EvidenceContext(
+            frame=frame, artifacts={"staging_summary": staging_summary}
+        ),
+    )
     households = frame.table("household")
     weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     load_us_puma_ladder(args.ladder)
-    ladder_gate = us_puma_ladder_gate(households, weights)
+    ladder_gate = shadow_gate(
+        "us_local_puma_ladder",
+        lambda: us_puma_ladder_gate(households, weights),
+        lambda: EvidenceContext(
+            artifacts={"household": households, "household_weights": weights}
+        ),
+    )
     block_location_gate = None
     require_block_v1_targets_ladder(staging_summary, ladder_sha)
     block_ladder = load_staging_block_ladder(
@@ -5554,57 +5703,137 @@ def do_finalize(args) -> None:
     if block_ladder is not None:
         from microcosm.build.us_runtime.block_location import us_block_location_gate
 
-        block_location_gate = us_block_location_gate(households, block_ladder)
+        block_location_gate = shadow_gate(
+            "us_local_block_location",
+            lambda: us_block_location_gate(households, block_ladder),
+            lambda: EvidenceContext(
+                artifacts={"household": households, "location_ladder": block_ladder}
+            ),
+        )
+    else:
+        shadow_not_run(
+            "us_local_block_location",
+            "the staging used the legacy location rule; no block ladder",
+        )
     composition = spine_composition(households, frame.table("person"), weights)
     # microcosm#765: refuse to package an artifact whose usual-weekly-hours
     # surface is the engine's constant-40 default (or otherwise out of band),
     # which silently no-ops SNAP's ABAWD and general work-requirement tests.
     # weeks_worked is dropped from the pool/ACS surface, so scope the gate to
     # the two hours columns it carries.
-    hours_gate = us_hours_worked_signal_gate(
-        frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+    hours_gate = shadow_gate(
+        "us_local_hours_worked",
+        lambda frame=frame: us_hours_worked_signal_gate(
+            frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame,
+            artifacts={"hours_required_columns": US_HOURS_WORKED_POOL_OUTPUT_COLUMNS},
+        ),
     )
     # microcosm#1019: likewise refuse SNAP/TANF take-up that is missing or
     # constant (the engine-default universal take-up) on either spine, or
     # unanchored or out of band on the ACS spine this tool seeds.
-    take_up_gate = acs_local_take_up_signal_gate(frame)
+    take_up_gate = _shadow_local_frame_gate(
+        "us_local_take_up",
+        lambda frame=frame: acs_local_take_up_signal_gate(frame),
+        frame,
+    )
     # microcosm#1020: refuse immigration labels or entry clocks that are
     # missing, all-CITIZEN or all at the engine default on either spine,
     # labels that contradict measured ACS CIT citizenship, and a file outside
     # the non-citizen and undocumented-anchor bands.
-    immigration_gate = acs_local_immigration_signal_gate(frame)
+    immigration_gate = _shadow_local_frame_gate(
+        "us_local_immigration",
+        lambda frame=frame: acs_local_immigration_signal_gate(frame),
+        frame,
+    )
     # microcosm#1021: refuse ACS disability flags that are missing, constant,
     # or not the native ACS difficulty items on the packaged bytes, or a
     # staging receipt that shows them imputed. weeks_worked is graded at
     # staging only: the export holds it back until policyengine-us#9660.
-    work_disability_gate = acs_local_work_disability_signal_gate(
-        frame,
-        receipt=staging_summary.get("acs_local_work_disability"),
-        require_weeks_worked=False,
+    work_disability_gate = shadow_gate(
+        "us_local_work_disability",
+        lambda frame=frame: acs_local_work_disability_signal_gate(
+            frame,
+            receipt=staging_summary.get("acs_local_work_disability"),
+            require_weeks_worked=False,
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame,
+            artifacts={
+                "work_disability_receipt": staging_summary.get(
+                    "acs_local_work_disability"
+                ),
+                "require_weeks_worked": False,
+            },
+        ),
     )
     # microcosm#1022: refuse transferred ACS income leaves that are missing,
     # negative or carry no signal on the packaged bytes, or a staging receipt
     # that is not the complete ASEC-channel pass.
-    income_gate = acs_local_income_transfer_signal_gate(
-        frame, receipt=staging_summary.get("acs_local_income_transfer")
+    income_gate = shadow_gate(
+        "us_local_income_transfer",
+        lambda frame=frame: acs_local_income_transfer_signal_gate(
+            frame, receipt=staging_summary.get("acs_local_income_transfer")
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame,
+            artifacts={
+                "income_transfer_receipt": staging_summary.get(
+                    "acs_local_income_transfer"
+                )
+            },
+        ),
     )
     # microcosm#1022: refuse ACS SSI disability criteria that are missing or
     # carry no working-age signal on the packaged bytes, or a staging receipt
     # that is not the complete SIPP-pinned pass.
-    ssi_disability_gate = acs_local_ssi_disability_signal_gate(
-        frame, receipt=staging_summary.get("acs_local_ssi_disability")
+    ssi_disability_gate = shadow_gate(
+        "us_local_ssi_disability",
+        lambda frame=frame: acs_local_ssi_disability_signal_gate(
+            frame, receipt=staging_summary.get("acs_local_ssi_disability")
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame,
+            artifacts={
+                "ssi_disability_receipt": staging_summary.get(
+                    "acs_local_ssi_disability"
+                )
+            },
+        ),
     )
     # microcosm#1022: refuse ACS SSI or Medicaid take-up that is missing,
     # constant or unanchored on the packaged bytes, or a materialize receipt
     # whose enforced SSI bands or Medicaid states miss their donor residuals.
-    ssi_medicaid_gate = acs_local_ssi_medicaid_take_up_signal_gate(
-        frame, receipt=identity.get("acs_local_ssi_medicaid_take_up")
+    ssi_medicaid_gate = shadow_gate(
+        "us_local_ssi_medicaid_take_up_finalize",
+        lambda frame=frame: acs_local_ssi_medicaid_take_up_signal_gate(
+            frame, receipt=identity.get("acs_local_ssi_medicaid_take_up")
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame,
+            artifacts={
+                "ssi_medicaid_receipt": identity.get("acs_local_ssi_medicaid_take_up")
+            },
+        ),
     )
     # microcosm#1022: refuse ACS SNAP reporters that are not the native
     # household FS on the packaged bytes, or a staging receipt that counts
     # other households, units or anchors.
-    receipt_anchor_gate = acs_local_receipt_anchor_signal_gate(
-        frame, receipt=staging_summary.get("acs_local_receipt_anchors")
+    receipt_anchor_gate = shadow_gate(
+        "us_local_receipt_anchors",
+        lambda frame=frame: acs_local_receipt_anchor_signal_gate(
+            frame, receipt=staging_summary.get("acs_local_receipt_anchors")
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame,
+            artifacts={
+                "receipt_anchors_receipt": staging_summary.get(
+                    "acs_local_receipt_anchors"
+                )
+            },
+        ),
     )
     del frame
     gc.collect()
@@ -5617,8 +5846,13 @@ def do_finalize(args) -> None:
     # microcosm#1022: refuse a reviewed default fill either engine pass applied
     # without a register entry, or a declared means-tested consumer of one
     # without a harmless or known-bias note.
-    reviewed_fill_gate = _reviewed_fill_consumer_gate(
-        _checkpoint_fill_manifests(args.checkpoint_dir)
+    fill_manifests = _checkpoint_fill_manifests(args.checkpoint_dir)
+    reviewed_fill_gate = shadow_gate(
+        "us_local_reviewed_fill_consumers_finalize",
+        lambda: _reviewed_fill_consumer_gate(fill_manifests),
+        lambda: EvidenceContext(
+            artifacts={"fill_manifests": fill_manifests, "fill_register": None}
+        ),
     )
 
     breakdown: dict[str, int] = {}
@@ -5888,11 +6122,21 @@ def do_finalize(args) -> None:
         "artifact_sha256": spine_qa.get("artifact_sha256"),
     }
 
-    gates[DISTRICT_ESS_GATE] = district_ess_collapse_gate(
-        diagnostics.get("weight_origin"),
-        relative_floor=args.district_ess_relative_floor,
-        absolute_floor=args.district_ess_floor,
-        blocking=args.district_ess_gate_blocking,
+    gates[DISTRICT_ESS_GATE] = shadow_value(
+        "us_local_district_ess_collapse",
+        lambda: district_ess_collapse_gate(
+            diagnostics.get("weight_origin"),
+            relative_floor=args.district_ess_relative_floor,
+            absolute_floor=args.district_ess_floor,
+            blocking=args.district_ess_gate_blocking,
+        ),
+        lambda: EvidenceContext(
+            artifacts={
+                "weight_origin": diagnostics.get("weight_origin"),
+                "district_ess_blocking": args.district_ess_gate_blocking,
+            }
+        ),
+        verdict=_legacy_district_ess_verdict,
     )
 
     limitations = finalize_reviewed_limitations(
@@ -6232,7 +6476,12 @@ def do_package(args) -> dict:
     # microcosm#1026: the manifest below records the installed policyengine-us
     # as build.built_with_model_package, so the artifact may store no model
     # input that engine does not define. A refused artifact leaves nothing.
-    stored_inputs_gate = _require_stored_inputs(calibrated_h5)
+    stored_inputs_gate = _shadow_local_refusal(
+        "us_local_stored_inputs",
+        lambda: _require_stored_inputs(calibrated_h5),
+        None,
+        calibrated_h5=calibrated_h5,
+    )
     # microcosm#1022 (review of #1058): ACS persons the SSI disability-criteria
     # stage made criteria-positive must not ship at universal SSI take-up.
     ssi_take_up_block = _require_ssi_take_up_handling(
@@ -6347,8 +6596,21 @@ def do_package(args) -> dict:
     # Historical staging can predate the donor/native work-experience gates.
     # Grade the actual final rows, even when its old summary is green.
     try:
-        require_us_occupation_and_work_experience_inputs(
-            artifact_frame.table("person"), label="ACS local-area release"
+        shadow_value(
+            "us_local_work_experience_inputs",
+            lambda artifact_frame=artifact_frame: (
+                require_us_occupation_and_work_experience_inputs(
+                    artifact_frame.table("person"), label="ACS local-area release"
+                )
+            ),
+            lambda artifact_frame=artifact_frame: EvidenceContext(
+                artifacts={
+                    "person": artifact_frame.table("person"),
+                    "work_experience_label": "ACS local-area release",
+                }
+            ),
+            verdict=lambda value: LegacyVerdict.from_failures(()),
+            refusals=(ValueError,),
         )
     except ValueError as error:
         raise SystemExit(
@@ -6358,12 +6620,30 @@ def do_package(args) -> dict:
     work_experience_rows = artifact_frame.n("person")
     # microcosm#1263: the bytes must also be measurable by the engine the
     # release records as built-with.
-    spm_measurement_gate = _require_spm_measurement(artifact_frame)
-    package_hours_gate = _local_hours_gate(artifact_frame, staging_summary)
+    spm_measurement_gate = _shadow_local_refusal(
+        "us_local_spm_measurement",
+        lambda artifact_frame=artifact_frame: _require_spm_measurement(artifact_frame),
+        artifact_frame,
+    )
+    package_hours_gate = shadow_gate(
+        "us_local_hours_package",
+        lambda artifact_frame=artifact_frame: _local_hours_gate(
+            artifact_frame, staging_summary
+        ),
+        lambda artifact_frame=artifact_frame: EvidenceContext(
+            frame=artifact_frame, artifacts={"staging_summary": staging_summary}
+        ),
+    )
     # microcosm#1380, #1387: a checkpoint calibrated from pre-fix staging
     # stacks donor self-employment or partnership income on SEMP; grade the
     # bytes being packaged.
-    self_employment_gate = _require_acs_self_employment_identity(artifact_frame)
+    self_employment_gate = _shadow_local_refusal(
+        "us_local_self_employment_identity_package",
+        lambda artifact_frame=artifact_frame: _require_acs_self_employment_identity(
+            artifact_frame
+        ),
+        artifact_frame,
+    )
     del artifact_frame
     gc.collect()
     if not package_hours_gate.passed:
@@ -6382,12 +6662,19 @@ def do_package(args) -> dict:
     # microcosm#1022: re-grade the manifests being packaged against the
     # register being packaged; the finalize verdict covered earlier copies.
     fill_register = load_reviewed_fill_consumer_register()
-    package_fill_gate = _reviewed_fill_consumer_gate(
-        {
-            "reviewed_null_fills.json": null_fills,
-            "consumer_reviewed_null_fills.json": consumer_fills,
-        },
-        fill_register,
+    package_fill_manifests = {
+        "reviewed_null_fills.json": null_fills,
+        "consumer_reviewed_null_fills.json": consumer_fills,
+    }
+    package_fill_gate = shadow_gate(
+        "us_local_reviewed_fill_consumers_package",
+        lambda: _reviewed_fill_consumer_gate(package_fill_manifests, fill_register),
+        lambda: EvidenceContext(
+            artifacts={
+                "fill_manifests": package_fill_manifests,
+                "fill_register": fill_register,
+            }
+        ),
     )
     if not package_fill_gate.passed:
         raise SystemExit(
@@ -6603,7 +6890,10 @@ def do_package(args) -> dict:
         "run_identity.json": identity,
     }
     contract_files["spine_qa.json"] = spine_qa
-    county_surface.package_reports(contract_files, args.checkpoint_dir, identity)
+    # The county reliability CSV ships beside its JSON (microcosm#922).
+    county_files = county_surface.package_reports(
+        contract_files, args.checkpoint_dir, identity
+    )
     contract_files["consumer_export.json"] = consumer_export
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
     # microcosm#1022: the notes the fills were graded against ship beside them.
@@ -6613,6 +6903,8 @@ def do_package(args) -> dict:
     release_dir.mkdir(parents=True, exist_ok=True)
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
+    for name, text in county_files.items():
+        (release_dir / name).write_text(text)
     if diagnostics_status["status"] == "available":
         source_diagnostics = args.checkpoint_dir / "calibration_diagnostics.json"
         if not source_diagnostics.is_file():
@@ -6665,8 +6957,10 @@ def do_package(args) -> dict:
     # declared artifacts only (microcosm#1570), so every other file written
     # above, the evidence JSON included, is declared, as the UK dense
     # assembler declares its evidence.
-    for name in contract_files:
+    for name in [*contract_files, *county_files]:
         key = Path(name).stem
+        if name in county_files:
+            key = Path(name).name.replace(".", "_")
         if name != "build_manifest.json" and key not in artifacts:
             artifacts[key] = _artifact(name, "diagnostics", release_dir / name)
 
@@ -6703,6 +6997,7 @@ def do_package(args) -> dict:
     )
 
     sums = {path.name: _sha256(path) for path in sorted(release_dir.glob("*.json"))}
+    sums.update({name: _sha256(release_dir / name) for name in county_files})
     sums[ARTIFACT_FILENAME] = h5_sha
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(sums.items()))
@@ -7043,6 +7338,149 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 TELEMETRY_PIPELINE = "us_acs_local_release"
 
 
+#: This tool's scope of us/gates.json, evaluated in shadow beside today's
+#: gates (microcosm#1585 item 11, PR 2 of 4).
+US_LOCAL_GATE_SCOPE = "us_local"
+_LOCAL_GATE_SHADOW_STAGES = ("materialize", "calibrate", "qa", "finalize", "package")
+
+
+def _local_gate_shadow_directory(args) -> Path:
+    """``<checkpoint dir>/gate_battery_shadow``, beside ``gate_summary.json``.
+
+    Never the release directory, whose ``*.json`` files its checksum ledger
+    and release manifest take in.
+    """
+
+    return Path(args.checkpoint_dir) / GATE_BATTERY_SHADOW_DIRECTORY
+
+
+def _local_stage_observations(args, stage: str) -> Path:
+    return _local_gate_shadow_directory(args) / f"{stage}.observations.json"
+
+
+def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
+    gates = us_scoped_gate_manifest(US_LOCAL_GATE_SCOPE)
+    report_path, comparison_path = shadow_file_paths(directory, US_LOCAL_GATE_SCOPE)
+    return GateBatteryShadow(
+        gates,
+        scope=US_LOCAL_GATE_SCOPE,
+        release_id=US_LOCAL_RELEASE_ID,
+        report_path=report_path,
+        comparison_path=comparison_path,
+        registry=us_gate_registry(US_LOCAL_GATE_SCOPE, tool=globals()),
+        overrides=us_flag_overrides(gates, us_gate_specs(US_LOCAL_GATE_SCOPE), args),
+    )
+
+
+def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
+    """Rebuild the scope's shadow files from every stage saved so far.
+
+    Only a package stage that finished is a finished run, whose differences
+    are flagged and printed. A stage today's code stopped, or one a later
+    process follows, records and goes on. None of this fails a stage:
+    today's gates decide until the flip.
+    """
+
+    try:
+        # The stages run before this one, and this one: each should have saved.
+        stages_run = _LOCAL_GATE_SHADOW_STAGES[
+            : _LOCAL_GATE_SHADOW_STAGES.index(stage) + 1
+        ]
+        shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args))
+        for name in _LOCAL_GATE_SHADOW_STAGES:
+            observations = _local_stage_observations(args, name)
+            if observations.is_file():
+                shadow.load_observations(observations)
+            elif name in stages_run:
+                # Its save failed, or it ran with the shadow off: a stopped
+                # run then never names its entries unreached.
+                shadow.note_missing_observations(
+                    f"the {name} stage saved no observations"
+                )
+    except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
+        log(f"WARNING: gate battery shadow could not be rebuilt: {error}")
+        return
+    if stopped_by is not None:
+        shadow.stop(stopped_by)
+    elif stage == "package":
+        shadow.finish()
+    else:
+        shadow.finish(stopped_at=f"after the {stage} stage")
+
+
+@contextmanager
+def _local_gate_shadow_stage(args, stage: str):
+    """Observe one stage's gates in shadow, then bring the scope's files up to date.
+
+    The stages may run as separate processes, so each saves what it observed
+    beside the checkpoint, and rerunning a stage discards its own and every
+    later stage's observations. Afterwards the scope's report and comparison
+    are rebuilt from every stage saved so far. With the switch off (the test
+    suite) the stage runs without a shadow and touches no shadow file.
+    """
+
+    if not tool_gate_shadows_enabled():
+        yield None
+        return
+    try:
+        for name in _LOCAL_GATE_SHADOW_STAGES[_LOCAL_GATE_SHADOW_STAGES.index(stage) :]:
+            _local_stage_observations(args, name).unlink(missing_ok=True)
+        # The scope's report and comparison were built from observations just
+        # discarded, so they go too: a stage that never reaches its end, killed
+        # before it rebuilds them, must not leave an earlier run's verdict.
+        for stale in shadow_file_paths(
+            _local_gate_shadow_directory(args), US_LOCAL_GATE_SCOPE
+        ):
+            stale.unlink(missing_ok=True)
+    except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
+        log(f"WARNING: gate battery shadow could not clear earlier files: {error}")
+    shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args) / stage)
+
+    def save() -> None:
+        try:
+            shadow.save_observations(_local_stage_observations(args, stage))
+        except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
+            log(f"WARNING: gate battery shadow could not save {stage}: {error}")
+
+    try:
+        with active_gate_shadow(shadow):
+            yield shadow
+    except BaseException as error:
+        save()
+        _finish_local_gate_scope(args, stage=stage, stopped_by=error)
+        raise
+    save()
+    _finish_local_gate_scope(args, stage=stage)
+
+
+def _shadow_local_frame_gate(entry_id: str, evaluate, frame):
+    """Today's frame signal gate, with the battery's entry beside it."""
+
+    return shadow_gate(entry_id, evaluate, lambda: EvidenceContext(frame=frame))
+
+
+def _shadow_local_refusal(entry_id: str, evaluate, frame, **artifacts):
+    """Today's refusal-style check, observed: its SystemExit is its failure."""
+
+    return shadow_value(
+        entry_id,
+        evaluate,
+        lambda: EvidenceContext(frame=frame, artifacts=artifacts),
+        verdict=lambda value: LegacyVerdict.from_failures(()),
+        refusals=(SystemExit,),
+    )
+
+
+def _legacy_district_ess_verdict(entry: dict) -> LegacyVerdict:
+    """Today's verdict on the district ESS gate entry.
+
+    A blocking collapse fails it with the line made from its counts, as the
+    battery's binding does (:func:`district_ess_collapse_failures`).
+    """
+
+    return LegacyVerdict.from_failures(district_ess_collapse_failures(entry))
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
@@ -7053,19 +7491,24 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if "materialize" in args.stages:
                 telemetry.transition_stage("materialize")
-                do_materialize(args)
+                with _local_gate_shadow_stage(args, "materialize"):
+                    do_materialize(args)
             if "calibrate" in args.stages:
                 telemetry.transition_stage("calibrate")
-                do_calibrate(args)
+                with _local_gate_shadow_stage(args, "calibrate"):
+                    do_calibrate(args)
             if "qa" in args.stages:
                 telemetry.transition_stage("qa")
-                do_qa(args)
+                with _local_gate_shadow_stage(args, "qa"):
+                    do_qa(args)
             if "finalize" in args.stages:
                 telemetry.transition_stage("finalize")
-                do_finalize(args)
+                with _local_gate_shadow_stage(args, "finalize"):
+                    do_finalize(args)
             if "package" in args.stages:
                 telemetry.transition_stage("package")
-                do_package(args)
+                with _local_gate_shadow_stage(args, "package"):
+                    do_package(args)
         finally:
             sampler.stop()
             sampler.join(timeout=5)

@@ -822,7 +822,7 @@ requires-dist = [
     { name = "microcosm-data", marker = "extra == 'uk'", editable = "packages/microcosm-data" },
     { name = "microcosm-data", marker = "extra == 'us'", editable = "packages/microcosm-data" },
     { name = "microcosm-diagnostics", editable = "packages/microcosm-diagnostics" },
-    { name = "microcosm-emitter-interface", specifier = ">=0.15.0,<1" },
+    { name = "microcosm-emitter-interface", specifier = ">=0.16.0,<1" },
     { name = "microcosm-fit", editable = "packages/microcosm-fit" },
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
@@ -943,11 +943,11 @@ dev = [
 
 [[package]]
 name = "microcosm-emitter-interface"
-version = "0.15.0"
+version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/18/4f/104cfbf59a7d9c864b8c9ee7d39e4c892f96eacba191877d9960c41fbf3e/microcosm_emitter_interface-0.15.0.tar.gz", hash = "sha256:d4810e5f1d7a210ce653e3bc76b7cae5869e02dab0ca1653eac581a227aa9ff7", size = 44283, upload-time = "2026-11-12T20:02:41.336Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/ca/6f49fcf6a5f45dd229259a383db124b599e589bf280131aa10b0d925ff12/microcosm_emitter_interface-0.16.0.tar.gz", hash = "sha256:bee086a4cbf79652123829ebdb5904cd9d56504464c616a7836c9072f771fc88", size = 45455, upload-time = "2026-11-13T19:20:55.166Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/1d/08334f65ac81b24fcf3280139d05e789e765b82923d57f333c78aea1f32f/microcosm_emitter_interface-0.15.0-py3-none-any.whl", hash = "sha256:37ee5fbd8230ca010e172bf2655f4fcff1f890b2a9190e0e153953ecf8571997", size = 70076, upload-time = "2026-11-12T20:02:39.923Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/21/c5302878edc48c1d81a8c6f299f77b4fd19bf2bd86d6b7d0efc419120ab1/microcosm_emitter_interface-0.16.0-py3-none-any.whl", hash = "sha256:3f187c72dd3f9412a7576040f1fed4029b404b34f750fbf0d4ec8e3292223b99", size = 72267, upload-time = "2026-11-13T19:20:53.867Z" },
 ]
 
 [[package]]
@@ -974,7 +974,7 @@ requires-dist = [
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
-    { name = "quantile-forest", specifier = ">=1.4.2" },
+    { name = "quantile-forest", specifier = "==1.4.2" },
     { name = "scikit-learn", specifier = ">=1.5" },
 ]
 

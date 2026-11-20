@@ -58,6 +58,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
+    FRS_CONDITION_LIMITS_COLUMN,
     FRS_SPINE_TABLES,
     FRS_UC_CARER_ELEMENT_COLUMN,
     FRS_UC_LCW_STATUS_COLUMN,
@@ -75,6 +76,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     completed_months,
     frs_care_recipients,
     frs_claimant_or_partner,
+    frs_condition_limits_activities,
     frs_council_tax_band,
     frs_dwp_carer_care_hours,
     frs_lcwra_proxy,
@@ -290,6 +292,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TOTHOURS": 40,
         # HOURTOT 5 = 35-49 hours of care a week (#882).
         "HOURTOT": 5,
+        # No long-standing illness, so CONDIT is blank (PolicyEngine/microcosm#1663).
+        "HEALTH1": 2,
+        "CONDIT": "",
         "HRPID": 1,
         "UPERSON": 1,
         # #791 household grid: the HRP carries a blank relhrp and the parent
@@ -387,6 +392,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "FSFVVAL": 1.0,
         "FSBVAL": 2.0,
         "HEARTVAL": 4.0,
+        "CHEARNS": 0.0,
     }
     return {
         "adult": [adult_2, adult_1],
@@ -1436,7 +1442,9 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     or UPERSON, which place a person in their benefit unit: a child raised to
     UPERSON 1 would head the unit beside its adult head, which the spine
     refuses. Nor are the household codes mapped through their data
-    dictionary, which refuse a raised code outside it (uk-data#636).
+    dictionary, which refuse a raised code outside it (uk-data#636), nor
+    ADULT's HEALTH1 and CONDIT, refused the same way (PolicyEngine/
+    microcosm#1663).
     """
 
     tables = _fixture_tables()
@@ -1455,6 +1463,8 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
             "GVTREGNO",
             "PTENTYP2",
             "TYPEACC",
+            "HEALTH1",
+            "CONDIT",
         }
     ]
     copies: dict[str, list[dict[str, object]]] = {table: [] for table in tables}
@@ -3263,6 +3273,74 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert rows[0].disposition == "iterating"
 
 
+@pytest.mark.parametrize("observed", [False, True])
+def test_driver_kernels_free_each_stage_result_once_its_evidence_is_captured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, observed: bool
+) -> None:
+    """The spine driver, and the full build that prepares its spine through
+    it, read stage evidence only from the store. So every stage kernel the
+    preparation binds frees its transform's result once that evidence is
+    captured, an expanding stage's too. ``main`` wraps each stage in an
+    observation wrapper and the full build does not, so the run is checked
+    both ways (microcosm#931)."""
+
+    from microcosm.build.stage_evidence import _proxy_chain
+    from microcosm.graph import ContentStore, compile_graph, run_graph
+
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+
+    prepared = tool.prepare_uk_spine_execution(
+        tool.parse_uk_spine_args(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--no-staging",
+            ]
+        ),
+        observer=(lambda observation: None) if observed else None,
+    )
+
+    kernels = prepared.kernels.as_mapping()
+    stage_refs = {
+        ref for ref in kernels if ref == "uk.create@1" or ref.startswith("uk.stage.")
+    }
+    assert "uk.stage.expand.spi_support_channel@1" in stage_refs
+    assert all(kernels[ref].release_stage_results is True for ref in stage_refs)
+    run_graph(
+        compile_graph(prepared.graph),
+        sources=prepared.sources,
+        store=ContentStore(tmp_path / "store"),
+        kernels=prepared.kernels,
+        resume="forbid",
+        decisions=(),
+    )
+    # Every object behind a stage's wrappers that keeps a result holds none
+    # now. The SPI support stage expands its rows; the relationships stage is
+    # built by a graph source transform.
+    kept = {
+        name: candidate.__dict__["last_result"]
+        for name, transform in prepared.implementations.items()
+        for candidate in _proxy_chain(transform)
+        if "last_result" in getattr(candidate, "__dict__", {})
+    }
+    assert {"spi_support_channel", "frs_relationships"} <= kept.keys()
+    assert {name for name, result in kept.items() if result is not None} == set()
+
+
 def test_driver_writes_payload_identical_h5s(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3323,6 +3401,59 @@ def test_driver_writes_payload_identical_h5s(
             first_frame.table(entity).reset_index(drop=True),
             second_frame.table(entity).reset_index(drop=True),
         )
+
+
+def test_driver_keeps_only_the_final_graph_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The spine reads one version from its graph manifest and keeps only it.
+
+    The graph run frees every other version once nothing reads it (#931), so
+    the manifest attaches the final stage's version and nothing else.
+    """
+    pytest.importorskip("tables")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "spine.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    runs = []
+    run_graph = tool.run_graph
+
+    def recorded(compiled, **kwargs):
+        manifest = run_graph(compiled, **kwargs)
+        runs.append((compiled, kwargs["retain_populations"], manifest))
+        return manifest
+
+    monkeypatch.setattr(tool, "run_graph", recorded)
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--no-staging",
+            ]
+        )
+        == 0
+    )
+    [(compiled, retained, manifest)] = runs
+    stage_names = tool._uk_spine_stage_names(_synthetic_spec(stage))
+    final = compiled.versions[stage_names[-1]]
+    assert retained == (final,)
+    assert set(manifest.populations) == set(manifest.mass_ledgers) == {final}
+    assert len(set(compiled.versions.values())) > 1
 
 
 def test_driver_refuses_missing_spi_tab(tmp_path: Path) -> None:
@@ -5647,3 +5778,67 @@ def test_a_spine_build_that_must_send_telemetry_stops_before_any_input_without_a
 
     assert raised.value.reason == "command_not_found"
     assert sorted(path.name for path in tmp_path.iterdir()) == ["raw"]
+
+
+def test_the_limiting_condition_carrier_reads_health1_and_condit() -> None:
+    """ADULT.CONDIT's three codes, NO_CONDITION and NOT_ASKED (PolicyEngine/microcosm#1663)."""
+
+    person = pd.DataFrame({"health1": [1, 1, 1, 2, 0], "condit": [1, 2, 3, 0, 0]})
+    adult = np.array([True, True, True, True, False])
+
+    assert frs_condition_limits_activities(person, adult).tolist() == [
+        "A_LOT",
+        "A_LITTLE",
+        "NOT_AT_ALL",
+        "NO_CONDITION",
+        "NOT_ASKED",
+    ]
+    with pytest.raises(KeyError, match="CONDIT"):
+        frs_condition_limits_activities(person[["health1"]], adult)
+    with pytest.raises(ValueError, match="HEALTH1 outside"):
+        frs_condition_limits_activities(person.assign(health1=[1, 1, 1, 3, 0]), adult)
+    with pytest.raises(ValueError, match="codes 1 to 3"):
+        frs_condition_limits_activities(person.assign(condit=[1, 2, 0, 0, 0]), adult)
+    with pytest.raises(ValueError, match="without a long-standing"):
+        frs_condition_limits_activities(person.assign(condit=[1, 2, 3, 1, 0]), adult)
+    with pytest.raises(ValueError, match="align"):
+        frs_condition_limits_activities(person, adult[:-1])
+
+
+def test_the_spine_carries_the_limiting_condition() -> None:
+    from microcosm.build.uk_runtime.frs_spine import OUTPUT_COLUMNS
+
+    assert FRS_CONDITION_LIMITS_COLUMN in OUTPUT_COLUMNS
+
+
+def test_a_dependent_childs_pay_is_its_chearns(tmp_path: Path) -> None:
+    # Vahid's review of PolicyEngine/microcosm#1663: a dependent aged 16 to 19
+    # in full-time non-advanced education sits on the child tab, whose pay is
+    # CHEARNS, never INEARNS.
+    tables = _fixture_tables()
+    tables["child"][0].update({"AGE": 17, "CHEARNS": 40.0})
+    plain = UKFRSSpineStageTransform(
+        tmp_path / "plain", stage=_write_fixture(tmp_path / "plain")
+    )(uk_frs_spine_seed_frame()).table("person")
+    paid = UKFRSSpineStageTransform(
+        tmp_path / "paid", stage=_write_fixture(tmp_path / "paid", tables)
+    )(uk_frs_spine_seed_frame()).table("person")
+
+    child = paid["is_hbai_dependent_child"].to_numpy(dtype=bool)
+    assert child.sum() == 1
+    assert paid.loc[child, "employment_income"].tolist() == [40.0 * 52]
+    assert plain.loc[child, "employment_income"].tolist() == [0.0]
+    # Adults keep their INEARNS pay.
+    assert (
+        paid.loc[~child, "employment_income"].tolist()
+        == plain.loc[~child, "employment_income"].tolist()
+    )
+
+
+def test_a_child_tab_without_chearns_is_refused(tmp_path: Path) -> None:
+    tables = _fixture_tables()
+    for child in tables["child"]:
+        child.pop("CHEARNS")
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match="CHEARNS"):
+        UKFRSSpineStageTransform(tmp_path, stage=stage)(uk_frs_spine_seed_frame())

@@ -14,7 +14,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.country_spec import load_country_spec
-from microcosm.build.uk_runtime.frs_spine import FRS_UC_LCW_STATUS_COLUMN
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_CONDITION_LIMITS_COLUMN,
+    FRS_UC_LCW_STATUS_COLUMN,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.uc_limited_capability import (
     UC_LCW,
@@ -41,6 +44,9 @@ def _frame():
             "is_household_head": [True, True, True],
             "is_disabled_for_benefits": [False, True, True],
             FRS_UC_LCW_STATUS_COLUMN: ["LCWRA", "NONE", "NOT_LINKED"],
+            # No one reports a condition that limits their activities a lot,
+            # so the imputation's cells are the no-condition side.
+            FRS_CONDITION_LIMITS_COLUMN: ["NO_CONDITION"] * 3,
         }
     )
     household = pd.DataFrame(
@@ -48,6 +54,8 @@ def _frame():
             "household_id": [1, 2, 3],
             "region": ["WALES", "WALES", "WALES"],
             "household_source_id": [1, 2, 3],
+            # The true source each floor counts (microcosm#931).
+            "source_household_id": [1, 2, 3],
             "household_is_spi_synthetic": [False, False, False],
             # The engine adapter's dataset reads these on every household.
             "council_tax": [0.0, 0.0, 0.0],

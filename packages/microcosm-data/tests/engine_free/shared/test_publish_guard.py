@@ -216,6 +216,70 @@ def test_version_2_staging_delivery_parser(tmp_path, delivery, undelivered):
     assert _staging_undelivered(tmp_path) is undelivered
 
 
+_STAGED = {"enabled": True, "run_id": "r", "repo_id": "o/s", "uploads_succeeded": 4}
+_UNDELIVERED = {
+    "enabled": True,
+    "run_id": "r",
+    "repo_id": "o/s",
+    "uploads_succeeded": 0,
+}
+_OPTED_OUT = {"enabled": False, "reason": "--no-staging"}
+
+
+@pytest.mark.parametrize(
+    ("certification", "build", "undelivered"),
+    [
+        # Both staged, or both declared an opt-out.
+        (_STAGED, _STAGED, False),
+        ({"enabled": False, "reason": "the build did not stage"}, _OPTED_OUT, False),
+        # Certification opted out where its build staged.
+        ({"enabled": False, "reason": "--no-staging at certification"}, _STAGED, False),
+        # The build's own uploads never arrived: refused, whatever its
+        # certification did (review of microcosm#1672).
+        (_STAGED, _UNDELIVERED, True),
+        (
+            {"enabled": False, "reason": "--no-staging at certification"},
+            _UNDELIVERED,
+            True,
+        ),
+        (_STAGED, None, True),
+        (_STAGED, {}, True),
+        (_STAGED, {"enabled": False}, True),
+        # The certification's own uploads never arrived.
+        (_UNDELIVERED, _STAGED, True),
+    ],
+)
+def test_a_separately_certified_build_needs_its_own_staging_too(
+    tmp_path, certification, build, undelivered
+):
+    """A US national build is certified as a step of its own (microcosm#1585
+    item 11): the manifest's staging block is its certification's, with the
+    build's own under ``build``, and the gate reads both."""
+    _write_bm(tmp_path, {"build_id": "x", "staging": {**certification, "build": build}})
+    assert _staging_undelivered(tmp_path) is undelivered
+
+
+def test_publish_refuses_a_certified_build_whose_own_staging_never_arrived(
+    tmp_path, capsys, monkeypatch
+):
+    _write_bm(
+        tmp_path,
+        {
+            "build_id": "x",
+            "staging": {
+                "enabled": False,
+                "reason": "--no-staging at certification; the build staged (run r)",
+                "build": _UNDELIVERED,
+            },
+        },
+    )
+    cli = _stub_publish(monkeypatch)
+    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
+    assert cli.main([str(tmp_path)]) == 1
+    assert "for the build itself under staging.build" in capsys.readouterr().err
+    assert cli.main([str(tmp_path), "--allow-missing-staging"]) == 0
+
+
 def test_publish_refused_when_staging_never_delivered(tmp_path, capsys, monkeypatch):
     _write_bm(
         tmp_path,

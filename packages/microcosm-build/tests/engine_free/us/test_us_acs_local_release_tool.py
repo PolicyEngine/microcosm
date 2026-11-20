@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import functools
 import importlib.util
 import inspect
@@ -11,6 +12,7 @@ import re
 import shlex
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1371,13 +1373,17 @@ def test_release_checks_self_employment_wherever_it_loads_staging() -> None:
     module = _load_tool_module()
 
     for stage in (module.do_materialize, module._write_calibrated_artifact):
-        lines = [line.strip() for line in inspect.getsource(stage).splitlines()]
+        # Each check may run inside the lambda its gate battery shadow site
+        # evaluates at once (microcosm#1585 item 11), so the statements are
+        # compared, not the lines.
+        (function,) = ast.parse(textwrap.dedent(inspect.getsource(stage))).body
+        statements = [ast.unparse(statement) for statement in function.body]
         hours = next(
             index
-            for index, line in enumerate(lines)
-            if line.startswith("_require_local_hours(frame")
+            for index, statement in enumerate(statements)
+            if "_require_local_hours(frame" in statement
         )
-        assert lines[hours + 1] == "_require_acs_self_employment_identity(frame)"
+        assert "_require_acs_self_employment_identity(frame)" in statements[hours + 1]
 
 
 def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
@@ -7152,6 +7158,64 @@ def test_calibrate_records_the_code_it_read_when_it_started(
     module.do_calibrate(args)
 
     assert json.loads(export_path.read_text())["code"] == resumed
+    assert events == ["git", "prepare", "git", "write"]
+
+
+@pytest.mark.parametrize("now", ["regraded", "refused"])
+def test_a_completed_resume_ships_only_evidence_this_code_computes(
+    tmp_path: Path, monkeypatch, now
+) -> None:
+    """A resumed run with nothing left to solve recomputes the summary's
+    evidence from the checkpoint and the saved weights. Evidence an older build
+    wrote (county grades that counted group quarters as support), or a
+    checkpoint the current code refuses (one without TYPEHUGQ), stops the
+    stage before it writes anything, as a fresh solve would (review of
+    #1630)."""
+
+    module = _load_tool_module()
+    args, events = _calibrate_through_the_write(
+        module, tmp_path, monkeypatch, [_STARTED_CODE] * 5
+    )
+    older = {
+        "cd_holdout": {"n_targets": 0},
+        "n_holdout_targets": 0,
+        "county_reliability": {"counties": {"01001": {"grade": "A"}}},
+    }
+    monkeypatch.setattr(module, "calibration_evidence", lambda **kwargs: older)
+    module.do_calibrate(args)
+    outputs = [
+        args.out_h5,
+        args.checkpoint_dir / "calibration_summary.json",
+        args.checkpoint_dir / "consumer_export.json",
+        args.checkpoint_dir / "weights_latest.npz",
+    ]
+    written = [path.read_bytes() for path in outputs]
+
+    events.clear()
+    args.resume = True
+    if now == "regraded":
+        current = {
+            **older,
+            "county_reliability": {"counties": {"01001": {"grade": "C"}}},
+        }
+        monkeypatch.setattr(module, "calibration_evidence", lambda **kwargs: current)
+        refusal = r"\['county_reliability'\] evidence .* another build wrote it"
+    else:
+
+        def refuse(**kwargs):
+            raise SystemExit("the checkpoint has no TYPEHUGQ; materialize again")
+
+        monkeypatch.setattr(module, "calibration_evidence", refuse)
+        refusal = "materialize again"
+    with pytest.raises(SystemExit, match=refusal):
+        module.do_calibrate(args)
+    assert events == ["git"]
+    assert [path.read_bytes() for path in outputs] == written
+
+    # The evidence this code computes, unchanged, still takes the shortcut.
+    events.clear()
+    monkeypatch.setattr(module, "calibration_evidence", lambda **kwargs: older)
+    module.do_calibrate(args)
     assert events == ["git", "prepare", "git", "write"]
 
 

@@ -11,6 +11,8 @@ digest and outputs listed with sha256 receipts. Six tools are registered
 `all`; see "Route A's base stage"), its current-main rerun registration
 `us-puf-support-base-rerun` (same script and stage, with the reviewed current
 district crosswalk; see [the 18 October rerun](us-route-a-rerun-20261018.md)),
+its default-pool registration `us-puf-support-base-income-2023-2025` (the
+rerun's command on income years 2023-2025; see "The default-pool template"),
 the ACS multispine staging builder,
 `tools/build_us_acs_multispine_base.py` (tool `us-acs-multispine-staging`,
 stage `all`; see "ACS multispine staging"), the US head-to-head scorer,
@@ -100,7 +102,7 @@ that release's current build.
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
    `uv.lock` into `/opt/venv`, installs the newest `microcosm-emitter`
-   release (0.15.0 or later, the oldest a build starts) on its own with
+   release (0.16.0 or later, the oldest a build starts) on its own with
    `uv tool install` into `/usr/local/bin`, checks that
    `microcosm-emitter version` runs, and asserts `git status --porcelain` is
    empty. Emitter releases from 0.10.0 on send telemetry to the collector's
@@ -118,7 +120,7 @@ that release's current build.
    (`/root/minimum_emitter_version.json`), and the copy reads that one: the
    check, which runs there, reports the install step the image was built
    with. The install step and its
-   `>=0.15.0` floor come from the checkout that launches the app
+   `>=0.16.0` floor come from the checkout that launches the app
    (`image_build_commands`, `image_emitter_requirement`), while the minimum
    the build enforces comes from the commit the plan pins, so a launch can
    combine an older checkout's floor with a newer commit's minimum, or the
@@ -368,8 +370,9 @@ that release's current build.
      Modal reuses that step for a commit while the step's command is the
      same. Since #1455 (merged 2026-11-03), the command asks for at least
      0.11.9, since #1522 for `microcosm-emitter>=0.13.0`, since #1556 for
-     `microcosm-emitter>=0.14.0`, and since #1599 for
-     `microcosm-emitter>=0.15.0`, so every image this runner builds has an
+     `microcosm-emitter>=0.14.0`, since #1599 for
+     `microcosm-emitter>=0.15.0`, and since #1608 for
+     `microcosm-emitter>=0.16.0`, so every image this runner builds has an
      emitter that reports a collector origin and has `status`. An image whose install step an
      older checkout built (with `>=0.7.0`, possibly before 0.11.0) is not
      reused: the changed command rebuilds that step, for each commit, at its
@@ -785,11 +788,67 @@ across containers would let preemption lose one chunk instead of the run.
 
 For Max's d1386 rerun on **18 October 2026**, use
 [the rerun preparation and launch sequence](us-route-a-rerun-20261018.md) and
-`us-modal-stage-route-a-rerun-base-plan.json`. Its commit is intentionally
-unresolved. That procedure separates the historical base feed from main's
-new release feed, pins the current in-tree crosswalk with a scoped registration,
-and requires fresh local 000/001 evidence for the selected commit and CT ladder.
-The historical plan/reference below cannot qualify that rerun.
+`us-modal-stage-route-a-rerun-base-plan.json` as it stood at `9b7a4544b`
+(see "The default-pool template" for what the file holds now). Its commit is
+intentionally unresolved. That procedure separates the historical base feed
+from main's new release feed, pins the current in-tree crosswalk with a scoped
+registration, and requires fresh local 000/001 evidence for the selected
+commit and CT ladder. The historical plan/reference below cannot qualify that
+rerun.
+
+### The default-pool template
+
+Max's d2603 (7 November 2026) moves Route A to main's default ASEC pool, income
+years 2023-2025, from the first certified build after November 2026.
+`us-modal-stage-route-a-rerun-base-plan.json` is now the template for that
+build. It names `us-puf-support-base-income-2023-2025`, which runs the rerun
+registration's command, crosswalk pin and resources on the default pool, with
+the years newest first as `route_a.sh` passes them. Its commit,
+`PICK_MAIN_COMMIT_FOR_THE_NEXT_CERTIFIED_BUILD`, refuses validation until an
+operator fills it. Replace `pending` in its run id with the commit's first 12
+characters, as the rerun's launch sequence did.
+
+The template builds a `legacy` base. Its registration passes the legacy
+location flags, and the location flags are runner-owned, so no plan can switch
+the base to `block_v1` (microcosm#1047). A build with Route A's
+`LOCATION_RULE=block_v1` builds its base with `route_a.sh` itself and does not
+hand a Modal base to Route A.
+
+It takes twelve inputs, one more than the rerun:
+
+- the 2025, 2024 and 2023 ASEC H5s;
+- `puf_2024.h5`, `puf_2015.csv` and `acs_2022.h5`;
+- the archives `asecpub24csv.zip` to `asecpub26csv.zip`;
+- the Ledger feed and the CT block ladder;
+- `asec_weeks_unemployed_zip`, the 2023 ASEC archive `asecpub23csv.zip`.
+
+The pool has no income-2022 education archive to seed the tool's LKWEEKS cache
+from, so the runner seeds it from this input of its own. No flag names it.
+`census_cps_2025.h5` and `asecpub26csv.zip` must reach the inputs volume before
+the check; `upload-commands` hashes them with the rest:
+
+```bash
+python3 tools/modal_us_stage_plan.py upload-commands "$PLAN" --shell \
+  "asec_2025_h5=$STORAGE/census_cps_2025.h5" \
+  "asec_2024_h5=$STORAGE/census_cps_2024.h5" \
+  "asec_2023_h5=$STORAGE/census_cps_2023.h5" \
+  "puf_2024_h5=$STORAGE/puf_2024.h5" "puf_2015_csv=$STORAGE/puf_2015.csv" \
+  "acs_2022_h5=$STORAGE/acs_2022.h5" \
+  "asec_education_2023_zip=$EDU/asecpub24csv.zip" \
+  "asec_education_2024_zip=$EDU/asecpub25csv.zip" \
+  "asec_education_2025_zip=$EDU/asecpub26csv.zip" \
+  "asec_weeks_unemployed_zip=$HOME/.cache/microcosm/cps/asec_2023/asecpub23csv.zip" \
+  "base_ledger_facts=$BASE_LEDGER_FACTS" "block_ladder_npz=$LADDER" \
+  > upload-route-a-base.sh && bash upload-route-a-base.sh
+```
+
+`tools/route_a/make_local_reference.py` accepts the registration. It hashes
+the seeded archive in the home cache the local tool read it from.
+`test_route_a_asec_pool.py` holds the template and the driver to the default
+pool and the registries' pins. It also checks that the driver's base command
+is this registration's, flag for flag.
+
+### The historical base plan
 
 On 29 September 2026 Max ruled to run only Route A's base stage on Modal:
 non-preemptible, capped at 4 hours of wall, about $15. The release, its
@@ -922,7 +981,9 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   same file: the tool pins both to `d2e00025…`, and a plan with another
   digest for that input is refused), so the stage makes no Census request.
   The tool still verifies the archive itself. The receipt lists the copy
-  under `runner.home_seeds`.
+  under `runner.home_seeds`. The default-pool registration has no income-2022
+  education archive, so it seeds the same cache from its own
+  `asec_weeks_unemployed_zip` input.
 - **Environment.** The plan sets only `PYTHONUNBUFFERED=1`, as the local
   run did. It sets no thread counts, because the local run set none;
   Modal's container defaults apply, and the receipt records them
@@ -1340,7 +1401,9 @@ LINEAGE=./modal-runs/$R/compare-lineage.json
     --reference docs/us-modal-stage-route-a-base-local-reference.json \
     --run-context "$CONTEXT" > "$LINEAGE"
   mkdir -p "$RUN/base-out"
-  cp -p ./modal-runs/$R/state/base-out/* "$RUN/base-out/"
+  # -R: the base writes its gate-shadow files in base-out/gate_battery_shadow/,
+  # and the receipt lists them with the rest of base-out.
+  cp -pR ./modal-runs/$R/state/base-out/* "$RUN/base-out/"
   # The copies, in place, against the receipt (COMPLETED only, nothing extra).
   python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
     --state-root "$RUN" --prefix base-out --strict

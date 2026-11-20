@@ -188,6 +188,8 @@ def _frame(categories, ages, regions, sources):
             "household_id": list(range(1, count + 1)),
             "region": regions,
             "household_source_id": sources,
+            # The true source each floor counts (microcosm#931).
+            "source_household_id": sources,
         }
     )
     return uk_national_frame(

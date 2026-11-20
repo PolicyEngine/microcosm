@@ -299,6 +299,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # treatment. Remains subject to the all-runtime source-identity scan.
         "asec_sources.py",
         "base_pool.py",
+        # The gate battery's US bindings (#1585 item 11): each declared check
+        # calls the gate its site calls today, on the evidence it is handed;
+        # no population treatment. Remains subject to the all-runtime
+        # source-identity scan.
+        "battery_bindings.py",
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
@@ -312,6 +317,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
+        # Pinned county facts loader for the ACS-local county rung
+        # (microcosm#922): hashes, checks and projects Chronicle rows; assigns
+        # no households and applies no population treatment. Remains subject
+        # to the all-runtime source-identity scan.
+        "county_facts.py",
         # 2020 tract/county -> 2023 county-equivalent metadata and its gate;
         # writes calibration geography only, no population treatment.
         "county_vintage.py",
@@ -343,6 +353,13 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # facts into target specs and sums the stored person balances for
         # them; no population treatment.
         "fsa_student_loan_targets.py",
+        # The four tool scopes of us/gates.json (#1585 item 11): manifests and
+        # their pinned digests only; no population treatment.
+        "gate_scopes.py",
+        # The gate battery in shadow beside today's US gates (#1585 item 11):
+        # compares verdicts and writes shadow files; no population treatment.
+        # Remains subject to the all-runtime source-identity scan.
+        "gate_shadow.py",
         "geography_ladder.py",
         "hours_worked.py",
         "h5_io.py",  # US artifact I/O; no population treatment.
@@ -438,6 +455,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Bake-off arm accounting, split mirror and ESS; evaluates support mixes,
         # never transforms a population.
         "support_mix.py",
+        # d2283's one-population selection over support_mix's order: unit
+        # keys, eligibility flags, the nested plan, starting weights and a
+        # manifest. Reads no frame and treats no population itself.
+        "one_population_selection.py",
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",
@@ -3847,9 +3868,11 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # reached module. 81 adds puf_source_schedule_e.py, the PUF donor's
         # Schedule E line-32 and passive supplement (#1239). 83 adds
         # block_location.py and cps_source_geography.py, which the
-        # --location-rule block_v1 household location reaches (#696).
-        assert len(runtime_graph) == 83, (
-            f"{tool.name} must reach the pinned 83-module runtime graph; "
+        # --location-rule block_v1 household location reaches (#696). 86 adds
+        # battery_bindings.py, gate_scopes.py and gate_shadow.py, the gate
+        # battery the pool runs in shadow beside its gates (#1585 item 11).
+        assert len(runtime_graph) == 86, (
+            f"{tool.name} must reach the pinned 86-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

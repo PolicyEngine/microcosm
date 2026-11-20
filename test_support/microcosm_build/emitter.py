@@ -182,7 +182,7 @@ class FakeEmitterClient:
     as the interface does after a timeout.
     """
 
-    emitter_version = "0.15.0"
+    emitter_version = "0.16.0"
 
     def __init__(
         self,
