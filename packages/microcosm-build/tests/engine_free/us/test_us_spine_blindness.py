@@ -340,6 +340,13 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "cps_source_geography.py",
         "demographics.py",
         "education_assistance_source.py",
+        # Auxiliary attainment class (microcosm#297): an exact (income year,
+        # PERIDNUM) join to the pinned ASEC person member through
+        # spm_role_source's pins, with its signal gate and the S1501 target
+        # helpers; a manifest stage shaped like spm_independence_role. It
+        # predicts no value, reads no spine or support-channel column and
+        # remains subject to the all-runtime source-identity scan.
+        "educational_attainment.py",
         "eligibility_inputs.py",
         "engine_lifecycle.py",
         # MEPS-IC employer-premium input (#454): a base-builder pre-clone

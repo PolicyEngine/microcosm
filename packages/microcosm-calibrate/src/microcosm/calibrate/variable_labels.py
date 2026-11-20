@@ -51,6 +51,7 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
             "wages_and_salaries_projection": "Wages and salaries projection",
         },
         "census_acs": {
+            "educational_attainment": "Educational attainment",
             "resident_population": "Resident population",
         },
         "census_pep": {

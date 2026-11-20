@@ -26,6 +26,7 @@ cbo|net_business_income_projection
 cbo|net_capital_gain_projection
 cbo|qualified_dividend_income_projection
 cbo|wages_and_salaries_projection
+census_acs|educational_attainment
 census_acs|resident_population
 census_pep|resident_population
 census_stc|individual_income_tax_collections
