@@ -310,7 +310,7 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
   # runs other stages under these settings (main's, for example, has no
   # STOP_BEFORE_RELEASE and no --probe; review of #1676). The untracked
   # settings file is not compared.
-  local driver_differs= driver_file driver_files
+  local driver_differs='' driver_file driver_files
   driver_files=$(git -C "$MAIN" ls-tree --name-only "$full" tools/route_a/ 2>/dev/null)
   if [ -z "$driver_files" ]; then
     COMMIT_BLOCKERS+=("the build commit $full has no tools/route_a, so this driver ($SCRIPT_DIR) cannot be its own")
