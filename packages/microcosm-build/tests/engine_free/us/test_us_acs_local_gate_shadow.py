@@ -9,6 +9,7 @@ stand-in gates; no stage runs.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -87,7 +88,10 @@ def _args(tmp_path):
     )
 
 
-def _run_stage(acs, args, stage, *, legacy=None):
+def _run_stage(acs, args, stage, *, legacy=None, report=None):
+    """Run ``stage``'s stand-in gates; finalize also writes ``report``, if
+    given, to ``args.gate_report``, as ``do_finalize`` writes its report."""
+
     with acs._local_gate_shadow_stage(args, stage):
         observe_entries("us_local", acs, STAGE_ENTRIES[stage], legacy=legacy)
         if stage == "finalize":
@@ -95,6 +99,8 @@ def _run_stage(acs, args, stage, *, legacy=None):
                 "us_local_block_location",
                 "the staging used the legacy location rule; no block ladder",
             )
+            if report is not None:
+                args.gate_report.write_text(json.dumps(report))
 
 
 def _comparison(args):
@@ -217,6 +223,186 @@ def test_a_finalize_checkpoint_without_a_waiver_record_marks_the_waiver_unknown(
         flags == [] for entry_id, flags in waived_by.items() if entry_id not in esi
     )
     assert payload["waivers"] == dict.fromkeys(esi, unknown)
+
+
+#: The entries finalize evaluates that --allow-esi-premium-gaps waives.
+ESI = ("us_local_esi_premiums_signal", "us_local_esi_premiums_anchor")
+WAIVED = ["--allow-esi-premium-gaps"]
+
+
+def _sha256(path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _esi_waived_by(args) -> dict[str, list[str]]:
+    waived_by = {row["id"]: row["waived_by"] for row in _comparison(args)["entries"]}
+    return {entry_id: waived_by[entry_id] for entry_id in ESI}
+
+
+def _finalize_record(args) -> dict:
+    return json.loads((acs_directory(args) / "finalize.waivers.json").read_text())
+
+
+def test_package_shows_a_finalize_waiver_only_on_the_gate_report_that_run_wrote(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # Finalize a.json without the waiver, then b.json with it, on one
+    # checkpoint. Package a.json ships a report that enforced the ESI gates,
+    # so its shadow must not show b's waiver: the record b left names b.json.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa"):
+        _run_stage(acs, args, stage)
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    args.gate_report, args.allow_esi_premium_gaps = a, False
+    _run_stage(acs, args, "finalize", report={"run": "a", "enforced": True})
+    args.gate_report, args.allow_esi_premium_gaps = b, True
+    _run_stage(acs, args, "finalize", report={"run": "b", "enforced": False})
+
+    args.gate_report, args.allow_esi_premium_gaps = a, False
+    _run_stage(acs, args, "package")
+    mismatch = [
+        "unknown: the finalize stage's waiver record belongs to gate report "
+        f"{_sha256(b)}, not to the selected gate report {_sha256(a)}"
+    ]
+    assert _comparison(args)["run_completed"] is True
+    assert _esi_waived_by(args) == dict.fromkeys(ESI, mismatch)
+    assert _comparison(args)["waivers"] == dict.fromkeys(ESI, mismatch)
+
+    # On the report that run wrote, its waiver, whatever package's flag says.
+    args.gate_report = b
+    _run_stage(acs, args, "package")
+    assert _esi_waived_by(args) == dict.fromkeys(ESI, WAIVED)
+    assert _finalize_record(args) == {
+        "gate_report_sha256": _sha256(b),
+        "waivers": dict.fromkeys(ESI, WAIVED),
+    }
+
+
+def test_a_finalize_run_that_wrote_no_gate_report_names_none(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # A finalize run stopped before it wrote its report leaves the previous
+    # run's report in place. Its waiver record names no report, so package on
+    # that earlier report does not show the stopped run's waiver.
+    args = _args(tmp_path)
+    args.gate_report = tmp_path / "gate_summary.json"
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa"):
+        _run_stage(acs, args, stage)
+    args.allow_esi_premium_gaps = False
+    _run_stage(acs, args, "finalize", report={"run": "first"})
+    earlier = _sha256(args.gate_report)
+    args.allow_esi_premium_gaps = True
+    with pytest.raises(SystemExit, match="stopped"):
+        with acs._local_gate_shadow_stage(args, "finalize"):
+            observe_entries("us_local", acs, STAGE_ENTRIES["finalize"])
+            raise SystemExit("finalize stopped before it wrote its gate report")
+    assert _sha256(args.gate_report) == earlier
+
+    args.allow_esi_premium_gaps = False
+    _run_stage(acs, args, "package")
+    expected = [
+        "unknown: the finalize stage's waiver record belongs to gate report "
+        "none (that run wrote no gate report), not to the selected gate report "
+        f"{earlier}"
+    ]
+    assert _esi_waived_by(args) == dict.fromkeys(ESI, expected)
+    assert _finalize_record(args) == {
+        "gate_report_sha256": None,
+        "waivers": dict.fromkeys(ESI, WAIVED),
+    }
+
+
+@pytest.mark.parametrize("flags", [None, WAIVED], ids=["unwaived", "waived"])
+def test_a_finalize_waiver_record_without_a_gate_report_digest_is_unknown(
+    tmp_path, monkeypatch, acs, flags
+) -> None:
+    # A record saved before records named their gate report holds the waivers
+    # alone, by entry id, as 24a417c11d wrote them. Nothing ties it to the
+    # report package selects, so the shadow records its waiver as unknown.
+    args = _args(tmp_path)
+    args.gate_report = tmp_path / "gate_summary.json"
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa"):
+        _run_stage(acs, args, stage)
+    _run_stage(acs, args, "finalize", report={"run": "only"})
+    (acs_directory(args) / "finalize.waivers.json").write_text(
+        json.dumps(dict.fromkeys(ESI, flags) if flags else {})
+    )
+
+    _run_stage(acs, args, "package")
+
+    expected = [
+        "unknown: the finalize stage's waiver record names no gate report, so it "
+        f"cannot be matched to the selected gate report {_sha256(args.gate_report)}"
+    ]
+    assert _comparison(args)["run_completed"] is True
+    assert _esi_waived_by(args) == dict.fromkeys(ESI, expected)
+
+
+@pytest.mark.parametrize(
+    ("text", "error"),
+    [
+        # Truncated.
+        ("{", "JSONDecodeError: Expecting property name"),
+        # Wrong shape.
+        ("[]", "the record is a list, not a mapping"),
+        ('{"waivers": [], "gate_report_sha256": null}', "not lists of flags"),
+        # Wrong types.
+        (
+            '{"waivers": {"us_local_esi_premiums_signal": [1]}, '
+            '"gate_report_sha256": null}',
+            "not lists of flags",
+        ),
+        ('{"waivers": {}, "gate_report_sha256": 7}', "is not a SHA-256 hex digest"),
+        # An entry finalize does not waive, which the battery would accept.
+        (
+            '{"us_local_take_up": ["--allow-esi-premium-gaps"]}',
+            "names entries the finalize stage does not waive: ['us_local_take_up']",
+        ),
+    ],
+    ids=["truncated", "list", "waivers_list", "flag_type", "digest_type", "foreign"],
+)
+def test_an_unreadable_waiver_record_is_unknown_and_the_comparison_is_rebuilt(
+    tmp_path, monkeypatch, acs, capsys, text, error
+) -> None:
+    # A waiver record the shadow cannot read costs its own entries' waiver,
+    # which becomes unknown and names the file and the error. The shadow
+    # still rebuilds the comparison from every stage's observations, with
+    # its differences.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs, failing={"local_hours_signal"})
+    passing = GateResult(name="acs_local_hours_signal", passed=True)
+    legacy = {
+        entry_id: (lambda: passing)
+        for entry_id in ("us_local_hours_finalize", "us_local_hours_package")
+    }
+    for stage in ("materialize", "calibrate", "qa"):
+        _run_stage(acs, args, stage)
+    _run_stage(acs, args, "finalize", legacy=legacy)
+    (acs_directory(args) / "finalize.waivers.json").write_text(text)
+
+    _run_stage(acs, args, "package", legacy=legacy)
+
+    payload = _comparison(args)
+    assert payload["run_completed"] is True
+    assert {row["id"] for row in payload["entries"]} == {
+        entry.id for entry in us_scoped_gate_manifest("us_local").gates
+    }
+    differing = [row["id"] for row in payload["differences"]]
+    assert differing and all(entry.startswith("us_local_hours") for entry in differing)
+    waived_by = {row["id"]: row["waived_by"] for row in payload["entries"]}
+    for entry_id in ESI:
+        (marker,) = waived_by[entry_id]
+        assert marker.startswith(
+            "unknown: finalize.waivers.json could not be read as a waiver record ("
+        )
+        assert error in marker
+    assert all(
+        flags == [] for entry_id, flags in waived_by.items() if entry_id not in ESI
+    )
+    assert "finalize.waivers.json could not be read" in capsys.readouterr().out
 
 
 def test_with_the_switch_off_a_stage_touches_no_shadow_file(

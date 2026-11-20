@@ -34,8 +34,10 @@ Fixtures, by the branch the row rule takes:
 * F4: ``PERIDNUM`` blank on a complete row. Main never reads it.
 * F5: a row with neither the raw fields nor ``PERIDNUM``.
 
-The last test checks, statically, that neither tool imports the ACS local
-lane's modules, which pass ``allow_transferred_rows=True``.
+The last tests check, statically, that neither tool imports the ACS local
+lane's modules, which pass ``allow_transferred_rows=True``, and that the
+tools' own calls to the summary and gates, the stage's call and the shadow's
+bindings keep the default.
 """
 
 from __future__ import annotations
@@ -494,3 +496,106 @@ def test_route_as_tools_never_import_the_acs_local_lane(tool: str) -> None:
     assert "microcosm.build.us_runtime.esi_premiums" in closure
     assert len(closure) > 100
     assert not set(_LANE_MODULES) & closure
+
+
+# --- Route A's call sites keep the default keyword ----------------------------
+
+_KEYWORD = "allow_transferred_rows"
+#: The functions that take the keyword.
+_GRADERS = (
+    "us_esi_premiums_summary",
+    "us_esi_premiums_signal_gate",
+    "us_esi_premiums_anchor_gate",
+)
+_US_RUNTIME = (
+    REPOSITORY_ROOT / "packages/microcosm-build/src/microcosm/build/us_runtime"
+)
+
+
+def _called_name(call: ast.Call) -> str | None:
+    return getattr(call.func, "id", getattr(call.func, "attr", None))
+
+
+def _grader_calls(tree: ast.AST) -> list[ast.Call]:
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _called_name(node) in _GRADERS
+    ]
+
+
+def _keyword_lines(tree: ast.AST) -> list[int]:
+    """Lines that pass the keyword to any call or spell it as a string."""
+
+    return sorted(
+        {
+            node.lineno
+            for node in ast.walk(tree)
+            if (isinstance(node, ast.keyword) and node.arg == _KEYWORD)
+            or (isinstance(node, ast.Constant) and node.value == _KEYWORD)
+        }
+    )
+
+
+@pytest.mark.parametrize("tool", _ROUTE_A_TOOLS)
+def test_route_as_tools_call_the_gates_with_the_default_keyword(tool: str) -> None:
+    """Static, from the source (it imports nothing): the tool calls the ESI
+    summary and gates by their own names, passes ``allow_transferred_rows``
+    to no call, spells it in no string and passes no ``**`` keywords to them,
+    so each call grades with the default. The differential above calls the
+    gates directly; this pins the tools' own call sites."""
+
+    tree = ast.parse((REPOSITORY_ROOT / "tools" / tool).read_bytes(), filename=tool)
+    calls = _grader_calls(tree)
+    called = {_called_name(call) for call in calls}
+    # Not vacuous: the signal gate runs in both tools, the anchor gate in the
+    # release.
+    assert "us_esi_premiums_signal_gate" in called
+    if tool == "build_us_fiscal_refresh_release.py":
+        assert "us_esi_premiums_anchor_gate" in called
+    assert _keyword_lines(tree) == []
+    assert [
+        call.lineno
+        for call in calls
+        if any(keyword.arg is None for keyword in call.keywords)
+    ] == []
+    aliased = [
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+        if alias.name in _GRADERS and alias.asname not in (None, alias.name)
+    ]
+    assert aliased == []
+
+
+def test_the_stage_and_the_shadow_bindings_keep_the_default_keyword() -> None:
+    """Static: inside ``esi_premiums.py`` only the two gates pass the keyword,
+    and only their own parameter on to the summary; the stage's own gate call
+    (``with_us_esi_premium_inputs``, which the base builder runs) passes none.
+    The battery bindings Route A's shadow evaluates never name it."""
+
+    tree = ast.parse((_US_RUNTIME / "esi_premiums.py").read_bytes())
+    pass_through = ast.dump(
+        ast.keyword(arg=_KEYWORD, value=ast.Name(id=_KEYWORD, ctx=ast.Load()))
+    )
+    callers = []
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        for call in _grader_calls(function):
+            callers.append(function.name)
+            keywords = [
+                ast.dump(keyword)
+                for keyword in call.keywords
+                if keyword.arg in (None, _KEYWORD)
+            ]
+            if function.name in _GRADERS[1:]:
+                assert keywords == [pass_through], (function.name, call.lineno)
+            else:
+                assert keywords == [], (function.name, call.lineno)
+    assert "with_us_esi_premium_inputs" in callers
+    assert (
+        _keyword_lines(ast.parse((_US_RUNTIME / "battery_bindings.py").read_bytes()))
+        == []
+    )

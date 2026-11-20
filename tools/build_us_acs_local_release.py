@@ -7527,24 +7527,131 @@ def _local_stage_waivers(args, stage: str) -> Path:
     return _local_gate_shadow_directory(args) / f"{stage}.waivers.json"
 
 
-def _save_local_stage_waivers(args, stage: str) -> None:
-    """Record the waivers ``stage`` applied to its own entries, for later stages."""
+#: The stage that writes the gate report package selects (``--gate-report``).
+#: Its waiver record names that report by SHA-256, so package attaches the
+#: record only to the report the same finalize run wrote.
+_GATE_REPORT_STAGE = "finalize"
 
+
+def _gate_report_sha256(args) -> str | None:
+    """The SHA-256 of the gate report at ``args.gate_report``; None without one."""
+
+    path = getattr(args, "gate_report", None)
+    if path is None or not Path(path).is_file():
+        return None
+    return _sha256(Path(path))
+
+
+def _save_local_stage_waivers(
+    args, stage: str, *, gate_report_sha256: str | None = None
+) -> None:
+    """Record the waivers ``stage`` applied to its own entries, for later stages.
+
+    The gate report stage's record also names, by SHA-256, the gate report
+    that stage wrote, or None when it wrote none.
+    """
+
+    record: dict[str, object] = {"waivers": _local_gate_waivers(args, stage=stage)}
+    if stage == _GATE_REPORT_STAGE:
+        record["gate_report_sha256"] = gate_report_sha256
     path = _local_stage_waivers(args, stage)
     path.parent.mkdir(parents=True, exist_ok=True)
     staging = path.with_name(f"{path.name}.tmp")
     staging.write_text(
-        json.dumps(_local_gate_waivers(args, stage=stage), indent=2, sort_keys=True)
-        + "\n",
+        json.dumps(record, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     staging.replace(path)
 
 
-#: What the shadow records as the waiver of an entry whose stage saved its
-#: observations without a waiver record, as a checkpoint written before the
-#: stages kept one does: the flags that stage ran with are unknown.
-_UNRECORDED_STAGE_WAIVER = "unknown: the {stage} stage saved no waiver record"
+#: A record's ``gate_report_sha256`` when it has none: records saved before
+#: they named a gate report held only the waivers, by entry id.
+_NO_RECORDED_GATE_REPORT = object()
+
+
+def _read_local_stage_waivers(
+    path: Path, stage: str
+) -> tuple[dict[str, list[str]], object]:
+    """A stage's saved waivers by entry id, and the gate report digest it names.
+
+    Raises ``OSError`` or ``ValueError`` (``json.JSONDecodeError`` among them)
+    when it cannot read the file or the file is not a waiver record: a
+    mapping of the entries ``stage`` evaluates to lists of flags, under
+    ``waivers`` with an optional ``gate_report_sha256``, or bare, as earlier
+    records were.
+    """
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(saved, dict):
+        raise ValueError(f"the record is a {type(saved).__name__}, not a mapping")
+    digest: object = _NO_RECORDED_GATE_REPORT
+    waivers = saved
+    if "waivers" in saved:
+        unexpected = sorted(set(saved) - {"waivers", "gate_report_sha256"})
+        if unexpected:
+            raise ValueError(f"the record has unexpected keys {unexpected}")
+        waivers = saved["waivers"]
+        digest = saved.get("gate_report_sha256", _NO_RECORDED_GATE_REPORT)
+        if digest is not None and digest is not _NO_RECORDED_GATE_REPORT:
+            if not (
+                isinstance(digest, str)
+                and len(digest) == 64
+                and all(character in "0123456789abcdef" for character in digest)
+            ):
+                raise ValueError(
+                    f"gate_report_sha256 {digest!r} is not a SHA-256 hex digest"
+                )
+    if not isinstance(waivers, dict) or not all(
+        isinstance(flags, list) and all(isinstance(flag, str) for flag in flags)
+        for flags in waivers.values()
+    ):
+        raise ValueError("its waivers are not lists of flags by entry id")
+    evaluated = {
+        entry_id
+        for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS
+        if evaluated_at == stage
+        for entry_id in entry_ids
+    }
+    foreign = sorted(set(waivers) - evaluated)
+    if foreign:
+        raise ValueError(
+            f"it names entries the {stage} stage does not waive: {foreign}"
+        )
+    return {entry_id: list(flags) for entry_id, flags in waivers.items()}, digest
+
+
+def _waiver_gate_report_mismatch(args, stage: str, recorded: object) -> str | None:
+    """Why ``stage``'s waiver record does not belong to the selected gate
+    report, or None when it names that report's digest, or names none and
+    the selected path holds no file (package then refuses: no gate report)."""
+
+    try:
+        selected = _gate_report_sha256(args)
+    except OSError as error:
+        return (
+            f"the selected gate report {getattr(args, 'gate_report', None)} could "
+            f"not be read to match the {stage} stage's waiver record to it "
+            f"({type(error).__name__}: {error})"
+        )
+    if recorded is _NO_RECORDED_GATE_REPORT:
+        return (
+            f"the {stage} stage's waiver record names no gate report, so it "
+            "cannot be matched to the selected gate report "
+            f"{selected or 'none (no file)'}"
+        )
+    if recorded != selected:
+        return (
+            f"the {stage} stage's waiver record belongs to gate report "
+            f"{recorded or 'none (that run wrote no gate report)'}, not to the "
+            f"selected gate report {selected or 'none (no file)'}"
+        )
+    return None
+
+
+#: What the shadow records as the waiver of an entry whose stage's waiver
+#: record it cannot attach, since it then cannot know the flags that stage
+#: ran with.
+_UNKNOWN_STAGE_WAIVER = "unknown: {reason}"
 
 
 def _recorded_local_gate_waivers(args, stage: str) -> dict[str, list[str]]:
@@ -7553,37 +7660,57 @@ def _recorded_local_gate_waivers(args, stage: str) -> dict[str, list[str]]:
     This stage's come from ``args``, and an earlier stage's from the record it
     saved beside its observations (:func:`_local_gate_shadow_stage`), so a
     later stage's flags never rewrite the waivers an earlier stage took or
-    refused. This code saves a stage's record before its observations, so it
-    leaves no observations without one. A checkpoint saved by earlier code
-    can: the flags that stage ran with are then unknown, so each entry it
-    can waive records :data:`_UNRECORDED_STAGE_WAIVER` instead of no waiver,
-    and the comparison is still rebuilt. An earlier stage with neither file
-    contributes none.
+    refused. Finalize's record also names the gate report that run wrote,
+    and the shadow attaches it only when package selects that report: a
+    package run on another finalize run's report would otherwise show that
+    run's waiver.
+
+    Each entry an earlier stage can waive records
+    :data:`_UNKNOWN_STAGE_WAIVER`, with the reason, instead of a waiver when
+    the stage left observations without a record (as a checkpoint saved
+    before stages kept one does), when the shadow cannot read its record or
+    it is not a waiver record, or when finalize's names another gate report,
+    names none while a gate report exists at the selected path, or lacks the
+    digest (as records saved before they named one do). The shadow still
+    rebuilds the comparison. An earlier stage with neither file contributes
+    none. The shadow matches only the waiver to the gate report: it reads the
+    latest finalize run's observations, whichever report package selects.
     """
 
     waivers = _local_gate_waivers(args, stage=stage)
     for name in _LOCAL_GATE_SHADOW_STAGES[: _LOCAL_GATE_SHADOW_STAGES.index(stage)]:
         path = _local_stage_waivers(args, name)
-        if not path.is_file():
-            if _local_stage_observations(args, name).is_file():
-                unknown = _UNRECORDED_STAGE_WAIVER.format(stage=name)
-                for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
-                    if evaluated_at == name:
-                        for entry_id in entry_ids:
-                            waivers.setdefault(entry_id, []).append(unknown)
-                log(
-                    f"WARNING: gate battery shadow: the {name} stage's observations "
-                    "have no waiver record; its waivers are recorded as unknown."
+        if path.is_file():
+            try:
+                saved, recorded = _read_local_stage_waivers(path, name)
+            except (OSError, ValueError) as error:
+                reason = (
+                    f"{path.name} could not be read as a waiver record "
+                    f"({type(error).__name__}: {error})"
                 )
+            else:
+                reason = (
+                    _waiver_gate_report_mismatch(args, name, recorded)
+                    if name == _GATE_REPORT_STAGE
+                    else None
+                )
+                if reason is None:
+                    for entry_id, flags in saved.items():
+                        waivers.setdefault(entry_id, []).extend(flags)
+                    continue
+        elif _local_stage_observations(args, name).is_file():
+            reason = f"the {name} stage saved no waiver record"
+        else:
             continue
-        saved = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(saved, dict) or not all(
-            isinstance(flags, list) and all(isinstance(flag, str) for flag in flags)
-            for flags in saved.values()
-        ):
-            raise ValueError(f"{path.name} is not a stage waiver record.")
-        for entry_id, flags in saved.items():
-            waivers.setdefault(str(entry_id), []).extend(flags)
+        unknown = _UNKNOWN_STAGE_WAIVER.format(reason=reason)
+        for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
+            if evaluated_at == name:
+                for entry_id in entry_ids:
+                    waivers.setdefault(entry_id, []).append(unknown)
+        log(
+            f"WARNING: gate battery shadow: {reason}; it records the {name} "
+            "stage's waivers as unknown."
+        )
     return waivers
 
 
@@ -7650,7 +7777,8 @@ def _local_gate_shadow_stage(args, stage: str):
 
     The stages may run as separate processes, so each saves what it observed,
     and the waivers its flags applied to its own entries, beside the
-    checkpoint; rerunning a stage discards its own and every later stage's
+    checkpoint; finalize's waiver record also names the gate report that run
+    wrote. Rerunning a stage discards its own and every later stage's
     files. Afterwards the scope's report and comparison are rebuilt from every
     stage saved so far. With the switch off (the test suite) the stage runs
     without a shadow and touches no shadow file.
@@ -7672,13 +7800,36 @@ def _local_gate_shadow_stage(args, stage: str):
             stale.unlink(missing_ok=True)
     except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
         log(f"WARNING: gate battery shadow could not clear earlier files: {error}")
+    # The gate report as this stage finds it. One still there unchanged when
+    # the stage saves is an earlier run's, so the waiver record names none;
+    # so does a record whose report the shadow could not read before or after.
+    readable = True
+    report_before = None
+    if stage == _GATE_REPORT_STAGE:
+        try:
+            report_before = _gate_report_sha256(args)
+        except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
+            readable = False
+            log(f"WARNING: gate battery shadow could not read the gate report: {error}")
     shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args) / stage)
+
+    def written_gate_report() -> str | None:
+        if stage != _GATE_REPORT_STAGE or not readable:
+            return None
+        try:
+            report_after = _gate_report_sha256(args)
+        except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
+            log(f"WARNING: gate battery shadow could not read the gate report: {error}")
+            return None
+        return report_after if report_after != report_before else None
 
     def save() -> None:
         try:
             # The waiver record first, so observations this code saves always
             # have one (:func:`_recorded_local_gate_waivers`).
-            _save_local_stage_waivers(args, stage)
+            _save_local_stage_waivers(
+                args, stage, gate_report_sha256=written_gate_report()
+            )
             shadow.save_observations(_local_stage_observations(args, stage))
         except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
             log(f"WARNING: gate battery shadow could not save {stage}: {error}")

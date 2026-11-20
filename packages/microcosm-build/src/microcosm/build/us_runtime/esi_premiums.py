@@ -1451,6 +1451,24 @@ def _positive_share_and_mean(
     )
 
 
+def _refuse_overflowing_mixed_aggregates(*terms: tuple[str, float]) -> None:
+    """Refuse a mixed frame whose weighted sums run past the largest float.
+
+    Finite nonnegative weights can still sum to infinity. Positive infinity
+    passes a ``not x > 0`` check, and the shares formed from it come out zero
+    or NaN, so this names each infinite term instead. Both gates record the
+    refusal as red.
+    """
+
+    overflowing = [f"{label} ({value!r})" for label, value in terms if np.isinf(value)]
+    if overflowing:
+        raise SourceRuntimeError(
+            "US ESI premium stage: on this mixed frame "
+            f"{'; '.join(overflowing)} ran past the largest float, so the "
+            "shares and ratios formed from it have no value."
+        )
+
+
 def _transferred_row_summary(
     frame: Frame,
     person: pd.DataFrame,
@@ -1462,9 +1480,22 @@ def _transferred_row_summary(
 
     transferred = ~source
     source_mass, transferred_mass = _household_masses(frame, source)
+    # Each side's mass stays finite only up to the largest float, and their
+    # sum can overflow while both sides stay finite.
+    _refuse_overflowing_mixed_aggregates(
+        ("the source-derived rows' household mass", source_mass),
+        ("the transferred rows' household mass", transferred_mass),
+        ("the two sides' household mass together", source_mass + transferred_mass),
+    )
     share = source_mass / (source_mass + transferred_mass)
     source_total = _weighted(weights, employer, source)
     transferred_total = _weighted(weights, employer, transferred)
+    # The premium totals read the person weights, which can overflow while
+    # the household masses stay finite.
+    _refuse_overflowing_mixed_aggregates(
+        ("the source-derived rows' weighted employer premium", source_total),
+        ("the transferred rows' weighted employer premium", transferred_total),
+    )
     source_positive, source_mean = _positive_share_and_mean(weights, employer, source)
     positive, mean = _positive_share_and_mean(weights, employer, transferred)
     without_wages: int | None = None
@@ -1551,9 +1582,25 @@ def _refuse_unusable_source_anchor_evidence(
     employer share, and employed ones with a positive part of it, large
     enough that their share of the whole does not round to zero. Without
     that weighted evidence there is no total to compare, so the frame is
-    refused here and both gates record the refusal as a red verdict.
+    refused here and both gates record the refusal as a red verdict. A total
+    that ran past the largest float would pass the checks below as positive
+    infinity, so this refuses it first, by name.
     """
 
+    _refuse_overflowing_mixed_aggregates(
+        (
+            "the source-derived rows' policyholders' weighted MEPS-IC employer share",
+            raw_anchor_total,
+        ),
+        (
+            "their employed policyholders' weighted MEPS-IC employer share",
+            raw_universe_total,
+        ),
+        (
+            "their employed policyholders' weight with a positive share",
+            raw_positive_weight,
+        ),
+    )
     gaps = [
         reason
         for unusable, reason in (
@@ -1612,7 +1659,11 @@ def us_esi_premiums_summary(
     whose CPS rows hold no household mass, or give their policyholders or
     their employed policyholders no weighted MEPS-IC share (or the employed a
     part of it that rounds to zero), has no such total and is refused
-    (``SourceRuntimeError``), which both gates record as red.
+    (``SourceRuntimeError``), which both gates record as red. So is a mixed
+    frame with a weighted sum that runs past the largest float: household
+    mass on either side or both together, the employer premium on either
+    side, or the CPS rows' MEPS-IC share or the weight of their employed
+    policyholders with a positive share.
     When every row is a CPS row, every figure is computed as for a
     single-source frame.
     """

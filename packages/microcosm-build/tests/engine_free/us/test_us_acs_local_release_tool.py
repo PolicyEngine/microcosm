@@ -8239,6 +8239,8 @@ def test_finalize_with_the_shadow_armed_records_the_esi_verdicts_it_enforces(
     a match: the battery, given each site's evidence, grades as finalize
     does, line for line."""
 
+    import hashlib
+
     from microcosm.build.us_runtime.gate_shadow import shadow_file_paths
     from test_support.microcosm_build.us_gate_shadow import arm_us_tool_gate_shadows
 
@@ -8282,6 +8284,17 @@ def test_finalize_with_the_shadow_armed_records_the_esi_verdicts_it_enforces(
         assert entry["legacy"]["failures"] == today["failures"]
         assert entry["battery"]["status"] == status, entry["battery"]
         assert entry["battery"]["failures"] == today["failures"]
+    # Finalize's waiver record names the report this run wrote, so package
+    # attaches it only to that report.
+    record = json.loads(
+        (
+            module._local_gate_shadow_directory(args) / "finalize.waivers.json"
+        ).read_text()
+    )
+    assert record == {
+        "gate_report_sha256": hashlib.sha256(args.gate_report.read_bytes()).hexdigest(),
+        "waivers": {},
+    }
 
 
 def test_finalize_on_an_artifact_without_the_premium_is_red_on_both_gates(
@@ -8336,6 +8349,20 @@ def _sibling_refusal(name: str) -> str:
             True,
             "esi_premiums_anchor gate is red and finalize did not record a waiver",
         ),
+        # Only ``enforced: false`` is that record: not an absent key, a null,
+        # or a zero, which a truthiness or equality test would read as false.
+        *(
+            (
+                state,
+                True,
+                "esi_premiums_anchor gate is red and finalize did not record a waiver",
+            )
+            for state in (
+                "failed_enforced_absent",
+                "failed_enforced_null",
+                "failed_enforced_zero",
+            )
+        ),
     ],
 )
 def test_package_requires_the_esi_premium_verdict_bound_to_the_packaged_bytes(
@@ -8364,6 +8391,12 @@ def test_package_requires_the_esi_premium_verdict_bound_to_the_packaged_bytes(
             gates["esi_premiums_anchor"].update(
                 passed=False, failures=["invented: off the anchor"]
             )
+            if state == "failed_enforced_absent":
+                del gates["esi_premiums_anchor"]["enforced"]
+            elif state == "failed_enforced_null":
+                gates["esi_premiums_anchor"]["enforced"] = None
+            elif state == "failed_enforced_zero":
+                gates["esi_premiums_anchor"]["enforced"] = 0
 
     _rewrite_package_gates(args, edit)
 

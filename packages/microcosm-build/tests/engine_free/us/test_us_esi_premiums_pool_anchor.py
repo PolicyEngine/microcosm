@@ -1157,7 +1157,30 @@ def test_cps_rows_without_weight_fail_both_gates(mixed) -> None:
         assert not gate.passed
         assert gate.failures == (gate.details["structural_error"],)
         assert "hold no household mass (0.0)" in gate.failures[0]
+        assert (
+            "give their policyholders no weighted MEPS-IC employer share (0.0)"
+            in gate.failures[0]
+        )
         assert "employed policyholders no weighted" in gate.failures[0]
+
+
+def test_cps_rows_whose_policyholders_hold_no_weight_fail_both_gates(mixed) -> None:
+    # Every household with a CPS policyholder holds no weight; the CPS rows
+    # still hold household mass through the others. Their policyholders'
+    # weighted MEPS-IC share, which prices every other policyholder, is zero.
+    cps = cps_rows(mixed)
+    holder = mixed.table("person")["NOW_OWNGRP"].eq(1).to_numpy()
+    starved = reweighted(mixed, np.where(households_of(mixed, cps & holder), 0.0, 1.0))
+
+    assert esi._household_masses(starved, cps)[0] > 0
+    for gate in _gates(starved):
+        assert not gate.passed
+        assert gate.failures == (gate.details["structural_error"],)
+        assert (
+            "give their policyholders no weighted MEPS-IC employer share (0.0)"
+            in gate.failures[0]
+        )
+        assert "hold no household mass" not in gate.failures[0]
 
 
 def test_a_cps_side_whose_mass_share_rounds_to_zero_still_gets_a_verdict(
@@ -1243,6 +1266,176 @@ def test_the_cross_check_names_the_term_without_a_finite_value(
     assert np.isnan(cross_check["ratio"])
     assert named in cross_check["unavailable"]
     assert not_named not in cross_check["unavailable"]
+
+
+def _with_household_factors(
+    frame: Frame, cps_factor: float, other_factor: float
+) -> Frame:
+    """``frame`` with its person weights stored as they resolve, and the
+    weights of households with CPS rows times ``cps_factor``, the others
+    times ``other_factor``: household mass moves, person weights do not."""
+
+    person = frame.resolve_weights("person")
+    households = np.asarray(frame.weights_for("household").values, np.float64)
+    on_cps = households_of(frame, cps_rows(frame))
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables.update({name: frame.link(name) for name in frame.links})
+    return Frame(
+        tables,
+        frame.schema,
+        {
+            "household": Weights(
+                households * np.where(on_cps, cps_factor, other_factor),
+                WeightKind.CALIBRATED,
+            ),
+            "person": Weights(np.asarray(person.values, np.float64), person.kind),
+        },
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def test_household_mass_past_the_largest_float_fails_both_gates(mixed) -> None:
+    # Finite household weights can sum past the largest float. Positive
+    # infinity passes a ``not x > 0`` check, so without a refusal both shares
+    # of household mass would read 0.0 instead of about 0.5.
+    cps_mass, other_mass = esi._household_masses(mixed, cps_rows(mixed))
+    # Each side at 1e307: the sum is finite, and the frame grades as at its
+    # own weights, since every premium total reads the person weights.
+    signal, anchor = _gates(
+        _with_household_factors(mixed, 1e307 / cps_mass, 1e307 / other_mass)
+    )
+    assert signal.passed, signal.failures
+    assert anchor.passed, anchor.failures
+    assert anchor.details["source_household_mass_share"] == pytest.approx(
+        0.5, rel=1e-12
+    )
+    for factors, named, not_named in (
+        # Each side finite at about 1e308; together past the largest float.
+        (
+            (1e308 / cps_mass, 1e308 / other_mass),
+            "the two sides' household mass together (inf)",
+            "rows' household mass (",
+        ),
+        # The CPS side alone sums past it, every household weight finite.
+        (
+            (2.0 * (1e308 / cps_mass), 1.0),
+            "the source-derived rows' household mass (inf)",
+            "the transferred rows' household mass (",
+        ),
+    ):
+        frame = _with_household_factors(mixed, *factors)
+        assert np.isfinite(frame.weights_for("household").values).all()
+        for gate in _gates(frame):
+            assert not gate.passed
+            assert gate.failures == (gate.details["structural_error"],)
+            assert named in gate.failures[0]
+            assert "ran past the largest float" in gate.failures[0]
+            assert not_named not in gate.failures[0]
+
+
+def _with_person_factors(frame: Frame, cps_factor: float, other_factor: float) -> Frame:
+    """``frame`` with its person weights stored as they resolve, those of CPS
+    rows times ``cps_factor`` and the others times ``other_factor``: person
+    weights move, household weights and so household mass do not."""
+
+    person = frame.resolve_weights("person")
+    households = frame.weights_for("household")
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables.update({name: frame.link(name) for name in frame.links})
+    return Frame(
+        tables,
+        frame.schema,
+        {
+            "household": Weights(
+                np.asarray(households.values, np.float64), households.kind
+            ),
+            "person": Weights(
+                np.asarray(person.values, np.float64)
+                * np.where(cps_rows(frame), cps_factor, other_factor),
+                person.kind,
+            ),
+        },
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _overflow_failures(frame: Frame) -> list[str]:
+    """Both gates' failures on ``frame``: each a single named overflow, with
+    every person weight and both household masses finite."""
+
+    assert np.isfinite(frame.resolve_weights("person").values).all()
+    masses = esi._household_masses(frame, cps_rows(frame))
+    assert np.isfinite(masses).all() and np.isfinite(sum(masses))
+    failures = []
+    for gate in _gates(frame):
+        assert not gate.passed
+        assert gate.failures == (gate.details["structural_error"],)
+        assert "ran past the largest float" in gate.failures[0]
+        failures.append(gate.failures[0])
+    return failures
+
+
+def test_a_cps_weighted_meps_ic_total_past_the_largest_float_fails_both_gates(
+    mixed,
+) -> None:
+    # The CPS rows' raw MEPS-IC totals read the person weights at thousands
+    # of dollars per unit of weight, so they can overflow while the household
+    # masses stay finite. The test divides the CPS premiums by the same
+    # factor, so the premium totals stay finite and only these terms
+    # overflow: the policyholders' share, then the employed policyholders'
+    # share too, then also the weight of the employed policyholders with a
+    # positive share.
+    base = us_esi_premiums_summary(mixed, allow_transferred_rows=True)
+    policyholders = float(base["raw_anchor_universe_total"])
+    employed = float(base["raw_employer_share_total"])
+    positive_weight = employed / float(
+        base["raw_employer_share_mean_per_positive_person"]
+    )
+    labels = (
+        "the source-derived rows' policyholders' weighted MEPS-IC employer share",
+        "their employed policyholders' weighted MEPS-IC employer share",
+        "their employed policyholders' weight with a positive share",
+    )
+    for factor, overflowing in (
+        (2.0 * (1e308 / policyholders), 1),
+        (2.0 * (1e308 / employed), 2),
+        (4.0 * (1e308 / positive_weight), 3),
+    ):
+        frame = _with_person_factors(
+            with_scaled_premiums(mixed, 1.0 / factor, cps_rows(mixed)), factor, 1.0
+        )
+        for failure in _overflow_failures(frame):
+            for label in labels[:overflowing]:
+                assert f"{label} (inf)" in failure
+            for label in labels[overflowing:]:
+                assert f"{label} (" not in failure
+            assert "weighted employer premium" not in failure
+
+
+@pytest.mark.parametrize("transferred", [True, False], ids=["transferred", "cps"])
+def test_a_weighted_employer_premium_past_the_largest_float_fails_both_gates(
+    mixed, transferred: bool
+) -> None:
+    # Person weights on one side alone, large enough that its premium total
+    # overflows while the household masses stay finite. That refusal comes
+    # before the CPS rows' MEPS-IC totals are read.
+    base = us_esi_premiums_summary(mixed, allow_transferred_rows=True)
+    if transferred:
+        side, other = "transferred", "source-derived"
+        factor = 2.0 * (1e308 / float(base["transferred_employer_premium_total"]))
+        frame = _with_person_factors(mixed, 1.0, factor)
+    else:
+        side, other = "source-derived", "transferred"
+        factor = 2.0 * (1e308 / float(base["source_employer_premium_total"]))
+        frame = _with_person_factors(mixed, factor, 1.0)
+    for failure in _overflow_failures(frame):
+        assert f"the {side} rows' weighted employer premium (inf)" in failure
+        assert f"the {other} rows' weighted employer premium (" not in failure
+        assert "MEPS-IC" not in failure
 
 
 def _cps_households_tilted(frame: Frame, small: np.ndarray, large: np.ndarray) -> Frame:

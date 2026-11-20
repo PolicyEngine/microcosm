@@ -483,8 +483,11 @@ without refusing it, the failures and every recorded figure agree bit for bit.
   `us_local_esi_premiums_anchor`), bound to the lane's row-kind gates, so the
   gate battery's shadow (microcosm#1585 item 11) evaluates it beside today's
   call and compares the verdicts.
-- **Package.** A report without both verdicts, with a verdict bound to other
-  bytes, or with a red verdict is refused before a release directory exists.
+- **Package.** By default, package refuses a report without both verdicts,
+  with a verdict bound to other bytes, or with a red verdict, before a
+  release directory exists. With `--allow-esi-premium-gaps`, package also
+  takes a red verdict bound to those bytes that finalize recorded as waived
+  (`enforced: false`), and nothing else (see below).
 - **`fill_reviewed_nulls`** still refuses a frame whose column is null on some
   rows. A current staging frame has none. A staging H5 built before this
   change has them, and so does one whose donor qualification a diagnostic
@@ -502,9 +505,16 @@ that recorded waiver: with the flag it still refuses a red verdict finalize
 enforced. The gate battery's shadow records the waiver on each ESI entry as
 the finalize run that evaluated it had it, so a package run with other flags
 does not rewrite it. Finalize keeps that record beside its shadow
-observations; a finalize checkpoint saved before it did has observations and
-no record, and the shadow then records the ESI entries' waiver as unknown
-rather than as none. A release packaged that way still fails the
+observations, with the SHA-256 of the gate report that run wrote (null if it
+wrote none), and the shadow attaches the record only to that report. It
+records the ESI entries' waiver as unknown, with the reason, rather than as
+none when the record names another gate report, names none while a gate
+report exists, or lacks the digest, as older records do; when it cannot read
+the file as a waiver record; or when a finalize checkpoint saved before
+finalize kept a record has observations and no record. The shadow matches
+only the waiver to the report: it reads finalize's observations from the
+latest finalize run, whichever gate report package selects. A release that
+package ships under the waiver still fails the
 local-area release contract (`microcosm.data.contract`), which accepts only
 gates that passed. A Modal plan can set the waiver for the release tool
 (`allow_esi_premium_gaps`) but not for staging: the staging runner owns the
@@ -551,8 +561,14 @@ What the gates need, and what they do not catch:
   with the raw columns hold no household mass, or their policyholders or
   employed policyholders carry no weighted MEPS-IC share, or the employed
   policyholders' part of it rounds to zero, there is nothing to price the
-  transferred rows against, and both gates fail with that refusal. When those
-  rows' premium per unit of household mass rounds to zero, the per-mass
+  transferred rows against, and both gates fail with that refusal. Both also
+  fail, and name the term, when finite weights sum past the largest float:
+  the household mass of either kind of row or of both together, the
+  weighted employer premium of either kind, or, on the rows with the raw
+  columns, the weighted MEPS-IC share or the weight of the employed
+  policyholders with a positive share. When the
+  transferred rows hold household mass and the premium per unit of household
+  mass on the rows with the raw columns rounds to zero, the per-mass
   comparison has no value and the anchor gate fails it. The anchor gate's
   private-sector cross-check scales those rows' sector total by their share
   of household mass. When that share rounds to zero, or the sector total or
@@ -631,6 +647,6 @@ file.
   refuses a frame whose column is absent or constant, and its generic
   input-mass parity check (default tolerance 50%) compares the column's
   weighted total with the base or reference, as for every input. Neither ESI
-  gate runs there: they run only in the base build and in
-  `tools/build_us_fiscal_refresh_release.py`.
+  gate runs in that export. The table under "Gates" lists where they run,
+  among them the ACS local lane's staging and finalize.
 - **The pre-tax employee premium.** See the section above.
