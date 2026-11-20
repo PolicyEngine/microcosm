@@ -2345,10 +2345,12 @@ def test_the_export_reference_is_read_before_any_stage(
     reference = tmp_path / "reference.h5"
     if present:
         reference.write_bytes(b"reference")
+    # RUN_ROOT under tmp_path: the driver writes inputs.resolved.json there.
+    run_root = tmp_path / "root"
     result = run_driver_settings(
         tmp_path,
-        {"EXPORT_MASS_REF_H5": str(reference)},
-        '\nRUN_ROOT=$(pwd)/root; mkdir -p "$RUN_ROOT"; verify_inputs\n'
+        {"EXPORT_MASS_REF_H5": str(reference), "RUN_ROOT": str(run_root)},
+        "\nverify_inputs\n"
         'for x in ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}; do printf \'PROBLEM %s\\n\' "$x"; done\n'
         'cat "$RUN_ROOT/inputs.resolved.json"\n',
     )
