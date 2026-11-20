@@ -6239,6 +6239,15 @@ def _x5_run(readers, reader: str) -> tuple[object, object]:
     )
 
 
+def _x5_runtime_sources() -> dict[str, str]:
+    """Map each top-level ``us_runtime`` module's stem to its source."""
+
+    runtime = Path(inspect.getfile(contract)).parent
+    return {
+        path.stem: path.read_text(encoding="utf-8") for path in runtime.glob("*.py")
+    }
+
+
 def test_x5_covers_every_assembled_form_reader() -> None:
     """The readers are F-19's: every runtime module that tests the assembled
     discriminator itself, less writers and owners, plus every caller of the
@@ -6248,10 +6257,7 @@ def test_x5_covers_every_assembled_form_reader() -> None:
     case is the donor-prep refusal below.
     """
 
-    runtime = Path(inspect.getfile(contract)).parent
-    sources = {
-        path.stem: path.read_text(encoding="utf-8") for path in runtime.glob("*.py")
-    }
+    sources = _x5_runtime_sources()
     discriminator = re.compile(
         r"has_assembled_support_metadata|spine_source_id_column\("
     )
@@ -6268,10 +6274,97 @@ def test_x5_covers_every_assembled_form_reader() -> None:
     assert set(_X5_MOVED_FIELDS) == set(_X5_PR3_REASONS)
     assert set(READER_GATES).isdisjoint(READER_CLONE_DEFECTS)
     assert set(_X5_MOVED_FIELDS) <= set(READER_GATES) | set(READER_CLONE_DEFECTS)
-    assert set(READER_CLONE_DEFECTS) <= set(_X5_MOVED_FIELDS)
-    assert {reader for reader, _ in READER_CLONE_DEFECTS.values()} <= set(
-        _X5_MOVED_FIELDS
-    )
+    assert {reader for reader, _ in READER_CLONE_DEFECTS.values()} <= set(READER_GATES)
+
+
+#: A name at the start of a line, an optional annotation, ``=`` and an ACS
+#: support label alone: ``acs`` (the stacked pool's) or ``acs_2024_1yr``
+#: (staging's, which a d2283 child's ACS rows carry). Every part of the
+#: match stays on one line.
+_X5_ACS_LABEL_LITERAL = re.compile(
+    r'^_?[A-Za-z_0-9]+[ \t]*(:[^=\n]+)?=[ \t]*"(acs|acs_2024_1yr)"[ \t]*$',
+    re.MULTILINE,
+)
+
+#: A call of the ACS PUMS earnings-universe resolver, which keeps rows whose
+#: stored channel is ``acs``.
+_X5_ACS_UNIVERSE_CALL = re.compile(
+    r"resolve_acs_pums_earnings_universe\(|apply_acs_pums_earnings_universe_zeros\("
+)
+
+#: Every runtime module that names an ACS support label or calls the ACS
+#: earnings-universe resolver, with what it does with the label (d2283 lead
+#: call P3-L7). A module that keeps rows whose stored channel is ``acs``
+#: sees no ACS row of a d2283 child, whose ACS rows carry ``acs_2024_1yr``.
+_X5_ACS_LABEL_MODULES: dict[str, str] = {
+    "acs_income_universe": (
+        "Owns the ACS earnings universe: _ACS_SUPPORT_CHANNEL is acs and the "
+        "resolver keeps stored-acs rows only, so a d2283 child's ACS rows fall "
+        "outside it; the QBI gate reads it through qbi_inputs."
+    ),
+    "acs_pums": (
+        "Staging's spine tag, acs_2024_1yr, which a d2283 child's ACS rows "
+        "carry; test_constants_match_staging_and_provenance pins it to the "
+        "contract's."
+    ),
+    "acs_release_predictors": (
+        "The stacked pool's release-time ACS predictor join: it keys on stored "
+        "acs and passes a frame with no such row through unchanged."
+    ),
+    "one_population_contract": (
+        "The contract's ACS_SUPPORT_CHANNEL, acs_2024_1yr, the label it gives ACS rows."
+    ),
+    "puf_support": (
+        "Calls the resolver to scope its PUF recipient predictors' source universe."
+    ),
+    "qbi_inputs": (
+        "The QBI gate's reconciliation scope calls the resolver, whose universe "
+        "holds stored-acs rows only, so a d2283 child's ACS rows are outside it."
+    ),
+    "spm_universe_source": (
+        "ACS_ARM, acs, names the producer's ACS universe arm, not a stored "
+        "channel; SPM_UNIVERSE_CHANNEL_ARMS maps both acs_2024_1yr and acs "
+        "to it."
+    ),
+    "stacked_spine": (
+        "The stacked pool's ACS channel, acs, and a resolver caller on the "
+        "stacked pool."
+    ),
+}
+
+
+def test_x5_names_every_acs_label_reader() -> None:
+    """This test pins every runtime module that names an ACS support label,
+    with a reason for each (d2283 lead call P3-L7). It reads the sources
+    X5's reader census reads.
+
+    A module is in scope if one whole line of it is a name at the line's
+    start, an optional type annotation, ``=`` and the literal ``"acs"`` or
+    ``"acs_2024_1yr"``, or if it calls ``resolve_acs_pums_earnings_universe``
+    or ``apply_acs_pums_earnings_universe_zeros``. Add a new label constant
+    or resolver caller here with its reason, and remove the row of a module
+    that drops its label.
+
+    The rule's limit: it sees a module-level assignment of one literal and a
+    resolver call, nothing else. It misses a label in a tuple or a dict, an
+    assignment inside a class or function body, an inline comparison, and
+    an assignment with a comment after it on the same line. Modules of that
+    shape today, none of them a gate reader: ``h5_io``
+    (``_STACKED_SURVEY_CHANNELS``), ``spm_universe_source``
+    (``SPM_UNIVERSE_CHANNEL_ARMS``), ``us_late_overlap_ownership`` (an
+    ``origin`` loop) and ``multispine_pool`` (``POOL_HOUSEHOLD_MASS_SHARES``
+    and the spines it assembles). The scan reads no subpackage of
+    ``us_runtime``.
+    """
+
+    sources = _x5_runtime_sources()
+    labelled = {
+        name
+        for name, text in sources.items()
+        if _X5_ACS_LABEL_LITERAL.search(text) or _X5_ACS_UNIVERSE_CALL.search(text)
+    }
+    assert labelled == set(_X5_ACS_LABEL_MODULES)
+    assert all(reason.strip() for reason in _X5_ACS_LABEL_MODULES.values())
 
 
 def test_the_reader_frame_exercises_every_reader(readers) -> None:
@@ -6313,10 +6406,18 @@ def test_the_reader_frame_exercises_every_reader(readers) -> None:
     assert readers.clone_only_ssi not in results["ssi_take_up_reporters"]
     clone = person["person_support_clone_index"].to_numpy() > 0
     assert int(results["alimony"].details["asec_source_rows"]) == int((~clone).sum())
-    for name in ("medicare_take_up", "workers_compensation"):
-        assert "source_rows" in results[name].details, name
-    for name in ("retirement_contributions", "retirement_distributions"):
+    assert "source_rows" in results["workers_compensation"].details
+    for name in (
+        "medicare_take_up",
+        "retirement_contributions",
+        "retirement_distributions",
+    ):
         assert int(results[name].details["source_rows"]) == len(person), name
+    contributions = results["retirement_contributions"].details
+    assert int(contributions["source_reconciliation_rows"]) == len(person)
+    contributing = person["RETCB_VAL"].to_numpy() > 0
+    assert int(contributions["source_positive_rows"]) == int(contributing.sum())
+    assert int(contributions["allocation_mismatch_rows"]) > 0
     weeks = results["weeks_unemployed"].details
     assert not weeks["source_missing"]
     assert int(weeks["source_reconciliation_rows"]) == int((~clone).sum())
@@ -6388,25 +6489,13 @@ def test_assembled_readers_return_route_a_statistics(readers, reader) -> None:
 @pytest.mark.parametrize("reader", sorted(set(_X5_MOVED_FIELDS) & set(READER_GATES)))
 def test_a_moved_reader_moves_only_its_named_fields(readers, reader) -> None:
     """Outside the expected failure, a moved reader keeps its verdict and
-    every statistic but the fields named for it, and Route A's value of
-    those fields counts the clone rows (true before and after PR 3)."""
+    every statistic but the fields named for it. The fixture test checks
+    Route A's values of those fields, which count the clone rows."""
 
     route_a, assembled = _x5_run(readers, reader)
     moved = {("details", field) for field in _X5_MOVED_FIELDS[reader]}
     assert set(_x5_differences(route_a, assembled)) <= moved
     assert route_a["passed"] and assembled["passed"]
-    person = readers.route_a.table("person")
-    clones = int((person["person_support_clone_index"] > 0).sum())
-    details = route_a["details"]
-    if reader == "weeks_unemployed":
-        assert details["uc_constraint_rows"] == clones > 0
-    else:
-        assert details["source_rows"] == len(person) > clones
-    if reader == "retirement_contributions":
-        assert details["source_reconciliation_rows"] == len(person)
-        source = person["RETCB_VAL"].to_numpy() > 0
-        assert details["source_positive_rows"] == int(source.sum())
-        assert details["allocation_mismatch_rows"] > 0
 
 
 def test_each_clone_defect_changes_one_clone_cell(readers, defect_readers) -> None:
@@ -6414,7 +6503,8 @@ def test_each_clone_defect_changes_one_clone_cell(readers, defect_readers) -> No
     differs from the reader frame in one cell, on a clone row, on both
     forms; the builder has already checked that Route A's gate for the
     defect's reader fails with exactly its one failure and every other
-    reader passes."""
+    reader passes. Route A's gate counts that one mismatch, over every clone
+    row (weeks) or every row (Medicare)."""
 
     for defect, population in defect_readers.items():
         reader, failure = READER_CLONE_DEFECTS[defect]
@@ -6436,6 +6526,14 @@ def test_each_clone_defect_changes_one_clone_cell(readers, defect_readers) -> No
             assert column in READER_SOURCE_COLUMNS[reader], (defect, column)
         result = READER_GATES[reader](population.route_a)
         assert list(result.failures) == [failure], defect
+        person = population.route_a.table("person")
+        clones = int((person["person_support_clone_index"] > 0).sum())
+        if reader == "weeks_unemployed":
+            assert result.details["uc_constraint_mismatch_count"] == 1, defect
+            assert result.details["uc_constraint_rows"] == clones, defect
+        else:
+            assert result.details["source_mismatch_count"] == 1, defect
+            assert result.details["source_rows"] == len(person), defect
 
 
 _X5_DEFECT_CASES = [
@@ -6446,6 +6544,8 @@ _X5_DEFECT_CASES = [
             strict=True, raises=AssertionError, reason=_X5_PR3_REASONS[defect]
         ),
     )
+    if defect in _X5_PR3_REASONS
+    else pytest.param(defect, id=defect)
     for defect in sorted(READER_CLONE_DEFECTS)
 ]
 
@@ -6469,17 +6569,18 @@ def test_a_clone_only_defect_keeps_route_a_verdict(defect_readers, defect) -> No
     )
 
 
-@pytest.mark.parametrize("defect", sorted(READER_CLONE_DEFECTS))
+@pytest.mark.parametrize(
+    "defect", sorted(set(_X5_MOVED_FIELDS) & set(READER_CLONE_DEFECTS))
+)
 def test_a_clone_only_defect_moves_only_its_named_fields(
     defect_readers, defect
 ) -> None:
     """Outside the expected failure, a defect moves only the verdict and its
-    named fields, and Route A counts the one clone mismatch (true before
-    and after PR 3)."""
+    named fields. ``test_each_clone_defect_changes_one_clone_cell`` checks
+    Route A's count of the one clone mismatch."""
 
     reader, failure = READER_CLONE_DEFECTS[defect]
-    population = defect_readers[defect]
-    route_a, assembled = _x5_run(population, reader)
+    route_a, assembled = _x5_run(defect_readers[defect], reader)
     moved = {("passed",), ("failures",)} | {
         ("details", field) for field in _X5_MOVED_FIELDS[defect]
     }
@@ -6488,15 +6589,6 @@ def test_a_clone_only_defect_moves_only_its_named_fields(
     assert route_a["failures"] == [failure]
     # The assembled gate fails for no other reason (true before and after).
     assert set(assembled["failures"]) <= {failure}
-    person = population.route_a.table("person")
-    clones = int((person["person_support_clone_index"] > 0).sum())
-    details = route_a["details"]
-    if reader == "weeks_unemployed":
-        assert details["uc_constraint_mismatch_count"] == 1
-        assert details["uc_constraint_rows"] == clones
-    else:
-        assert details["source_mismatch_count"] == 1
-        assert details["source_rows"] == len(person)
 
 
 def test_the_local_hours_donor_refuses_the_assembled_population(readers) -> None:
