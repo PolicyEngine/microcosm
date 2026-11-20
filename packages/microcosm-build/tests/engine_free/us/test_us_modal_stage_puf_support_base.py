@@ -2680,8 +2680,10 @@ def _runbook_guard() -> str:
 @pytest.mark.parametrize(
     "declared",
     [
-        # An integer variable evaluates what it is assigned as arithmetic, so
-        # a guard that put a path in one would test another path.
+        # An integer variable evaluates what it is assigned as arithmetic. A
+        # guard that assigned this run's path to one would stop under `set -u`
+        # on the path's first name, and with those names set it would test a
+        # number.
         "declare -i base=0",
         # A readonly one cannot be assigned, so such a guard would stop a
         # clean run.
@@ -2705,15 +2707,21 @@ def test_a_hand_off_guard_checks_its_paths_whatever_the_caller_declared(
     proc = subprocess.run(
         ["bash", "-c", script],
         cwd=tmp_path,
-        # A relative path: as arithmetic it is a division, never a syntax error.
+        # A relative path, which parses as arithmetic: names, subtraction and
+        # a division.
         env={**env, "RUN": "route-a-run"},
         capture_output=True,
         text=True,
         check=False,
     )
-    assert (proc.returncode == 0) is not occupied, proc.stderr
-    assert (proc.stdout == "REACHED\n") is not occupied
-    assert ("never overwrite a base" in proc.stderr) is occupied
+    if occupied:
+        assert proc.returncode == 1
+        assert "REACHED" not in proc.stdout
+        assert "never overwrite a base" in proc.stderr
+    else:
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout == "REACHED\n"
+        assert "never overwrite a base" not in proc.stderr
     assert _entries(run) == before
 
 
