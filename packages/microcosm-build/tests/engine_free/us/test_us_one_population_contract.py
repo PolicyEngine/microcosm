@@ -132,6 +132,12 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
 )
+from microcosm.build.us_runtime.retirement_contributions import (
+    US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
+)
+from microcosm.build.us_runtime.retirement_distributions import (
+    US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.spine_agreement import spine_agreement_gate
 from microcosm.build.us_runtime.spm_composition import check_spm_composition
 from microcosm.build.us_runtime.spm_independence_role import (
@@ -180,6 +186,7 @@ from test_support.microcosm_build.us_one_population_contract import (
     generate_population,
     joined_frame,
     lock_engine_inputs,
+    mixed_origin_reader_population,
     reader_population,
     role_shares,
     selection_manifest,
@@ -6453,6 +6460,85 @@ def test_the_reader_frame_exercises_every_reader(readers) -> None:
     source = person["person_source_id"]
     assert triple.groupby(source).nunique().max() == 1
     assert source.groupby(triple).nunique().max() == 1
+
+
+def test_the_mixed_origin_reader_frame_holds_both_origins(readers) -> None:
+    """The mixed-origin reader frame, d2283 PR 3's fixture for the four gates
+    it changes, keeps the reader frame's CPS rows and adds ACS rows.
+
+    Its builder shares the Route A half with ``reader_population``. Every
+    entity stores the channels ``asec``, ``puf_tax_detail`` and
+    ``acs_2024_1yr`` and no other, every ACS row has clone index 0, and the
+    assembly record counts each entity's ACS rows. Each entity's CPS rows
+    equal the ASEC-only assembled frame's, in order, over that frame's
+    columns, and keep their weights. The join adds ACS-only columns, null on
+    CPS rows, and widens a column the ACS rows lack (an integer ``MCARE``
+    becomes float), so the test compares values and ignores dtypes. On ACS
+    rows the four gates' raw ASEC columns hold only nulls,
+    ``weeks_unemployed`` holds 0, unemployment compensation stays finite and
+    turns positive on some rows, Medicare take-up keeps a boolean dtype, and
+    every retirement output holds 0.
+    """
+
+    population = mixed_origin_reader_population()
+    for form in ("route_a", "assembled"):
+        for entity in US_SCHEMA.entities:
+            pd.testing.assert_frame_equal(
+                getattr(population, form).table(entity),
+                getattr(readers, form).table(entity),
+            )
+    mixed, assembled = population.mixed_origin, population.assembled
+    record = mixed.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]["native_row_counts"]
+    acs_rows: dict[str, np.ndarray] = {}
+    for entity in US_SCHEMA.entities:
+        table = mixed.table(entity)
+        channel = table[support_channel_column(entity)]
+        assert set(channel) == {
+            BASE_ASEC_SUPPORT_CHANNEL,
+            PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            ACS_SUPPORT_CHANNEL,
+        }, entity
+        acs = channel.eq(ACS_SUPPORT_CHANNEL).to_numpy()
+        acs_rows[entity] = acs
+        assert set(table.loc[acs, support_clone_index_column(entity)]) == {0}, entity
+        assert record[entity][ACS_SUPPORT_CHANNEL] == int(acs.sum()), entity
+        expected = assembled.table(entity)
+        pd.testing.assert_frame_equal(
+            table.loc[~acs, list(expected.columns)].reset_index(drop=True),
+            expected,
+            check_dtype=False,
+            check_exact=True,
+        )
+    assert int(acs_rows["household"].sum()) == 12
+    np.testing.assert_array_equal(
+        mixed.resolve_weights("person").values[~acs_rows["person"]],
+        assembled.resolve_weights("person").values,
+    )
+
+    person = mixed.table("person")
+    acs_person = person.loc[acs_rows["person"]]
+    raw = {
+        column
+        for reader in (
+            "medicare_take_up",
+            "retirement_contributions",
+            "retirement_distributions",
+            "weeks_unemployed",
+        )
+        for column in READER_SOURCE_COLUMNS[reader]
+    } - {"unemployment_compensation"}
+    assert {"LKWEEKS", "MCARE", "RETCB_VAL", "WSAL_VAL", "SEMP_VAL"} <= raw
+    for column in sorted(raw):
+        assert acs_person[column].isna().all(), column
+    assert (acs_person["weeks_unemployed"] == 0.0).all()
+    uc = acs_person["unemployment_compensation"].to_numpy(dtype=np.float64)
+    assert np.isfinite(uc).all() and (uc > 0.0).any() and (uc == 0.0).any()
+    assert pd.api.types.is_bool_dtype(person["takes_up_medicare_if_eligible"])
+    for column in (
+        *US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
+        *US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+    ):
+        assert (acs_person[column] == 0.0).all(), column
 
 
 _X5_CASES = [

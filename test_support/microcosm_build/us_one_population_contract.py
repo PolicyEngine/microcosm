@@ -53,6 +53,11 @@ after 2024.
 population: a Route A frame made by the production clone and tail operators,
 carrying every :data:`READER_GATES` reader's raw source columns, on which
 each of those gates passes, and its provenance rewrite with no ACS row.
+:func:`mixed_origin_reader_population` joins generated ACS households to
+the same CPS rows for the gates d2283 PR 3 changes. The contract's tests
+already call a frame that mixes assembled and unassembled provenance
+"mixed", so the names here say "mixed origin" for CPS and ACS rows in one
+frame.
 """
 
 from __future__ import annotations
@@ -930,8 +935,16 @@ def staging_lineage(
     the prepare step would read from staging.
     """
 
-    household = population.acs_tables["household"]
-    person = population.acs_tables["person"]
+    return _acs_staging_lineage(population.acs_tables)
+
+
+def _acs_staging_lineage(
+    acs_tables: Mapping[str, pd.DataFrame],
+) -> dict[tuple[int, int], tuple[str, int]]:
+    """:func:`staging_lineage` of ACS tables in staging's form."""
+
+    household = acs_tables["household"]
+    person = acs_tables["person"]
     by_household = household.set_index("household_id")
     link = person["person_household_id"]
     serial = link.map(by_household["SERIALNO"])
@@ -1619,6 +1632,24 @@ def reader_population(*, clone_defect: str | None = None) -> ReaderPopulation:
             reason.
     """
 
+    route_a, tables, reporters, clone_only_ssi = _reader_route_a(clone_defect)
+    return ReaderPopulation(
+        route_a=route_a,
+        assembled=_asec_only_assembled(route_a, tables),
+        reporters=reporters,
+        clone_only_ssi=clone_only_ssi,
+    )
+
+
+def _reader_route_a(
+    clone_defect: str | None,
+) -> tuple[Frame, dict[str, pd.DataFrame], frozenset[str], str]:
+    """:func:`reader_population`'s Route A frame and the tables it holds.
+
+    Also returns the SSI reporters and the clone-only SSI person. It checks
+    the Route A gates (:func:`_check_reader_gates`) before it returns.
+    """
+
     native, positions = _reader_native_frame()
     cloned = clone_us_frame_for_puf_support(native)
     household = cloned.table("household")
@@ -1685,25 +1716,30 @@ def reader_population(*, clone_defect: str | None = None) -> ReaderPopulation:
         str(native_id(group, index)) for group, index in (("elder", 6), ("single", 5))
     )
     _check_reader_gates(route_a, reporters=reporters, clone_defect=clone_defect)
+    return route_a, tables, reporters, str(clone_only_ssi)
+
+
+def _asec_only_assembled(route_a: Frame, tables: Mapping[str, pd.DataFrame]) -> Frame:
+    """The provenance rewrite of the reader tables with no ACS row."""
 
     empty_acs = {
         entity: table.iloc[:0]
         for entity, table in generate_population(0).acs_tables.items()
     }
-    assembled = to_assembled_provenance(
+    return to_assembled_provenance(
         tables,
         empty_acs,
-        cps_household_weights=cps_household_weight_series(
-            route_a.table("household"), route_a.weights_for("household").values
-        ),
+        cps_household_weights=_reader_household_weights(route_a),
         acs_household_weights={},
         staging_lineage={},
     )
-    return ReaderPopulation(
-        route_a=route_a,
-        assembled=assembled,
-        reporters=reporters,
-        clone_only_ssi=str(clone_only_ssi),
+
+
+def _reader_household_weights(route_a: Frame) -> pd.Series:
+    """The Route A reader frame's household weights, on a household id index."""
+
+    return cps_household_weight_series(
+        route_a.table("household"), route_a.weights_for("household").values
     )
 
 
@@ -1729,3 +1765,108 @@ def _check_reader_gates(
             f"Route A reader gates fail on the reader frame: {failures} "
             f"(expected failures: {expected})."
         )
+
+
+# --------------------- the mixed-origin reader frame: CPS and ACS rows
+
+
+@dataclass(frozen=True)
+class MixedOriginReaderPopulation:
+    """The X5 reader population and a frame that adds ACS households to it.
+
+    ``route_a`` and ``assembled`` hold :func:`reader_population`'s two frames
+    (no clone defect). ``mixed_origin`` holds
+    :func:`~microcosm.build.us_runtime.one_population_contract.to_assembled_provenance`'s
+    join of the same CPS tables and generated ACS tables: CPS rows first,
+    then ACS rows, with each group table in id order.
+    """
+
+    route_a: Frame
+    assembled: Frame
+    mixed_origin: Frame
+
+
+def mixed_origin_reader_population(
+    seed: int = 0, *, n_acs_households: int = 12
+) -> MixedOriginReaderPopulation:
+    """Join generated ACS households to the X5 reader population's CPS rows.
+
+    The CPS rows come from :func:`reader_population`'s Route A tables. The
+    code behind :func:`generate_population`'s ACS side generates
+    ``n_acs_households`` ACS households from ``seed`` in staging's form: one
+    SPM unit per household, ``RELSHIPP`` on every person, ids that no CPS
+    row holds, and the ``SERIALNO`` and ``SPORDER`` lineage columns as
+    staging writes them. The join reads staging's lineage as a mapping from
+    each ACS person's native (household id, person id), and each origin's
+    household weights by the keys the contract takes.
+
+    On ACS rows the builder writes what staging and PR 4 should leave in the
+    columns of the four gates d2283 PR 3 changes (weeks unemployed, Medicare
+    take-up, retirement contributions and distributions): 0 weeks
+    unemployed, the reviewed fill; unemployment compensation positive on
+    every third adult and 0 on the rest; Medicare take-up true from age 65
+    and false below it; and 0 in every contribution and distribution output.
+    These states stay inferred until the d2283 spike reads the real ones.
+    The ACS tables carry none of the raw ASEC columns those gates reconcile
+    against (``LKWEEKS``, ``MCARE``, ``RETCB_VAL``, ``WSAL_VAL``,
+    ``SEMP_VAL`` and the ``DST_*`` slots), so the join leaves them null on
+    ACS rows, as it leaves the other readers' columns.
+
+    The builder runs no reader gate on ``mixed_origin``: the weeks gate
+    fails there on its ACS channel.
+
+    Args:
+        seed: The seed of the ACS households.
+        n_acs_households: How many ACS households to join, at least 1.
+
+    Raises:
+        ValueError: If ``n_acs_households`` falls below 1.
+        AssertionError: If a Route A reader gate fails on the reader frame
+            (as in :func:`reader_population`).
+    """
+
+    if n_acs_households < 1:
+        raise ValueError(
+            f"n_acs_households must be at least 1, got {n_acs_households}."
+        )
+    route_a, tables, _, _ = _reader_route_a(None)
+    rng = np.random.default_rng(seed)
+    households = [
+        _household(rng, index, weight=float(rng.integers(80, 121)))
+        for index in range(n_acs_households)
+    ]
+    acs, acs_weights, _, _ = _acs_tables(households, rng, tables)
+    # After _acs_tables, whose _typed refuses a column without a dtype.
+    acs["person"] = _with_acs_reader_columns(acs["person"])
+    mixed_origin = to_assembled_provenance(
+        tables,
+        acs,
+        cps_household_weights=_reader_household_weights(route_a),
+        acs_household_weights=acs_household_weight_series(
+            acs["household"], acs_weights
+        ),
+        staging_lineage=_acs_staging_lineage(acs),
+    )
+    return MixedOriginReaderPopulation(
+        route_a=route_a,
+        assembled=_asec_only_assembled(route_a, tables),
+        mixed_origin=mixed_origin,
+    )
+
+
+def _with_acs_reader_columns(person: pd.DataFrame) -> pd.DataFrame:
+    """ACS ``person`` rows with the four gates' outputs and the UC predictor."""
+
+    person = person.copy()
+    age = person["age"].to_numpy(dtype=np.int64)
+    unemployment = np.zeros(len(person), dtype=np.float64)
+    unemployment[np.flatnonzero(age >= 18)[::3]] = 3_000.0
+    person["weeks_unemployed"] = np.zeros(len(person), dtype=np.float64)
+    person["unemployment_compensation"] = unemployment
+    person["takes_up_medicare_if_eligible"] = age >= 65
+    for column in (
+        *US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS,
+        *US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
+    ):
+        person[column] = np.zeros(len(person), dtype=np.float64)
+    return person
