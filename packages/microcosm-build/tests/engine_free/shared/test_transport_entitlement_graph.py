@@ -17,8 +17,10 @@ import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.transport.cli import execute_transport_graph
 from microcosm.build.transport.compose import (
     compose_transport_graph,
+    transport_endpoints,
     validate_transport_activation,
 )
 from microcosm.build.transport.entitlement import _gate_evidence, entitlement_extension
@@ -29,7 +31,7 @@ from microcosm.build.transport.takeup_kernels import (
     reporting_cell_declarations,
 )
 from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
-from microcosm.graph import compile_graph, graph_to_json
+from microcosm.graph import NodeRejectedError, compile_graph, graph_to_json
 from microcosm.graph.keys import node_key, source_content_key
 from test_support.microcosm_build.transport_entitlement import (
     AS_INPUTS,
@@ -226,6 +228,107 @@ def test_cell_support_graph_adds_diagnostics_to_explicit_gap_output_declarations
         for node in graph.nodes
         if node.kernel == "takeup.gap@1"
     )
+
+
+COLLECTOR = "nz.as.bands.cell_diagnostics"
+
+
+def _with_checkpoints(fixture, checkpoints):
+    spec = copy.deepcopy(fixture.spec)
+    spec["resources"]["entitlement_graph"]["checkpoints"] = list(checkpoints)
+    return fixture.reprepare(spec)
+
+
+def test_cell_support_collector_is_the_last_checkpoint_when_the_document_omits_it(
+    tmp_path,
+):
+    fixture = _cell_support_fixture(tmp_path)
+    assert entitlement_extension(fixture.spec).checkpoints == (
+        "nz.as.bands",
+        "nz.validate.wff_tripwire",
+        COLLECTOR,
+    )
+
+
+def test_cell_support_collector_keeps_the_place_its_document_gives_it(tmp_path):
+    order = ("nz.as.bands", COLLECTOR, "nz.validate.wff_tripwire")
+    fixture = _with_checkpoints(_cell_support_fixture(tmp_path), order)
+    assert entitlement_extension(fixture.spec).checkpoints == order
+    endpoints = transport_endpoints(fixture.spec, extensions=fixture.config.extensions)
+    assert endpoints["checkpoints"] == order
+    assert COLLECTOR in {node.id for node in fixture.graph().nodes}
+
+
+@pytest.mark.parametrize("later", ["nz.validate.wff_tripwire", "nz.gates.terminal"])
+def test_cell_support_checkpoints_run_in_the_declared_order(tmp_path, later):
+    """Each checkpoint computes its node and none that the document lists later.
+
+    The tripwire case pins which endpoint each manifest index holds. The
+    battery case also pins the run order, because the battery reads the
+    collector.
+    """
+    order = ("nz.as.bands", COLLECTOR, later)
+    fixture = _with_checkpoints(_cell_support_fixture(tmp_path), order)
+    out = tmp_path / "out"
+    execute_transport_graph(
+        fixture.graph(),
+        fixture.registry,
+        fixture.sources,
+        out=out,
+        endpoints=transport_endpoints(
+            fixture.spec, extensions=fixture.config.extensions
+        ),
+    )
+    assert sorted(path.name for path in out.glob("checkpoint-extension-*.json")) == [
+        f"checkpoint-extension-{index}.json" for index in range(len(order))
+    ]
+    for index, checkpoint in enumerate(order):
+        path = out / f"checkpoint-extension-{index}.json"
+        nodes = json.loads(path.read_text())["nodes"]
+        assert nodes[checkpoint]["hit"] is False
+        assert not set(order[index + 1 :]) & set(nodes)
+
+
+def test_cell_support_collector_manifest_survives_a_raise_in_the_battery_checkpoint(
+    tmp_path, monkeypatch
+):
+    """Listed ahead of the gate battery, the collector's manifest is on disk
+    before a node that only the battery's checkpoint runs can raise."""
+    order = ("nz.as.bands", COLLECTOR, "nz.gates.terminal")
+    fixture = _with_checkpoints(_cell_support_fixture(tmp_path), order)
+    graph = fixture.graph()
+    victim = "nz.calibration.diagnostics"
+    compiled = compile_graph(graph)
+    ancestors, frontier = {COLLECTOR}, [COLLECTOR]
+    while frontier:
+        fresh = set(compiled.predecessors[frontier.pop()]) - ancestors
+        ancestors |= fresh
+        frontier += fresh
+    assert victim not in ancestors
+    kernel = type(fixture.registry.kernels.get(graph.node(victim).kernel))
+    original = kernel.run
+
+    def run(self, context):
+        if context.node.id == victim:
+            raise RuntimeError("injected failure")
+        return original(self, context)
+
+    monkeypatch.setattr(kernel, "run", run)
+    out = tmp_path / "out"
+    with pytest.raises(NodeRejectedError, match="injected failure"):
+        execute_transport_graph(
+            graph,
+            fixture.registry,
+            fixture.sources,
+            out=out,
+            endpoints=transport_endpoints(
+                fixture.spec, extensions=fixture.config.extensions
+            ),
+        )
+    nodes = json.loads((out / "checkpoint-extension-1.json").read_text())["nodes"]
+    assert nodes[COLLECTOR]["hit"] is False
+    assert victim not in nodes
+    assert not (out / "checkpoint-extension-2.json").exists()
 
 
 def _with_cell_target(fixture, **overrides):
