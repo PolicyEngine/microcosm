@@ -643,18 +643,17 @@
   {
    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owner_weekly_required_payments",
    "concepts": [
-    "fact:household.mortgage_interest",
-    "fact:household.mortgage_principal"
+    "fact:household.mortgage_interest"
    ],
    "engine_entity": "Family",
    "engine_input": "accommodation_supplement_owner_weekly_required_payments",
    "group_rule": "allocate_to_reference_unit",
    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
-   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs), whose first branch returns it when accommodation_supplement_owns_premises_and_not_joint_owner_with_resident holds; the result feeds the Schedule 4 Part 7 weekly formula, so the value is weekly although the rule declares period Year. Read as the household's annual mortgage interest plus mortgage principal repaid, summed and scaled by 1/52 (one scaled_sum, since a binding takes one transform), on the family that contains the household reference person and zero on the household's other families. Differences: the module does not define the owner's payments; rates (property tax), insurance and other home payments are not added, which understates owners' costs (method card MC8); the concept is what the household repaid in the year, not what the mortgage requires; and a second family in an owner-occupied household gets zero.",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs), whose first branch returns it when accommodation_supplement_owns_premises_and_not_joint_owner_with_resident holds; the result feeds the Schedule 4 Part 7 weekly formula, so the value is weekly although the rule declares period Year. Read as the household's annual mortgage interest scaled by 1/52, on the family that contains the household reference person and zero on the household's other families. Differences: the module does not define the owner's payments; mortgage principal repaid is left out for now, because the pinned PolicyEngine-US donor carries none and money normalization routes it pending (an interim flexibility under ruling d3058 so a first measurement run can go ahead; fact:household.mortgage_principal is listed as unmapped); rates (property tax), insurance and other home payments are not added either; both omissions understate owners' costs (method card MC8); the concept is the interest the household paid in the year, not what the mortgage requires; and a second family in an owner-occupied household gets zero.",
    "relation": "approximate",
    "transform": {
     "factor": 0.019230769230769232,
-    "kind": "scaled_sum"
+    "kind": "scale"
    }
   },
   {
@@ -1510,6 +1509,7 @@
  "input_declaration": "usage_inferred",
  "structural_inputs": [],
  "unmapped": {
+  "fact:household.mortgage_principal": "The only input that would take it, accommodation_supplement_owner_weekly_required_payments (Family) in statutes/social_security/accommodation_supplement/core.yaml, reads mortgage interest alone for now: the pinned PolicyEngine-US donor carries no mortgage principal (its mapping reads principal only inside the non-invertible mortgage_payments sum), so money_normalization.json routes household.mortgage_principal pending and no transport node reads it. This is an interim flexibility under ruling d3058 for a first measurement run. Once a donor carries principal, or the build derives it from the donor's mortgage balance, interest, origination year and an assumed term, the candidate is to restore scaled_sum over mortgage_interest and mortgage_principal with factor 1/52 (approximate).",
   "fact:household.property_tax": "The only rates input, rr_rates_payable_before_rebate (Person) in statutes/rates_rebates/rates_rebate.yaml, cannot be bound at 6fe181f, because the dense engine could not compile that module and nz.json lists it only under cli_walk_inputs, which the adapter's surface loader does not read; once the module compiles, allocate_to_reference_person of property_tax is the candidate (approximate, because the ratepayer need not be the reference person).",
   "fact:household.source_household_id": "Original donor household lineage is build provenance and weight diagnostic support, not a rulespec-nz legal input.",
   "fact:person.educational_attainment": "rulespec-nz at 6fe181f has no input for completed education: no rule or input name mentions a qualification, degree, diploma or attainment level; the education inputs are current enrollment or school attendance (this mapping binds some of them to education_enrollment and enrolled_full_time); and young_person_is_study_ready is what youth_young_parent_payment/core.yaml calls an agency-adjudicated composite input (s 50).",
