@@ -12,7 +12,7 @@ import ast
 import copy
 import hashlib
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 
@@ -263,10 +263,18 @@ class _SourceVariableDefinition:
 @dataclass(frozen=True)
 class _PolicyEngineUSSourceIndex:
     definitions: Mapping[str, _SourceVariableDefinition]
+    #: Each variable's reference sites. A read inside a module-level helper
+    #: function in ``variables/`` is recorded under the helper's name, which
+    #: no variable's dependency graph follows.
     consumers: Mapping[str, tuple[ConsumerReceipt, ...]]
     #: Qualified names of the package helpers the formulas call, each
     #: answered from its review.
     reviewed_helpers: tuple[str, ...] = ()
+    #: The same helper reads, recorded again under each variable whose
+    #: formula reaches the helper call, directly or through other helpers.
+    helper_consumers: Mapping[str, tuple[ConsumerReceipt, ...]] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
 
 @dataclass(frozen=True)
@@ -954,6 +962,9 @@ class _EvaluationFrame:
     # Local functions the enclosing function calls directly by name; any
     # other local function is interpreted where it is defined.
     called_local_functions: frozenset[str] = frozenset()
+    # The formula-module helper call this frame interprets from the queue;
+    # None for a variable's own formula and for a helper's value-only pass.
+    context: _FunctionContext | None = None
 
 
 def _make_alternative(values: tuple[_ExactValue, ...]) -> _ExactValue:
@@ -2324,6 +2335,13 @@ class _ConsumerInterpreter:
         self._helper_digests: dict[_FunctionID, str] = {}
         self._local_calls: set[tuple[int, object]] = set()
         self._receipts: dict[str, set[ConsumerReceipt]] = {}
+        self._helper_receipts: dict[str, set[ConsumerReceipt]] = {}
+        # What reaches each queued helper context: a variable's formula (its
+        # name) or another helper context, and what each context read.
+        self._context_callers: dict[_FunctionContext, set[str | _FunctionContext]] = {}
+        self._context_receipts: dict[
+            _FunctionContext, set[tuple[str, ConsumerReceipt]]
+        ] = {}
         self._queue: list[_FunctionContext] = []
         self._seen_contexts: set[_FunctionContext] = set()
         self._return_values: dict[_FunctionContext, _ExactValue] = {}
@@ -2379,10 +2397,54 @@ class _ConsumerInterpreter:
                 args=context.args,
                 keywords=context.keywords,
                 apply_defaults=context.apply_defaults,
+                context=context,
             )
+        self._attribute_helper_reads()
         return MappingProxyType(
             {target: tuple(sorted(items)) for target, items in self._receipts.items()}
         )
+
+    @property
+    def helper_consumers(self) -> Mapping[str, tuple[ConsumerReceipt, ...]]:
+        """Helper reads under their calling variables (after :meth:`run`)."""
+
+        return MappingProxyType(
+            {
+                target: tuple(sorted(items))
+                for target, items in self._helper_receipts.items()
+            }
+        )
+
+    def _attribute_helper_reads(self) -> None:
+        """Record each formula-module helper's reads under its callers.
+
+        The queue interprets a helper once per distinct call context, under
+        the helper's own name, which no variable's dependency graph follows.
+        Every variable whose formula reaches that context, directly or
+        through other helpers' contexts, reads what the context reads, so
+        each such receipt is recorded again under each such variable, at the
+        same site, in ``helper_consumers``. A variable's read of itself is
+        skipped, as in its own formula.
+        """
+
+        for context, items in self._context_receipts.items():
+            variables: set[str] = set()
+            seen = {context}
+            pending = [context]
+            while pending:
+                for caller in self._context_callers.get(pending.pop(), ()):
+                    if isinstance(caller, _FunctionContext):
+                        if caller not in seen:
+                            seen.add(caller)
+                            pending.append(caller)
+                    elif caller in self._definitions:
+                        variables.add(caller)
+            for variable in variables:
+                for target, receipt in items:
+                    if target != variable:
+                        self._helper_receipts.setdefault(target, set()).add(
+                            replace(receipt, consumer=variable)
+                        )
 
     @staticmethod
     def _root_argument(name: str) -> _ExactValue:
@@ -2529,13 +2591,15 @@ class _ConsumerInterpreter:
         defer_unresolved_sinks: bool = False,
         enqueue_helpers: bool = True,
         apply_defaults: bool = False,
+        context: _FunctionContext | None = None,
     ) -> list[_Flow]:
         """Interpret ``function`` for one set of arguments.
 
         With ``apply_defaults`` (a call context that names its arguments
         exactly), a parameter the call omits takes its declared default,
         evaluated in the module's scope as Python does; otherwise it is an
-        unknown root argument.
+        unknown root argument. ``context`` is the queued helper call being
+        interpreted, whose reads its callers inherit.
         """
 
         frame = _EvaluationFrame(
@@ -2546,6 +2610,7 @@ class _ConsumerInterpreter:
             defer_unresolved_sinks=defer_unresolved_sinks,
             enqueue_helpers=enqueue_helpers,
             called_local_functions=_directly_called_local_functions(function),
+            context=context,
         )
         env: dict[str, _ExactValue] = {}
         parameters = _function_parameters(function)
@@ -3360,6 +3425,10 @@ class _ConsumerInterpreter:
                 or any(keyword.arg is None for keyword in call.keywords)
             ),
         )
+        # A variable's formula, or another helper's context, reaches this one.
+        self._context_callers.setdefault(context, set()).add(
+            frame.context if frame.context is not None else frame.consumer
+        )
         if context not in self._seen_contexts:
             self._seen_contexts.add(context)
             self._queue.append(context)
@@ -3542,16 +3611,19 @@ class _ConsumerInterpreter:
                 kind = f"constructed_{base_kind}"
             else:
                 kind = base_kind
-            self._receipts.setdefault(item.value, set()).add(
-                ConsumerReceipt(
-                    consumer=consumer,
-                    path=module.display_path,
-                    line=expression.lineno,
-                    kind=kind,
-                    receiver_entity=receiver_entity,
-                    aggregation_entity=aggregation_entity,
-                )
+            receipt = ConsumerReceipt(
+                consumer=consumer,
+                path=module.display_path,
+                line=expression.lineno,
+                kind=kind,
+                receiver_entity=receiver_entity,
+                aggregation_entity=aggregation_entity,
             )
+            self._receipts.setdefault(item.value, set()).add(receipt)
+            if frame.context is not None:
+                self._context_receipts.setdefault(frame.context, set()).add(
+                    (item.value, receipt)
+                )
 
     def _receipt_strings(
         self,
@@ -3753,6 +3825,7 @@ def _index_policyengine_us_sources(
         definitions=MappingProxyType(definitions),
         consumers=consumers,
         reviewed_helpers=tuple(sorted(interpreter.reviewed_helpers)),
+        helper_consumers=interpreter.helper_consumers,
     )
 
 

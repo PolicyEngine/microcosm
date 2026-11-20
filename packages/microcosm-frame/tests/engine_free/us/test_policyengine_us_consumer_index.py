@@ -2458,3 +2458,181 @@ def test_reads_by_argument_record_only_the_reads_for_the_value_passed(
             },
             specs=_COMPONENT_SPECS,
         )
+
+
+def _helper_identities(
+    index: module._PolicyEngineUSSourceIndex,
+    target: str,
+) -> set[tuple[str, str, str]]:
+    return {
+        (receipt.consumer, receipt.path, receipt.kind)
+        for receipt in index.helper_consumers.get(target, ())
+    }
+
+
+def _caller(name: str, call: str, *, imports: str) -> str:
+    return (
+        _clean(imports)
+        + "\n"
+        + _variable(
+            name,
+            f"""
+        def formula(person, period, parameters):
+            return {call}
+        """,
+        )
+    )
+
+
+def test_helper_reads_are_recorded_again_under_each_calling_variable(
+    tmp_path: Path,
+) -> None:
+    """A helper's read stays the helper's in ``consumers``; ``helper_consumers``
+    gives it to each variable whose call reaches it, for that call's own
+    arguments, at the helper's reference site (microcosm#1675)."""
+
+    imports = "from policyengine_us.variables.helper import read"
+    index = _index(
+        tmp_path,
+        {
+            "helper.py": """
+                def read(entity, period, name):
+                    return entity(name, period)
+            """,
+            "first.py": _caller(
+                "first_caller", 'read(person, period, "first_leaf")', imports=imports
+            ),
+            "second.py": _caller(
+                "second_caller", 'read(person, period, "second_leaf")', imports=imports
+            ),
+            "leaves.py": _variables("first_leaf", "second_leaf", "unread_leaf"),
+        },
+    )
+
+    assert _receipt_identities(index, "first_leaf") == {
+        ("read", "variables/helper.py", "entity_call")
+    }
+    assert _helper_identities(index, "first_leaf") == {
+        ("first_caller", "variables/helper.py", "entity_call")
+    }
+    assert _helper_identities(index, "second_leaf") == {
+        ("second_caller", "variables/helper.py", "entity_call")
+    }
+    assert index.helper_consumers.get("unread_leaf", ()) == ()
+    (receipt,) = index.helper_consumers["first_leaf"]
+    (helper_receipt,) = index.consumers["first_leaf"]
+    assert (receipt.line, receipt.receiver_entity) == (
+        helper_receipt.line,
+        helper_receipt.receiver_entity,
+    )
+
+
+def test_helper_reads_reach_the_variable_through_helpers_that_call_each_other(
+    tmp_path: Path,
+) -> None:
+    """A read two helpers down, through mutually recursive helpers, is still
+    the calling variable's."""
+
+    index = _index(
+        tmp_path,
+        {
+            "helpers.py": """
+                def ping(entity, period):
+                    return pong(entity, period) + entity("ping_leaf", period)
+
+                def pong(entity, period):
+                    return ping(entity, period) + entity("pong_leaf", period)
+            """,
+            "consumer.py": _caller(
+                "caller",
+                "ping(person, period)",
+                imports="from policyengine_us.variables.helpers import ping",
+            ),
+            "leaves.py": _variables("ping_leaf", "pong_leaf"),
+        },
+    )
+
+    assert _helper_identities(index, "ping_leaf") == {
+        ("caller", "variables/helpers.py", "entity_call")
+    }
+    assert _helper_identities(index, "pong_leaf") == {
+        ("caller", "variables/helpers.py", "entity_call")
+    }
+
+
+def test_a_variable_reading_itself_through_a_helper_is_not_its_own_consumer(
+    tmp_path: Path,
+) -> None:
+    index = _index(
+        tmp_path,
+        {
+            "helper.py": """
+                def read(entity, period, name):
+                    return entity(name, period.last_year)
+            """,
+            "consumer.py": _caller(
+                "self_reader",
+                'read(person, period, "self_reader")',
+                imports="from policyengine_us.variables.helper import read",
+            ),
+        },
+    )
+
+    assert _receipt_identities(index, "self_reader") == {
+        ("read", "variables/helper.py", "entity_call")
+    }
+    assert index.helper_consumers.get("self_reader", ()) == ()
+
+
+def test_follow_helpers_closes_the_dependency_graph_over_helper_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """By default a variable's graph stops at a helper call, as the pinned
+    SSI contract records it; ``follow_helpers`` goes on through the helper."""
+
+    source_index = _index(
+        tmp_path,
+        {
+            "helper.py": """
+                def read(entity, period, name):
+                    return entity(name, period)
+            """,
+            "program.py": _caller(
+                "program",
+                'read(person, period, "leaf") + person("direct_leaf", period)',
+                imports="from policyengine_us.variables.helper import read",
+            ),
+            "leaves.py": _variables("leaf", "direct_leaf"),
+        },
+    )
+
+    class _Distribution:
+        version = "0.0.0"
+
+    monkeypatch.setattr(
+        module, "_installed_policyengine_us_variable_sources", lambda: source_index
+    )
+    monkeypatch.setattr(
+        module, "_installed_policyengine_us_migrated_inputs", lambda: frozenset()
+    )
+    monkeypatch.setattr(module, "distribution", lambda _name: _Distribution())
+    module._installed_policyengine_us_consumers_following_helpers.cache_clear()
+    try:
+        gapped = module.PolicyEngineUSVariableMetadataIndex()
+        followed = module.PolicyEngineUSVariableMetadataIndex(follow_helpers=True)
+        default_closure = gapped.variable_dependency_closure("program")
+        helper_closure = followed.variable_dependency_closure("program")
+        helper_receipts = followed.consumer_receipts("leaf")
+    finally:
+        module._installed_policyengine_us_consumers_following_helpers.cache_clear()
+
+    assert default_closure.input_leaves == ("direct_leaf",)
+    assert default_closure.edges == (("program", "direct_leaf"),)
+    assert helper_closure.input_leaves == ("direct_leaf", "leaf")
+    assert helper_closure.edges == (("program", "direct_leaf"), ("program", "leaf"))
+    assert helper_closure.sha256 != default_closure.sha256
+    assert {receipt.consumer for receipt in gapped.consumer_receipts("leaf")} == {
+        "read"
+    }
+    assert {receipt.consumer for receipt in helper_receipts} == {"read", "program"}

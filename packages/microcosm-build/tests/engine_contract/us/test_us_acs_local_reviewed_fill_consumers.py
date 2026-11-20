@@ -3,8 +3,10 @@
 
 Each register entry declares the means-tested programs its column reaches.
 This test recomputes them with the engine's static dependency graph
-(``PolicyEngineUSVariableMetadataIndex.consumer_receipts``, walked by
-:func:`means_tested_consumers`) and fails when an entry misses a program the
+(``PolicyEngineUSVariableMetadataIndex.consumer_receipts`` with
+``follow_helpers``, so a read inside one of the engine's helper functions is
+its calling variable's, walked by :func:`means_tested_consumers`;
+microcosm#1675) and fails when an entry misses a program the
 walk reaches, or lists one it no longer reaches, so a policyengine-us bump
 cannot silently add a consumer the notes never reviewed. It also checks that
 the program roots are engine variables covering the engine's own CBO
@@ -67,7 +69,7 @@ _ON_THE_REVIEWED_ENGINE = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def index() -> PolicyEngineUSVariableMetadataIndex:
-    return PolicyEngineUSVariableMetadataIndex()
+    return PolicyEngineUSVariableMetadataIndex(follow_helpers=True)
 
 
 @pytest.fixture(scope="module")

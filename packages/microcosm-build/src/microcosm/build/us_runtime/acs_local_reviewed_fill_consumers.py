@@ -30,9 +30,11 @@ for it (and why) or biases it in a known direction.
 - :func:`means_tested_consumers` is the dependency walk the register's
   ``consumers`` lists come from. It takes any index with
   ``consumer_receipts`` (the engine-tier test passes
-  ``PolicyEngineUSVariableMetadataIndex``) and follows consumers from the
-  column until nothing new is reached, recording the programs whose roots it
-  meets. A column that is itself a root reaches its own program.
+  ``PolicyEngineUSVariableMetadataIndex(follow_helpers=True)``, so a read
+  inside one of the engine's helper functions is its calling variable's) and
+  follows consumers from the column until nothing new is reached, recording
+  the programs whose roots it meets. A column that is itself a root reaches
+  its own program.
 
 The module reads no origin tag: the manifests carry per-spine counts, and the
 register's ``spines`` lists are compared with them as plain labels.
