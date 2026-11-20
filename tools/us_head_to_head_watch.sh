@@ -1,6 +1,7 @@
 #!/bin/bash
 # Watch a running US head-to-head (d844) and stop it early when its own log
-# says it will not finish inside its budget, has stalled, or cannot be read.
+# says it will not finish inside its budget or cannot be read; a stall, or a
+# log it cannot show is current, raises an alarm instead.
 #
 # usage: tools/us_head_to_head_watch.sh APP_ID RUN_DIR PLAN [CHUNK_WEIGHTS]
 #
@@ -42,8 +43,12 @@
 # WATCH_STOP_WAIT (seconds after each stop request, 30), WATCH_START_TRIES
 # (3), WATCH_START_WAIT (seconds between start checks, 10),
 # WATCH_CREATED_SLACK (60), WATCH_SETTLE (seconds a log stream must have run
-# before a NO-GO read from it is acted on, 120), MODAL (modal), PYTHON
-# (python3; it runs the projection, so it must be the build's Python).
+# before a NO-GO read from it is acted on, 120), WATCH_READY (seconds a new
+# stream gets to show it works, 30), WATCH_RECONNECTS (further restarts or
+# reconnects before the watcher alarms and leaves the run to the runner's
+# budget, 2), WATCH_KILL_GRACE (seconds a stream gets to end after TERM
+# before KILL, 5), MODAL (modal), PYTHON (python3; it runs the projection,
+# so it must be the build's Python).
 #
 # Before acting on a NO-GO the watcher checks that the log it read is
 # current. A stream started less than WATCH_SETTLE seconds earlier may still
@@ -53,14 +58,46 @@
 # its file grew earlier in the same poll interval, so growth since the last
 # poll does not show the stream is current (review r7). So the first NO-GO
 # after a GO or WAIT, or after the watcher starts, is never acted on: the
-# watcher starts a new stream and lets the next poll decide, and a NO-GO
-# that comes through that restart stops the app. One run of NO-GOs gets one
-# such restart; the next GO or WAIT re-arms it. The old stream runs beside
-# the new one until the next poll has projected both, then ends. Ended at
-# the restart, it would leave a hole whenever the new stream does not
-# replay what the app printed before it, and the hole's holds would give
-# WAITs that re-arm the restart, so each NO-GO would restart again and a
-# run that overruns might never be stopped (review r8, simulated).
+# watcher starts a new stream and lets the next poll decide. The old stream
+# runs beside the new one until the next poll has projected both, then
+# ends. Ended at the restart, it would leave a hole whenever the new stream
+# does not replay what the app printed before it, and the hole's holds would
+# give WAITs that re-arm the restart, so each NO-GO would restart again and
+# a run that overruns might never be stopped (review r8, simulated).
+#
+# A later NO-GO stops the app only when a stream started at or after the
+# last restart holds a scorer record stamped after both the poll before
+# (the restart's own poll, or a later one) and the stream's own start
+# (counted from WATCH_READY seconds after its launch, on the projection's
+# clock). What a stream replays covers the log only up to its connection,
+# so a replay alone never passes, whichever restart, reconnect or
+# replacement started the stream, and a stream that delivered after the
+# restart but has since ended or hung cannot vouch for a later poll (review
+# r9). A restart that could not create its file, or a new stream that shows
+# only what the old one already had, gives no such record, and neither does
+# a scorer that has gone quiet: the log cannot tell those apart. Without one
+# the watcher alarms, once per run of NO-GOs, restarts again up to
+# WATCH_RECONNECTS more times, and otherwise leaves the run to the runner's
+# budget. The next GO or WAIT re-arms the restarts, except a WAIT that only
+# waits for an empty newest stream (newest_stream_empty): a second reader
+# that Modal leaves connected but silent would otherwise re-arm them at
+# every NO-GO, so a run that overruns would never stop (review r9).
+#
+# A new stream that ends without a scorer record within WATCH_READY seconds
+# while the old one runs (Modal may refuse a second reader of one app) makes
+# the watcher end the old one and reconnect one stream at a time, up to
+# WATCH_RECONNECTS tries. When the projection finds the newest stream empty
+# (newest_stream_empty) at two polls in a row, the watcher replaces that
+# stream, once a poll, up to WATCH_RECONNECTS times. Either way it alarms
+# when no stream that delivers comes back. A serial reconnect gives up the
+# overlap: if Modal refuses a second reader and does not replay, every
+# restart becomes a reconnect that leaves a hole, the hole's holds give a
+# WAIT that re-arms the restart, and each run of NO-GOs can end in another
+# such WAIT, so only the runner's budget may end a run that overruns
+# (inferred). Each stream it ends gets TERM, then KILL after
+# WATCH_KILL_GRACE seconds, and is reaped, so a client that ignores TERM
+# cannot hold the loop; it signals only its own children, so a pid reused
+# after a stream ended gets nothing (review r9).
 set -uo pipefail
 
 if [ $# -lt 3 ] || [ $# -gt 4 ]; then
@@ -81,6 +118,9 @@ START_TRIES=${WATCH_START_TRIES:-3}
 START_WAIT=${WATCH_START_WAIT:-10}
 CREATED_SLACK=${WATCH_CREATED_SLACK:-60}
 SETTLE=${WATCH_SETTLE:-120}
+READY=${WATCH_READY:-30}
+RECONNECTS=${WATCH_RECONNECTS:-2}
+GRACE=${WATCH_KILL_GRACE:-5}
 MODAL=${MODAL:-modal}
 PYTHON=${PYTHON:-python3}
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -212,6 +252,19 @@ stop_app() {
 STREAMS=0
 STREAM=
 STREAM_SINCE=0
+# The files of the streams started since the last restart before a NO-GO,
+# and beside each the second from which its records show it delivers: its
+# launch plus WATCH_READY, on the projection's clock. What a stream replays
+# covers the log only up to its connection, which a client makes within
+# seconds of its launch (inferred), so its replay alone never passes
+# (review r9).
+SINCE=()
+SINCE_AT=()
+# The projection's clock less this machine's, from the last projection that
+# gave a time: 0 to a few seconds when the projection reads the wall clock,
+# which it does unless given --now (as the tests' fake clock does).
+CLOCK_OFFSET=0
+PROJECTED_FROM=0
 stream() {
   local next=$((STREAMS + 1))
   until ( set -C; : > "$DIR/app-$next.log" ) 2>/dev/null; do
@@ -225,21 +278,158 @@ stream() {
   "$MODAL" app logs ${FOLLOW[@]+"${FOLLOW[@]}"} "$APP" >> "$DIR/app-$next.log" 2>&1 &
   STREAM=$!
   STREAM_SINCE=$(date +%s)
+  SINCE+=("$DIR/app-$next.log")
+  SINCE_AT+=("$((STREAM_SINCE + CLOCK_OFFSET + READY))")
 }
 
 size_of() { local n; n=$(wc -c < "$1" 2>/dev/null | tr -d ' '); printf '%s' "${n:-0}"; }
+
+# Whether a process this watcher started still runs. A child that has
+# exited but not yet been reaped (state Z) counts as ended, and so does a
+# pid whose parent is not this watcher: the child ended, bash reaped it, and
+# the pid may now name another process (review r9). When ps cannot say,
+# `kill -0` decides, so a live client is never taken as ended.
+alive() {
+  kill -0 "$1" 2>/dev/null || return 1
+  local parent state
+  read -r parent state <<< "$(ps -o ppid= -o stat= -p "$1" 2>/dev/null)"
+  [ -n "$parent" ] || return 0
+  [ "$parent" = "$$" ] || return 1
+  case $state in Z*) return 1 ;; esac
+  return 0
+}
+
+# Ends a log stream this watcher started and reaps it: TERM, then KILL if it
+# still runs WATCH_KILL_GRACE seconds later, so a client that ignores TERM
+# cannot hold the loop (review r9). A pid that is no longer this watcher's
+# running child gets no signal; `wait` returns at once for it.
+end_stream() {
+  local pid=$1 ticks=0
+  [ -n "$pid" ] || return 0
+  if alive "$pid"; then
+    kill "$pid" 2>/dev/null
+    while alive "$pid" && [ "$ticks" -lt $((GRACE * 10)) ]; do
+      sleep 0.1
+      ticks=$((ticks + 1))
+    done
+    if alive "$pid"; then
+      kill -KILL "$pid" 2>/dev/null
+      note "the log stream with pid $pid still ran ${GRACE}s after TERM; sent KILL"
+    fi
+  fi
+  wait "$pid" 2>/dev/null
+  return 0
+}
+
+# Whether a stream's file holds a line with a scorer record's stamp.
+has_record() {
+  grep -q -E '\[h2h [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z\] ' "$1" 2>/dev/null
+}
+
+# Whether the newest stream works: it has delivered a scorer record, or it
+# still runs WATCH_READY seconds after it started. One that ends with no
+# record in that time does not (Modal may refuse a second reader of one app,
+# review r9). A stream that only waits for the app to print passes.
+ready() {
+  local file=$DIR/app-$STREAMS.log ticks=0
+  while true; do
+    if has_record "$file"; then return 0; fi
+    if ! alive "$STREAM"; then
+      has_record "$file"
+      return
+    fi
+    if [ "$ticks" -ge $((READY * 5)) ]; then return 0; fi
+    sleep 0.2
+    ticks=$((ticks + 1))
+  done
+}
+
+# Ends the current stream and starts another, one at a time, until one works
+# or WATCH_RECONNECTS tries have failed; then alarms.
+reconnect() {
+  local try=0
+  while [ "$try" -lt "$RECONNECTS" ]; do
+    try=$((try + 1))
+    end_stream "$STREAM"
+    stream || return 1
+    if ready; then
+      note "reconnected the log stream on its own (try $try)"
+      return 0
+    fi
+  done
+  alarm "could not regain a working log stream: $RECONNECTS reconnect(s), one stream at a time, each ended without a scorer record within ${READY}s; the estimate and the stall check wait for a stream that delivers, and the runner's budget bounds the run"
+  return 1
+}
+
+# records_after SECOND FILE [SECOND FILE ...]: 0 when a file holds a scorer
+# record stamped after the epoch second given before it, 1 when none does
+# (or no file is given), 2 when they could not be read: only an answer the
+# reader printed counts. It reads records with the projection's own parser.
+records_after() {
+  local answer
+  if [ $# -eq 0 ]; then return 1; fi
+  answer=$("$PYTHON" -c '
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from us_head_to_head_projection import _records
+pairs = sys.argv[2:]
+if len(pairs) % 2:
+    sys.exit("records_after takes SECOND FILE pairs")
+found = any(
+    at > float(after)
+    for after, path in zip(pairs[::2], pairs[1::2])
+    for at in _records(Path(path).read_text(errors="replace").splitlines())[3]
+)
+print("found" if found else "none")
+' "$HERE" "$@" 2>> "$DIR/projection.err")
+  case $answer in
+    found) return 0 ;;
+    none) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+# Starts a new stream beside the current one, which runs on until the next
+# poll has projected both, and notes this poll's time: a later NO-GO is
+# acted on only if a stream started from here on shows a scorer record
+# printed after both the poll before that NO-GO and its own start. If the
+# new stream ends with no record while the old one runs, the watcher ends
+# the old one and reconnects one stream at a time.
+restart_streams() {
+  local old=$STREAM
+  RESTARTS=$((RESTARTS + 1))
+  EPOCH=$NOW_AT
+  EPOCH_UTC=$NOW_UTC
+  SINCE=()
+  SINCE_AT=()
+  stream || return 1
+  if ready; then
+    REPLACED=$old
+    return 0
+  fi
+  if alive "$old"; then
+    note "the new log stream ended without a scorer record while the old one ran (Modal may refuse a second reader of one app); ending the old one and reconnecting one stream at a time"
+    end_stream "$old"
+  else
+    note "the new log stream ended without a scorer record within ${READY}s; reconnecting"
+  fi
+  reconnect
+}
 
 # A stream that ended while the app runs is restarted at once the first
 # time in a poll interval; a second end in the same interval waits for the
 # poll, up to WATCH_INTERVAL, so a stream that keeps failing does not spin.
 # The poll restarts it before it projects, so a dead stream is never read
 # as a quiet scorer (review r6): the new file starts empty, which holds the
-# estimate until the stream delivers. Ends the watcher when the app has
+# estimate until the stream delivers. A restart while a replaced stream
+# still runs must work (ready), or the watcher ends the replaced one and
+# reconnects one stream at a time. Ends the watcher when the app has
 # finished.
 RESTARTED=0
 UNREADABLE=0
 check_stream() {
-  kill -0 "$STREAM" 2>/dev/null && return 0
+  alive "$STREAM" && return 0
   if [ "$1" = between-polls ] && [ "$RESTARTED" -eq 1 ]; then return 0; fi
   app_state
   case $? in
@@ -261,18 +451,33 @@ check_stream() {
       ;;
   esac
   RESTARTED=1
-  stream
+  stream || return 1
+  if [ -n "$REPLACED" ] && ! ready; then
+    note "the restarted log stream ended without a scorer record while the replaced one ran (Modal may refuse a second reader of one app); ending the replaced one and reconnecting one stream at a time"
+    end_stream "$REPLACED"
+    REPLACED=
+    reconnect
+  fi
+  return 0
 }
 
 # One projection over the given streams. Sets OUT, RC, VERDICT (GO, WAIT,
 # NO-GO, WAIT-OVERDUE or none), GAP (gap when the streams lost lines or
 # began late), HOLE (hole when no stream covers a stretch between the first
-# record and the last) and EARLY (scorer records before started-at). GAP and
-# HOLE alarm apart, so a hole raised first cannot hide a later lost line.
+# record and the last), EARLY (scorer records before started-at), NOW_AT and
+# NOW_UTC (the time it judged at, as epoch seconds and as text) and EMPTY
+# (empty when the newest stream has delivered nothing yet beside earlier
+# ones that have: newest_stream_empty). GAP and HOLE alarm apart, so a hole
+# raised first cannot hide a later lost line. PROJECTED_FROM is this
+# machine's second just before the call; a report with a time also sets
+# CLOCK_OFFSET against it, so the offset, and each stream start taken with
+# it, errs late.
 project() {
-  local args
+  local args before
   args=("$HERE/us_head_to_head_projection.py" "$@" --plan "$PLAN" --started-at "$STARTED")
   if [ -n "$WEIGHTS" ]; then args+=(--chunk-weights "$WEIGHTS"); fi
+  before=$(date +%s)
+  PROJECTED_FROM=$before
   OUT=$("$PYTHON" "${args[@]}" 2>> "$DIR/projection.err")
   RC=$?
   local parsed
@@ -286,12 +491,15 @@ if verdict == "WAIT" and at("now_utc") > at("deadline_utc") + float(sys.argv[1])
     verdict = "WAIT-OVERDUE"
 gap = "gap" if report.get("log_gap") else "-"
 hole = "hole" if report.get("stream_holes") else "-"
-print(verdict, gap, hole, int(report.get("records_before_start") or 0))
+empty = "empty" if report.get("newest_stream_empty") else "-"
+early = int(report.get("records_before_start") or 0)
+print(verdict, gap, hole, early, at("now_utc"), report["now_utc"], empty)
 ' "$WAIT_GRACE" 2>/dev/null)
-  if [ "$(printf '%s' "$parsed" | wc -w | tr -d ' ')" = 4 ]; then
-    read -r VERDICT GAP HOLE EARLY <<< "$parsed"
+  if [ "$(printf '%s' "$parsed" | wc -w | tr -d ' ')" = 7 ]; then
+    read -r VERDICT GAP HOLE EARLY NOW_AT NOW_UTC EMPTY <<< "$parsed"
+    CLOCK_OFFSET=$((NOW_AT - before))
   else
-    VERDICT=none; GAP=-; HOLE=-; EARLY=0
+    VERDICT=none; GAP=-; HOLE=-; EARLY=0; NOW_AT=0; NOW_UTC=-; EMPTY=-
   fi
 }
 
@@ -317,6 +525,12 @@ project /dev/null
 if { [ "$RC" -ne 0 ] && [ "$RC" -ne 3 ]; } || [ "$VERDICT" = none ]; then
   refuse "the projection did not answer a trial run with $PYTHON (rc=$RC; see $DIR/projection.err)"
 fi
+# The check behind every stop must run too: one that cannot read records
+# would leave every NO-GO unconfirmed.
+records_after 0 /dev/null
+if [ $? -ne 1 ]; then
+  refuse "the watcher could not read scorer records with $PYTHON (see $DIR/projection.err)"
+fi
 # Streams already in RUN_DIR are this attempt's only when a watcher restarts;
 # records from before started-at mean a relaunch reused the folder, and the
 # earlier attempt's worker starts would hold every verdict at WAIT.
@@ -340,12 +554,28 @@ gap_alarmed=0
 hole_alarmed=0
 LAST_FILE=
 LAST_SIZE=0
-# 1 once this run of NO-GOs has had its restart; a GO or WAIT clears it.
-REFRESHED=0
-# The stream that restart replaced, until the next poll has projected it.
+# The restarts this run of NO-GOs has had; a GO or WAIT clears it, except
+# a WAIT on an empty newest stream.
+RESTARTS=0
+# The last restart's poll time (epoch seconds and text).
+EPOCH=0
+EPOCH_UTC=-
+# The time the last poll that gave a time judged at (epoch seconds and
+# text). A NO-GO is acted on only with a record printed after it, so a
+# stream that delivered after the restart and has since ended or hung
+# cannot vouch for a later poll (review r9).
+LAST_POLL_AT=0
+LAST_POLL_UTC=-
+unconfirmed_alarmed=0
+# Polls in a row that found the newest stream empty, the reconnects made
+# for them, and whether their alarm went out.
+EMPTY_POLLS=0
+EMPTY_RECONNECTS=0
+empty_alarmed=0
+# The stream a restart replaced, until the next poll has projected it.
 REPLACED=
 # If the watcher ends first (the app finished), the replaced stream ends too.
-trap 'if [ -n "${REPLACED:-}" ]; then kill "$REPLACED" 2>/dev/null; fi' EXIT
+trap 'end_stream "${REPLACED:-}"' EXIT
 while true; do
   RESTARTED=0
   waited=0
@@ -366,38 +596,88 @@ while true; do
   fi
   note "rc=$RC verdict=$VERDICT $(printf '%s' "$OUT" | tr -d '\n')"
   if [ -n "$REPLACED" ]; then
-    kill "$REPLACED" 2>/dev/null
-    wait "$REPLACED" 2>/dev/null
+    end_stream "$REPLACED"
     REPLACED=
     note "ended the log stream the last restart replaced, once this poll had projected it beside the new one"
   fi
   if [ "$GAP" = gap ] && [ "$gap_alarmed" -eq 0 ]; then
     gap_alarmed=1
-    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): after a late start the estimate gives no GO, after lost slice, opening or worker-start lines no estimate at all; with restart_overlaps in the report the gap may instead come from a restart that repeated a second's records, which are counted once; the stall check and the runner's budget still bound the run"
+    alarm "the log streams lost lines or began late (log_gap in go-no-go.log): after a late start the estimate gives no GO, after lost slice, opening or worker-start lines no estimate at all; with restart_overlaps in the report the gap may instead come from a restart that repeated a second's records, which are counted once; the runner's budget still bounds the run, and a stall raises an alarm"
   fi
   if [ "$HOLE" = hole ] && [ "$hole_alarmed" -eq 0 ]; then
     hole_alarmed=1
-    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): the estimate waits while a slice that began before the hole ended has no line (hole_suspects), and a time NO-GO waits while a pool the hole could reach has logged fewer worker starts than workers (starts_unconfirmed), since a lost start line makes the estimate read late; a lost line the estimate can prove raises the gap alarm on its own and keeps it waiting for good; the stall check and the runner's budget still bound the run"
+    alarm "a restarted log stream did not replay what the app printed before it (stream_holes in go-no-go.log): the estimate waits while a slice that began before the hole ended has no line (hole_suspects), and a time NO-GO waits while a pool the hole could reach has logged fewer worker starts than workers (starts_unconfirmed), since a lost start line makes the estimate read late; a lost line the estimate can prove raises the gap alarm on its own and keeps it waiting for good; the runner's budget still bounds the run, and a stall raises an alarm"
+  fi
+  # A stream that runs but delivers nothing (newest_stream_empty at two
+  # polls in a row) holds the estimate and the stall check for good, so the
+  # watcher replaces it, once a poll, and alarms when that does not help.
+  if [ "$EMPTY" = empty ]; then
+    EMPTY_POLLS=$((EMPTY_POLLS + 1))
+  else
+    EMPTY_POLLS=0
+    EMPTY_RECONNECTS=0
+    empty_alarmed=0
+  fi
+  if [ "$EMPTY_POLLS" -ge 2 ]; then
+    if [ "$EMPTY_RECONNECTS" -lt "$RECONNECTS" ]; then
+      EMPTY_RECONNECTS=$((EMPTY_RECONNECTS + 1))
+      note "the newest log stream has delivered no scorer record at $EMPTY_POLLS polls in a row; ending it and starting another (reconnect $EMPTY_RECONNECTS of $RECONNECTS)"
+      end_stream "$STREAM"
+      if stream && ! ready; then
+        note "the new log stream ended without a scorer record"
+      fi
+    elif [ "$empty_alarmed" -eq 0 ]; then
+      empty_alarmed=1
+      alarm "no log stream has delivered a scorer record at $EMPTY_POLLS polls in a row, after $RECONNECTS reconnect(s): the streams may be failing or the app may have gone quiet; the estimate and the stall check wait (newest_stream_empty), and the runner's budget bounds the run; check the app by hand"
+    fi
   fi
   if [ "$RC" -eq 3 ] && [ "$VERDICT" = "NO-GO" ]; then
     AGE=$(( $(date +%s) - STREAM_SINCE ))
     if [ "$AGE" -lt "$SETTLE" ]; then
       note "NO-GO not acted on: the log stream started ${AGE}s ago and may still be replaying, so the files can hold an old stretch of the log; the next poll decides"
-    elif [ "$REFRESHED" -eq 0 ]; then
+    elif [ "$RESTARTS" -eq 0 ]; then
       if [ "$GREW" -eq 0 ]; then
         why="$NEWEST has not grown since the last poll, so its stream may have hung"
       else
         why="$NEWEST grew since the last poll, but its stream may have hung after it grew"
       fi
-      note "NO-GO not acted on: $why; restarting it, once until a GO or WAIT, with the old stream left running until the next poll, which decides"
-      old=$STREAM
-      REFRESHED=1
-      # Only a new stream that started replaces the old one; otherwise the
-      # old one stays the stream the watcher checks.
-      if stream; then REPLACED=$old; fi
+      note "NO-GO not acted on: $why; restarting it, with the old stream left running until the next poll, which acts on a NO-GO only if a stream started from here on shows a scorer record printed after both $NOW_UTC and its own start"
+      restart_streams
     else
-      if stop_app; then exit 3; fi
-      exit 5
+      # Act only on a log a stream started since the last restart has
+      # carried past both the last poll (at or after that restart's) and
+      # its own start (review r9).
+      floor=$EPOCH
+      if [ "$LAST_POLL_AT" -gt "$floor" ]; then floor=$LAST_POLL_AT; fi
+      pairs=()
+      i=0
+      while [ "$i" -lt ${#SINCE[@]} ]; do
+        after=${SINCE_AT[$i]}
+        if [ "$after" -lt "$floor" ]; then after=$floor; fi
+        pairs+=("$after" "${SINCE[$i]}")
+        i=$((i + 1))
+      done
+      records_after ${pairs[@]+"${pairs[@]}"}
+      fresh=$?
+      if [ "$fresh" -eq 0 ]; then
+        if stop_app; then exit 3; fi
+        exit 5
+      fi
+      if [ "$fresh" -eq 1 ]; then
+        why="no log stream started since the last restart (at $EPOCH_UTC) holds a scorer record printed after both the last poll ($LAST_POLL_UTC) and its own start"
+      else
+        why="the log streams started since the last restart could not be read (see $DIR/projection.err)"
+      fi
+      if [ "$unconfirmed_alarmed" -eq 0 ]; then
+        unconfirmed_alarmed=1
+        alarm "NO-GO not confirmed: $why, so the watcher cannot show that the log is current (a scorer that has gone quiet reads the same way); it restarts the stream up to $RECONNECTS more time(s) for this run of NO-GOs and otherwise leaves the run to the runner's budget; check the app by hand"
+      fi
+      if [ "$RESTARTS" -le "$RECONNECTS" ]; then
+        note "NO-GO not confirmed: $why; restarting the stream (restart $((RESTARTS + 1)) of $((RECONNECTS + 1)) for this run of NO-GOs), with the old stream left running until the next poll, which decides"
+        restart_streams
+      else
+        note "NO-GO not confirmed: $why; no restarts left for this run of NO-GOs, so the runner's budget bounds the run"
+      fi
     fi
     # A NO-GO left to the next poll is a verdict, not a failed poll.
     failures=0
@@ -415,8 +695,24 @@ while true; do
     fi
   else
     failures=0
-    REFRESHED=0
+    # A WAIT that only waits for an empty newest stream says nothing new
+    # about the run, so it leaves the restarts used (review r9).
+    if [ "$EMPTY" != empty ]; then
+      RESTARTS=0
+      unconfirmed_alarmed=0
+    fi
   fi
   LAST_FILE=$DIR/app-$STREAMS.log
   LAST_SIZE=$(size_of "$LAST_FILE")
+  if [ "$NOW_AT" -gt 0 ]; then
+    LAST_POLL_AT=$NOW_AT
+    LAST_POLL_UTC=$NOW_UTC
+  else
+    # A poll with no report: its time on the projection's clock, from this
+    # machine's (BSD date, then GNU date).
+    LAST_POLL_AT=$((PROJECTED_FROM + CLOCK_OFFSET))
+    LAST_POLL_UTC=$(date -u -r "$LAST_POLL_AT" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null ||
+      date -u -d "@$LAST_POLL_AT" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null ||
+      printf '%s s' "$LAST_POLL_AT")
+  fi
 done

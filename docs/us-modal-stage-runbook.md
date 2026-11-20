@@ -1971,8 +1971,10 @@ and beginning before its release line), a time `NO-GO` is held as `WAIT`
 (`starts_unconfirmed`): for the incumbent, past its release, for as long as
 the candidate's estimate reads its timing (its start cost, pace or
 first-slice extra, or its departures from the prior for a chunk the
-candidate has not measured). A stall still stops the run. A newest stream
-with nothing in it yet beside an earlier one with records may be a hole that has not ended: the estimate and
+candidate has not measured). The hold leaves a stall's `NO-GO` as it is,
+and the watcher raises `ALARM` on it rather than stopping the run (below).
+A newest stream with nothing in it yet beside an earlier one with records
+may be a hole that has not ended: the estimate and
 the stall check wait for its first record (`newest_stream_empty`). The
 projection reports a stream that begins in the very second the earlier
 ones reached and repeats records from it as `restart_overlaps`, and counts
@@ -2012,9 +2014,10 @@ It answers one of three verdicts:
   shortest budget seen still holds. The watcher raises `ALARM` once when
   either happens, or on `stream_holes`; once `log_gap` shows lost slice or
   opening lines, and after lost worker-start lines while the
-  `starts_unconfirmed` hold applies, only the stall check and the runner's
-  budget can end the run early. A lost incumbent start can leave no
-  `log_gap`, so once its hold lifts a time `NO-GO` can end the run again.
+  `starts_unconfirmed` hold applies, nothing ends the run before the
+  runner's budget, and a stall raises `ALARM`. A lost incumbent start can
+  leave no `log_gap`, so once its hold lifts a time `NO-GO` can end the run
+  again.
   The simulated search (`docs/evidence/us-h2h-speed/lost-lines.txt`)
   removes whole seconds of the log, and its restarts inside one second lose
   no lines, so it does not cover a restart that loses part of one second's
@@ -2037,7 +2040,9 @@ It answers one of three verdicts:
   when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A
   stall is no scorer line for an hour, or for four times the slowest slice
   if that is longer, counted from `started-at` until the first line
-  arrives.
+  arrives. The watcher stops a run only on the first kind: a stall comes
+  with no line printed after a restart, so the watcher raises `ALARM` on
+  it instead (below).
 - `GO` otherwise.
 
 How the estimate has done so far (the estimate gives `NO-GO` at the times
@@ -2093,9 +2098,10 @@ Memory is reported in each verdict but never judged; the class limit and
 the scorer's 20 GiB guard bound it. The estimate is not a bound either: the
 class timeout and the runner's budget bound the spend.
 
-On a `NO-GO` that comes through a restart of the stream (below), the
-watcher runs `modal app stop`, confirms the stop in `modal app list`, and
-retries up to `WATCH_STOP_TRIES` times (default 5).
+On a `NO-GO` that comes through a restart of the stream, with a scorer
+record printed after that restart (below), the watcher runs
+`modal app stop`, confirms the stop in `modal app list`, and retries up to
+`WATCH_STOP_TRIES` times (default 5).
 Every poll and action goes to `go-no-go.log`. Its exit codes:
 
 - 0: the app is no longer running and the watcher did not stop it: it
@@ -2127,7 +2133,8 @@ between checks that the stream is alive, 10), `WATCH_MAX_FAILURES` (3),
 `WATCH_WAIT_GRACE` (1800), `WATCH_STOP_TRIES` (5), `WATCH_STOP_WAIT`
 (seconds after each stop request, 30), `WATCH_START_TRIES` (3),
 `WATCH_START_WAIT` (10), `WATCH_CREATED_SLACK` (60), `WATCH_SETTLE`
-(120), `MODAL`, `PYTHON`, and the required
+(120), `WATCH_READY` (30), `WATCH_RECONNECTS` (2), `WATCH_KILL_GRACE` (5),
+`MODAL`, `PYTHON`, and the required
 `MODAL_PROFILE` and `MODAL_ENVIRONMENT`.
 
 `ALARM` is only a file. Nothing notices it, or a watcher that has died, and
@@ -2137,27 +2144,54 @@ a launchd job does not survive a reboot. Whoever launches the run checks
 A `modal app logs` stream can hang while its process lives on: the
 modal 1.3 client sets no deadline or keepalive on it (read from its source;
 not seen to happen). A hung stream reads as a scorer that has gone quiet,
-which the time rule or the stall check would stop. It can hang after its
-file grew earlier in the same poll interval, so growth since the last poll
-does not show that the stream still delivers: in the simulated d844 shape at
-f = 1, T = 300 s, a stream that grows after the +11,400 s poll and hangs at
-+11,580 s gives `NO-GO` at +12,000 s, estimating 14,925 s, where the whole
-log gives `GO` at 14,240 s. So the watcher never acts on the first `NO-GO`
-after a `GO` or `WAIT`, or after the watcher starts: it starts a new
-stream, whether or not the file grew, and leaves the verdict to the next
-poll. A `NO-GO` that comes through that restart stops the app. One run of
-`NO-GO`s gets one restart; the next `GO` or `WAIT` re-arms it, and a poll
-with no verdict does not. The old stream runs on beside the new one until
-the next poll has projected both, and the watcher then ends it. So a
-restart of a stream that had not hung leaves no hole, even when the new
-stream does not replay what the app printed before it. The watcher
-also does not act on a `NO-GO` read from a stream that started less than
-`WATCH_SETTLE` seconds (120) earlier, which may still be replaying an old
-stretch.
+which the time rule or the stall check turns into `NO-GO`. It can hang
+after its file grew earlier in the same poll interval, so growth since the
+last poll does not show that the stream still delivers: in the simulated
+d844 shape at f = 1, T = 300 s, a stream that grows after the +11,400 s poll
+and hangs at +11,580 s gives `NO-GO` at +12,000 s, estimating 14,925 s,
+where the whole log gives `GO` at 14,240 s. So the watcher never acts on
+the first `NO-GO` after a `GO` or `WAIT`, or after the watcher starts: it
+starts a new stream, whether or not the file grew, and leaves the verdict
+to the next poll. The old stream runs on beside the new one until the next
+poll has projected both, and the watcher then ends it. So a restart of a
+stream that had not hung leaves no hole, even when the new stream does not
+replay what the app printed before it. The watcher also does not act on a
+`NO-GO` read from a stream that started less than `WATCH_SETTLE` seconds
+(120) earlier, which may still be replaying an old stretch.
 
-Every stop therefore comes at least a poll after the first `NO-GO`, about
-$1.53 more than the grid's times above, and later when a `GO` or `WAIT`
-falls between `NO-GO`s, since each one re-arms the restart. In a model of
+A later `NO-GO` stops the app only when a stream started at or after the
+last restart holds a scorer record stamped after both the poll before (the
+restart's own, or a later one) and the stream's own start, counted from
+`WATCH_READY` seconds (30) after its launch on the projection's clock. What
+a stream replays covers the log only up to its connection, which a client
+makes within those seconds (inferred), so a replay alone never passes,
+whichever restart, reconnect or replacement started the stream; and a
+stream that delivered after the restart but has since ended or hung cannot
+vouch for a later poll (review r9). A
+restart that could not create its file, or a new stream that replays only
+what the hung one had, shows no such record, and the frozen log gives
+`NO-GO` again (16,125 s at +12,600 s in the case above; review r9). A
+scorer that has gone quiet shows none either, and the log cannot tell it
+from those, so the watcher no longer stops a stall, or a run with no scorer
+record an hour after the launch. Without such a record it raises `ALARM`,
+once per run of `NO-GO`s, starts another stream up to `WATCH_RECONNECTS`
+(2) more times, and otherwise leaves the run to the runner's budget (before
+the tool starts, to the class timeout); whoever launched the run then
+checks the app by hand. The next `GO` or `WAIT` re-arms the restarts; a
+poll with no verdict does not, and nor does a `WAIT` that only waits for an
+empty newest stream (`newest_stream_empty`), since a second reader left
+connected but silent would otherwise re-arm them at every `NO-GO` (review
+r9). The record shows that a new connection
+delivered a line printed after the last poll, not that it still delivers at
+the poll that reads it: a new stream that does so and then hangs, or a delay
+that every stream shares, can still give a stale `NO-GO` (inferred; nobody
+has seen either).
+
+Every stop on a `NO-GO` therefore comes at least a poll after the first
+`NO-GO`, about $1.53 more than the grid's times above, and later when a
+`GO` or `WAIT` falls between `NO-GO`s, since each one re-arms the restart
+(a `WAIT` on an empty newest stream does not). The stop after three polls
+with no usable verdict (exit 4) needs no `NO-GO`. In a model of
 the watcher's poll loop over the projection (simulated, in PR #1190's
 review record), the restart moved the stop by at most 600 s in 44 d844
 runs that overrun (16 against the plan's 14,505 s, 14 against budgets
@@ -2166,7 +2200,10 @@ up to 2,400 s ($6.11) in 78 runs of seed 3's random pools against budgets
 600 s short; in two of those the runner's budget ended the run less than a
 poll after the first `NO-GO`. With 265 s to spare, the modelled watcher
 stopped 3 of 92 runs that fit, where one that acts on the first `NO-GO`
-stopped 11.
+stopped 11. The model stops on every `NO-GO` that comes through a restart;
+the watcher also needs a line printed after the last poll by a stream
+started since the restart, which a run still scoring prints within a poll
+(inferred), so the figures assume that.
 
 When the old stream had hung, only a new stream that replays carries what
 the app printed after the hang. One that does not leaves a hole from the
@@ -2174,18 +2211,37 @@ hang to its first record, and the holds above can keep a time `NO-GO` as
 `WAIT`: in the lossless search, a restart that lost nothing while the
 incumbent's workers were still starting delayed a `NO-GO` by up to
 8,400 s ($21.39). A new stream that does not replay also holds the
-estimate and the stall check until it delivers a record, so when the
-scorer itself has stopped printing, only the runner's budget ends the run.
+estimate and the stall check until it delivers a record.
+
 Nobody has run two `modal app logs` streams of one app at once, as each
-restart does for one poll interval. If Modal refuses the second, the new
-stream ends at once, and so do the watcher's restarts of it while the old
-one runs (`go-no-go.log` notes each end). The empty newest file then gives
-`WAIT` (`newest_stream_empty`), which re-arms the restart, so each `NO-GO`
-restarts again and only the runner's budget ends a run that overruns
-(inferred from the code). The watcher's other Modal calls (`app list`,
-`app stop`), the projection, and its wait for an ended stream's process to
-exit have no timeouts, so a hung one would freeze its loop, leaving only
-the runner's budget to end the run; nobody has seen one hang.
+restart does for one poll interval. A new stream gets `WATCH_READY`
+seconds (30) to show it works: by then it has delivered a scorer record,
+or it still runs. One that ends with no record while the old one runs, as
+a refused second reader would, makes the watcher end the old one and
+reconnect one stream at a time, up to `WATCH_RECONNECTS` tries, and raise
+`ALARM` if none works. That gives up the overlap, so a reconnect that does
+not replay leaves a hole. If Modal both refuses a second reader and does
+not replay, every restart becomes such a reconnect, the hole's holds give a
+`WAIT` that re-arms the restart, and each run of `NO-GO`s can end in
+another such `WAIT`, so only the runner's budget may end a run that
+overruns (inferred; the hole alarm goes out once). A stream
+that runs but delivers nothing leaves the newest file empty, which holds
+the estimate and the stall check (`newest_stream_empty`). After two such
+polls in a row the watcher replaces that stream, once a poll, up to
+`WATCH_RECONNECTS` times, then raises `ALARM` and leaves the run to the
+runner's budget. A replacement started alone gets the app to itself, so if
+Modal serves one reader at a time it delivers, and the next `NO-GO` stops
+the run once that stream shows a line printed after its own start and the
+last poll (inferred). Each stream the
+watcher ends gets TERM, then KILL after `WATCH_KILL_GRACE` seconds (5), and
+the watcher reaps it, so a client that ignores TERM cannot hold the loop;
+a replaced stream still running when the watcher exits ends the same way.
+The watcher signals only a pid that is still its own running child, so a
+pid that a stream which already ended has freed gets nothing.
+Only the tests' fake `modal` has exercised these paths (Modal's behaviour
+is inferred). The watcher's other Modal calls (`app list`, `app stop`) and
+the projection have no timeouts, so a hung one would freeze its loop,
+leaving only the runner's budget to end the run; nobody has seen one hang.
 
 It detects and uses Modal CLI 1.4's `--follow` and 1.4.2's `--yes`. Its
 tests run it against a fake `modal` only: never test its stop on a live

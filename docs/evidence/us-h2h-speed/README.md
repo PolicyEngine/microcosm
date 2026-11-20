@@ -161,8 +161,10 @@ pool simulator (`test_support/microcosm_build/h2h_pool_sim.py`).
   complete: f = 2, T = 175 s (last slice at 13,941 s) gets NO-GO at
   1,200 s ($3.06).
 - The estimate gives its first NO-GO at the grid's times; the watcher stops
-  the app a poll later at the earliest (`docs/us-modal-stage-runbook.md`,
-  the watcher's hang rule).
+  the app a poll later at the earliest, and only when a stream started at
+  or after the last restart shows a scorer line printed after both the
+  poll before and that stream's own start
+  (`docs/us-modal-stage-runbook.md`, the watcher's hang rule).
 - Output: `projection-grid.txt`; `projection-grid-chunk5-1.5.txt`, with
   chunk 5 a further 1.5 times slower than the prior says for both artifacts;
   `projection-grid-candidate-chunk5-{1.2,1.3,1.5}.txt`, with only the
@@ -306,8 +308,10 @@ differs from the derived one.
   NO-GO from +670 to +1,780 s (11,839 s at +1,200 s) and again from +3,975
   to +4,770 s, and GO between and after, with no damage flag. Polling
   every 600 s, the watcher would stop that run between +1,270 and +1,780 s
-  at 103 of the 120 poll phases on a 5 s grid (inferred from its rule; the
-  projection gave the verdicts). It stops the run when it polls at +900
+  at 103 of the 120 poll phases on a 5 s grid (inferred from its rule,
+  given a scorer line printed after each restart's poll and the new
+  stream's start; the projection gave the verdicts). It stops the run when
+  it polls at +900
   and +1,500 s, say, and not when it polls at +1,200 and +1,800 s.
   The grid above gives every run one start cost, so it does not test this
   shape. Under the overrunning budget, damaged logs give GO where the
@@ -414,8 +418,10 @@ differs from the derived one.
   and the log gap holds WAIT. The cut search removes whole seconds and the
   boundary arms lose no lines, so neither covers this case.
   The watcher stops the app only on a NO-GO that comes a poll after the
-  restart an earlier NO-GO set off (`docs/us-modal-stage-runbook.md`), and
-  this false NO-GO lasts 205 s, less than a poll. So at 11,710 s the
+  restart an earlier NO-GO set off, with a scorer line printed after that
+  restart's poll and the new stream's start
+  (`docs/us-modal-stage-runbook.md`), and this false NO-GO lasts
+  205 s, less than a poll. So at 11,710 s the
   watcher does not stop the run: its next poll comes after +2,495 s, when
   a restart that replays has put the lost line back (GO) or one that does
   not leaves the log gap (WAIT). At 11,700 s a restart that replays puts
@@ -423,8 +429,10 @@ differs from the derived one.
   stops the run (34 of the 42 restart times on the 5 s grid). The watcher
   could stop a run that fits on a false NO-GO that lasts longer than a
   poll. These watcher outcomes come from its rule applied to the
-  projection's verdicts, not from a run of it, and nothing has searched
-  for longer false NO-GOs.
+  projection's verdicts, not from a run of it, and assume the new stream
+  shows a scorer line printed after the restart's poll and its own start;
+  nothing has searched for
+  longer false NO-GOs.
 - At the polls searched, the damage searched costs a late or missed stop,
   not a false one, except that a restart splitting one second's lines can
   read 24 s late (above). Losing part of one second's lines, which the

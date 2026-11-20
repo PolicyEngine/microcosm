@@ -80,7 +80,8 @@ from one that lost nothing, but each worker prints its start line once, so a
 pool that has logged a start for every worker has lost none. Until then,
 after a hole that could hold its start lines (one that ends once the pool
 has opened and begins before the pool's release line), a time NO-GO waits
-(``starts_unconfirmed``); a stall still stops the run. A lost start also
+(``starts_unconfirmed``); a stall is still a NO-GO, on which the watcher
+raises an alarm and leaves the run to the runner's budget. A lost start also
 misplaces the pool's slices in the rebuild, so its measured slice times and
 first-slice extra are off too (a lost 34 s start read a 62 s chunk as
 127 s), and the candidate reads the incumbent's start cost, pace, first-slice
@@ -1252,7 +1253,8 @@ def project(parsed: Parsed, limits: Limits, now: float) -> dict[str, object]:
             )
             + ": a start line lost in the hole would make the estimate read "
             "late, and only a start for every worker shows none was lost, so it "
-            "waits until then; a stall and the runner's budget still stop the run"
+            "waits until then; a stall is still a NO-GO (the watcher alarms on "
+            "it), and the runner's budget still bounds the run"
         )
     elif end > time_line:
         reasons.append(

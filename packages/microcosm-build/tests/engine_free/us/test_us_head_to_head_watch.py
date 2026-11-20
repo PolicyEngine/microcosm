@@ -49,8 +49,55 @@ case "$1 $2" in
     # restart that does not replay what the app printed before it.
     n=$(( $(cat "$D/logs-count" 2>/dev/null || echo 0) + 1 ))
     echo "$n" > "$D/logs-count"
-    if [ -e "$D/stream-$n.log" ]; then cat "$D/stream-$n.log"; else cat "$D/stream.log"; fi
+    # Each stream's pid, so a test can see which streams still run.
+    echo $$ > "$D/pid-$n"
+    listed() { case ",$1," in *",$n,"*) return 0 ;; esac; return 1; }
+    # FAKE_LOCK_RUN: once stream 1 starts, the run folder takes appends to
+    # its files but no new file (review r9).
+    if [ -n "${FAKE_LOCK_RUN:-}" ] && [ "$n" -eq 1 ]; then chmod a-w "$FAKE_RUN"; fi
+    # FAKE_IGNORE_TERM lists streams (numbers, comma-separated) that ignore
+    # TERM and live until the app is stopped, FAKE_STUBBORN_FOR seconds at
+    # most (150): a client a plain kill does not end (review r9).
+    stubborn=
+    if listed "${FAKE_IGNORE_TERM:-}"; then stubborn=1; trap '' TERM; fi
+    # A refused stream prints an error, no record, and ends at once: the
+    # streams FAKE_REFUSE lists, every stream from FAKE_REFUSE_FROM on, or,
+    # with FAKE_ONE_READER, a stream started while another still runs
+    # (review r9). FAKE_ONE_READER=silent leaves that stream running, and
+    # printing nothing, instead.
+    refused=
+    silent=
+    if listed "${FAKE_REFUSE:-}"; then refused=1; fi
+    if [ -n "${FAKE_REFUSE_FROM:-}" ] && [ "$n" -ge "$FAKE_REFUSE_FROM" ]; then
+      refused=1
+    fi
+    if [ -n "${FAKE_ONE_READER:-}" ]; then
+      for f in "$D"/pid-*; do
+        [ "$f" = "$D/pid-$n" ] && continue
+        if kill -0 "$(cat "$f")" 2>/dev/null; then
+          if [ "$FAKE_ONE_READER" = silent ]; then silent=1; else refused=1; fi
+        fi
+      done
+    fi
+    if [ -n "$refused" ]; then
+      echo "Error: the fake refuses log stream $n" >&2
+      touch "$D/printed-$n"
+      exit 1
+    fi
+    # Streams from FAKE_SILENT_FROM on run but print nothing.
+    if [ -n "${FAKE_SILENT_FROM:-}" ] && [ "$n" -ge "$FAKE_SILENT_FROM" ]; then
+      silent=1
+    fi
+    if [ -n "$silent" ]; then
+      :
+    elif [ -e "$D/stream-$n.log" ]; then
+      cat "$D/stream-$n.log"
+    else
+      cat "$D/stream.log"
+    fi
     touch "$D/printed-$n"
+    # FAKE_ENDS_AT_ONCE lists streams that end once they have printed.
+    if listed "${FAKE_ENDS_AT_ONCE:-}"; then exit 0; fi
     # FAKE stream-N.more, when present, is what the N-th stream prints later
     # in the poll interval: once the test's projection wrapper asks for it
     # (grow-N), which it acknowledges (grown-N). A stream that grows and
@@ -59,6 +106,13 @@ case "$1 $2" in
       for _ in $(seq 1 600); do [ -e "$D/grow-$n" ] && break; sleep 0.1; done
       cat "$D/stream-$n.more"
       touch "$D/grown-$n"
+    fi
+    if [ -n "$stubborn" ]; then
+      for _ in $(seq 1 $(( ${FAKE_STUBBORN_FOR:-150} * 10 ))); do
+        [ -e "$D/stopped" ] && exit 0
+        sleep 0.1
+      done
+      exit 0
     fi
     # FAKE_END_AFTER_POLLS: the stream lives, printing nothing more, until
     # the watcher has logged that many polls or the app is stopped, then
@@ -83,6 +137,11 @@ case "$1 $2" in
       help_tail
       exit 0
     fi
+    # The streams still running when the stop came, one number a line.
+    for f in "$D"/pid-*; do
+      [ -e "$f" ] || continue
+      kill -0 "$(cat "$f")" 2>/dev/null && echo "${f##*-}" >> "$D/running-at-stop"
+    done
     [ -n "${FAKE_STOP_FAILS:-}" ] && exit 1
     touch "$D/stopped"
     exit 0 ;;
@@ -211,6 +270,10 @@ def _watch(
         # The fake's streams end at once, so each poll restarts one; the
         # settle wait has its own test.
         "WATCH_SETTLE": "0",
+        # A new stream that prints nothing is taken as working after 2 s,
+        # and a stream gets 1 s after TERM before KILL.
+        "WATCH_READY": "2",
+        "WATCH_KILL_GRACE": "1",
         # The watcher refuses to run without a pinned workspace.
         "MODAL_PROFILE": "test-profile",
         "MODAL_ENVIRONMENT": "test-env",
@@ -234,6 +297,31 @@ def _calls(fake: Path) -> list[str]:
     return (fake / "calls").read_text().splitlines()
 
 
+def _pid(fake: Path, stream: int) -> int:
+    return int((fake / f"pid-{stream}").read_text())
+
+
+def _ended(pid: int, within: float = 3.0) -> bool:
+    """Whether the process has ended (and been reaped) within ``within``
+    seconds: a stream the watcher ended, or one it left behind."""
+
+    deadline = time.monotonic() + within
+    while True:
+        try:
+            os.kill(pid, 0)
+        except (ProcessLookupError, PermissionError):
+            # PermissionError: the pid now names another user's process.
+            return True
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.1)
+
+
+def _running_at_stop(fake: Path) -> list[int]:
+    path = fake / "running-at-stop"
+    return [int(x) for x in path.read_text().split()] if path.exists() else []
+
+
 def _stalled() -> list[str]:
     """A candidate worker's slice two hours ago and nothing since: a stall."""
 
@@ -251,7 +339,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_a_no_go_stops_the_app_and_confirms_it(tmp_path) -> None:
-    result, fake, run = _watch(tmp_path, _stalled())
+    result, fake, run = _overrun(tmp_path)
     assert result.returncode == 3, result.stderr
     calls = _calls(fake)
     assert f"app stop {APP}" in calls
@@ -260,11 +348,11 @@ def test_a_no_go_stops_the_app_and_confirms_it(tmp_path) -> None:
     assert "verdict=NO-GO" in verdicts and f"stopped {APP} (try 1)" in verdicts
     assert not (run / "ALARM").exists()
     # The streamed log is kept.
-    assert "chunk 1/5 slice 1/177" in (run / "app-1.log").read_text()
+    assert "before starting incumbent slice workers" in (run / "app-1.log").read_text()
 
 
 def test_newer_modal_flags_are_used_when_the_cli_offers_them(tmp_path) -> None:
-    result, fake, _ = _watch(tmp_path, _stalled(), FAKE_NEW_CLI="1")
+    result, fake, _ = _overrun(tmp_path, FAKE_NEW_CLI="1")
     assert result.returncode == 3, result.stderr
     calls = _calls(fake)
     assert f"app logs --follow {APP}" in calls
@@ -352,8 +440,9 @@ def test_a_gap_in_the_stream_numbers_overwrites_nothing(tmp_path) -> None:
 
 
 def test_an_unconfirmed_stop_is_retried_then_raised(tmp_path) -> None:
-    result, fake, run = _watch(
-        tmp_path, _stalled(), FAKE_STOP_FAILS="1", WATCH_STOP_TRIES="2"
+    # The list keeps showing the app running, as after a stop that failed.
+    result, fake, run = _overrun(
+        tmp_path, FAKE_STOP_FAILS="1", WATCH_STOP_TRIES="2", FAKE_LIVE_LISTS="1000"
     )
     assert result.returncode == 5, result.stderr
     assert _calls(fake).count(f"app stop {APP}") == 2
@@ -394,9 +483,16 @@ def test_an_app_created_just_before_started_at_is_watched(tmp_path) -> None:
     # Clocks differ by a few seconds; up to WATCH_CREATED_SLACK is allowed.
     started = time.time() - 3 * 3600
     result, fake, run = _watch(
-        tmp_path, _stalled(), FAKE_CREATED=_created(started - 30)
+        tmp_path,
+        _live(),
+        started=started,
+        FAKE_CREATED=_created(started - 30),
+        FAKE_LIVE_LISTS="2",
     )
-    assert result.returncode == 3, result.stderr
+    assert result.returncode == 0, result.stderr
+    assert f"watching {APP}" in (run / "go-no-go.log").read_text()
+    assert "verdict=WAIT" in (run / "go-no-go.log").read_text()
+    assert not (run / "ALARM").exists()
 
 
 def test_an_app_that_is_not_running_is_refused_at_the_start(tmp_path) -> None:
@@ -444,8 +540,8 @@ def test_an_unreadable_list_after_a_stop_is_never_taken_as_stopped(
     # The list reads at the start, then never again: the stop is retried and
     # raised, not logged as confirmed. "gone" is a valid list without the app,
     # as from another workspace (review r4, WATCHER-1).
-    result, fake, run = _watch(
-        tmp_path, _stalled(), FAKE_LIST_SEQ=f"live,{answer}", WATCH_STOP_TRIES="2"
+    result, fake, run = _overrun(
+        tmp_path, FAKE_LIST_SEQ=f"live,{answer}", WATCH_STOP_TRIES="2"
     )
     assert result.returncode == 5, result.stderr
     assert _calls(fake).count(f"app stop {APP}") == 2
@@ -679,14 +775,23 @@ def test_a_wait_inside_the_grace_keeps_watching(tmp_path) -> None:
 
 
 @pytest.mark.parametrize("stream", [[], ["the container is still building"]])
-def test_a_hang_before_any_scorer_record_is_stopped(tmp_path, stream) -> None:
+def test_a_hang_before_any_scorer_record_alarms_and_stops_nothing(
+    tmp_path, stream
+) -> None:
     # Launched two hours ago and no scorer record since: past the one-hour
-    # allowance from the launch.
-    result, fake, run = _watch(tmp_path, stream, started_ago=2 * 3600)
-    assert result.returncode == 3, result.stderr
+    # allowance from the launch, so NO-GO. No restarted stream can show a
+    # record printed after its restart, and streams that deliver nothing
+    # read the same, so the watcher cannot show the log is current: it
+    # alarms and leaves the run to the runner's budget and the class
+    # timeout (review r9). It used to stop the app.
+    result, fake, run = _watch(
+        tmp_path, stream, started_ago=2 * 3600, FAKE_LIVE_LISTS="3"
+    )
+    assert result.returncode == 0, result.stderr
     verdicts = (run / "go-no-go.log").read_text()
     assert "no scorer record at all since the launch" in verdicts
-    assert f"app stop {APP}" in _calls(fake)
+    assert "NO-GO not confirmed" in (run / "ALARM").read_text()
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
 
 
 def test_a_log_gap_alarms_once_and_waits(tmp_path) -> None:
@@ -770,36 +875,56 @@ def test_a_no_go_from_a_stream_that_just_started_waits_for_the_next_poll(
     assert not any(call.startswith("app stop ap-") for call in _calls(fake))
 
 
-def test_a_hung_stream_is_restarted_once_before_a_no_go_is_acted_on(
+def test_a_hung_stream_is_restarted_and_a_stall_it_still_shows_stops_nothing(
     tmp_path,
 ) -> None:
     # The stream prints its log and hangs, alive: `kill -0` sees nothing
     # wrong. The first NO-GO restarts it instead of stopping the app (review
-    # r6, SF-7); the restarted stream shows the same stall, and the second
-    # NO-GO stops the app. The second poll waits for stream 2 to print: read
-    # before then, an empty new stream gives WAIT, which re-arms the restart.
+    # r6, SF-7). The restarted stream shows the same stall and nothing
+    # printed after the restart, so its NO-GO is not confirmed: a scorer
+    # that went quiet and a stream stuck on an old stretch read the same
+    # (review r9). The watcher alarms once, restarts once more
+    # (WATCH_RECONNECTS=1), then leaves the run to the runner's budget. Each
+    # poll waits for the newest stream to print: read before then, an empty
+    # new stream gives WAIT (newest_stream_empty).
     started = int(time.time()) - 3 * 3600
     now = 3 * 3600
-    python = _judged_at(
-        tmp_path, started, [(now, ""), (now, "printed-1"), (now, "printed-2")]
-    )
+    calls = [(now, ""), (now, "printed-1"), (now, "printed-2"), (now, "printed-3")]
     result, fake, run = _watch(
-        tmp_path, _stalled(), started=started, PYTHON=str(python), FAKE_HANG="20"
+        tmp_path,
+        _stalled(),
+        started=started,
+        PYTHON=str(_judged_at(tmp_path, started, calls)),
+        WATCH_INTERVAL="1",
+        WATCH_STEP="1",
+        WATCH_RECONNECTS="1",
+        FAKE_END_AFTER_POLLS=str(len(calls) - 1),
+        FAKE_LIVE_LISTS="1",
     )
-    assert result.returncode == 3, result.stderr
+    assert result.returncode == 0, result.stderr
+    assert _polls(run) == [
+        "NO-GO",
+        "restart",
+        "NO-GO",
+        "unconfirmed, restart",
+        "NO-GO",
+        "unconfirmed",
+    ]
     verdicts = (run / "go-no-go.log").read_text()
     assert verdicts.count("has not grown since the last poll") == 1
-    assert verdicts.index("has not grown") < verdicts.index(f"stopped {APP}")
-    calls = _calls(fake)
-    assert calls.count(f"app logs {APP}") == 2
-    assert calls.count(f"app stop {APP}") == 1
+    alarms = (run / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1 and "NO-GO not confirmed" in alarms[0]
+    calls_made = _calls(fake)
+    assert calls_made.count(f"app logs {APP}") == 3
+    assert not any(call.startswith("app stop ap-") for call in calls_made)
 
 
 def test_a_restart_that_shows_a_fresh_slice_keeps_the_run_going(tmp_path) -> None:
     # Stream 1 hangs on a stall; the restart (stream 2) delivers a fresh
     # slice line, so the estimate moves on to WAIT and the app runs on.
-    # test_a_wait_after_the_restart_rearms_it_for_the_next_no_go pins the
-    # re-arm that WAIT gives.
+    # test_a_go_after_the_restart_rearms_it_for_the_next_no_go pins the
+    # re-arm a GO gives; this WAIT, which does not only wait for an empty
+    # newest stream, takes the same branch.
     then = time.time() - 2 * 3600
     stalled = _stalled()
     fresh = [
@@ -864,7 +989,8 @@ def _judged_at(tmp_path: Path, started: int, calls: list[tuple[int, str]]) -> Pa
     file's size and before this poll reads it, whatever the host's load.
     ``fail`` makes that call exit 1 with no report, as a projection that
     cannot run does. Call 1 is the watcher's trial run. Each wait gives up
-    after 60 s."""
+    after 60 s. Each call that projects first writes, to ``running``, the
+    streams still running then (``_running``)."""
 
     fake = tmp_path / "fake"
 
@@ -897,12 +1023,28 @@ def _judged_at(tmp_path: Path, started: int, calls: list[tuple[int, str]]) -> Pa
         f'  n=$(( $(cat "{fake}/projections" 2>/dev/null || echo 0) + 1 ))\n'
         f'  echo "$n" > "{fake}/projections"\n'
         "  case $n in\n" + "\n".join(arms) + "\n  esac\n"
+        f'  for f in "{fake}"/pid-*; do\n'
+        '    [ -e "$f" ] && kill -0 "$(cat "$f")" 2>/dev/null &&\n'
+        f'      echo "$n ${{f##*-}}" >> "{fake}/running"\n'
+        "  done\n"
         f'  exec "{sys.executable}" "$@" --now "$now" ;;\n'
         "esac\n"
         f'exec "{sys.executable}" "$@"\n'
     )
     python.chmod(0o755)
     return python
+
+
+def _running(fake: Path) -> dict[int, set[int]]:
+    """The streams running at each projection call (``_judged_at``), by
+    call number."""
+
+    out: dict[int, set[int]] = {}
+    path = fake / "running"
+    for line in path.read_text().splitlines() if path.exists() else []:
+        call, stream = line.split()
+        out.setdefault(int(call), set()).add(int(stream))
+    return out
 
 
 def _watch_d844(
@@ -912,12 +1054,15 @@ def _watch_d844(
     calls: list[tuple[int, str]],
     *,
     budget: str = RUNNER_BUDGET,
+    **env: str,
 ) -> tuple[subprocess.CompletedProcess, Path, Path]:
     """The watcher on the d844 run: stream N replays the log, from the
     runner's ``budget`` line, to ``streams[N]`` seconds in, or, given
     ``(a, b)``, does not replay and shows only the records from ``a``
     (exclusive) to ``b`` seconds in; then it prints ``more[N]`` when asked.
-    Each lives until the watcher has logged ``len(calls) - 1`` polls."""
+    A stream not in ``streams`` shows only the budget line. Each lives
+    until the watcher has logged ``len(calls) - 1`` polls. ``env`` adds to
+    or overrides the watcher's and the fake's settings."""
 
     started = int(time.time()) - 14_000
     run = _d844(started)
@@ -927,6 +1072,14 @@ def _watch_d844(
             return _between(run, *span)
         return [budget, *_between(run, 0, span)]
 
+    settings = {
+        "PYTHON": str(_judged_at(tmp_path, started, calls)),
+        "WATCH_INTERVAL": "1",
+        "WATCH_STEP": "1",
+        "FAKE_END_AFTER_POLLS": str(len(calls) - 1),
+        "FAKE_LIVE_LISTS": "1",
+        **env,
+    }
     return _watch(
         tmp_path,
         [],
@@ -934,24 +1087,33 @@ def _watch_d844(
         weights=WEIGHTS,
         streams={n: shown(s) for n, s in streams.items()},
         more={n: _between(run, a, b) for n, (a, b) in more.items()},
-        PYTHON=str(_judged_at(tmp_path, started, calls)),
-        WATCH_INTERVAL="1",
-        WATCH_STEP="1",
-        FAKE_END_AFTER_POLLS=str(len(calls) - 1),
-        FAKE_LIVE_LISTS="1",
+        **settings,
     )
 
 
 def _polls(run_dir: Path) -> list[str]:
-    """Each poll's verdict, each restart before acting on a NO-GO, and the
-    stop, in the order go-no-go.log gives them."""
+    """Each poll's verdict, each restart before acting on a NO-GO, each NO-GO
+    not confirmed (and whether it restarted), each failed overlap and
+    reconnect, each replacement of an empty stream, and the stop, in the
+    order go-no-go.log gives them. Alarms are left out."""
 
     out = []
     for line in (run_dir / "go-no-go.log").read_text().splitlines():
+        if " ALARM " in line:
+            continue
         if " rc=" in line:
             out.append(line.split("verdict=")[1].split()[0])
         elif "NO-GO not acted on" in line:
             out.append("restart, grown" if " grew since" in line else "restart")
+        elif "NO-GO not confirmed" in line:
+            restarted = "restarting the stream" in line
+            out.append("unconfirmed, restart" if restarted else "unconfirmed")
+        elif "ended without a scorer record while the" in line:
+            out.append("refused")
+        elif "reconnected the log stream on its own" in line:
+            out.append("reconnected")
+        elif "has delivered no scorer record at" in line:
+            out.append("empty, replaced")
         elif f"stopped {APP} (try" in line:
             out.append("stopped")
     return out
@@ -981,24 +1143,86 @@ def test_a_stream_that_hangs_after_growing_is_restarted_before_a_no_go(
     assert not (run_dir / "ALARM").exists()
 
 
-def test_a_no_go_that_comes_through_the_restart_stops_the_app(tmp_path) -> None:
-    # The restarted stream shows the same log: the scorer really went quiet
-    # at +11,580 s. Read at +12,600 s it gives NO-GO again (16,125 s), and
-    # the watcher stops the app after one restart and one more projection.
+def test_a_restart_that_shows_only_the_stale_log_does_not_stop_the_app(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 1: the restarted stream replays only the stale
+    # prefix, to +11,580 s, and hangs, so the +12,600 s poll reads the frozen
+    # log again and gives NO-GO (16,125 s), where the whole log gives GO. The
+    # watcher used to stop the app there. No stream started at the restart
+    # shows a record printed after the +12,000 s poll, so it alarms and
+    # restarts again; stream 3 sticks on the same prefix, and with
+    # WATCH_RECONNECTS=1 the watcher leaves the run to the runner's budget.
+    # A scorer that really went quiet at +11,580 s reads the same way, so the
+    # watcher no longer stops that either.
     result, fake, run_dir = _watch_d844(
         tmp_path,
-        {1: 11_400, 2: HUNG_AT},
+        {1: 11_400, 2: HUNG_AT, 3: HUNG_AT},
         {1: (11_400, HUNG_AT)},
-        [(60, ""), (11_400, "printed-1"), (12_000, "grow-1"), (12_600, "printed-2")],
+        [
+            (60, ""),
+            (11_400, "printed-1"),
+            (12_000, "grow-1"),
+            (12_600, "printed-2"),
+            (13_200, "printed-3"),
+        ],
+        WATCH_RECONNECTS="1",
     )
-    assert result.returncode == 3, result.stderr
-    assert _polls(run_dir) == ["GO", "NO-GO", "restart, grown", "NO-GO", "stopped"]
+    assert result.returncode == 0, result.stderr
+    assert _polls(run_dir) == [
+        "GO",
+        "NO-GO",
+        "restart, grown",
+        "NO-GO",
+        "unconfirmed, restart",
+        "NO-GO",
+        "unconfirmed",
+    ]
+    alarms = (run_dir / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1 and "NO-GO not confirmed" in alarms[0]
     calls = _calls(fake)
-    assert calls.count(f"app logs {APP}") == 2
-    assert calls.count(f"app stop {APP}") == 1
-    assert calls.index(f"app logs {APP}", calls.index(f"app logs {APP}") + 1) < (
-        calls.index(f"app stop {APP}")
-    )
+    assert calls.count(f"app logs {APP}") == 3
+    assert not any(call.startswith("app stop ap-") for call in calls)
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0,
+    reason="root creates files in a read-only folder",
+)
+def test_a_restart_that_cannot_create_its_file_does_not_stop_the_app(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 1: the run folder takes appends to its files but
+    # no new file once stream 1 starts. The restart at the +12,000 s NO-GO
+    # starts nothing, so the +12,600 s poll reads the same frozen stream and
+    # gives NO-GO again (16,125 s), where the whole log gives GO. The watcher
+    # used to stop the app there. No stream has started since the restart,
+    # so none shows a record printed after it, and with WATCH_RECONNECTS=0
+    # the watcher notes that no restart is left and stops nothing.
+    try:
+        result, fake, run_dir = _watch_d844(
+            tmp_path,
+            {1: 11_400},
+            {1: (11_400, HUNG_AT)},
+            [(60, ""), (11_400, "printed-1"), (12_000, "grow-1"), (12_600, "")],
+            FAKE_LOCK_RUN="1",
+            WATCH_RECONNECTS="0",
+        )
+    finally:
+        (tmp_path / "run").chmod(0o755)
+    assert result.returncode == 0, result.stderr
+    assert _polls(run_dir) == [
+        "GO",
+        "NO-GO",
+        "restart, grown",
+        "NO-GO",
+        "unconfirmed",
+    ]
+    verdicts = (run_dir / "go-no-go.log").read_text()
+    assert "ALARM could not create" in verdicts
+    assert "ALARM NO-GO not confirmed" in verdicts
+    assert [path.name for path in run_dir.glob("app-*.log")] == ["app-1.log"]
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
 
 
 def test_a_go_after_the_restart_rearms_it_for_the_next_no_go(tmp_path) -> None:
@@ -1033,6 +1257,12 @@ def test_a_go_after_the_restart_rearms_it_for_the_next_no_go(tmp_path) -> None:
     calls = _calls(fake)
     assert calls.count(f"app logs {APP}") == 3
     assert not any(call.startswith("app stop ap-") for call in calls)
+    # Each restart's old stream runs beside the new one through the next
+    # poll's projection (call 4, then call 6), and has ended by the poll
+    # after: no reader piles up across runs of NO-GOs (review r9).
+    running = _running(fake)
+    assert {1, 2} <= running[4] and 1 not in running.get(5, set())
+    assert {2, 3} <= running[6]
 
 
 #: The same run against a runner's budget of 13,640 s overruns: by the
@@ -1040,6 +1270,24 @@ def test_a_go_after_the_restart_rearms_it_for_the_next_no_go(tmp_path) -> None:
 #: gives NO-GO from the +1,200 s poll on (14,263.7 s), while the incumbent's
 #: workers are still starting.
 SHORT_BUDGET = "BUDGET: the tool may run 13640s (limited by max_wall_seconds)"
+
+
+def _overrun(
+    tmp_path: Path, **env: str
+) -> tuple[subprocess.CompletedProcess, Path, Path]:
+    """The watcher on that overrunning run: NO-GO at +1,200 s, which
+    restarts the stream; stream 2 replays the log to +1,800 s, so the NO-GO
+    there comes with records printed after the restart, and the watcher
+    stops the app."""
+
+    return _watch_d844(
+        tmp_path,
+        {1: 1_200, 2: 1_800},
+        {},
+        [(60, ""), (1_200, "printed-1"), (1_800, "printed-2")],
+        budget=SHORT_BUDGET,
+        **env,
+    )
 
 
 def test_a_restart_that_does_not_replay_leaves_no_hole_and_stops_a_poll_later(
@@ -1068,68 +1316,242 @@ def test_a_restart_that_does_not_replay_leaves_no_hole_and_stops_a_poll_later(
     calls = _calls(fake)
     assert calls.count(f"app logs {APP}") == 2
     assert calls.count(f"app stop {APP}") == 1
+    # Both streams ran when the +1,800 s poll projected them.
+    assert {1, 2} <= _running(fake)[3]
 
 
-def test_a_wait_after_the_restart_rearms_it_for_the_next_no_go(tmp_path) -> None:
-    # Stream 2 delivers nothing before the next poll, so the estimate and
-    # the stall check wait for it (WAIT, newest_stream_empty), and that WAIT
-    # re-arms the restart. When stream 2 then shows the same stall, the
-    # watcher restarts again, and the NO-GO that comes through that restart
-    # stops the app.
-    started = int(time.time()) - 3 * 3600
-    now = 3 * 3600
-    stalled = [RUNNER_BUDGET, *_stalled()]
-    calls = [
-        (now, ""),
-        (now, "printed-1"),
-        (now, "printed-2"),
-        (now, "grow-2"),
-        (now, "printed-3"),
-    ]
-    result, fake, run_dir = _watch(
+def test_a_wait_on_an_empty_new_stream_does_not_rearm_the_restart(tmp_path) -> None:
+    # Stream 2 delivers nothing before the +1,800 s poll, so the estimate and
+    # the stall check wait for it (WAIT, newest_stream_empty). That WAIT used
+    # to re-arm the restart, so the +2,400 s NO-GO restarted again (review
+    # r8, should-fix 3). It says nothing new about the run, so it leaves the
+    # restart used: stream 2 then carries the log to +2,400 s, past the
+    # restart at +1,200 s, and its NO-GO stops the app.
+    result, fake, run_dir = _watch_d844(
         tmp_path,
-        stalled,
-        budget_line=False,
-        started=started,
-        streams={1: stalled, 2: []},
-        more={2: stalled},
-        PYTHON=str(_judged_at(tmp_path, started, calls)),
-        FAKE_END_AFTER_POLLS=str(len(calls)),
-        FAKE_LIVE_LISTS="1",
+        {1: 1_200, 2: (0, 0)},
+        {2: (0, 2_400)},
+        [(60, ""), (1_200, "printed-1"), (1_800, "printed-2"), (2_400, "grow-2")],
+        budget=SHORT_BUDGET,
+    )
+    assert result.returncode == 3, result.stderr
+    assert _polls(run_dir) == ["NO-GO", "restart", "WAIT", "NO-GO", "stopped"]
+    assert "newest_stream_empty" in (run_dir / "go-no-go.log").read_text()
+    assert _calls(fake).count(f"app logs {APP}") == 2
+
+
+def test_a_silent_second_reader_is_replaced_alone_and_the_next_no_go_stops(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 3: a service that serves one reader and leaves a
+    # second connected but silent. The +1,200 s NO-GO restarts the stream;
+    # stream 2 runs beside stream 1 and prints nothing, so the +1,800 s poll
+    # gives WAIT (newest_stream_empty) and stream 1 ends. That WAIT used to
+    # re-arm the restart, so every NO-GO started the same cycle again and the
+    # run went to the runner's budget. Now the second empty poll replaces
+    # stream 2 with stream 3, started alone, which carries the log to
+    # +3,000 s, past both its own start and the +2,400 s poll, so its NO-GO
+    # stops the app.
+    result, fake, run_dir = _watch_d844(
+        tmp_path,
+        {1: 1_200, 3: 3_000},
+        {},
+        [
+            (60, ""),
+            (1_200, "printed-1"),
+            (1_800, "printed-2"),
+            (2_400, ""),
+            (3_000, "printed-3"),
+        ],
+        budget=SHORT_BUDGET,
+        FAKE_ONE_READER="silent",
     )
     assert result.returncode == 3, result.stderr
     assert _polls(run_dir) == [
         "NO-GO",
         "restart",
         "WAIT",
-        "NO-GO",
-        "restart, grown",
+        "WAIT",
+        "empty, replaced",
         "NO-GO",
         "stopped",
     ]
-    assert "newest_stream_empty" in (run_dir / "go-no-go.log").read_text()
     assert _calls(fake).count(f"app logs {APP}") == 3
+    # Both readers ran when the +1,800 s poll projected them.
+    assert {1, 2} <= _running(fake)[3]
+
+
+#: The polls after a restart at +1,200 s whose new stream prints nothing:
+#: two empty polls, the second of which replaces it, then a NO-GO read from
+#: the replacement's stale replay, not confirmed, which restarts again, and
+#: a poll that waits for that empty new stream.
+UNCONFIRMED_AFTER_EMPTY = [
+    "NO-GO",
+    "restart",
+    "WAIT",
+    "WAIT",
+    "empty, replaced",
+    "NO-GO",
+    "unconfirmed, restart",
+    "WAIT",
+]
+
+
+def test_a_replacement_that_only_replays_does_not_stop_the_app(tmp_path) -> None:
+    # Review r9 check, N1: stream 2, started at the +1,200 s restart, prints
+    # nothing, so the +1,800 s and +2,400 s polls give WAIT
+    # (newest_stream_empty), and the second replaces it with stream 3. Stream
+    # 3 replays the log only to +2,100 s, between the restart's poll and its
+    # own start, then hangs, so the +3,000 s poll reads a log 900 s stale and
+    # gives NO-GO. Those records are stamped after the restart, and the
+    # watcher used to stop the app on them; none is stamped after stream 3's
+    # own start or the +2,400 s poll, so now it alarms and restarts instead.
+    result, fake, run_dir = _watch_d844(
+        tmp_path,
+        {1: 1_200, 2: (0, 0), 3: 2_100, 4: (0, 0)},
+        {},
+        [
+            (60, ""),
+            (1_200, "printed-1"),
+            (1_800, "printed-2"),
+            (2_400, ""),
+            (3_000, "printed-3"),
+            (3_600, "printed-4"),
+        ],
+        budget=SHORT_BUDGET,
+    )
+    assert result.returncode == 0, result.stderr
+    assert _polls(run_dir) == UNCONFIRMED_AFTER_EMPTY
+    alarms = (run_dir / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1 and "NO-GO not confirmed" in alarms[0]
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def test_a_stream_that_delivered_then_ended_cannot_vouch_for_a_later_poll(
+    tmp_path,
+) -> None:
+    # Review r9 check, N1: stream 2, started at the +1,200 s restart,
+    # delivers records to +1,500 s and ends. Its replacement, stream 3, runs
+    # and prints nothing, so the +1,800 s and +2,400 s polls give WAIT
+    # (newest_stream_empty), and the second replaces stream 3 with stream 4,
+    # which replays to +2,100 s and hangs. The +3,000 s NO-GO reads a log
+    # 900 s stale. Stream 2's records are stamped after the restart and after
+    # its own start, and the watcher used to stop the app on them; none of
+    # the streams shows a record printed after the +2,400 s poll, so now it
+    # alarms and restarts instead.
+    result, fake, run_dir = _watch_d844(
+        tmp_path,
+        {1: 1_200, 2: 1_500, 3: (0, 0), 4: 2_100, 5: (0, 0)},
+        {},
+        [
+            (60, ""),
+            (1_200, "printed-1"),
+            (1_800, "printed-3"),
+            (2_400, ""),
+            (3_000, "printed-4"),
+            (3_600, "printed-5"),
+        ],
+        budget=SHORT_BUDGET,
+        FAKE_ENDS_AT_ONCE="2",
+        FAKE_LIVE_LISTS="2",
+    )
+    assert result.returncode == 0, result.stderr
+    assert _polls(run_dir) == UNCONFIRMED_AFTER_EMPTY
+    verdicts = (run_dir / "go-no-go.log").read_text()
+    assert verdicts.count("the log stream ended while") == 1
+    alarms = (run_dir / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1 and "NO-GO not confirmed" in alarms[0]
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def test_records_from_before_a_new_stream_could_connect_do_not_confirm(
+    tmp_path,
+) -> None:
+    # Review r9 check, N1: a stream's records count only from WATCH_READY
+    # seconds after its launch, since what it replays covers the log up to
+    # its connection. Here a client may take 500 s to connect: stream 2,
+    # started at the +1,200 s restart, shows records to +1,650 s and hangs,
+    # all of which it may have replayed. The +1,800 s NO-GO, which those
+    # records alone would have confirmed, is not acted on, and with
+    # WATCH_RECONNECTS=0 the run is left to the runner's budget.
+    result, fake, run_dir = _watch_d844(
+        tmp_path,
+        {1: 1_200, 2: 1_650},
+        {},
+        [(60, ""), (1_200, "printed-1"), (1_800, "printed-2")],
+        budget=SHORT_BUDGET,
+        WATCH_READY="500",
+        WATCH_RECONNECTS="0",
+    )
+    assert result.returncode == 0, result.stderr
+    assert _polls(run_dir) == ["NO-GO", "restart", "NO-GO", "unconfirmed"]
+    assert "NO-GO not confirmed" in (run_dir / "ALARM").read_text()
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def _functions(*names: str) -> str:
+    """The watcher's shell functions ``names``, cut from the script, so a
+    test can run one on its own."""
+
+    text = WATCH.read_text()
+    cut = []
+    for name in names:
+        start = text.index(f"\n{name}() {{\n") + 1
+        cut.append(text[start : text.index("\n}\n", start) + 3])
+    return "".join(cut)
+
+
+def test_ending_a_stream_signals_only_the_watchers_own_child(tmp_path) -> None:
+    # Review r9 check, N4: a stream that ended was reaped by bash, so by the
+    # time the watcher ends it its pid can name another process. The watcher
+    # used to send that pid TERM, then KILL after WATCH_KILL_GRACE. Here the
+    # pid names a live process that ignores TERM and is not the shell's
+    # child: it gets no signal. The shell's own child still gets TERM.
+    other = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import signal, time\n"
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            "time.sleep(60)\n",
+        ]
+    )
+    try:
+        script = (
+            "set -uo pipefail\nGRACE=1\n"
+            'note() { printf "%s\\n" "$1"; }\n'
+            + _functions("alive", "end_stream")
+            + f"alive {other.pid} || echo other-not-ours\n"
+            + f"end_stream {other.pid}\n"
+            + "sleep 30 & child=$!\n"
+            + 'alive "$child" && echo child-alive\n'
+            + 'end_stream "$child"\n'
+            + 'alive "$child" || echo child-ended\n'
+        )
+        result = subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert other.poll() is None, "the watcher signalled a process it did not start"
+        assert result.stdout.split() == ["other-not-ours", "child-alive", "child-ended"]
+    finally:
+        other.kill()
+        other.wait()
 
 
 def test_a_failed_poll_after_the_restart_does_not_rearm_it(tmp_path) -> None:
     # Only a GO or WAIT re-arms the restart: a poll with no verdict between
-    # two NO-GOs leaves it used, so the second NO-GO stops the app.
-    started = int(time.time()) - 3 * 3600
-    now = 3 * 3600
-    calls = [
-        (now, ""),
-        (now, "printed-1"),
-        (now, "fail"),
-        (now, "printed-2"),
-        (now, "printed-3"),
-    ]
-    result, fake, run_dir = _watch(
+    # two NO-GOs leaves it used, so the second NO-GO, which stream 2 carries
+    # past the restart, stops the app.
+    result, fake, run_dir = _watch_d844(
         tmp_path,
-        _stalled(),
-        started=started,
-        PYTHON=str(_judged_at(tmp_path, started, calls)),
-        FAKE_END_AFTER_POLLS=str(len(calls)),
-        FAKE_LIVE_LISTS="1",
+        {1: 1_200, 2: 2_400},
+        {},
+        [(60, ""), (1_200, "printed-1"), (1_800, "fail"), (2_400, "printed-2")],
+        budget=SHORT_BUDGET,
     )
     assert result.returncode == 3, result.stderr
     assert _polls(run_dir) == ["NO-GO", "restart", "none", "NO-GO", "stopped"]
@@ -1138,8 +1560,206 @@ def test_a_failed_poll_after_the_restart_does_not_rearm_it(tmp_path) -> None:
     assert _calls(fake).count(f"app logs {APP}") == 2
 
 
+def test_a_stream_that_ignores_term_is_killed_and_reaped_before_the_stop(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 2: stream 1 ignores TERM. Once the +1,800 s poll
+    # had projected it beside stream 2, the watcher used to wait for it
+    # without bound and never reached the stop. Now it sends KILL after
+    # WATCH_KILL_GRACE, reaps the stream, and stops the app: stream 1 has
+    # ended by the time the stop goes out.
+    result, fake, run_dir = _overrun(tmp_path, FAKE_IGNORE_TERM="1")
+    assert result.returncode == 3, result.stderr
+    assert _polls(run_dir) == ["NO-GO", "restart", "NO-GO", "stopped"]
+    assert 1 not in _running_at_stop(fake)
+    assert _ended(_pid(fake, 1), within=0)
+    assert "sent KILL" in (run_dir / "go-no-go.log").read_text()
+
+
+def test_a_watcher_that_ends_during_the_overlap_ends_the_replaced_stream(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 2: the app finishes while the old stream still
+    # runs beside its replacement, so the watcher exits with it set. Stream 1
+    # ignores TERM; the exit still ends it (KILL after WATCH_KILL_GRACE) and
+    # reaps it, so no reader outlives the watcher.
+    result, fake, run_dir = _watch(
+        tmp_path,
+        _stalled(),
+        FAKE_IGNORE_TERM="1",
+        FAKE_STUBBORN_FOR="20",
+        FAKE_LIVE_LISTS="1",
+    )
+    assert result.returncode == 0, result.stderr
+    verdicts = (run_dir / "go-no-go.log").read_text()
+    assert "NO-GO not acted on" in verdicts and "has finished" in verdicts
+    # KILL, not the stream's own end FAKE_STUBBORN_FOR seconds later: the
+    # watcher used to wait for it without bound.
+    assert "sent KILL" in verdicts
+    assert _ended(_pid(fake, 1))
+
+
+def test_a_refused_second_stream_falls_back_to_one_stream_and_stops_a_poll_later(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 3: Modal serves one reader of an app and refuses
+    # a second. At the +1,200 s NO-GO the restart's stream 2 is refused while
+    # stream 1 runs, so the watcher ends stream 1 and reconnects. Stream 3
+    # replays the log, and the +1,800 s NO-GO, with its records printed after
+    # the restart, stops the app. The watcher used to keep stream 1, whose
+    # refused replacements left the newest file empty, so that poll gave WAIT
+    # (newest_stream_empty), which re-armed the restart.
+    result, fake, run_dir = _watch_d844(
+        tmp_path,
+        {1: 1_200, 3: 1_800},
+        {},
+        [(60, ""), (1_200, "printed-1"), (1_800, "printed-3")],
+        budget=SHORT_BUDGET,
+        FAKE_ONE_READER="1",
+        FAKE_LIVE_LISTS="3",
+    )
+    assert result.returncode == 3, result.stderr
+    assert _polls(run_dir) == [
+        "NO-GO",
+        "restart",
+        "refused",
+        "reconnected",
+        "NO-GO",
+        "stopped",
+    ]
+    assert "the fake refuses log stream 2" in (run_dir / "app-2.log").read_text()
+    calls = _calls(fake)
+    assert calls.count(f"app logs {APP}") == 3
+    assert calls.count(f"app stop {APP}") == 1
+
+
+def test_a_refused_restart_beside_the_replaced_stream_falls_back_to_one_stream(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 3: the restart's stream 2 replays to +1,200 s and
+    # ends; its restarts while stream 1 still runs (3, between polls, and 4)
+    # are refused. The watcher ends stream 1 and reconnects one stream at a
+    # time: stream 5 replays the log, and the +1,800 s NO-GO stops the app.
+    # The watcher used to restart beside stream 1 until the poll, whose empty
+    # newest file gave WAIT, which re-armed the restart.
+    result, fake, run_dir = _watch_d844(
+        tmp_path,
+        {1: 1_200, 2: 1_200, 5: 1_800},
+        {},
+        [(60, ""), (1_200, "printed-1"), (1_800, "printed-5")],
+        budget=SHORT_BUDGET,
+        FAKE_ENDS_AT_ONCE="2",
+        FAKE_REFUSE="3,4",
+        FAKE_LIVE_LISTS="3",
+    )
+    assert result.returncode == 3, result.stderr
+    assert _polls(run_dir) == [
+        "NO-GO",
+        "restart",
+        "refused",
+        "reconnected",
+        "NO-GO",
+        "stopped",
+    ]
+    calls = _calls(fake)
+    assert calls.count(f"app logs {APP}") == 5
+    assert calls.count(f"app stop {APP}") == 1
+
+
+def test_streams_that_are_always_refused_raise_an_alarm_and_stop_nothing(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 3: after stream 1, Modal refuses every stream.
+    # The restart's stream and both reconnects are refused, so the watcher
+    # alarms that it could not regain a working stream. The newest file
+    # stays empty, so the next poll gives WAIT (newest_stream_empty), and
+    # nothing is stopped: the runner's budget bounds the run. How many polls
+    # come before the fake's list shows the app finished depends on whether
+    # a poll's own stream check meets a refused stream before it has exited,
+    # so only the polls after the first WAIT are left open.
+    result, fake, run_dir = _watch_d844(
+        tmp_path,
+        {1: 1_200},
+        {},
+        [(60, ""), (1_200, "printed-1"), (1_800, "")],
+        budget=SHORT_BUDGET,
+        FAKE_REFUSE_FROM="2",
+        FAKE_LIVE_LISTS="3",
+    )
+    assert result.returncode == 0, result.stderr
+    polls = _polls(run_dir)
+    assert polls[:4] == ["NO-GO", "restart", "refused", "WAIT"]
+    assert set(polls[4:]) <= {"WAIT", "empty, replaced"}
+    assert "newest_stream_empty" in (run_dir / "go-no-go.log").read_text()
+    alarms = (run_dir / "ALARM").read_text()
+    assert "could not regain a working log stream" in alarms
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def test_a_new_stream_that_runs_but_prints_nothing_is_replaced_then_alarmed(
+    tmp_path,
+) -> None:
+    # Review r8, should-fix 3: every stream after the first runs but
+    # delivers nothing. The restart's stream passes the readiness check (it
+    # runs), and the +1,800 s poll gives WAIT (newest_stream_empty). At the
+    # second empty poll in a row the watcher replaces the newest stream
+    # (WATCH_RECONNECTS=1); at the third it alarms. Nothing is stopped. The
+    # watcher used to WAIT in silence.
+    result, fake, run_dir = _watch_d844(
+        tmp_path,
+        {1: 1_200},
+        {},
+        [
+            (60, ""),
+            (1_200, "printed-1"),
+            (1_800, "printed-2"),
+            (2_400, "printed-2"),
+            (3_000, "printed-3"),
+        ],
+        budget=SHORT_BUDGET,
+        FAKE_SILENT_FROM="2",
+        WATCH_RECONNECTS="1",
+    )
+    assert result.returncode == 0, result.stderr
+    assert _polls(run_dir) == [
+        "NO-GO",
+        "restart",
+        "WAIT",
+        "WAIT",
+        "empty, replaced",
+        "WAIT",
+    ]
+    alarms = (run_dir / "ALARM").read_text().splitlines()
+    assert len(alarms) == 1
+    assert "no log stream has delivered a scorer record at 3 polls" in alarms[0]
+    assert not any(call.startswith("app stop ap-") for call in _calls(fake))
+
+
+def test_a_python_that_cannot_read_records_is_refused_at_the_start(
+    tmp_path,
+) -> None:
+    # Every stop rests on reading the streams' records; an interpreter that
+    # runs the projection but cannot load its record parser would leave
+    # every NO-GO unconfirmed, so the watcher refuses to start.
+    python = tmp_path / "python3"
+    python.write_text(
+        "#!/bin/bash\n"
+        'case "$2" in *"import _records"*)\n'
+        '  echo "ImportError: no _records" >&2; exit 1 ;;\n'
+        "esac\n"
+        f'exec "{sys.executable}" "$@"\n'
+    )
+    python.chmod(0o755)
+    result, fake, run = _watch(tmp_path, _live(), PYTHON=str(python))
+    assert result.returncode == 2
+    assert "could not read scorer records" in result.stderr
+    assert "did not start" in (run / "ALARM").read_text()
+    calls = _calls(fake)
+    assert not any(call.startswith(("app logs ap-", "app stop ap-")) for call in calls)
+
+
 def test_help_is_read_whole_so_a_long_help_keeps_its_flags(tmp_path) -> None:
-    result, fake, _ = _watch(tmp_path, _stalled(), FAKE_NEW_CLI="1", FAKE_LONG_HELP="1")
+    result, fake, _ = _overrun(tmp_path, FAKE_NEW_CLI="1", FAKE_LONG_HELP="1")
     assert result.returncode == 3, result.stderr
     calls = _calls(fake)
     assert f"app logs --follow {APP}" in calls

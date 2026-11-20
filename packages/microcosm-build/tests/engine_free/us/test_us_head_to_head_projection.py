@@ -519,7 +519,8 @@ def test_a_result_taken_without_its_slice_line_is_a_log_gap() -> None:
     del log[lost[0]]
     report = projection.project(projection.parse_log(log), _limits(), at)
     # The rebuild stops at the gap, so the pool behind it is unknown: no
-    # estimate, and only the stall check or the runner's budget can end it.
+    # estimate, and only the stall check's NO-GO (on which the watcher
+    # alarms) or the runner's budget can end the wait.
     assert report["verdict"] == "WAIT"
     assert report["log_gap"] == {"candidate": [3]}
     assert "lost lines" in report["reasons"][0]
@@ -735,7 +736,7 @@ def test_a_worker_start_lost_in_a_hole_is_a_log_gap_not_a_no_go() -> None:
     # reveal it, so it was no log gap: the rebuild ran a worker short, dated
     # three slices to end before they start, and the estimate read 1,593 s
     # late, a NO-GO for a run that fits. Such a rebuild is now a log gap: WAIT,
-    # and the stall check still stops a hung run.
+    # and the stall check still gives a hung run NO-GO.
     run = _d844()
     assert 14_000 < run.tool_end - START < 14_505
     limits = _d844_limits()
@@ -948,7 +949,7 @@ def test_the_hold_reaches_pools_a_hole_could_cut_and_a_stall_still_stops() -> No
     assert report["estimate"]["pace_from"] == "candidate"
     # The hold acts on the time line only: when the log stops after a
     # restart, the estimate climbs past the budget and waits, and the stall
-    # check stops the run once no record has come for its 3,600 s floor.
+    # check gives NO-GO once no record has come for its 3,600 s floor.
     held = judge(2000, 2138 + 3600, log_until=2200)
     assert held["verdict"] == "WAIT" and held["starts_unconfirmed"]
     stalled = judge(2000, 2138 + 3601, log_until=2200)

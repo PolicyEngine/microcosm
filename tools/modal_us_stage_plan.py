@@ -479,7 +479,9 @@ def timeout_for_cap(cap_usd: float, usd_per_second: float) -> int:
 # boundary, stops one process that outgrows the rest; if all sixteen workers
 # grow alike, the hard limit comes first, at about 16 GiB each.
 # The runbook's watcher (tools/us_head_to_head_watch.sh) reports memory from
-# the run's log but stops a run only on time or a stall. Placement is
+# the run's log but never stops a run on it: it stops a run on a time
+# NO-GO it can show is current, or after polls with no usable verdict, and
+# raises an alarm on a stall. Placement is
 # non-preemptible: the scorer has no resume, and the runbook's measured
 # preemption rate (about 0.67 per hour) would interrupt most attempts of two
 # hours or more.
