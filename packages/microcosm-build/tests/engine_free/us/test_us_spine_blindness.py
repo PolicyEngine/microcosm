@@ -222,7 +222,9 @@ _GATE_SOURCE_CHANNEL_ACCESSOR = "support_gate_source_channel_series"
 _GATE_SOURCE_CHANNEL_CALLERS = {
     "alimony.py": frozenset({"us_alimony_signal_gate"}),
     "medicare_take_up.py": frozenset({"_asec_source_mask"}),
-    "retirement_contributions.py": frozenset({"_asec_source_mask"}),
+    "retirement_contributions.py": frozenset(
+        {"_asec_source_mask", "_source_reconciliation_mask"}
+    ),
     "retirement_distributions.py": frozenset({"_asec_source_mask"}),
     "ssi_take_up.py": frozenset({"us_ssi_take_up_reporter_source_ids"}),
     "weeks_unemployed.py": frozenset({"_weeks_unemployed_gate_scopes"}),

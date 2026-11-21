@@ -6575,26 +6575,9 @@ def test_group_quarters_add_nothing_to_household_type_targets(assembled) -> None
 #: and, keyed by defect, the detail fields each clone-only defect of
 #: :data:`READER_CLONE_DEFECTS` moves besides the verdict (lead call L7).
 #: PR 3 owns every entry.
-_X5_MOVED_FIELDS: dict[str, frozenset[str]] = {
-    "retirement_contributions": frozenset(
-        {
-            "allocation_mismatch_rows",
-            "source_positive_rows",
-            "source_reconciliation_rows",
-            "source_rows",
-            "source_total",
-        }
-    ),
-}
+_X5_MOVED_FIELDS: dict[str, frozenset[str]] = {}
 
-_X5_PR3_REASONS: dict[str, str] = {
-    "retirement_contributions": (
-        "d2283 PR 3 flips this. Retirement contributions: once assembled, the "
-        "source and reconciliation masks keep only stored-asec rows "
-        "(retirement_contributions.py:172-193) where Route A takes every row, "
-        "so five source fields move; the verdict does not."
-    ),
-}
+_X5_PR3_REASONS: dict[str, str] = {}
 
 #: Runtime modules that test the assembled discriminator only as writers or
 #: provenance owners, not as gate readers.

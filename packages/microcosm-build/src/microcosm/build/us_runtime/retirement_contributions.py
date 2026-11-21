@@ -170,12 +170,22 @@ def _numeric_source(frame: pd.DataFrame, column: str) -> np.ndarray:
 
 
 def _asec_source_mask(frame: pd.DataFrame) -> np.ndarray:
-    """Select physical ASEC rows while retaining the legacy all-row source."""
+    """Select CPS rows while retaining the legacy all-row source.
+
+    The mask takes every row of a frame without assembly metadata, such as
+    Route A's frames and the pre-clone frame. On an assembled frame it takes
+    the rows whose stored channel names a CPS origin, ``asec`` or
+    ``puf_tax_detail``: physical ASEC rows and their PUF tax-detail clones,
+    whose ``RETCB_VAL`` Route A reads in full. It leaves ACS rows out, so
+    their empty ``RETCB_VAL`` never reaches :func:`_numeric_source`.
+    """
 
     if not has_assembled_support_metadata(frame, entity="person"):
         return np.ones(len(frame), dtype=bool)
     source_channels = support_gate_source_channel_series(frame, entity="person")
-    mask = source_channels.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    mask = source_channels.isin(
+        (_BASE_ASEC_SUPPORT_CHANNEL, _PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+    ).to_numpy()
     if not mask.any():
         raise SourceRuntimeError(
             "US retirement-contribution support has no physical ASEC source rows."
@@ -184,13 +194,25 @@ def _asec_source_mask(frame: pd.DataFrame) -> np.ndarray:
 
 
 def _source_reconciliation_mask(frame: pd.DataFrame) -> np.ndarray:
-    """Select direct ASEC operator rows whose allocation remains source-exact."""
+    """Select the source rows whose outputs the summary reconciles.
+
+    A frame without assembly metadata reconciles every row, as Route A does.
+    On an assembled frame the mask keeps a source row when its stored
+    channel equals its operator role: a native stored as ``asec``, or a
+    clone stored as ``puf_tax_detail``, Route A's clone label, which d2283's
+    one-population join keeps. The stacked pool stores its CPS clones as
+    ``asec``, so they stay out there, and ACS rows never reach this test,
+    since the source mask leaves them out. Route A's clones carry imputed
+    outputs, so ``allocation_mismatch_rows`` can count them; the gate
+    reports that count and does not fail on it.
+    """
 
     source_mask = _asec_source_mask(frame)
     if not has_assembled_support_metadata(frame, entity="person"):
         return source_mask
     roles = support_role_series(frame, entity="person").to_numpy()
-    return source_mask & (roles == _BASE_ASEC_SUPPORT_CHANNEL)
+    channels = support_gate_source_channel_series(frame, entity="person").to_numpy()
+    return source_mask & (roles == channels)
 
 
 def derive_us_retirement_contributions_from_manifest(

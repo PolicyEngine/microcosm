@@ -23,19 +23,24 @@ The sanity cases check that the oracle is main's code. On X5's ASEC-only
 assembled frame main's gates keep their scopes from before PR 3: no row in the
 weeks UC constraint, and the native rows as the source rows of the other
 three (and as the contributions reconciliation rows). PR 3 has widened the
-assembled source masks of the live Medicare and retirement-distributions
-gates to every CPS row, so each of those live halves counts every row
-there. It has also put every CPS clone in the live weeks gate's UC rule, so
-that live half counts every clone there. Each of the three live payloads
-differs from main's in that one field alone. The contributions gate still
-runs main's code at this commit, so its digest matches main's. The
-structural checks confirm that each oracle holds its own copies, reads no
-live copy and imports only from its live module and that module's helpers.
-They also confirm that an oracle names its live module only in a ``from``
-import, and that the differential grades each gate's oracle copy against
-its live gate. The hashing self-test confirms that key order leaves a
-payload's digest unchanged, and that a changed value, a float in place of
-an int and a float one unit in the last place away each change it.
+assembled source masks of the live Medicare, retirement-contributions and
+retirement-distributions gates to every CPS row, so each of those live
+halves counts every row there. It has also put every CPS clone in the live
+weeks gate's UC rule, so that live half counts every clone there. The live
+weeks, Medicare and distributions payloads each differ from main's in that
+one field alone. The live contributions gate also reconciles every CPS row
+there, as Route A does, so its payload differs from main's in five fields:
+``source_rows`` and ``source_reconciliation_rows``, which equal the row
+count, and ``source_positive_rows``, ``allocation_mismatch_rows`` and
+``source_total``, which count the clones too. Every live verdict matches
+main's. The structural checks confirm that each oracle holds its own
+copies, reads no live copy and imports only from its live module and that
+module's helpers. They also confirm that an oracle names its live module
+only in a ``from`` import, and that the differential grades each gate's
+oracle copy against its live gate. The hashing self-test confirms that key
+order leaves a payload's digest unchanged, and that a changed value, a
+float in place of an int and a float one unit in the last place away each
+change it.
 """
 
 from __future__ import annotations
@@ -169,28 +174,39 @@ def test_the_oracle_is_mains_code_on_the_assembled_frame(gate: str) -> None:
         assert details["source_reconciliation_rows"] == natives
     else:
         assert details["source_rows"] == natives
-    # The one field PR 3 moves on this frame, for each gate it has flipped,
-    # and the live value: every row (Medicare, distributions), every clone
-    # (weeks).
-    live_moves = {
-        "medicare_take_up": ("source_rows", len(clone_index)),
-        "retirement_distributions": ("source_rows", len(clone_index)),
-        "weeks_unemployed": ("uc_constraint_rows", len(clone_index) - natives),
+    # The fields PR 3 moves on this frame, for each gate, with the live
+    # values this test pins: every row (Medicare, distributions, and the
+    # contributions source and reconciliation rows), every clone (weeks).
+    # Since the live contributions gate reconciles every clone, it also
+    # counts the clones in three more fields, as Route A does.
+    rows = len(clone_index)
+    live_moves: dict[str, dict[str, int]] = {
+        "medicare_take_up": {"source_rows": rows},
+        "retirement_contributions": {
+            "source_rows": rows,
+            "source_reconciliation_rows": rows,
+        },
+        "retirement_distributions": {"source_rows": rows},
+        "weeks_unemployed": {"uc_constraint_rows": rows - natives},
     }
-    if gate in live_moves:
-        field, value = live_moves[gate]
-        live = result["live"]
-        assert live["details"][field] == value
-        moved = {key for key in details if details[key] != live["details"].get(key)}
-        assert moved == {field}
-        assert set(live["details"]) == set(details)
-        assert (live["passed"], live["failures"]) == (
-            result["oracle"]["passed"],
-            result["oracle"]["failures"],
-        )
-        assert result["live_sha256"] != result["oracle_sha256"]
-    else:
-        assert result["live_sha256"] == result["oracle_sha256"]
+    also_moved = {
+        "retirement_contributions": {
+            "allocation_mismatch_rows",
+            "source_positive_rows",
+            "source_total",
+        },
+    }
+    live = result["live"]
+    for field, value in live_moves[gate].items():
+        assert live["details"][field] == value, field
+    moved = {key for key in details if details[key] != live["details"].get(key)}
+    assert moved == set(live_moves[gate]) | also_moved.get(gate, set())
+    assert set(live["details"]) == set(details)
+    assert (live["passed"], live["failures"]) == (
+        result["oracle"]["passed"],
+        result["oracle"]["failures"],
+    )
+    assert result["live_sha256"] != result["oracle_sha256"]
 
 
 #: Each gate's oracle module, live module and copied names.
