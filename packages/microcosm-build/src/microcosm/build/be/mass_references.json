@@ -1,0 +1,56 @@
+{
+  "country": "be",
+  "reference_set": "mass",
+  "description": "CREATE scales design weights to the Federal Planning Bureau's 2025 annual-average population of Belgium (June 2026 Economic Outlook annex, table T07), used unaged as the 2026 destination mass. This unfiltered person count supplies mass, not a calibration row. The series and the year are a proposal under d1902 (METHOD-CARD-BE row BE-MC11), which also proposes the weights audit's mass-change limit that goes with them.",
+  "target_references": [
+    {
+      "name": "fpb_national_population_annual_average_2025",
+      "ledger_selector": {
+        "source_name": "fpb_economic_outlook",
+        "source_measure_id": "level_thousand",
+        "source_concept": "fpb.economic_outlook_2026_2031.t07.total_population",
+        "entity_name": "person",
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "BE",
+        "geography_vintage": "current",
+        "record_set_id": "fpb.economic_outlook_2026_2031.cy2025.labour_market.levels.total_population",
+        "dimensions": [],
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:15de741846e5680835bafd2c"
+      },
+      "entity": "person",
+      "measure": "people",
+      "period": 2025,
+      "family": "demography",
+      "assertion_policy": "observed_only",
+      "metadata": {
+        "contract_target_id": "national_population",
+        "activation_status": "active",
+        "criticality": "release_blocking",
+        "measure_kind": "prepared_column",
+        "publisher": "Federal Planning Bureau",
+        "target_role": "pre_calibration",
+        "reference_set": "mass",
+        "method_card_row": "BE-MC11",
+        "method_card_status": "proposed_pending_d1902",
+        "fact_aggregation": "time_mean",
+        "ageing": "none: FPB's 2025 annual average is used unaged as the 2026 destination mass",
+        "source_snapshot": "2025 annual average; the annex states it in thousands (En milliers (moyennes annuelles)) and Chronicle scales it to persons"
+      },
+      "hierarchy": {
+        "provider": {
+          "id": "fpb",
+          "label": "Federal Planning Bureau"
+        },
+        "category": {
+          "id": "demography",
+          "label": "Demography",
+          "provider_id": "fpb"
+        },
+        "target_label": "Belgium annual-average population, 2025 (FPB)"
+      },
+      "period_match_policy": "exact"
+    }
+  ]
+}

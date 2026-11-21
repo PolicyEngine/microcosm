@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "kind": "be_fpb_t07_total_population_fixture",
+  "use": "test_be_create_inputs.py runs transport.create@1 on these facts with Belgium's mass_references.json.",
+  "source": {
+    "artifact": "Belgium's pinned Chronicle consumer artifact (be/chronicle_feed.json)",
+    "chronicle_source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
+    "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+    "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3"
+  },
+  "selection": "The artifact's two consumer_facts.jsonl lines whose layout.record_set_id is fpb.economic_outlook_2026_2031.cy2025 or cy2026 .labour_market.levels.total_population, copied byte for byte in artifact order.",
+  "lines": [
+    {
+      "artifact_line": 572,
+      "period": 2025,
+      "assertion": "observation",
+      "value": 11850400,
+      "sha256": "b588e3b0d646a43afd1daf81069fe1f16e568da8be747653b4fe2188289c4068"
+    },
+    {
+      "artifact_line": 671,
+      "period": 2026,
+      "assertion": "source_projection",
+      "value": 11896000,
+      "sha256": "3316bd887c02fed7b73c613f085d9101ce36833b7b7e55166662cdbe68da2980"
+    }
+  ],
+  "output_sha256": "ac7adfb735a87da71529ff9c0533ec60688e034fa804dd434c773af6a1b197f2",
+  "refresh": "Re-extract when be/chronicle_feed.json's pin moves. The feed test, run with BE_CHRONICLE_ARTIFACT, checks that each line is a line of the pinned artifact."
+}
