@@ -676,7 +676,11 @@ def entitlement_extension(spec: Mapping) -> TransportExtension:
                 "cell_diagnostics", collector, "cell_diagnostics", CELL_DIAGNOSTICS_TYPE
             )
         )
-        checkpoints += (collector,)
+        # A document may place the collector among its own checkpoints, for
+        # example ahead of the gate battery it feeds; otherwise it is the
+        # last checkpoint.
+        if collector not in checkpoints:
+            checkpoints += (collector,)
         screen_gate = cell_contract[0]
         for row in transport_resource(spec, "transport_graph")["nodes"]:
             if (
