@@ -271,6 +271,11 @@
       "path": "export_replay_bindings.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "donor_profile.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }
