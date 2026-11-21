@@ -12,8 +12,10 @@ holds ACS rows. These tests run it on the frames a release can see:
 * the assembled frame without its person clone index and source id, still
   True, since the predicate reads only the channel and the record.
 
-It refuses a frame whose live ACS rows have no record, a record that
-declares ACS rows the frame lacks, an ACS person count that is not a
+It refuses live ACS rows that the frame's record does not declare (no
+record, a record without the channel, or a person count of 0), a record
+that declares ACS rows the frame lacks, a record without version 1, a
+channel list and native row counts, an ACS person count that is not a
 nonnegative integer, and an argument that is not a frame.
 """
 
@@ -49,6 +51,10 @@ _PERSON_CHANNEL = support_channel_column("person")
 _MALFORMED_COUNT = (
     "Malformed spine assembly record: its person count for "
     f"{ACS_SUPPORT_CHANNEL!r} must be a nonnegative integer"
+)
+_MALFORMED_RECORD = (
+    f"Malformed spine assembly record: {SPINE_ASSEMBLY_MANIFEST_KEY!r} "
+    "must hold version 1, a channel list and native row counts."
 )
 
 
@@ -200,6 +206,67 @@ def test_live_acs_rows_without_a_record_refuse(assembled) -> None:
         one_population_declares_acs_rows(stripped)
 
 
+def test_live_acs_rows_under_a_zero_count_refuse(assembled) -> None:
+    zero = _with_acs_person_count(assembled, lambda count: 0)
+    record = zero.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
+    assert ACS_SUPPORT_CHANNEL in record["channels"]
+    assert _record_acs_persons(zero) == 0
+    live = int(_acs_persons(zero).sum())
+    assert live > 0
+
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            f"Undeclared ACS rows: {live} person row(s) carry the support channel "
+            f"{ACS_SUPPORT_CHANNEL!r}, and the frame's spine assembly record "
+            "counts no ACS person."
+        ),
+    ):
+        one_population_declares_acs_rows(zero)
+
+
+def test_live_acs_rows_under_a_record_without_the_channel_refuse(
+    assembled,
+) -> None:
+    # The record keeps the writer's shape: the channel leaves the channel
+    # list and every entity's counts.
+    record = assembled.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
+    assert ACS_SUPPORT_CHANNEL in record["channels"]
+    unlisted = _rebuild(
+        assembled,
+        metadata={
+            SPINE_ASSEMBLY_MANIFEST_KEY: {
+                **record,
+                "channels": tuple(
+                    channel
+                    for channel in record["channels"]
+                    if channel != ACS_SUPPORT_CHANNEL
+                ),
+                "native_row_counts": {
+                    entity: {
+                        channel: count
+                        for channel, count in by_channel.items()
+                        if channel != ACS_SUPPORT_CHANNEL
+                    }
+                    for entity, by_channel in record["native_row_counts"].items()
+                },
+            }
+        },
+    )
+    live = int(_acs_persons(unlisted).sum())
+    assert live > 0
+
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            f"Undeclared ACS rows: {live} person row(s) carry the support channel "
+            f"{ACS_SUPPORT_CHANNEL!r}, and the frame's spine assembly record "
+            "does not list that channel."
+        ),
+    ):
+        one_population_declares_acs_rows(unlisted)
+
+
 def test_a_record_declaring_removed_acs_rows_refuses(assembled) -> None:
     cps_only = assembled.select(~_acs_persons(assembled))
     assert not _acs_persons(cps_only).any()
@@ -240,6 +307,31 @@ def test_a_malformed_acs_person_count_refuses(assembled, value_of) -> None:
     malformed = _with_acs_person_count(assembled, value_of)
 
     with pytest.raises(OnePopulationContractError, match=re.escape(_MALFORMED_COUNT)):
+        one_population_declares_acs_rows(malformed)
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        lambda record: {**record, "version": 2},
+        lambda record: {**record, "channels": ACS_SUPPORT_CHANNEL},
+        lambda record: {
+            key: value for key, value in record.items() if key != "native_row_counts"
+        },
+        lambda record: tuple(record),
+    ],
+    ids=["version 2", "channel string", "no counts", "not a mapping"],
+)
+def test_a_malformed_record_refuses(assembled, edit) -> None:
+    # The frame keeps its live ACS rows, so a predicate that read a malformed
+    # record as no record would raise the undeclared message instead.
+    record = assembled.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
+    malformed = _rebuild(
+        assembled, metadata={SPINE_ASSEMBLY_MANIFEST_KEY: edit(record)}
+    )
+    assert _acs_persons(malformed).any()
+
+    with pytest.raises(OnePopulationContractError, match=re.escape(_MALFORMED_RECORD)):
         one_population_declares_acs_rows(malformed)
 
 
