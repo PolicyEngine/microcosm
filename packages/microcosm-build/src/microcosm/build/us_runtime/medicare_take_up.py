@@ -28,6 +28,7 @@ from microcosm.build.source_runtime import (
 )
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     has_assembled_support_metadata,
     has_support_role_metadata,
     support_gate_source_channel_series,
@@ -132,12 +133,21 @@ def _source_codes(person: pd.DataFrame, source: str) -> np.ndarray:
 
 
 def _asec_source_mask(person: pd.DataFrame) -> np.ndarray:
-    """Select physical ASEC rows without changing legacy source semantics."""
+    """Select CPS rows without changing legacy source semantics.
+
+    The mask takes every row of a frame without assembly metadata, such as
+    Route A's frames and the pre-clone frame. On an assembled frame it takes
+    the rows whose stored channel names a CPS origin, ``asec`` or
+    ``puf_tax_detail``: physical ASEC rows and their PUF tax-detail clones,
+    which Route A reconciles in full. It leaves ACS rows out.
+    """
 
     if not has_assembled_support_metadata(person, entity="person"):
         return np.ones(len(person), dtype=bool)
     source_channels = support_gate_source_channel_series(person, entity="person")
-    mask = source_channels.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    mask = source_channels.isin(
+        (BASE_ASEC_SUPPORT_CHANNEL, PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+    ).to_numpy()
     if not mask.any():
         raise SourceRuntimeError(
             "US Medicare take-up support has no physical ASEC source rows."

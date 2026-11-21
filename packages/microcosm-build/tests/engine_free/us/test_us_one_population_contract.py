@@ -6083,12 +6083,8 @@ def test_group_quarters_add_nothing_to_household_type_targets(assembled) -> None
 #: keep Route A's ``puf_tax_detail`` label once assembled), keyed by reader,
 #: and, keyed by defect, the detail fields each clone-only defect of
 #: :data:`READER_CLONE_DEFECTS` moves besides the verdict (lead call L7).
-#: PR 3 owns all six.
+#: PR 3 owns every entry.
 _X5_MOVED_FIELDS: dict[str, frozenset[str]] = {
-    "medicare_clone_mcare_mismatch": frozenset(
-        {"source_mismatch_count", "source_rows"}
-    ),
-    "medicare_take_up": frozenset({"source_rows"}),
     "retirement_contributions": frozenset(
         {
             "allocation_mismatch_rows",
@@ -6106,20 +6102,6 @@ _X5_MOVED_FIELDS: dict[str, frozenset[str]] = {
 }
 
 _X5_PR3_REASONS: dict[str, str] = {
-    "medicare_clone_mcare_mismatch": (
-        "d2283 PR 3 flips this. Medicare take-up, fail to pass: one clone row's "
-        "MCARE disagrees with its take-up flag. Route A reconciles every row "
-        "and fails (medicare_take_up.py:306-308); once assembled, "
-        "_asec_source_mask keeps only stored-asec rows (:134-146), so the "
-        "clone's mismatch is not counted and the gate passes."
-    ),
-    "medicare_take_up": (
-        "d2283 PR 3 flips this. Medicare take-up: once assembled, "
-        "_asec_source_mask keeps only rows whose stored channel is asec "
-        "(medicare_take_up.py:134-146), so MCARE reconciliation leaves out the "
-        "clone rows Route A checks; source_mismatch_count can only fall, which "
-        "can move the gate from fail to pass (:306-308)."
-    ),
     "retirement_contributions": (
         "d2283 PR 3 flips this. Retirement contributions: once assembled, the "
         "source and reconciliation masks keep only stored-asec rows "
@@ -6561,10 +6543,10 @@ def test_assembled_readers_return_route_a_statistics(readers, reader) -> None:
     returns Route A's verdict and statistics after the rewrite.
 
     Run once on the Route A frame and once on its
-    ``to_assembled_provenance`` with no ACS row. The four readers whose
-    assembled branch moves under Route A's clone label are strict expected
-    failures, each naming PR 3 (two more, on verdicts, follow below); the
-    WIC frame's two clone partitions agree
+    ``to_assembled_provenance`` with no ACS row. Each reader, or clone-only
+    defect below, whose assembled branch moves under Route A's clone label
+    carries a strict expected failure naming PR 3; the WIC frame's two
+    clone partitions agree
     (see the fixture test), so the WIC case compares one partition.
     """
 

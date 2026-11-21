@@ -22,10 +22,13 @@ out, not compared as two equal raises.
 The sanity cases check that the oracle is main's code. On X5's ASEC-only
 assembled frame main's gates keep their scopes from before PR 3: no row in the
 weeks UC constraint, and the native rows as the source rows of the other
-three (and as the contributions reconciliation rows). The live gates are
-main's code at this commit, so both digests are equal there too. The
-structural checks confirm that each oracle holds its own copies, reads no
-live copy and imports only from its live module and that module's helpers.
+three (and as the contributions reconciliation rows). PR 3 has widened the
+live Medicare gate's assembled source mask to every CPS row, so its live
+half counts every row there, and its payload differs from main's in
+``source_rows`` alone. The other three live gates still run main's code at
+this commit, so their digests match main's. The structural checks confirm
+that each oracle holds its own copies, reads no live copy and imports only
+from its live module and that module's helpers.
 """
 
 from __future__ import annotations
@@ -158,7 +161,19 @@ def test_the_oracle_is_mains_code_on_the_assembled_frame(gate: str) -> None:
         assert details["source_reconciliation_rows"] == natives
     else:
         assert details["source_rows"] == natives
-    assert result["live_sha256"] == result["oracle_sha256"]
+    if gate == "medicare_take_up":
+        live = result["live"]
+        assert live["details"]["source_rows"] == len(clone_index)
+        moved = {key for key in details if details[key] != live["details"].get(key)}
+        assert moved == {"source_rows"}
+        assert set(live["details"]) == set(details)
+        assert (live["passed"], live["failures"]) == (
+            result["oracle"]["passed"],
+            result["oracle"]["failures"],
+        )
+        assert result["live_sha256"] != result["oracle_sha256"]
+    else:
+        assert result["live_sha256"] == result["oracle_sha256"]
 
 
 #: Each gate's oracle module, live module and copied names.
