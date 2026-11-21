@@ -25,6 +25,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.ledger_targets import (
+    _ledger_fact_index,
     fact_matches_selector,
     reference_fact_selectors,
 )
@@ -419,14 +420,19 @@ def test_create_inputs_leave_activation_gaps_unchanged(tmp_path):
     ["holdout_references.json", "precal_references.json", "target_references.json"],
 )
 def test_no_other_belgian_row_selects_the_mass_fact(name):
-    """The mass fact feeds CREATE only, by the Ledger's own matcher.
+    """The mass fact feeds CREATE only, by the Ledger's own resolution.
 
-    The packaged mass row selects the fixture's 2025 fact, and no selector of
-    any holdout, pre-calibration or calibration row matches that fact, ratio
-    operands included. (The 2026 fact is the ageing pair's numerator in ten
-    A.1 rows; the 2025 fact is CREATE's alone.)
+    The Ledger resolves a row first by its identifiers (``ledger_fact_key``,
+    ``ledger_source_record_id``) against every key it indexes for a fact, and
+    otherwise by its selectors. The packaged mass row selects the fixture's
+    2025 fact. No identifier or selector of any holdout, pre-calibration or
+    calibration row reaches that fact, ratio operands included. (The 2026 fact
+    is the ageing pair's numerator in eight A.1 rows and two B.4 rows; the
+    2025 fact is CREATE's alone.)
     """
     mass_fact = _fixture_facts()[0]
+    index = _ledger_fact_index([mass_fact])
+    assert index.lookup(_KEY_2025)
     (mass,) = _parsed_references("mass_references.json")
     assert any(
         fact_matches_selector(mass_fact, selector)
@@ -435,6 +441,11 @@ def test_no_other_belgian_row_selects_the_mass_fact(name):
     references = _parsed_references(name)
     assert len(references) == len(_document(name)["target_references"]) > 0
     for reference in references:
+        for identifier in (
+            reference.ledger_fact_key,
+            reference.ledger_source_record_id,
+        ):
+            assert not (identifier and index.lookup(identifier)), reference.name
         for selector in reference_fact_selectors(reference):
             assert not fact_matches_selector(mass_fact, selector), reference.name
 
