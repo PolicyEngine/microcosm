@@ -537,6 +537,7 @@ class TestBelgianPackage:
             "reference_profiles.json",
             "gates.json",
             "release_contract.json",
+            "unit_declarations.json",
         }
         assert set(spec.resource_hashes) == set(spec.resources) | {
             "country_package.json"

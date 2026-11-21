@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "a72ec0eebcaf14cc2fe2830632fd7b7ca5cda3fefd3820995d2a0fa066d4f875",
+  "fingerprint": "2ff2ed3966b9375f85094a8b2219481bf2800e983f817faa4d83de78e1e67a7f",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -29,10 +29,10 @@
     "staging_repo": "policyengine/populace-be-staging"
   },
   "resource_hashes": {
-    "axiom_input_closure.json": "bc40cbd6ae199d57b7d20548b2a052deb25ad9892a715dc90effd95d15012ef7",
-    "axiom_rules_bindings.json": "7b218789d46d64a743d5817fa7e79d1ac6213e290fe9646a5a323b24de8ed8ea",
+    "axiom_input_closure.json": "99b4438fd885dca88c50e5613d3b1076666a4339429c8d9373e1e9c396e6e3ea",
+    "axiom_rules_bindings.json": "352e3ba31151267d39a48e8b4629ade657acdb52eab391bc6437e7b72fb2db9d",
     "chronicle_feed.json": "291d9858510ec80baac4536bf4f821f85966f57f0a72be700889bbfeed0a4f4e",
-    "country_package.json": "c85c3e826d58e042429bc846e6e979a8e96f27265d6310a85904c70fe6248456",
+    "country_package.json": "4ac618f6e624f7128822db037d57dc882781b8b24429e0c482fcc1114bb4b276",
     "gates.json": "9704a0c86b324d4243365a320438b47a9d7d5a6af7ec2adfa1821ecb8d611f68",
     "geography_spine.json": "090b83a4fa511e691b8f1486bc4188e4170cf9d4a1239e7418d33d5020ceca50",
     "holdout_references.json": "d65875740c1be58a3233b25b65371267ea2a8b92e5b61b55f2353f4e63e64881",
@@ -51,7 +51,8 @@
     "spec/sources.yaml": "24ea9b8c9aac32175d1c75156af5549a05bb3f155fbb23968235f3ead2cbefda",
     "spec/spine.yaml": "981be4881954d7696fbabf1bc989f619577b6e5600262f1a9c20915461808d41",
     "spec/vintages.yaml": "1a10d5aedd24cdb2fc9544c7a0d444df0b06d4b089dcb769bf0a7de9218df696",
-    "target_references.json": "b2e9b6ccee9f72031c25815e50097f5cddb90226d29ac33d9568a3e5771ebcaf"
+    "target_references.json": "b2e9b6ccee9f72031c25815e50097f5cddb90226d29ac33d9568a3e5771ebcaf",
+    "unit_declarations.json": "6728d6c080390713571ea8730d2838450bb061caab72dabb2f62664e8600211e"
   },
   "resources": [
     "spec/bundle.yaml",
@@ -75,7 +76,8 @@
     "reference_profiles.json",
     "release_contract.json",
     "source_stages.json",
-    "target_references.json"
+    "target_references.json",
+    "unit_declarations.json"
   ],
   "stage_names": [
     "load_populace_us_support_pool"

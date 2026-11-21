@@ -49,7 +49,6 @@
     ],
     "household": [
       "mortgage_interest",
-      "mortgage_principal",
       "property_tax"
     ]
   },
@@ -97,7 +96,7 @@
         "central": "donor_cy2024_to_ty2027_central",
         "high": "donor_cy2024_to_ty2027_high"
       },
-      "disclosure": "Mortgage interest, mortgage principal and property tax age by AWE growth. Max's ruling d1981 (2026-10-26) adopts this as an interim convention and pre-declares a hold-fixed sensitivity (factor 1), which no profile here carries yet (G8-w3)."
+      "disclosure": "Mortgage interest and property tax age by AWE growth. Max's ruling d1981 (2026-10-26) adopts this as an interim convention and pre-declares a hold-fixed sensitivity (factor 1), which no profile here carries yet (G8-w3)."
     }
   },
   "cents_suffix": "_cents",
@@ -119,6 +118,15 @@
       }
     }
   },
-  "pending": {},
+  "pending": {
+    "household": {
+      "mortgage_principal": {
+        "awaits": [
+          "Rule 1 (d3058): a donor release that carries household mortgage principal, or a declared derivation from the donor's mortgage balance, interest, origination year and an assumed term"
+        ],
+        "reason": "The pinned PolicyEngine-US donor carries no mortgage principal, and the US concept mapping reads it only inside the non-invertible mortgage_payments sum, so CREATE cannot stage it. Under ruling d3058 the build adds this flexibility so a first measurement run can go ahead: no node reads the column, the Accommodation Supplement owner payments read mortgage interest alone, and owners' costs are understated beyond MC8's rates and insurance gap. The column returns to the normalized roster, aged with owner_housing_costs, once it has a producer."
+      }
+    }
+  },
   "notes": "The rate is the IRS 2024 yearly average for the New Zealand dollar, quoted in NZD per USD, so a donor amount is multiplied by it. Calendar-2024 money is a declared convention covering flows and asset stocks; the donor monetary basis has not been authenticated against a producing manifest. The US build's PERIOD = 2024 and the exporter's _time_period write provide model-period lineage evidence. Money normalization refuses a donor whose recorded _time_period differs from calendar 2024 (G8-w H1); this runtime check is a consistency check, not authentication. No donor file is opened to establish this declaration. Variants V1 and V2 age with their own aging_index profile (G8-w H2). public_pension_income is dropped at CREATE and is not declared."
 }
