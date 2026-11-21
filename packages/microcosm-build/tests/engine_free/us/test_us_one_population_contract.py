@@ -6297,8 +6297,9 @@ _X5_ACS_LABEL_MODULES: dict[str, str] = {
         "contract's."
     ),
     "acs_release_predictors": (
-        "The stacked pool's release-time ACS predictor join: it keys on stored "
-        "acs and passes a frame with no such row through unchanged."
+        "Fills CPS-named predictors on the stacked pool's stored-acs rows at "
+        "release time. It passes a frame with no such row through unchanged, "
+        "or refuses it when the caller passes any archive option."
     ),
     "one_population_contract": (
         "The contract's ACS_SUPPORT_CHANNEL, acs_2024_1yr, the label it gives ACS rows."
@@ -6334,8 +6335,8 @@ def test_x5_names_every_acs_label_reader() -> None:
     or resolver caller here with its reason, and remove the row of a module
     that drops its label.
 
-    The rule's limit: it sees a module-level assignment of one literal and a
-    resolver call, nothing else. It misses a label in a tuple or a dict, an
+    The rule sees a module-level assignment of one literal and a resolver
+    call, nothing else. It misses a label in a tuple or a dict, an
     assignment inside a class or function body, an inline comparison, and
     an assignment with a comment after it on the same line. Modules of that
     shape today, none of them a gate reader: ``h5_io``
@@ -6558,7 +6559,9 @@ def test_assembled_readers_return_route_a_statistics(readers, reader) -> None:
 def test_a_moved_reader_moves_only_its_named_fields(readers, reader) -> None:
     """Outside the expected failure, a moved reader keeps its verdict and
     every statistic but the fields named for it. The fixture test checks
-    Route A's values of those fields, which count the clone rows."""
+    that Route A's ``source_rows`` (contributions and distributions),
+    ``source_reconciliation_rows`` (contributions) and
+    ``uc_constraint_rows`` (weeks) take the clone rows."""
 
     route_a, assembled = _x5_run(readers, reader)
     moved = {("details", field) for field in _X5_MOVED_FIELDS[reader]}
