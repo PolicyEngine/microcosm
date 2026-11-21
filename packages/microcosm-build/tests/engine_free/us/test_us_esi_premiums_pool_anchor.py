@@ -1438,6 +1438,59 @@ def test_a_weighted_employer_premium_past_the_largest_float_fails_both_gates(
         assert "MEPS-IC" not in failure
 
 
+@pytest.mark.parametrize(
+    ("target", "named", "not_named"),
+    [
+        # Each side's premium at about 1e308: both side totals stay finite,
+        # and the frame-wide total and the anchor-universe total do not.
+        (
+            "each_side",
+            (
+                "the weighted employer premium of both kinds of row together (inf)",
+                "the anchor-universe employer total (inf)",
+            ),
+            (),
+        ),
+        # The frame-wide total at 1.75e308 stays finite. The anchor-universe
+        # total divides it by the employed share, at most 0.95 on a frame the
+        # anchor gate passes, so it does not.
+        (
+            "frame_wide",
+            ("the anchor-universe employer total (inf)",),
+            ("the weighted employer premium of both kinds of row together (",),
+        ),
+    ],
+)
+def test_a_combined_employer_premium_past_the_largest_float_fails_both_gates(
+    mixed, target: str, named: tuple[str, ...], not_named: tuple[str, ...]
+) -> None:
+    # Every premium times one factor, weights untouched. The two side checks
+    # pass, so without a refusal of the sums formed from them the signal
+    # gate's ratios would pass and the anchor gate would blame absent MEPS-IC
+    # evidence for the infinite anchor-universe total.
+    base = us_esi_premiums_summary(mixed, allow_transferred_rows=True)
+    assert float(base["employed_share_of_anchor_universe"]) <= 0.95
+    factor = (
+        1e308 / float(base["source_employer_premium_total"])
+        if target == "each_side"
+        else 1.75e308 / float(base["employer_premium_total"])
+    )
+    frame = with_scaled_premiums(mixed, factor)
+    weights = np.asarray(frame.resolve_weights("person").values, np.float64)
+    employer = frame.table("person")[EMPLOYER].to_numpy(dtype=np.float64)
+    cps = cps_rows(frame)
+    sides = (weights[cps] @ employer[cps], weights[~cps] @ employer[~cps])
+    assert np.isfinite(sides).all()
+    assert bool(np.isfinite(weights @ employer)) == (target == "frame_wide")
+    for failure in _overflow_failures(frame):
+        for label in named:
+            assert label in failure
+        for label in not_named:
+            assert label not in failure
+        assert "rows' weighted employer premium (" not in failure
+        assert "MEPS-IC" not in failure
+
+
 def _cps_households_tilted(frame: Frame, small: np.ndarray, large: np.ndarray) -> Frame:
     """CPS households of ``small`` rows at 1e-200 times their weight and of
     ``large`` rows at 1e200 times it; transferred households unchanged."""

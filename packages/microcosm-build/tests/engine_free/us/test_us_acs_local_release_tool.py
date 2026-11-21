@@ -8443,6 +8443,67 @@ def test_package_ships_a_red_esi_premium_gate_only_as_a_recorded_waiver(
     assert shipped["esi_premiums_anchor"]["passed"] is True
 
 
+def test_package_with_the_shadow_armed_matches_the_waiver_to_the_report_it_read(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Package reads the gate report once, and the shadow matches finalize's
+    waiver record to the bytes package read. Here another finalize run's
+    report, whose record carries the waiver, replaces the file after package
+    reads it: the release ships the report package read, so the shadow
+    records the ESI waiver as unknown, not as taken."""
+
+    import hashlib
+
+    from microcosm.build.us_runtime.gate_shadow import shadow_file_paths
+    from test_support.microcosm_build.us_gate_shadow import arm_us_tool_gate_shadows
+
+    arm_us_tool_gate_shadows(monkeypatch)
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    read = args.gate_report.read_bytes()
+    replacement = json.dumps({**json.loads(read), "run": "replacement"}).encode()
+    args.allow_esi_premium_gaps = True
+    module._save_local_stage_waivers(
+        args,
+        "finalize",
+        gate_report_sha256=hashlib.sha256(replacement).hexdigest(),
+    )
+    args.allow_esi_premium_gaps = False
+    verify_run_identity = module._verify_run_identity
+
+    def replaced_after_the_read(args):
+        args.gate_report.write_bytes(replacement)
+        return verify_run_identity(args)
+
+    monkeypatch.setattr(module, "_verify_run_identity", replaced_after_the_read)
+
+    with module._local_gate_shadow_stage(args, "package"):
+        result = module.do_package(args)
+
+    assert args.gate_report.read_bytes() == replacement
+    shipped = json.loads(
+        (Path(result["release_dir"]) / "gate_summary.json").read_text()
+    )
+    assert "run" not in shipped
+    _, comparison_path = shadow_file_paths(
+        module._local_gate_shadow_directory(args), "us_local"
+    )
+    mismatch = [
+        "unknown: the finalize stage's waiver record belongs to gate report "
+        f"{hashlib.sha256(replacement).hexdigest()}, not to the selected gate "
+        f"report {hashlib.sha256(read).hexdigest()}"
+    ]
+    assert json.loads(comparison_path.read_text())["waivers"] == {
+        "us_local_esi_premiums_signal": mismatch,
+        "us_local_esi_premiums_anchor": mismatch,
+    }
+
+
 def test_the_esi_premium_waiver_is_off_by_default(tmp_path: Path) -> None:
     module = _load_tool_module()
 

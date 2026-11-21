@@ -1452,7 +1452,8 @@ def _positive_share_and_mean(
 
 
 def _refuse_overflowing_mixed_aggregates(*terms: tuple[str, float]) -> None:
-    """Refuse a mixed frame whose weighted sums run past the largest float.
+    """Refuse a mixed frame whose weighted sums, or totals formed from them,
+    run past the largest float.
 
     Finite nonnegative weights can still sum to infinity. Positive infinity
     passes a ``not x > 0`` check, and the shares formed from it come out zero
@@ -1662,8 +1663,9 @@ def us_esi_premiums_summary(
     (``SourceRuntimeError``), which both gates record as red. So is a mixed
     frame with a weighted sum that runs past the largest float: household
     mass on either side or both together, the employer premium on either
-    side, or the CPS rows' MEPS-IC share or the weight of their employed
-    policyholders with a positive share.
+    side or both together, the anchor-universe total formed from it, or the
+    CPS rows' MEPS-IC share or the weight of their employed policyholders
+    with a positive share.
     When every row is a CPS row, every figure is computed as for a
     single-source frame.
     """
@@ -1742,6 +1744,16 @@ def us_esi_premiums_summary(
         )
         anchor_universe_total = scale * raw_anchor_total + (
             transferred_total / employed_share if transferred_total else 0.0
+        )
+        # Each side's premium total was refused above if it overflowed; their
+        # sum, and the anchor-universe total that divides it by the employed
+        # share, can still overflow while both stay finite.
+        _refuse_overflowing_mixed_aggregates(
+            (
+                "the weighted employer premium of both kinds of row together",
+                float(summary["employer_premium_total"]),
+            ),
+            ("the anchor-universe employer total", anchor_universe_total),
         )
         other_policyholder_total = anchor_universe_total - float(
             summary["employer_premium_total"]

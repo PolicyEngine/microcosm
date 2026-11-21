@@ -505,21 +505,25 @@ that recorded waiver: with the flag it still refuses a red verdict finalize
 enforced. The gate battery's shadow records the waiver on each ESI entry as
 the finalize run that evaluated it had it, so a package run with other flags
 does not rewrite it. Finalize keeps that record beside its shadow
-observations, with the SHA-256 of the gate report that run wrote (null if it
-wrote none), and the shadow attaches the record only to that report. It
-records the ESI entries' waiver as unknown, with the reason, rather than as
-none when the record names another gate report, names none while a gate
-report exists, or lacks the digest, as older records do; when it cannot read
-the file as a waiver record; or when a finalize checkpoint saved before
-finalize kept a record has observations and no record. The shadow matches
-only the waiver to the report: it reads finalize's observations from the
-latest finalize run, whichever gate report package selects. A release that
-package ships under the waiver still fails the
-local-area release contract (`microcosm.data.contract`), which accepts only
-gates that passed. A Modal plan can set the waiver for the release tool
-(`allow_esi_premium_gaps`) but not for staging: the staging runner owns the
-flag and never passes it, so every Modal staging run qualifies the donor and
-enforces both gates.
+observations, with the SHA-256 of the gate report bytes that run wrote (null
+if it wrote none), and the shadow attaches the record only to those bytes. It
+compares the digest of the bytes package parsed or, when package stopped
+before it read the report, of the file at the selected path when the stage
+ends. It records the ESI entries' waiver as unknown, with the reason, rather
+than as none when the record names another gate report, names none while a
+gate report exists, or lacks the digest, as older records do; when it cannot
+open or read the file as a waiver record; or when a finalize checkpoint saved
+before finalize kept a record has observations and no record. When the
+record's digest is null and the selected path holds no gate report, the two
+match: the shadow shows the recorded flags on that package run, which package
+refuses ("No gate report") when it reaches that check. The shadow matches
+only the waiver to the report: it reads the latest saved finalize observations,
+whichever gate report package selects. A release that package ships under the
+waiver still fails the local-area release contract (`microcosm.data.contract`),
+which accepts only gates that passed. A Modal plan can set the waiver for the
+release tool (`allow_esi_premium_gaps`) but not for staging: the staging
+runner owns the flag and never passes it, so every Modal staging run qualifies
+the donor and enforces both gates.
 
 No ACS local build has run this pass on real inputs yet, so the lane's fill
 is unmeasured. The first staging build records it in `local_esi_premiums`.
@@ -564,7 +568,8 @@ What the gates need, and what they do not catch:
   transferred rows against, and both gates fail with that refusal. Both also
   fail, and name the term, when finite weights sum past the largest float:
   the household mass of either kind of row or of both together, the
-  weighted employer premium of either kind, or, on the rows with the raw
+  weighted employer premium of either kind or of both together, the
+  anchor-universe total formed from it, or, on the rows with the raw
   columns, the weighted MEPS-IC share or the weight of the employed
   policyholders with a positive share. When the
   transferred rows hold household mass and the premium per unit of household

@@ -115,6 +115,7 @@ from __future__ import annotations
 import argparse
 import gc
 import hashlib
+import io
 import json
 import resource
 import shutil
@@ -6297,7 +6298,7 @@ def do_finalize(args) -> None:
         "reviewed_limitations": limitations,
         "generated_at": datetime.now(UTC).isoformat(),
     }
-    args.gate_report.write_text(json.dumps(gate_report, indent=2))
+    _write_gate_report(args, gate_report)
     if hard_failures:
         raise SystemExit(
             f"finalize: hard gate failure(s): {hard_failures} — see {args.gate_report}."
@@ -6557,7 +6558,7 @@ def do_package(args) -> dict:
             "calibration_summary.json has no valid calibration_diagnostics status; "
             "run --stage calibrate with the current builder."
         )
-    gate_report = _load_json(args.gate_report)
+    gate_report = _load_gate_report(args)
     staging_summary = _load_json(_staging_summary_path(args))
     final_summary = _load_json(args.out_summary)
     held_back = _load_json(args.checkpoint_dir / "held_back_columns.json")
@@ -7528,7 +7529,7 @@ def _local_stage_waivers(args, stage: str) -> Path:
 
 
 #: The stage that writes the gate report package selects (``--gate-report``).
-#: Its waiver record names that report by SHA-256, so package attaches the
+#: Its waiver record names that report by SHA-256, so the shadow attaches the
 #: record only to the report the same finalize run wrote.
 _GATE_REPORT_STAGE = "finalize"
 
@@ -7540,6 +7541,39 @@ def _gate_report_sha256(args) -> str | None:
     if path is None or not Path(path).is_file():
         return None
     return _sha256(Path(path))
+
+
+def _write_gate_report(args, gate_report: dict) -> None:
+    """Finalize's write of its gate report to ``args.gate_report``.
+
+    Once the write succeeds, it sets ``args.gate_report_bytes_sha256`` to the
+    SHA-256 of the bytes written, which finalize's waiver record names
+    (:func:`_local_gate_shadow_stage`).
+    """
+
+    payload = json.dumps(gate_report, indent=2).encode("utf-8")
+    Path(args.gate_report).write_bytes(payload)
+    args.gate_report_bytes_sha256 = hashlib.sha256(payload).hexdigest()
+
+
+def _load_gate_report(args) -> dict:
+    """Package's read of the gate report, parsed as :func:`_load_json` parses it.
+
+    It reads ``args.gate_report`` once and sets ``args.gate_report_bytes_sha256``
+    to the SHA-256 of the bytes it parses (None without a file), so the
+    shadow matches finalize's waiver record to those bytes, not to whatever
+    file the path holds when the stage ends.
+    """
+
+    path = Path(args.gate_report)
+    if not path.exists():
+        args.gate_report_bytes_sha256 = None
+        return {}
+    payload = path.read_bytes()
+    args.gate_report_bytes_sha256 = hashlib.sha256(payload).hexdigest()
+    # Decoded as ``Path.read_text`` decodes: default encoding, universal newlines.
+    with io.TextIOWrapper(io.BytesIO(payload)) as text:
+        return json.loads(text.read())
 
 
 def _save_local_stage_waivers(
@@ -7574,11 +7608,12 @@ def _read_local_stage_waivers(
 ) -> tuple[dict[str, list[str]], object]:
     """A stage's saved waivers by entry id, and the gate report digest it names.
 
-    Raises ``OSError`` or ``ValueError`` (``json.JSONDecodeError`` among them)
-    when it cannot read the file or the file is not a waiver record: a
-    mapping of the entries ``stage`` evaluates to lists of flags, under
-    ``waivers`` with an optional ``gate_report_sha256``, or bare, as earlier
-    records were.
+    Raises ``FileNotFoundError`` when there is no file, and another
+    ``OSError``, ``RecursionError`` (JSON nested past the decoder's depth) or
+    ``ValueError`` (``json.JSONDecodeError`` among them) when it cannot read
+    the file or the file is not a waiver record: a mapping of the entries
+    ``stage`` evaluates to lists of flags, under ``waivers`` with an optional
+    ``gate_report_sha256``, or bare, as earlier records were.
     """
 
     saved = json.loads(path.read_text(encoding="utf-8"))
@@ -7620,19 +7655,30 @@ def _read_local_stage_waivers(
     return {entry_id: list(flags) for entry_id, flags in waivers.items()}, digest
 
 
+#: ``args.gate_report_bytes_sha256`` before package reads the gate report.
+_GATE_REPORT_NOT_READ = object()
+
+
 def _waiver_gate_report_mismatch(args, stage: str, recorded: object) -> str | None:
     """Why ``stage``'s waiver record does not belong to the selected gate
     report, or None when it names that report's digest, or names none and
-    the selected path holds no file (package then refuses: no gate report)."""
+    the selected path holds no file (package then refuses: no gate report).
 
-    try:
-        selected = _gate_report_sha256(args)
-    except OSError as error:
-        return (
-            f"the selected gate report {getattr(args, 'gate_report', None)} could "
-            f"not be read to match the {stage} stage's waiver record to it "
-            f"({type(error).__name__}: {error})"
-        )
+    The selected report is the bytes package parsed (:func:`_load_gate_report`).
+    A package run stopped before it read the report has none, so the shadow
+    then hashes the file at the path when the stage ends.
+    """
+
+    selected = getattr(args, "gate_report_bytes_sha256", _GATE_REPORT_NOT_READ)
+    if selected is _GATE_REPORT_NOT_READ:
+        try:
+            selected = _gate_report_sha256(args)
+        except OSError as error:
+            return (
+                f"the selected gate report {getattr(args, 'gate_report', None)} "
+                f"could not be read to match the {stage} stage's waiver record "
+                f"to it ({type(error).__name__}: {error})"
+            )
     if recorded is _NO_RECORDED_GATE_REPORT:
         return (
             f"the {stage} stage's waiver record names no gate report, so it "
@@ -7640,10 +7686,13 @@ def _waiver_gate_report_mismatch(args, stage: str, recorded: object) -> str | No
             f"{selected or 'none (no file)'}"
         )
     if recorded != selected:
+        unnamed = (
+            "none (that run wrote no gate report, or its report could not be read)"
+        )
         return (
             f"the {stage} stage's waiver record belongs to gate report "
-            f"{recorded or 'none (that run wrote no gate report)'}, not to the "
-            f"selected gate report {selected or 'none (no file)'}"
+            f"{recorded or unnamed}, not to the selected gate report "
+            f"{selected or 'none (no file)'}"
         )
     return None
 
@@ -7660,48 +7709,50 @@ def _recorded_local_gate_waivers(args, stage: str) -> dict[str, list[str]]:
     This stage's come from ``args``, and an earlier stage's from the record it
     saved beside its observations (:func:`_local_gate_shadow_stage`), so a
     later stage's flags never rewrite the waivers an earlier stage took or
-    refused. Finalize's record also names the gate report that run wrote,
-    and the shadow attaches it only when package selects that report: a
-    package run on another finalize run's report would otherwise show that
-    run's waiver.
+    refused. Finalize's record also names, by SHA-256, the gate report bytes
+    that run wrote, and the shadow attaches it only when those are the bytes
+    package read (:func:`_waiver_gate_report_mismatch`): a package run on
+    another finalize run's report would otherwise show that run's waiver.
 
     Each entry an earlier stage can waive records
     :data:`_UNKNOWN_STAGE_WAIVER`, with the reason, instead of a waiver when
     the stage left observations without a record (as a checkpoint saved
-    before stages kept one does), when the shadow cannot read its record or
-    it is not a waiver record, or when finalize's names another gate report,
-    names none while a gate report exists at the selected path, or lacks the
-    digest (as records saved before they named one do). The shadow still
-    rebuilds the comparison. An earlier stage with neither file contributes
-    none. The shadow matches only the waiver to the gate report: it reads the
-    latest finalize run's observations, whichever report package selects.
+    before stages kept one does), when the shadow cannot open or read its
+    record (JSON nested past the decoder's depth among the causes) or it is
+    not a waiver record, or when finalize's names another gate report, names
+    none while package read a gate report, or lacks the digest (as records
+    saved before they named one do). The shadow still rebuilds the
+    comparison. An earlier stage with neither file contributes none. The
+    shadow matches only the waiver to the gate report: it reads the latest
+    saved finalize observations, whichever report package selects.
     """
 
     waivers = _local_gate_waivers(args, stage=stage)
     for name in _LOCAL_GATE_SHADOW_STAGES[: _LOCAL_GATE_SHADOW_STAGES.index(stage)]:
         path = _local_stage_waivers(args, name)
-        if path.is_file():
-            try:
-                saved, recorded = _read_local_stage_waivers(path, name)
-            except (OSError, ValueError) as error:
-                reason = (
-                    f"{path.name} could not be read as a waiver record "
-                    f"({type(error).__name__}: {error})"
-                )
-            else:
-                reason = (
-                    _waiver_gate_report_mismatch(args, name, recorded)
-                    if name == _GATE_REPORT_STAGE
-                    else None
-                )
-                if reason is None:
-                    for entry_id, flags in saved.items():
-                        waivers.setdefault(entry_id, []).extend(flags)
-                    continue
-        elif _local_stage_observations(args, name).is_file():
+        # The read tells an absent record from one the shadow cannot open;
+        # ``Path.is_file`` would report a stat error as no file.
+        try:
+            saved, recorded = _read_local_stage_waivers(path, name)
+        except FileNotFoundError:
+            if not _local_stage_observations(args, name).is_file():
+                continue
             reason = f"the {name} stage saved no waiver record"
+        except (OSError, RecursionError, ValueError) as error:
+            reason = (
+                f"{path.name} could not be read as a waiver record "
+                f"({type(error).__name__}: {error})"
+            )
         else:
-            continue
+            reason = (
+                _waiver_gate_report_mismatch(args, name, recorded)
+                if name == _GATE_REPORT_STAGE
+                else None
+            )
+            if reason is None:
+                for entry_id, flags in saved.items():
+                    waivers.setdefault(entry_id, []).extend(flags)
+                continue
         unknown = _UNKNOWN_STAGE_WAIVER.format(reason=reason)
         for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
             if evaluated_at == name:
@@ -7777,11 +7828,12 @@ def _local_gate_shadow_stage(args, stage: str):
 
     The stages may run as separate processes, so each saves what it observed,
     and the waivers its flags applied to its own entries, beside the
-    checkpoint; finalize's waiver record also names the gate report that run
-    wrote. Rerunning a stage discards its own and every later stage's
-    files. Afterwards the scope's report and comparison are rebuilt from every
-    stage saved so far. With the switch off (the test suite) the stage runs
-    without a shadow and touches no shadow file.
+    checkpoint; finalize's waiver record also names, by SHA-256, the gate
+    report bytes that run wrote (:func:`_write_gate_report`), or none.
+    Rerunning a stage discards its own and every later stage's files.
+    Afterwards the scope's report and comparison are rebuilt from every stage
+    saved so far. With the switch off (the test suite) the stage runs without
+    a shadow and touches no shadow file.
     """
 
     if not tool_gate_shadows_enabled():
@@ -7800,35 +7852,24 @@ def _local_gate_shadow_stage(args, stage: str):
             stale.unlink(missing_ok=True)
     except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
         log(f"WARNING: gate battery shadow could not clear earlier files: {error}")
-    # The gate report as this stage finds it. One still there unchanged when
-    # the stage saves is an earlier run's, so the waiver record names none;
-    # so does a record whose report the shadow could not read before or after.
-    readable = True
-    report_before = None
-    if stage == _GATE_REPORT_STAGE:
-        try:
-            report_before = _gate_report_sha256(args)
-        except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
-            readable = False
-            log(f"WARNING: gate battery shadow could not read the gate report: {error}")
+    # Only this stage's own write or read of the gate report counts
+    # (:func:`_write_gate_report`, :func:`_load_gate_report`): finalize's
+    # record names the bytes it wrote, none if it wrote none, and package's
+    # match uses the bytes it read.
+    try:
+        del args.gate_report_bytes_sha256
+    except AttributeError:
+        pass
     shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args) / stage)
-
-    def written_gate_report() -> str | None:
-        if stage != _GATE_REPORT_STAGE or not readable:
-            return None
-        try:
-            report_after = _gate_report_sha256(args)
-        except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
-            log(f"WARNING: gate battery shadow could not read the gate report: {error}")
-            return None
-        return report_after if report_after != report_before else None
 
     def save() -> None:
         try:
             # The waiver record first, so observations this code saves always
             # have one (:func:`_recorded_local_gate_waivers`).
             _save_local_stage_waivers(
-                args, stage, gate_report_sha256=written_gate_report()
+                args,
+                stage,
+                gate_report_sha256=getattr(args, "gate_report_bytes_sha256", None),
             )
             shadow.save_observations(_local_stage_observations(args, stage))
         except Exception as error:  # noqa: BLE001 - the shadow never stops a stage

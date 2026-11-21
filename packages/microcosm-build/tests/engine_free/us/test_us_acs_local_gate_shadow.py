@@ -90,7 +90,7 @@ def _args(tmp_path):
 
 def _run_stage(acs, args, stage, *, legacy=None, report=None):
     """Run ``stage``'s stand-in gates; finalize also writes ``report``, if
-    given, to ``args.gate_report``, as ``do_finalize`` writes its report."""
+    given, to ``args.gate_report`` with the call ``do_finalize`` makes."""
 
     with acs._local_gate_shadow_stage(args, stage):
         observe_entries("us_local", acs, STAGE_ENTRIES[stage], legacy=legacy)
@@ -100,7 +100,7 @@ def _run_stage(acs, args, stage, *, legacy=None, report=None):
                 "the staging used the legacy location rule; no block ladder",
             )
             if report is not None:
-                args.gate_report.write_text(json.dumps(report))
+                acs._write_gate_report(args, report)
 
 
 def _comparison(args):
@@ -304,14 +304,79 @@ def test_a_finalize_run_that_wrote_no_gate_report_names_none(
     _run_stage(acs, args, "package")
     expected = [
         "unknown: the finalize stage's waiver record belongs to gate report "
-        "none (that run wrote no gate report), not to the selected gate report "
-        f"{earlier}"
+        "none (that run wrote no gate report, or its report could not be read), "
+        f"not to the selected gate report {earlier}"
     ]
     assert _esi_waived_by(args) == dict.fromkeys(ESI, expected)
     assert _finalize_record(args) == {
         "gate_report_sha256": None,
         "waivers": dict.fromkeys(ESI, WAIVED),
     }
+
+
+def test_package_matches_the_waiver_to_the_gate_report_bytes_it_read(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # Finalize a.json without the waiver, then b.json with it, on one
+    # checkpoint. Package reads a.json, and the file at that path is then
+    # replaced by b's bytes before the stage ends. The release carries a's
+    # gates, so the shadow must match finalize's record to the bytes package
+    # read, not to the file at the path when it rebuilds the comparison.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa"):
+        _run_stage(acs, args, stage)
+    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    args.gate_report, args.allow_esi_premium_gaps = a, False
+    _run_stage(acs, args, "finalize", report={"run": "a", "enforced": True})
+    args.gate_report, args.allow_esi_premium_gaps = b, True
+    _run_stage(acs, args, "finalize", report={"run": "b", "enforced": False})
+    read = _sha256(a)
+
+    args.gate_report, args.allow_esi_premium_gaps = a, False
+    with acs._local_gate_shadow_stage(args, "package"):
+        observe_entries("us_local", acs, STAGE_ENTRIES["package"])
+        assert acs._load_gate_report(args) == {"run": "a", "enforced": True}
+        a.write_bytes(b.read_bytes())
+
+    assert _sha256(a) == _sha256(b)
+    mismatch = [
+        "unknown: the finalize stage's waiver record belongs to gate report "
+        f"{_sha256(b)}, not to the selected gate report {read}"
+    ]
+    assert _comparison(args)["run_completed"] is True
+    assert _esi_waived_by(args) == dict.fromkeys(ESI, mismatch)
+
+
+def test_finalize_names_the_gate_report_bytes_it_wrote(
+    tmp_path, monkeypatch, acs
+) -> None:
+    # Finalize writes its report, and another process replaces the file
+    # before the stage saves its waiver record. The record names the bytes
+    # finalize wrote, so package on the replacement does not take its waiver.
+    args = _args(tmp_path)
+    args.gate_report = tmp_path / "gate_summary.json"
+    args.allow_esi_premium_gaps = True
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa"):
+        _run_stage(acs, args, stage)
+    with acs._local_gate_shadow_stage(args, "finalize"):
+        observe_entries("us_local", acs, STAGE_ENTRIES["finalize"])
+        acs._write_gate_report(args, {"run": "finalize", "enforced": False})
+        written = _sha256(args.gate_report)
+        args.gate_report.write_text(json.dumps({"run": "replaced"}))
+
+    assert _finalize_record(args) == {
+        "gate_report_sha256": written,
+        "waivers": dict.fromkeys(ESI, WAIVED),
+    }
+    args.allow_esi_premium_gaps = False
+    _run_stage(acs, args, "package")
+    mismatch = [
+        "unknown: the finalize stage's waiver record belongs to gate report "
+        f"{written}, not to the selected gate report {_sha256(args.gate_report)}"
+    ]
+    assert _esi_waived_by(args) == dict.fromkeys(ESI, mismatch)
 
 
 @pytest.mark.parametrize("flags", [None, WAIVED], ids=["unwaived", "waived"])
@@ -361,8 +426,18 @@ def test_a_finalize_waiver_record_without_a_gate_report_digest_is_unknown(
             '{"us_local_take_up": ["--allow-esi-premium-gaps"]}',
             "names entries the finalize stage does not waive: ['us_local_take_up']",
         ),
+        # Nested past the JSON decoder's depth, before any shape check.
+        ("[" * 1_000_000 + "]" * 1_000_000, "RecursionError: "),
     ],
-    ids=["truncated", "list", "waivers_list", "flag_type", "digest_type", "foreign"],
+    ids=[
+        "truncated",
+        "list",
+        "waivers_list",
+        "flag_type",
+        "digest_type",
+        "foreign",
+        "deeply_nested",
+    ],
 )
 def test_an_unreadable_waiver_record_is_unknown_and_the_comparison_is_rebuilt(
     tmp_path, monkeypatch, acs, capsys, text, error
@@ -403,6 +478,39 @@ def test_an_unreadable_waiver_record_is_unknown_and_the_comparison_is_rebuilt(
         flags == [] for entry_id, flags in waived_by.items() if entry_id not in ESI
     )
     assert "finalize.waivers.json could not be read" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("cause", "error"),
+    [("directory", "(IsADirectoryError: "), ("symlink_loop", "(OSError: ")],
+)
+def test_a_waiver_record_the_shadow_cannot_open_is_unknown_and_named(
+    tmp_path, monkeypatch, acs, cause, error
+) -> None:
+    # A record path that holds something the shadow cannot open is named with
+    # the error, not read as a stage that saved no record. ``Path.is_file``
+    # is False for a directory and for a path whose stat fails, here on a
+    # symbolic link loop.
+    args = _args(tmp_path)
+    stand_in_gates(monkeypatch, "us_local", acs)
+    for stage in ("materialize", "calibrate", "qa", "finalize"):
+        _run_stage(acs, args, stage)
+    record = acs_directory(args) / "finalize.waivers.json"
+    record.unlink()
+    if cause == "directory":
+        record.mkdir()
+    else:
+        record.symlink_to(record.name)
+    assert not record.is_file()
+
+    _run_stage(acs, args, "package")
+
+    assert _comparison(args)["run_completed"] is True
+    for (marker,) in _esi_waived_by(args).values():
+        assert marker.startswith(
+            "unknown: finalize.waivers.json could not be read as a waiver record "
+        )
+        assert error in marker
 
 
 def test_with_the_switch_off_a_stage_touches_no_shadow_file(
