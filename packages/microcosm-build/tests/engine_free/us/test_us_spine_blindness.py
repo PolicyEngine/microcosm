@@ -136,6 +136,11 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "puf_support.py",  # Validates provenance at the clone boundary.
         "spine_agreement.py",  # Pre-calibration distribution comparison.
         "spine_assembly.py",  # New pre-operator assembly seam.
+        # d2283's one-population contract: rewrites the parent export's CPS
+        # rows and staging's ACS rows into the assembled provenance form, tags
+        # each row's spine, and refuses a joined frame by origin. Reads and
+        # writes provenance by charter; treats no population otherwise.
+        "one_population_contract.py",
         # Declares the SPM measurement universe per source arm. The ACS and
         # ASEC rulings differ by construction, so the provenance tag is the
         # producer's input rather than something it must be blind to.
@@ -459,6 +464,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # keys, eligibility flags, the nested plan, starting weights and a
         # manifest. Reads no frame and treats no population itself.
         "one_population_selection.py",
+        # d2283's one-population contract (provenance owner above): the
+        # assembled rewrite, the contract's refusals, the role record and the
+        # absences file. A check and a relabelling, not a population operator.
+        "one_population_contract.py",
         "support_provenance.py",
         "take_up.py",
         "take_up_contract.py",

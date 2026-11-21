@@ -60,6 +60,7 @@ __all__ = [
     "acs_unit_key",
     "cps_unit_key",
     "group_quarters",
+    "keys_sha256",
     "plan_selection",
     "spm_zero_adult",
     "starting_weights",
@@ -216,8 +217,13 @@ def _refuse_duplicates(keys: Sequence[str], *, side: str) -> None:
         )
 
 
-def _keys_sha256(keys: Iterable[str]) -> str:
-    """sha256 of the sorted keys joined by newline (keys hold no newline)."""
+def keys_sha256(keys: Iterable[str]) -> str:
+    """sha256 of the sorted keys joined by newline (keys hold no newline).
+
+    The digest :class:`SelectionManifest` records for each selected key set.
+    It is public so a later check over a frame's keys (the population
+    contract) digests them by the same rule.
+    """
     return hashlib.sha256("\n".join(sorted(keys)).encode("utf-8")).hexdigest()
 
 
@@ -940,8 +946,8 @@ class SelectionManifest:
             n_acs=plan.n_acs,
             n_cps_by_income_year=plan.n_cps_by_income_year,
             threshold_draw=plan.threshold_draw,
-            selected_acs_keys_sha256=_keys_sha256(plan.acs_keys),
-            cps_keys_sha256=_keys_sha256(plan.cps_keys),
+            selected_acs_keys_sha256=keys_sha256(plan.acs_keys),
+            cps_keys_sha256=keys_sha256(plan.cps_keys),
             input_digests=_check_digests(input_digests),
         )
 
