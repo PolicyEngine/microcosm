@@ -29,6 +29,7 @@ import microcosm.frame.concepts as concepts_module
 import microcosm.frame.materialize as materialize_module
 import microcosm.frame.scaling as scaling_module
 import microcosm.frame.schema as schema_module
+import microcosm.frame.shared_columns as shared_columns_module
 import microcosm.frame.transport as transport_module
 import microcosm.frame.unit_construction as units_module
 import microcosm.frame.weights as weights_module
@@ -157,6 +158,7 @@ class TransportCreateKernel(KernelBase):
             scaling_module,
             bundle_module,
             schema_module,
+            shared_columns_module,
             weights_module,
             *target_kernels._COMPILE_MODULES,
             dependencies=self.capabilities.dependencies,

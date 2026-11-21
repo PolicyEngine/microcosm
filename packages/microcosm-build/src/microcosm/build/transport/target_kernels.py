@@ -62,6 +62,7 @@ import microcosm.calibrate.registry as registry_module
 import microcosm.calibrate.target as target_module
 import microcosm.frame.bundle as frame_bundle_module
 import microcosm.frame.schema as frame_schema_module
+import microcosm.frame.shared_columns as frame_shared_columns_module
 import microcosm.frame.unit_construction as units_module
 import microcosm.frame.weights as frame_weights_module
 from microcosm.build.calibration_columns import prepare_calibration_columns
@@ -572,6 +573,7 @@ _MATRIX_MODULES = (
     target_module,
     frame_bundle_module,
     frame_schema_module,
+    frame_shared_columns_module,
     frame_weights_module,
 )
 
