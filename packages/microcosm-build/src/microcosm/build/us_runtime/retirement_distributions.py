@@ -272,12 +272,22 @@ def _derived_outputs(
 
 
 def _asec_source_mask(frame: pd.DataFrame) -> np.ndarray:
-    """Select physical ASEC rows while retaining the legacy all-row source."""
+    """Select CPS rows while retaining the legacy all-row source.
+
+    The mask takes every row of a frame without assembly metadata, such as
+    Route A's frames and the pre-clone frame. On an assembled frame it takes
+    the rows whose stored channel names a CPS origin, ``asec`` or
+    ``puf_tax_detail``: physical ASEC rows and their PUF tax-detail clones,
+    whose ``DST_*`` slots Route A validates in full. It leaves ACS rows out,
+    so their empty slots never reach :func:`_strict_source_arrays`.
+    """
 
     if not has_assembled_support_metadata(frame, entity="person"):
         return np.ones(len(frame), dtype=bool)
     source_channels = support_gate_source_channel_series(frame, entity="person")
-    mask = source_channels.eq(_BASE_ASEC_SUPPORT_CHANNEL).to_numpy()
+    mask = source_channels.isin(
+        (_BASE_ASEC_SUPPORT_CHANNEL, _PUF_TAX_DETAIL_SUPPORT_CHANNEL)
+    ).to_numpy()
     if not mask.any():
         raise SourceRuntimeError(
             "US retirement-distribution support has no physical ASEC source rows."

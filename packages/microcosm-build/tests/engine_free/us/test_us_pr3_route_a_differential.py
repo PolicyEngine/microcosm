@@ -23,19 +23,19 @@ The sanity cases check that the oracle is main's code. On X5's ASEC-only
 assembled frame main's gates keep their scopes from before PR 3: no row in the
 weeks UC constraint, and the native rows as the source rows of the other
 three (and as the contributions reconciliation rows). PR 3 has widened the
-live Medicare gate's assembled source mask to every CPS row, so its live
-half counts every row there. It has also put every CPS clone in the live
-weeks gate's UC rule, so that live half counts every clone there. Each of
-the two live payloads differs from main's in that one field alone. The two
-retirement gates still run main's code at this commit, so their digests
-match main's. The structural checks confirm
-that each oracle holds its own copies, reads no live copy and imports only
-from its live module and that module's helpers. They also confirm that an
-oracle names its live module only in a ``from`` import, and that the
-differential grades each gate's oracle copy against its live gate. The
-hashing self-test confirms that key order leaves a payload's digest
-unchanged, and that a changed value, a float in place of an int and a float
-one unit in the last place away each change it.
+assembled source masks of the live Medicare and retirement-distributions
+gates to every CPS row, so each of those live halves counts every row
+there. It has also put every CPS clone in the live weeks gate's UC rule, so
+that live half counts every clone there. Each of the three live payloads
+differs from main's in that one field alone. The contributions gate still
+runs main's code at this commit, so its digest matches main's. The
+structural checks confirm that each oracle holds its own copies, reads no
+live copy and imports only from its live module and that module's helpers.
+They also confirm that an oracle names its live module only in a ``from``
+import, and that the differential grades each gate's oracle copy against
+its live gate. The hashing self-test confirms that key order leaves a
+payload's digest unchanged, and that a changed value, a float in place of
+an int and a float one unit in the last place away each change it.
 """
 
 from __future__ import annotations
@@ -170,9 +170,11 @@ def test_the_oracle_is_mains_code_on_the_assembled_frame(gate: str) -> None:
     else:
         assert details["source_rows"] == natives
     # The one field PR 3 moves on this frame, for each gate it has flipped,
-    # and the live value: every row (Medicare), every clone (weeks).
+    # and the live value: every row (Medicare, distributions), every clone
+    # (weeks).
     live_moves = {
         "medicare_take_up": ("source_rows", len(clone_index)),
+        "retirement_distributions": ("source_rows", len(clone_index)),
         "weeks_unemployed": ("uc_constraint_rows", len(clone_index) - natives),
     }
     if gate in live_moves:

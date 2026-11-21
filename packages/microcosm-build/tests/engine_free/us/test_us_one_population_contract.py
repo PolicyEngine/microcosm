@@ -6585,7 +6585,6 @@ _X5_MOVED_FIELDS: dict[str, frozenset[str]] = {
             "source_total",
         }
     ),
-    "retirement_distributions": frozenset({"source_rows"}),
 }
 
 _X5_PR3_REASONS: dict[str, str] = {
@@ -6594,13 +6593,6 @@ _X5_PR3_REASONS: dict[str, str] = {
         "source and reconciliation masks keep only stored-asec rows "
         "(retirement_contributions.py:172-193) where Route A takes every row, "
         "so five source fields move; the verdict does not."
-    ),
-    "retirement_distributions": (
-        "d2283 PR 3 flips this. Retirement distributions: once assembled, the "
-        "source mask keeps only stored-asec rows "
-        "(retirement_distributions.py:274-295) where Route A takes every row, "
-        "so source_rows moves and clone-row DST codes go unvalidated; "
-        "reconciliation does not move."
     ),
 }
 
