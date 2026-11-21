@@ -32,6 +32,8 @@ from microcosm.build.ledger_targets import (
 from microcosm.build.reference_profiles import REFERENCE_DOCUMENT_KEYS
 from microcosm.build.transport.compose import (
     load_transport_spec,
+    reference_profile_views,
+    transport_resource,
     validate_transport_activation,
 )
 from microcosm.build.transport.population_kernels import TRANSPORT_CREATE
@@ -429,6 +431,10 @@ def test_no_other_belgian_row_selects_the_mass_fact(name):
     calibration row reaches that fact, ratio operands included. (The 2026 fact
     is the ageing pair's numerator in eight A.1 rows and two B.4 rows; the
     2025 fact is CREATE's alone.)
+
+    Nodes receive compose's view of a file, in which a reference profile can
+    rewrite a row's operation and operands, so the check covers the file, the
+    default view and every scenario's view.
     """
     mass_fact = _fixture_facts()[0]
     index = _ledger_fact_index([mass_fact])
@@ -438,16 +444,25 @@ def test_no_other_belgian_row_selects_the_mass_fact(name):
         fact_matches_selector(mass_fact, selector)
         for selector in reference_fact_selectors(mass)
     )
-    references = _parsed_references(name)
-    assert len(references) == len(_document(name)["target_references"]) > 0
-    for reference in references:
-        for identifier in (
-            reference.ledger_fact_key,
-            reference.ledger_source_record_id,
-        ):
-            assert not (identifier and index.lookup(identifier)), reference.name
-        for selector in reference_fact_selectors(reference):
-            assert not fact_matches_selector(mass_fact, selector), reference.name
+    spec = load_transport_spec(_BE)
+    documents = [_document(name), transport_resource(spec, name)]
+    profiled = _document("reference_profiles.json").get(
+        "reference_resource", "target_references"
+    )
+    if Path(name).stem == Path(profiled).stem:
+        documents.extend(view for view, _, _ in reference_profile_views(spec))
+    rows = len(_document(name)["target_references"])
+    for document in documents:
+        references = parse_reference_document(_node_view(document), country="be")
+        assert len(references) == rows > 0
+        for reference in references:
+            for identifier in (
+                reference.ledger_fact_key,
+                reference.ledger_source_record_id,
+            ):
+                assert not (identifier and index.lookup(identifier)), reference.name
+            for selector in reference_fact_selectors(reference):
+                assert not fact_matches_selector(mass_fact, selector), reference.name
 
 
 @pytest.fixture(scope="module")
