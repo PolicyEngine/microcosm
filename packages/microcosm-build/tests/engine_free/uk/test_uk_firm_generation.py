@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import dataclasses
 from pathlib import Path
 
 import numpy as np
@@ -27,9 +28,9 @@ from microcosm.build.uk_runtime.firm_generation import (
     UKFirmGenerationConfig,
     assign_employment,
     build_firm_target_matrix,
-    calculate_vat_liability_values,
     employment_band_index_array,
     employment_band_name,
+    evaluate_vat_liability_if_registered_k,
     generate_base_firms,
     generate_input_values,
     generate_uk_firm_population,
@@ -42,9 +43,15 @@ from microcosm.build.uk_runtime.firm_generation import (
     write_uk_firm_population,
 )
 from microcosm.build.uk_runtime.firm_rules import (
+    UK_FIRM_RULE_PERIOD_BY_VINTAGE,
     LegacyVATEvaluatorRules,
     UKFirmRuleOutputs,
 )
+from microcosm.build.uk_runtime.firm_table import (
+    to_policyengine_uk_firm_table,
+    validate_uk_firm_table,
+)
+from microcosm.build.uk_runtime.firm_universe import HMRC_BAND_NAMES
 
 
 def test_axiom_vat_rule_evaluator_is_public_uk_runtime_api() -> None:
@@ -349,11 +356,18 @@ def test_generate_uk_firm_population_requires_vat_rule_evaluator() -> None:
 
 
 def test_vat_liability_uses_input_tax_credit_not_full_input_cost() -> None:
-    result = calculate_vat_liability_values(
-        _firm_config(),
-        torch.tensor([100.0, 100.0], dtype=torch.float32),
-        torch.tensor([40.0, 120.0], dtype=torch.float32),
-        torch.tensor([True, True], dtype=torch.bool),
+    result = evaluate_vat_liability_if_registered_k(
+        resolve_uk_firm_rules(_firm_config()),
+        pd.DataFrame(
+            {
+                "firm_id": [0, 1],
+                "sic_code": [11, 11],
+                "annual_turnover_k": [100.0, 100.0],
+                "annual_input_k": [40.0, 120.0],
+                "employment": [1.0, 1.0],
+            }
+        ),
+        "2023-24",
     )
 
     assert result.tolist() == pytest.approx([12.0, -4.0])
@@ -532,6 +546,58 @@ def test_generation_config_sampling_defaults_and_fast_preset() -> None:
         UKFirmGenerationConfig(sample_cell_floor=-1)
 
 
+def test_hmrc_band_columns_are_the_firm_universe_band_names() -> None:
+    assert HMRC_BAND_COLUMNS is HMRC_BAND_NAMES
+
+
+def test_every_generator_vintage_has_a_rule_period() -> None:
+    assert set(UK_FIRM_RULE_PERIOD_BY_VINTAGE) == set(firm_generation.VINTAGES)
+
+
+def test_with_vintage_resolves_the_vintage_threshold() -> None:
+    default = UKFirmGenerationConfig(seed=7, n_iterations=5)
+    assert default.vat_threshold == 85.0
+
+    # The gotcha with_vintage exists for: replace() keeps the old threshold.
+    replaced = dataclasses.replace(default, data_vintage="2024-25")
+    assert replaced.vat_threshold == 85.0
+
+    switched = default.with_vintage("2024-25")
+    assert switched.data_vintage == "2024-25"
+    assert switched.vat_threshold == 90.0
+    assert switched.seed == 7
+    assert switched.n_iterations == 5
+    assert switched.with_vintage("2023-24").vat_threshold == 85.0
+    # An explicit counterfactual threshold is still accepted.
+    assert UKFirmGenerationConfig(vat_threshold=100.0).vat_threshold == 100.0
+
+    with pytest.raises(ValueError, match="Unknown UK firm vintage"):
+        default.with_vintage("1999-00")
+
+
+def test_generated_firms_convert_to_a_policyengine_uk_firm_table() -> None:
+    result = generate_uk_firm_population(
+        _source_data(),
+        _firm_config(data_vintage="2024-25", n_iterations=5, seed=3),
+    )
+    firms = result.firms
+
+    table = to_policyengine_uk_firm_table(
+        firms, threshold_k=float(result.config.vat_threshold)
+    )
+
+    validate_uk_firm_table(table)
+    assert len(table) == len(firms)
+    assert "UNKNOWN" not in set(table["firm_sic_section"])
+    by_id = firms.set_index("firm_id").loc[table["firm_id"]]
+    np.testing.assert_array_equal(table["firm_weight"], by_id["firm_weight"])
+    np.testing.assert_array_equal(table["base_weight"], by_id["base_weight"])
+    np.testing.assert_array_equal(
+        table["source_firm_id"], by_id["source_firm_id"].to_numpy(np.int64)
+    )
+    assert set(table["firm_id"]) == set(firms["firm_id"])
+
+
 def test_thinned_generation_carries_base_weights_into_the_solve() -> None:
     data = _source_data(scale=60)
     config = UKFirmGenerationConfig.fast(
@@ -557,6 +623,20 @@ def test_thinned_generation_carries_base_weights_into_the_solve() -> None:
     np.testing.assert_array_equal(
         result.calibration.initial_weights,
         firms["base_weight"].to_numpy(),
+    )
+    # ``initial_weights`` is echoed back by ``solve_firm_weights``; prove the
+    # solver itself started from the base weights. Its own first-epoch loss is
+    # the loss at ``matrix @ base_weight`` ...
+    assert result.calibration.loss_trajectory[0] == pytest.approx(
+        result.calibration.initial_loss, rel=1e-5
+    )
+    # ... and a three-epoch solve stays at the base weights (up to 20 here),
+    # far from the all-ones start an unthinned solve uses.
+    assert firms["base_weight"].max() > 2.0
+    np.testing.assert_allclose(
+        firms["firm_weight"].to_numpy(),
+        firms["base_weight"].to_numpy(),
+        rtol=1e-3,
     )
     diagnostics = result.target_diagnostics.set_index("target_name")
     assert diagnostics.loc[
