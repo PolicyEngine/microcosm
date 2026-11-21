@@ -142,15 +142,26 @@ tested commit, in the environment its `uv.lock` resolves:
 `docs/agent-guide.md` lists that command under Commands as the US engine
 environment.
 
-In a receipt in the evidence, the operator records the tested commit, the
-interpreter version, the resolved versions of the packages the compile
-imports, the sha256 of the runner and of the comparator, and both feeds'
-digests. The operator also records where the compile imported the lane's tool,
-each workspace package and each overridden package from, and the output of
-`git status --porcelain` at compile time. The operator lists each way the run
-departs from that checkout or environment, such as a package they swapped in
-by hand. The change's reviewer checks the two digests against the main pin the
-cut replaces and the pin the change sets. The reviewer also checks that
+The operator compiles each feed with a script (the runner) that calls
+`state_admin_surface` in each mode and `acs_local_ssi_medicaid_take_up_targets`
+on that feed and writes what each call returns to a file. A second script (the
+comparator) reads the runner's files for both feeds and reports each target in
+the lane's selection that the cut adds, removes or changes in any `TargetSpec`
+field, and any change in the targets' order. It also reports any difference in
+the SOI receipt, the substitution records, the SSI age-band counts or the
+Medicaid enrollment table. The repository holds neither script, so the
+operator records each one's sha256 in a receipt. The operator keeps the
+receipt with the evidence, outside the repository, and links to it or quotes
+it in the change's pull request.
+
+In the receipt, the operator also records the tested commit, the interpreter
+version, the resolved versions of the packages the compile imports and both
+feeds' digests. The operator records where the compile imported the lane's
+tool, each workspace package and each overridden package from, and the output
+of `git status --porcelain` at compile time. The operator lists each way the
+run departs from that checkout or environment, such as a package they swapped
+in by hand. The change's reviewer checks the two digests against the main pin
+the cut replaces and the pin the change sets. The reviewer also checks that
 `git status` printed nothing. They check that the compile imported the tool
 and each workspace package from the checkout, and each overridden package from
 a path the operator listed as a departure.
@@ -217,9 +228,9 @@ SSI age bands and Medicaid enrollment table. Compiles of both feeds at main
 changes. No run yet covers `totals`, `full` or `state_cd`, or any mode at
 microcosm#1610's head. Before it merges, microcosm#1610 owes the comparison in
 every mode, on the merge tree and with the receipt the rule above names. The
-change that runs the comparison replaces this paragraph with the result and its
-evidence path. The guard compares commit ids only, so it cannot check this
-evidence.
+change that runs the comparison replaces this paragraph with the result and a
+link to its evidence. The guard compares commit ids only, so it cannot check
+this evidence.
 
 The combined re-pin moves both pins to one Chronicle main commit at or after
 chronicle#430's merge `b428468d`, rebuilds both feeds and retires the allowed
