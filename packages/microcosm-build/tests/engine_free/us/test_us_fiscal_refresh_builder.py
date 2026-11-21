@@ -14837,7 +14837,7 @@ def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
         and node.func.id
         in {
             "us_release_input_coverage_gate",
-            "_export_input_mass_gate",
+            "_record_export_input_mass_gate",
             "_record_qrf_tail_concentration_gate",
             "us_reform_coverage_smoke_gate",
             "_record_stored_inputs_gate_evidence",

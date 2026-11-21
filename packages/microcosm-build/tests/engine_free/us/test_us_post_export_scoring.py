@@ -1,6 +1,7 @@
 """Tests split from packages/microcosm-build/tests/test_us_post_export_scoring.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.calibrate import DroppedConstraintMatrix
 from test_support.microcosm_build.us_post_export_scoring import *
 
 
@@ -1312,6 +1313,7 @@ def test_main_drops_the_calibration_frames_before_the_export(builder) -> None:
     assert [value for _, value in later_bindings] == [
         "_without_calibrated_frames(result, "
         "export_frame=export_frame if ladder_outcome is not None else None)",
+        "without_constraint_matrix(result)",
     ]
     assert all(deleted < lineno < write_call for lineno, _ in later_bindings)
     export_bindings = [
@@ -1401,6 +1403,8 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
         cleaned = namespace["result"]
         if not full_pool:
             assert cleaned.selection.frame is None
+            assert isinstance(cleaned.selection.problem.matrix, DroppedConstraintMatrix)
+        assert isinstance(cleaned.problem.matrix, DroppedConstraintMatrix)
         assert cleaned.frame is (frame if exact_k else None)
         if exact_k:
             outcome = namespace["ladder_outcome"]
