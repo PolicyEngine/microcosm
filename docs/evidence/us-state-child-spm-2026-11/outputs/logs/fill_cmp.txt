@@ -1,0 +1,51 @@
+        file       measure  states  largest_move state  states_past_1e6  states_past_01
+    acs_eval     acs_local      51        0.5612    CA                3               1
+    acs_eval            se      51        0.0475    CA                2               0
+    acs_eval      acs_only      51        0.0000    AK                0               0
+    acs_eval   acs_only_se      51        0.0000    AK                0               0
+    acs_eval    donor_only      51        0.7835    CA                3               1
+    acs_eval donor_only_se      51        0.0656    CA                2               0
+    acs_eval         delta      51        1.3329    SD                4               2
+    acs_eval      delta_se      51        0.5560    SD                3               2
+    acs_eval      kish_src      51        0.0000    AK                0               0
+    acs_eval     acs_share      51        0.0000    AK                0               0
+acsrent_eval     acs_local      51        0.5612    CA                3               1
+acsrent_eval            se      51        0.0477    CA                2               0
+acsrent_eval      acs_only      51        0.0000    AK                0               0
+acsrent_eval   acs_only_se      51        0.0000    AK                0               0
+acsrent_eval    donor_only      51        0.7835    CA                3               1
+acsrent_eval donor_only_se      51        0.0656    CA                2               0
+acsrent_eval         delta      15        0.0059    DE                2               0
+acsrent_eval      delta_se      15        0.0001    DE                1               0
+acsrent_eval      kish_src      51        0.0000    AK                0               0
+acsrent_eval     acs_share      51        0.0000    AK                0               0
+acs_solves
+                   fill_minus1                fill_0             
+                      mean_gap   mad beyond mean_gap   mad beyond
+run                                                              
+dup_release_repro         0.54  2.79     27     0.55  2.79     27
+proj_chi_s050_0.03        0.28  2.73     21     0.28  2.74     21
+soft_chi_s050_0.1         0.04  2.59     20     0.04  2.59     21
+soft_chi_s700_0           0.27  2.52     24     0.27  2.53     24
+soft_chi_s700_0.03       -0.03  2.40     23    -0.02  2.40     23
+soft_chi_s700_0.1        -0.23  2.33     20    -0.22  2.33     20
+soft_chi_s900_0          -0.15  2.27     24    -0.15  2.27     24
+soft_chi_s900_0.03       -0.45  2.16     22    -0.45  2.16     22
+soft_chi_s900_0.1        -0.70  2.13     21    -0.70  2.13     21
+soft_chi_s964_0          -0.42  2.23     23    -0.42  2.23     23
+soft_chi_s964_0.03       -0.65  2.14     22    -0.64  2.14     22
+acsrent_solves
+                   fill_minus1                fill_0             
+                      mean_gap   mad beyond mean_gap   mad beyond
+run                                                              
+dup_release_repro         0.16  2.88     25     0.17  2.88     26
+proj_chi_s050_0.03       -0.05  2.84     24    -0.05  2.85     24
+soft_chi_s050_0.1        -0.29  2.70     23    -0.29  2.70     23
+soft_chi_s700_0          -0.09  2.55     25    -0.09  2.56     25
+soft_chi_s700_0.03       -0.35  2.47     24    -0.35  2.46     24
+soft_chi_s700_0.1        -0.55  2.43     21    -0.54  2.42     21
+soft_chi_s900_0          -0.49  2.27     22    -0.49  2.27     22
+soft_chi_s900_0.03       -0.78  2.23     23    -0.78  2.23     23
+soft_chi_s900_0.1        -1.02  2.20     25    -1.02  2.20     25
+soft_chi_s964_0          -0.76  2.24     21    -0.76  2.24     21
+soft_chi_s964_0.03       -0.97  2.20     22    -0.97  2.20     22

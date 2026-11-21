@@ -1,0 +1,11 @@
+{'p24': 0, 'p25': 0, 'o24': 0, 'o25': 0, 'o25_18252': 0, 'o24_221': 0} 51
+p24 o24 states 51 mean abs swing 1.16 sd 1.84 max 6.85 DC corr 0.668
+p25 o25 states 51 mean abs swing 1.16 sd 1.63 max 5.0 DC corr 0.757
+this run vs stored o25, mean abs 0.666
+implied sd of between-build noise per build 1.15 median delta se 1.29 rms delta se 1.83
+same model 1.825.2, Build P against Build O, 2025: mean abs 0.55 sd 0.83 per build 0.59 max 2.74 FL
+same file across 1.825.2 and 2.30.1, 2025: mean abs 1.11 sd 1.72 max 5.56 AZ
+      p24   p25   o24   o25  o25_18252  o24_221
+AZ -10.28 -9.66 -3.78 -6.37     -11.92    -3.83
+DC  -1.33 -2.96 -8.18 -7.95      -2.87    -8.13
+NC  -2.92 -2.72 -4.82 -4.40      -3.84    -6.25

@@ -1,0 +1,417 @@
+{
+ "policyengine_us_version": "2.90.2",
+ "policyengine_us_commit": "469ad12cb957a1b3eaedf9e6dd3e4c69194bba26",
+ "dataset": "Populace US",
+ "year": 2025,
+ "census_source": "U.S. Census Bureau, Poverty in the United States: 2025 (P60-290), Table 18: SPM percent and margin of error for people under 18, three-year average 2023 to 2025",
+ "rows": [
+  {
+   "state": "AL",
+   "records": 1061,
+   "effective_households": 236.55107295398253,
+   "child_spm_percent": 16.98715636912008,
+   "census_percent": 15.5,
+   "census_margin": 2.4
+  },
+  {
+   "state": "AK",
+   "records": 826,
+   "effective_households": 133.0980287754569,
+   "child_spm_percent": 11.644426986408602,
+   "census_percent": 10.5,
+   "census_margin": 2.1
+  },
+  {
+   "state": "AZ",
+   "records": 1164,
+   "effective_households": 189.9592179909452,
+   "child_spm_percent": 16.951186258024865,
+   "census_percent": 13.3,
+   "census_margin": 2.3
+  },
+  {
+   "state": "AR",
+   "records": 952,
+   "effective_households": 205.80839413217132,
+   "child_spm_percent": 8.12845772011748,
+   "census_percent": 13.3,
+   "census_margin": 2.7
+  },
+  {
+   "state": "CA",
+   "records": 2659,
+   "effective_households": 964.8602098319376,
+   "child_spm_percent": 24.41650645326989,
+   "census_percent": 17.9,
+   "census_margin": 1.0
+  },
+  {
+   "state": "CO",
+   "records": 1164,
+   "effective_households": 145.44069860124233,
+   "child_spm_percent": 10.352503836811634,
+   "census_percent": 7.7,
+   "census_margin": 1.8
+  },
+  {
+   "state": "CT",
+   "records": 908,
+   "effective_households": 135.72407262331754,
+   "child_spm_percent": 13.371307682492237,
+   "census_percent": 12.8,
+   "census_margin": 3.2
+  },
+  {
+   "state": "DE",
+   "records": 1068,
+   "effective_households": 138.95841498485564,
+   "child_spm_percent": 22.429186288025384,
+   "census_percent": 8.7,
+   "census_margin": 2.6
+  },
+  {
+   "state": "DC",
+   "records": 551,
+   "effective_households": 175.55582420499337,
+   "child_spm_percent": 34.365303438733925,
+   "census_percent": 20.3,
+   "census_margin": 3.7
+  },
+  {
+   "state": "FL",
+   "records": 1642,
+   "effective_households": 561.268792979642,
+   "child_spm_percent": 28.15649890233655,
+   "census_percent": 18.4,
+   "census_margin": 1.8
+  },
+  {
+   "state": "GA",
+   "records": 1215,
+   "effective_households": 256.7233149102064,
+   "child_spm_percent": 18.428986738455304,
+   "census_percent": 15.1,
+   "census_margin": 2.2
+  },
+  {
+   "state": "HI",
+   "records": 838,
+   "effective_households": 197.42767357826924,
+   "child_spm_percent": 7.019040438905304,
+   "census_percent": 13.0,
+   "census_margin": 2.6
+  },
+  {
+   "state": "ID",
+   "records": 746,
+   "effective_households": 185.13141304399971,
+   "child_spm_percent": 6.957827284586571,
+   "census_percent": 6.5,
+   "census_margin": 1.3
+  },
+  {
+   "state": "IL",
+   "records": 1668,
+   "effective_households": 276.7964053720248,
+   "child_spm_percent": 14.678691391590323,
+   "census_percent": 12.4,
+   "census_margin": 1.6
+  },
+  {
+   "state": "IN",
+   "records": 1141,
+   "effective_households": 177.01966623060613,
+   "child_spm_percent": 12.73434830167166,
+   "census_percent": 10.6,
+   "census_margin": 2.2
+  },
+  {
+   "state": "IA",
+   "records": 973,
+   "effective_households": 138.47468952101661,
+   "child_spm_percent": 8.80898267607782,
+   "census_percent": 8.2,
+   "census_margin": 1.9
+  },
+  {
+   "state": "KS",
+   "records": 921,
+   "effective_households": 148.60541081180202,
+   "child_spm_percent": 9.659862214627816,
+   "census_percent": 9.7,
+   "census_margin": 2.5
+  },
+  {
+   "state": "KY",
+   "records": 776,
+   "effective_households": 129.5204444710968,
+   "child_spm_percent": 18.5371736654285,
+   "census_percent": 13.3,
+   "census_margin": 2.9
+  },
+  {
+   "state": "LA",
+   "records": 1000,
+   "effective_households": 260.9008626497421,
+   "child_spm_percent": 12.087426626104243,
+   "census_percent": 20.7,
+   "census_margin": 3.0
+  },
+  {
+   "state": "ME",
+   "records": 785,
+   "effective_households": 98.94461653737365,
+   "child_spm_percent": 12.449100684445808,
+   "census_percent": 6.5,
+   "census_margin": 2.3
+  },
+  {
+   "state": "MD",
+   "records": 1091,
+   "effective_households": 142.97248422508488,
+   "child_spm_percent": 23.16543402488221,
+   "census_percent": 10.7,
+   "census_margin": 2.5
+  },
+  {
+   "state": "MA",
+   "records": 1522,
+   "effective_households": 254.60923432676174,
+   "child_spm_percent": 20.202673816573878,
+   "census_percent": 12.8,
+   "census_margin": 2.0
+  },
+  {
+   "state": "MI",
+   "records": 1478,
+   "effective_households": 244.58680980543457,
+   "child_spm_percent": 14.518361699859508,
+   "census_percent": 10.3,
+   "census_margin": 1.9
+  },
+  {
+   "state": "MN",
+   "records": 1166,
+   "effective_households": 151.4108590065156,
+   "child_spm_percent": 8.431428192061507,
+   "census_percent": 6.9,
+   "census_margin": 1.9
+  },
+  {
+   "state": "MS",
+   "records": 882,
+   "effective_households": 217.18543375057635,
+   "child_spm_percent": 12.942211004413902,
+   "census_percent": 19.1,
+   "census_margin": 2.6
+  },
+  {
+   "state": "MO",
+   "records": 1013,
+   "effective_households": 158.23194095106248,
+   "child_spm_percent": 18.479794697686096,
+   "census_percent": 9.7,
+   "census_margin": 2.3
+  },
+  {
+   "state": "MT",
+   "records": 744,
+   "effective_households": 189.76250281214456,
+   "child_spm_percent": 2.5309436062772113,
+   "census_percent": 9.3,
+   "census_margin": 2.3
+  },
+  {
+   "state": "NE",
+   "records": 884,
+   "effective_households": 145.9510957065784,
+   "child_spm_percent": 10.711871752578398,
+   "census_percent": 7.1,
+   "census_margin": 1.9
+  },
+  {
+   "state": "NV",
+   "records": 952,
+   "effective_households": 153.2144593141471,
+   "child_spm_percent": 19.070065323872694,
+   "census_percent": 15.0,
+   "census_margin": 2.5
+  },
+  {
+   "state": "NH",
+   "records": 840,
+   "effective_households": 140.8689123605408,
+   "child_spm_percent": 10.516178219256554,
+   "census_percent": 7.5,
+   "census_margin": 2.4
+  },
+  {
+   "state": "NJ",
+   "records": 1651,
+   "effective_households": 214.92794398401983,
+   "child_spm_percent": 10.924964312878116,
+   "census_percent": 13.3,
+   "census_margin": 1.9
+  },
+  {
+   "state": "NM",
+   "records": 902,
+   "effective_households": 197.2115814203346,
+   "child_spm_percent": 10.15133671821333,
+   "census_percent": 10.9,
+   "census_margin": 2.1
+  },
+  {
+   "state": "NY",
+   "records": 2166,
+   "effective_households": 431.1950455090738,
+   "child_spm_percent": 17.727116992316713,
+   "census_percent": 16.2,
+   "census_margin": 1.9
+  },
+  {
+   "state": "NC",
+   "records": 1337,
+   "effective_households": 278.97265851969934,
+   "child_spm_percent": 18.100974612766848,
+   "census_percent": 14.4,
+   "census_margin": 2.2
+  },
+  {
+   "state": "ND",
+   "records": 682,
+   "effective_households": 154.69431784251822,
+   "child_spm_percent": 11.13047533590008,
+   "census_percent": 10.3,
+   "census_margin": 2.1
+  },
+  {
+   "state": "OH",
+   "records": 1531,
+   "effective_households": 259.8938711270293,
+   "child_spm_percent": 9.813281022726176,
+   "census_percent": 12.3,
+   "census_margin": 2.1
+  },
+  {
+   "state": "OK",
+   "records": 918,
+   "effective_households": 184.88950295988414,
+   "child_spm_percent": 17.21439734214549,
+   "census_percent": 9.9,
+   "census_margin": 2.0
+  },
+  {
+   "state": "OR",
+   "records": 1152,
+   "effective_households": 174.20405203877138,
+   "child_spm_percent": 16.2870253593211,
+   "census_percent": 11.0,
+   "census_margin": 2.4
+  },
+  {
+   "state": "PA",
+   "records": 1999,
+   "effective_households": 313.940721037965,
+   "child_spm_percent": 14.135315201475251,
+   "census_percent": 11.1,
+   "census_margin": 2.0
+  },
+  {
+   "state": "RI",
+   "records": 804,
+   "effective_households": 115.36121530553025,
+   "child_spm_percent": 17.87488315880047,
+   "census_percent": 8.4,
+   "census_margin": 2.3
+  },
+  {
+   "state": "SC",
+   "records": 955,
+   "effective_households": 198.5735582254525,
+   "child_spm_percent": 9.884637976608813,
+   "census_percent": 11.1,
+   "census_margin": 2.1
+  },
+  {
+   "state": "SD",
+   "records": 866,
+   "effective_households": 140.02483747681345,
+   "child_spm_percent": 11.33898407217388,
+   "census_percent": 7.8,
+   "census_margin": 2.2
+  },
+  {
+   "state": "TN",
+   "records": 1082,
+   "effective_households": 213.46111672978205,
+   "child_spm_percent": 23.237084061349254,
+   "census_percent": 10.0,
+   "census_margin": 1.7
+  },
+  {
+   "state": "TX",
+   "records": 1875,
+   "effective_households": 671.2372652446592,
+   "child_spm_percent": 19.24437100079317,
+   "census_percent": 16.1,
+   "census_margin": 1.3
+  },
+  {
+   "state": "UT",
+   "records": 861,
+   "effective_households": 182.57153738948298,
+   "child_spm_percent": 13.211297432608319,
+   "census_percent": 7.3,
+   "census_margin": 1.6
+  },
+  {
+   "state": "VT",
+   "records": 496,
+   "effective_households": 155.57089637922203,
+   "child_spm_percent": 17.678699918725112,
+   "census_percent": 8.3,
+   "census_margin": 2.5
+  },
+  {
+   "state": "VA",
+   "records": 1394,
+   "effective_households": 215.49254142849716,
+   "child_spm_percent": 18.12834306934188,
+   "census_percent": 12.1,
+   "census_margin": 2.4
+  },
+  {
+   "state": "WA",
+   "records": 1305,
+   "effective_households": 217.79313567185002,
+   "child_spm_percent": 14.206930139564697,
+   "census_percent": 9.3,
+   "census_margin": 1.9
+  },
+  {
+   "state": "WV",
+   "records": 845,
+   "effective_households": 220.3992065891528,
+   "child_spm_percent": 17.93170551281414,
+   "census_percent": 11.3,
+   "census_margin": 2.4
+  },
+  {
+   "state": "WI",
+   "records": 1232,
+   "effective_households": 168.63884893953457,
+   "child_spm_percent": 7.034634564819478,
+   "census_percent": 7.3,
+   "census_margin": 1.7
+  },
+  {
+   "state": "WY",
+   "records": 557,
+   "effective_households": 157.08532758317563,
+   "child_spm_percent": 8.787559212429837,
+   "census_percent": 6.5,
+   "census_margin": 1.4
+  }
+ ]
+}

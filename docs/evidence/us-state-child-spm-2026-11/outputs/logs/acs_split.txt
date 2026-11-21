@@ -1,0 +1,60 @@
+source RemoteStore people 3587263 chunk 200000
+read retry at 8752624272 after 1s: TimeoutError('The read operation timed out')
+read retry at 8752624272 after 2s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8752624272 after 4s: ConnectionResetError(54, 'Connection reset by peer')
+read retry at 8766345406 after 1s: ConnectionError('response ended early at byte 8766345406')
+read retry at 8766737174 after 1s: ConnectionError('response ended early at byte 8766737174')
+read retry at 8843348758 after 1s: TimeoutError('The read operation timed out')
+households (1586908, 38) peak GiB 1.07
+chunk 0 seconds 3196 peak GiB 3.02
+chunk 1 seconds 3351 peak GiB 3.48
+chunk 2 seconds 3507 peak GiB 3.56
+chunk 3 seconds 3664 peak GiB 3.61
+chunk 4 seconds 3820 peak GiB 3.62
+read retry at 8059826200 after 1s: TimeoutError('The read operation timed out')
+read retry at 8059826200 after 2s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 4s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 8s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 16s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 32s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 64s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 128s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 256s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 300s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 300s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8059826200 after 300s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8077914136 after 1s: ConnectionResetError(54, 'Connection reset by peer')
+read retry at 8078241816 after 1s: TimeoutError('The read operation timed out')
+read retry at 8078241816 after 2s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 4s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 8s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 16s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 32s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 64s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 128s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 256s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 300s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+read retry at 8078241816 after 300s: URLError(gaierror(8, 'nodename nor servname provided, or not known'))
+chunk 5 seconds 10049 peak GiB 3.62
+chunk 6 seconds 10208 peak GiB 3.62
+chunk 7 seconds 10369 peak GiB 3.62
+chunk 8 seconds 10526 peak GiB 3.62
+chunk 9 seconds 10682 peak GiB 3.62
+chunk 10 seconds 10839 peak GiB 3.62
+chunk 11 seconds 10996 peak GiB 3.62
+chunk 12 seconds 11156 peak GiB 3.62
+chunk 13 seconds 11380 peak GiB 3.62
+chunk 14 seconds 11541 peak GiB 3.62
+chunk 15 seconds 11700 peak GiB 3.62
+chunk 16 seconds 11919 peak GiB 3.62
+chunk 17 seconds 12066 peak GiB 3.62
+people 3587263 person columns 339
+tax_unit groups 2175528 spanning states 0
+tax_unit peak GiB 3.62
+spm_unit groups 1589568 spanning states 0
+spm_unit peak GiB 3.62
+family groups 1594874 spanning states 0
+family peak GiB 3.62
+marital_unit groups 2867105 spanning states 0
+marital_unit peak GiB 3.62
+done files 306 seconds 12683 peak GiB 3.62

@@ -1,0 +1,3 @@
+{'default': 51.0, 'default_initial': 211.0, 'dense': 305.0, 'dense_initial': 635.0, 'acs_local': 88.0}
+{'default': {'min': 19.0, 'max': 277.0}, 'default_initial': {'min': 65.0, 'max': 645.0}, 'dense': {'min': 138.0, 'max': 1572.0}, 'dense_initial': {'min': 255.0, 'max': 3687.0}, 'acs_local': {'min': 39.0, 'max': 386.0}}
+{'default': 'DC', 'default_initial': 'DC', 'dense': 'ME', 'dense_initial': 'ME', 'acs_local': 'ME'} {'default': 'CA', 'default_initial': 'CA', 'dense': 'CA', 'dense_initial': 'CA', 'acs_local': 'CA'}
