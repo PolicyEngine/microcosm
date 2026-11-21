@@ -1,0 +1,39 @@
+{
+  "source_repository": "PolicyEngine/firm-microsim-paper",
+  "paper_commit": "aa1ce07045255b0ddc9942894810259be86b747f",
+  "paper_commit_short": "aa1ce07",
+  "vintage": "2024-25",
+  "description": "Processed ONS (2025) and HMRC (2024-25) firm tables copied verbatim from the paper repository for the paper-parity test.",
+  "files": {
+    "hmrc_vat_liability_by_sector.csv": {
+      "sha256": "abe6a8330eedd19fe893c38901cacc336dad28d5b63ceeaad937e4e4a41afed3",
+      "source_path": "data/processed/2024-25/hmrc_vat_liability_by_sector.csv",
+      "bytes": 4856
+    },
+    "hmrc_vat_liability_by_turnover_band.csv": {
+      "sha256": "a650a867c30c0d7d08b1c979f93275261cbfe641c6c859f0aa21833122767f76",
+      "source_path": "data/processed/2024-25/hmrc_vat_liability_by_turnover_band.csv",
+      "bytes": 218
+    },
+    "hmrc_vat_population_by_sector.csv": {
+      "sha256": "b5c47c47cae0f4162f905235b5d8999fddc9bdc7d5d8435ad0474a7b005374d7",
+      "source_path": "data/processed/2024-25/hmrc_vat_population_by_sector.csv",
+      "bytes": 4920
+    },
+    "hmrc_vat_population_by_turnover_band.csv": {
+      "sha256": "b4350c5ba51a8cbfc5114878144606aedf9c2ef07fa2dac56d52743b2604cb61",
+      "source_path": "data/processed/2024-25/hmrc_vat_population_by_turnover_band.csv",
+      "bytes": 245
+    },
+    "ons_firm_employment.csv": {
+      "sha256": "423caf9003eecec7ec83810006c418d0a220bac71b155ac4489eb5562945ec3c",
+      "source_path": "data/processed/2024-25/ons_firm_employment.csv",
+      "bytes": 7171
+    },
+    "ons_firm_turnover.csv": {
+      "sha256": "a3908d4e88395e8e35633ee7dd315b4edec56b72a1d119f7e062a31db73c5814",
+      "source_path": "data/processed/2024-25/ons_firm_turnover.csv",
+      "bytes": 7452
+    }
+  }
+}
