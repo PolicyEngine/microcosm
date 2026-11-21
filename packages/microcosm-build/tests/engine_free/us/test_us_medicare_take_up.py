@@ -221,6 +221,23 @@ class TestFrameStageAndGate:
                 baseline.details,
             ), value
 
+    def test_assembled_frame_without_cps_rows_refuses(self) -> None:
+        """An assembled frame whose stored channels name no CPS origin leaves
+        the source mask empty, and the gate fails with the refusal alone."""
+
+        for label in ("acs", ACS_SUPPORT_CHANNEL):
+            stacked = _stacked_frame()
+            person = stacked.table("person")
+            person[support_channel_column("person")] = label
+            person[_SOURCE] = np.nan
+
+            gate = us_medicare_take_up_signal_gate(stacked)
+
+            assert not gate.passed, label
+            assert gate.failures == (
+                "US Medicare take-up support has no physical ASEC source rows.",
+            ), label
+
     def test_gate_rejects_missing_constant_bad_share_and_mismatch(self) -> None:
         missing = _frame()
         assert not us_medicare_take_up_signal_gate(missing).passed
