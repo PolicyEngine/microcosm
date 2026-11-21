@@ -28,7 +28,12 @@ half counts every row there, and its payload differs from main's in
 ``source_rows`` alone. The other three live gates still run main's code at
 this commit, so their digests match main's. The structural checks confirm
 that each oracle holds its own copies, reads no live copy and imports only
-from its live module and that module's helpers.
+from its live module and that module's helpers. They also confirm that an
+oracle names its live module only in a ``from`` import, and that the
+differential grades each gate's oracle copy against its live gate. The
+hashing self-test confirms that key order leaves a payload's digest
+unchanged, and that a changed value, a float in place of an int and a float
+one unit in the last place away each change it.
 """
 
 from __future__ import annotations
@@ -69,6 +74,7 @@ from test_support.microcosm_build.us_one_population_contract import (
     reader_population,
 )
 from test_support.microcosm_build.us_pr3_gate_differential import (
+    PR3_GATE_PAIRS,
     PR3_GATES,
     payload_sha256,
     pr3_gate_differential,
@@ -245,11 +251,19 @@ def test_each_oracle_holds_its_own_copies(gate: str) -> None:
     for name, value in vars(oracle).items():
         assert value is not live, name
         assert not any(value is copy for copy in live_copies), name
+    # The differential grades this oracle's gate against the live one.
+    oracle_gate, live_gate = PR3_GATE_PAIRS[gate]
+    assert oracle_gate is getattr(oracle, names[-1])
+    assert live_gate is getattr(live, names[-1])
     allowed = _ORACLE_IMPORT_SOURCES | {live.__name__}
     tree = ast.parse(Path(oracle.__file__).read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            assert {alias.name for alias in node.names} <= allowed, node.lineno
+            # A plain import of the live module would reach every live name
+            # by its dotted path, so an oracle names it in a from-import only.
+            assert {alias.name for alias in node.names} <= {"numpy", "pandas"}, (
+                node.lineno
+            )
         elif isinstance(node, ast.ImportFrom):
             assert node.module in allowed and not node.level, node.lineno
             imported = {alias.name for alias in node.names}
@@ -276,4 +290,8 @@ def test_a_changed_details_value_changes_the_digest() -> None:
     ) != payload_sha256(payload)
     assert payload_sha256(
         {**payload, "details": {"rows": 3.0, "share": 0.25}}
+    ) != payload_sha256(payload)
+    # A float one unit in the last place away changes the digest.
+    assert payload_sha256(
+        {**payload, "details": {"rows": 3, "share": float(np.nextafter(0.25, 1.0))}}
     ) != payload_sha256(payload)
