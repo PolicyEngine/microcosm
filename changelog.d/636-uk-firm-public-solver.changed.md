@@ -1,0 +1,1 @@
+The UK firm generator solves its weights with the public `microcosm.calibrate.solve.solve_constraint_system` on a float32 sparse matrix, instead of the solver's private `_optimize` (microcosm#636). On the small test fixture the weights are bit-identical to the old path.

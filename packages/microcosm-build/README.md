@@ -102,10 +102,18 @@ data.
 This is not yet the production firm microsimulation path: Ledger currently
 covers the current paper target surface used by the adapter, including ONS
 SIC-by-turnover, ONS SIC-by-employment, HMRC VAT-registered firms by SIC, and
-HMRC net VAT liability by SIC. VAT liability is now an explicit rule-evaluator
-input to generation; production runs should provide an Axiom RuleSpec artifact
-through `AxiomVATRuleEvaluator`. The processed-table reader remains only for
-paper-repository migration comparisons.
+HMRC net VAT liability by SIC. VAT liability comes from a rules engine through
+the `UKFirmRules` seam in `uk_runtime/firm_rules.py`, whose outputs are keyed by
+`firm_id`. The firm rules home is policyengine-uk; until its firm-rules adapter
+lands, an Axiom RuleSpec artifact can be passed through `AxiomVATRuleEvaluator`,
+which the seam wraps (`LegacyVATEvaluatorRules`) and which stays an optional
+cross-check afterwards. Calibration uses the paper's two universes (ONS frame
+rows, and HMRC registered-trader rows weighted by per-band registration
+propensity), optional stratified thinning (`UKFirmGenerationConfig.fast()`), and
+the public `solve_constraint_system`. `uk_runtime/firm_table.py` exports the
+result with policyengine-uk's firm column names. The processed-table reader
+remains for paper-repository migration comparisons; `tools/firm_paper_parity.py`
+runs that comparison locally.
 
 Build the row-wise local-geography H5 from a compact Microcosm UK H5 with:
 
