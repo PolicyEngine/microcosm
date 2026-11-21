@@ -35,6 +35,7 @@ from microcosm.graph import KernelContext
 from test_support.microcosm_build.transport_graph import canonical_text
 from test_support.microcosm_build.transport_population import (
     create_node,
+    direct_population,
     write_population_sources,
 )
 from test_support.paths import paths_for
@@ -131,23 +132,35 @@ def _node_view(document):
     }
 
 
-def _run_create(tmp_path, document=None, facts=None):
-    """Run transport.create@1 with Belgium's mass row on the synthetic donor."""
-    document = _document("mass_references.json") if document is None else document
+def _sources(tmp_path, facts=None):
+    """The synthetic donor, with the fixture (or edited facts) as the facts."""
     sources = write_population_sources(tmp_path / "sources")
     if facts is None:
         shutil.copyfile(_FIXTURE, sources.facts)
     else:
         sources.facts.write_text("".join(json.dumps(fact) + "\n" for fact in facts))
+    return sources
+
+
+def _run_create(tmp_path, document=None, facts=None, sources=None):
+    """Run transport.create@1 with Belgium's mass row on the synthetic donor.
+
+    With no document, the node gets the packaged file as compose would give
+    it: the trimmed view and the digest of the file's own bytes.
+    """
+    if document is None:
+        raw = (_BE / "mass_references.json").read_bytes()
+        document = json.loads(raw)
+    else:
+        raw = json.dumps(document, indent=2).encode() + b"\n"
+    sources = _sources(tmp_path, facts) if sources is None else sources
     node = create_node(sources)
-    raw = json.dumps(document, indent=2).encode() + b"\n"
     node = replace(
         node,
         params={
             **node.params,
             "country": "be",
             "mass_reference": canonical_text(_node_view(document)),
-            # compose passes the digest of the file's bytes.
             "mass_reference_sha256": hashlib.sha256(raw).hexdigest(),
         },
     )
@@ -181,12 +194,12 @@ def _with_2026_key(document, *, policy):
 
 
 def test_mass_document_is_the_declared_fpb_2025_row():
-    assert _document("mass_references.json") == MASS_DOCUMENT
-    # The file is exactly its own serialization: CREATE's node key carries the
-    # digest of these bytes, so a formatting-only edit would re-key CREATE.
-    assert (_BE / "mass_references.json").read_text() == (
-        json.dumps(MASS_DOCUMENT, indent=2) + "\n"
-    )
+    raw = (_BE / "mass_references.json").read_bytes()
+    assert json.loads(raw) == MASS_DOCUMENT
+    # The file's bytes, line endings included, are exactly its own
+    # serialization: CREATE's node key carries the digest of these bytes, so a
+    # formatting-only edit would re-key CREATE.
+    assert raw == json.dumps(MASS_DOCUMENT, indent=2).encode() + b"\n"
 
 
 def test_fixture_is_the_recorded_pair_of_artifact_lines():
@@ -216,11 +229,19 @@ def test_fixture_is_the_recorded_pair_of_artifact_lines():
 
 
 def test_create_scales_design_weights_to_the_fpb_2025_mass(tmp_path):
-    result = _run_create(tmp_path)
+    sources = _sources(tmp_path)
+    result = _run_create(tmp_path, sources=sources)
     assert result.receipt["mass_reference"] == _NAME
     assert result.receipt["destination_mass"] == _MASS_2025
     assert result.frame.resolve_weights("person").values.sum() == pytest.approx(
         _MASS_2025, rel=1e-9
+    )
+    # One factor scales every design weight: the shared oracle scales the
+    # donor's weights to the fixture's first fact, FPB 2025.
+    expected, _ = direct_population(sources)
+    np.testing.assert_array_equal(
+        result.frame.weights_for("household").values,
+        expected.weights_for("household").values,
     )
 
 
@@ -241,7 +262,7 @@ def test_create_reads_the_2026_projection_only_under_allow_source_projection(
         _run_create(tmp_path / "observed", observed)
 
 
-def _household_entity(document):
+def _household_selector(document):
     row = document["target_references"][0]
     row["entity"] = "household"
     row["ledger_selector"]["entity_name"] = "household"
@@ -253,10 +274,14 @@ def _filtered(document):
     )
 
 
-def _second_row(document):
-    extra = copy.deepcopy(document["target_references"][0])
-    extra["name"] = f"{_NAME}_again"
-    document["target_references"].append(extra)
+def _extra_rows(count):
+    def mutate(document):
+        for index in range(count):
+            extra = copy.deepcopy(document["target_references"][0])
+            extra["name"] = f"{_NAME}_extra_{index}"
+            document["target_references"].append(extra)
+
+    return mutate
 
 
 def _row_period_2026(document):
@@ -266,10 +291,25 @@ def _row_period_2026(document):
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
-        (_household_entity, "did not match a Ledger fact"),
-        (_filtered, "unfiltered person count fact"),
-        (_second_row, "exactly one destination population reference"),
-        (_row_period_2026, "exact target period 2026"),
+        # The selector names a household fact, which the fixture lacks, so the
+        # Ledger refuses before CREATE sees a row.
+        pytest.param(
+            _household_selector,
+            "did not match a Ledger fact",
+            id="household_selector",
+        ),
+        pytest.param(_filtered, "unfiltered person count fact", id="filter"),
+        pytest.param(
+            _extra_rows(1),
+            "exactly one destination population reference",
+            id="two_rows",
+        ),
+        pytest.param(
+            _extra_rows(2),
+            "exactly one destination population reference",
+            id="three_rows",
+        ),
+        pytest.param(_row_period_2026, "exact target period 2026", id="period_2026"),
     ],
 )
 def test_create_refuses_a_mass_row_that_is_not_one_unfiltered_person_count(
@@ -281,9 +321,21 @@ def test_create_refuses_a_mass_row_that_is_not_one_unfiltered_person_count(
         _run_create(tmp_path, document)
 
 
-def test_create_refuses_a_fact_whose_unit_is_not_a_count(tmp_path):
+def test_create_refuses_a_household_count_the_ledger_resolves(tmp_path):
+    """With a matching household fact, the refusal is CREATE's person check."""
+    document = copy.deepcopy(MASS_DOCUMENT)
+    _household_selector(document)
     facts = _fixture_facts()
-    facts[0]["observed_measure"]["unit"] = "people"
+    for fact in facts:
+        fact["entity"]["name"] = "household"
+    with pytest.raises(ValueError, match="unfiltered person count fact"):
+        _run_create(tmp_path, document, facts=facts)
+
+
+@pytest.mark.parametrize("unit", ["people", "persons", "eur"])
+def test_create_refuses_a_fact_whose_unit_is_not_a_count(tmp_path, unit):
+    facts = _fixture_facts()
+    facts[0]["observed_measure"]["unit"] = unit
     with pytest.raises(ValueError, match="unfiltered person count fact"):
         _run_create(tmp_path, facts=facts)
 
@@ -312,7 +364,9 @@ def test_transport_inputs_donor_is_the_source_stage_pin():
     pinned = _document("source_stages.json")["stages"][0]["artifacts"][0]
     assert set(donor) == set(pinned)
     for key in sorted(set(pinned) - {"integrity_note"}):
+        # Type too: 462915783.0 equals 462915783, but the donor reader wants an int.
         assert donor[key] == pinned[key], key
+        assert type(donor[key]) is type(pinned[key]), key
     # CREATE and the donor receipt read these four values.
     assert donor["sha256"] == (
         "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e"
@@ -332,8 +386,10 @@ def test_create_inputs_leave_activation_gaps_unchanged(tmp_path):
     """Regression check: the two files add and remove no activation gap.
 
     Activation also runs compose's holdout-separation check over the mass
-    document, which it adds even when no node selects it, so a mass row that
-    shared a base cell with a holdout would show up here as a new gap.
+    document, which it adds even when no node selects it. That check compares
+    measure names, so a mass row whose measure equalled a holdout row's would
+    show up here as a new gap. It does not compare selectors; the next test
+    holds the mass row's fact apart from every other Belgian row.
     """
     without = tmp_path / "be"
     shutil.copytree(_BE, without)
@@ -347,6 +403,30 @@ def test_create_inputs_leave_activation_gaps_unchanged(tmp_path):
     assert sorted(_gaps(_BE)) == sorted(_gaps(without))
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["holdout_references.json", "precal_references.json", "target_references.json"],
+)
+def test_no_other_belgian_row_selects_the_mass_fact(name):
+    """The mass fact feeds CREATE only: no holdout, pre-calibration or
+    calibration row selects it, by key or by series, period and geography."""
+    mass = _document("mass_references.json")["target_references"][0]["ledger_selector"]
+
+    def series(selector):
+        return (
+            selector.get("source_concept"),
+            selector.get("period_value"),
+            selector.get("geography_id"),
+        )
+
+    rows = _document(name)["target_references"]
+    assert rows
+    for row in rows:
+        selector = row["ledger_selector"]
+        assert selector.get("aggregate_fact_key") != mass["aggregate_fact_key"]
+        assert series(selector) != series(mass), row["name"]
+
+
 @pytest.fixture(scope="module")
 def artifact_path():
     path = os.environ.get("BE_CHRONICLE_ARTIFACT")
@@ -356,12 +436,24 @@ def artifact_path():
 
 
 def test_feed_mass_row_resolves_to_the_generator_observed_fpb_level(artifact_path):
-    lines = set()
+    # Each fixture line is the artifact's line at the number the provenance
+    # file records, in the same order.
+    provenance = json.loads(
+        _FIXTURE.with_name(_FIXTURE.name + ".provenance.json").read_text()
+    )
+    recorded = {
+        entry["artifact_line"]: line
+        for entry, line in zip(
+            provenance["lines"], _FIXTURE.read_bytes().splitlines(), strict=True
+        )
+    }
+    assert list(recorded) == sorted(recorded)
+    found = {}
     with (artifact_path / "consumer_facts.jsonl").open("rb") as facts:
-        for line in facts:
-            if b"t07.total_population" in line:
-                lines.add(line.rstrip(b"\n"))
-    assert set(_FIXTURE.read_bytes().splitlines()) <= lines
+        for number, line in enumerate(facts, start=1):
+            if number in recorded:
+                found[number] = line.rstrip(b"\n")
+    assert found == recorded
     document = _document("mass_references.json")
     _, registry = compile_target_surface(
         artifact_path,
