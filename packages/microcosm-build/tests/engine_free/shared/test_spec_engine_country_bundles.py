@@ -235,6 +235,7 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
         "release_contract.json",
         "source_stages.json",
         "target_references.json",
+        "unit_declarations.json",
     }
 
 

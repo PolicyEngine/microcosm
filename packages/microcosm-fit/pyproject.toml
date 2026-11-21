@@ -12,12 +12,20 @@ dependencies = [
     "microcosm-graph>=0.1,<0.2",
     # scikit-learn 1.9 removed sklearn.tree._tree.DTYPE and changed the
     # sample-weight signature of the forest bootstrap helpers; quantile-forest
-    # 1.4.2 (2026-06-21) tracks both (zillow/quantile-forest#152, #153), so the
-    # floor below is the first release compatible with sklearn 1.9. No upper
-    # bound: this package's own sklearn usage (HistGradientBoostingClassifier,
-    # forest .fit() without sample_weight) is stable across 1.5-1.9.
+    # 1.4.2 (2026-06-21) tracks both (zillow/quantile-forest#152, #153), so it
+    # is the first release compatible with sklearn 1.9. No upper bound: this
+    # package's own sklearn usage (HistGradientBoostingClassifier, forest
+    # .fit() without sample_weight) is stable across 1.5-1.9. The leaf-array
+    # copy in microcosm.fit.qrf also calls sklearn's private bootstrap helpers,
+    # through quantile-forest's module, with the arguments 1.4.2 passes them
+    # for the installed sklearn version.
     "scikit-learn>=1.5",
-    "quantile-forest>=1.4.2",
+    # Exact: microcosm.fit.qrf._InPlaceLeafQRF replaces the private
+    # BaseForestQuantileRegressor._get_y_train_leaves with a copy of 1.4.2's
+    # that fills the leaf array in place, and refuses to fit under any other
+    # release (_SUPPORTED_QUANTILE_FOREST_VERSION). Raise both together, after
+    # comparing the override with the new release's method.
+    "quantile-forest==1.4.2",
     "numpy>=2",
     "pandas>=2.3",
 ]

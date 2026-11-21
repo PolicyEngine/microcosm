@@ -157,7 +157,6 @@ def raw_slices():
             "tenure",
             "rent",
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax",
         ],
         "family": [
@@ -1260,7 +1259,6 @@ def documents():
             "tenure",
             "rent",
             "mortgage_interest",
-            "mortgage_principal",
             "property_tax",
         ]
     )

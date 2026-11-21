@@ -1768,6 +1768,34 @@
       ]
     },
     {
+      "resource": "dwp_uc_young_lcwra_people_facts.json",
+      "purpose": "DWP, Young people and work: interim report (28 May 2026; file replaced 10 August 2026), analytical annex Table 28, the UC health element (LCWRA) and PIP caseloads of people aged 16 to 24 in England and Wales in financial years 2024-25 (outturn) and 2025-26 (DWP's projection), PolicyEngine/chronicle#443. Consumed by the uc_take_up stage's young LCWRA fit, which takes the calendar-2025 window of the UC health caseload (three twelfths of 2024-25 and nine of 2025-26, María's rule of 2026-09-22) as the young people with the element its third odds ratio aims at on the spine's design weights (PolicyEngine/microcosm#1663, part 3). No value is derived here.",
+      "consumers": [
+        "uk_runtime.uc_take_up"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "young_people_lcwra_pip_england_and_wales_fy2024",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
+            "geography_id": "K04000001"
+          },
+          "expected_row_count": 2
+        },
+        {
+          "label": "young_people_lcwra_pip_england_and_wales_fy2025",
+          "selector": {
+            "source_name": "dwp",
+            "record_set_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2025",
+            "geography_id": "K04000001"
+          },
+          "expected_row_count": 2
+        }
+      ]
+    },
+    {
       "resource": "dwp_pip_points_facts.json",
       "purpose": "DWP's Pathways to Work evidence pack, chapter 2 (the data tables' file of 23 July 2025), Tables 2.9 and 2.10: the PIP caseload's daily living points by band and mobility points by total, by age group, in England and Wales at the end of January 2025, normal rules, as shares of each group's claimants with the group's volume (microcosm#1095, P1 of the November event-data plan). Consumed by the pip_points stage, which draws each recipient's points within their stored award from their age group's distribution. No value is derived here.",
       "consumers": [
