@@ -556,6 +556,17 @@ worked-last-year inputs on every final person row and binds that verdict to
 the H5 hash. ACS staging checks its preserved ASEC donor before acquisition;
 historical donors and staging files missing these inputs must be rebuilt
 through the exact ASEC restoration/fiscal carry and native ACS mapping.
+The one reviewed exception is the County Files proof of concept
+(microcosm#922): `tools/patch_us_acs_donor_columns.py` writes a patched copy of
+766b7c7's donor, with the three work columns restored from the pinned ASEC
+person files by source year and `PERIDNUM`, and a receipt (and, when asked, a
+build-folder release manifest for the copy, for `--donor-release-manifest`),
+and the staging builder's
+`--allow-default-donor-column COLUMN=REASON` accepts named all-default donor
+columns and records each one in the staging summary. Neither changes a
+default. Both are temporary for the County Files proof of concept
+(microcosm#1647; removal tracked in microcosm#1661): do not use them for the
+final County Files build, whose donor is a new national build.
 US household ladders carry both `county_fips` (2020 counties for the locked
 policyengine-us rules) and `county_fips_2023` (3,144 county-equivalents for
 calibration, including Connecticut's nine planning regions). The latter is

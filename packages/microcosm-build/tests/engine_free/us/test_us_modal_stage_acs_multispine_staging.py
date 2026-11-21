@@ -61,6 +61,7 @@ OWNED_FLAGS = {
     "--location-seed",
     "--location-clones",
     "--block-ladder",
+    "--allow-default-donor-column",
 }
 
 

@@ -1278,6 +1278,10 @@ US_ACS_MULTISPINE_STAGING = ToolSpec(
             "--location-seed",
             "--location-clones",
             "--block-ladder",
+            # The dense-donor coverage allowance (microcosm#922). The runner
+            # never passes it, so a Modal staging plan keeps the whole gate:
+            # an allowance is a reviewed local decision for one patched donor.
+            "--allow-default-donor-column",
         }
     ),
     argv_builder=_acs_multispine_staging_argv,
