@@ -538,6 +538,8 @@ class TestBelgianPackage:
             "gates.json",
             "release_contract.json",
             "unit_declarations.json",
+            "mass_references.json",
+            "transport_inputs.json",
         }
         assert set(spec.resource_hashes) == set(spec.resources) | {
             "country_package.json"

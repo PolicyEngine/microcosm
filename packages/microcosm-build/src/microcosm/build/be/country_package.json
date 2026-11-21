@@ -63,6 +63,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "mass_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "money_normalization.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -109,6 +114,11 @@
     },
     {
       "path": "target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "transport_inputs.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
