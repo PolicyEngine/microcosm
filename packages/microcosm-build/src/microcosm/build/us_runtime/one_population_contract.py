@@ -21,6 +21,10 @@ library between the selection and the H5 write:
 - :func:`cps_unit_ids` derives each CPS household's unit key, so the
   selection manifest's digest and the contract's key check share one rule.
 
+After the write, :func:`one_population_declares_acs_rows` says whether a
+frame declares ACS rows, so a release gate can tell a d2283 child from a
+Route A frame. Nothing calls it yet.
+
 The engine's variable classes at 2024 (known, computed, input) come from an
 injected :class:`EngineVariableIndex`. The default,
 :class:`PolicyEngineUSVariableIndex`, reads the installed policyengine-us
@@ -262,6 +266,7 @@ __all__ = [
     "absences",
     "combined_spm_role_record",
     "cps_unit_ids",
+    "one_population_declares_acs_rows",
     "require_one_population",
     "to_assembled_provenance",
     "write_absences",
@@ -1804,6 +1809,121 @@ def to_assembled_provenance(
         ) from exc
     _require_nested_groups(origins)
     return frame
+
+
+def _declared_acs_persons(record: object) -> int | None:
+    """The ACS person count a spine assembly record declares.
+
+    None when ``record`` is None or does not list
+    :data:`ACS_SUPPORT_CHANNEL`. The count rule is R1's
+    (:func:`_require_assembly_record`): a nonnegative integer, so 24.5,
+    ``"24"`` and ``True`` refuse rather than read as counts.
+    """
+
+    if record is None:
+        return None
+    channels = record.get("channels") if isinstance(record, Mapping) else None
+    counts = record.get("native_row_counts") if isinstance(record, Mapping) else None
+    if (
+        not isinstance(record, Mapping)
+        or record.get("version") != 1
+        or isinstance(channels, str | bytes)
+        or not isinstance(channels, Collection)
+        or not isinstance(counts, Mapping)
+    ):
+        raise OnePopulationContractError(
+            f"Malformed spine assembly record: {SPINE_ASSEMBLY_MANIFEST_KEY!r} "
+            "must hold version 1, a channel list and native row counts."
+        )
+    if ACS_SUPPORT_CHANNEL not in channels:
+        return None
+    by_channel = counts.get(US_SCHEMA.person_entity)
+    count = (
+        by_channel.get(ACS_SUPPORT_CHANNEL) if isinstance(by_channel, Mapping) else None
+    )
+    if not (_is_count(count) and count >= 0):
+        raise OnePopulationContractError(
+            "Malformed spine assembly record: its person count for "
+            f"{ACS_SUPPORT_CHANNEL!r} must be a nonnegative integer, got {count!r}."
+        )
+    return count
+
+
+def one_population_declares_acs_rows(frame: Frame) -> bool:
+    """Whether ``frame`` declares ACS rows in the one-population form (d2283).
+
+    A d2283 child holds ACS rows beside the CPS rows. This says whether a
+    frame declares such rows, so a release gate can tell a child from a
+    Route A frame. It answers from two things the frame carries and requires
+    that they agree:
+
+    - declared: the spine assembly record under ``SPINE_ASSEMBLY_MANIFEST_KEY``
+      lists :data:`ACS_SUPPORT_CHANNEL` with a positive person count. No
+      record, a record without that channel, or a count of 0 declares none;
+    - live: some person row's support channel holds
+      :data:`ACS_SUPPORT_CHANNEL`. A person table without the column holds
+      none.
+
+    So it returns False on a Route A frame (no record and no ACS row), on an
+    assembled frame with no ACS row (its record lists the channel with a
+    count of 0) and on a stacked pool (its ACS rows carry the channel
+    ``acs``), and True on an assembled frame with ACS rows. Nothing calls it
+    yet.
+
+    It reads the person channel column alone, and only if the person table
+    has it. It calls no role reader, no support provenance check and not
+    :func:`~microcosm.build.us_runtime.support_provenance.validate_assembly_provenance`,
+    which requires the record's clone-0 counts to equal the live rows and
+    would refuse a Route A frame, which has no record. The release tool's
+    frozen-support selection prunes the base frame before its ESI premium
+    gate reads it, so the live rows can fall below the record's counts. This
+    module's plan for the later PRs (module docstring) vouches for the record
+    on a loaded frame: PR 4 writes the record into the population manifest,
+    and PR 5's loader restores it into ``Frame.metadata`` and checks it on
+    the loaded frame through that validator, counts and all.
+
+    Args:
+        frame: The frame to read.
+
+    Returns:
+        True when the record declares ACS persons and the frame holds some;
+        False when it does neither.
+
+    Raises:
+        OnePopulationContractError: If the record lacks version 1, a
+            channel list or a count mapping, or gives an ACS person count
+            other than a nonnegative integer, if person rows carry
+            :data:`ACS_SUPPORT_CHANNEL` the record does not declare, or if the
+            record declares ACS persons and no person row carries the channel.
+        TypeError: If ``frame`` is not a :class:`~microcosm.frame.Frame`.
+    """
+
+    if not isinstance(frame, Frame):
+        raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
+    record = frame.metadata.get(SPINE_ASSEMBLY_MANIFEST_KEY)
+    count = _declared_acs_persons(record)
+    declared = count is not None and count > 0
+    person = frame.table(US_SCHEMA.person_entity)
+    column = support_channel_column(US_SCHEMA.person_entity)
+    live = int(person[column].eq(ACS_SUPPORT_CHANNEL).sum()) if column in person else 0
+    if live and not declared:
+        if record is None:
+            state = "the frame has no spine assembly record"
+        elif count is None:
+            state = "the frame's spine assembly record does not list that channel"
+        else:
+            state = "the frame's spine assembly record counts no ACS person"
+        raise OnePopulationContractError(
+            f"Undeclared ACS rows: {live} person row(s) carry the support channel "
+            f"{ACS_SUPPORT_CHANNEL!r}, and {state}."
+        )
+    if declared and not live:
+        raise OnePopulationContractError(
+            f"Missing ACS rows: the frame's spine assembly record declares {count} "
+            "ACS person(s), and no person row carries the support channel "
+            f"{ACS_SUPPORT_CHANNEL!r}."
+        )
+    return declared
 
 
 # ------------------------------------------------------- engine variables
