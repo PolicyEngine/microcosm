@@ -1,0 +1,1 @@
+Add `one_population_declares_acs_rows` to `us_runtime/one_population_contract.py`. It reports whether a frame holds d2283's ACS rows, from the spine assembly record's ACS person count and the person rows' support channel, and refuses a frame where the two disagree or the record is malformed. It returns False on Route A frames and stacked pools. No build calls it yet.
