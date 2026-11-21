@@ -197,9 +197,12 @@ def _apply_pending_roster_transformations(
     assert "pip_points" not in roster
     roster.append("pip_points")
     # microcosm#1428 re-mint pending: the self-employed's gross receipts run
-    # last.
+    # after the PIP points.
     assert "trading_allowance_receipts" not in roster
     roster.append("trading_allowance_receipts")
+    # microcosm#1095 re-mint pending: the UC new-claimant draw runs last.
+    assert "uc_new_claimant_draw" not in roster
+    roster.append("uc_new_claimant_draw")
     return tuple(roster)
 
 

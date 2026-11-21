@@ -562,12 +562,14 @@ def test_the_committed_declaration_carries_the_tested_operations():
     lisa = {artifact["role"]: artifact for artifact in stages["was_lisa"].artifacts}
     for role in ("was_qrf_donor", "was_person_tab"):
         assert roles[role] == lisa[role]
-    # Only the PIP points and the self-employed's gross receipts run after it
-    # (microcosm#1095 P1, microcosm#1428).
-    assert list(stages)[-3:] == [
+    # Only the PIP points, the self-employed's gross receipts and the UC
+    # new-claimant draw run after it (microcosm#1095 P1, microcosm#1428,
+    # microcosm#1095).
+    assert list(stages)[-4:] == [
         "isa_subscriptions",
         "pip_points",
         "trading_allowance_receipts",
+        "uc_new_claimant_draw",
     ]
 
 

@@ -45,7 +45,7 @@ from test_support.microcosm_build.uk_engine_window import stub_scratch_engine_wi
 #: the loop or the formula that reads its years: re-check the cut, then re-pin.
 _REVIEWED_UC_REFORM_SOURCES = {
     "add_universal_credit_reform": (
-        "ca13079bb2043c8965dd2cc9397c13c58b7f98f8e58b2c678ab7602f72a55935"
+        "4de81fd0a156fe5109892886e43ae1e93a4b172ee15cea64784b55aadc415d9a"
     ),
     "_add_inactive_health_element_formula": (
         "8f20a36b13458b140caeb8d6f06f1fdad4bf0ba28d17a04f7f5b4a325b2ad907"

@@ -8,8 +8,12 @@ import pytest
 
 from microcosm.build.uk_runtime import hmrc_uprating, weight_year
 from microcosm.build.uk_runtime.national_frame import (
+    UK_TOTAL_COLUMNS,
+    UK_TOTAL_COMPONENTS,
     load_uk_national_frame,
+    uk_household_totals,
     uk_national_frame,
+    uk_release_export_frame,
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.weight_year import (
@@ -186,3 +190,68 @@ def test_the_division_survives_the_release_file(tmp_path) -> None:
         released.weights_for("household").values,
     )
     assert loaded.mass_log == released.mass_log
+
+
+def _frame_with_share_keys():
+    """A release frame whose households hold every share-key component."""
+
+    ids = np.asarray([1, 2, 3], dtype="int64")
+    components = {
+        component: np.asarray([1.0, 2.0, 4.0]) * (index + 1)
+        for index, component in enumerate(UK_TOTAL_COMPONENTS)
+    }
+    return uk_national_frame(
+        person=pd.DataFrame(
+            {"person_id": ids, "person_benunit_id": ids, "person_household_id": ids}
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=pd.DataFrame({"household_id": ids, **components}),
+        time_period="2024",
+        weight_kind=WeightKind.CALIBRATED,
+        household_weights=SOLVED,
+    )
+
+
+def _totals(frame) -> dict[str, list[float]]:
+    household = frame.table("household")
+    return {column: household[column].tolist() for column in UK_TOTAL_COLUMNS}
+
+
+def test_the_release_carries_the_uk_totals_at_the_weights_it_stores(tmp_path) -> None:
+    # The release boundary writes each share-key component's UK total, the
+    # same on every household, at the frame's weights (policyengine-uk
+    # 2.178.0, pe-uk#2901).
+    exported = uk_release_export_frame(_frame_with_share_keys())
+    household = exported.table("household")
+    for column, component in zip(UK_TOTAL_COLUMNS, UK_TOTAL_COMPONENTS, strict=True):
+        total = float(np.sum(household[component].to_numpy() * SOLVED))
+        assert household[column].tolist() == [total] * 3
+
+    # The division to the dataset year sums them again at the weights the
+    # file stores, which policyengine-uk projects by population as it
+    # projects the weights.
+    released = uk_dataset_year_frame(exported, solve_year=2025)
+    stored = released.weights_for("household").values
+    for column, component in zip(UK_TOTAL_COLUMNS, UK_TOTAL_COMPONENTS, strict=True):
+        total = float(np.sum(household[component].to_numpy() * stored))
+        assert released.table("household")[column].tolist() == [total] * 3
+
+    # They survive the file, and neither step moves them twice.
+    path = tmp_path / "release.h5"
+    write_uk_national_frame(released, path)
+    loaded, _provenance = load_uk_national_frame(path)
+    assert _totals(loaded) == _totals(released)
+    assert uk_release_export_frame(exported) is exported
+    assert uk_dataset_year_frame(released, solve_year=2025) is released
+
+
+def test_the_uk_totals_need_every_share_key_component() -> None:
+    partial = pd.DataFrame({"household_id": [1, 2], UK_TOTAL_COMPONENTS[0]: [1.0, 2.0]})
+    with pytest.raises(ValueError, match="lacks"):
+        uk_household_totals(partial, [1.0, 1.0])
+    # A frame with none of them, such as a test frame, passes as it is.
+    bare = pd.DataFrame({"household_id": [1, 2]})
+    assert uk_household_totals(bare, [1.0, 1.0]) is bare
+    assert not set(UK_TOTAL_COLUMNS) & set(
+        uk_dataset_year_frame(_frame(), solve_year=2025).table("household")
+    )
