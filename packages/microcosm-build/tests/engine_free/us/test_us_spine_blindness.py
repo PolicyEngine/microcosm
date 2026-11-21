@@ -253,6 +253,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
         "acs_inputs.py",
+        # Legacy local-lane employer premium (#454): donor qualification, a
+        # one-family transfer plan and narrow views for the pool anchor and
+        # the two ESI gates. It selects donors by support role and tells the
+        # rows apart by whether the raw ASEC fields are present, never by a
+        # spine or support-channel column, so it owns no provenance boundary.
+        "acs_local_esi_premiums.py",
         # Legacy source-hours completion and release gate; outside the registry.
         "acs_local_hours.py",
         # Legacy local-lane take-up fill and release gate; outside the registry.
@@ -344,8 +350,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "engine_lifecycle.py",
         # MEPS-IC employer-premium input (#454): a base-builder pre-clone
         # stage keyed on restored ASEC coverage fields,
-        # not yet a multispine pool operator. Reads no spine or support-channel
-        # column and remains subject to the all-runtime source-identity scan.
+        # not yet a multispine pool operator. Its gates also grade frames that
+        # mix CPS rows with rows a transfer filled (allow_transferred_rows,
+        # d2283), telling them apart by whether the raw ASEC fields are
+        # present. Reads no spine or support-channel column and remains
+        # subject to the all-runtime source-identity scan.
         "esi_premiums.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",

@@ -1,7 +1,9 @@
 # US employer-sponsored insurance premiums (#454)
 
-Status as of 2026-10-11. Code: `microcosm.build.us_runtime.esi_premiums`
-(stage `meps_esi_premiums`). Receipts: `experiments/us-esi-454/`.
+Status as of 2026-11-18. Code: `microcosm.build.us_runtime.esi_premiums`
+(stage `meps_esi_premiums`) and, for ACS local releases,
+`microcosm.build.us_runtime.acs_local_esi_premiums`. Receipts:
+`experiments/us-esi-454/`.
 
 ## What the stage produces
 
@@ -298,12 +300,244 @@ class, and 0.1M have no labor-force status (0).
 Both the signal gate and the anchor gate pass on each pool, before and after
 the PUF-support clone, and the clone conserves both totals.
 
+## ACS local releases
+
+The ACS local lane (`tools/build_us_acs_multispine_base.py`, then
+`tools/build_us_acs_local_release.py`) pools a dense donor release with the
+ACS 2024 1-year spine. `with_optional_acs_spine` multiplies every donor
+household weight by `1 - acs_share` and gives ACS the rest of the donor's
+household mass (half each by default). The donor rows arrive with the column
+and the raw coverage columns the release carries. ACS rows have neither.
+`microcosm.build.us_runtime.acs_local_esi_premiums` puts the column on them:
+it qualifies the donor, transfers the column and holds the ACS rows to the
+donor rows' scale.
+
+### The lane transfers the column in its own pass
+
+`acs_local_esi_premium_transfer_target_families` is a one-family plan,
+`source_operator_esi_premiums`, that only the lane's staging build uses, as it
+does for usual hours (#765) and the ASEC income families (#1022). The pass
+runs after those two and immediately before the lane's shared transfer, so the
+hours and income passes see the frame they would see without it. The declared
+ACS plan (`declared_acs_transfer_target_families`) does not gain the column:
+
+- The shared transfer fits every declared family on the PUF-detail role by
+  default (`--donor-channel auto`), the wrong donor for this column (next
+  section).
+- Other plans start from the declared one: the multispine pool's transfer plan
+  (`pool_transfer_target_families`) and the spine-agreement battery's default
+  registry (`spine_agreement`). A column declared there would reach both.
+
+The transfer's predictors are fixed lists (`ACS_PERSON_TRANSFER_PREDICTORS`,
+`ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS`) that do not include the premium, so
+the premium the pass writes cannot enter another family's fit. On the test
+fixture, the shared transfer draws the same values with and without the pass,
+every other column of every table is byte-equal, and the hours and income
+passes make the same calls and draws
+(`test_the_esi_pass_moves_no_other_value_on_any_row`,
+`test_the_esi_pass_changes_no_call_or_draw_of_the_other_passes`).
+
+### The donor rows are the ASEC observations
+
+The transfer fits on the donor's ASEC observation role (support clone 0). The
+lane's tax-detail families fit on the PUF-detail role, which is the wrong
+donor for this column:
+
+- On the observation role, `employment_income_before_lsr` is the measured CPS
+  wage, and a person has a premium only if they hold a job with an employer.
+- PUF support imputation writes the clone's wages
+  (`PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS`), while the clone's premium is a
+  copy of its source person's. On those rows the premium no longer follows the
+  wage.
+
+The recipient side is the measured ACS wage (`WAGP`), so both sides of the fit
+see a measured wage. On the test fixture, where only wages tell the employed
+from the rest, a fit on ASEC observations gives no ACS person without wages a
+premium; a fit on the PUF-detail role gives one to more than a tenth of them
+and to fewer workers
+(`test_the_puf_detail_role_would_put_premiums_on_people_without_wages`).
+
+`prepare_acs_local_esi_premium_donor` qualifies the donor before the staging
+build loads the SIPP donor or fetches the ACS sources. It refuses a donor
+without the column, the raw coverage columns, the CPS record id (`PERIDNUM`),
+wages or legacy support roles, one with a row that lacks any raw coverage
+column or a record id, one whose ASEC observations have a missing wage, and
+one that fails the stage's signal gate. Every donor row is a CPS record, so a
+row that lost those fields stops the build here, in minutes, not after the
+transfer, even one that lost both: the signal gate grades the donor as the
+pooled frame will be graded (see "The gates grade the lane's frame by row
+kind") and would read such a row as a transferred one.
+
+### The ACS rows are held to the donor rows' scale
+
+Nothing in a QRF draw keeps a total. Once the frame is pooled,
+`with_acs_local_esi_premium_anchor` runs the mixed-frame kernel in
+`esi_premiums`, `with_us_esi_premium_pool_anchor`, on it. The kernel tells the
+donor rows from the ACS rows by the CPS record id and the raw coverage
+columns, which only the donor rows carry. On the ACS rows it:
+
+1. clears the premium where the person reports zero wages; then
+2. scales the rest by one factor so the ACS rows carry the same weighted
+   premium per unit of household mass as the donor rows.
+
+The kernel refuses a transferred row whose wage is missing: a missing wage is
+not a zero wage. ACS PUMS leaves `WAGP` blank below age 15, outside its
+earnings universe, and the lane keeps that blank in the staging frame; the
+release tool's reviewed null fill (`fill_reviewed_nulls`) sets it to zero for
+the engine. The anchor reads those people's wages as zero under the universe
+rule `acs_income_universe` names (`acs_2024_pums_wagp_age_15_plus`), in its
+own view of the frame, and writes no zero into the frame. The rest of the rule
+stops the build:
+
+- a blank raw `WAGP` at age 15 or older, or at an unknown age, however the
+  mapped wage was filled;
+- below 15, a raw `WAGP` that is not blank, or a mapped wage that is neither
+  null nor zero.
+
+The kernel resolves the same rule itself
+(`resolve_acs_pums_earnings_universe`), but only on rows whose support channel
+is `acs`. This lane's ACS rows carry the late spine's channel
+(`acs_2024_1yr`), so the kernel's check sees none of them and its receipt
+counts no rows. The lane applies the rule before calling the kernel, and its
+receipt (`wage_universe`) counts what it checked.
+
+The anchor never rewrites a donor row. These hold for every lane frame
+(`tests/engine_free/us/test_us_acs_local_esi_premiums.py`, property-tested
+over the ACS share, both spines' weights and the transferred premiums and
+wages):
+
+- the lane-wide weighted column equals the donor rows' total divided by their
+  share of household mass, `1 - acs_share`. Pooling multiplied every donor
+  household weight by that share, so the lane-wide column is the donor
+  release's own column;
+- both spines carry the same weighted premium per unit of household mass, so
+  moving mass from one spine to the other does not move the total;
+- an ACS person with zero wages, or below age 15, carries nothing;
+- the frame's own wage blanks are never overwritten;
+- an anchored frame is returned unchanged.
+
+The lane runs the kernel and both gates on a narrow view of the frame, for two
+reasons:
+
+- **Source ids.** The kernel finds a support clone's wages and draw by
+  `person_source_id` across the whole frame, so it needs that id unique there.
+  This lane's is not: ACS rows keep their ids from before the pooling remap as
+  source ids, and those can repeat a donor's. Every ACS row here is its own
+  source record, so the view leaves the source id out and the kernel reads
+  each row's own wages (`test_acs_ids_that_repeat_the_donors_change_nothing`).
+  The view keeps the clone index, which the kernel's earnings universe
+  requires, and the lane refuses a transferred row that is not clone 0.
+- **Memory.** The kernel copies every table it is given and each gate copies
+  the person table. The staging frame holds two full spines, and the view
+  carries only the columns they read.
+
+**Assumption.** ACS rows have no policyholder flag, so the lane's
+anchor-universe total is the donor rows' total plus the ACS column over the
+donor rows' employed share of the anchor universe. That assumes employed
+policyholders carry the same share of employer premiums on the ACS rows as on
+the donor rows.
+
+The donor is a calibrated release. Its anchor-universe total is within the
+release tolerance of the anchor, not on it, and the staging frame starts from
+the same place.
+
+### The gates grade the lane's frame by row kind
+
+`us_esi_premiums_summary` and both gates take `allow_transferred_rows`,
+`False` by default. The lane passes `True` everywhere it grades: in the donor
+qualifier's signal gate and in `acs_local_esi_premium_signal_gate` and
+`acs_local_esi_premium_anchor_gate`. The staging build calls the two through
+`acs_local_esi_premium_gates`; finalize calls them one by one, each beside its
+entry of the gate battery's shadow. The anchor kernel applies the same rule
+itself. The donor rows then get the full MEPS-IC recomputation, and the ACS
+rows are compared with them ("What the gates need", under "Gates", has the
+rule and its refusals).
+
+The base build (`tools/build_us_puf_support_base.py`), the release tool
+(`tools/build_us_fiscal_refresh_release.py`) and the stage itself, when it
+re-checks a frame that already carries the column, keep the default. Under it
+every row must carry every raw coverage column, a row without them fails both
+gates with each missing column and its row count named, and the CPS record id
+is not read. The lane's frame is red under the default
+(`test_the_lane_frame_is_red_under_route_as_default_rule`), and Route A's
+callers grade as they did before a mixed frame could be graded.
+`tests/engine_free/us/test_us_esi_premiums_route_a_differential.py` checks
+this against a vendored copy of the earlier gates
+(`test_support/microcosm_build/us_esi_premiums_main_oracle.py`): on Route
+A-shaped frames every verdict agrees, and where the copy grades a frame
+without refusing it, the failures and every recorded figure agree bit for bit.
+
+### What the lane records
+
+- **Staging.** The donor is qualified before the SIPP donor and the ACS
+  sources are loaded. Both gates run on the frame the staging H5 is written
+  from, after the last stage that replaces it. A red gate fails the build
+  before the H5 is written. The verdicts, the donor receipt and the anchor
+  receipt are in the staging summary under `local_esi_premiums`.
+- **Finalize.** Both gates run on the calibrated artifact. The gate report
+  carries them as `esi_premiums_signal` and `esi_premiums_anchor`, each bound
+  to the artifact's SHA-256, and either one red fails finalize once the report
+  is written. The report's `input_coverage` entry used to be a fixed pass; it
+  now passes only if both gates do. Each gate is also a `us_local` entry of
+  `us/gates.json` (`us_local_esi_premiums_signal`,
+  `us_local_esi_premiums_anchor`), bound to the lane's row-kind gates, so the
+  gate battery's shadow (microcosm#1585 item 11) evaluates it beside today's
+  call and compares the verdicts.
+- **Package.** By default, package refuses a report without both verdicts,
+  with a verdict bound to other bytes, or with a red verdict, before a
+  release directory exists. With `--allow-esi-premium-gaps`, package also
+  takes a red verdict bound to those bytes that finalize recorded as waived
+  (`enforced: false`), and nothing else (see below).
+- **`fill_reviewed_nulls`** still refuses a frame whose column is null on some
+  rows. A current staging frame has none. A staging H5 built before this
+  change has them, and so does one whose donor qualification a diagnostic
+  build waived.
+
+`--allow-esi-premium-gaps`, on both tools, is for diagnostic builds only, for
+example from a donor that predates the stage. In staging it turns a refused
+donor and red gates into records in `local_esi_premiums` instead of failures.
+From a refused donor the lane transfers nothing: if the donor lacks the
+column, no row carries it; if it carries the column but fails qualification,
+the ACS rows stay null and `fill_reviewed_nulls` refuses the frame. In
+finalize the flag records a red verdict without failing, and the gate entry
+keeps the failures with `enforced: false`. Package takes a red verdict only as
+that recorded waiver: with the flag it still refuses a red verdict finalize
+enforced. The gate battery's shadow records the waiver on each ESI entry as
+the finalize run that evaluated it had it, so a package run with other flags
+does not rewrite it. Finalize keeps that record beside its shadow
+observations, with the SHA-256 of the gate report bytes that run wrote (null
+if it wrote none), and the shadow attaches the record only to those bytes. It
+compares the digest of the bytes package parsed or, when package stopped
+before it read the report, of the file at the selected path when the stage
+ends. It records the ESI entries' waiver as unknown, with the reason, rather
+than as none when the record names another gate report, names none while a
+gate report exists, or lacks the digest, as older records do; when it cannot
+open or read the file as a waiver record; or when a finalize checkpoint saved
+before finalize kept a record has observations and no record. When the
+record's digest is null and the selected path holds no gate report, the two
+match: the shadow shows the recorded flags on that package run, which package
+refuses ("No gate report") when it reaches that check. The shadow matches
+only the waiver to the report: it reads the latest saved finalize observations,
+whichever gate report package selects. A release that package ships under the
+waiver still fails the local-area release contract (`microcosm.data.contract`),
+which accepts only gates that passed. A Modal plan can set the waiver for the
+release tool (`allow_esi_premium_gaps`) but not for staging: the staging
+runner owns the flag and never passes it, so every Modal staging run qualifies
+the donor and enforces both gates.
+
+No ACS local build has run this pass on real inputs yet, so the lane's fill
+is unmeasured. The first staging build records it in `local_esi_premiums`.
+That build's finalize is also the first grading of both gates at calibrated
+weights: calibration reweights each household, so the anchor-universe total
+and the ratio between the spines can move after staging, and these gates are
+what hold them.
+
 ## Gates
 
 | Gate | Where | Checks |
 |---|---|---|
-| `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. |
-| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of BEA NIPA 7.8 line 17 for the release period. Employed policyholders must carry 80% to 95% of it. |
+| `us_esi_premiums_signal_gate` | base build, before and after the clone; release tool, on the base and on the calibrated export; ACS local lane, on the donor release, the staging frame and the calibrated artifact | Column present, finite, nonnegative and non-constant; support clones agree; the weighted share of people with a positive value is plausible; no employer premium outside the column universe or where the employer pays none; every premium is one common multiple of its MEPS-IC share. On a mixed frame (`allow_transferred_rows=True`) these proofs cover the rows with raw coverage columns; the other rows must carry the premium with a weighted positive share and mean within 0.5 to 2 times those rows'. |
+| `us_esi_premiums_anchor_gate` | release tool, on the calibrated export, for both the dense and the sparse default; ACS local lane, on the staging frame and the calibrated artifact | The column absent or zero-mass is red. The anchor-universe total, recomputed at the release's weights, must be within **5%** of BEA NIPA 7.8 line 17 for the release period. Employed policyholders must carry 80% to 95% of it. On a mixed frame (`allow_transferred_rows=True`) the total adds the transferred column at the source-derived rows' employed share, and the transferred rows' column per unit of household mass must stay within 0.8 to 1.25 times the source-derived rows'. |
 | `us_release_input_coverage_gate` | release tool | The input is `required` with no reviewed exclusion, so an export that drops or flattens it fails. |
 | `assert_required_us_release_source_columns` | the L0/refit export (`l0_refit_export.export_us_l0_refit_h5`, run by `tools/export_us_l0_refit_h5.py`), unless `--allow-missing-source-columns` is passed | The column must be present and non-constant. |
 | reform-coverage smoke | release tool, on the written file | Neutralizing the employer premium must lower `cbo_household_market_income` by at least $500B. |
@@ -316,6 +550,38 @@ What the gates need, and what they do not catch:
   cannot be certified. Published release files carry raw ASEC person fields
   today (`PEIO1COW`, `PHIP_VAL`, `WSAL_VAL`, `NOW_MCAID`); a release path
   that dropped the restored columns would turn both gates red.
+- **A mixed frame is graded by row kind, only when the caller allows it.**
+  With `allow_transferred_rows=True`, which only the ACS local lane passes,
+  rows with every raw coverage column get the full recomputation. Rows with
+  none of them and no CPS record id (`PERIDNUM`) are the ones a transfer
+  filled; the gates compare them with the first kind and cannot check them
+  against MEPS-IC cells. Four things fail both gates: a row with only some of
+  the columns; a CPS record without them (lost coverage codes are never graded
+  as a transfer); a row with them but no record id, in a frame that has the id
+  column; and a row without them in a frame that has no id column. The signal
+  gate also fails when a transferred person's support clones disagree. When
+  the transferred rows hold no household mass, the gates skip the comparison
+  between the two kinds: there is no second half to compare. When the rows
+  with the raw columns hold no household mass, or their policyholders or
+  employed policyholders carry no weighted MEPS-IC share, or the employed
+  policyholders' part of it rounds to zero, there is nothing to price the
+  transferred rows against, and both gates fail with that refusal. Both also
+  fail, and name the term, when finite weights sum past the largest float:
+  the household mass of either kind of row or of both together, the
+  weighted employer premium of either kind or of both together, the
+  anchor-universe total formed from it, or, on the rows with the raw
+  columns, the weighted MEPS-IC share or the weight of the employed
+  policyholders with a positive share. When the
+  transferred rows hold household mass and the premium per unit of household
+  mass on the rows with the raw columns rounds to zero, the per-mass
+  comparison has no value and the anchor gate fails it. The anchor gate's
+  private-sector cross-check scales those rows' sector total by their share
+  of household mass. When that share rounds to zero, or the sector total or
+  the scaled total is not finite, the cross-check is recorded without a value
+  and its `unavailable` reason names which. Under the
+  default, which the base build and the release tool keep, every row must
+  carry every raw coverage column and the record id is not read (see "The
+  gates grade the lane's frame by row kind").
 - **The raw-mean band catches unit errors only.** The signal gate requires
   the unscaled share per holder to sit between $6k and $20k, which catches a
   cell table in the wrong units. A cell table that is 20% low passes: the
@@ -362,10 +628,20 @@ file.
   scaling to a national total there needs its own design. Until then the
   coverage and anchor gates are red on that lineage. The raw-stage operator
   boundary already refuses a source frame that carries the output.
-- **ACS local releases.** An ACS spine pooled beside a donor that carries the
-  input has it null on its ACS rows. `fill_reviewed_nulls` refuses that frame
-  instead of default-filling it to zero, so this lineage does not build until
-  the input is assigned or transferred for every spine.
+- **An ACS local release from an older donor.** The lane transfers the column
+  from its donor release. A donor built before the stage has nothing to
+  transfer, and the lane refuses it unless a diagnostic build waives the
+  gates.
+- **ACS-native predictors for the fill.** The ACS local lane fills ACS rows
+  from the transfer's fixed predictors: age, sex and State, and wages,
+  self-employment income, Social Security, retirement and investment income,
+  household head and tenure where both sources observe them. It does not use
+  ACS's own employer-coverage (`HINS1`), class-of-worker (`COW`) or
+  employment-status (`ESR`) items.
+- **A second verdict on the transferred rows' cells.** The gates recompute the
+  MEPS-IC assignment on the rows that carry the raw coverage columns. They
+  compare the transferred rows with those rows and cannot check them against
+  the cells.
 - **A calibration target.** The column is the employed part of the BEA fact,
   so the fact cannot be compiled as a sum target on it. The target-parity
   manifest keeps the BEA family and the two `cms_nhe` ESI families as
@@ -376,6 +652,6 @@ file.
   refuses a frame whose column is absent or constant, and its generic
   input-mass parity check (default tolerance 50%) compares the column's
   weighted total with the base or reference, as for every input. Neither ESI
-  gate runs there: they run only in the base build and in
-  `tools/build_us_fiscal_refresh_release.py`.
+  gate runs in that export. The table under "Gates" lists where they run,
+  among them the ACS local lane's staging and finalize.
 - **The pre-tax employee premium.** See the section above.

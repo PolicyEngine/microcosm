@@ -2459,6 +2459,51 @@
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): SNAP reporters are the native household FS. Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure."
     },
     {
+      "id": "us_local_esi_premiums_signal",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_signal",
+        "positive_share_band": [
+          0.15,
+          0.32
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ],
+        "transferred_to_source_band": [
+          0.5,
+          2.0
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): ESI employer premiums on the calibrated artifact, graded by row kind (allow_transferred_rows=True): the donor rows get the MEPS-IC checks and the ACS rows are compared with them (microcosm#454). Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure unless --allow-esi-premium-gaps waives it."
+    },
+    {
+      "id": "us_local_esi_premiums_anchor",
+      "gate": "stage_health",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "esi_premiums_anchor",
+        "anchor_relative_tolerance": 0.05,
+        "employed_share_band": [
+          0.8,
+          0.95
+        ],
+        "raw_mean_band": [
+          6000.0,
+          20000.0
+        ],
+        "transferred_per_mass_band": [
+          0.8,
+          1.25
+        ]
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): the ESI employer premium's anchor-universe total against its national anchor at the calibrated weights, graded by row kind (allow_transferred_rows=True; microcosm#454). Finalize collects it into gate_summary.json, writes the file, then raises on a hard failure unless --allow-esi-premium-gaps waives it."
+    },
+    {
       "id": "us_local_reviewed_fill_consumers_finalize",
       "gate": "stage_health",
       "phase": "terminal",

@@ -34,6 +34,10 @@ from microcosm.build.us_runtime.org_wages import (
 )
 from microcosm.data import stored_inputs
 from microcosm.data.build_folder_manifests import publication_commands
+from test_support.microcosm_build.us_acs_local_release_tool import (
+    load_staging_builder_module,
+    load_tool_module,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -177,30 +181,47 @@ def _writer_code(module) -> dict:
 _STARTED_CODE = {"sha": "a" * 9, "commit": "a" * 40, "dirty": False, "branch": "main"}
 
 
-def _load_tool_module():
-    root = _TEST_PATHS.repository
-    path = root / "tools" / "build_us_acs_local_release.py"
-    spec = importlib.util.spec_from_file_location(
-        "build_us_acs_local_release",
-        path,
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+# The engine-contract test of this tool loads it through the same helpers.
+_load_tool_module = load_tool_module
+_load_staging_builder_module = load_staging_builder_module
 
 
-def _load_staging_builder_module():
-    root = _TEST_PATHS.repository
-    path = root / "tools" / "build_us_acs_multispine_base.py"
-    spec = importlib.util.spec_from_file_location(
-        "build_us_acs_multispine_base",
-        path,
+def _passing_esi_premium_gates(artifact_sha: str) -> dict[str, dict]:
+    """The finalize report's ESI premium entries (microcosm#454), green and
+    bound to ``artifact_sha``: what the package stage requires before it
+    reaches the checks the other package tests are about."""
+
+    return {
+        name: {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+            "enforced": True,
+        }
+        for name in ("esi_premiums_signal", "esi_premiums_anchor")
+    }
+
+
+def _stub_esi_premium_gates(
+    module, monkeypatch, *, signal: tuple = (), anchor: tuple = ()
+) -> None:
+    """Fix the lane's ESI premium verdict; its own tests cover the grading."""
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_esi_premium_signal_gate",
+        lambda frame: GateResult(
+            name="esi_premiums_signal", passed=not signal, failures=signal
+        ),
     )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    monkeypatch.setattr(
+        module,
+        "acs_local_esi_premium_anchor_gate",
+        lambda frame, *, time_period: GateResult(
+            name="esi_premiums_anchor", passed=not anchor, failures=anchor
+        ),
+    )
 
 
 def test_household_chunks_refuse_population_aggregates(monkeypatch, tmp_path) -> None:
@@ -3083,6 +3104,7 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "detail": {},
             "artifact_sha256": artifact_sha,
         },
+        **_passing_esi_premium_gates(artifact_sha),
     }
     if hours_report is not None:
         gates["acs_local_hours_signal"] = hours_report
@@ -4004,8 +4026,13 @@ def _stub_local_receipt_anchor_gate(
     monkeypatch.setattr(module, "acs_local_receipt_anchor_signal_gate", gate)
 
 
-def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
-    """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
+def _patch_finalize_collaborators(
+    module, monkeypatch, frame=None, *, identity=True, esi_premiums=True
+):
+    """Stub the ladder gate and composition; ``frame=None`` loads real bytes.
+
+    ``esi_premiums=False`` leaves the real ESI premium gates in place.
+    """
 
     import microcosm.build.us_runtime.puma_ladder as puma
     from microcosm.build.gates import GateResult
@@ -4027,6 +4054,8 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     _stub_local_ssi_disability_gate(module, monkeypatch)
     _stub_local_ssi_medicaid_take_up_gate(module, monkeypatch)
     _stub_local_receipt_anchor_gate(module, monkeypatch)
+    if esi_premiums:
+        _stub_esi_premium_gates(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -4037,8 +4066,8 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
         )
 
 
-def _run_finalize(module, monkeypatch, args, frame=None):
-    _patch_finalize_collaborators(module, monkeypatch, frame)
+def _run_finalize(module, monkeypatch, args, frame=None, *, esi_premiums=True):
+    _patch_finalize_collaborators(module, monkeypatch, frame, esi_premiums=esi_premiums)
     with pytest.raises(SystemExit) as exc:
         module.do_finalize(args)
     report = (
@@ -5352,6 +5381,8 @@ def _package_args_with_hours(
         fill_gate["artifact_sha256"] = "0" * 64
     if gates and reviewed_fill_state != "missing":
         gates["acs_local_reviewed_fill_consumers"] = fill_gate
+    # microcosm#454: package checks the ESI premium verdict before these gates.
+    gates = {**_passing_esi_premium_gates(artifact_sha), **gates}
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -8020,3 +8051,480 @@ def test_finalize_refuses_a_block_v1_run_whose_targets_ladder_is_not_the_staged_
     for key in ("location_rule", "location_seed", "location_clones"):
         legacy["orchestration"].pop(key, None)
     module.require_block_v1_targets_ladder(legacy, "e" * 64)
+
+
+# --- microcosm#454: the lane's own verdict on the ESI employer premium --------
+
+
+@pytest.fixture(scope="module")
+def esi_lane_frame():
+    """A staged lane frame: the real ESI transfer, pooling and anchor."""
+
+    from test_support.microcosm_build.us_acs_local_esi_premiums import (
+        build_lane,
+        dense_donor,
+        raw_acs,
+    )
+
+    return build_lane(dense_donor(), raw_acs()).frame
+
+
+def _with_acs_premium_scaled(frame, factor: float):
+    """The lane frame with every ACS row's premium multiplied by ``factor``."""
+
+    from microcosm.frame import Frame
+
+    person = frame.table("person").copy()
+    acs = person["person_spine"].eq("acs_2024_1yr")
+    person.loc[acs, "employer_sponsored_insurance_premiums"] *= factor
+    return Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+
+def _patch_esi_finalize(module, monkeypatch, args, frame) -> None:
+    """Finalize's collaborators with the real ESI premium gates, ``frame``
+    served only as the calibrated artifact: loading any other path fails."""
+
+    _patch_finalize_collaborators(module, monkeypatch, esi_premiums=False)
+
+    def calibrated_artifact_only(path, *_args, **_kwargs):
+        assert Path(path) == Path(args.out_h5), (
+            f"finalize loaded {path}, not the calibrated artifact {args.out_h5}"
+        )
+        return frame
+
+    monkeypatch.setattr(module, "_load_staging_frame", calibrated_artifact_only)
+
+
+def _run_esi_finalize(module, monkeypatch, args, frame):
+    _patch_esi_finalize(module, monkeypatch, args, frame)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    return str(exc.value), json.loads(args.gate_report.read_text())
+
+
+def test_finalize_grades_the_esi_premium_on_the_calibrated_artifact(
+    tmp_path, monkeypatch, esi_lane_frame
+) -> None:
+    """Both gates run on the artifact and their verdict replaces the
+    hard-coded input-coverage pass."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    artifact_sha = module._sha256(args.out_h5)
+
+    message, report = _run_esi_finalize(module, monkeypatch, args, esi_lane_frame)
+
+    gates = report["gates"]
+    for name in module.ESI_PREMIUM_GATE_NAMES:
+        assert gates[name]["passed"] is True, gates[name]["failures"]
+        assert gates[name]["failures"] == []
+        assert gates[name]["artifact_sha256"] == artifact_sha
+        assert gates[name]["enforced"] is True
+        assert name not in message
+    signal, anchor = (gates[name]["detail"] for name in module.ESI_PREMIUM_GATE_NAMES)
+    assert signal["source_rows"] == 640 and signal["transferred_rows"] == 280
+    assert anchor["time_period"] == module.PERIOD
+    assert anchor["source_household_mass_share"] == pytest.approx(0.5, rel=1e-12)
+    assert anchor["transferred_to_source_per_household_mass_ratio"] == pytest.approx(
+        1.0, rel=1e-9
+    )
+    assert abs(anchor["relative_error"]) < 1e-9
+    assert gates["input_coverage"]["passed"] is True
+    assert gates["input_coverage"]["binds"] == "donor_certified_release"
+    assert gates["input_coverage"]["graded_on_artifact"] == list(
+        module.ESI_PREMIUM_GATE_NAMES
+    )
+    # The report is strict JSON even where a detail is not finite.
+    json.loads(args.gate_report.read_text(), parse_constant=pytest.fail)
+
+
+@pytest.mark.parametrize("factor", [0.0, 1.4])
+def test_finalize_hard_fails_on_a_red_esi_premium_gate(
+    tmp_path, monkeypatch, esi_lane_frame, factor
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    frame = _with_acs_premium_scaled(esi_lane_frame, factor)
+
+    message, report = _run_esi_finalize(module, monkeypatch, args, frame)
+
+    red = "esi_premiums_signal" if factor == 0.0 else "esi_premiums_anchor"
+    assert red in message
+    assert report["gates"][red]["passed"] is False
+    assert report["gates"][red]["failures"]
+    assert report["gates"][red]["enforced"] is True
+    # The input-coverage entry no longer reads green on its own authority.
+    assert report["gates"]["input_coverage"]["passed"] is False
+
+
+def test_finalize_records_a_waived_esi_premium_gate_without_failing_on_it(
+    tmp_path, monkeypatch, esi_lane_frame
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    args.allow_esi_premium_gaps = True
+    frame = _with_acs_premium_scaled(esi_lane_frame, 1.4)
+
+    message, report = _run_esi_finalize(module, monkeypatch, args, frame)
+
+    # Finalize still fails here on the fixture's other evidence, not on this.
+    assert "esi_premiums" not in message
+    anchor = report["gates"]["esi_premiums_anchor"]
+    assert anchor["passed"] is False
+    assert anchor["enforced"] is False
+    assert any(
+        "per unit of household mass" in failure for failure in anchor["failures"]
+    )
+    assert report["gates"]["input_coverage"]["passed"] is False
+
+
+@pytest.mark.parametrize("factor", [1.0, 0.0, 1.4])
+def test_the_gate_battery_grades_the_esi_premium_as_finalize_does(
+    esi_lane_frame, factor
+) -> None:
+    """The us_local ESI entries bind the lane's own gates, which grade by row
+    kind, so the shadow's verdict (microcosm#1585 item 11) is finalize's on a
+    lane frame: green on the fixture and red on the same lines when the ACS
+    premium is zeroed or scaled. The shared ESI checks, at their default,
+    refuse the lane frame, so binding them would be a verdict difference on
+    every local build."""
+
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.us_runtime.battery_bindings import us_gate_registry
+    from microcosm.build.us_runtime.esi_premiums import (
+        us_esi_premiums_anchor_gate,
+        us_esi_premiums_signal_gate,
+    )
+    from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+
+    module = _load_tool_module()
+    frame = _with_acs_premium_scaled(esi_lane_frame, factor)
+    binding = us_gate_registry("us_local", tool=vars(module))["stage_health"]
+    entries = {entry.id: entry for entry in us_scoped_gate_manifest("us_local").gates}
+    today = {
+        "us_local_esi_premiums_signal": module.acs_local_esi_premium_signal_gate(frame),
+        "us_local_esi_premiums_anchor": module.acs_local_esi_premium_anchor_gate(
+            frame, time_period=module.PERIOD
+        ),
+    }
+    context = EvidenceContext(frame=frame, artifacts={"time_period": module.PERIOD})
+    for entry_id, legacy in today.items():
+        battery = binding.evaluate(context, entries[entry_id].parameters)
+        assert battery.passed is legacy.passed, (entry_id, battery.failures)
+        assert tuple(battery.failures) == tuple(legacy.failures), entry_id
+    if factor != 1.0:
+        red = "signal" if factor == 0.0 else "anchor"
+        assert today[f"us_local_esi_premiums_{red}"].passed is False
+    else:
+        assert all(gate.passed for gate in today.values())
+        assert not us_esi_premiums_signal_gate(frame).passed
+        assert not us_esi_premiums_anchor_gate(frame, time_period=module.PERIOD).passed
+
+
+@pytest.mark.parametrize("factor", [1.0, 0.0, 1.4])
+def test_finalize_with_the_shadow_armed_records_the_esi_verdicts_it_enforces(
+    tmp_path, monkeypatch, esi_lane_frame, factor
+) -> None:
+    """A real build arms the gate battery's shadow (microcosm#1585 item 11),
+    which the test suite turns off. Armed, finalize still enforces the ESI
+    verdicts, and the shadow's us_local comparison records each ESI entry as
+    a match: the battery, given each site's evidence, grades as finalize
+    does, line for line."""
+
+    import hashlib
+
+    from microcosm.build.us_runtime.gate_shadow import shadow_file_paths
+    from test_support.microcosm_build.us_gate_shadow import arm_us_tool_gate_shadows
+
+    arm_us_tool_gate_shadows(monkeypatch)
+    module = _load_tool_module()
+    assert module.tool_gate_shadows_enabled()
+    args = _finalize_args(module, tmp_path)
+    _patch_esi_finalize(
+        module, monkeypatch, args, _with_acs_premium_scaled(esi_lane_frame, factor)
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        with module._local_gate_shadow_stage(args, "finalize"):
+            module.do_finalize(args)
+
+    message = str(exc.value)
+    gates = json.loads(args.gate_report.read_text())["gates"]
+    if factor == 1.0:
+        # Finalize fails on the fixture's other evidence, not on the premium.
+        assert "esi_premiums" not in message
+        assert all(gates[name]["passed"] for name in module.ESI_PREMIUM_GATE_NAMES)
+    else:
+        red = "esi_premiums_signal" if factor == 0.0 else "esi_premiums_anchor"
+        assert red in message
+        assert gates[red]["passed"] is False
+        assert gates[red]["enforced"] is True
+        assert gates["input_coverage"]["passed"] is False
+    _, comparison_path = shadow_file_paths(
+        module._local_gate_shadow_directory(args), "us_local"
+    )
+    entries = {
+        entry["id"]: entry
+        for entry in json.loads(comparison_path.read_text())["entries"]
+    }
+    for name in module.ESI_PREMIUM_GATE_NAMES:
+        entry = entries["us_local_" + name]
+        today = gates[name]
+        status = "passed" if today["passed"] else "failed"
+        assert entry["match"] is True, entry["difference"]
+        assert entry["legacy"]["status"] == status
+        assert entry["legacy"]["failures"] == today["failures"]
+        assert entry["battery"]["status"] == status, entry["battery"]
+        assert entry["battery"]["failures"] == today["failures"]
+    # Finalize's waiver record names the report this run wrote, so package
+    # attaches it only to that report.
+    record = json.loads(
+        (
+            module._local_gate_shadow_directory(args) / "finalize.waivers.json"
+        ).read_text()
+    )
+    assert record == {
+        "gate_report_sha256": hashlib.sha256(args.gate_report.read_bytes()).hexdigest(),
+        "waivers": {},
+    }
+
+
+def test_finalize_on_an_artifact_without_the_premium_is_red_on_both_gates(
+    tmp_path, monkeypatch
+) -> None:
+    """A staging H5 from a donor that predates the stage carries no column."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+
+    message, report = _run_esi_finalize(
+        module, monkeypatch, args, _plausible_hours_frame()
+    )
+
+    for name in module.ESI_PREMIUM_GATE_NAMES:
+        assert name in message
+        assert report["gates"][name]["failures"] == [
+            "person column missing: employer_sponsored_insurance_premiums."
+        ]
+
+
+def _rewrite_package_gates(args, edit) -> None:
+    report = json.loads(args.gate_report.read_text())
+    edit(report["gates"])
+    args.gate_report.write_text(json.dumps(report))
+
+
+def _sibling_refusal(name: str) -> str:
+    """The text every other bound finalize gate refuses with."""
+
+    return f"Packaging requires a present, passing {name} gate bound to the packaged H5"
+
+
+@pytest.mark.parametrize(
+    ("state", "allow_gaps", "match"),
+    [
+        # Without the waiver the gates are held as every other finalize gate is.
+        ("missing", False, _sibling_refusal("esi_premiums_signal")),
+        ("truthy", False, _sibling_refusal("esi_premiums_anchor")),
+        ("unbound", False, _sibling_refusal("esi_premiums_anchor")),
+        ("stale", False, _sibling_refusal("esi_premiums_signal")),
+        ("failed", False, _sibling_refusal("esi_premiums_anchor")),
+        # The waiver admits a red verdict, never a missing or unbound one.
+        ("missing", True, "carries no esi_premiums_signal verdict"),
+        ("truthy", True, "carries no esi_premiums_anchor verdict"),
+        ("unbound", True, "esi_premiums_anchor gate is missing its artifact binding"),
+        ("stale", True, "esi_premiums_signal gate is missing its artifact binding"),
+        # Nor a red verdict finalize enforced (``enforced: true``): only the
+        # waiver finalize itself recorded ships.
+        (
+            "failed",
+            True,
+            "esi_premiums_anchor gate is red and finalize did not record a waiver",
+        ),
+        # Only ``enforced: false`` is that record: not an absent key, a null,
+        # or a zero, which a truthiness or equality test would read as false.
+        *(
+            (
+                state,
+                True,
+                "esi_premiums_anchor gate is red and finalize did not record a waiver",
+            )
+            for state in (
+                "failed_enforced_absent",
+                "failed_enforced_null",
+                "failed_enforced_zero",
+            )
+        ),
+    ],
+)
+def test_package_requires_the_esi_premium_verdict_bound_to_the_packaged_bytes(
+    tmp_path: Path, monkeypatch, state, allow_gaps, match
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    args.allow_esi_premium_gaps = allow_gaps
+
+    def edit(gates) -> None:
+        if state == "missing":
+            # A report finalized before the gates existed.
+            del gates["esi_premiums_signal"], gates["esi_premiums_anchor"]
+        elif state == "truthy":
+            gates["esi_premiums_anchor"]["passed"] = "true"
+        elif state == "unbound":
+            del gates["esi_premiums_anchor"]["artifact_sha256"]
+        elif state == "stale":
+            gates["esi_premiums_signal"]["artifact_sha256"] = "0" * 64
+        else:
+            gates["esi_premiums_anchor"].update(
+                passed=False, failures=["invented: off the anchor"]
+            )
+            if state == "failed_enforced_absent":
+                del gates["esi_premiums_anchor"]["enforced"]
+            elif state == "failed_enforced_null":
+                gates["esi_premiums_anchor"]["enforced"] = None
+            elif state == "failed_enforced_zero":
+                gates["esi_premiums_anchor"]["enforced"] = 0
+
+    _rewrite_package_gates(args, edit)
+
+    with pytest.raises(SystemExit, match=match):
+        module.do_package(args)
+
+    # Refused before any release directory exists.
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+
+
+def test_package_ships_a_red_esi_premium_gate_only_as_a_recorded_waiver(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    _rewrite_package_gates(
+        args,
+        lambda gates: gates["esi_premiums_signal"].update(
+            passed=False,
+            failures=["person column missing: employer_sponsored_insurance_premiums."],
+            enforced=False,
+        ),
+    )
+    with pytest.raises(SystemExit, match=_sibling_refusal("esi_premiums_signal")):
+        module.do_package(args)
+
+    args.allow_esi_premium_gaps = True
+    result = module.do_package(args)
+
+    shipped = json.loads(
+        (Path(result["release_dir"]) / "gate_summary.json").read_text()
+    )["gates"]
+    assert shipped["esi_premiums_signal"]["passed"] is False
+    assert shipped["esi_premiums_signal"]["enforced"] is False
+    assert shipped["esi_premiums_signal"]["failures"] == [
+        "person column missing: employer_sponsored_insurance_premiums."
+    ]
+    assert shipped["esi_premiums_anchor"]["passed"] is True
+
+
+def test_package_with_the_shadow_armed_matches_the_waiver_to_the_report_it_read(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Package reads the gate report once, and the shadow matches finalize's
+    waiver record to the bytes package read. Here another finalize run's
+    report, whose record carries the waiver, replaces the file after package
+    reads it: the release ships the report package read, so the shadow
+    records the ESI waiver as unknown, not as taken."""
+
+    import hashlib
+
+    from microcosm.build.us_runtime.gate_shadow import shadow_file_paths
+    from test_support.microcosm_build.us_gate_shadow import arm_us_tool_gate_shadows
+
+    arm_us_tool_gate_shadows(monkeypatch)
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    read = args.gate_report.read_bytes()
+    replacement = json.dumps({**json.loads(read), "run": "replacement"}).encode()
+    args.allow_esi_premium_gaps = True
+    module._save_local_stage_waivers(
+        args,
+        "finalize",
+        gate_report_sha256=hashlib.sha256(replacement).hexdigest(),
+    )
+    args.allow_esi_premium_gaps = False
+    verify_run_identity = module._verify_run_identity
+
+    def replaced_after_the_read(args):
+        args.gate_report.write_bytes(replacement)
+        return verify_run_identity(args)
+
+    monkeypatch.setattr(module, "_verify_run_identity", replaced_after_the_read)
+
+    with module._local_gate_shadow_stage(args, "package"):
+        result = module.do_package(args)
+
+    assert args.gate_report.read_bytes() == replacement
+    shipped = json.loads(
+        (Path(result["release_dir"]) / "gate_summary.json").read_text()
+    )
+    assert "run" not in shipped
+    _, comparison_path = shadow_file_paths(
+        module._local_gate_shadow_directory(args), "us_local"
+    )
+    mismatch = [
+        "unknown: the finalize stage's waiver record belongs to gate report "
+        f"{hashlib.sha256(replacement).hexdigest()}, not to the selected gate "
+        f"report {hashlib.sha256(read).hexdigest()}"
+    ]
+    assert json.loads(comparison_path.read_text())["waivers"] == {
+        "us_local_esi_premiums_signal": mismatch,
+        "us_local_esi_premiums_anchor": mismatch,
+    }
+
+
+def test_the_esi_premium_waiver_is_off_by_default(tmp_path: Path) -> None:
+    module = _load_tool_module()
+
+    assert _finalize_args(module, tmp_path).allow_esi_premium_gaps is False
+    assert "--allow-esi-premium-gaps" not in module.LEGACY_STAGING_REFRESH_RECIPE
+
+
+def test_the_staged_lane_frame_passes_the_null_refusal(esi_lane_frame) -> None:
+    """Every row of the staged lane frame carries the premium, so the
+    refusal ``fill_reviewed_nulls`` runs first
+    (``refuse_unassigned_us_esi_premiums``) passes it. This calls the refusal
+    alone; ``fill_reviewed_nulls`` itself needs the engine, and the
+    engine-contract test of this tool runs it on a lane frame."""
+
+    from microcosm.build.us_runtime.esi_premiums import (
+        refuse_unassigned_us_esi_premiums,
+    )
+
+    person = esi_lane_frame.table("person")
+    assert set(person["person_spine"]) == {"asec_puf", "acs_2024_1yr"}
+    assert person["employer_sponsored_insurance_premiums"].notna().all()
+    refuse_unassigned_us_esi_premiums(
+        esi_lane_frame, consumer="ACS local release (fill_reviewed_nulls)"
+    )
