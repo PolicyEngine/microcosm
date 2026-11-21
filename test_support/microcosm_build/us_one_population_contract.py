@@ -1231,10 +1231,10 @@ def _check_role_bands(frame: Frame) -> None:
 #: six of the seven assembled-form readers F-19 lists (alimony, Medicare
 #: take-up, both retirement families, WIC, workers' compensation; the
 #: seventh, ``acs_local_hours``, has no release gate), the weeks-unemployed
-#: gate (in F-19's first count of nine; PR 3 owns its UC-rule scope) and
-#: the SSI take-up reporter lineage (a reviewed caller of
-#: ``support_gate_source_channel_series``; the SSI gate itself grades
-#: diagnostics built from an engine-computed ``uncapped_ssi``).
+#: gate (in F-19's first count of nine) and the SSI take-up reporter
+#: lineage (a reviewed caller of ``support_gate_source_channel_series``;
+#: the SSI gate itself grades diagnostics built from an engine-computed
+#: ``uncapped_ssi``).
 READER_GATES: Mapping[str, Callable[[Frame], object]] = MappingProxyType(
     {
         "alimony": us_alimony_signal_gate,
@@ -1267,9 +1267,8 @@ WIC_SOURCE_TRIPLE = ("source_year", "source_household_id", "source_person_id")
 
 #: The two clone-only defects d2283 lead call L7 adds to X5. Each changes
 #: one cell on one clone row so the row breaks its reader's Route A
-#: reconciliation, which the assembled readers leave out: Medicare's
-#: assembled source mask keeps stored-``asec`` rows, and the assembled weeks
-#: UC rule keys on the stored channel and clone index. Each maps to its
+#: reconciliation, which the assembled reader must catch too: the clone
+#: keeps Route A's ``puf_tax_detail`` label once assembled. Each maps to its
 #: reader and the one failure Route A's gate then reports.
 READER_CLONE_DEFECTS: Mapping[str, tuple[str, str]] = MappingProxyType(
     {

@@ -39,14 +39,11 @@ Phase 4 covers X5, the whole-frame differential: on an ASEC-only population
 (Route A's labels: ``asec`` clone 0, ``puf_tax_detail`` clones), each
 provenance-reading gate returns the same verdict and statistics before and
 after ``to_assembled_provenance`` with no ACS row, one parametrized case per
-reader. The four readers Route A's clone label moves (the weeks UC-rule
-scope, Medicare take-up and both retirement families) are strict expected
-failures naming PR 3, with a companion check that each moves only its named
-fields; ``acs_local_hours`` is left out, its donor prep refusing the
-assembled population. Lead call L7 (11-18) adds two more strict expected
-failures on verdicts: one clone-only defect each (a clone's ``MCARE``
-mismatch, a clone's weeks with no unemployment compensation) fails Route
-A's gate and passes the assembled one, so PR 3 owns six.
+reader; ``acs_local_hours`` is left out, its donor prep refusing the
+assembled population. Lead call L7 (11-18) adds the same check on verdicts:
+a clone-only defect for each of two readers (a clone's ``MCARE`` mismatch,
+a clone's weeks with no unemployment compensation) fails Route A's gate and
+must fail the assembled one with the same failures.
 
 The PR #1685 review (round 1) adds: R6's refusal of ``pd.NA`` in an exempt
 column, with None and NaN still passing (blocking 1); staging's lineage
@@ -6570,15 +6567,6 @@ def test_group_quarters_add_nothing_to_household_type_targets(assembled) -> None
 
 # ------------- phase 4: X5, the whole-frame differential (BP, K-21, Q4)
 
-#: The fields each moved reader's statistics change in (d2283 Q4: CPS clones
-#: keep Route A's ``puf_tax_detail`` label once assembled), keyed by reader,
-#: and, keyed by defect, the detail fields each clone-only defect of
-#: :data:`READER_CLONE_DEFECTS` moves besides the verdict (lead call L7).
-#: PR 3 owns every entry.
-_X5_MOVED_FIELDS: dict[str, frozenset[str]] = {}
-
-_X5_PR3_REASONS: dict[str, str] = {}
-
 #: Runtime modules that test the assembled discriminator only as writers or
 #: provenance owners, not as gate readers.
 _X5_WRITERS = frozenset(
@@ -6596,10 +6584,8 @@ _X5_WRITERS = frozenset(
 
 @pytest.fixture(scope="module")
 def readers():
-    # pytest counts a fixture's error as a marked test's expected failure
-    # when its type matches ``raises``; the builder's self-checks raise
-    # AssertionError, so re-raise them as an error the strict xfails
-    # (raises=AssertionError) report rather than absorb.
+    # The builder's self-checks raise AssertionError; re-raise them as an
+    # error that names the broken frame.
     try:
         return reader_population()
     except AssertionError as exc:
@@ -6608,7 +6594,7 @@ def readers():
 
 @pytest.fixture(scope="module")
 def defect_readers():
-    # As ``readers``: a broken defect frame is an error, never an xfail.
+    # As ``readers``: name the broken defect frame.
     try:
         return {
             defect: reader_population(clone_defect=defect)
@@ -6708,9 +6694,7 @@ def test_x5_covers_every_assembled_form_reader() -> None:
     assert testing - _X5_WRITERS == (modules - {"ssi_take_up"}) | {"acs_local_hours"}
     assert callers <= modules
     assert set(READER_SOURCE_COLUMNS) == set(READER_GATES)
-    assert set(_X5_MOVED_FIELDS) == set(_X5_PR3_REASONS)
     assert set(READER_GATES).isdisjoint(READER_CLONE_DEFECTS)
-    assert set(_X5_MOVED_FIELDS) <= set(READER_GATES) | set(READER_CLONE_DEFECTS)
     assert {reader for reader, _ in READER_CLONE_DEFECTS.values()} <= set(READER_GATES)
 
 
@@ -6812,16 +6796,16 @@ def test_x5_names_every_acs_label_reader() -> None:
 
 
 def test_the_reader_frame_exercises_every_reader(readers) -> None:
-    """X5's preconditions, outside every expected failure.
+    """X5's preconditions.
 
-    A strict xfail cannot pass for want of data, and an equal pair of
-    statistics is not two failing gates: the frame has clone rows (indices
-    0, 1 and 2) on every entity and each reader's raw source columns; every
-    Route A gate passes and takes its source branch; clone rows differ from
-    the source wherever Route A does not reconcile them, so a reader whose
-    assembled mask took clone rows would show; and the WIC gate's two
-    clone keys (the source triple on Route A, ``person_source_id`` once
-    assembled) partition the rows alike.
+    An equal pair of statistics must come from data each reader reads and
+    from gates that pass: the frame has clone rows (indices 0, 1 and 2) on
+    every entity and each reader's raw source columns; every Route A gate
+    passes and takes its source branch; clone rows differ from the source
+    wherever Route A does not reconcile them, so a reader whose assembled
+    mask took clone rows would show; and the WIC gate's two clone keys (the
+    source triple on Route A, ``person_source_id`` once assembled) partition
+    the rows alike.
     """
 
     route_a, assembled = readers.route_a, readers.assembled
@@ -7007,58 +6991,30 @@ def test_the_mixed_origin_builder_follows_its_seed_and_household_count() -> None
     assert not acs_people[0].equals(acs_people[1])
 
 
-_X5_CASES = [
-    pytest.param(
-        name,
-        id=name,
-        marks=pytest.mark.xfail(
-            strict=True, raises=AssertionError, reason=_X5_PR3_REASONS[name]
-        ),
-    )
-    if name in _X5_PR3_REASONS
-    else pytest.param(name, id=name)
-    for name in sorted(READER_GATES)
-]
-
-
-@pytest.mark.parametrize("reader", _X5_CASES)
+@pytest.mark.parametrize("reader", sorted(READER_GATES))
 def test_assembled_readers_return_route_a_statistics(readers, reader) -> None:
     """X5 (BP): on an ASEC-only population every provenance-reading gate
     returns Route A's verdict and statistics after the rewrite.
 
     Run once on the Route A frame and once on its
-    ``to_assembled_provenance`` with no ACS row. Each reader, or clone-only
-    defect below, whose assembled branch moves under Route A's clone label
-    carries a strict expected failure naming PR 3; the WIC frame's two
-    clone partitions agree
-    (see the fixture test), so the WIC case compares one partition.
+    ``to_assembled_provenance`` with no ACS row. The clones keep Route A's
+    ``puf_tax_detail`` label once assembled, so a reader that reads clone
+    rows on Route A but only stored-``asec`` rows once assembled differs
+    here. The WIC frame's two clone partitions agree (see the fixture
+    test), so the WIC case compares one partition.
     """
 
     route_a, assembled = _x5_run(readers, reader)
     assert _x5_differences(route_a, assembled) == []
 
 
-@pytest.mark.parametrize("reader", sorted(set(_X5_MOVED_FIELDS) & set(READER_GATES)))
-def test_a_moved_reader_moves_only_its_named_fields(readers, reader) -> None:
-    """Outside the expected failure, a moved reader keeps its verdict and
-    every statistic but the fields named for it. The fixture test checks
-    that Route A's ``source_rows`` (contributions and distributions),
-    ``source_reconciliation_rows`` (contributions) and
-    ``uc_constraint_rows`` (weeks) take the clone rows."""
-
-    route_a, assembled = _x5_run(readers, reader)
-    moved = {("details", field) for field in _X5_MOVED_FIELDS[reader]}
-    assert set(_x5_differences(route_a, assembled)) <= moved
-    assert route_a["passed"] and assembled["passed"]
-
-
 def test_each_clone_defect_changes_one_clone_cell(readers, defect_readers) -> None:
-    """L7's preconditions, outside the expected failures: each defect frame
-    differs from the reader frame in one cell, on a clone row, on both
-    forms; the builder has already checked that Route A's gate for the
-    defect's reader fails with exactly its one failure and every other
-    reader passes. Route A's gate counts that one mismatch, over every clone
-    row (weeks) or every row (Medicare)."""
+    """L7's preconditions: each defect frame differs from the reader frame
+    in one cell, on a clone row, on both forms; the builder has already
+    checked that Route A's gate for the defect's reader fails with exactly
+    its one failure and every other reader passes. Route A's gate counts
+    that one mismatch, over every clone row (weeks) or every row
+    (Medicare)."""
 
     for defect, population in defect_readers.items():
         reader, failure = READER_CLONE_DEFECTS[defect]
@@ -7090,21 +7046,7 @@ def test_each_clone_defect_changes_one_clone_cell(readers, defect_readers) -> No
             assert result.details["source_rows"] == len(person), defect
 
 
-_X5_DEFECT_CASES = [
-    pytest.param(
-        defect,
-        id=defect,
-        marks=pytest.mark.xfail(
-            strict=True, raises=AssertionError, reason=_X5_PR3_REASONS[defect]
-        ),
-    )
-    if defect in _X5_PR3_REASONS
-    else pytest.param(defect, id=defect)
-    for defect in sorted(READER_CLONE_DEFECTS)
-]
-
-
-@pytest.mark.parametrize("defect", _X5_DEFECT_CASES)
+@pytest.mark.parametrize("defect", sorted(READER_CLONE_DEFECTS))
 def test_a_clone_only_defect_keeps_route_a_verdict(defect_readers, defect) -> None:
     """X5 on verdicts (lead call L7): a defect on one clone row fails Route
     A's gate, so the assembled gate must fail with the same failures.
@@ -7122,28 +7064,6 @@ def test_a_clone_only_defect_keeps_route_a_verdict(defect_readers, defect) -> No
         route_a["passed"],
         route_a["failures"],
     )
-
-
-@pytest.mark.parametrize(
-    "defect", sorted(set(_X5_MOVED_FIELDS) & set(READER_CLONE_DEFECTS))
-)
-def test_a_clone_only_defect_moves_only_its_named_fields(
-    defect_readers, defect
-) -> None:
-    """Outside the expected failure, a defect moves only the verdict and its
-    named fields. ``test_each_clone_defect_changes_one_clone_cell`` checks
-    Route A's count of the one clone mismatch."""
-
-    reader, failure = READER_CLONE_DEFECTS[defect]
-    route_a, assembled = _x5_run(defect_readers[defect], reader)
-    moved = {("passed",), ("failures",)} | {
-        ("details", field) for field in _X5_MOVED_FIELDS[defect]
-    }
-    assert set(_x5_differences(route_a, assembled)) <= moved
-    assert not route_a["passed"]
-    assert route_a["failures"] == [failure]
-    # The assembled gate fails for no other reason (true before and after).
-    assert set(assembled["failures"]) <= {failure}
 
 
 def test_the_local_hours_donor_refuses_the_assembled_population(readers) -> None:
