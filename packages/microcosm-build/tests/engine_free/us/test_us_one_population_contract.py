@@ -6586,10 +6586,6 @@ _X5_MOVED_FIELDS: dict[str, frozenset[str]] = {
         }
     ),
     "retirement_distributions": frozenset({"source_rows"}),
-    "weeks_clone_uc_mismatch": frozenset(
-        {"uc_constraint_mismatch_count", "uc_constraint_rows"}
-    ),
-    "weeks_unemployed": frozenset({"uc_constraint_rows"}),
 }
 
 _X5_PR3_REASONS: dict[str, str] = {
@@ -6605,20 +6601,6 @@ _X5_PR3_REASONS: dict[str, str] = {
         "(retirement_distributions.py:274-295) where Route A takes every row, "
         "so source_rows moves and clone-row DST codes go unvalidated; "
         "reconciliation does not move."
-    ),
-    "weeks_clone_uc_mismatch": (
-        "d2283 PR 3 flips this. Weeks unemployed, fail to pass: one clone row "
-        "has weeks unemployed and no unemployment compensation. Route A puts "
-        "every clone in the UC rule (weeks_unemployed.py:1351) and fails "
-        "(:1422-1426); once assembled the rule's scope is (asec & clone) | "
-        "(non-asec & native) (:1366-1373), which a puf_tax_detail clone is "
-        "not in, so the gate passes."
-    ),
-    "weeks_unemployed": (
-        "d2283 PR 3 flips this. Weeks unemployed, the UC-rule scope: once "
-        "assembled it is (asec & clone) | (non-asec & native) "
-        "(weeks_unemployed.py:1366-1373), so CPS clones labelled "
-        "puf_tax_detail leave it, where Route A puts every clone in it (:1351)."
     ),
 }
 
@@ -6810,6 +6792,12 @@ _X5_ACS_LABEL_MODULES: dict[str, str] = {
     "stacked_spine": (
         "The stacked pool's ACS channel, acs, and a resolver caller on the "
         "stacked pool."
+    ),
+    "weeks_unemployed": (
+        "_ACS_NATIVE_CHANNEL, acs_2024_1yr, names the channel the weeks gate "
+        "fails closed with one line until a reviewed rule lands; "
+        "test_weeks_acs_channel_label_matches_the_contract pins it to the "
+        "contract's."
     ),
 }
 
@@ -7146,9 +7134,10 @@ def test_a_clone_only_defect_keeps_route_a_verdict(defect_readers, defect) -> No
     """X5 on verdicts (lead call L7): a defect on one clone row fails Route
     A's gate, so the assembled gate must fail with the same failures.
 
-    Today the assembled reader leaves the clone row out and passes: a strict
-    expected failure naming PR 3. A defect that did nothing would leave both
-    gates passing and turn this into a strict unexpected pass.
+    The defect frame's builder and
+    ``test_each_clone_defect_changes_one_clone_cell`` check that Route A's
+    gate fails with the defect's one failure, so a defect that did nothing
+    fails there rather than passing here.
     """
 
     route_a, assembled = _x5_run(
