@@ -417,6 +417,41 @@ These hold for every input and are tested (Hypothesis properties unless noted):
   nonmissing ages in completed years, from 0 through 130.
   `DonorBank.dropped_parent_cycle_edges` exposes the number of dropped edges.
   Longer cycles and other inconsistent relationships still fail validation.
+- A graph selects a donor-decoding profile through CREATE's optional
+  `donor_profile` parameter. The value is a canonical JSON document with the
+  fields `format` (`microcosm.donor-profile/1`), `profile`, `version`,
+  `donor_sha256` and `choices`. `parse_donor_profile` refuses an unknown or
+  missing field and any choice outside the closed sets in
+  `DONOR_PROFILE_CHOICES`, and a profile has no defaults: the document states
+  every choice. The one profile, `populace-us-cps-asec` version 1, stages
+  household `tenure` from `tenure_type`, `H_TENURE` and the SPM units'
+  tenure and housing assistance, person `legal_marital_status` from
+  `A_MARITL`, and person `enrolled_full_time` from `A_ENRLW` and `A_FTPT`.
+  The reader refuses a document whose `donor_sha256` names other bytes
+  before it opens the file. It checks the raw codes, in their own integer or
+  float storage, and the SPM joins before decoding. It checks each rent and
+  mortgage cost against its own concept's contract, then reconciles the
+  costs with the staged tenure, and then validates the whole frame. CREATE's
+  receipt records the document's digest, its choices and the staging counts
+  under `donor_profile`. A graph that sets no profile reads what it read
+  before (the person and household tables and the `_time_period` series)
+  and never the `spm_unit` table, and its CREATE frame and receipt keep the
+  bytes captured at the commit before this change. No graph selects a
+  profile when the parameter lands. The parameter still moves seven kernel
+  refs once, because it edits the reader's module and CREATE's module:
+  `transport.create@1` and `@2`, `transport.currency@1`,
+  `transport.quantile_map@1` and `@2`, `transport.support_bounds@1` and
+  `transport.boundary@1`. The node records of these kernels and of every node
+  downstream of them re-key. A stored CREATE inventory stops matching,
+  because its store key includes CREATE's implementation hash. The battery
+  refuses support-bounds evidence that records the old implementation hash
+  when that evidence is supplied to it. An ordinary graph run does not
+  supply it: the producer's node key includes the new hash, so the executor
+  misses its cache and runs the producer again. `gates.battery@1` does not
+  move, and no committed digest moves. A choice value the closed sets do not
+  offer needs a further edit to the reader's module, which moves every one
+  of these refs again except `transport.boundary@1`, whose hash reads
+  CREATE's module but not the reader's.
 - The consuming builder supplies the destination frame declaration after
   transport. New Zealand's group bindings now execute on benefit units built
   from the concept pointers. Belgium's 39 `person_role` bindings on `Child`
