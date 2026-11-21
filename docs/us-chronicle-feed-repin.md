@@ -145,14 +145,14 @@ environment.
 The operator compiles each feed with a script (the runner) that calls
 `state_admin_surface` in each mode and `acs_local_ssi_medicaid_take_up_targets`
 on that feed and writes what each call returns to a file. A second script (the
-comparator) reads the runner's files for both feeds and reports each target in
-the lane's selection that the cut adds, removes or changes in any `TargetSpec`
-field, and any change in the targets' order. It also reports any difference in
-the SOI receipt, the substitution records, the SSI age-band counts or the
-Medicaid enrollment table. The repository holds neither script, so the
-operator records each one's sha256 in a receipt. The operator keeps the
-receipt with the evidence, outside the repository, and links to it or quotes
-it in the change's pull request.
+comparator) reads the runner's files for both feeds. It reports each target
+that the cut adds to or removes from the lane's selection or changes in any
+`TargetSpec` field, and any change in the targets' order. It also reports any
+difference in the SOI receipt, the substitution records, the SSI age-band
+counts or the Medicaid enrollment table. The repository holds neither script,
+so the operator records each one's sha256 in a receipt. The operator keeps the
+receipt and both scripts with the evidence, outside the repository, and links
+to them or quotes them in the change's pull request.
 
 In the receipt, the operator also records the tested commit, the interpreter
 version, the resolved versions of the packages the compile imports and both
