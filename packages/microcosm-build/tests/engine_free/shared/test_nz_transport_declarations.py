@@ -676,18 +676,21 @@ _BRIDGE_AND_REGION = {
 }
 
 
-# D4 (d3058): CREATE's inventory on the pinned donor, as the transport store
-# records it. prepare_create_outputs declares every non-structural column of
-# the CREATE frame with its dtype (transport/cli.py), and
-# prepare_transport_build passes all of them as create_outputs.
+# D4 (d3058): CREATE's inventory on the pinned donor under NZ's donor profile,
+# as the transport store records it. prepare_create_outputs declares every
+# non-structural column of the CREATE frame with its dtype (transport/cli.py),
+# and prepare_transport_build passes all of them as create_outputs.
 _CREATE_INVENTORY = (
     paths_for("microcosm-build").tests
     / "fixtures/nz/create_inventory_populace_us_48b9d479.json"
 )
-# The graph reads these, and CREATE on the pinned donor does not give them yet.
-# d3058 rules 2, 4 and 5 stage them in the donor reader; that change must
-# refresh the fixture from its CREATE probe and empty this mapping.
-_AWAITING_DONOR_STAGING = {
+# Columns the graph reads that CREATE on the pinned donor does not give. The
+# donor profile (d3058 rules 2, 4 and 5) now stages household.tenure,
+# person.enrolled_full_time and person.legal_marital_status, and the fixture
+# holds them, so nothing awaits staging.
+_AWAITING_DONOR_STAGING: dict[tuple[str, str], str] = {}
+# The columns NZ's donor profile stages, with the dtypes the graph declares.
+_PROFILE_STAGED = {
     ("household", "tenure"): "string",
     ("person", "enrolled_full_time"): "bool",
     ("person", "legal_marital_status"): "string",
@@ -769,8 +772,9 @@ def _nz_composition_spec_and_config():
     bindings carry the engine pins, so the compiler checks the complete
     packaged node and population structure with no synthetic node or pin. The
     synthetic engine refs certify no runtime result. CREATE's outputs are the
-    inventory the pinned donor gave, plus the columns awaiting donor staging
-    at their concept dtypes. No bridge or region column enters as a root.
+    inventory the pinned donor gave under NZ's donor profile, plus any columns
+    awaiting donor staging at their concept dtypes (none now). No bridge or
+    region column enters as a root.
     """
     from microcosm.graph import Owned
 
@@ -815,6 +819,23 @@ def test_the_staging_gap_declares_the_canonical_concept_dtypes():
     assert _AWAITING_DONOR_STAGING == {
         key: canonical[key] for key in _AWAITING_DONOR_STAGING
     }
+
+
+def test_the_profiled_inventory_holds_the_staged_columns_at_canonical_dtypes():
+    """D4: the donor profile fills the gap attempt 7 found, at graph dtypes."""
+    from microcosm.frame.transport import _PROFILE_CONCEPTS
+
+    # The shared reader's own list of the concepts a profile writes.
+    assert set(_PROFILE_STAGED) == {
+        (entity, column)
+        for entity, columns in _PROFILE_CONCEPTS.items()
+        for column in columns
+    }
+    canonical = _canonical_dtypes()
+    assert _PROFILE_STAGED == {key: canonical[key] for key in _PROFILE_STAGED}
+    real = _real_create_inventory()
+    assert {key: real.get(key) for key in _PROFILE_STAGED} == _PROFILE_STAGED
+    assert set(_PROFILE_STAGED) <= _nz_root_reads(_spec())
 
 
 def test_every_real_create_column_is_a_canonical_concept_or_unit_output():
@@ -865,41 +886,49 @@ def test_the_create_inventory_fixture_is_the_pinned_donors_stored_payload():
         if row.get("structural") == "create"
     )
     assert create["kernel"] == provenance["create_kernel"]
+    # The fixture is CREATE under this donor profile; a new profile document
+    # must refresh it.
+    from microcosm.frame.transport import parse_donor_profile
+    from microcosm.graph.canonical import canonical_json
 
-
-def test_nz_refuses_the_real_inventory_alone_at_graph_compile():
-    """Without the staged columns, NZ cannot compose on the pinned donor."""
-    import dataclasses
-
-    from microcosm.graph import GraphError
-
-    spec, config = _nz_composition_spec_and_config()
-    real = dataclasses.replace(
-        config,
-        create_outputs=tuple(
-            owned
-            for owned in config.create_outputs
-            if (owned.entity, owned.column) not in _AWAITING_DONOR_STAGING
-        ),
+    profile = parse_donor_profile(
+        canonical_json(spec["resources"]["donor_profile"]).decode("utf-8")
     )
-    missing = "|".join(
-        re.escape(f"{entity}.{column}") for entity, column in _AWAITING_DONOR_STAGING
-    )
-    with pytest.raises(GraphError, match=rf"reads ({missing}), which no node owns"):
-        compose.compose_transport_graph(spec, real)
+    assert provenance["donor_profile"]["document_sha256"] == profile.sha256
+
+
+def test_nz_composes_against_the_real_profiled_inventory_alone():
+    """D4: NZ composes on the pinned donor's profiled CREATE inventory alone.
+
+    Attempt 7's unprofiled inventory lacked three columns the graph reads, so
+    composition refused. The profile stages them, so CREATE declares exactly
+    the stored inventory and owns the staged columns in the composed graph.
+    """
+    assert not _AWAITING_DONOR_STAGING
+    _, config, graph, compiled = _nz_composed()
+    assert {
+        (owned.entity, owned.column): owned.dtype for owned in config.create_outputs
+    } == _real_create_inventory()
+    owned = {
+        (item.entity, item.column): item.dtype
+        for item in graph.node("nz.create").outputs
+    }
+    assert {key: owned.get(key) for key in _PROFILE_STAGED} == _PROFILE_STAGED
+    assert "nz.create" in compiled.order
 
 
 def test_nz_checkpoints_keep_the_gate_report_before_export():
     """d3058: a run that export.prepare refuses still writes the gate closure.
 
-    Extension checkpoints write their manifests before export.prepare runs
-    (transport/cli.py). entitlement.py appends the cell diagnostics collector
-    after the declared entries.
+    Extension checkpoints write their manifests in declared order before
+    export.prepare runs (transport/cli.py). The document lists the cell
+    diagnostics collector before nz.gates.terminal, so its manifest is written
+    even if a node only the battery's checkpoint runs raises.
     """
     assert compose.transport_endpoints(_spec())["checkpoints"] == (
         "nz.as.bands",
-        "nz.gates.terminal",
         "nz.as.bands.cell_diagnostics",
+        "nz.gates.terminal",
     )
 
 
@@ -966,6 +995,33 @@ def test_nz_packaged_graph_compiles_with_only_pins_and_money_producers():
     for variant in ("V1", "V2", "V3", "V4", "VHF"):
         assert f"nz.v.{variant}.calibrate" in compiled.order
         assert f"nz.v.{variant}.gap" in compiled.order
+
+
+def test_nz_create_receives_the_donor_profile_as_canonical_text():
+    """nz.create selects the whole profile document; CREATE's parser accepts it."""
+    from microcosm.frame.transport import parse_donor_profile
+
+    spec = _spec()
+    (row,) = (
+        row
+        for row in spec["resources"]["transport_graph"]["nodes"]
+        if row["id"] == "nz.create"
+    )
+    assert row["params"]["donor_profile"] == {
+        "resource": "donor_profile",
+        "path": [],
+        "encoding": "json",
+    }
+    # Placement ruling term 6: the node key hashes the document; no digest.
+    assert "donor_profile_sha256" not in row["params"]
+    _, _, graph, _ = _nz_composed()
+    create = graph.node("nz.create")
+    text = create.params["donor_profile"]
+    assert isinstance(text, str)
+    profile = parse_donor_profile(text)
+    assert profile.canonical_text == text
+    assert profile.donor_sha256 == create.params["donor_sha256"]
+    assert not list(compose._named_reference_values(json.loads(text)))
 
 
 def test_every_composed_battery_keeps_the_d1982_release_candidate_off():

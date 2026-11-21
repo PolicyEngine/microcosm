@@ -58,6 +58,11 @@
           "path": [],
           "encoding": "sha256"
         },
+        "donor_profile": {
+          "resource": "donor_profile",
+          "path": [],
+          "encoding": "json"
+        },
         "unit_rule": {
           "resource": "benefit_unit_rule",
           "path": [],

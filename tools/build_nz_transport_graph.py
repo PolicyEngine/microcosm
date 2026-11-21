@@ -1094,6 +1094,7 @@ def documents():
                     "transport_inputs", "value", "donor", "size_bytes"
                 ),
                 "donor_pin_sha256": select("source_stages", "sha256"),
+                "donor_profile": select("donor_profile"),
                 **rule,
                 **document("mass_reference", "mass_references"),
                 "country": "nz",
