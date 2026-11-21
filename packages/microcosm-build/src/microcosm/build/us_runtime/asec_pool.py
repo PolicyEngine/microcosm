@@ -49,6 +49,16 @@ __all__ = [
 ASEC_WEIGHT_SCALE = 0.01
 ASEC_PERSON_WEIGHT_COLUMN = "_populace_household_weight"
 
+#: Raw ASEC household fields carried onto the household table unchanged.
+#: ``H_TENURE`` feeds the housing stage. ``HPUBLIC`` (a public housing
+#: project: 0 niu, 1 yes, 2 no; asked of every household not owner-occupied)
+#: and ``HLORENT`` (rent lowered because a government pays part: 0 niu, 1 yes,
+#: 2 no; asked only where ``HPUBLIC`` is 2) are carried for consumers that must
+#: tell public landlords from subsidised private ones. No stage reads them.
+ASEC_HOUSEHOLD_CARRY_COLUMNS: tuple[str, ...] = ("H_TENURE", "HPUBLIC", "HLORENT")
+_ASEC_LANDLORD_COLUMNS = frozenset({"HPUBLIC", "HLORENT"})
+_ASEC_LANDLORD_CODES = (0, 1, 2)
+
 
 @dataclass(frozen=True)
 class AsecSource:
@@ -158,6 +168,7 @@ def pool_asec_sources(
             }
         )
 
+    _require_household_carries_in_every_year(source_list, pieces)
     pooled_person = pd.concat(pieces, ignore_index=True)
     pooled_person = _globalize_source_unit_column(pooled_person, "SPM_ID")
     metadata = {
@@ -200,7 +211,9 @@ def build_pooled_asec_unit_frame(
     # Keep raw household tenure through unit construction.  The archived eCPS
     # housing stage maps H_TENURE directly; SPM_TENMORTSTATUS is a distinct
     # concept and cannot reconstruct rent-free occupancy (H_TENURE == 3).
-    frame = _attach_household_attributes(frame, ("state_fips", "H_TENURE"))
+    frame = _attach_household_attributes(
+        frame, ("state_fips", *ASEC_HOUSEHOLD_CARRY_COLUMNS)
+    )
     return frame, pooled.metadata
 
 
@@ -327,28 +340,69 @@ def _remap_source_year(
             .astype("int64")
             .to_numpy()
         )
-    if "H_TENURE" in household:
-        tenure_by_household = (
-            household[["H_SEQ", "H_TENURE"]]
+    for column in ASEC_HOUSEHOLD_CARRY_COLUMNS:
+        if column not in household:
+            continue
+        # Duplicate household rows that disagree leave no one code to carry;
+        # dropping all but the first would also skip the others' validation.
+        codes = household[["H_SEQ", column]].drop_duplicates()
+        conflicting = codes["H_SEQ"][codes["H_SEQ"].duplicated()]
+        if not conflicting.empty:
+            raise ValueError(
+                f"ASEC {column} differs between duplicate household rows for "
+                f"source household id(s): {conflicting.drop_duplicates().head().tolist()}."
+            )
+        by_household = (
+            household[["H_SEQ", column]]
             .drop_duplicates("H_SEQ")
-            .set_index("H_SEQ")["H_TENURE"]
+            .set_index("H_SEQ")[column]
         )
-        result["H_TENURE"] = result["source_household_id"].map(tenure_by_household)
-        if result["H_TENURE"].isna().any():
+        result[column] = result["source_household_id"].map(by_household)
+        if result[column].isna().any():
             missing = (
-                result.loc[result["H_TENURE"].isna(), "source_household_id"]
-                .head()
-                .tolist()
+                result.loc[result[column].isna(), "source_household_id"].head().tolist()
             )
             raise ValueError(
-                f"ASEC H_TENURE is missing for source household id(s): {missing}."
+                f"ASEC {column} is missing for source household id(s): {missing}."
             )
+        if column in _ASEC_LANDLORD_COLUMNS:
+            unknown = ~result[column].isin(_ASEC_LANDLORD_CODES)
+            if unknown.any():
+                bad = (
+                    result.loc[unknown, "source_household_id"]
+                    .drop_duplicates()
+                    .head()
+                    .tolist()
+                )
+                raise ValueError(
+                    f"ASEC {column} must be 0, 1 or 2; source household id(s) "
+                    f"{bad} carry other codes."
+                )
     result["PH_SEQ"] = result["PH_SEQ"].map(household_map).astype("int64")
     result["household_id"] = result["PH_SEQ"]
     result[ASEC_PERSON_WEIGHT_COLUMN] = (
         result["source_household_id"].map(raw_weights).astype(float)
     )
     return result, next_offset
+
+
+def _require_household_carries_in_every_year(
+    sources: tuple[AsecSource, ...], pieces: list[pd.DataFrame]
+) -> None:
+    """Refuse a pool where a carried household field is in only some years."""
+
+    for column in ASEC_HOUSEHOLD_CARRY_COLUMNS:
+        lacking = [
+            source.year
+            for source, piece in zip(sources, pieces, strict=True)
+            if column not in piece
+        ]
+        if lacking and len(lacking) < len(pieces):
+            raise ValueError(
+                f"ASEC household field {column} is missing from pooled "
+                f"year(s) {lacking} but present in the others; every pooled "
+                "year must carry it, or none."
+            )
 
 
 def _attach_household_attributes(frame: Frame, columns: tuple[str, ...]) -> Frame:
