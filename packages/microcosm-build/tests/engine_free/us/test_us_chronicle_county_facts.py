@@ -184,13 +184,14 @@ def test_the_combined_repin_retires_the_feed_cut() -> None:
 
 
 def test_the_feed_cut_is_a_full_commit_id_other_than_the_pins() -> None:
-    """When set, the allowed cut is a full commit id of 40 lowercase hex
-    characters, distinct from both pins. ``None`` is valid too, and the combined
-    re-pin requires it."""
+    """When set, the allowed cut is a string holding a full commit id of 40
+    lowercase hex characters, distinct from both pins. ``None`` is valid too, and
+    the combined re-pin requires it."""
 
     if _FEED_CUT_ON_THE_SPLIT_PIN is None:
         return
     county = load_us_chronicle_county_facts_pin()
+    assert isinstance(_FEED_CUT_ON_THE_SPLIT_PIN, str)
     assert len(_FEED_CUT_ON_THE_SPLIT_PIN) == 40
     assert set(_FEED_CUT_ON_THE_SPLIT_PIN) <= set("0123456789abcdef")
     assert _FEED_CUT_ON_THE_SPLIT_PIN not in (
@@ -239,6 +240,11 @@ _CUT = "60266a3088319c909cf7fc89c9d00d3b055dc6e1"
 #: A later Chronicle main commit: chronicle#430's merge b428468d, the earliest
 #: commit the combined re-pin may name (docs/us-chronicle-feed-repin.md).
 _LATER = "b428468dc8a1fad6d21fd4d703b822d5cb687e09"
+#: Another later commit, as a made-up full commit id.
+_ANOTHER_LATER = "e1" * 20
+#: A made-up full commit id that matches the cut in all but its last character,
+#: so a first guard that compares prefixes of any shorter length accepts it.
+_CUT_PREFIX_TWIN = _CUT[:39] + "0"
 
 
 @pytest.mark.parametrize(
@@ -253,6 +259,7 @@ _LATER = "b428468dc8a1fad6d21fd4d703b822d5cb687e09"
         (_LATER, _COUNTY, _CUT, (_MOVES,)),
         (_COUNTY, _COUNTY, _CUT, (_RETIRES,)),
         (_SPLIT, _COUNTY, _SPLIT, (_FULL_ID,)),
+        (_CUT_PREFIX_TWIN, _COUNTY, _CUT, (_MOVES,)),
         # Once the combined re-pin has moved the county pin.
         (_LATER, _LATER, None, ()),
         (_LATER, _LATER, _CUT, (_RETIRES,)),
@@ -260,6 +267,7 @@ _LATER = "b428468dc8a1fad6d21fd4d703b822d5cb687e09"
         (_SPLIT, _LATER, _CUT, (_MOVES, _RETIRES)),
         (_CUT, _LATER, _CUT, (_MOVES, _RETIRES)),
         (_LATER, _LATER, _LATER, (_RETIRES, _FULL_ID)),
+        (_LATER, _ANOTHER_LATER, None, (_MOVES,)),
     ],
     ids=[
         "split-pin",
@@ -270,12 +278,14 @@ _LATER = "b428468dc8a1fad6d21fd4d703b822d5cb687e09"
         "main-moves-alone",
         "both-at-3e9d3a0-cut-kept",
         "cut-names-the-split-pin",
+        "main-shares-the-cut-prefix",
         "combined-repin",
         "combined-repin-cut-kept",
         "back-to-the-split-pin",
         "back-to-the-split-pin-cut-kept",
         "county-moves-alone-main-keeps-the-cut",
         "combined-repin-cut-names-the-new-pin",
+        "pins-at-two-later-commits",
     ],
 )
 def test_the_split_exceptions_end_when_the_county_pin_moves(
@@ -284,7 +294,10 @@ def test_the_split_exceptions_end_when_the_county_pin_moves(
     """Review r2 P2-1: the split pin and the cut stay allowed only while the
     county pin names 3e9d3a0. Once the county pin moves, the main pin can
     neither return to the split pin nor keep the cut. Each case names the
-    guards that refuse it, so it fails if any guard starts or stops refusing."""
+    guards that refuse it, so it fails if any guard starts or stops refusing.
+    Review r4 P2-4 added two states that only the first guard refuses: a main
+    pin that matches the cut in all but its last character, and main and county
+    pins at two different later commits with no cut."""
 
     refused_by = _pin_guards_refusing(monkeypatch, main=main, county=county, cut=cut)
     assert refused_by == refusing
@@ -312,23 +325,34 @@ def test_a_later_cut_replaces_the_first(monkeypatch, main, refusing) -> None:
 
 @pytest.mark.parametrize(
     "cut",
-    [_CUT[:7], _CUT + "0", _CUT[:39] + "g", _CUT.upper(), _COUNTY],
+    [
+        _CUT[:7],
+        _CUT + "0",
+        _CUT[:39] + "g",
+        _CUT.upper(),
+        _COUNTY,
+        tuple(_CUT),
+        _CUT.encode(),
+    ],
     ids=[
         "short-cut",
         "long-cut",
         "non-hex-cut",
         "upper-case-cut",
         "cut-names-the-county-commit",
+        "tuple-cut",
+        "bytes-cut",
     ],
 )
 def test_a_cut_that_is_not_a_full_id_other_than_the_pins_is_refused(
     monkeypatch, cut
 ) -> None:
-    """Review r3 P2-2: the full-id guard alone refuses each of these cuts. A
-    7- or 41-character id fails the length check, a 'g' or upper-case letters
-    fail the lowercase-hex check, and the county commit fails the distinct-id
-    check. The main pin stays at the split pin, which every other guard
-    accepts."""
+    """Review r3 P2-2 and r4 P2-3: the full-id guard alone refuses each of these
+    cuts. A 7- or 41-character id fails the length check, a 'g' or upper-case
+    letters fail the lowercase-hex check, and the county commit fails the
+    distinct-id check. A tuple of the cut's 40 characters and the cut's bytes
+    fail the string check. The main pin stays at the split pin, which every
+    other guard accepts."""
 
     refused_by = _pin_guards_refusing(monkeypatch, main=_SPLIT, county=_COUNTY, cut=cut)
     assert refused_by == (_FULL_ID,)

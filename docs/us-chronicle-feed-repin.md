@@ -135,34 +135,62 @@ same main-feed targets, so one comparison covers both.
 
 The operator compiles the cut and the main feed it replaces on the tree that
 will merge (the merge tree). The operator first merges main into the change
-that pins the cut, then compiles at the change's new head, the tested commit.
-In the evidence, the operator records the tested commit and both feeds'
-digests. The operator also records how they built the compile environment, for
-example from the tested commit's `uv.lock`, and any package they swapped in by
-hand.
+that pins the cut, then compiles both feeds at the change's new head, the
+tested commit. The operator runs both compiles from one clean checkout of the
+tested commit, in the environment its `uv.lock` resolves:
+`uv sync --all-packages --locked --extra us` builds it, and
+`docs/agent-guide.md` lists that command under Commands as the US engine
+environment.
 
-The operator compiles both feeds again if main moves after the compiles or the
-change gains a commit beyond recording the result in the docs or the
-changelog. The change's reviewer can skip that rerun on finding that the tested
-commit and the merge tree share their compile inputs and dependency
-configuration. The two match when no file differs under `tools/` or
-`packages/*/src`, or in `uv.lock`, the workspace `pyproject.toml` or any
-package's `pyproject.toml`. GitHub does not refresh its test merge,
-`refs/pull/<number>/merge`, while the change conflicts with main. So just
-before the merge, the reviewer builds the merge tree from main's tip and runs
-the check:
+In a receipt in the evidence, the operator records the tested commit, the
+interpreter version, the resolved versions of the packages the compile
+imports, the sha256 of the runner and of the comparator, and both feeds'
+digests. The operator also records where the compile imported the lane's tool,
+each workspace package and each overridden package from, and the output of
+`git status --porcelain` at compile time. The operator lists each way the run
+departs from that checkout or environment, such as a package they swapped in
+by hand. The change's reviewer checks the two digests against the main pin the
+cut replaces and the pin the change sets. The reviewer also checks that
+`git status` printed nothing. They check that the compile imported the tool
+and each workspace package from the checkout, and each overridden package from
+a path the operator listed as a departure.
+
+After the compiles, the operator may add commits that record the result. Each
+changes nothing but the changelog and the paragraph below that starts "Today
+the US feed owner allows", and reports a result from the runner, the
+comparator and the inputs the receipt names. The operator compiles both feeds
+again if main moves after the compiles or the change gains any other commit.
+The change's reviewer can skip that rerun on finding that the tested commit
+and the merge tree share their compile inputs and dependency configuration.
+The two match when no file differs under `tools/` or `packages/*/src`, or in
+`uv.lock`, the workspace `pyproject.toml` or any package's `pyproject.toml`.
+GitHub does not refresh its test merge, `refs/pull/<number>/merge`, while the
+change conflicts with main. So just before the merge, the reviewer builds the
+merge tree from main's tip and runs the check:
 
 ```bash
-git fetch origin main
-git merge-tree --write-tree origin/main <change head>
-git diff --stat <tested commit> <merge tree> -- tools uv.lock pyproject.toml 'packages/*/src/**' 'packages/*/pyproject.toml'
+git fetch origin +refs/heads/main:refs/remotes/origin/main pull/<number>/head
+git rev-parse origin/main
+git merge-tree --write-tree <main sha> <change head sha>
+git diff --exit-code --stat <tested commit> <merge tree> -- ':(top)tools' ':(top)uv.lock' ':(top)pyproject.toml' ':(top)packages/*/src/**' ':(top)packages/*/pyproject.toml'
 ```
 
-`git merge-tree` prints the merge tree's id on its first line, and exits with
-status 1 if the change conflicts with main. The `git diff` prints nothing when
-the two match. Keep the trailing `/**`: without it, git's `packages/*/src`
-pathspec matches no file, so the command misses every change under
-`packages/*/src`.
+The reviewer stops if `git fetch` fails, since `origin/main` may then name an
+older main. The fetch names `refs/remotes/origin/main` as its destination, so
+it updates `origin/main` even in a clone whose fetch configuration leaves main
+out. The reviewer writes each commit as its full sha: main's from
+`git rev-parse origin/main`, and the change's head from
+`gh pr view <number> --json headRefOid`. `git merge-tree` prints the merge
+tree's id on its first line. If the change conflicts with main, it exits with
+status 1 and still prints a tree id, but that tree holds conflict markers. So
+the reviewer goes on only when `git merge-tree` exits with 0. The `:(top)`
+prefix makes git read each path from the repository root, so the `git diff`
+checks the same files from any directory. The two match only when `git diff`
+exits with status 0 and prints nothing; it exits with 1 when they differ and
+with 128 on an error, such as an unknown commit. If main's tip or the change's
+head moves before the merge, the reviewer runs the check again. Keep the
+trailing `/**`: without it, git's `packages/*/src` pathspec matches no file,
+so the command misses every change under `packages/*/src`.
 
 The lane's county rung (`--soi-mode state_county`) is the only build path that
 consumes both feeds. It loads the county facts the county pin names and checks
@@ -188,9 +216,10 @@ SSI age bands and Medicaid enrollment table. Compiles of both feeds at main
 `5499382` on 17 November 2026 showed this, before microcosm#1610's compiler
 changes. No run yet covers `totals`, `full` or `state_cd`, or any mode at
 microcosm#1610's head. Before it merges, microcosm#1610 owes the comparison in
-every mode, on the merge tree the rule above names. The change that runs the
-comparison replaces this paragraph with the result and its evidence path. The
-guard compares commit ids only, so it cannot check this evidence.
+every mode, on the merge tree and with the receipt the rule above names. The
+change that runs the comparison replaces this paragraph with the result and its
+evidence path. The guard compares commit ids only, so it cannot check this
+evidence.
 
 The combined re-pin moves both pins to one Chronicle main commit at or after
 chronicle#430's merge `b428468d`, rebuilds both feeds and retires the allowed
