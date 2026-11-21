@@ -3065,7 +3065,7 @@ def _inventory(inventory, pairs, documents, feed_pin, members, communes, surface
             "nuts1_sum_2025": float(nuts[2025]),
             "nuts1_sum_2026": float(nuts[POLICY_YEAR]),
             "commune_minus_nuts1_2025": float(commune_total - nuts[2025]),
-            "create_mass_reference": "Not in B3. CREATE needs exactly one unfiltered national person count. The suite has no national Statbel population fact, and a national row composed from the 565 communes refuses: the shared composed-geography path labels only UK areas. W3 chooses between a shared Belgian geography label (NZ hub) and FPB's annual-average population.",
+            "create_mass_reference": "Not in B3. CREATE needs exactly one unfiltered national person count. W3-R2 proposes FPB's 2025 annual-average population in mass_references.json, under d1902. The suite has no national Statbel population fact, and a correctly labelled Statbel national row summed from the communes or regions needs a Belgian entry in the shared composed-geography label path, which labels only UK areas today.",
         },
         "b1_checks": _b1_checks(inventory),
         "unemployment_series_choice": _unemployment_series_choice(inventory),
