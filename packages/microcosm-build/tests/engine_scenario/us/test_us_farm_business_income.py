@@ -4,11 +4,11 @@
 from test_support.microcosm_build.us_farm_business_income import *
 
 
-def test_policyengine_us_2_2_1_qbi_graph_reads_each_farm_leaf() -> None:
+def test_policyengine_us_2_145_3_qbi_graph_reads_each_farm_leaf() -> None:
     from policyengine_core.reforms import Reform
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     system = CountryTaxBenefitSystem()
     for output in US_FARM_BUSINESS_INCOME_OUTPUT_COLUMNS:
         variable = system.variables[output]

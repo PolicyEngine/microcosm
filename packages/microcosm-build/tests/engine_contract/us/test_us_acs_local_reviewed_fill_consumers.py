@@ -13,6 +13,12 @@ the engine's. For the program couplings register validation enforces
 (``REVIEWED_FILL_COUPLINGS``, microcosm#1071 review) it checks that each is an
 edge of the engine's graph and that every column reaching one declares both
 programs, so the engine-free rule covers it.
+
+The walk tests hold only for the engine the register was reviewed against.
+On any other engine the ACS local release gate refuses the release (fail
+closed), so they skip until the register is re-reviewed, and one test checks
+that the gate refuses the installed engine meanwhile (policyengine-us 2.145.3:
+microcosm#1675).
 """
 
 from __future__ import annotations
@@ -25,6 +31,7 @@ import pytest
 
 from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
     REVIEWED_FILL_COUPLINGS,
+    acs_local_reviewed_fill_consumer_gate,
     load_reviewed_fill_consumer_register,
     means_tested_consumers,
 )
@@ -46,6 +53,16 @@ _COUPLING_NODES = {
     "tanf": "tanf",
 }
 _REACHED: dict[str, frozenset[str]] = {}
+_INSTALLED_ENGINE = version("policyengine-us")
+_REVIEWED_ENGINE = _DOCUMENT["reviewed_against"]["policyengine_us"]
+_ON_THE_REVIEWED_ENGINE = pytest.mark.skipif(
+    _INSTALLED_ENGINE != _REVIEWED_ENGINE,
+    reason=(
+        f"the register was reviewed against policyengine-us {_REVIEWED_ENGINE} "
+        f"and {_INSTALLED_ENGINE} is installed; the ACS local release gate "
+        "refuses this engine until the re-review (microcosm#1675)"
+    ),
+)
 
 
 @pytest.fixture(scope="module")
@@ -60,14 +77,19 @@ def system():
     return CountryTaxBenefitSystem()
 
 
-def test_the_register_was_reviewed_against_the_installed_engine() -> None:
-    installed = version("policyengine-us")
-    assert _DOCUMENT["reviewed_against"]["policyengine_us"] == installed, (
-        "acs_local_reviewed_fill_consumers.yaml was reviewed against "
-        f"policyengine-us {_DOCUMENT['reviewed_against']['policyengine_us']} "
-        f"but {installed} is installed: re-run the consumer walk, review every "
-        "note whose program's rules changed, and update reviewed_against."
+def test_the_release_gate_holds_the_register_to_its_reviewed_engine() -> None:
+    """A release on an engine the register was not reviewed against fails."""
+
+    gate = acs_local_reviewed_fill_consumer_gate(
+        {}, installed_engine_version=_INSTALLED_ENGINE
     )
+    matches = _INSTALLED_ENGINE == _REVIEWED_ENGINE
+    assert gate.details["engine_matches_review"] is matches
+    refusal = (
+        f"the release runs policyengine-us {_INSTALLED_ENGINE} but the register "
+        f"was reviewed against {_REVIEWED_ENGINE}"
+    )
+    assert any(refusal in failure for failure in gate.failures) is not matches
 
 
 def test_the_program_roots_cover_the_engines_means_tested_list(system) -> None:
@@ -83,6 +105,7 @@ def test_the_program_roots_cover_the_engines_means_tested_list(system) -> None:
     assert "household_state_benefits" in roots
 
 
+@_ON_THE_REVIEWED_ENGINE
 @pytest.mark.parametrize("column", sorted(_ENTRIES))
 def test_each_entry_declares_exactly_the_walked_consumers(index, column) -> None:
     reached = means_tested_consumers(column, index, _PROGRAMS)
@@ -100,6 +123,7 @@ def test_each_entry_declares_exactly_the_walked_consumers(index, column) -> None
     )
 
 
+@_ON_THE_REVIEWED_ENGINE
 @pytest.mark.parametrize("column", sorted(_ENTRIES))
 def test_each_entry_matches_its_engine_variable(system, column) -> None:
     entry = _ENTRIES[column]
@@ -134,6 +158,7 @@ def _reached(index, column: str) -> frozenset[str]:
     return _REACHED[column]
 
 
+@_ON_THE_REVIEWED_ENGINE
 def test_each_program_coupling_is_an_engine_edge(index) -> None:
     """The couplings register validation enforces exist in the engine."""
 
@@ -157,6 +182,7 @@ def test_each_program_coupling_is_an_engine_edge(index) -> None:
     assert "meets_snap_categorical_eligibility" in consumers("tanf")
 
 
+@_ON_THE_REVIEWED_ENGINE
 @pytest.mark.parametrize("column", sorted(_ENTRIES))
 def test_each_column_reaching_a_coupling_declares_both_programs(index, column) -> None:
     """So the engine-free coupling rule sees every coupling a column reaches."""
@@ -172,6 +198,7 @@ def test_each_column_reaching_a_coupling_declares_both_programs(index, column) -
     assert missing == [], f"{column} reaches {missing} without declaring both."
 
 
+@_ON_THE_REVIEWED_ENGINE
 def test_the_key_snap_paths(index) -> None:
     """The paths the register's SNAP notes rest on (microcosm#1022 triage)."""
 

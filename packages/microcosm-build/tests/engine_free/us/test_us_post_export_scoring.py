@@ -1576,8 +1576,10 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
         == sum(spec.in_sample for spec in specs)
         == 12
     )
+    # The SALT refund probe scores income_tax on policyengine-us 2.145.3, so no
+    # probe needs the state_income_tax baseline.
     assert counts["baseline_keys"] == {
-        "reform_coverage_smoke": 20,
+        "reform_coverage_smoke": 19,
         "reform_validation": 75,
         "demographics": 1,
     }

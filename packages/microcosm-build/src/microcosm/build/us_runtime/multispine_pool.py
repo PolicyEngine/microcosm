@@ -334,30 +334,30 @@ class PoolEngineInputProjectionContract:
 
 
 POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
-    engine_version="2.2.1",
+    engine_version="2.145.3",
     root="ssi",
-    input_leaf_count=54,
-    formula_node_count=63,
-    edge_count=187,
-    sha256="200ca39e784511e9ede685261f5e0840198ec2b9c4292a522c0fc504c535b31c",
+    input_leaf_count=689,
+    formula_node_count=2372,
+    edge_count=9188,
+    sha256="343ffc773bd9f034bb8499cff814fcb5102361f682de45d023bca3e0e9a22043",
 )
 """Exact static graph consumed by the terminal SSI agreement simulation."""
 
 POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
-    engine_version="2.2.1",
-    input_count=926,
-    default_count=925,
-    sha256="cefb137f164c6629589a887bbb56831ebc463cd46909a72ead4dbe0557961e61",
-    defaults_sha256="f938af6506623f453ca55922cf4a8ba6443d5f780f85e4381b777083a90396a0",
+    engine_version="2.145.3",
+    input_count=1334,
+    default_count=1333,
+    sha256="7c12726f0b9a81bfe1ea90db11fd94169fd9af770736542e8720bc55795dc2af",
+    defaults_sha256="564f3125faad5152f95413d68bfe29c2c3bb01ad6d6cb79fc8a9780c386ec5f0",
 )
 """Exact installed input registry scanned by the disposable projection."""
 
 POOL_SSI_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("assembled_native_person_input", 1),
-    ("declared_absent_engine_input", 18),
+    ("declared_absent_engine_input", 572),
     ("declared_deferred_null_input", 3),
-    ("materialized_pool_input_surface", 31),
-    ("seed_stage_program_contract", 1),
+    ("materialized_pool_input_surface", 107),
+    ("seed_stage_program_contract", 6),
 )
 """How each SSI input leaf is provisioned, by count.
 
@@ -368,14 +368,14 @@ is asserted.
 """
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
-    ("assembled_native_engine_input", 5),
-    ("declared_absent_engine_input", 762),
+    ("assembled_native_engine_input", 7),
+    ("declared_absent_engine_input", 1165),
     ("declared_deferred_null_input", 3),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
-    ("materialized_pool_input_surface", 123),
-    ("preserved_stacked_engine_input", 4),
-    ("seed_stage_program_contract", 17),
+    ("materialized_pool_input_surface", 121),
+    ("preserved_stacked_engine_input", 5),
+    ("seed_stage_program_contract", 21),
     ("unprovisioned_source_input", 1),
 )
 """How every installed engine input is provisioned, by count.
@@ -385,9 +385,9 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "d4fb9de9c0b8081474a24d0abde84ebf05eb346483fc20e3852e29abc769a501"
+    "3bd50a8db708f3c08aecf14277a549d82c85fd9c88fc60b441ab8750de531879"
 )
-"""Pinned content digest of all 1,059 post-transfer consumer/input rows."""
+"""Pinned content digest of all 2,106 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -681,11 +681,10 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
             # The parent ids are complete on both arms without a transfer:
             # the eligibility operator resolves them on the CPS projection
             # and ``map_acs_native_inputs`` writes the ACS spine's declared
-            # 0. They must never enter the QRF plan — parent_1_id is not a
-            # PolicyEngine-US variable, so ``_target_encoding`` would treat
-            # it as continuous and hand an ACS child a fractional
-            # interpolation between two unrelated ASEC person ids
-            # (microcosm#884).
+            # 0. They must never enter the QRF plan — a parent id is an
+            # identifier, not an amount, so a QRF draw would hand an ACS
+            # child a fractional interpolation between two unrelated ASEC
+            # person ids (microcosm#884).
             *US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
         }
     ),
@@ -696,6 +695,11 @@ _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS: Mapping[
     tuple[str, str], tuple[str, str | None]
 ] = {
     ("person", "is_related_to_head_or_spouse"): ("assembled", None),
+    # policyengine-us#9617 reads microunit's HEAD / SPOUSE / DEPENDENT roles
+    # through this person Enum input (its default UNSPECIFIED falls back to
+    # age ordering), so the build-time simulation projection keeps the roles
+    # the published model will use (microcosm#1027).
+    ("person", "tax_unit_role_input"): ("assembled", None),
     ("household", "puma"): (
         "assembled",
         "ephemeral_simulation_projection_engine_default_for_null",

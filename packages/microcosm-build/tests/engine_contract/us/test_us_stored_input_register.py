@@ -45,9 +45,18 @@ def test_the_inputs_the_acs_native_reasons_name_are_engine_inputs():
         for feature in acs_transfer._RECIPIENT_COMBINED_SOURCES
         for component in acs_transfer._DONOR_COMBINED_COMPONENTS[feature]
     } | {"pre_subsidy_rent", "real_estate_taxes", "puma"}
+    # policyengine-us 2.145.3 gives the four Social Security components
+    # formulas but migrates a stored component to its _reported source, so
+    # the engine declares them storable (SOCIAL_SECURITY_COMPONENTS).
+    from policyengine_us.tools.social_security_inputs import (
+        SOCIAL_SECURITY_COMPONENTS,
+    )
+
     for name in sorted(named_inputs):
         assert name in system.variables, name
-        assert not system.variables[name].formulas, name
+        assert (
+            not system.variables[name].formulas or name in SOCIAL_SECURITY_COMPONENTS
+        ), name
     assert not _ACS_NATIVE_AMOUNTS & set(system.variables)
 
 

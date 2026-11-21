@@ -7,7 +7,7 @@ from test_support.microcosm_build.us_other_health_insurance import *
 def test_policyengine_us_graph_uses_other_health_insurance_premiums() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variable = CountryTaxBenefitSystem().variables[_OTHER]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"
@@ -51,10 +51,10 @@ def test_policyengine_us_graph_uses_other_health_insurance_premiums() -> None:
         assert delta == pytest.approx(expected)
 
 
-def test_policyengine_2_2_1_se_health_ald_contract_and_live_binding() -> None:
+def test_policyengine_2_145_3_se_health_ald_contract_and_live_binding() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variables = CountryTaxBenefitSystem().variables
     for name in US_SE_HEALTH_ATTRIBUTION_OUTPUT_COLUMNS:
         variable = variables[name]
@@ -97,7 +97,7 @@ def test_policyengine_2_2_1_se_health_ald_contract_and_live_binding() -> None:
             },
         }
 
-    # min(total self-employment income, premiums) is the section 162(l) chain.
+    # min(premiums, the earned-income limit) is the section 162(l) chain.
     bound = Simulation(
         situation=situation(
             premiums=8_000.0, self_employed=True, self_employment_income=30_000.0
@@ -115,9 +115,16 @@ def test_policyengine_2_2_1_se_health_ald_contract_and_live_binding() -> None:
             premiums=50_000.0, self_employed=True, self_employment_income=30_000.0
         )
     )
+    # Form 7206: the earned-income limit is net self-employment earnings less
+    # the deductible half of self-employment tax (policyengine-us 2.145.3), so
+    # premiums above it deduct only the limit.
+    limit = earnings_capped.calculate(
+        "self_employed_health_insurance_earned_income_limit", 2024
+    )[0]
+    assert 0.0 < limit < 30_000.0
     assert earnings_capped.calculate("self_employed_health_insurance_ald", 2024)[
         0
-    ] == pytest.approx(30_000.0)
+    ] == pytest.approx(limit)
 
     sstb_bound = Simulation(
         situation=situation(premiums=8_000.0, self_employed=True, sstb_income=10_000.0)

@@ -4,10 +4,10 @@
 from test_support.microcosm_build.us_wic_nutritional_risk_exclusion import *
 
 
-def test_policyengine_2_2_1_defaults_risk_true_and_uses_it_for_eligibility() -> None:
+def test_policyengine_2_145_3_defaults_risk_true_and_uses_it_for_eligibility() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     system = CountryTaxBenefitSystem()
     variable = system.variables["is_wic_at_nutritional_risk"]
     assert variable.is_input_variable()

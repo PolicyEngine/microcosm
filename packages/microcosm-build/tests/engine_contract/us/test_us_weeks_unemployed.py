@@ -14,7 +14,14 @@ def test_live_engine_graph_has_only_structurally_blocked_ui_consumers() -> None:
         for formula in variable.formulas.values()
         if _OUTPUT in formula.__code__.co_consts
     }
-    assert consumers == {"al_ui", "ny_ui", "ok_ui", "pa_uc"}
+    # unemployment_compensation_months joined on policyengine-us 2.145.3.
+    assert consumers == {
+        "al_ui",
+        "ny_ui",
+        "ok_ui",
+        "pa_uc",
+        "unemployment_compensation_months",
+    }
     weeks = system.variables[_OUTPUT]
     assert weeks.default_value == 0
     assert not weeks.formulas

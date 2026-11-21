@@ -71,11 +71,11 @@ def test_constant_derived_domain_counts_are_complete(
     }
     assert target_counts == {
         "gap_fill_stacked_spine": 48,
-        "primary_puf_qrf": 66,
-        "late_producer_dag": 72,
+        "primary_puf_qrf": 64,
+        "late_producer_dag": 71,
     }
     assert "primary_effective_predictor_tuples" not in imputation["chaining"]
-    assert len(derive_primary_effective_predictor_tuples(imputation)) == 66
+    assert len(derive_primary_effective_predictor_tuples(imputation)) == 64
     itemization_batches = [
         family for family in families if "puf_tax_itemization__batch_" in family["id"]
     ]
@@ -90,8 +90,8 @@ def test_constant_derived_domain_counts_are_complete(
         for stage in ("primary_puf_qrf", "late_producer_dag")
     }
     assert modeled_output_scopes == {
-        "primary_puf_qrf": {"puf_clone": 66},
-        "late_producer_dag": {"whole_pool": 72},
+        "primary_puf_qrf": {"puf_clone": 64},
+        "late_producer_dag": {"whole_pool": 71},
     }
     assert all(
         "output_coverage_scope" not in target
@@ -142,16 +142,16 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da"
+        == "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "76a79c9d05cfde1ec1c812de530b5080e6bc212f9c9e693eba628711d6f553e1"
+        == "edab6fccc230b5a3c772de5da2c84a72c4d7f4ce77bebafb510beede672e3649"
     )
 
-    assert len(take_up["programs"]) == 17
+    assert len(take_up["programs"]) == 21
     assert Counter(program["ownership"] for program in take_up["programs"]) == {
-        "engine": 7,
+        "engine": 11,
         "measured": 1,
         "mixed": 1,
         "modeled": 7,
@@ -165,12 +165,12 @@ def test_constant_derived_domain_counts_are_complete(
             take_up_steps.extend(
                 step for segment in program["segments"] for step in segment["pipeline"]
             )
-    assert len(take_up_steps) == 28
+    assert len(take_up_steps) == 32
     assert Counter(step["kind"] for step in take_up_steps) == {
         "assignment": 5,
         "count_calibration": 5,
         "probability_seed": 5,
-        "engine_default": 7,
+        "engine_default": 11,
         "measured_map": 3,
         "imputed_transfer": 2,
         "delivery_gate": 1,
@@ -180,7 +180,7 @@ def test_constant_derived_domain_counts_are_complete(
     ]
     local_steps = [step for step in take_up_steps if "source_operation_ref" not in step]
     assert len(source_backed_steps) == 18
-    assert len(local_steps) == 10
+    assert len(local_steps) == 14
     assert (
         len({step["source_operation_ref"]["stage"] for step in source_backed_steps})
         == 9
@@ -199,16 +199,16 @@ def test_constant_derived_domain_counts_are_complete(
         for step in local_steps
     )
     assert all(step["kernel"].startswith("kernel:") for step in take_up_steps)
-    assert len(battery["metric_registry"]) == 136
+    assert len(battery["metric_registry"]) == 139
     assert len(battery["joint_metric_registry"]) == 1
     assert "metric_counts" not in battery
     assert "declared_surface" not in battery
     assert "completeness" not in battery
     battery_views = derive_battery_registry_views(battery)
     assert battery_views["metric_counts"] == {
-        "boolean_incidence": 51,
+        "boolean_incidence": 55,
         "categorical_tvd": 4,
-        "monetary_sign_separated": 81,
+        "monetary_sign_separated": 80,
     }
     assert set(calibration["targets"]) == {
         "cd_policy",
@@ -232,8 +232,8 @@ def test_constant_derived_domain_counts_are_complete(
     for knob in ("k", "pi_hi", "seed"):
         assert selection["exact_k"][knob]["required"] is True
         assert selection["exact_k"][knob]["default"] is None
-    assert len(catalogs["columns"]) == 177
-    assert len(resolved_us_spec.columns) == 177
+    assert len(catalogs["columns"]) == 179
+    assert len(resolved_us_spec.columns) == 179
     assert Counter(artifact.kind for artifact in resolved_us_spec.artifacts) == {
         "producer_node": 38,
         "virtual_output": 18,

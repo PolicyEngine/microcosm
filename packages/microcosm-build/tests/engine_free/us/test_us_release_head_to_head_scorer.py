@@ -708,15 +708,15 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
 
     single = len(module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY)
     joint = len(module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY)
-    assert single == 136
+    assert single == 139
     assert joint == 1
     assert len(contract) == single + joint
     assert sum(len(row["metric_legs"]) for row in contract.values()) == 380
     assert (
         sum(row["metric"] == "monetary_sign_separated" for row in contract.values())
-        == 81
+        == 80
     )
-    assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 51
+    assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 55
     assert sum(row["metric"] == "categorical_tvd" for row in contract.values()) == 5
     assert (
         "person/source_operator_immigration/"
@@ -768,7 +768,7 @@ def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
     assert both_origins["metric_leg_count"] == 380
     assert both_origins["scalar_leg_status_counts"] == {"computed": 380}
     for payload in (no_columns, asec_only):
-        assert payload["comparison_count"] == 137
+        assert payload["comparison_count"] == 140
         assert all(
             row["status"] == "inapplicable" for row in payload["comparisons"].values()
         )

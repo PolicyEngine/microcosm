@@ -197,14 +197,14 @@ def test_adapter_preserves_generation_zero_identity_components(
     imputation = legacy_payload["imputation"]
     assert isinstance(imputation, dict)
     assert legacy_payload["stacked_authority_receipt"]["sha256"] == (
-        "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef"
+        "51082a05e7ff8d2c901a9c0de54fdee7378f241cb377a9c0ddeeb12b1fc2db69"
     )
     assert imputation["late_producer_schedule_receipt"]["schedule_sha256"] == (
-        "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da"
+        "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889"
     )
     assert imputation["overlap_ownership"]["sha256"] == (
         "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356"
     )
     assert legacy_payload["take_up_contract_identity"]["resource_sha256"] == (
-        "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+        "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c"
     )

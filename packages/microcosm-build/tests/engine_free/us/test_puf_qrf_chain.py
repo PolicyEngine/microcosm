@@ -167,8 +167,10 @@ def test_primary_qrf_production_target_order_is_locked() -> None:
         *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     )
     assert PRIMARY_QRF_TARGET_ORDER == expected
-    # microcosm#1251 adds passive_partnership_s_corp_income after s_corp_income.
-    assert len(PRIMARY_QRF_TARGET_ORDER) == 66
+    # microcosm#1251 adds passive_partnership_s_corp_income after s_corp_income;
+    # policyengine-us 2.145.3 retires the tax-unit first/second home mortgage
+    # interest legs (policyengine-us#9605), so the chain no longer imputes them.
+    assert len(PRIMARY_QRF_TARGET_ORDER) == 64
     assert "investment_interest_expense" in PRIMARY_QRF_TARGET_ORDER
     digest = hashlib.sha256(
         json.dumps(list(PRIMARY_QRF_TARGET_ORDER), separators=(",", ":")).encode()

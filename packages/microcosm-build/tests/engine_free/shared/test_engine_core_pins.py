@@ -3,10 +3,10 @@
 Nothing imports both engines and CI installs one country extra per job, so
 every extra that installs policyengine-us is declared in conflict with every
 extra that installs policyengine-uk, and uv locks the two sides in separate
-forks. The US side stays on the core the certified US default was built with
-until its next certified build. The UK side resolves the locked policyengine-uk
-and the core that release brings, and a lock change that moves either has to
-move the pin below with it. The resolution checks read the committed
+forks. The US side pins the engine and core its next certified build is built
+with. The UK side resolves the locked policyengine-uk and the core that release
+brings; today both sides resolve the same core, and a lock change that moves
+either has to move the pin below with it. The resolution checks read the committed
 ``uv.lock`` through ``uv export --frozen``, uv's own reading of what an install
 path gets, without the network or the environment.
 """
@@ -23,16 +23,17 @@ from packaging.requirements import Requirement
 
 from test_support.paths import REPOSITORY_ROOT
 
-#: What every US install path resolves until the next certified US build.
+#: What every US install path resolves: the engine the next certified US
+#: build is built with.
 US_ENGINE = {
-    "policyengine-core": "3.32.5",
-    "policyengine-us": "2.2.1",
-    "spm-calculator": "1.0.0",
+    "policyengine-core": "3.36.1",
+    "policyengine-us": "2.145.3",
+    "spm-calculator": "1.1.0",
 }
 #: What every UK install path resolves: the locked policyengine-uk and the
 #: policyengine-core its own floor brings.
 UK_ENGINE = {
-    "policyengine-core": "3.34.10",
+    "policyengine-core": "3.36.1",
     "policyengine-uk": "2.177.7",
 }
 ENGINE_PACKAGES = ("microcosm-build", "microcosm-data", "microcosm-frame")

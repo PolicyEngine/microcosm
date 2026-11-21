@@ -4,9 +4,9 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "fda6ec0dd925077f4d84d30a1c206dd81d82c5e16bd94506e81fe1b9f7e2f466",
+  "documentation_sha256": "b6c78c149f1d4b2b5bf1528bda34754f29dfc2016b5274efc934f1bea81e315e",
   "field_usage": {
-    "authored_normative_field_count": 32618,
+    "authored_normative_field_count": 32638,
     "claim_count": 48,
     "claims": [
       {
@@ -33,8 +33,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 807,
-        "pointer_sha256": "f35844c0d404d5fc7905d8b7ecbee1d273c0bb46a7ed656d86f1b7cb0760fb33",
+        "pointer_count": 822,
+        "pointer_sha256": "f248b16fb93e7923a9f3dcc91584b2719b9188b7251b78ab89e2061bfa7100d5",
         "rationale": null,
         "relative_sink_prefix": "/battery_contract",
         "source_prefix": "/authored/spec~1battery.yaml",
@@ -108,8 +108,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 320,
-        "pointer_sha256": "5336f77a10b2f0aa03f6bc221f3c5b8390adccaeed8ee3e7251292606a83a7fd",
+        "pointer_count": 318,
+        "pointer_sha256": "0cce138fea5e0bcdb2bd5b43c2a38b97228ef9d5eb5aa18e28921a146b6dd5a0",
         "rationale": null,
         "relative_sink_prefix": "/calibration_contract",
         "source_prefix": "/authored/spec~1calibration.yaml",
@@ -122,8 +122,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 1593,
-        "pointer_sha256": "bdd9e79157590fade42d28cc2b5d5c8b58e13903af75375a0e3235c94d2a8339",
+        "pointer_count": 1611,
+        "pointer_sha256": "962869de3839c446df5bae610a522460e24586c8f48a4d21d7f416d5a55ce971",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1catalogs.yaml/columns",
@@ -260,8 +260,8 @@
         ],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 24511,
-        "pointer_sha256": "5869ddc4afa6eb0c09f290b709e75467decc6929e7f79c98341878928e6169fc",
+        "pointer_count": 24486,
+        "pointer_sha256": "3eaf79ed1ef14337fa2b585a532d10dfb68dae9a07d9fc9d91b6456633d0e90e",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/producer_graph",
@@ -320,8 +320,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "family_execution",
-        "pointer_count": 1787,
-        "pointer_sha256": "aa733722f4442ae0ab22c5f1f2ffc1df2accfc5a1791702b242545e40abd26bf",
+        "pointer_count": 1769,
+        "pointer_sha256": "b995d1967c7d9b11a20f593b891e42bb0cb81661f8addd1ffd613f7773a2e257",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1imputation.yaml/families",
@@ -500,8 +500,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 1926,
-        "pointer_sha256": "8bd6122267288e2df25b2880a43191865707a240892bec484cb830ee72404964",
+        "pointer_count": 1922,
+        "pointer_sha256": "72a4896a1fd2e61097a5644cb7885e34ecb3563342caf4057134b7caab754b69",
         "rationale": null,
         "relative_sink_prefix": "/source_manifest/stages",
         "source_prefix": "/authored/spec~1sources.yaml/stages",
@@ -677,8 +677,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 328,
-        "pointer_sha256": "d53096196db4c34da260cce2f35af8e7ba67f978448656c602ee5e17529dc4e0",
+        "pointer_count": 364,
+        "pointer_sha256": "499f61d37fba43fe1dda622ef0206cd10dba2c85975f6a22640509b9e39739b1",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1take_up.yaml",
@@ -708,8 +708,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 8614,
-        "pointer_sha256": "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
+        "pointer_count": 17032,
+        "pointer_sha256": "7dd9018bc1cf7623349ecb3808c48cde4dc04a5d5d2bc1d360d6aa3a93b80505",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/generated_authorities",
@@ -758,21 +758,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42404,
-    "consumed_field_count": 42404,
+    "configuration_field_count": 50842,
+    "consumed_field_count": 50842,
     "generation0_effect_counts": {
-      "legacy_behavior": 38780,
-      "no_generation0_effect": 3624
+      "legacy_behavior": 47200,
+      "no_generation0_effect": 3642
     },
     "mode_counts": {
-      "compiler_semantic": 27674,
+      "compiler_semantic": 27667,
       "front_end_validation": 358,
       "identity_only": 103,
-      "legacy_behavior": 14269
+      "legacy_behavior": 22714
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "38fc67ba13d62a5c0eaff36abb8f04d4d2974e21baaed6d2966d76480e643608",
-    "resolved_binding_field_count": 9786,
+    "pointer_inventory_sha256": "0c9532cb91f3eaa1fdcddca947bdcaff2b98071a1c4f16a0141e25653de3b760",
+    "resolved_binding_field_count": 18204,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -789,18 +789,18 @@
       "itemization_batches": 5,
       "itemization_targets": 39,
       "late_groups": 19,
-      "late_targets": 72,
+      "late_targets": 71,
       "ownership_rows": 18,
-      "primary_effective_predictor_tuples": 66,
+      "primary_effective_predictor_tuples": 64,
       "primary_families": 1,
-      "primary_targets": 66,
+      "primary_targets": 64,
       "producer_authored_outputs": 92,
-      "producer_compiled_outputs": 230,
-      "producer_inputs": 2747,
+      "producer_compiled_outputs": 227,
+      "producer_inputs": 2744,
       "producer_nodes": 38,
       "producer_virtual_resources": 75,
       "release_rungs": 5,
-      "resolved_references": 337,
+      "resolved_references": 343,
       "seed_owner_bindings": 112,
       "seed_owner_rows": 54,
       "seed_sites": 53,
@@ -810,11 +810,11 @@
       "stacked_checkpoint_full_components": 13,
       "stacked_checkpoint_pool_code_components": 19,
       "stacked_checkpoint_static_components": 10,
-      "tail_control_fields": 942,
-      "take_up_pipeline_steps": 28,
-      "take_up_programs": 17,
+      "tail_control_fields": 938,
+      "take_up_pipeline_steps": 32,
+      "take_up_programs": 21,
       "typed_artifacts": 84,
-      "typed_columns": 177,
+      "typed_columns": 179,
       "typed_entities": 8,
       "typed_scopes": 7
     },
@@ -903,13 +903,13 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
-          "terminal_fields": 942
+          "sha256": "f7f8282d48dbf1e01016cd551f5a0de289911140048d20812c920ace0d092936",
+          "terminal_fields": 938
         },
         "failures": [],
         "observed": {
-          "sha256": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
-          "terminal_fields": 942
+          "sha256": "f7f8282d48dbf1e01016cd551f5a0de289911140048d20812c920ace0d092936",
+          "terminal_fields": 938
         },
         "status": "covered"
       },
@@ -1060,11 +1060,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "schedule_sha256": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da"
+          "schedule_sha256": "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889"
         },
         "failures": [],
         "observed": {
-          "schedule_sha256": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da"
+          "schedule_sha256": "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889"
         },
         "status": "covered"
       },
@@ -1082,14 +1082,14 @@
         ],
         "expected": {
           "groups": 19,
-          "sha256": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
-          "targets": 72
+          "sha256": "69134b2aece677e1e71d98f423f2c92e5a82380aa7ebf4d415ffba9142d0e31e",
+          "targets": 71
         },
         "failures": [],
         "observed": {
           "groups": 19,
-          "sha256": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
-          "targets": 72
+          "sha256": "69134b2aece677e1e71d98f423f2c92e5a82380aa7ebf4d415ffba9142d0e31e",
+          "targets": 71
         },
         "status": "covered"
       },
@@ -1210,13 +1210,13 @@
           "legacy_adapter.imputation.primary_qrf"
         ],
         "expected": {
-          "sha256": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
-          "tuples": 66
+          "sha256": "dbb5314f85727d4734a37b5e2de9d775a3044e362a18d831521460e1d261ac98",
+          "tuples": 64
         },
         "failures": [],
         "observed": {
-          "sha256": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
-          "tuples": 66
+          "sha256": "dbb5314f85727d4734a37b5e2de9d775a3044e362a18d831521460e1d261ac98",
+          "tuples": 64
         },
         "status": "covered"
       },
@@ -1236,14 +1236,14 @@
         "expected": {
           "edges": 71,
           "nodes": 38,
-          "schedule_sha256": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
+          "schedule_sha256": "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889",
           "waves": 6
         },
         "failures": [],
         "observed": {
           "edges": 71,
           "nodes": 38,
-          "schedule_sha256": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
+          "schedule_sha256": "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889",
           "waves": 6
         },
         "status": "covered"
@@ -1261,11 +1261,11 @@
         ],
         "expected": {
           "relation": "source rows preserved exactly",
-          "rows": 2747
+          "rows": 2744
         },
         "failures": [],
         "observed": {
-          "rows": 2747
+          "rows": 2744
         },
         "status": "covered"
       },
@@ -1290,7 +1290,7 @@
         "failures": [],
         "observed": {
           "authored_rows": 92,
-          "compiled_rows": 230
+          "compiled_rows": 227
         },
         "status": "covered"
       },
@@ -1324,12 +1324,12 @@
         ],
         "expected": {
           "nodes": 38,
-          "sha256": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f"
+          "sha256": "379cd14352d2ce812f1c828a48a60823090c20d5437a4ce34d4a28ced2b8cf7c"
         },
         "failures": [],
         "observed": {
           "nodes": 38,
-          "sha256": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f"
+          "sha256": "379cd14352d2ce812f1c828a48a60823090c20d5437a4ce34d4a28ced2b8cf7c"
         },
         "status": "covered"
       },
@@ -1347,12 +1347,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "4464b646c45dff39a500e07bf60a8505d45725712fc27dcfc6de1e839fd6b0c3"
+          "sha256": "c4218cf5d569caa6ef83b53f2b1563ab2cd52ed159e72da27db5921b18a87cad"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "4464b646c45dff39a500e07bf60a8505d45725712fc27dcfc6de1e839fd6b0c3"
+          "sha256": "c4218cf5d569caa6ef83b53f2b1563ab2cd52ed159e72da27db5921b18a87cad"
         },
         "status": "covered"
       },
@@ -1642,13 +1642,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "afbe93ebeb8d48294581d860aed690c168eb4c2c92461353676a794cefd22584",
-          "protocol_sha256": "05fb40521ffef194cec9c2fe4dfedbbfd02e64ddddfd69f1a591961b61804176"
+          "map_sha256": "9be0442207d685d3b99508c4ec4e447d1c83cd4d41d2457480bf306ea0491e37",
+          "protocol_sha256": "a6f203aca42c6749ee435b9f2f0b24aa86fc4104492f30b956bae2b79e698c4e"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "afbe93ebeb8d48294581d860aed690c168eb4c2c92461353676a794cefd22584",
-          "protocol_sha256": "05fb40521ffef194cec9c2fe4dfedbbfd02e64ddddfd69f1a591961b61804176"
+          "map_sha256": "9be0442207d685d3b99508c4ec4e447d1c83cd4d41d2457480bf306ea0491e37",
+          "protocol_sha256": "a6f203aca42c6749ee435b9f2f0b24aa86fc4104492f30b956bae2b79e698c4e"
         },
         "status": "covered"
       },
@@ -1663,7 +1663,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "05fb40521ffef194cec9c2fe4dfedbbfd02e64ddddfd69f1a591961b61804176",
+          "implementation_sha256": "a6f203aca42c6749ee435b9f2f0b24aa86fc4104492f30b956bae2b79e698c4e",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1684,7 +1684,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "05fb40521ffef194cec9c2fe4dfedbbfd02e64ddddfd69f1a591961b61804176",
+          "implementation_sha256": "a6f203aca42c6749ee435b9f2f0b24aa86fc4104492f30b956bae2b79e698c4e",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1761,12 +1761,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
+          "sha256": "777ba41a83bf75ee00937f694a08208e93dcd7c91c9d096d316affd67d424267",
           "stages": 38
         },
         "failures": [],
         "observed": {
-          "sha256": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
+          "sha256": "777ba41a83bf75ee00937f694a08208e93dcd7c91c9d096d316affd67d424267",
           "stages": 38
         },
         "status": "covered"
@@ -1826,11 +1826,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef"
+          "sha256": "51082a05e7ff8d2c901a9c0de54fdee7378f241cb377a9c0ddeeb12b1fc2db69"
         },
         "failures": [],
         "observed": {
-          "sha256": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef"
+          "sha256": "51082a05e7ff8d2c901a9c0de54fdee7378f241cb377a9c0ddeeb12b1fc2db69"
         },
         "status": "covered"
       },
@@ -1873,7 +1873,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a"
+          "sha256": "90345ce0983f346297801be3e840e6f5cc384bf5615e8609fef8ba5ba98ed0e1"
         },
         "failures": [],
         "observed": {
@@ -1897,7 +1897,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a"
+          "sha256": "90345ce0983f346297801be3e840e6f5cc384bf5615e8609fef8ba5ba98ed0e1"
         },
         "status": "covered"
       },
@@ -1961,7 +1961,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "731c8c33dc511dfc35bc4b37bed9864ee75446e45555b999a01ec9b6ad1289cf"
+          "sha256": "a4e9df199923cf0e9e911717e804433d6274a6dbe9d4c46f544ab4680241f1f6"
         },
         "status": "covered"
       },
@@ -2057,11 +2057,11 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "resource_sha256": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+          "resource_sha256": "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c"
         },
         "failures": [],
         "observed": {
-          "resource_sha256": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+          "resource_sha256": "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c"
         },
         "status": "covered"
       },
@@ -2080,17 +2080,17 @@
           "legacy_adapter.take_up_contract"
         ],
         "expected": {
-          "sha256": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+          "sha256": "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c"
         },
         "failures": [],
         "observed": {
-          "sha256": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
+          "sha256": "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c"
         },
         "status": "covered"
       },
       "take_up_pipeline_steps_exact": {
         "bundle_home_match_counts": {
-          "/take_up/programs/*/pipeline": 16,
+          "/take_up/programs/*/pipeline": 20,
           "/take_up/programs/*/segments": 1
         },
         "bundle_homes": [
@@ -2111,6 +2111,9 @@
               "assignment",
               "count_calibration"
             ],
+            "ak_permanent_fund_dividend": [
+              "engine_default"
+            ],
             "basic_health_program": [
               "engine_default"
             ],
@@ -2121,6 +2124,9 @@
               "engine_default"
             ],
             "co_premium_assistance": [
+              "engine_default"
+            ],
+            "csfp": [
               "engine_default"
             ],
             "dc_ptc": [
@@ -2146,7 +2152,13 @@
             "medicare": [
               "measured_map"
             ],
+            "medicare_part_d": [
+              "engine_default"
+            ],
             "nm_premium_assistance": [
+              "engine_default"
+            ],
+            "school_meals": [
               "engine_default"
             ],
             "snap": [
@@ -2165,7 +2177,7 @@
               "probability_seed"
             ]
           },
-          "steps": 28
+          "steps": 32
         },
         "failures": [],
         "observed": {
@@ -2179,6 +2191,9 @@
               "assignment",
               "count_calibration"
             ],
+            "ak_permanent_fund_dividend": [
+              "engine_default"
+            ],
             "basic_health_program": [
               "engine_default"
             ],
@@ -2189,6 +2204,9 @@
               "engine_default"
             ],
             "co_premium_assistance": [
+              "engine_default"
+            ],
+            "csfp": [
               "engine_default"
             ],
             "dc_ptc": [
@@ -2214,7 +2232,13 @@
             "medicare": [
               "measured_map"
             ],
+            "medicare_part_d": [
+              "engine_default"
+            ],
             "nm_premium_assistance": [
+              "engine_default"
+            ],
+            "school_meals": [
               "engine_default"
             ],
             "snap": [
@@ -2233,7 +2257,7 @@
               "probability_seed"
             ]
           },
-          "steps": 28
+          "steps": 32
         },
         "status": "covered"
       },
@@ -2263,6 +2287,13 @@
               ],
               "out_of_scope"
             ],
+            "ak_permanent_fund_dividend": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
             "basic_health_program": [
               "engine",
               [
@@ -2285,6 +2316,13 @@
               "rate_unsourced"
             ],
             "co_premium_assistance": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "csfp": [
               "engine",
               [
                 "engine_default"
@@ -2342,7 +2380,21 @@
               ],
               "out_of_scope"
             ],
+            "medicare_part_d": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
             "nm_premium_assistance": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "school_meals": [
               "engine",
               [
                 "engine_default"
@@ -2398,6 +2450,13 @@
               ],
               "out_of_scope"
             ],
+            "ak_permanent_fund_dividend": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
             "basic_health_program": [
               "engine",
               [
@@ -2420,6 +2479,13 @@
               "rate_unsourced"
             ],
             "co_premium_assistance": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "csfp": [
               "engine",
               [
                 "engine_default"
@@ -2477,7 +2543,21 @@
               ],
               "out_of_scope"
             ],
+            "medicare_part_d": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
             "nm_premium_assistance": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "school_meals": [
               "engine",
               [
                 "engine_default"
@@ -2538,16 +2618,20 @@
             "chip",
             "basic_health_program",
             "medicare",
+            "medicare_part_d",
             "ssi",
             "dc_ptc",
             "head_start",
             "early_head_start",
             "housing_assistance",
             "wic",
+            "csfp",
+            "school_meals",
             "aca",
             "ca_premium_subsidy",
             "co_premium_assistance",
-            "nm_premium_assistance"
+            "nm_premium_assistance",
+            "ak_permanent_fund_dividend"
           ]
         },
         "failures": [],
@@ -2560,16 +2644,20 @@
             "chip",
             "basic_health_program",
             "medicare",
+            "medicare_part_d",
             "ssi",
             "dc_ptc",
             "head_start",
             "early_head_start",
             "housing_assistance",
             "wic",
+            "csfp",
+            "school_meals",
             "aca",
             "ca_premium_subsidy",
             "co_premium_assistance",
-            "nm_premium_assistance"
+            "nm_premium_assistance",
+            "ak_permanent_fund_dividend"
           ]
         },
         "status": "covered"
@@ -2585,7 +2673,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "f5eb16a0ff78a0b6622c7701f22a9f12a466e5f2729fd83c200ccc3b519c0292"
+      "spec_sha256": "80b6bc9489afdd5642d62dbcd00f840852b170456521bfeae5e38f933b2b2d41"
     }
   },
   "report_schema_version": 3,
@@ -2595,7 +2683,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "f5eb16a0ff78a0b6622c7701f22a9f12a466e5f2729fd83c200ccc3b519c0292"
+    "spec_sha256": "80b6bc9489afdd5642d62dbcd00f840852b170456521bfeae5e38f933b2b2d41"
   },
   "status": "pass"
 }

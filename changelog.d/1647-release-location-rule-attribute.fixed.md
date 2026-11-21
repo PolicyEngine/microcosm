@@ -1,0 +1,1 @@
+The US national release now copies the base's household-location root attributes (`populace_location_rule`, its seed, clone count and block ladder digest and vintages) onto its H5 and records them in `us_source_coverage.json`, so a `block_v1` national file no longer reads as `legacy` to ACS staging.

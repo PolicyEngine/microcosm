@@ -5,19 +5,30 @@
 #
 # Builds the base and the release's build, and stops there: the build is
 # written, checked by its own gates and recorded, and nothing is publishable.
-# A build has no tier. --certify (or ROUTE_A_CERTIFY=1) on the same RUN_ROOT
-# then certifies that build at the tier ROUTE_A_CERTIFY_TIER chooses (the
-# release's post-export checks and its manifests,
-# tools/certify_us_national_build.py), runs the offline preflights, and leaves
-# publication to Max (microcosm#1585 item 11). A build that failed its release
-# gates is kept, and only ROUTE_A_CERTIFY_TIER=evidence, with an owner for each
-# failure, certifies it. Release and certification staging telemetry is
-# enabled unless ROUTE_A_STAGING=0.
+# Before the release starts, its gates are dry-run on the fresh base
+# (ROUTE_A_DRY_RUN=1, the default), so a certain failure stops the run in
+# minutes, not hours. A build has no tier. --certify (or ROUTE_A_CERTIFY=1)
+# on the same RUN_ROOT then certifies that build at the tier
+# ROUTE_A_CERTIFY_TIER chooses (the release's post-export checks and its
+# manifests, tools/certify_us_national_build.py), runs the offline
+# preflights, and leaves publication to Max (microcosm#1585 item 11). A build
+# that failed its release gates is kept, and only
+# ROUTE_A_CERTIFY_TIER=evidence, with an owner for each failure, certifies
+# it. Release and certification staging telemetry is enabled unless
+# ROUTE_A_STAGING=0.
 #
-# Usage: ./route_a.sh [--resolve|--certify]
-# --resolve fetches refs, hashes inputs, and checks commit pins; no stages run.
-# --certify runs every stage, certification included; accepted stages are
-# skipped, so after a build it certifies that build.
+# Usage: ./route_a.sh [--resolve|--rebuild|--probe|--certify]
+#   (none)     builds: the base, its preflight, the release-gate dry run and
+#              the release, which calibrates, exports and checks the build,
+#              then stops with ROUTE_A_BUILT.json. Accepted stages are skipped.
+# --resolve    fetches refs, hashes inputs, and checks commit pins; no stages.
+# --rebuild    sets the accepted build aside (it stays on disk) and builds the
+#              release again on the accepted base, under a new build ID.
+# --probe      probes the accepted build on a 5% household sample with
+#              certification's own post-export checks (about 10 hours), and
+#              stops. It certifies nothing.
+# --certify    runs every stage, certification included; accepted stages are
+#              skipped, so after a build it certifies that build.
 # Settings come from ROUTE_A_ENV, defaulting to route_a.env beside this script.
 # Accepted stages are skipped on restart. Live supervisors are waited for;
 # failed attempts are moved aside. Releases use fresh IDs and shared caches.
@@ -33,13 +44,18 @@ GIB=1073741824
 
 MODE=run
 CERTIFY_FLAG=0
+REBUILD=0
+USAGE="usage: $0 [--resolve|--rebuild|--probe|--certify]"
 case "${1:-}" in
   --resolve|--dry-run) MODE=resolve ;;
   --certify) CERTIFY_FLAG=1 ;;
+  --rebuild) REBUILD=1 ;;
+  --probe) MODE=probe ;;
   "") ;;
   -h|--help) sed -n '2,/^set +x$/p' "$0"; exit 0 ;;
-  *) echo "usage: $0 [--resolve|--certify]" >&2; exit 64 ;;
+  *) echo "$USAGE" >&2; exit 64 ;;
 esac
+[ $# -le 1 ] || { echo "$USAGE (one mode at a time)" >&2; exit 64; }
 
 [ -f "$ROUTE_A_ENV" ] || { echo "missing settings: $ROUTE_A_ENV (copy route_a.env.example)" >&2; exit 64; }
 # shellcheck source=/dev/null
@@ -70,6 +86,19 @@ LOG=$RUN_ROOT/route_a.log
 : "${PREFLIGHT_NEW_LINEAGE_ARGS:=}" "${EARLY_START_AFTER_HEAVY:=0}" "${PRUNE_BASE_CHECKPOINTS:=0}"
 : "${RELEASE_DESPITE_PREFLIGHT_FAIL:=0}" "${RELEASE_EXTRA_ARGS:=}" "${EXPORT_MASS_REF_H5:=}"
 : "${RESOURCE_WAIT_HOURS:=12}"
+# 1 stops after the base, the base preflight and the release config, before
+# the multi-day release, so the operator can dry-run the release's gates on
+# this base (tools/dry_run_us_release_gates.py, microcosm#1042; ruled for the
+# next national build on 17 Nov 2026). Rerun with 0 to continue: accepted
+# stages are kept.
+: "${STOP_BEFORE_RELEASE:=0}"
+case "$STOP_BEFORE_RELEASE" in 0|1) ;; *) echo "STOP_BEFORE_RELEASE must be 0 or 1" >&2; exit 64 ;; esac
+# 1, the default, dry-runs the release's gates on the fresh base as a stage
+# of its own before the release starts (tools/dry_run_us_release_gates.py):
+# exit 0 (clean) or 2 (AT-RISK only) lets the release start, and 1, a
+# certain failure, stops the run. 0 skips it.
+: "${ROUTE_A_DRY_RUN:=1}"
+case "$ROUTE_A_DRY_RUN" in 0|1) ;; *) echo "ROUTE_A_DRY_RUN must be 0 or 1" >&2; exit 64 ;; esac
 # uv sync takes the newest installed CPython unless told otherwise, and the
 # lock's torch wheels stop at cp314; a fresh worktree on 3.15 fails to sync.
 : "${UV_SYNC_PYTHON:=3.14}"
@@ -183,7 +212,8 @@ block_ladder_npz|$LADDER|$LADDER_SHA|$LADDER_BYTES|LADDER_SHA; default d713: Con
 release_ledger_facts|$FEED|$FEED_SHA|$FEED_BYTES|us/chronicle_feed.json facts_sha256
 ${TAIL:+qrf_tail_exclusions|$TAIL|${QRF_TAIL_EXCLUSIONS_SHA:-9bd497dc0d03dd793b53a228979e99408e62fdd2430bdd0d04df5fc7576e6229}|-|operator-supplied register; the release records its sha in diagnostics}
 ssi_take_up_prior_basis|$SSI|$SSI_SHA|4782|--ssi-take-up-prior-weight-basis-sha256
-scf_summary_extract|$SCF|6b8dd2d935a76ed225ddebc80fb2db22a467f0c80d9a1acaa67b4584aa4bafd1|24904185|us/source_stages.json, us_runtime/scf_wealth.py
+scf_summary_extract|$SCF|6ff73d5206ed9344a955ba66f8edee2d9f74297188f03e823346413cfacfc4e0|34487960|us/source_stages.json, us_runtime/scf_wealth.py (the Fed's 2026-10-09 republication, microcosm#1368)
+${EXPORT_MASS_REF_H5:+export_input_mass_reference|$EXPORT_MASS_REF_H5|-|-|no pin: read here so the rerun key can hash it (release_inputs_key)}
 EOF
 }
 
@@ -202,7 +232,10 @@ sha_of() {
   [[ $out =~ ^[0-9a-f]{64}$ ]] || return 1
   printf '%s\n' "$out"
 }
-free_bytes() { df -k "$DISK_PATH" | awk 'NR==2 {print $4*1024}'; }
+# Portable on Linux and macOS: GNU stat takes -c %s and BSD stat -f %z, and
+# df -P keeps each filesystem on one line (Linux wraps a long device name).
+file_bytes() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1"; }
+free_bytes() { df -Pk "$DISK_PATH" | awk 'NR==2 {print $4*1024}'; }
 
 INPUT_PROBLEMS=()
 verify_inputs() {  # fills INPUT_PROBLEMS; writes $RUN_ROOT/inputs.resolved.json
@@ -215,13 +248,13 @@ verify_inputs() {  # fills INPUT_PROBLEMS; writes $RUN_ROOT/inputs.resolved.json
     if [ ! -f "$path" ]; then
       status=missing; INPUT_PROBLEMS+=("$role missing: $path")
     else
-      asize=$(stat -f %z "$path")
+      asize=$(file_bytes "$path")
       if [ "$size" != "-" ] && [ "$asize" != "$size" ]; then
         status=size_mismatch; INPUT_PROBLEMS+=("$role size $asize != $size: $path")
       fi
       if ! actual=$(sha_of "$path"); then
         status=unreadable; INPUT_PROBLEMS+=("$role could not be read to hash it: $path")
-      elif [ "$actual" != "$sha" ]; then
+      elif [ "$sha" != "-" ] && [ "$actual" != "$sha" ]; then
         status=sha_mismatch; INPUT_PROBLEMS+=("$role sha256 $actual != $sha: $path")
       fi
     fi
@@ -271,6 +304,26 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
     COMMIT_BLOCKERS+=("build commit $full is on no origin branch (not pushed)")
   else
     COMMIT_NOTES+=("build commit $full is on: $branches")
+  fi
+  # The driver loads itself and its helpers from the checkout it was started
+  # in, so that copy must be the build commit's own: another commit's driver
+  # runs other stages under these settings (main's, for example, has no
+  # STOP_BEFORE_RELEASE and no --probe; review of #1676). The untracked
+  # settings file is not compared.
+  local driver_differs='' driver_file driver_files
+  driver_files=$(git -C "$MAIN" ls-tree --name-only "$full" tools/route_a/ 2>/dev/null)
+  if [ -z "$driver_files" ]; then
+    COMMIT_BLOCKERS+=("the build commit $full has no tools/route_a, so this driver ($SCRIPT_DIR) cannot be its own")
+  else
+    while IFS= read -r driver_file; do
+      git -C "$MAIN" show "$full:$driver_file" 2>/dev/null | cmp -s - "$SCRIPT_DIR/${driver_file#tools/route_a/}" \
+        || driver_differs="$driver_differs ${driver_file#tools/route_a/}"
+    done <<< "$driver_files"
+    if [ -n "$driver_differs" ]; then
+      COMMIT_BLOCKERS+=("this driver ($SCRIPT_DIR) is not the build commit's: it differs from tools/route_a at $full in:$driver_differs. Run it from a checkout of that commit (in MAIN: git checkout --detach $full)")
+    else
+      COMMIT_NOTES+=("this driver is the build commit's own (tools/route_a at $full)")
+    fi
   fi
   if ! git -C "$MAIN" merge-base --is-ancestor "$full" origin/main; then
     if [ "$REQUIRE_ON_MAIN" = 1 ]; then
@@ -328,14 +381,31 @@ check_commit() {  # $1 = build ref, $2 = preflight ref; fills COMMIT_BLOCKERS/CO
   else
     COMMIT_BLOCKERS+=("release parser at $full does not declare every driver flag")
   fi
+  # The build is certified at this commit (--certify), whatever the tier and
+  # whether or not this run certifies, so a commit that cannot certify is
+  # refused before the build: check_flags.py refuses a source without
+  # _certify_parser even when the tier passes no flag (review of #1681).
   # shellcheck disable=SC2086 # flags are a whitespace-separated option list
-  if [ "$ROUTE_A_CERTIFY" = 1 ] && [ -n "$CERTIFY_FLAGS" ]; then
-    if git -C "$MAIN" show "$full:tools/build_us_fiscal_refresh_release.py" | \
-        "$PYTHON" "$SCRIPT_DIR/check_flags.py" --in-function _certify_parser $CERTIFY_FLAGS; then
-      COMMIT_NOTES+=("certification parser at $full declares every flag the driver passes ($ROUTE_A_CERTIFY_TIER tier)")
+  if ! git -C "$MAIN" cat-file -e "$full:tools/certify_us_national_build.py" 2>/dev/null; then
+    COMMIT_BLOCKERS+=("tools/certify_us_national_build.py is absent at $full, so its build could not be certified")
+  elif git -C "$MAIN" show "$full:tools/build_us_fiscal_refresh_release.py" | \
+      "$PYTHON" "$SCRIPT_DIR/check_flags.py" --in-function _certify_parser $CERTIFY_FLAGS; then
+    COMMIT_NOTES+=("certification parser at $full declares every flag the driver passes ($ROUTE_A_CERTIFY_TIER tier)")
+  else
+    COMMIT_BLOCKERS+=("certification parser at $full does not declare every flag the $ROUTE_A_CERTIFY_TIER tier passes")
+  fi
+  if [ "$ROUTE_A_DRY_RUN" = 1 ]; then
+    if git -C "$MAIN" cat-file -e "$full:tools/dry_run_us_release_gates.py" 2>/dev/null; then
+      COMMIT_NOTES+=("release-gate dry run (tools/dry_run_us_release_gates.py) present at $full")
     else
-      COMMIT_BLOCKERS+=("certification parser at $full does not declare every flag the $ROUTE_A_CERTIFY_TIER tier passes")
+      COMMIT_BLOCKERS+=("tools/dry_run_us_release_gates.py is absent at $full: set ROUTE_A_DRY_RUN=0 to build without the release-gate dry run")
     fi
+  fi
+  if [ "$MODE" = probe ]; then
+    for tok in tools/sample_us_export_households.py tools/probe_us_post_export.py; do
+      git -C "$MAIN" cat-file -e "$full:$tok" 2>/dev/null \
+        || COMMIT_BLOCKERS+=("$tok is absent at $full, so --probe cannot run")
+    done
   fi
   if git -C "$MAIN" cat-file -e "$full:$SPM_ROLE_REL" 2>/dev/null; then
     COMMIT_NOTES+=("SPM independence role stage (#959) present at $full")
@@ -481,6 +551,124 @@ certify_command() {
     "$REL_OUT" ${staging[@]+"${staging[@]}"} ${tier[@]+"${tier[@]}"})
 }
 
+dry_run_command() {
+  # The release's gates, dry-run on this base from the config the release
+  # stage runs (tools/dry_run_us_release_gates.py, microcosm#1042). It starts
+  # the release tool as that stage does, so it gets the same launcher: it
+  # keeps hosted progress reporting and writes no staging run files.
+  local -a launcher=()
+  case "${ROUTE_A_STAGING-1}" in
+  0)
+    launcher=(/usr/bin/env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u HUGGINGFACE_HUB_TOKEN -u HUGGING_FACE_TOKEN_MAX)
+    ;;
+  1)
+    launcher=("$TOKEN_WRAPPER" "$AGENT_SECRET")
+    ;;
+  *) fail "ROUTE_A_STAGING must be 0 or 1" ;;
+  esac
+  DRY_RUN_ARGV=("${launcher[@]}" "$PY" -B tools/dry_run_us_release_gates.py
+    --release-config "$RUN/release-config.json" --json-out "$RUN/release-dry-run.json")
+}
+
+# The digest of a release command with its build ID taken out: a restart's
+# new ID changes nothing in it, and changed settings do.
+release_settings_key() {  # $1 = build ID, then the release argv
+  "$PY" - "$@" <<'EOF'
+import hashlib
+import json
+import sys
+
+build, *argv = sys.argv[1:]
+named = [argument.replace(build, "<build>") for argument in argv]
+print(hashlib.sha256(json.dumps(named).encode()).hexdigest())
+EOF
+}
+
+# 0 when the accepted release ran exactly the given release command.
+release_ran() {  # the release argv
+  "$PY" - "$RUN/release-sup/COMMAND.json" "$@" <<'EOF'
+import json
+import sys
+
+recorded, *argv = sys.argv[1:]
+with open(recorded, encoding="utf-8") as handle:
+    sys.exit(0 if json.load(handle).get("argv") == argv else 1)
+EOF
+}
+
+# The digest of what the release reads by path, beside its command: the
+# base H5, the release's pinned inputs (verified against their files before
+# the release starts) and the export input-mass reference, which no setting
+# pins. The command alone cannot tell a file replaced in place under the
+# same path, such as a QRF tail register edited with a new
+# QRF_TAIL_EXCLUSIONS_SHA (review of #1681).
+release_inputs_key() {
+  local reference=none
+  if [ -n "$EXPORT_MASS_REF_H5" ] && [ -f "$EXPORT_MASS_REF_H5" ]; then
+    reference=$(sha_of "$EXPORT_MASS_REF_H5") || return 1
+  fi
+  {
+    printf 'base_h5|%s\n' "$BASE_SHA"
+    input_rows | awk -F'|' '$1 == "release_ledger_facts" || $1 == "qrf_tail_exclusions" || $1 == "ssi_take_up_prior_basis" || $1 == "scf_summary_extract" { print $1 "|" $3 }'
+    printf 'export_input_mass_reference|%s\n' "$reference"
+  } | openssl dgst -sha256 -r | cut -c1-64
+}
+
+# The probe's arguments, one per line, from the build record: the export,
+# then its reference. A build that passed its gates is its own reference
+# (its build directory). A failed build is no reference, nor is one whose
+# certification found gates failing (certification_failures.json, its own
+# attempts only), so their fit and target surface are given instead, which
+# the probe accepts of any build (tools/probe_us_post_export.py; review of
+# #1681).
+probe_record_arguments() {  # $1 = 1 when the build failed its release gates
+  "$PY" - "$REL_OUT/build_record.json" "$1" <<'EOF'
+import json
+import sys
+from pathlib import Path
+
+record_path, failed = Path(sys.argv[1]), sys.argv[2] == "1"
+record = json.loads(record_path.read_text(encoding="utf-8"))
+register = record_path.parent / "certification_failures.json"
+if not failed and register.exists():
+    try:
+        attempts = json.loads(register.read_text(encoding="utf-8"))["attempts"]
+        failed = any(
+            attempt.get("record_sha256") in (None, record.get("record_sha256"))
+            and attempt.get("failures")
+            for attempt in attempts
+        )
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        failed = True
+layout = record["layout"]
+build_dir = record_path.parent / layout["build_dir"]
+lines = [record_path.parent / layout["artifact_root"] / layout["dataset_filename"]]
+if failed:
+    selection = (record.get("manifest") or {}).get("target_surface_selection") or {}
+    lines += ["--calibration-diagnostics", build_dir / "calibration_diagnostics.json"]
+    if selection.get("mode"):
+        lines += ["--target-surface", selection["mode"]]
+    dropped = selection.get("dropped_congressional_district_targets")
+    if dropped is not None:
+        lines += ["--dropped-congressional-district-targets", dropped]
+else:
+    lines += ["--reference-release-dir", build_dir]
+print("\n".join(str(line) for line in lines))
+EOF
+}
+
+probe_commands() {  # $1 = 1 when the build failed its release gates
+  local line
+  local -a found=()
+  while IFS= read -r line; do found+=("$line"); done < <(probe_record_arguments "$1")
+  [ ${#found[@]} -ge 3 ] || fail "cannot read the export and the probe's reference from $REL_OUT/build_record.json"
+  PROBE_SAMPLE_ARGV=("${PROBE_LAUNCHER[@]}" "$PY" -B tools/sample_us_export_households.py
+    --export "${found[0]}" --fraction 0.05 --seed 0 --out "$RUN/probe/subsample")
+  PROBE_ARGV=("${PROBE_LAUNCHER[@]}" "$PY" -B tools/probe_us_post_export.py
+    --export "$RUN/probe/subsample/${found[0]##*/}" --out "$RUN/probe/report"
+    "${found[@]:1}" --stages "$PROBE_STAGES")
+}
+
 # ---------------------------------------------------------------------------
 # Dry run.
 # ---------------------------------------------------------------------------
@@ -529,8 +717,15 @@ CERTIFY_ONLY=0
 if [ "$ROUTE_A_CERTIFY" = 1 ] && [ -f "$RUN_ROOT/run-${C:0:12}/release-sup/ACCEPTED" ]; then
   CERTIFY_ONLY=1
 fi
+# --probe reads the written build alone, so it needs an accepted one, and
+# hashes no raw input either.
+if [ "$MODE" = probe ]; then
+  [ -f "$RUN_ROOT/run-${C:0:12}/release-sup/ACCEPTED" ] \
+    || fail "--probe: no accepted build at ${C:0:12} under $RUN_ROOT; build it first (route_a.sh)"
+  CERTIFY_ONLY=1
+fi
 if [ "$CERTIFY_ONLY" = 1 ]; then
-  log "inputs: not hashed again; the build at ${C:0:12} is accepted and certification reads none of them"
+  log "inputs: not hashed again; the build at ${C:0:12} is accepted and neither certification nor the probe reads them"
 else
   verify_inputs
 fi
@@ -707,6 +902,39 @@ PF_ENV='{"HF_HUB_OFFLINE": "1", "PYTHONUNBUFFERED": "1"}'
 BUILD_ENV='{"PYTHONUNBUFFERED": "1"}'
 NOSECRETS=(/usr/bin/env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u HUGGINGFACE_HUB_TOKEN -u HUGGING_FACE_TOKEN_MAX
            -u SLACK_WEBHOOK_POPULACE_US -u SLACK_WEBHOOK_POPULACE_UK POPULACE_RELEASE_ENV=/dev/null HF_HUB_OFFLINE=1)
+# The probe reads the written build and stages nothing, so no credential
+# reaches it; it runs online, as certification without staging does.
+PROBE_LAUNCHER=(/usr/bin/env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u HUGGINGFACE_HUB_TOKEN -u HUGGING_FACE_TOKEN_MAX
+                -u SLACK_WEBHOOK_POPULACE_US -u SLACK_WEBHOOK_POPULACE_UK)
+# Certification's post-export checks, the probe's stages. Its QRF tail stage
+# is left out: it grades the export at final weights, while the build decides
+# that gate at base weights (since 17 Nov 2026), and certification does not
+# run it. So is its stored-input stage, which the build ran on the written H5.
+PROBE_STAGES=take_up_participation,reform_coverage_smoke,reform_validation,demographics,source_coverage
+
+# --rebuild: the accepted build and its probe are set aside, and stay on disk
+# under their build ID, so this run builds the release again on the accepted
+# base, under a new build ID: after a build whose gates failed, or with
+# changed release settings. The dry run's settings key decides whether the
+# dry run runs again. A change to the base's inputs needs a fresh RUN_ROOT.
+# A certified build is never set aside (review of #1681).
+if [ "$REBUILD" = 1 ]; then
+  [ ! -f "$RUN/certify-sup/ACCEPTED" ] \
+    || fail "--rebuild: the build at ${C:0:12} is certified; build again under a fresh RUN_ROOT"
+  aside=set-aside-$(date +%s)
+  set_aside=
+  for stage in release probe-sample probe; do
+    wait_prior_supervisor "$stage"
+    if [ -e "$RUN/$stage-sup" ]; then
+      mv "$RUN/$stage-sup" "$RUN/$stage-sup.$aside"; set_aside="$set_aside $stage-sup"
+    fi
+  done
+  if [ -e "$RUN/probe" ]; then mv "$RUN/probe" "$RUN/probe.$aside"; set_aside="$set_aside probe"; fi
+  if [ -e "$RUN_ROOT/ROUTE_A_BUILT.json" ]; then
+    mv "$RUN_ROOT/ROUTE_A_BUILT.json" "$RUN/ROUTE_A_BUILT.json.$aside"; set_aside="$set_aside ROUTE_A_BUILT.json"
+  fi
+  log "--rebuild: set aside${set_aside:- nothing} (.$aside); the release builds again"
+fi
 
 # --- 3. Prefetch the donors the release tool fetches itself when no flag names
 # them (build_us_fiscal_refresh_release.py :9444, :10393, :10401, :10595,
@@ -775,7 +1003,7 @@ if [ ! -f "$RUN/base.sha256" ] || [ "$BASE_H5" -nt "$RUN/base.sha256" ]; then
 fi
 BASE_SHA=$(cut -c1-64 "$RUN/base.sha256")
 [[ $BASE_SHA =~ ^[0-9a-f]{64}$ ]] || fail "$RUN/base.sha256 holds no sha256; delete it and rerun"
-log "base H5 $BASE_H5 sha256 $BASE_SHA ($(stat -f %z "$BASE_H5") bytes)"
+log "base H5 $BASE_H5 sha256 $BASE_SHA ($(file_bytes "$BASE_H5") bytes)"
 if [ "$PRUNE_BASE_CHECKPOINTS" = 1 ] && ls "$BASE_CKPT"/*.frame.h5 >/dev/null 2>&1; then
   log "PRUNE_BASE_CHECKPOINTS=1: removing base frame checkpoints ($(du -sh "$BASE_CKPT" | cut -f1)) after the base H5 was hashed"
   rm -f "$BASE_CKPT"/*.frame.h5
@@ -813,18 +1041,70 @@ refuse_bad_release_args
 stage_done prefetch || run_stage prefetch 0 12 26
 REL_CKPT=$RUN/release-checkpoints
 wait_prior_supervisor release
+RELEASE_PENDING=0
 if ! stage_done release && ! result_accepted "$RUN/release-sup" "0 $BUILT_FAILED_GATES_RC" >/dev/null; then
+  RELEASE_PENDING=1
   RID=populace-us-2024-${BASE_SHA:0:7}-${C:0:12}-$(date -u +%Y%m%dT%H%M%SZ)
   REL_OUT=$RUN/release-out/$RID
   release_command
   write_config release 110 "$RELEASE_RAM_GIB" 45 "${RELEASE_WALL_SECONDS:-345600}" 2000000 "$W" "$BUILD_ENV" -- "${RELEASE_ARGV[@]}"
+  INPUTS_KEY=$(release_inputs_key) || fail "cannot digest the release's inputs"
+  echo "$INPUTS_KEY" > "$RUN/release-inputs.key"
 fi
+# --- 6a. The release's gates, dry-run on this base before the release starts
+# (ROUTE_A_DRY_RUN=1; ruled for the next national build on 17 Nov 2026): its
+# base load, input stages and pre-solve gates, then every data-dependent
+# register at base weights, in about 35 minutes where the release takes
+# hours. 0 (clean) and 2 (AT-RISK only) let the release start; 1, a certain
+# failure, stops the run (stop point S1). A dry run holds for the release
+# settings it checked: a restart with other settings dry-runs them again. ---
+if [ "$RELEASE_PENDING" = 1 ] && [ "$ROUTE_A_DRY_RUN" = 1 ]; then
+  wait_prior_supervisor release-dry-run
+  DRY_KEY=$(release_settings_key "$RID" "${RELEASE_ARGV[@]}" "inputs=$INPUTS_KEY") || fail "cannot digest the release settings"
+  if stage_done release-dry-run && [ "$(cat "$RUN/release-dry-run.key" 2>/dev/null)" != "$DRY_KEY" ]; then
+    mv "$RUN/release-dry-run-sup" "$RUN/release-dry-run-sup.stale-$(date +%s)"
+    log "release-dry-run: the release settings changed since it ran; dry-running them again"
+  fi
+  if ! stage_done release-dry-run; then
+    dry_run_command
+    write_config release-dry-run 110 "$RELEASE_RAM_GIB" 22 14400 50000 "$W" "$BUILD_ENV" -- "${DRY_RUN_ARGV[@]}"
+    ( run_stage release-dry-run "0 2" "$RELEASE_RAM_GIB" 22 ) \
+      || fail "the release-gate dry run found a certain failure or did not finish (stop point S1): read $RUN/release-dry-run.json and $RUN/release-dry-run-sup/run.log. Once that is decided, ROUTE_A_DRY_RUN=0 builds without it"
+    echo "$DRY_KEY" > "$RUN/release-dry-run.key"
+  fi
+  log "release-dry-run: $(cat "$RUN/release-dry-run-sup/ACCEPTED") (0 clean, 2 AT-RISK only); report $RUN/release-dry-run.json"
+fi
+if [ "$STOP_BEFORE_RELEASE" = 1 ] && ! stage_done release; then
+  if [ "$ROUTE_A_DRY_RUN" = 1 ]; then
+    log "STOP_BEFORE_RELEASE=1: stopped before the release, after its gates' dry run ($RUN/release-dry-run.json); rerun with STOP_BEFORE_RELEASE=0 to build"
+  else
+    log "STOP_BEFORE_RELEASE=1: stopped before the release. Dry-run it from $W with: $PY -B tools/dry_run_us_release_gates.py --release-config $RUN/release-config.json --json-out $RUN/release-dry-run.json ; then rerun with STOP_BEFORE_RELEASE=0"
+  fi
+  echo "STOPPED $(date '+%F %T'): STOP_BEFORE_RELEASE=1; release config $RUN/release-config.json" > "$RUN/release.STOPPED"
+  exit 0
+fi
+rm -f "$RUN/release.STOPPED"
 if ! stage_done release; then
   run_stage release "0 $BUILT_FAILED_GATES_RC" "$RELEASE_RAM_GIB" 45 "Set PRUNE_BASE_CHECKPOINTS=1 in route_a.env to reclaim the base's frame checkpoints."
 fi
 RID=$("$PY" -c 'import json,sys; a=json.load(open(sys.argv[1]))["argv"]; print(a[a.index("--release-id")+1])' "$RUN/release-sup/COMMAND.json") \
   || fail "cannot read the release id from release-sup/COMMAND.json"
 REL_OUT=$RUN/release-out/$RID
+# A rerun to build keeps an accepted build only for the settings it was built
+# with; with other settings it would otherwise keep that build without a word
+# (review of #1681).
+if [ "$MODE" = run ] && [ "$ROUTE_A_CERTIFY" != 1 ] && [ "$RELEASE_PENDING" = 0 ]; then
+  release_command
+  release_ran "${RELEASE_ARGV[@]}" \
+    || fail "build $RID was accepted with other release settings than route_a.env gives now (its command is in $RUN/release-sup/COMMAND.json): rerun with --rebuild to build again with these, or restore them"
+  if [ -f "$RUN/release-inputs.key" ]; then
+    inputs_now=$(release_inputs_key) || fail "cannot digest the release's inputs"
+    [ "$inputs_now" = "$(cat "$RUN/release-inputs.key")" ] \
+      || fail "build $RID was accepted with other release inputs than it would read now: the base H5, a pinned release input or the export input-mass reference changed in place since. Rerun with --rebuild to build again with these, or restore them"
+  else
+    log "release inputs not compared: $RUN/release-inputs.key predates this driver"
+  fi
+fi
 # The release tool builds and stops: its build record is what certification
 # reads (microcosm#1585 item 11, PR 4a). A build has no tier, so it writes its
 # own files to $REL_OUT/build; certification places them in the release
@@ -846,14 +1126,35 @@ else
   log "build $RID at $REL_OUT"
 fi
 
+# --- 6b. The probe, with --probe only: certification's post-export checks
+# on a 5% household sample of the written H5 (tools/sample_us_export_households.py,
+# tools/probe_us_post_export.py; the release build rule's "Probing an export
+# on a household subsample"), in about 10 hours where certification takes
+# about 48. Its verdicts are diagnostics: it certifies nothing. Its files
+# stay in $RUN/probe and its logs in the stages' directories. ---
+if [ "$MODE" = probe ]; then
+  probe_commands "$BUILD_FAILED_GATES"
+  if ! stage_done probe-sample; then
+    write_config probe-sample 16 8 10 7200 14400 "$W" "$BUILD_ENV" -- "${PROBE_SAMPLE_ARGV[@]}"
+    run_stage probe-sample 0 8 10
+  fi
+  if ! stage_done probe; then
+    write_config probe 64 32 10 172800 800000 "$W" "$BUILD_ENV" -- "${PROBE_ARGV[@]}"
+    run_stage probe 0 32 10
+  fi
+  log "ROUTE A PROBED: build $RID; $(grep -E '^\[probe\] ' "$RUN/probe-sup/run.log" 2>/dev/null | tail -1 | cut -c9-); report $RUN/probe/report/probe_report.json; not certified; nothing published"
+  exit 0
+fi
+
 # --- 6b. Certification, only when asked (--certify or ROUTE_A_CERTIFY=1): the
 # release's post-export checks on the written H5 and the manifests publication
 # requires. Without it the run hands the build over and stops. ---
 if [ "$ROUTE_A_CERTIFY" != 1 ]; then
   "$PY" - "$RUN_ROOT/ROUTE_A_BUILT.json" "$C" "$PEUS" "$BASE_H5" "$BASE_SHA" "$RID" "$REL_OUT" \
-    "$(cat "$RUN/preflight-base-sup/ACCEPTED" 2>/dev/null || echo BLOCKED)" "$BUILD_FAILED_GATES" <<'EOF'
+    "$(cat "$RUN/preflight-base-sup/ACCEPTED" 2>/dev/null || echo BLOCKED)" "$BUILD_FAILED_GATES" \
+    "$(cat "$RUN/release-dry-run-sup/ACCEPTED" 2>/dev/null || echo "not run")" <<'EOF'
 import json, sys
-(out, commit, peus, base_h5, base_sha, rid, rel_out, pfb, failed) = sys.argv[1:]
+(out, commit, peus, base_h5, base_sha, rid, rel_out, pfb, failed, dry) = sys.argv[1:]
 failed = failed == "1"
 json.dump({
     "state": "built",
@@ -868,18 +1169,21 @@ json.dump({
     "build_record": rel_out + "/build_record.json",
     "release_gates_failed": failed,
     "preflight_base": pfb,
+    "release_dry_run": dry,
     "next": (
         "The build failed its release gates, which build_record.json lists; "
         "its H5 and record are kept, so it can be evaluated. A build has no "
         "tier, and only an evidence-tier certification can ship its failures: "
         "rerun this driver with --certify and ROUTE_A_CERTIFY_TIER=evidence on "
         "the same RUN_ROOT once each failure has an owner "
-        "(ROUTE_A_EVIDENCE_FAILURE_OWNERS, or the standing register)."
+        "(ROUTE_A_EVIDENCE_FAILURE_OWNERS, or the standing register). To "
+        "build again, rerun it with --rebuild."
         if failed
         else "The build is written and checked by its own gates; it is not "
-        "publishable. A build has no tier: to certify it, rerun this driver "
-        "with --certify on the same RUN_ROOT (ROUTE_A_CERTIFY_TIER chooses the "
-        "tier), or run tools/certify_us_national_build.py on build_dir."
+        "publishable. A build has no tier. To check it first, rerun this "
+        "driver with --probe; to certify it, rerun it with --certify on the "
+        "same RUN_ROOT (ROUTE_A_CERTIFY_TIER chooses the tier), or run "
+        "tools/certify_us_national_build.py on build_dir."
     ),
 }, open(out, "w"), indent=1)
 EOF
@@ -891,7 +1195,7 @@ EOF
     log "ROUTE A BUILT, BLOCKED: build $RID at $REL_OUT; the release-gate preflight needs the new-lineage mode; not certified; nothing published"
     exit 4
   fi
-  log "ROUTE A BUILT: build $RID at $REL_OUT; not certified (rerun with --certify to certify it); nothing published"
+  log "ROUTE A BUILT: build $RID at $REL_OUT; not certified (rerun with --probe to probe it, --certify to certify it); nothing published"
   exit 0
 fi
 if [ "$BUILD_FAILED_GATES" = 1 ] && [ "$ROUTE_A_CERTIFY_TIER" != evidence ]; then

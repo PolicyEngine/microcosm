@@ -82,10 +82,10 @@ class TestCoverageAndExclusion:
                 )
 
 
-def test_policyengine_2_2_1_contract_and_live_bindings() -> None:
+def test_policyengine_2_145_3_contract_and_live_bindings() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variables = CountryTaxBenefitSystem().variables
     for name in _OUTPUTS:
         variable = variables[name]

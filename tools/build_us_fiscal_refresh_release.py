@@ -67,7 +67,7 @@ import time
 import tomllib
 import traceback
 import uuid
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from importlib.resources import files as package_files
@@ -269,6 +269,13 @@ from microcosm.build.us_runtime.battery_bindings import (
     us_gate_registry,
     us_gate_specs,
 )
+from microcosm.build.us_runtime.block_location import (
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+)
 from microcosm.build.us_runtime.chronicle_feed import (
     USChronicleFeed,
     load_us_chronicle_feed,
@@ -398,6 +405,7 @@ from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
 )
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    REFERENCE_ECPS_RETIRED_LAYERS,
     project_ecps_parity_known_gap_names,
     us_release_input_coverage_signal_counts,
 )
@@ -1024,10 +1032,6 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
         "Second-home mortgage decomposition not imputed; constant at the"
         " engine default (PolicyEngine/microcosm#38)."
     ),
-    "second_home_mortgage_interest": (
-        "Second-home mortgage decomposition not imputed; constant at the"
-        " engine default (PolicyEngine/microcosm#38)."
-    ),
     "second_home_mortgage_origination_year": (
         "Second-home mortgage decomposition not imputed; constant at the"
         " engine default (PolicyEngine/microcosm#38)."
@@ -1327,7 +1331,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional JSON object of export column -> reason for sparse "
             "QRF-imputed columns allowed past the tail-concentration "
-            "top-share threshold (microcosm#464 gate). Stale entries fail the "
+            "top-share threshold (microcosm#464 gate), measured at base "
+            "(pre-calibration) weights. Stale entries fail the "
             "gate; the file path, sha256, entries and any mismatch are "
             "recorded in qrf_tail_concentration.json and bound into both "
             "manifests as qrf_tail_register, with that file a release "
@@ -2268,6 +2273,19 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                 f"{flag} {path} belongs to {failed}. A failed build is never "
                 "the reference a gate judges this build against."
             )
+    # Without an export input-mass reference, the export input-mass gate
+    # judges the export against the base frame (_export_input_mass_gate), so
+    # a failed build's H5 starts a build only beside one (review of #1681).
+    if args.base_h5 is not None and args.export_input_mass_reference_h5 is None:
+        failed = _failed_build_holding(args.base_h5)
+        if failed is not None:
+            parser.error(
+                f"--base-h5 {args.base_h5} belongs to {failed}. Without "
+                "--export-input-mass-reference-h5 the export input-mass gate "
+                "judges this build against its base, and a failed build is "
+                "never the reference a gate judges a build against: pass the "
+                "reference too."
+            )
     return args
 
 
@@ -2787,11 +2805,103 @@ US_FAILED_BUILD_WEIGHT_EVIDENCE = (
 #: As a starting point (--base-h5, --selection-source-h5,
 #: --warm-start-calibration-npz) they are allowed: they can cut a rerun's
 #: time while its data is fixed, and the build's own gates judge its result.
+#: A failed build's H5 starts a build as --base-h5 only beside an
+#: --export-input-mass-reference-h5, since without one the export input-mass
+#: gate judges the export against its base (review of #1681).
 _REFERENCE_OPTIONS = (
     ("input_mass_reference_h5", "--input-mass-reference-h5"),
     ("export_input_mass_reference_h5", "--export-input-mass-reference-h5"),
     ("incumbent_diagnostics", "--incumbent-diagnostics"),
 )
+
+#: Written in a build's --out as the build creates it, before any file the
+#: build writes there, and removed once its record is written. A build that
+#: stopped between the two, at a full disk during the calibration NPZ write
+#: or the base copy for example, leaves diagnostics or an H5 no record pins,
+#: and this file marks them as no reference (:func:`_failed_build_holding`,
+#: review of #1681).
+US_BUILD_INCOMPLETE_FILENAME = "build_incomplete.json"
+US_BUILD_INCOMPLETE_KIND = "microcosm_us_national_build_incomplete"
+
+#: Where certification adds the gate failures it finds (the reform-coverage
+#: smoke, source coverage, a stale count-calibrated take-up column), beside
+#: the build's record, at either tier. A build that passed its own release
+#: gates and then failed certification's is no reference either
+#: (:func:`_failed_build_holding`, review of #1681).
+US_CERTIFICATION_FAILURES_FILENAME = "certification_failures.json"
+US_CERTIFICATION_FAILURES_KIND = "microcosm_us_certification_failures"
+
+
+def _recorded_certification_failures(
+    release_root: Path, record_sha256: object
+) -> list[str] | None:
+    """The gate failures certifications of this build in ``release_root`` found.
+
+    Only the attempts on the build whose record has ``record_sha256`` count:
+    a build into the same --out writes a new record, and an earlier build's
+    attempts are not its own (review of #1681). An attempt that names no
+    record counts. None when no attempt on this build recorded a failure. A
+    register that does not read counts as one failure, as a record that
+    does not read counts its build as failed.
+    """
+
+    path = Path(release_root) / US_CERTIFICATION_FAILURES_FILENAME
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        failures = [
+            str(failure)
+            for attempt in payload["attempts"]
+            if attempt.get("record_sha256") in (None, record_sha256)
+            for failure in attempt["failures"]
+        ]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return [f"{path} does not read"]
+    return failures or None
+
+
+def _mark_build_incomplete(release_root: Path, *, build: str) -> Path:
+    """Write :data:`US_BUILD_INCOMPLETE_FILENAME` in the build's --out.
+
+    The build writes it as it creates its --out, before any file there, and
+    removes it once its record is written, so neither its diagnostics nor
+    its H5 is taken for a finished build's before the record pins them.
+    """
+
+    path = Path(release_root) / US_BUILD_INCOMPLETE_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staged = path.with_name(f".{path.name}.tmp")
+    staged.write_text(
+        json.dumps(
+            {
+                "kind": US_BUILD_INCOMPLETE_KIND,
+                "build": build,
+                "writing_since": datetime.now(UTC).isoformat(),
+                "note": (
+                    "The build writes this before any file under its --out "
+                    f"and removes it once its {US_BUILD_RECORD_FILENAME} is "
+                    "written. Left here, the build stopped in between: its "
+                    "files are no build's, and no gate takes them as a "
+                    "reference."
+                ),
+            },
+            indent=1,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    staged.replace(path)
+    return path
+
+
+def _build_certified_at_the_certified_tier(release_root: Path) -> bool:
+    """Whether a certification finished the build into the national release."""
+
+    manifest = _finished_release_manifest(
+        _certification_release_dir(release_root, evidence_release=False)
+    )
+    return manifest is not None and manifest.get("tier") != "evidence"
 
 
 def _failed_build_holding(path: Path) -> str | None:
@@ -2801,24 +2911,34 @@ def _failed_build_holding(path: Path) -> str | None:
     weights and its record, so it can be evaluated (microcosm#1585 item 11,
     PR 4a), and its files may start a later build. No gate judges against
     it: a later build refuses its files as an input-mass reference or as the
-    incumbent diagnostics (:data:`_REFERENCE_OPTIONS`), the release-gate
+    incumbent diagnostics (:data:`_REFERENCE_OPTIONS`), and its H5 as its
+    --base-h5 without an export input-mass reference, the release-gate
     preflight refuses them as its export input-mass reference, and the
     post-export probe refuses its directories as the reference. A path
     belongs to the build whose record sits in the nearest directory above
     it. That build failed if its record carries release-gate failures
-    (:func:`_build_failed`), or if its own directory holds the #568 weight
-    evidence, unless an evidence-tier certification has made it an evidence
-    release. A record that does not read cannot be certified, so its build
-    counts as failed, as the --out refusal counts it
-    (:func:`_refuse_overwriting_a_build_awaiting_certification`). Like the
-    record's digest, this stops a mistake, not an edit, until certification
-    signs (PR 4b).
+    (:func:`_build_failed`), if a certification of it found gates failing
+    (:data:`US_CERTIFICATION_FAILURES_FILENAME`) and none has certified it,
+    or if its own directory holds the #568 weight evidence, unless an
+    evidence-tier certification has made it an evidence release. A record
+    that does not read cannot be certified, so its build counts as failed,
+    as the --out refusal counts it
+    (:func:`_refuse_overwriting_a_build_awaiting_certification`), and so
+    does a build that wrote its H5 and stopped before its record
+    (:data:`US_BUILD_INCOMPLETE_FILENAME`). Like the record's digest, this
+    stops a mistake, not an edit, until certification signs (PR 4b).
     """
 
     target = Path(path).resolve()
     for release_root in (target, *target.parents):
         record_path = release_root / US_BUILD_RECORD_FILENAME
         if not record_path.is_file():
+            incomplete = release_root / US_BUILD_INCOMPLETE_FILENAME
+            if incomplete.is_file():
+                return (
+                    f"the build in {release_root}, which stopped before writing "
+                    f"its record ({incomplete})"
+                )
             continue
         try:
             payload = json.loads(record_path.read_text(encoding="utf-8"))
@@ -2834,6 +2954,17 @@ def _failed_build_holding(path: Path) -> str | None:
             return (
                 f"{build}, which failed {len(failures)} release gate(s) when it "
                 "was built"
+            )
+        certification_failures = _recorded_certification_failures(
+            release_root, payload.get("record_sha256")
+        )
+        if certification_failures is not None and not (
+            _build_certified_at_the_certified_tier(release_root)
+        ):
+            return (
+                f"{build}, which failed {len(certification_failures)} gate(s) "
+                "of its certification "
+                f"({release_root / US_CERTIFICATION_FAILURES_FILENAME})"
             )
         try:
             layout = payload["layout"]
@@ -3922,6 +4053,63 @@ def _h5_attr_text(attrs: object, key: str) -> str | None:
     if isinstance(value, np.bytes_):
         return value.decode()
     return str(value)
+
+
+#: The base's household-location root attributes the release carries onto its
+#: own H5 (microcosm#1047, #1647). A base built under ``block_v1`` records all
+#: five; a legacy base records none, and the release then writes none.
+US_RELEASE_CARRIED_LOCATION_ATTRS = (
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+)
+
+
+def _read_base_location_attributes(h5_path: Path) -> dict[str, str]:
+    """The base H5's household-location root attributes, as text.
+
+    The release writes its H5 through the engine adapter, which sets no root
+    attributes, so without this carry a ``block_v1`` national file reads as
+    ``legacy`` to every consumer (ACS staging refuses such a donor). A base
+    records either all of :data:`US_RELEASE_CARRIED_LOCATION_ATTRS` or none.
+    """
+
+    with pd.HDFStore(h5_path, mode="r") as store:
+        attributes = store.get_node("/")._v_attrs
+        names = set(attributes._v_attrnames)
+        recorded = {
+            key: str(_h5_attr_text(attributes, key))
+            for key in US_RELEASE_CARRIED_LOCATION_ATTRS
+            if key in names
+        }
+    if recorded and set(recorded) != set(US_RELEASE_CARRIED_LOCATION_ATTRS):
+        missing = sorted(set(US_RELEASE_CARRIED_LOCATION_ATTRS) - set(recorded))
+        raise ValueError(
+            f"Base H5 {h5_path} records a household-location rule without "
+            f"{missing}; a located base records all of them."
+        )
+    return recorded
+
+
+def _write_release_location_attributes(
+    dataset_path: Path, attributes: Mapping[str, str]
+) -> None:
+    """Carry the base's household-location attributes onto the release H5."""
+
+    if not attributes:
+        return
+    with pd.HDFStore(dataset_path, mode="a") as store:
+        root = store.get_node("/")._v_attrs
+        for key in US_RELEASE_CARRIED_LOCATION_ATTRS:
+            root[key] = str(attributes[key])
+    written = _read_base_location_attributes(dataset_path)
+    if written != dict(attributes):
+        raise RuntimeError(
+            f"Release H5 {dataset_path} household-location attributes "
+            f"{written!r} differ from the base's {dict(attributes)!r}."
+        )
 
 
 def _load_incumbent_diagnostics_payload(path: Path | None) -> dict[str, object]:
@@ -7230,21 +7418,33 @@ def _base_simulation_household_columns(
 def _record_engine_branches(simulation):
     """Retain branches created through get_branch until the batch is checked.
 
-    Core's clone copies instance attributes, including a wrapped get_branch.
-    Rebind that method to each child before it can create its own branches.
-    Retained branches are released even if a formula detached them.
+    Core's clone copies instance attributes, including a wrapped get_branch:
+    policyengine-core 3.32 copies the parent's bound wrapper as is, and 3.36
+    rebinds it to the copy. Either way, rebind the parent's original method
+    to each child before it can create its own branches. Retained branches
+    are released even if a formula detached them.
     """
 
     retained: list[object] = []
     originals: dict[int, tuple[object, object, bool]] = {}
     seen: set[int] = set()
 
+    def recorded(current):
+        entry = originals.get(id(current))
+        if entry is None:
+            raise RuntimeError(
+                "A simulation carries the target-materialization get_branch "
+                "wrapper but was not recorded, so its branches cannot be "
+                "retained: it was copied outside get_branch."
+            )
+        return entry
+
     def get_branch(current, *args, **kwargs):
-        branch = originals[id(current)][1](*args, **kwargs)
-        retain(branch)
+        branch = recorded(current)[1](*args, **kwargs)
+        retain(branch, parent=current)
         return branch
 
-    def retain(current):
+    def retain(current, parent=None):
         if current is None or id(current) in seen:
             return
         seen.add(id(current))
@@ -7253,19 +7453,20 @@ def _record_engine_branches(simulation):
         if callable(original):
             had_instance_method = "get_branch" in vars(current)
             if getattr(original, "__func__", None) is get_branch:
-                # clone copied the parent's bound wrapper; recover the
+                # clone carried the wrapper over, bound to the parent (core
+                # 3.32) or to this child (core 3.36); recover the parent's
                 # underlying method and bind it to the child.
-                _, parent_original, had_instance_method = originals[
-                    id(original.__self__)
-                ]
+                owner = original.__self__
+                source = owner if id(owner) in originals else parent
+                _, parent_original, had_instance_method = recorded(source)
                 original = MethodType(parent_original.__func__, current)
             originals[id(current)] = (current, original, had_instance_method)
             current.get_branch = MethodType(get_branch, current)
         branches = getattr(current, "branches", None)
         if isinstance(branches, dict):
             for branch in tuple(branches.values()):
-                retain(branch)
-        retain(getattr(current, "baseline", None))
+                retain(branch, parent=current)
+        retain(getattr(current, "baseline", None), parent=current)
 
     retain(simulation)
     simulation._target_materialization_branches = retained
@@ -8287,6 +8488,37 @@ def _input_mass_reference_gate(
     )
 
 
+def _retire_ecps_reference_layers(
+    nonzero_shares: Mapping[str, float],
+    engine_inputs: Collection[str],
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Drop the reference layers whose engine input the pinned engine removed.
+
+    Each retired layer (``REFERENCE_ECPS_RETIRED_LAYERS``) names the live
+    layer that carries its amount. The retirement applies only while the
+    engine defines the successor and not the retired input; anything else is
+    refused, because the register would then describe another engine.
+    Returns the kept layers and ``{retired: successor}`` for those dropped.
+    """
+
+    inputs = set(engine_inputs)
+    kept: dict[str, float] = {}
+    retired: dict[str, str] = {}
+    for name, share in nonzero_shares.items():
+        successor = REFERENCE_ECPS_RETIRED_LAYERS.get(str(name))
+        if successor is None:
+            kept[str(name)] = float(share)
+            continue
+        if str(name) in inputs or successor not in inputs:
+            raise ValueError(
+                f"eCPS parity reference layer {name!r} is registered as retired "
+                f"in favour of {successor!r}, but the installed engine "
+                f"{'still defines it' if str(name) in inputs else 'lacks the successor'}."
+            )
+        retired[str(name)] = successor
+    return kept, retired
+
+
 def _project_ecps_reference_layers(
     nonzero_shares: Mapping[str, float],
 ) -> tuple[dict[str, float], dict[str, str]]:
@@ -8375,9 +8607,10 @@ def _ecps_parity_gate(
     known_gaps = known_gaps if known_gaps is not None else load_ecps_parity_known_gaps()
     input_variables = _engine_input_variables()
     candidate_shares = us_nonzero_shares(base_frame, columns=input_variables)
-    reference_shares, applied_renames = _project_ecps_reference_layers(
-        reference.nonzero_shares
+    kept_shares, retired_layers = _retire_ecps_reference_layers(
+        reference.nonzero_shares, input_variables
     )
+    reference_shares, applied_renames = _project_ecps_reference_layers(kept_shares)
     # Exemptions resolve through the same register, so a historical-name entry
     # exempts (and goes stale or dormant on) the live layer it names.
     projected_gaps, applied_gap_renames = _project_ecps_known_gaps(known_gaps)
@@ -8390,6 +8623,7 @@ def _ecps_parity_gate(
     # The pinned reference predates engine input renames; its layers are graded
     # under the live names, and the projection is recorded, not hidden.
     details["reference_layer_renames"] = applied_renames
+    details["reference_layer_retirements"] = retired_layers
     details["known_gap_renames"] = applied_gap_renames
     details["reference"] = {
         "repo_id": reference.source.repo_id,
@@ -8475,8 +8709,6 @@ def _ecps_parity_gate(
 #                          itemizer-masked Table 2.1 target (~$186.3B aged)
 #                          pins the itemizer share and pulls the full column
 #                          down toward the band from $474-526B.
-#   first_home_mortgage_interest follows home_mortgage_interest (second-home
-#                          leg un-imputed / 0 per microcosm#38).
 #   taxable_interest_income ref $320.159B band [$160.079B, $480.238B]; the
 #                          microcosm#489 adjudication VINDICATED this
 #                          reference: SOI Pub 1304 Table 1.4 puts taxable
@@ -8716,7 +8948,9 @@ def _qrf_tail_concentration_gate(
     Runs :func:`microcosm.build.gates.tail_concentration_gate` on every
     QRF-imputed source-stage output the export persists that is sparse
     (nonzero share at most :data:`US_QRF_SPARSE_NONZERO_SHARE_MAX` of its
-    entity's records), at the export's calibrated weights. Returns the gate
+    entity's records), at ``export_frame``'s weights: the release passes its
+    pre-calibration base frame for the verdict and reports the calibrated
+    export beside it (:func:`_qrf_tail_final_weight_report`). Returns the gate
     result plus the surface metadata (which QRF outputs were checked, dense,
     absent, or non-numeric, and each numeric output's record nonzero share and
     finite nonzero record count, the numbers behind the dense/sparse split) for
@@ -8967,9 +9201,67 @@ def _qrf_tail_gate_lines(
     return gate_lines, _qrf_tail_register_failures(mismatch)
 
 
+#: Schema of ``qrf_tail_concentration.json``. Version 2 (17 Nov 2026) decides
+#: at base weights and adds ``weight_basis`` and ``final_weight_report``.
+US_QRF_TAIL_CONCENTRATION_SCHEMA_VERSION = 2
+
+
+def _qrf_tail_final_weight_report(
+    export_frame: Frame, checked_columns: Sequence[str]
+) -> dict[str, object]:
+    """The checked columns' tail shares at the export's weights, reported only.
+
+    Calibration moves weight onto few carriers by design, so the share at
+    final weights is a diagnostic: it decides no verdict and joins no register
+    (ruled 17 Nov 2026; root fix #481). It measures the columns the base-weight
+    gate checked, with the gate's own parameters. Any ``Exception`` becomes an
+    ``unmeasured`` entry, so the report can never fail a run.
+    """
+
+    try:
+        values: dict[str, np.ndarray] = {}
+        weights: dict[str, np.ndarray] = {}
+        entity_weights: dict[str, np.ndarray] = {}
+        for column in checked_columns:
+            entity = export_frame.column_entity(column)
+            series = export_frame.table(entity)[column]
+            values[column] = (
+                pd.to_numeric(series, errors="coerce")
+                .fillna(0.0)
+                .to_numpy(dtype=np.float64)
+            )
+            if entity not in entity_weights:
+                entity_weights[entity] = np.asarray(
+                    export_frame.resolve_weights(entity).values, dtype=np.float64
+                )
+            weights[column] = entity_weights[entity]
+        gate = tail_concentration_gate(
+            values,
+            weights,
+            top_k=US_QRF_TAIL_CONCENTRATION_TOP_K,
+            max_top_share=US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+            min_nonzero_records=US_QRF_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS,
+        )
+    except Exception as error:
+        return {"weight_basis": "calibrated", "unmeasured": _unmeasured_reason(error)}
+    top_share = dict(gate.details.get("top_share", {}))
+    threshold = US_QRF_TAIL_CONCENTRATION_MAX_TOP_SHARE
+    return {
+        "weight_basis": "calibrated",
+        "decides_verdict": False,
+        "max_top_share": threshold,
+        "top_share": top_share,
+        "carrier_counts": dict(gate.details.get("carrier_counts", {})),
+        "above_threshold": sorted(
+            column for column, share in top_share.items() if share > threshold
+        ),
+    }
+
+
 def _record_qrf_tail_concentration_gate(
     export_frame: Frame,
     *,
+    base_frame: Frame,
     exclusions_path: Path | None,
     allow_concentration: bool,
     terminal_gate_failures: list[str],
@@ -8977,6 +9269,12 @@ def _record_qrf_tail_concentration_gate(
     telemetry: _TerminalBatchProgress,
 ) -> list[str]:
     """Evaluate the terminal QRF tail gate and record everything it measured.
+
+    The verdict and the per-run register are measured on ``base_frame``, the
+    released columns at their pre-calibration weights: the QRF draw artifact
+    the gate exists for (microcosm#462) lives there, while calibration's own
+    weight concentration is reported at final weights in
+    ``final_weight_report`` and decides nothing (ruled 17 Nov 2026).
 
     Appends the gate's failures (unless ``allow_concentration``) and any
     register-mismatch line (always — the register must match whatever the
@@ -8997,11 +9295,11 @@ def _record_qrf_tail_concentration_gate(
         gate, surface = shadow_value(
             "us_national_qrf_tail_concentration",
             lambda: _qrf_tail_concentration_gate(
-                export_frame,
+                base_frame,
                 reviewed_exclusions=register,
             ),
             lambda: EvidenceContext(
-                frame=export_frame,
+                frame=base_frame,
                 artifacts={"qrf_tail_reviewed_exclusions": register},
             ),
             verdict=lambda value: LegacyVerdict.from_result(value[0]),
@@ -9050,8 +9348,12 @@ def _record_qrf_tail_concentration_gate(
     qrf_tail_path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": US_QRF_TAIL_CONCENTRATION_SCHEMA_VERSION,
                 "enforced": not allow_concentration,
+                "weight_basis": "base",
+                "final_weight_report": _qrf_tail_final_weight_report(
+                    export_frame, surface.get("checked_sparse_columns", ())
+                ),
                 "surface": surface,
                 "tail_concentration": {
                     "passed": gate.passed,
@@ -12263,7 +12565,9 @@ def _read_standing_evidence_failure_owners(text: str) -> tuple[tuple[str, str], 
         # A register-only commit can certify (microcosm#1585 item 11), so a
         # standing pattern must name one gate's failure lines, as its prefix
         # "<gate words> failed:" does; a short pattern would own every
-        # ownable failure (review of #1681).
+        # ownable failure (review of #1681). It matches only at the start
+        # of a failure line (_evidence_owner), so a pattern that ends a
+        # longer prefix, such as "input signal failed:", owns nothing.
         if isinstance(pattern, str) and pattern.strip():
             gate_words = pattern.removesuffix(" failed:").split()
             names_a_gate = pattern.endswith(" failed:") and len(gate_words) >= 2
@@ -12328,10 +12632,26 @@ def _evidence_owner(
     failure: str,
     owner_patterns: Sequence[tuple[str, str]],
 ) -> str | None:
-    """The owner of one recorded failure line: the first pattern it contains."""
+    """The owner of one recorded failure line: the first pattern it matches.
 
+    A per-run pattern matches anywhere in the line. A pattern the standing
+    register holds names one gate's failure prefix, and a gate's failure
+    lines start with it, so it matches only there: anywhere in the line,
+    ``input signal failed:`` would own every gate whose prefix ends in those
+    words (review of #1681).
+    """
+
+    standing = {pattern for pattern, _owner in US_EVIDENCE_FAILURE_OWNERS}
     return next(
-        (owner for pattern, owner in owner_patterns if pattern in failure),
+        (
+            owner
+            for pattern, owner in owner_patterns
+            if (
+                failure.startswith(pattern)
+                if pattern in standing
+                else pattern in failure
+            )
+        ),
         None,
     )
 
@@ -12342,9 +12662,11 @@ def _evidence_known_failures(
 ) -> list[dict[str, str]]:
     """Recorded gate failures -> owned known_failures entries, verbatim.
 
-    Every failure string must match an owner pattern (substring, first match
-    wins); an unowned failure refuses the evidence export — the tier ships
-    failures only when somewhere is accountable for fixing them.
+    Every failure string must match an owner pattern (a per-run pattern
+    anywhere in it, a standing one at its start; first match wins,
+    :func:`_evidence_owner`); an unowned failure refuses the evidence
+    export — the tier ships failures only when somewhere is accountable for
+    fixing them.
     """
     entries: list[dict[str, str]] = []
     unowned: list[str] = []
@@ -13254,14 +13576,20 @@ def _release_dry_run_checks(
                 f"{US_QRF_TAIL_CONCENTRATION_TOP_K} weighted records carry"
             )
 
+        # The release decides this gate on its base frame at pre-calibration
+        # weights (17 Nov 2026), which is the frame graded here, on both
+        # calibration paths: neither the solve nor an L0 selection can move
+        # its verdict, so no tail-share shift applies.
         return qrf_tail_register_check(
             qrf_outputs=sorted(_qrf_imputed_source_outputs()),
             register=register,
             surface=surface,
             gate_details=gate.details,
             release_lines_at_base_weights=[*gate_lines, *register_lines],
-            support_fixed=support_fixed,
-            margins=margins,
+            support_fixed=True,
+            margins=dataclasses.replace(
+                margins, tail_share_rise=0.0, tail_share_fall=0.0
+            ),
             allow_concentration=args.allow_qrf_tail_concentration,
             register_source=_dry_run_register_source(path),
             evidence_owner=tail_owner if args.evidence_release else None,
@@ -15504,6 +15832,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         congressional_district_vintage_crosswalk_metadata,
         authenticated_pool_h5=authenticated_pool_h5,
     )
+    # microcosm#1047/#1647: the release H5 carries the base's location rule.
+    if authenticated_pool_h5 is not None:
+        authenticated_pool_h5.verified_digest(
+            consumer="household-location attributes before H5 read"
+        )
+    base_location_attributes = _read_base_location_attributes(base_h5)
     # Preflight (before the expensive calibration): every provision-critical
     # input leaf the reform-validation configs depend on must be produced by a
     # source stage or be an allowlisted known gap. This catches the
@@ -15731,6 +16065,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             checkpoint_root.mkdir(parents=True, exist_ok=True)
         artifact_root.mkdir(parents=True, exist_ok=True)
         release_dir.mkdir(parents=True, exist_ok=True)
+        # Every file the build writes under --out, its diagnostics before
+        # its H5, stays no build's reference until the record below pins
+        # the build: one that stops in between leaves this mark beside them
+        # (review of #1681).
+        _mark_build_incomplete(release_root, build=release_id)
     # A dry run writes only its report under --out and creates no staging
     # artifacts. Hosted telemetry identifies it separately from a release.
     if dry_run is None:
@@ -19048,7 +19387,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 force_upload=True,
             )
     # microcosm#462: tail-concentration gate over the sparse QRF-imputed dollar
-    # columns at the export's calibrated weights. The Build M defect — 89% of
+    # columns at base (pre-calibration) weights, with the calibrated-weight
+    # shares reported beside it (ruled 17 Nov 2026). The Build M defect — 89% of
     # the shipped non_sch_d_capital_gains mass in 100 records via a repeated
     # $594,484 donor-ceiling value — is invisible to support clipping (every
     # draw inside donor range), count targets (carrier count exact), and mass
@@ -19060,6 +19400,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # evidence-tier certification refuses to own it (microcosm#1585 item 11).
     _record_qrf_tail_concentration_gate(
         export_frame,
+        base_frame=base_frame,
         exclusions_path=args.qrf_tail_concentration_exclusions,
         allow_concentration=args.allow_qrf_tail_concentration,
         terminal_gate_failures=terminal_gate_failures,
@@ -19154,6 +19495,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     if stored_input_premise_failure is not None:
         artifact_integrity_failures.append(stored_input_premise_failure)
         terminal_gate_failures.append(stored_input_premise_failure)
+    # microcosm#1047/#1647: before anything binds the file's sha256, carry the
+    # base's household-location rule onto it (root attributes only; no
+    # column moves, so the stored-input verdict above still holds).
+    _write_release_location_attributes(dataset_path, base_location_attributes)
     # The build ends here (microcosm#1585 item 11, PR 4a). The optional export
     # audit and the calibration NPZ read the calibration result, which only
     # this process holds, so they run first. Every later stage scores the
@@ -19275,6 +19620,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             },
         ),
     )
+    # The record pins the H5 now, so the build is complete.
+    (release_root / US_BUILD_INCOMPLETE_FILENAME).unlink(missing_ok=True)
     if telemetry is not None:
         telemetry.attach_artifact("build_record", build_record_path)
         if build_refusal is None:
@@ -19289,6 +19636,67 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     if build_refusal is not None:
         raise build_refusal
+
+
+def _record_certification_failures(
+    record: _USBuildRecord,
+    certification: _Certification,
+    failures: Sequence[str],
+) -> Path:
+    """Add the gate failures one certification found to the build's register.
+
+    :data:`US_CERTIFICATION_FAILURES_FILENAME` sits beside the build record,
+    which never changes once written, and gains one attempt per
+    certification that finds gates failing, at either tier. Each attempt
+    names the build and its record's digest. An earlier build's attempts in
+    the same --out are dropped, so a later build there inherits none (review
+    of #1681), and the register keeps what its readers count: this record's
+    attempts and any that name no record (review of #1676). Written before
+    the certified tier refuses, or the evidence tier checks owners, so the
+    build is no reference while no certification has shipped it
+    (:func:`_failed_build_holding`).
+    """
+
+    path = Path(record.release_root) / US_CERTIFICATION_FAILURES_FILENAME
+    record_sha256 = record.payload.get("record_sha256")
+    attempts: list[object] = []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict) and isinstance(payload.get("attempts"), list):
+            attempts = [
+                attempt
+                for attempt in payload["attempts"]
+                if isinstance(attempt, dict)
+                and attempt.get("record_sha256") in (None, record_sha256)
+            ]
+    except (OSError, ValueError):
+        pass
+    attempts.append(
+        {
+            "build": record.build,
+            "record_sha256": record_sha256,
+            "tier": "evidence" if certification.evidence_release else "certified",
+            "commit": certification.commit,
+            "recorded_at": datetime.now(UTC).isoformat(),
+            "failures": [str(failure) for failure in failures],
+        }
+    )
+    staged = path.with_name(f".{path.name}.tmp")
+    staged.write_text(
+        json.dumps(
+            {
+                "kind": US_CERTIFICATION_FAILURES_KIND,
+                "schema_version": 1,
+                "build": record.build,
+                "attempts": attempts,
+            },
+            indent=1,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    staged.replace(path)
+    return path
 
 
 def _certify_us_build(
@@ -19451,6 +19859,9 @@ def _certify_us_build(
                 f"Reform coverage smoke failed: {failure}"
                 for failure in reform_coverage_smoke_gate.failures
             ]
+            # At either tier, so the build is no reference unless a
+            # certification ships it (review of #1681).
+            _record_certification_failures(record, certification, smoke_failures)
             if not args.evidence_release:
                 raise RuntimeError("Release gates failed: " + "; ".join(smoke_failures))
             # Evidence tier: the smoke verdict joins the recorded terminal
@@ -19577,6 +19988,11 @@ def _certify_us_build(
         coverage["congressional_district_vintage_crosswalk"] = (
             congressional_district_vintage_crosswalk_metadata
         )
+    # microcosm#1047/#1647: the build carried the base's household-location
+    # rule onto the written H5 before the record bound its sha256.
+    coverage["household_location_attributes"] = _read_base_location_attributes(
+        dataset_path
+    )
     coverage["fiscal_target_support_exclusions"] = [
         {"source_record_id": source_record_id, "reason": reason}
         for source_record_id, reason in sorted(
@@ -19589,27 +20005,43 @@ def _certify_us_build(
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
-    if args.evidence_release:
-        # The certified path surfaces a failed source-coverage gate at publish
-        # (the contract requires gate.passed); the evidence contract relaxes
-        # that verdict but BINDS gate.failures into known_failures — so an
-        # evidence build must record them here, owner-checked immediately, or
-        # its manifest would be unpublishable by construction.
-        coverage_gate = coverage.get("gate") or {}
-        coverage_gate_failures = [
-            f"Source coverage failed: {failure}"
-            for failure in (coverage_gate.get("failures") or ())
-        ]
-        if coverage_gate_failures:
-            terminal_gate_failures.extend(coverage_gate_failures)
-            _evidence_known_failures(
-                terminal_gate_failures, evidence_failure_owner_patterns
-            )
     if telemetry is not None:
         telemetry.attach_artifact(
             "us_source_coverage",
             release_dir / "us_source_coverage.json",
         )
+    # The publisher's certified contract requires gate.passed, so the
+    # certified tier refuses a failed gate here, as it refuses a failed
+    # smoke, before either manifest is written: manifests the contract
+    # refuses later would leave the build certified, unpublishable and unable
+    # to change tier (review of #1681). The evidence contract relaxes that
+    # verdict but binds gate.failures into known_failures, so the evidence
+    # tier records them, owner-checked immediately, or its manifest would be
+    # unpublishable by construction.
+    coverage_gate = coverage.get("gate") or {}
+    coverage_gate_failures = [
+        f"Source coverage failed: {failure}"
+        for failure in (coverage_gate.get("failures") or ())
+    ]
+    if coverage_gate_failures:
+        if telemetry is not None:
+            telemetry.stage(
+                "source_coverage",
+                status="failed",
+                message="Source coverage gate failed.",
+                failures=coverage_gate_failures,
+                force_upload=True,
+            )
+        _record_certification_failures(record, certification, coverage_gate_failures)
+        if not args.evidence_release:
+            raise RuntimeError(
+                "Release gates failed: " + "; ".join(coverage_gate_failures)
+            )
+        terminal_gate_failures.extend(coverage_gate_failures)
+        _evidence_known_failures(
+            terminal_gate_failures, evidence_failure_owner_patterns
+        )
+    if telemetry is not None:
         telemetry.stage(
             "take_up_participation",
             message="Writing take-up participation diagnostics.",
@@ -19645,6 +20077,9 @@ def _certify_us_build(
             "count-calibrated take-up column(s) "
             f"{stale_count_calibrated} ship at the engine default on the "
             "export frame despite the stage having run."
+        )
+        _record_certification_failures(
+            record, certification, [stale_count_calibrated_failure]
         )
         if not args.evidence_release:
             raise RuntimeError(

@@ -181,17 +181,16 @@ _DEFAULT_SUPPORT_CHANNELS = (
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
 )
 
+# policyengine-us removed the tax-unit first/second_home_mortgage_interest
+# legs (policyengine-us#9605): the person-level home_mortgage_interest carries
+# the whole amount, and second-residence interest is its own person input.
 _US_PUF_E19200_LINEAGE_DONOR_COLUMNS = (
     "home_mortgage_interest",
-    "first_home_mortgage_interest",
-    "second_home_mortgage_interest",
     "interest_deduction",
 )
 US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS = (
     "home_mortgage_interest",
     "investment_interest_expense",
-    "first_home_mortgage_interest",
-    "second_home_mortgage_interest",
     "interest_deduction",
 )
 
@@ -354,8 +353,6 @@ PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
     "unrecaptured_section_1250_gain",
     "first_home_mortgage_balance",
     "second_home_mortgage_balance",
-    "first_home_mortgage_interest",
-    "second_home_mortgage_interest",
     "first_home_mortgage_origination_year",
     "second_home_mortgage_origination_year",
     "health_savings_account_ald",
@@ -390,11 +387,18 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
 
 # Interim weight-reintroduction at the finalize seam: the root fix
 # (weight-aware leaf draws) is #481, and the dead manifest support_clip is
-# #482. Tail bounds are defined only for passthrough outputs, which removes all
-# snapping, sparse-pruning, and signed-calibration ordering interactions by
-# construction.
+# #482. Tail bounds are defined for passthrough outputs and for sparse snapped
+# amount outputs. A sparse output's bound is lowered onto its donor snap grid,
+# as the recipient-share bound's cap is, so snapping cannot carry a value past
+# it, and the donor-rate sparsification after it only zeroes values. Discrete,
+# boolean and signed-mass-calibrated outputs stay excluded.
 _PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES: dict[str, float] = {
-    "non_sch_d_capital_gains": 0.999
+    "non_sch_d_capital_gains": 0.999,
+    # Collectibles gains are the one QRF output whose top-100 weighted share is
+    # above the release tail threshold before calibration (the 3 Nov 2026 Route
+    # A base), and #1259 measured its draws well above the donor-implied total.
+    # Interim, like the bound above: #481 stays the root fix.
+    "long_term_capital_gains_on_collectibles": 0.999,
 }
 
 
@@ -555,8 +559,6 @@ _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS = frozenset(
         "health_savings_account_ald",
         "first_home_mortgage_balance",
         "second_home_mortgage_balance",
-        "first_home_mortgage_interest",
-        "second_home_mortgage_interest",
         "first_home_mortgage_origination_year",
         "second_home_mortgage_origination_year",
         *US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
@@ -2159,6 +2161,18 @@ def finalize_us_puf_tax_detail_predictions(
                 f"PUF tax-detail tail-bound output {output!r} has no positive "
                 "donor support."
             ) from None
+        if output in (
+            _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS
+            | _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS
+        ):
+            # A snapped output is bounded on its donor grid, so the snap that
+            # follows keeps every value at or below the bound.
+            bound = float(
+                _largest_grid_values_within(
+                    np.array([bound], dtype=np.float64),
+                    _observed_snap_grid(donor[output]),
+                )[0]
+            )
         resolved_tail_bounds[output] = (quantile, bound)
     amount_outputs = _recipient_share_bound_amount_outputs(outputs)
     if recipient_share_bound_outputs is None:
@@ -2917,8 +2931,6 @@ def _validated_tail_bound_quantiles(
     transformed_outputs = (
         _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS
         | _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS
-        | _PUF_TAX_DETAIL_SPARSE_TAX_UNIT_OUTPUTS
-        | _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS
         | _PUF_TAX_DETAIL_SIGNED_MASS_CALIBRATED_PERSON_OUTPUTS
     )
     requested = set(outputs)
@@ -2944,7 +2956,7 @@ def _validated_tail_bound_quantiles(
         if output in transformed_outputs:
             raise ValueError(
                 f"PUF tax-detail output {output!r}: tail bound is defined for "
-                "passthrough outputs only."
+                "passthrough and sparse snapped amount outputs only."
             )
         active[output] = quantile
     return active

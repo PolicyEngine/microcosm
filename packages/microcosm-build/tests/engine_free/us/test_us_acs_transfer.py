@@ -2473,7 +2473,10 @@ def test_formula_owned_target_is_refused_before_fit() -> None:
         )
 
 
-def test_weeks_worked_formula_owned_target_reproduces_pool_run_3_failure() -> None:
+def test_a_formula_owned_hours_target_is_refused_like_pool_run_3() -> None:
+    # Pool run 3 failed on weeks_worked, then formula-owned. policyengine-us
+    # 2.145.3 makes weeks_worked a pure input, so the guard is pinned on
+    # weekly_hours_worked, which the engine still computes.
     try:
         PolicyEngineUSVariableMetadataIndex()
     except ImportError:
@@ -2483,14 +2486,14 @@ def test_weeks_worked_formula_owned_target_reproduces_pool_run_3_failure() -> No
         ValueError,
         match=(
             r"ACS transfer targets must be PolicyEngine input leaves, not "
-            r"formula-owned outputs: \['weeks_worked'\]\."
+            r"formula-owned outputs: \['weekly_hours_worked'\]\."
         ),
     ):
         transfer_acs_inputs(
             _recipient_frame(),
             _donor_frame(),
             target_families={
-                "person": {"source_operator_hours_worked": ("weeks_worked",)},
+                "person": {"source_operator_hours_worked": ("weekly_hours_worked",)},
             },
             n_estimators=2,
         )

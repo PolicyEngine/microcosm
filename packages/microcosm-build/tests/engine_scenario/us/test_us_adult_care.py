@@ -4,11 +4,11 @@
 from test_support.microcosm_build.us_adult_care import *
 
 
-def test_policyengine_2_2_1_cdcc_adult_care_contract_and_live_binding() -> None:
+def test_policyengine_2_145_3_cdcc_adult_care_contract_and_live_binding() -> None:
     from policyengine_core.reforms import Reform
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variables = CountryTaxBenefitSystem().variables
     flag = variables[_FLAG]
     assert flag.is_input_variable()

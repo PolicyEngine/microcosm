@@ -88,13 +88,14 @@ US_HOURS_WORKED_OUTPUT_COLUMNS: tuple[str, ...] = (
 #: Formula-owned outputs retained only for the legacy fiscal path. The pool
 #: wrapper removes these after running the shared derivation kernel.
 #:
-#: TODO(policyengine-us#9660): ``weeks_worked`` is formula-owned only because
-#: the pinned policyengine-us gives it a ``formula_2025``. Part A1 of #9660
-#: deletes that formula so SNAP can average usual hours over weeks worked.
-#: Once it lands and the pin/ABI lock are bumped, drop the exclusion here so
-#: donor rows keep their WKSWORK weeks; the ACS local lane already carries
-#: native WKWN weeks on its staging ACS spine (microcosm#1021) and the release
-#: tool's consumer export will then ship them.
+#: TODO(policyengine-us#9660): ``weeks_worked`` was formula-owned because
+#: policyengine-us 2.2.1 gave it a ``formula_2025``. Part A1 of #9660 deleted
+#: that formula so SNAP can average usual hours over weeks worked, and the
+#: locked policyengine-us 2.145.3 includes it: the engine now reads the column
+#: as an input. Dropping the exclusion here lets donor rows keep their WKSWORK
+#: weeks (the ACS local lane already carries native WKWN weeks on its staging
+#: ACS spine, microcosm#1021). It changes the pool's outputs and every count
+#: and digest pinned on its transfer surface, so it is a follow-up of its own.
 US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS = frozenset({"weeks_worked"})
 
 #: The two input leaves the multispine pool persists and transfers.

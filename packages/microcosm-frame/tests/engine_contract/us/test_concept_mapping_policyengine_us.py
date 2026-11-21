@@ -93,9 +93,9 @@ def test_structural_inputs_are_engine_inputs(index) -> None:
 
 
 def test_the_mapping_notes_formula_ownership_claims_hold(index) -> None:
-    # Named in notes as formula-owned aggregates, never inputs.
+    # Named in notes as formula-owned aggregates, never inputs. (weeks_worked
+    # left this list with policyengine-us 2.1xx, which made it a pure input.)
     claimed = {
-        "weeks_worked",
         "employment_income",
         "interest_income",
         "dividend_income",

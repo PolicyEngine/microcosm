@@ -56,6 +56,7 @@ def test_real_engine_batched_base_simulation_matches_unbatched(monkeypatch) -> N
         pd.testing.assert_frame_equal(household, unbatched, check_exact=True)
         assert version == unbatched_version
 
+
 def test_real_engine_base_batches_build_no_system_and_release_engines(
     monkeypatch,
 ) -> None:
@@ -116,6 +117,7 @@ def test_real_engine_base_batches_build_no_system_and_release_engines(
     assert list(batched) == list(unbatched)
     for column, values in unbatched.items():
         np.testing.assert_array_equal(batched[column], values)
+
 
 def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
     """Compare guarded materialization with unguarded one-household engines."""
@@ -212,6 +214,7 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
                 maximum_microsim_batch_size=batch_size,
             )
 
+
 def test_population_aggregate_list_matches_installed_engine_sources() -> None:
     """Pin the guard list to weight reads and aggregation markers in US sources.
 
@@ -222,6 +225,16 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
     source_digests = {}
     found = _engine_population_aggregate_sources(source_digests=source_digests)
     triaged = {name: {"np.isin("} for name in _CONSTANT_MEMBERSHIP_FORMULAS}
+    triaged.update({name: {"fpg()"} for name in _FPG_GUIDELINE_FORMULAS})
+    for reviewed_class in (
+        _GUIDELINE_HELPER_FORMULAS,
+        _SOCIAL_SECURITY_HELPER_FORMULAS,
+        _PARENT_LINK_FORMULAS,
+        _PACKAGE_DATA_FORMULAS,
+    ):
+        triaged.update(
+            {name: set(evidence) for name, evidence in reviewed_class.items()}
+        )
     # These search sorted parameter brackets or literal earnings thresholds.
     triaged.update(
         {
@@ -247,16 +260,31 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
             # module helper named reshape. Actual sums use axis=1 on brackets.
             "ny_supplemental_tax": {"get_previous_threshold()"},
             # These cross-person joins are permitted only after the frame
-            # precondition proves positive claiming IDs stay in the household.
+            # precondition proves positive claiming IDs stay in the household;
+            # medicaid_non_filer_member_sum and the parent-link helpers resolve
+            # ids among co-residents only (policyengine-us 2.145.3).
             "medicaid_has_known_claiming_tax_unit": {"np.isin("},
             "medicaid_household_income": {
                 "medicaid_claiming_tax_unit_value()",
                 "medicaid_external_claimed_sum()",
+                "medicaid_non_filer_member_sum()",
             },
             "medicaid_household_size": {
                 "medicaid_claiming_tax_unit_value()",
                 "medicaid_external_claimed_sum()",
+                "medicaid_non_filer_member_sum()",
             },
+            "ca_medicaid_household_pregnancies": {
+                "medicaid_claiming_tax_unit_value()",
+                "medicaid_external_claimed_sum()",
+                "medicaid_non_filer_member_sum()",
+            },
+            "medicaid_claimed_by_parent_in_tax_unit": {
+                "medicaid_known_claim_by_named_parent()",
+                "unlinked_parent()",
+            },
+            # The sum counts malformed tax units for an error message only.
+            "tax_unit_roles_supplied": {".sum()"},
         }
     )
     assert set(found) == set(builder.US_POPULATION_AGGREGATE_VARIABLES) | set(
@@ -270,7 +298,7 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
         "\n".join(f"{name}:{source_digests[name]}" for name in sorted(triaged)).encode()
     ).hexdigest()
     assert triaged_digest == (
-        "f26eb560e474207fc1fa1d8828b62ba4791fb763089ea2ce7a85b57a259f2755"
+        "4fb97a39d856ef178b8379a150253abf27e42af0b9d3f49086ef8c0bffbbef34"
     ), triaged_digest
 
 
@@ -290,43 +318,75 @@ def test_forward_reads_match_the_reviewed_engine_sources() -> None:
         # The offset dates a parameter lookup, not a data read.
         "sc_cdcc_potential": {".offset(max_decoupled_year_offset"},
         "md_dependent_care_subtraction": {".offset(max_decoupled_year_offset"},
+        # The offset dates a parameter lookup (the March table), not a data read.
+        "ms_medicaid_parent_income_limit": {".offset(\n            int"},
         # The twelve months of the year asked.
         "tx_ceap_eligible": {".offset(month_offset"},
+        "mt_liheap_categorical_eligibility": {".offset(month_offset"},
+        "mt_liheap_receives_ssi": {".offset(month_offset"},
+        "wi_wheap_categorically_eligible": {".offset(offset"},
+        # Earlier periods only: the prior program year (a negative month
+        # offset), the year before, the latest earlier stored year (uprated),
+        # and IRMAA's year two years prior or, without one, the earliest
+        # stored year, which for a dataset holding the read year is that year.
+        "id_liheap_income_eligible": {
+            ".offset(\n            p.program_year_start_month"
+        },
+        "hi_temporary_disability_insurance_qualified": {"previous_year_wages()"},
+        "foreign_earned_income_exclusion": {
+            "get_holder(",
+            "get_known_periods(",
+            "get_array(",
+        },
+        "medicare_irmaa_magi_two_years_prior": {
+            ".offset(source_year",
+            "earliest_input_year()",
+            "get_array(",
+            "get_holder(",
+        },
         # The holder is read only at the period asked.
         "has_tin": {"get_holder(", "get_known_periods(", "get_array("},
         # The holder gives the filing-status enum, not a stored value.
         "gross_medicare_part_b_premium": {"get_holder("},
-        # The holder sets an input at the period asked, on a branch.
-        "tob_revenue_oasdi": {"get_holder("},
-        "tob_revenue_medicare_hi": {"get_holder("},
         # Over a dataset, county returns its last stored year's array when the
         # year asked holds none. A dataset that holds county holds it at the
         # year the build reads, so that read never reaches the lookup.
-        "county": {"get_holder(", "get_known_periods(", "get_array("},
+        "county": {"latest_readable_county()"},
     }
+    for reviewed_class in (
+        _SAME_PERIOD_READ_FORMULAS,
+        _SOCIAL_SECURITY_PERIOD_FORMULAS,
+    ):
+        reviewed.update(
+            {name: set(evidence) for name, evidence in reviewed_class.items()}
+        )
     assert {name: set(evidence) for name, evidence in found.items()} == reviewed
     reviewed_digest = hashlib.sha256(
-        "\n".join(f"{name}:{source_digests[name]}" for name in sorted(reviewed)).encode()
+        "\n".join(
+            f"{name}:{source_digests[name]}" for name in sorted(reviewed)
+        ).encode()
     ).hexdigest()
     assert reviewed_digest == (
-        "4c3a61a320e3d7d57f887ba3a364293d59b9cc363e2e38e7aecd8fac13409d5e"
+        "83296963b6452f74dbba1fc16b604f64a184fe91ab07634d2f16f189d0a5ce7d"
     ), reviewed_digest
 
 
 def test_core_fills_a_missing_period_only_from_earlier_ones() -> None:
     """policyengine-core fills an input missing at the period asked from the
-    latest earlier stored period (uprated), or carries the last stored period
-    over only when it is not later than the period asked; a later one gives
-    the default. So a dataset cut at the year read and the engine's projection
-    agree at that year. A new digest means core changed the rule (in
-    ``Simulation._calculate``): re-check the cut, then re-pin."""
+    latest earlier stored input (uprated), or carries over the latest stored
+    input that starts no later than the period asked; a later one gives the
+    default, uncached. So a dataset cut at the year read and the engine's
+    projection agree at that year. A new digest means core changed the rule (in
+    ``Simulation._calculate``): re-check the cut, then re-pin. Re-checked on
+    core 3.36.1 (17 Nov 2026): only supplied inputs carry or uprate now, never
+    a value the simulation calculated, and the rule above still holds."""
     import inspect
 
     from policyengine_core.simulations import Simulation
 
     source = inspect.getsource(Simulation._calculate)
     assert hashlib.sha256(source.encode()).hexdigest() == (
-        "3a36c798f58eced1d61812cd374997ac1732fa1a1beaff74ba6b7e6588aa3269"
+        "6889cbc3900abe9ab184d7b51acdc4f837554a32f1a1ace12ff87521bba4da4f"
     )
 
 
@@ -356,7 +416,9 @@ def test_in_build_datasets_hold_period_alone_and_match_the_projection(
     cut = builder._dataset_from_frame(
         frame, assert_no_formula_owned_columns=False, period_only=True
     )
-    projected = builder._dataset_from_frame(frame, assert_no_formula_owned_columns=False)
+    projected = builder._dataset_from_frame(
+        frame, assert_no_formula_owned_columns=False
+    )
     assert isinstance(cut, USMultiYearDataset)
     assert cut.years == [builder.PERIOD]
     assert isinstance(projected, USSingleYearDataset)

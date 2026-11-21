@@ -85,8 +85,9 @@ A US national build and its certification are two steps (microcosm#1585 item
   - **Certified**, the default, copies the build's own files into
     `<out>/releases/microcosm-us-2024-national/` and refuses any recorded
     failure, any failure it finds (the smoke, source coverage, a stale
-    count-calibrated take-up column), and a build whose directory holds the
-    #568 weight evidence.
+    count-calibrated take-up column) before it writes either manifest, so
+    such a build can still be certified as evidence, and a build whose
+    directory holds the #568 weight evidence.
   - **Evidence** (`--evidence-release`, microcosm#506) copies them into
     `<out>/releases/microcosm-us-2024-evidence/`, never the US default, and
     publishes the build under its ID with the `-evidence-` segment after
@@ -96,9 +97,11 @@ A US national build and its certification are two steps (microcosm#1585 item
     (`packages/microcosm-build/src/microcosm/build/us_runtime/data/evidence_failure_owners.json`),
     and rides the release manifest's `known_failures`. Since a commit that
     changes only the register may certify, each standing pattern must be one
-    gate's failure prefix, at least two words and then ` failed:`, and the
-    digest certification records for each owners file is of the bytes it
-    decided ownership from. At least one failure
+    gate's failure prefix, at least two words and then ` failed:`, and it
+    owns a failure line only when the line starts with it; a per-run
+    pattern matches anywhere in the line. The digest certification records
+    for each owners file is of the bytes it decided ownership from. At
+    least one failure
     must exist, a QRF tail-concentration register mismatch is never owned, and
     an `--exact-k` build, a build of the national release, is never evidence.
     The recorded failures are owner-checked before any scoring, so an unowned
@@ -190,8 +193,27 @@ A US national build and its certification are two steps (microcosm#1585 item
   record that does not read counts as a failed build's, both there and for
   the `--out` refusal. Its files may still start a later build, as its base,
   selection source or warm start, since that build's own gates judge the
-  result, and the probe may score its H5. Input gates still stop the build
-  where they fail.
+  result, and the probe may score its H5. As the base, its H5 needs an
+  `--export-input-mass-reference-h5` beside it: without one, the export
+  input-mass gate judges the export against the base. Input gates still
+  stop the build where they fail.
+- **A failed certification.** The gate failures a certification finds (the
+  smoke, source coverage, a stale count-calibrated take-up column) are
+  added, at either tier, to `certification_failures.json` beside the build
+  record, before the certified tier refuses or the evidence tier checks
+  owners. A build that passed its own release gates and then failed
+  certification's counts as a failed build for every reference check
+  above, until a certification ships it.
+- **A build that stopped before its record.** The build writes
+  `build_incomplete.json` in its `--out` as it creates it, before any file
+  there, and removes it once its record is written. A build that stopped in
+  between, at a full disk during the calibration NPZ write or the base copy
+  for example, leaves diagnostics or an H5 that no record pins, and the file
+  makes them no reference either.
+- **One build's certification attempts.** Each attempt in
+  `certification_failures.json` names the build and its record's digest. A
+  later build into the same `--out` writes a new record, so the earlier
+  build's attempts no longer count, and the next attempt drops them.
 - **What the written file fails.** A written-file stored-input failure or an
   export-audit error after the H5 write is recorded with the release-gate
   failures, on a green build too, so the H5 never stands without a record
@@ -215,8 +237,11 @@ A US national build and its certification are two steps (microcosm#1585 item
 
 A from-scratch attempt ran on main at `51c314382` on 15 and 16 September 2026
 and reached no release. The causes below were re-read on main at `d1196af10`.
-The engine lock that also blocked it is fixed: main resolves policyengine-us
-2.2.1, policyengine-core 3.32.5 and spm-calculator 1.0.0.
+The engine lock that also blocked it is fixed. Main resolved policyengine-us
+2.2.1, policyengine-core 3.32.5 and spm-calculator 1.0.0 from microcosm#936,
+and resolves policyengine-us 2.145.3, policyengine-core 3.36.1 and
+spm-calculator 1.1.0 for the next national build
+([runbook](us-national-build-runbook.md)).
 
 **16 November 2026:** all four causes are answered on the `--base-h5` arm,
 which route A (`tools/route_a/route_a.sh`) drives:

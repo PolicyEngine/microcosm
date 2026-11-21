@@ -12,17 +12,41 @@ def test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists() -> Non
     # income-tax delta is structurally zero. Pin that premise to the locked
     # policyengine-us so a version bump that moves the provision window
     # breaks this test instead of silently invalidating the fence.
+    #
+    # policyengine-us 2.2.1 kept both deductions out of the deduction lists
+    # outside TY2025-TY2028. policyengine-us 2.145.3 lists them in every year
+    # and gates each with its own in_effect parameter (false before 2025, true
+    # for 2025-2028, false from 2029; Pub. L. 119-21 secs. 70201-70202), so
+    # the window is pinned through that gate when the deduction is listed.
     __import__("policyengine_us")
     from policyengine_us import CountryTaxBenefitSystem
 
     parameters = CountryTaxBenefitSystem().parameters
-    for list_name in ("deductions_if_itemizing", "deductions_if_not_itemizing"):
+    gates = {
+        "overtime_income_deduction": parameters.gov.irs.deductions.overtime_income,
+        "tip_income_deduction": parameters.gov.irs.deductions.tip_income,
+    }
+
+    def applies(list_name: str, deduction: str, instant: str) -> bool:
         node = getattr(parameters.gov.irs.deductions, list_name)
-        for deduction in ("overtime_income_deduction", "tip_income_deduction"):
-            assert deduction not in node("2024-01-01"), (list_name, deduction)
+        return deduction in node(instant) and bool(gates[deduction].in_effect(instant))
+
+    for list_name in ("deductions_if_itemizing", "deductions_if_not_itemizing"):
+        for deduction in gates:
+            assert not applies(list_name, deduction, "2024-01-01"), (
+                list_name,
+                deduction,
+            )
             for instant in ("2025-01-01", "2026-01-01", "2028-01-01"):
-                assert deduction in node(instant), (list_name, deduction, instant)
-            assert deduction not in node("2029-01-01"), (list_name, deduction)
+                assert applies(list_name, deduction, instant), (
+                    list_name,
+                    deduction,
+                    instant,
+                )
+            assert not applies(list_name, deduction, "2029-01-01"), (
+                list_name,
+                deduction,
+            )
 
 
 def test_m_chip_state_set_matches_engine_separate_chip_child_limits() -> None:
@@ -77,7 +101,8 @@ def test_medicare_part_b_premium_target_variable_is_enrollment_gated() -> None:
     assert base_variable == "gross_medicare_part_b_premium_if_enrolled"
     assert enrolled.entity.key == "person"
     assert enrolled.definition_period == "year"
-    assert enrolled.defined_for == "medicare_enrolled"
+    # policyengine-us 2.145.3 charges the Part B premium to Part B enrollees.
+    assert enrolled.defined_for == "medicare_part_b_enrolled"
     assert variables["gross_medicare_part_b_premium"].defined_for == (
         "is_medicare_eligible"
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import itertools
 import json
 import os
 import re
@@ -163,10 +164,10 @@ def test_overridden_feed_pin_still_verifies_digest_and_size(
         },
         """
 # Exercise the driver's registered release row with real tiny bytes; no
-# production input or git repository is read. Adapt its BSD stat call for CI.
+# production input or git repository is read. The driver's own size helper
+# runs, so this also proves it on the CI runner's (GNU) stat.
 registered_rows=$(input_rows)
 input_rows() { printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "release_ledger_facts"'; }
-stat() { "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }
 verify_inputs
 printf '%s\\n' "${#INPUT_PROBLEMS[@]}"
 """,
@@ -232,10 +233,9 @@ def test_block_v1_requires_the_ladder_s_puma_array(
         },
         """
 # Only the ladder row, with its true digest and size, so any problem is the
-# PUMA check's. Adapt the driver's BSD stat call for CI.
+# PUMA check's.
 registered_rows=$(input_rows)
 input_rows() { printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "block_ladder_npz"'; }
-stat() { "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }
 verify_inputs
 printf '%s\\n' ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}
 """,
@@ -280,7 +280,6 @@ def test_an_input_openssl_cannot_read_is_unreadable_not_an_empty_digest(
         f"""
 registered_rows=$(input_rows)
 input_rows() {{ printf '%s\\n' "$registered_rows" | awk -F '|' '$1 == "release_ledger_facts"'; }}
-stat() {{ "$PYTHON" -c 'import os,sys; print(os.stat(sys.argv[1]).st_size)' "$3"; }}
 {openssl}
 if out=$(sha_of "{feed}"); then echo "sha_of ok [$out]"; else echo "sha_of failed [$out]"; fi
 verify_inputs
@@ -1252,6 +1251,60 @@ def test_route_a_hands_over_the_emitter_publication_commands() -> None:
     ) in source
 
 
+def test_size_and_free_disk_helpers_run_on_this_host_s_stat_and_df(
+    tmp_path: Path,
+) -> None:
+    # GNU stat (Linux) takes -c %s and BSD stat (macOS) -f %z; df -P keeps one
+    # line per filesystem. Both helpers must work on whichever host runs them.
+    sized = tmp_path / "sized.bin"
+    sized.write_bytes(b"x" * 1234)
+    disk = tmp_path / "disk"
+    disk.mkdir()
+    result = run_driver_settings(
+        tmp_path,
+        {"DISK_PATH": str(disk)},
+        f"""
+file_bytes "{sized}"
+free_bytes
+""",
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    size, free = result.stdout.decode().split()
+    assert size == "1234"
+    assert int(free) > 0
+
+
+@pytest.mark.parametrize(("value", "status"), [("0", 0), ("1", 0), ("yes", 64)])
+def test_stop_before_release_accepts_only_zero_or_one(
+    tmp_path: Path, value: str, status: int
+) -> None:
+    result = run_driver_settings(
+        tmp_path, {"STOP_BEFORE_RELEASE": value}, '\necho "$STOP_BEFORE_RELEASE"\n'
+    )
+    assert result.returncode == status, result.stderr.decode()
+    if status == 0:
+        assert result.stdout.decode().strip() == value
+    else:
+        assert "STOP_BEFORE_RELEASE must be 0 or 1" in result.stderr.decode()
+
+
+def test_the_stop_before_release_sits_after_the_release_config_and_before_its_run() -> (
+    None
+):
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    config = source.index('write_config release 110 "$RELEASE_RAM_GIB"')
+    stop = source.index(
+        'if [ "$STOP_BEFORE_RELEASE" = 1 ] && ! stage_done release; then'
+    )
+    # The release stage also accepts a build that failed its release gates
+    # (exit 3, microcosm#1585 item 11), which certification can only ship as
+    # evidence.
+    run = source.index(
+        'run_stage release "0 $BUILT_FAILED_GATES_RC" "$RELEASE_RAM_GIB" 45'
+    )
+    assert config < stop < run
+
+
 def test_route_a_stops_after_the_build_and_certifies_only_when_asked() -> None:
     """The release tool builds and stops; the driver hands the build over
     unless --certify (or ROUTE_A_CERTIFY=1) asks it to certify it, which reruns
@@ -1534,6 +1587,7 @@ def _after_the_release_stage(
         "ROUTE_A_CERTIFY_TIER": tier,
         "ROUTE_A_EVIDENCE_FAILURE_OWNERS": owners,
         "LOG": str(run_root / "route_a.log"),
+        "MODE": "run",
     }
     # The driver's own log, fail and sha_of, so the run is the driver's.
     helpers = source[source.index("log() {") : source.index("free_bytes() {")]
@@ -1562,6 +1616,8 @@ def test_route_a_keeps_a_failed_build_and_certifies_it_only_as_evidence(
     assert hand_off["release_gates_failed"] is True
     assert hand_off["certified"] is False
     assert "ROUTE_A_CERTIFY_TIER=evidence" in hand_off["next"]
+    assert "--rebuild" in hand_off["next"]
+    assert hand_off["release_dry_run"] == "not run"
     assert "REACHED_THE_CERTIFY_STAGE" not in built.stdout
 
     green, root = _after_the_release_stage(tmp_path / "b", returncode=0, certify="0")
@@ -1658,7 +1714,7 @@ def test_route_a_certifies_an_accepted_build_without_hashing_its_inputs() -> Non
     assert calls == ["  verify_inputs", "  verify_inputs"]
 
 
-@pytest.mark.parametrize("flag", ["--certify", "--resolve"])
+@pytest.mark.parametrize("flag", ["--certify", "--resolve", "--rebuild", "--probe"])
 def test_route_a_parses_its_modes_before_reading_settings(
     tmp_path: Path, flag: str
 ) -> None:
@@ -1673,4 +1729,716 @@ def test_route_a_parses_its_modes_before_reading_settings(
         ["bash", str(script), "--bogus"], capture_output=True, env=env, timeout=20
     )
     assert unknown.returncode == 64
-    assert b"[--resolve|--certify]" in unknown.stderr
+    assert b"[--resolve|--rebuild|--probe|--certify]" in unknown.stderr
+    both = subprocess.run(
+        ["bash", str(script), flag, "--certify"],
+        capture_output=True,
+        env=env,
+        timeout=20,
+    )
+    assert both.returncode == 64
+    assert b"one mode at a time" in both.stderr
+
+
+def _run_functions(names: list[str], settings: dict[str, str], commands: str):
+    """Run driver functions on their own, with ``settings`` as shell variables."""
+    script = "set -u\nfail() { printf '%s\\n' \"$*\" >&2; exit 1; }\n"
+    script += "".join(
+        f"{key}={shlex.quote(value)}\n" for key, value in settings.items()
+    )
+    script += "".join(_function(name) + "\n" for name in names)
+    script += commands
+    return subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, check=False, timeout=30
+    )
+
+
+@pytest.mark.parametrize(("value", "status"), [("0", 0), ("1", 0), ("yes", 64)])
+def test_the_dry_run_setting_accepts_only_zero_or_one(
+    tmp_path: Path, value: str, status: int
+) -> None:
+    result = run_driver_settings(
+        tmp_path, {"ROUTE_A_DRY_RUN": value}, '\necho "$ROUTE_A_DRY_RUN"\n'
+    )
+    assert result.returncode == status, result.stderr.decode()
+    if status == 0:
+        assert result.stdout.decode().strip() == value
+    else:
+        assert "ROUTE_A_DRY_RUN must be 0 or 1" in result.stderr.decode()
+
+
+def test_the_release_gates_are_dry_run_before_the_release_starts() -> None:
+    """The dry run is a stage between the release config and the release: 0
+    and 2 let the release start, a certain failure (1) stops the run, and a
+    dry run counts only for the settings it checked (microcosm#1042; the
+    build is one command)."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    config = source.index('write_config release 110 "$RELEASE_RAM_GIB"')
+    guard = source.index(
+        'if [ "$RELEASE_PENDING" = 1 ] && [ "$ROUTE_A_DRY_RUN" = 1 ]; then'
+    )
+    dry_run = source.index('( run_stage release-dry-run "0 2" "$RELEASE_RAM_GIB" 22 )')
+    key = source.index('echo "$DRY_KEY" > "$RUN/release-dry-run.key"')
+    stop = source.index(
+        'if [ "$STOP_BEFORE_RELEASE" = 1 ] && ! stage_done release; then'
+    )
+    run = source.index(
+        'run_stage release "0 $BUILT_FAILED_GATES_RC" "$RELEASE_RAM_GIB" 45'
+    )
+    assert config < guard < dry_run < key < stop < run
+    assert "stop point S1" in source[dry_run:key]
+    # A stale dry run is moved aside, never deleted.
+    assert (
+        'mv "$RUN/release-dry-run-sup" "$RUN/release-dry-run-sup.stale-$(date +%s)"'
+        in source[guard:dry_run]
+    )
+
+
+@pytest.mark.parametrize("staging", ["1", "0"])
+def test_the_dry_run_starts_the_release_tool_as_the_release_stage_does(
+    staging: str,
+) -> None:
+    settings = {
+        "ROUTE_A_STAGING": staging,
+        "TOKEN_WRAPPER": "/fixture/with_hf_token.sh",
+        "AGENT_SECRET": "/fixture/agent-secret",
+        "PY": "/fixture/python",
+        "RUN": "/fixture/run dir",
+    }
+    result = _run_functions(
+        ["dry_run_command"],
+        settings,
+        'dry_run_command\nprintf "%s\\0" "${DRY_RUN_ARGV[@]}"\n',
+    )
+    assert result.returncode == 0, result.stderr
+    argv = result.stdout.rstrip("\0").split("\0")
+    tail = [
+        "/fixture/python",
+        "-B",
+        "tools/dry_run_us_release_gates.py",
+        "--release-config",
+        "/fixture/run dir/release-config.json",
+        "--json-out",
+        "/fixture/run dir/release-dry-run.json",
+    ]
+    assert argv[-len(tail) :] == tail
+    launcher = argv[: -len(tail)]
+    if staging == "1":
+        assert launcher == ["/fixture/with_hf_token.sh", "/fixture/agent-secret"]
+    else:
+        assert launcher[0] == "/usr/bin/env"
+        assert "/fixture/with_hf_token.sh" not in launcher
+        for alias in ("HF_TOKEN", *SECRET_ALIASES):
+            assert alias in launcher
+
+
+def test_the_release_settings_key_ignores_only_the_build_id() -> None:
+    def key(build: str, *argv: str) -> str:
+        result = _run_functions(
+            ["release_settings_key"],
+            {"PY": sys.executable},
+            "release_settings_key " + " ".join(map(shlex.quote, (build, *argv))) + "\n",
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    first = key(
+        "b-1", "--out", "/run/release-out/b-1", "--release-id", "b-1", "--seed", "0"
+    )
+    restart = key(
+        "b-2", "--out", "/run/release-out/b-2", "--release-id", "b-2", "--seed", "0"
+    )
+    changed = key(
+        "b-2", "--out", "/run/release-out/b-2", "--release-id", "b-2", "--seed", "1"
+    )
+    assert re.fullmatch(r"[0-9a-f]{64}", first)
+    assert first == restart != changed
+
+
+def test_release_ran_compares_the_command_the_release_ran(tmp_path: Path) -> None:
+    (tmp_path / "release-sup").mkdir()
+    argv = [
+        "/w/python",
+        "-B",
+        "tools/build_us_fiscal_refresh_release.py",
+        "--seed",
+        "0",
+    ]
+    (tmp_path / "release-sup" / "COMMAND.json").write_text(json.dumps({"argv": argv}))
+    settings = {"PY": sys.executable, "RUN": str(tmp_path)}
+    same = _run_functions(
+        ["release_ran"], settings, "release_ran " + shlex.join(argv) + "\n"
+    )
+    assert same.returncode == 0, same.stderr
+    other = _run_functions(
+        ["release_ran"], settings, "release_ran " + shlex.join([*argv[:-1], "1"]) + "\n"
+    )
+    assert other.returncode == 1
+
+
+def test_a_build_rerun_with_other_settings_is_refused_until_rebuild() -> None:
+    """A rerun to build keeps an accepted build only for the settings it was
+    built with; with others it says how to build again, rather than keep the
+    build without a word (review of #1681). Certification and the probe read
+    the build, so they skip the check."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    rid = source.index('RID=$("$PY" -c \'import json,sys; a=json.load(')
+    guard = source.index(
+        'if [ "$MODE" = run ] && [ "$ROUTE_A_CERTIFY" != 1 ] && '
+        '[ "$RELEASE_PENDING" = 0 ]; then'
+    )
+    check = source.index('release_ran "${RELEASE_ARGV[@]}"')
+    inputs = source.index("inputs_now=$(release_inputs_key)")
+    handoff = source.index('if [ "$ROUTE_A_CERTIFY" != 1 ]; then\n  "$PY" -')
+    assert rid < guard < check < inputs < handoff
+    assert "rerun with --rebuild" in source[check:inputs]
+    assert "Rerun with --rebuild" in source[inputs:handoff]
+    # The key the guard compares is the one the release was launched with,
+    # and the dry run's key carries it too.
+    launched = source.index('echo "$INPUTS_KEY" > "$RUN/release-inputs.key"')
+    config = source.index('write_config release 110 "$RELEASE_RAM_GIB"')
+    assert config < launched < rid
+    assert '"inputs=$INPUTS_KEY"' in source
+
+
+def _inputs_key(tmp_path: Path, **changes: str) -> str:
+    """release_inputs_key over a fixture's inputs, with ``changes`` applied."""
+    reference = tmp_path / "reference.h5"
+    if not reference.exists():
+        reference.write_bytes(b"reference")
+    settings = {
+        "STORAGE": "/fixture/storage",
+        "EDU": "/fixture/edu",
+        "BASE_LEDGER_FACTS": "/fixture/feed.jsonl",
+        "BASE_LEDGER_FACTS_SHA": "a" * 64,
+        "LADDER": "/fixture/ladder.npz",
+        "LADDER_SHA": "b" * 64,
+        "LADDER_BYTES": "1",
+        "FEED": "/fixture/feed.jsonl",
+        "FEED_SHA": "a" * 64,
+        "FEED_BYTES": "1",
+        "TAIL": "/fixture/tail.json",
+        "QRF_TAIL_EXCLUSIONS_SHA": "c" * 64,
+        "SSI": "/fixture/ssi.json",
+        "SSI_SHA": "d" * 64,
+        "SCF": "/fixture/scf.dta",
+        "BASE_SHA": "e" * 64,
+        "EXPORT_MASS_REF_H5": str(reference),
+    }
+    for name in (
+        "ASEC_2025_SHA",
+        "ASEC_2024_SHA",
+        "ASEC_2023_SHA",
+        "ASEC_EDU_2023_SHA",
+        "ASEC_EDU_2024_SHA",
+        "ASEC_EDU_2025_SHA",
+    ):
+        settings[name] = "f" * 64
+    settings.update(changes)
+    result = _run_functions(
+        ["input_rows", "sha_of", "release_inputs_key"],
+        settings,
+        "release_inputs_key\n",
+    )
+    assert result.returncode == 0, result.stderr
+    key = result.stdout.strip()
+    assert re.fullmatch(r"[0-9a-f]{64}", key), key
+    return key
+
+
+def test_the_rerun_guard_keys_the_files_the_release_reads(tmp_path: Path) -> None:
+    """The rerun guard compares the digests of what the release reads by
+    path beside its command: a QRF tail register edited in place with a new
+    QRF_TAIL_EXCLUSIONS_SHA, an export reference replaced in place or a
+    rebuilt base changes the key; a base-only input does not (review of
+    #1676)."""
+    same = _inputs_key(tmp_path)
+    assert _inputs_key(tmp_path) == same
+    assert _inputs_key(tmp_path, QRF_TAIL_EXCLUSIONS_SHA="9" * 64) != same
+    assert _inputs_key(tmp_path, BASE_SHA="8" * 64) != same
+    assert _inputs_key(tmp_path, SSI_SHA="7" * 64) != same
+    # The base's own inputs belong to the base, which --rebuild keeps.
+    assert _inputs_key(tmp_path, LADDER_SHA="6" * 64) == same
+    (tmp_path / "reference.h5").write_bytes(b"replaced in place")
+    assert _inputs_key(tmp_path) != same
+
+
+def _rebuild(
+    tmp_path: Path, *, certified: bool
+) -> tuple[subprocess.CompletedProcess, Path]:
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    start = source.index('if [ "$REBUILD" = 1 ]; then')
+    end = source.index("\nfi\n", start) + len("\nfi\n")
+    run_root = tmp_path / "run-root"
+    run = run_root / "run-abc"
+    for stage in ("release", "release-dry-run", "probe-sample", "probe", "base"):
+        (run / f"{stage}-sup").mkdir(parents=True)
+        (run / f"{stage}-sup" / "ACCEPTED").write_text("returncode=0\n")
+    (run / "probe" / "report").mkdir(parents=True)
+    (run / "release-dry-run.key").write_text("k\n")
+    (run_root / "ROUTE_A_BUILT.json").write_text("{}")
+    if certified:
+        (run / "certify-sup").mkdir()
+        (run / "certify-sup" / "ACCEPTED").write_text("returncode=0\n")
+    settings = {
+        "REBUILD": "1",
+        "RUN": str(run),
+        "RUN_ROOT": str(run_root),
+        "C": "c" * 40,
+        "LOG": str(run_root / "route_a.log"),
+    }
+    helpers = source[source.index("log() {") : source.index("free_bytes() {")]
+    script = "set -u\n" + "".join(
+        f"{key}={shlex.quote(value)}\n" for key, value in settings.items()
+    )
+    script += helpers + "wait_prior_supervisor() { :; }\n" + source[start:end]
+    script += "echo REBUILT\n"
+    result = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=30
+    )
+    return result, run
+
+
+def test_rebuild_sets_the_accepted_build_aside_and_keeps_it(tmp_path: Path) -> None:
+    """--rebuild moves the accepted release and its probe aside, so the run
+    builds the release again on the accepted base under a new build ID;
+    nothing is deleted, and the dry run's settings key decides whether it
+    runs again (review of #1681)."""
+    result, run = _rebuild(tmp_path / "a", certified=False)
+    assert result.returncode == 0, result.stderr
+    assert "REBUILT" in result.stdout
+    for stage in ("release", "probe-sample", "probe"):
+        assert not (run / f"{stage}-sup").exists()
+        [aside] = run.glob(f"{stage}-sup.set-aside-*")
+        assert (aside / "ACCEPTED").is_file()
+    [probe] = run.glob("probe.set-aside-*")
+    assert (probe / "report").is_dir()
+    assert (run / "base-sup" / "ACCEPTED").is_file()
+    assert (run / "release-dry-run-sup" / "ACCEPTED").is_file()
+    assert (run / "release-dry-run.key").is_file()
+    assert (
+        "set aside release-sup probe-sample-sup probe-sup probe ROUTE_A_BUILT.json"
+        in result.stdout
+    )
+    assert not (run.parent / "ROUTE_A_BUILT.json").exists()
+    [hand_off] = run.glob("ROUTE_A_BUILT.json.set-aside-*")
+    assert hand_off.read_text() == "{}"
+
+
+def test_rebuild_never_sets_a_certified_build_aside(tmp_path: Path) -> None:
+    result, run = _rebuild(tmp_path / "b", certified=True)
+    assert result.returncode == 1
+    assert "is certified" in result.stdout
+    assert (run / "release-sup" / "ACCEPTED").is_file()
+    assert not list(run.glob("*.set-aside-*"))
+
+
+def _probe_record(tmp_path: Path) -> Path:
+    rel_out = tmp_path / "release-out" / "populace-us-2024-x"
+    rel_out.mkdir(parents=True)
+    (rel_out / "build_record.json").write_text(
+        json.dumps(
+            {
+                "layout": {
+                    "build_dir": "build",
+                    "artifact_root": "artifacts",
+                    "dataset_filename": "microcosm_us_2024.h5",
+                },
+                "manifest": {
+                    "target_surface_selection": {
+                        "mode": "national_state",
+                        "dropped_congressional_district_targets": 436,
+                    }
+                },
+            }
+        )
+    )
+    return rel_out
+
+
+@pytest.mark.parametrize("failed", ["0", "1"])
+def test_the_probe_reads_its_export_and_reference_from_the_build_record(
+    tmp_path: Path, failed: str
+) -> None:
+    """A build that passed its gates is the probe's reference; a failed build
+    is none, so its own fit and target surface are passed instead, as the
+    probe requires (review of #1681)."""
+    rel_out = _probe_record(tmp_path)
+    run = tmp_path / "run dir"
+    result = _run_functions(
+        ["probe_record_arguments", "probe_commands"],
+        {
+            "PY": sys.executable,
+            "REL_OUT": str(rel_out),
+            "RUN": str(run),
+            "PROBE_STAGES": "take_up_participation,demographics",
+        },
+        "PROBE_LAUNCHER=(/usr/bin/env -u HF_TOKEN)\n"
+        f"probe_commands {failed}\n"
+        'printf "%s\\0" "${PROBE_SAMPLE_ARGV[@]}"; printf "\\n"\n'
+        'printf "%s\\0" "${PROBE_ARGV[@]}"\n',
+    )
+    assert result.returncode == 0, result.stderr
+    sample_line, probe_line = result.stdout.split("\n", 1)
+    sample = sample_line.rstrip("\0").split("\0")
+    probe = probe_line.rstrip("\0").split("\0")
+    export = str(rel_out / "artifacts" / "microcosm_us_2024.h5")
+    assert sample == [
+        "/usr/bin/env",
+        "-u",
+        "HF_TOKEN",
+        sys.executable,
+        "-B",
+        "tools/sample_us_export_households.py",
+        "--export",
+        export,
+        "--fraction",
+        "0.05",
+        "--seed",
+        "0",
+        "--out",
+        f"{run}/probe/subsample",
+    ]
+    assert probe[:9] == [
+        "/usr/bin/env",
+        "-u",
+        "HF_TOKEN",
+        sys.executable,
+        "-B",
+        "tools/probe_us_post_export.py",
+        "--export",
+        f"{run}/probe/subsample/microcosm_us_2024.h5",
+        "--out",
+    ]
+    assert probe[9] == f"{run}/probe/report"
+    assert probe[-2:] == ["--stages", "take_up_participation,demographics"]
+    reference = probe[10:-2]
+    if failed == "0":
+        assert reference == ["--reference-release-dir", str(rel_out / "build")]
+    else:
+        assert reference == [
+            "--calibration-diagnostics",
+            str(rel_out / "build" / "calibration_diagnostics.json"),
+            "--target-surface",
+            "national_state",
+            "--dropped-congressional-district-targets",
+            "436",
+        ]
+
+
+@pytest.mark.parametrize(
+    ("register", "reference"),
+    [
+        (None, True),
+        ("this build", False),
+        ("no record", False),
+        ("another build", True),
+        ("unreadable", False),
+    ],
+)
+def test_a_build_whose_certification_failed_is_no_reference_to_the_probe(
+    tmp_path: Path, register: str | None, reference: bool
+) -> None:
+    """A build that passed its gates and then failed certification is no
+    reference (certification_failures.json), so the probe gets its fit and
+    target surface instead; only attempts on this build's record count
+    (review of #1676)."""
+    rel_out = _probe_record(tmp_path)
+    record_path = rel_out / "build_record.json"
+    record = json.loads(record_path.read_text())
+    record["record_sha256"] = "r" * 64
+    record_path.write_text(json.dumps(record))
+    attempt = {"failures": ["Reform coverage smoke failed: x"]}
+    contents = {
+        "this build": json.dumps(
+            {"attempts": [{**attempt, "record_sha256": "r" * 64}]}
+        ),
+        "no record": json.dumps({"attempts": [attempt]}),
+        "another build": json.dumps(
+            {"attempts": [{**attempt, "record_sha256": "o" * 64}]}
+        ),
+        "unreadable": "{",
+    }
+    if register is not None:
+        (rel_out / "certification_failures.json").write_text(contents[register])
+    result = _run_functions(
+        ["probe_record_arguments"],
+        {"PY": sys.executable, "REL_OUT": str(rel_out)},
+        "probe_record_arguments 0\n",
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert ("--reference-release-dir" in lines) is reference
+    assert ("--calibration-diagnostics" in lines) is not reference
+
+
+def test_the_probe_runs_only_on_an_accepted_build_and_stops_after_it() -> None:
+    """--probe needs an accepted build, hashes no input, runs its two stages
+    after the build is identified and before any certification, and stops;
+    its stages leave the QRF tail stage out."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    needs = source.index(
+        '  [ -f "$RUN_ROOT/run-${C:0:12}/release-sup/ACCEPTED" ] \\\n'
+        '    || fail "--probe: no accepted build'
+    )
+    hashed = source.index('if [ "$CERTIFY_ONLY" = 1 ]; then\n  log "inputs: not hashed')
+    identified = source.index('[ -f "$REL_OUT/build_record.json" ] || fail')
+    probe = source.index('if [ "$MODE" = probe ]; then\n  probe_commands')
+    certify = source.index("run_stage certify 0")
+    assert needs < hashed < identified < probe < certify
+    block = source[probe : source.index("\nfi\n", probe)]
+    assert block.index("run_stage probe-sample 0") < block.index("run_stage probe 0")
+    assert "exit 0" in block
+    stages = re.search(r"^PROBE_STAGES=(\S+)$", source, re.M)
+    assert stages is not None
+    assert "qrf_tail_concentration" not in stages.group(1).split(",")
+    assert {"reform_coverage_smoke", "reform_validation", "demographics"} <= set(
+        stages.group(1).split(",")
+    )
+
+
+def test_check_commit_refuses_a_commit_that_cannot_certify_at_any_tier(
+    tmp_path: Path,
+) -> None:
+    """Every build is certified at its commit later, so check_commit checks
+    the certification tool and parser whatever the tier, and with no flag to
+    check (review of #1681), and the dry-run and probe tools when they run."""
+
+    # run_driver_settings runs a copy of the driver from tmp_path, its
+    # SCRIPT_DIR, so the flag checker the checks call goes beside it.
+    shutil.copy(ROUTE_A_TOOLS / "check_flags.py", tmp_path / "check_flags.py")
+    cases = itertools.count()
+
+    def lines(files: dict[str, str], prefix: str = "", **overrides: str) -> list[str]:
+        main, sha = _tiny_main(tmp_path / f"case-{next(cases)}", files)
+        result = run_driver_settings(
+            tmp_path,
+            {"MAIN": str(main), **overrides},
+            _report_lines(f"\n{prefix}check_commit {sha} {sha}\n"),
+        )
+        assert result.returncode == 0, result.stderr.decode()
+        return result.stdout.decode().splitlines()
+
+    release = "def _certify_parser():\n    pass\n"
+    complete = {
+        "tools/certify_us_national_build.py": "",
+        "tools/build_us_fiscal_refresh_release.py": release,
+        "tools/dry_run_us_release_gates.py": "",
+    }
+    ok = lines(complete)
+    assert not [line for line in ok if "certif" in line and line.startswith("BLOCKER")]
+    assert any(
+        "certification parser at" in line for line in ok if line.startswith("NOTE")
+    )
+    no_tool = lines(
+        {
+            key: value
+            for key, value in complete.items()
+            if key != "tools/certify_us_national_build.py"
+        }
+    )
+    assert any(
+        line.startswith("BLOCKER") and "certify_us_national_build.py is absent" in line
+        for line in no_tool
+    )
+    no_parser = lines(
+        {**complete, "tools/build_us_fiscal_refresh_release.py": "x = 1\n"}
+    )
+    assert any(
+        line.startswith("BLOCKER") and "certification parser at" in line
+        for line in no_parser
+    )
+    without_dry_run = {
+        key: value
+        for key, value in complete.items()
+        if key != "tools/dry_run_us_release_gates.py"
+    }
+    assert any(
+        line.startswith("BLOCKER") and "ROUTE_A_DRY_RUN=0" in line
+        for line in lines(without_dry_run)
+    )
+    assert not any(
+        "dry_run_us_release_gates.py" in line
+        for line in lines(without_dry_run, ROUTE_A_DRY_RUN="0")
+    )
+    probe_blockers = [
+        line
+        for line in lines(complete, prefix="MODE=probe\n")
+        if line.startswith("BLOCKER") and "--probe cannot run" in line
+    ]
+    assert len(probe_blockers) == 2
+    assert not [line for line in ok if "--probe cannot run" in line]
+
+
+def test_the_flag_checker_refuses_a_source_without_the_named_parser() -> None:
+    checker = ROUTE_A_TOOLS / "check_flags.py"
+
+    def run(source: str, *flags: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, str(checker), *flags],
+            input=source,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+
+    missing = run("x = 1\n", "--in-function", "_certify_parser")
+    assert missing.returncode == 1
+    assert "defines no function _certify_parser" in missing.stderr
+    present = run(
+        "def _certify_parser():\n    pass\n", "--in-function", "_certify_parser"
+    )
+    assert present.returncode == 0, present.stderr
+    assert run("x = 1\n").returncode == 0
+
+
+def test_check_commit_refuses_a_driver_that_is_not_the_build_commits(
+    tmp_path: Path,
+) -> None:
+    """The driver loads itself and its helpers from the checkout it runs in,
+    so check_commit compares that copy with tools/route_a at the build commit
+    and refuses another commit's driver: main's has no STOP_BEFORE_RELEASE and
+    no --probe (review of #1676)."""
+    own = {"route_a.sh": "echo driver\n", "README.md": "readme\n"}
+    main, sha = _tiny_main(
+        tmp_path / "with-driver",
+        {f"tools/route_a/{name}": text for name, text in own.items()},
+    )
+    # run_driver_settings runs its copy of the driver from tmp_path.
+    for name, text in own.items():
+        (tmp_path / name).write_text(text)
+
+    def lines(main_repo: Path, commit: str) -> list[str]:
+        result = run_driver_settings(
+            tmp_path,
+            {"MAIN": str(main_repo)},
+            _report_lines(f"\ncheck_commit {commit} {commit}\n"),
+        )
+        assert result.returncode == 0, result.stderr.decode()
+        return result.stdout.decode().splitlines()
+
+    assert f"NOTE this driver is the build commit's own (tools/route_a at {sha})" in (
+        lines(main, sha)
+    )
+    (tmp_path / "README.md").write_text("another commit's readme\n")
+    [blocker] = [
+        line for line in lines(main, sha) if line.startswith("BLOCKER this driver")
+    ]
+    assert "differs from tools/route_a at" in blocker
+    assert blocker.split("in:")[1].split(".")[0].split() == ["README"]
+    assert f"git checkout --detach {sha}" in blocker
+    bare, bare_sha = _tiny_main(tmp_path / "without-driver", {"x.txt": "x\n"})
+    assert any(
+        line.startswith("BLOCKER") and "has no tools/route_a" in line
+        for line in lines(bare, bare_sha)
+    )
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_the_export_reference_is_read_before_any_stage(
+    tmp_path: Path, present: bool
+) -> None:
+    """The rerun key hashes the export input-mass reference, so the input
+    check reads it first, at --resolve and before the base, with no pin to
+    match: a file it cannot read stops the run in minutes, not after the
+    base (review of #1676)."""
+    reference = tmp_path / "reference.h5"
+    if present:
+        reference.write_bytes(b"reference")
+    # RUN_ROOT under tmp_path: the driver writes inputs.resolved.json there.
+    run_root = tmp_path / "root"
+    result = run_driver_settings(
+        tmp_path,
+        {"EXPORT_MASS_REF_H5": str(reference), "RUN_ROOT": str(run_root)},
+        "\nverify_inputs\n"
+        'for x in ${INPUT_PROBLEMS[@]+"${INPUT_PROBLEMS[@]}"}; do printf \'PROBLEM %s\\n\' "$x"; done\n'
+        'cat "$RUN_ROOT/inputs.resolved.json"\n',
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    out = result.stdout.decode()
+    problems = [
+        line
+        for line in out.splitlines()
+        if line.startswith("PROBLEM export_input_mass_reference")
+    ]
+    resolved = json.loads(out[out.index("{") :])
+    [row] = [
+        row
+        for row in resolved["inputs"]
+        if row["role"] == "export_input_mass_reference"
+    ]
+    assert row["expected_sha256"] == "-"
+    if present:
+        assert problems == []
+        assert row["status"] == "ok"
+        assert row["observed_sha256"] == hashlib.sha256(b"reference").hexdigest()
+    else:
+        assert problems == [f"PROBLEM export_input_mass_reference missing: {reference}"]
+        assert row["status"] == "missing"
+
+
+def _rerun_guard(
+    tmp_path: Path, *, ran: list[str], key_file: str | None, key_now: str
+) -> subprocess.CompletedProcess[str]:
+    """Run the driver's build-mode rerun guard on an accepted release."""
+    source = (ROUTE_A_TOOLS / "route_a.sh").read_text(encoding="utf-8")
+    start = source.index(
+        'if [ "$MODE" = run ] && [ "$ROUTE_A_CERTIFY" != 1 ] && '
+        '[ "$RELEASE_PENDING" = 0 ]; then\n'
+    )
+    end = source.index("\nfi\n", start) + len("\nfi\n")
+    run_root = tmp_path / "run-root"
+    run = run_root / "run-abc"
+    (run / "release-sup").mkdir(parents=True)
+    (run / "release-sup" / "COMMAND.json").write_text(json.dumps({"argv": ran}))
+    if key_file is not None:
+        (run / "release-inputs.key").write_text(key_file + "\n")
+    settings = {
+        "MODE": "run",
+        "ROUTE_A_CERTIFY": "0",
+        "RELEASE_PENDING": "0",
+        "RUN": str(run),
+        "RUN_ROOT": str(run_root),
+        "RID": "populace-us-2024-x",
+        "PY": sys.executable,
+        "KEY_NOW": key_now,
+        "LOG": str(run_root / "route_a.log"),
+    }
+    helpers = source[source.index("log() {") : source.index("free_bytes() {")]
+    script = "set -u\n" + "".join(
+        f"{key}={shlex.quote(value)}\n" for key, value in settings.items()
+    )
+    script += helpers + _function("release_ran") + "\n"
+    script += "release_command() { RELEASE_ARGV=(/w/python -B release.py --seed 0); }\n"
+    script += "release_inputs_key() { printf '%s\\n' \"$KEY_NOW\"; }\n"
+    script += source[start:end] + "echo PASSED\n"
+    return subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, timeout=30
+    )
+
+
+def test_the_rerun_guard_compares_the_command_and_the_inputs(tmp_path: Path) -> None:
+    """Run, not read: a build-mode rerun on an accepted release passes only
+    when both the command and the release inputs' key are the ones the
+    release was launched with, and names --rebuild otherwise (review of
+    #1676)."""
+    command = ["/w/python", "-B", "release.py", "--seed", "0"]
+    same = _rerun_guard(tmp_path / "a", ran=command, key_file="k1", key_now="k1")
+    assert same.returncode == 0, same.stdout + same.stderr
+    assert "PASSED" in same.stdout
+
+    moved = _rerun_guard(tmp_path / "b", ran=command, key_file="k1", key_now="k2")
+    assert moved.returncode == 1
+    assert "other release inputs" in moved.stdout
+    assert "Rerun with --rebuild" in moved.stdout
+    assert (tmp_path / "b" / "run-root" / "ROUTE_A_FAILED").is_file()
+
+    other = _rerun_guard(
+        tmp_path / "c", ran=[*command[:-1], "1"], key_file="k1", key_now="k1"
+    )
+    assert other.returncode == 1
+    assert "other release settings" in other.stdout
+
+    older = _rerun_guard(tmp_path / "d", ran=command, key_file=None, key_now="k1")
+    assert older.returncode == 0, older.stdout + older.stderr
+    assert "release inputs not compared" in older.stdout

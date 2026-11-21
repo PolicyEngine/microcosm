@@ -1,0 +1,1 @@
+Add the four take-up inputs policyengine-us 2.145.3 defines (Medicare Part D, CSFP, school meals and the Alaska Permanent Fund Dividend) to the US take-up spec and contract, left at their engine default (`rate_unsourced`), so the take-up mapping is total over the engine again.

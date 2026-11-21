@@ -248,8 +248,8 @@ _TAX_UNIT_CONSTRUCTION = (
     "Tax-unit construction output: {detail} ({constant}). Later build stages "
     "read it (microcosm.build.us_runtime.us_late_producer_registry and the US "
     "imputation spec, microcosm/build/us/spec/imputation.yaml). "
-    "policyengine-us 1.764.6 and 2.2.1 neither define nor read a variable of "
-    "this name, and there is no live input to rename it to: the engine "
+    "policyengine-us 1.764.6, 2.2.1 and 2.145.3 neither define nor read a "
+    "variable of this name, and there is no live input to rename it to: the engine "
     "derives {engine} with formulas, which the release writer refuses to "
     "store."
 )
@@ -280,14 +280,11 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: - the ACS local-area release ``populace-us-2024-buildo-acs-local-
 #:   767312d60-20260923T074941Z`` (the ``*_spine`` tags as well).
 #:
-#: One pair postdates those files: ``parent_1_id`` and ``parent_2_id``
-#: (microcosm#884). No examined file stores them yet, so they rest on their
-#: live producer, ``eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS``,
-#: which ``test_us_stored_input_register.py`` binds, and leave the register
-#: once the pinned engine defines them. The four federal student loan inputs
-#: (microcosm#1073) likewise postdate them: their producer is
-#: ``scf_education_debt.US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS``, and they leave
-#: the register once the pinned engine carries policyengine-us#9721 and #9724.
+#: policyengine-us 2.145.3 defines seven former entries as inputs, so they left
+#: the register when the US engine moved to it: ``tax_unit_role_input``
+#: (policyengine-us#9617), ``parent_1_id`` and ``parent_2_id`` (microcosm#884,
+#: policyengine-us#9406) and the four federal student loan inputs
+#: (microcosm#1073, policyengine-us#9721 and #9724).
 #:
 #: Two model-named non-variable columns that the published default, its
 #: receipt child and the ACS local-area release store are deliberately absent,
@@ -414,11 +411,6 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
                 "microcosm.build.us_runtime.acs_release_predictors)."
             ),
         ),
-        "tax_unit_role_input": _TAX_UNIT_CONSTRUCTION.format(
-            detail="the HEAD / SPOUSE / DEPENDENT role microunit assigns each person",
-            constant="microcosm.frame.units._TAX_UNIT_ROLE_COLUMN",
-            engine="is_tax_unit_head, is_tax_unit_spouse and is_tax_unit_dependent",
-        ),
         "filing_status_input": _TAX_UNIT_CONSTRUCTION.format(
             detail="the filing status microunit assigns each tax unit",
             constant="microcosm.frame.units.TAX_UNIT_FILING_STATUS_COLUMN",
@@ -442,57 +434,6 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
         "puf_capital_gains_tail_transfer_weight": _PUF_TAIL.format(
             detail="the donor weight carried by the transfer"
         ),
-        **{
-            column: (
-                f"The person_id of the co-resident parent the person's CPS "
-                f"ASEC {pointer} pointer names, or 0 when unknown, written by "
-                "microcosm.build.us_runtime.eligibility_inputs "
-                "(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS; microcosm#884). The "
-                "certified engine does not define it yet, so it is ignored "
-                "there; policyengine-us#9406 adds it as an input. Remove this "
-                "entry when the pinned engine defines the variable."
-            )
-            for column, pointer in (
-                ("parent_1_id", "PEPAR1"),
-                ("parent_2_id", "PEPAR2"),
-            )
-        },
-        **{
-            column: (
-                f"{detail}, imputed from the 2025 Survey of Consumer Finances by "
-                "microcosm.build.us_runtime.scf_education_debt "
-                "(US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS; microcosm#1073), and "
-                "written only when the fiscal-refresh build runs with "
-                "--scf-education-debt. The certified engine does not define it "
-                f"yet, so it is ignored there; policyengine-us#{pull} adds it as "
-                "an input. Remove this entry when the pinned engine defines the "
-                "variable."
-            )
-            for column, detail, pull in (
-                (
-                    "federal_student_loan_balance",
-                    "The person's own federal student loan balance",
-                    9721,
-                ),
-                (
-                    "federal_parent_plus_loan_balance",
-                    "The person's federal Parent PLUS loan balance",
-                    9721,
-                ),
-                (
-                    "is_income_based_repayment_new_borrower",
-                    "Whether every federal loan the person holds was borrowed in "
-                    "2014 or later (IBR new-borrower status)",
-                    9724,
-                ),
-                (
-                    "federal_student_loan_graduate_share",
-                    "The graduate or professional share of the original principal "
-                    "of the person's own federal student loans",
-                    9724,
-                ),
-            )
-        },
     }
 )
 

@@ -1,11 +1,18 @@
 # Route A release driver
 
-`route_a.sh` builds a US PUF-support base, then a fiscal-refresh release
-build of the national dataset from that base, and stops. The build is written
-and checked by its own gates, but it is not publishable: the run ends with
-`ROUTE_A_BUILT.json`, so the build can be evaluated first (microcosm#1585 item
-11, PR 4a). A build has no tier: its own files are in `<release-out>/build`,
-and certification places them in the release of the tier it chooses.
+`route_a.sh` builds a US PUF-support base, dry-runs the release's gates on
+it, then builds the fiscal-refresh release build of the national dataset from
+that base, and stops. The build is written and checked by its own gates, but
+it is not publishable: the run ends with `ROUTE_A_BUILT.json`, so the build
+can be evaluated first (microcosm#1585 item 11, PR 4a). A build has no tier:
+its own files are in `<release-out>/build`, and certification places them in
+the release of the tier it chooses.
+
+`route_a.sh --probe` on the same `RUN_ROOT` then probes that build on a 5%
+household sample with certification's own post-export checks, in about 10
+hours where certification takes about 48, and certifies nothing.
+`route_a.sh --rebuild` sets an accepted build aside, keeping it on disk, and
+builds the release again on the accepted base.
 
 `route_a.sh --certify` (or `ROUTE_A_CERTIFY=1`) on the same `RUN_ROOT` skips
 the accepted stages and certifies that build with
@@ -32,9 +39,11 @@ A build whose release gates fail still writes its H5 and its record and exits
 exit 3, and a run with `--certify` certifies it only at the evidence tier,
 refusing at the certified tier before the certify stage starts. Certifying at
 a later commit, which `tools/certify_us_national_build.py` allows when that
-commit changes only tests, docs, changelog fragments and the standing
-register, is done by hand from a checkout of that commit; the driver certifies
-in the build's own worktree.
+commit changes only tests and their helpers (the root `conftest.py`
+included), docs (`docs/`, `LICENSE`, and Markdown or reStructuredText outside
+the packages' sources), changelog fragments and the standing register, is
+done by hand from a checkout of that commit; the driver certifies in the
+build's own worktree.
 
 The driver, `supervise.py`, `sample_series.py`, `check_flags.py` and
 `with_hf_token.sh` live together here. The driver, supervisor and sampler
@@ -45,15 +54,27 @@ the build manifest records the opt-out.
 
 ## Configure and run
 
+For the next US national build (policyengine-us 2.145.3, `block_v1`), follow
+[the operator runbook](../../docs/us-national-build-runbook.md): it lists the
+settings, inputs, steps, times and stop points.
+
 Copy the example and edit its paths and commit before running:
 
 ```bash
 cp tools/route_a/route_a.env.example tools/route_a/route_a.env
 # Edit tools/route_a/route_a.env, then resolve without launching a stage:
 bash tools/route_a/route_a.sh --resolve
-# After reviewing inputs.resolved.json and every BLOCKER in resolve.log:
+# After reviewing inputs.resolved.json and every BLOCKER in resolve.log, build:
 bash tools/route_a/route_a.sh
+# Then, on the same RUN_ROOT, probe the build, or certify it:
+bash tools/route_a/route_a.sh --probe
+bash tools/route_a/route_a.sh --certify
 ```
+
+Each stage keeps its configuration, supervisor records, child log and
+resource samples in the run directory, beside the build's own records and
+diagnostics, so a run's evidence is collected from `RUN_ROOT` alone; the
+runbook's step 6 gives the command, which leaves every data file out.
 
 `ROUTE_A_ENV=<settings-file>` selects another settings file. The local
 `route_a.env` is ignored by git. The example uses shell defaults, so a
@@ -76,7 +97,12 @@ All machine locations come from the settings file:
 | `AGENT_SECRET` | Credential helper executable used by the release wrapper |
 | `EXPORT_MASS_REF_H5`, `QRF_TAIL_EXCLUSIONS` | Export-mass reference and optional tail exclusion register |
 
-Choose a pushed `COMMIT`; the example deliberately leaves it empty. By default
+Choose a pushed `COMMIT`; the example deliberately leaves it empty, and run
+the driver from a checkout of it: the driver loads itself and its helpers
+from the directory it runs in, and the commit check refuses a copy that
+differs from `tools/route_a/` at `COMMIT`. With `EXPORT_MASS_REF_H5` set,
+the input check also reads that file, which no setting pins, so a
+reference it cannot read stops the run before the base. By default
 the build commit must be reachable from `origin/main`, carry the SPM role stage,
 pin the expected feed and ASEC inputs, carry the expected district crosswalk,
 and declare the driver's base and release flags. `PREFLIGHT_COMMIT` defaults to
@@ -182,8 +208,12 @@ first and set what its blockers name:
     Rebuild the ladder with it and set the three settings to the new file.
 
 The example retains the historical d122 dense whole-base national/state
-settings, batch size 2000, export-mass reference and d490 tail register from the
-published run. Those are operator settings, not a new waiver. The driver permits
+settings, batch size 2000 and export-mass reference from the published run.
+Those are operator settings, not a new waiver. It no longer sets the d490 tail
+register: since 17 November 2026 the release decides the QRF tail gate at base
+(pre-calibration) weights, so a register measured at final weights would read
+as stale. Pass `QRF_TAIL_EXCLUSIONS` only for a register measured at base
+weights on the base that ships. The driver permits
 `--dense-default-dataset` only with `DENSE_RELEASE_D122=1`, and refuses the
 release-defeating, selection, evidence, exact-k, staging and driver-owned
 overrides listed in `refuse_bad_release_args`, including `--flag=value` forms.
@@ -197,8 +227,8 @@ By default the base uses the d713 CT-fixed ladder at
 `base-sup/ACCEPTED` skips the base stage. Merely pointing `LADDER` at new bytes
 does not rebuild a previously accepted base.
 
-The driver uses macOS `stat -f` and requires bash, git, openssl, uv and the
-configured paths. A file openssl cannot read is an input problem or a failed
+The driver runs on macOS and Linux (GNU or BSD `stat`, `df -P`) and requires
+bash, git, openssl, pgrep, uv and the configured paths. A file openssl cannot read is an input problem or a failed
 run, never an empty digest. Under launchd, macOS can refuse the system's own
 tools access to an external drive: on 2026-11-17, in a launchd job,
 `/usr/bin/openssl`, `/usr/bin/shasum` and `/usr/bin/python3` got "Operation
@@ -208,6 +238,38 @@ read the same files. Put Homebrew's `bin` before `/usr/bin` on such a job's
 runs `uv sync --all-packages --locked --extra us`, and checks that their Python
 can import psutil and policyengine-us. The supervised stages use that worktree's
 interpreter.
+
+## Running on Linux
+
+The driver is the same on Linux. Set the machine paths in `route_a.env` for that
+host, at least:
+
+- `DISK_PATH` to the filesystem that holds `RUN_ROOT` and the worktrees (the
+  example's `/System/Volumes/Data` is the macOS data volume), for example `/`
+  or the data disk's mount point;
+- `UV` to the uv executable (`command -v uv`) and `PYTHON` to an engine-free
+  `python3`;
+- `AGENT_SECRET` to an executable that prints the Hugging Face token when it is
+  called as `AGENT_SECRET get HUGGING_FACE_TOKEN_MAX` (the release's
+  `with_hf_token.sh` wrapper calls it, and only when staging is on).
+
+launchd is macOS only. On Linux, keep the run alive after you log out with tmux
+or a systemd user unit:
+
+```bash
+tmux new-session -d -s route-a 'bash tools/route_a/route_a.sh 2>&1 | tee -a route-a.console.log'
+```
+
+```bash
+systemd-run --user --unit route-a --working-directory "$PWD" \
+  --setenv=ROUTE_A_ENV="$PWD/tools/route_a/route_a.env" \
+  bash tools/route_a/route_a.sh
+loginctl enable-linger "$USER"   # keeps user units running after logout
+```
+
+The driver holds a lock under `RUN_ROOT`, so a second start refuses while the
+first runs. `journalctl --user -u route-a` shows a systemd run's console output;
+the driver's own log stays in `RUN_ROOT`.
 
 ## Stages and gates
 
@@ -221,8 +283,10 @@ overnight chain is alive, unless `EARLY_START_AFTER_HEAVY=1` and its log records
 | `prefetch` | Fetches the ASEC unemployment archive, SCF summary/full extracts, SIPP financial-assets/tips donors and ORG donor through the release's fetch helpers. Exit 0 is required before release. An initial failure lets the base proceed; release retries it. |
 | `base` | Runs `build_us_puf_support_base.py --stage all` on the pinned raw inputs, with seed 0, 32 estimators, target year 2024, district assignment/crosswalk and block ladder. Requires exit 0 and the expected H5, then hashes it. |
 | `preflight-base` | Runs `preflight_us_release_gates.py` on that H5 and the pinned feed, with the configured new-lineage mode and optional export-mass reference. Accepts 0 (clean) or 2 (AT-RISK); `RELEASE_DESPITE_PREFLIGHT_FAIL=1` also accepts 1 here. |
+| `release-dry-run` | With `ROUTE_A_DRY_RUN=1`, the default, and before the release starts: runs `tools/dry_run_us_release_gates.py --release-config <run>/release-config.json`, which replays the release's base load, input stages and pre-solve gates and grades every data-dependent register at base weights, with the release stage's launcher. Accepts 0 (clean) or 2 (AT-RISK only); 1, a certain failure, stops the run before the release. It holds for the release settings it checked: `<run>/release-dry-run.key` is their digest without the build ID, and other settings dry-run again. |
 | `release` | Runs `build_us_fiscal_refresh_release.py --base-h5` with the feed, SSI basis, SCF extract and configured release arguments; its `--release-id` is the build ID. Accepts exit 0, or 3 for a build that failed its release gates once its H5 and record were written, and requires `<release-out>/build_record.json`. Staging telemetry is enabled for this stage. Without `--certify` the run ends here with `ROUTE_A_BUILT.json`. |
-| `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>`, with `--evidence-release` (and `--evidence-failure-owners`) when `ROUTE_A_CERTIFY_TIER=evidence`; with `ROUTE_A_CERTIFY=1` the commit check, before any stage, requires the certification parser at the build commit to declare them. Certification stages where its build staged, in a run of its own, so with `ROUTE_A_STAGING=1` it gets the release stage's staging credential; with `ROUTE_A_STAGING=0` it runs as the release stage does, online without the HF credential variables, and with `--no-staging`. Requires exit 0 and `<release-out>/releases/<release>/release_manifest.json`, `<release>` being `microcosm-us-2024-national` or, at the evidence tier, `microcosm-us-2024-evidence`. |
+| `certify` | With `--certify` only: runs `tools/certify_us_national_build.py <release-out>`, with `--evidence-release` (and `--evidence-failure-owners`) when `ROUTE_A_CERTIFY_TIER=evidence`; the commit check, before any stage and on every run, since each build is certified at its commit later, requires `tools/certify_us_national_build.py` and the certification parser at the build commit, declaring them. Certification stages where its build staged, in a run of its own, so with `ROUTE_A_STAGING=1` it gets the release stage's staging credential; with `ROUTE_A_STAGING=0` it runs as the release stage does, online without the HF credential variables, and with `--no-staging`. Requires exit 0 and `<release-out>/releases/<release>/release_manifest.json`, `<release>` being `microcosm-us-2024-national` or, at the evidence tier, `microcosm-us-2024-evidence`. |
+| `probe-sample`, `probe` | With `--probe` only, on an accepted build: `tools/sample_us_export_households.py` draws a 5% household sample of the written H5 into `<run>/probe/subsample`, and `tools/probe_us_post_export.py` runs certification's post-export checks on it into `<run>/probe/report`, without the QRF tail and stored-input stages. A build that passed its gates is the probe's reference (its build directory). A failed build is none, nor is one whose certification found gates failing (`certification_failures.json`, counting only attempts on its own record), so their fit and target surface come from the record. Both require exit 0, and the run then stops. |
 | `preflight-release` | Repeats the release-gate preflight with the candidate's release manifest. Accepts 0 or 2. |
 | `publisher-preflight` | Runs `microcosm-publish-release-build --preflight-only` against the release directory certification placed the build in, `<release-out>/releases/<release>`, and the artifacts. Requires exit 0. The command checks the build with its release contract (the evidence contract for the evidence release), prints what it would publish, and starts no emitter. It takes no `--extra-file`: the command publishes every artifact the release manifest lists, including the two SCF education-debt fit tables of a release run with `--scf-education-debt` in `RELEASE_EXTRA_ARGS`. |
 
@@ -241,7 +305,10 @@ Every stage runs through the supervisor's admission check and limits:
 | prefetch | 16 | 12 | 26 | 10800 | 20000 |
 | base | 100 | 80 | max(26, 70 − checkpoint GiB) | 21600 | 64800 |
 | gate preflights | 24 | 16 | 22 | 3600 | 7200 |
+| release-dry-run | 110 | `RELEASE_RAM_GIB` (example: 50) | 22 | 14400 | 50000 |
 | release | 110 | `RELEASE_RAM_GIB` (example: 50) | 45 | `RELEASE_WALL_SECONDS` (example: 345600) | 2000000 |
+| probe-sample | 16 | 8 | 10 | 7200 | 14400 |
+| probe | 64 | 32 | 10 | 172800 | 800000 |
 | certify | 110 | `RELEASE_RAM_GIB` (example: 50) | 45 | `CERTIFY_WALL_SECONDS` (default: 345600) | 2000000 |
 | publisher preflight | 24 | 16 | 22 | 7200 | 14400 |
 
@@ -264,7 +331,20 @@ On restart, accepted stages are skipped; a result with `refusal: null` and an
 allowed return code can be accepted without rerunning. A live prior supervisor
 is waited for, and failed/refused directories are moved aside. Base stages
 resume by completed checkpoint prefix. Failed release attempts get a new
-release ID while retaining the shared checkpoint root. With
+release ID while retaining the shared checkpoint root. A rerun without
+`--certify` or `--probe` keeps an accepted build only for the release
+settings it was built with: with others, which its
+`release-sup/COMMAND.json` tells apart, it stops and names `--rebuild`.
+It also compares `<run>/release-inputs.key`, the digest of what the
+release read by path when it was launched (the base H5, the release's
+pinned inputs and the export input-mass reference), so a file replaced
+in place under the same path stops it too. The dry run's settings key
+carries the same digest.
+`--rebuild` moves the accepted release, its probe and its
+`ROUTE_A_BUILT.json` aside (`*.set-aside-<time>`), so the release builds again on the accepted base
+under a new ID, and the dry run's settings key decides whether the dry run
+runs again; it refuses a certified build, and a change to the base's inputs
+needs a fresh `RUN_ROOT`. With
 `PRUNE_BASE_CHECKPOINTS=1`, base `*.frame.h5` files are removed after hashing the
 finished H5. A run without `--certify` ends with `ROUTE_A_BUILT.json`, which
 records the build, its directory and record, whether its release gates

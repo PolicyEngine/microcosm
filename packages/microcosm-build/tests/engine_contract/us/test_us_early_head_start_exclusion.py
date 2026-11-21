@@ -4,14 +4,14 @@
 from test_support.microcosm_build.us_early_head_start_exclusion import *
 
 
-def test_policyengine_2_2_1_requires_under_3_or_pregnant_person_input() -> None:
+def test_policyengine_2_145_3_requires_under_3_or_pregnant_person_input() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     system = CountryTaxBenefitSystem()
     evidence = _entry()["evidence"]["policyengine_variable"]
     assert evidence == {
-        "version": "2.2.1",
+        "version": "2.145.3",
         "entity": "person",
         "definition_period": "year",
         "value_type": "bool",

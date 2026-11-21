@@ -259,6 +259,51 @@ def test_a_separately_certified_build_needs_its_own_staging_too(
     assert _staging_undelivered(tmp_path) is undelivered
 
 
+_V2_STAGED = _version_2_delivery()
+_V2_UNDELIVERED = _version_2_delivery(upload_attempts=3, upload_successes=0)
+_V2_OPTED_OUT = _version_2_delivery(
+    enabled=False,
+    mode="disabled",
+    run_id=None,
+    configured_repository=None,
+    upload_attempts=0,
+    upload_successes=0,
+    opt_out_reason="--no-staging",
+)
+
+
+@pytest.mark.parametrize(
+    ("certification", "build", "undelivered"),
+    [
+        # Both version 2, or one version 2 beside the earlier shape.
+        (_V2_STAGED, _V2_STAGED, False),
+        (_V2_OPTED_OUT, _V2_STAGED, False),
+        (_V2_STAGED, _STAGED, False),
+        (_STAGED, _V2_STAGED, False),
+        (_V2_OPTED_OUT, _V2_OPTED_OUT, False),
+        # The build's own version 2 uploads never arrived.
+        (_V2_STAGED, _V2_UNDELIVERED, True),
+        (_V2_OPTED_OUT, _V2_UNDELIVERED, True),
+        (_STAGED, _version_2_delivery(contract_version=999), True),
+        # The certification's own version 2 uploads never arrived.
+        (_V2_UNDELIVERED, _V2_STAGED, True),
+        (_V2_UNDELIVERED, _STAGED, True),
+        # A version 2 block is read with its own rules inside the nesting:
+        # one key too many is refused there as it is at the top level.
+        ({**_V2_STAGED, "extra": 1}, _V2_STAGED, True),
+        (_V2_STAGED, {**_V2_STAGED, "extra": 1}, True),
+    ],
+)
+def test_a_separately_certified_build_reads_version_2_staging_blocks(
+    tmp_path, certification, build, undelivered
+):
+    """Each of the two blocks a separately certified build carries, the
+    certification's and the build's own under ``build``, is read with the
+    rules of its own shape, version 2 included (review of #1681)."""
+    _write_bm(tmp_path, {"build_id": "x", "staging": {**certification, "build": build}})
+    assert _staging_undelivered(tmp_path) is undelivered
+
+
 def test_publish_refuses_a_certified_build_whose_own_staging_never_arrived(
     tmp_path, capsys, monkeypatch
 ):

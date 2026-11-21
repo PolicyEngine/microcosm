@@ -54,6 +54,13 @@ def test_policyengine_us_graph_uses_positive_annual_received_and_expense() -> No
         active.calculate("spm_unit_spm_expenses", 2024)[0]
         - baseline.calculate("spm_unit_spm_expenses", 2024)[0]
     ) == pytest.approx(2_400.0)
-    assert active.calculate("snap_child_support_deduction", "2024-01")[
+    # The expense reaches SNAP as the countable monthly payment. California
+    # excludes it from gross income in policyengine-us 2.145.3, so the
+    # net-income deduction (the path in states that deduct it) stays zero.
+    assert active.calculate("snap_countable_child_support_expense", "2024-01")[
         0
     ] == pytest.approx(200.0)
+    assert active.calculate("snap_child_support_gross_income_deduction", "2024-01")[
+        0
+    ] == pytest.approx(200.0)
+    assert active.calculate("snap_child_support_deduction", "2024-01")[0] == 0.0

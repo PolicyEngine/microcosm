@@ -1,0 +1,1 @@
+The US release's batched target and reform materialization works on policyengine-core 3.36.1. Core 3.36.1's `clone` binds a copied method to the copy, so the hook that retains engine branches could not find a branch's parent and stopped with a `KeyError`; it now takes the parent from the call that made the branch.
