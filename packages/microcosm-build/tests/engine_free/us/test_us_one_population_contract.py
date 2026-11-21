@@ -40,10 +40,10 @@ Phase 4 covers X5, the whole-frame differential: on an ASEC-only population
 provenance-reading gate returns the same verdict and statistics before and
 after ``to_assembled_provenance`` with no ACS row, one parametrized case per
 reader; ``acs_local_hours`` is left out, its donor prep refusing the
-assembled population. Lead call L7 (11-18) adds the same check on verdicts:
-a clone-only defect for each of two readers (a clone's ``MCARE`` mismatch,
-a clone's weeks with no unemployment compensation) fails Route A's gate and
-must fail the assembled one with the same failures.
+assembled population. Lead call L7 (11-18) adds the same check on failing
+gates: a clone-only defect for each of two readers (a clone's ``MCARE``
+mismatch, a clone's weeks with no unemployment compensation) fails Route A's
+gate, and the assembled one must return the same verdict and statistics.
 
 The PR #1685 review (round 1) adds: R6's refusal of ``pd.NA`` in an exempt
 column, with None and NaN still passing (blocking 1); staging's lineage
@@ -7048,8 +7048,9 @@ def test_each_clone_defect_changes_one_clone_cell(readers, defect_readers) -> No
 
 @pytest.mark.parametrize("defect", sorted(READER_CLONE_DEFECTS))
 def test_a_clone_only_defect_keeps_route_a_verdict(defect_readers, defect) -> None:
-    """X5 on verdicts (lead call L7): a defect on one clone row fails Route
-    A's gate, so the assembled gate must fail with the same failures.
+    """X5 on failing gates (lead call L7): a defect on one clone row fails
+    Route A's gate, so the assembled gate must fail with the same failures
+    and return the same statistics, every detail included.
 
     The defect frame's builder and
     ``test_each_clone_defect_changes_one_clone_cell`` check that Route A's
@@ -7064,6 +7065,7 @@ def test_a_clone_only_defect_keeps_route_a_verdict(defect_readers, defect) -> No
         route_a["passed"],
         route_a["failures"],
     )
+    assert _x5_differences(route_a, assembled) == []
 
 
 def test_the_local_hours_donor_refuses_the_assembled_population(readers) -> None:
