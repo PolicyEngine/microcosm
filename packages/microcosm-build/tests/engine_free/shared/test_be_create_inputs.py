@@ -24,13 +24,20 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.ledger_targets import (
+    fact_matches_selector,
+    reference_fact_selectors,
+)
 from microcosm.build.reference_profiles import REFERENCE_DOCUMENT_KEYS
 from microcosm.build.transport.compose import (
     load_transport_spec,
     validate_transport_activation,
 )
 from microcosm.build.transport.population_kernels import TRANSPORT_CREATE
-from microcosm.build.transport.target_kernels import compile_target_surface
+from microcosm.build.transport.target_kernels import (
+    compile_target_surface,
+    parse_reference_document,
+)
 from microcosm.graph import KernelContext
 from test_support.microcosm_build.transport_graph import canonical_text
 from test_support.microcosm_build.transport_population import (
@@ -130,6 +137,10 @@ def _node_view(document):
     return {
         key: value for key, value in document.items() if key in REFERENCE_DOCUMENT_KEYS
     }
+
+
+def _parsed_references(name):
+    return parse_reference_document(_node_view(_document(name)), country="be")
 
 
 def _sources(tmp_path, facts=None):
@@ -408,23 +419,24 @@ def test_create_inputs_leave_activation_gaps_unchanged(tmp_path):
     ["holdout_references.json", "precal_references.json", "target_references.json"],
 )
 def test_no_other_belgian_row_selects_the_mass_fact(name):
-    """The mass fact feeds CREATE only: no holdout, pre-calibration or
-    calibration row selects it, by key or by series, period and geography."""
-    mass = _document("mass_references.json")["target_references"][0]["ledger_selector"]
+    """The mass fact feeds CREATE only, by the Ledger's own matcher.
 
-    def series(selector):
-        return (
-            selector.get("source_concept"),
-            selector.get("period_value"),
-            selector.get("geography_id"),
-        )
-
-    rows = _document(name)["target_references"]
-    assert rows
-    for row in rows:
-        selector = row["ledger_selector"]
-        assert selector.get("aggregate_fact_key") != mass["aggregate_fact_key"]
-        assert series(selector) != series(mass), row["name"]
+    The packaged mass row selects the fixture's 2025 fact, and no selector of
+    any holdout, pre-calibration or calibration row matches that fact, ratio
+    operands included. (The 2026 fact is the ageing pair's numerator in ten
+    A.1 rows; the 2025 fact is CREATE's alone.)
+    """
+    mass_fact = _fixture_facts()[0]
+    (mass,) = _parsed_references("mass_references.json")
+    assert any(
+        fact_matches_selector(mass_fact, selector)
+        for selector in reference_fact_selectors(mass)
+    )
+    references = _parsed_references(name)
+    assert len(references) == len(_document(name)["target_references"]) > 0
+    for reference in references:
+        for selector in reference_fact_selectors(reference):
+            assert not fact_matches_selector(mass_fact, selector), reference.name
 
 
 @pytest.fixture(scope="module")
@@ -441,13 +453,12 @@ def test_feed_mass_row_resolves_to_the_generator_observed_fpb_level(artifact_pat
     provenance = json.loads(
         _FIXTURE.with_name(_FIXTURE.name + ".provenance.json").read_text()
     )
-    recorded = {
-        entry["artifact_line"]: line
-        for entry, line in zip(
-            provenance["lines"], _FIXTURE.read_bytes().splitlines(), strict=True
-        )
-    }
-    assert list(recorded) == sorted(recorded)
+    numbers = [entry["artifact_line"] for entry in provenance["lines"]]
+    # Strictly increasing, so no two entries collapse into one below.
+    assert numbers == sorted(set(numbers))
+    recorded = dict(
+        zip(numbers, _FIXTURE.read_bytes().splitlines(), strict=True),
+    )
     found = {}
     with (artifact_path / "consumer_facts.jsonl").open("rb") as facts:
         for number, line in enumerate(facts, start=1):
