@@ -2258,6 +2258,7 @@ def _write_dataset(
     back; the default writes none, so a legacy file is unchanged.
     """
 
+    frame.check_shared_columns()
     output = Path(path)
     output.unlink(missing_ok=True)
     try:

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -19,10 +21,13 @@ from microcosm.frame import (
     EntitySchema,
     Frame,
     LinkSpec,
+    MassChange,
     MassChangeRecord,
+    SharedColumnChangedError,
     WeightKind,
     Weights,
 )
+from microcosm.frame import shared_columns as shared_columns_module
 
 
 def _checkpoint_frame() -> Frame:
@@ -741,3 +746,391 @@ def test_legacy_string_specs_restore_python_storage() -> None:
             path=Path("legacy.h5"),
             label="person.label",
         )
+
+
+@pytest.fixture
+def copy_on_write_on() -> Iterator[None]:
+    """Turn copy-on-write on under pandas 2.x; pandas 3 always has it on."""
+
+    if int(pd.__version__.split(".", 1)[0]) >= 3:
+        yield
+        return
+    with pd.option_context("mode.copy_on_write", True):
+        yield
+
+
+def test_loader_keeps_the_decoded_columns_without_copying(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, copy_on_write_on: None
+) -> None:
+    """The loaded frame holds the columns the loader decoded, not a copy.
+
+    The loader builds its one frame through ``Frame._adopt``, so reading a
+    checkpoint holds one copy of the data instead of the decoded columns plus
+    the constructor's copy of them.
+    """
+    path = tmp_path / "frame.h5"
+    write_frame_checkpoint(path, _checkpoint_frame())
+    decoded: dict[str, pd.Series] = {}
+    read_series = frame_checkpoint_module._read_series
+
+    def recording_read_series(group, spec, input_path, *, label):
+        series = read_series(group, spec, input_path, label=label)
+        decoded[label] = series
+        return series
+
+    monkeypatch.setattr(frame_checkpoint_module, "_read_series", recording_read_series)
+
+    loaded = load_frame_checkpoint(path).frame
+
+    compared = []
+    for name, table in frame_checkpoint_module._frame_tables(loaded):
+        for column in table.select_dtypes("number").columns:
+            assert np.shares_memory(
+                table[column].to_numpy(), decoded[f"{name}.{column}"].to_numpy()
+            ), f"{name}.{column}"
+            compared.append(f"{name}.{column}")
+    assert {"person.float_measure", "household.household_income"} <= set(compared)
+
+
+def _named_axes_frame() -> Frame:
+    """The checkpoint fixture with named column axes on two of its tables."""
+
+    frame = _checkpoint_frame()
+    tables = dict(frame_checkpoint_module._frame_tables(frame))
+    for name in ("person", "household"):
+        tables[name] = tables[name].copy()
+        tables[name].columns.name = f"{name}_fields"
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+#: Source frames for the checkpoint comparisons below.
+_SOURCE_FRAMES = {
+    "fixture": _checkpoint_frame,
+    "named column axes": _named_axes_frame,
+}
+
+
+def _without_links(frame: Frame) -> Frame:
+    """The frame with its link tables dropped, which ``Frame.select`` requires."""
+
+    return Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        EntitySchema(
+            person_entity=frame.schema.person_entity,
+            group_entities=frame.schema.group_entities,
+        ),
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _doubled_household_weights(frame: Frame) -> Frame:
+    current = frame.weights_for("household")
+    return frame.with_weights(
+        "household",
+        Weights(current.values * 2.0, WeightKind.CALIBRATED),
+        mass=MassChange(factor=2.0, reason="test calibration"),
+    )
+
+
+#: Operations that build their result through ``Frame._adopt``.
+_ADOPTING_OPERATIONS = {
+    "with_weights": _doubled_household_weights,
+    "place person to household": lambda frame: frame.place(
+        "small_integer", "household", how="sum"
+    ),
+    "place household to person": lambda frame: frame.place(
+        "household_income", "person", how="broadcast"
+    ),
+    "place a string to firm": lambda frame: frame.place(
+        "string_label", "firm", how="first"
+    ),
+    "select every person": lambda frame: _without_links(frame).select(
+        np.ones(frame.n("person"), dtype=bool)
+    ),
+    "select two persons": lambda frame: _without_links(frame).select(
+        np.asarray([True, False, True])
+    ),
+    "no operation": lambda frame: frame,
+}
+
+
+def _derived_frame(
+    directory: Path, source_frame: str, source: str, operation: str
+) -> Frame:
+    """Run ``operation`` on a source frame, built directly or loaded from disk."""
+
+    frame = _SOURCE_FRAMES[source_frame]()
+    if source == "loaded":
+        write_frame_checkpoint(directory / "source.h5", frame)
+        frame = load_frame_checkpoint(directory / "source.h5").frame
+    return _ADOPTING_OPERATIONS[operation](frame)
+
+
+def _checkpoint_content_sha256(path: Path) -> str:
+    """SHA-256 of every dataset in a checkpoint: its name, dtype, shape and bytes.
+
+    The metadata JSON is one of the datasets. Hashing what the datasets hold,
+    rather than the file, keeps the digest independent of the HDF5 build,
+    whose file layout differs between platforms.
+    """
+
+    h5py = pytest.importorskip("h5py")
+    digest = hashlib.sha256()
+    with h5py.File(path, mode="r") as h5:
+        dataset_names: list[str] = []
+        h5.visititems(
+            lambda name, item: (
+                dataset_names.append(name) if isinstance(item, h5py.Dataset) else None
+            )
+        )
+        for name in sorted(dataset_names):
+            values = np.asarray(h5[name])
+            digest.update(f"{name}\0{values.dtype.str}\0{values.shape!r}\0".encode())
+            digest.update(values.tobytes())
+    return digest.hexdigest()
+
+
+#: Checkpoint content digests of each operation's result, recorded with the
+#: copying implementation at commit 8afea44e9, before ``with_weights``,
+#: ``place``, ``select`` and the loader moved to ``Frame._adopt``.
+_COPYING_IMPLEMENTATION_CONTENT_SHA256: dict[tuple[str, str, str], str] = {
+    (
+        "fixture",
+        "constructed",
+        "with_weights",
+    ): "a3f0e69dd495e6f9e45caa4d13851a9356c7810df828fbe2bdba38a94272db72",
+    (
+        "fixture",
+        "constructed",
+        "place person to household",
+    ): "9f5e81635306d47e73ae0fb4b593edcf1f47b6b40c865197e641a9b1adfb89c5",
+    (
+        "fixture",
+        "constructed",
+        "place household to person",
+    ): "92eafb157899735517c357a02459528b5f8b9d08a5f6c070a79d4cb043bd314b",
+    (
+        "fixture",
+        "constructed",
+        "place a string to firm",
+    ): "a7314048203f36611c2ff9011150b5bda8476407b618949756f681df5c82cb7b",
+    (
+        "fixture",
+        "constructed",
+        "select every person",
+    ): "05ef02724683caa4e5815702b3a2d291573c8e39fba9022e4b3360da4054d0e8",
+    (
+        "fixture",
+        "constructed",
+        "select two persons",
+    ): "4a4dc266b99efa4075a3bbf45163040e21445a62da8d0c2eee7a4fd06abc0672",
+    (
+        "fixture",
+        "constructed",
+        "no operation",
+    ): "ad3d5745332e9725b941f2db6e1eb60e5d93dfdd5204fefe3497e7c702b5e543",
+    (
+        "fixture",
+        "loaded",
+        "with_weights",
+    ): "a3f0e69dd495e6f9e45caa4d13851a9356c7810df828fbe2bdba38a94272db72",
+    (
+        "fixture",
+        "loaded",
+        "place person to household",
+    ): "9f5e81635306d47e73ae0fb4b593edcf1f47b6b40c865197e641a9b1adfb89c5",
+    (
+        "fixture",
+        "loaded",
+        "place household to person",
+    ): "92eafb157899735517c357a02459528b5f8b9d08a5f6c070a79d4cb043bd314b",
+    (
+        "fixture",
+        "loaded",
+        "place a string to firm",
+    ): "a7314048203f36611c2ff9011150b5bda8476407b618949756f681df5c82cb7b",
+    (
+        "fixture",
+        "loaded",
+        "select every person",
+    ): "05ef02724683caa4e5815702b3a2d291573c8e39fba9022e4b3360da4054d0e8",
+    (
+        "fixture",
+        "loaded",
+        "select two persons",
+    ): "4a4dc266b99efa4075a3bbf45163040e21445a62da8d0c2eee7a4fd06abc0672",
+    (
+        "fixture",
+        "loaded",
+        "no operation",
+    ): "ad3d5745332e9725b941f2db6e1eb60e5d93dfdd5204fefe3497e7c702b5e543",
+    (
+        "named column axes",
+        "constructed",
+        "with_weights",
+    ): "f29f6e2ff48a87b5ea477b673c1d9947b1a58cb235dbee2eb83aaf72f15e37f9",
+    (
+        "named column axes",
+        "constructed",
+        "place person to household",
+    ): "dc49c663387ebf528fd5586eab0067981d972bc02f8ab7e2f15615c25481ed27",
+    (
+        "named column axes",
+        "constructed",
+        "place household to person",
+    ): "e6d89ab3373d5057399ef4983bad424bbab31399bd25b95c1743951474c3a83e",
+    (
+        "named column axes",
+        "constructed",
+        "place a string to firm",
+    ): "995b70f552de6b61271ef88b6ea6f2ed3912e01c9e585ce9c11fa18e7e0358b6",
+    (
+        "named column axes",
+        "constructed",
+        "select every person",
+    ): "8cb1bcfff2e6c27fb8067c5a9bc3745704aab1f5e67073093d2ca581e108c4b9",
+    (
+        "named column axes",
+        "constructed",
+        "select two persons",
+    ): "d7e010959ae5b3f231bd64ace603b4b529bbe66fda946da0750df0b2f5ea8c30",
+    (
+        "named column axes",
+        "constructed",
+        "no operation",
+    ): "56c83a3998b88b9a950bf1da9ffb506a79f6d6666669de04e8ee76fd4b3ba53c",
+    (
+        "named column axes",
+        "loaded",
+        "with_weights",
+    ): "f29f6e2ff48a87b5ea477b673c1d9947b1a58cb235dbee2eb83aaf72f15e37f9",
+    (
+        "named column axes",
+        "loaded",
+        "place person to household",
+    ): "dc49c663387ebf528fd5586eab0067981d972bc02f8ab7e2f15615c25481ed27",
+    (
+        "named column axes",
+        "loaded",
+        "place household to person",
+    ): "e6d89ab3373d5057399ef4983bad424bbab31399bd25b95c1743951474c3a83e",
+    (
+        "named column axes",
+        "loaded",
+        "place a string to firm",
+    ): "995b70f552de6b61271ef88b6ea6f2ed3912e01c9e585ce9c11fa18e7e0358b6",
+    (
+        "named column axes",
+        "loaded",
+        "select every person",
+    ): "8cb1bcfff2e6c27fb8067c5a9bc3745704aab1f5e67073093d2ca581e108c4b9",
+    (
+        "named column axes",
+        "loaded",
+        "select two persons",
+    ): "d7e010959ae5b3f231bd64ace603b4b529bbe66fda946da0750df0b2f5ea8c30",
+    (
+        "named column axes",
+        "loaded",
+        "no operation",
+    ): "56c83a3998b88b9a950bf1da9ffb506a79f6d6666669de04e8ee76fd4b3ba53c",
+}
+
+
+_COMPARISON_CASES = [
+    (source_frame, source, operation)
+    for source_frame in _SOURCE_FRAMES
+    for source in ("constructed", "loaded")
+    for operation in _ADOPTING_OPERATIONS
+]
+
+
+@pytest.mark.parametrize(("source_frame", "source", "operation"), _COMPARISON_CASES)
+def test_adopted_frames_write_the_checkpoint_content_of_the_copying_code(
+    tmp_path: Path, source_frame: str, source: str, operation: str
+) -> None:
+    """Each operation's result writes what the copying implementation wrote."""
+
+    derived = _derived_frame(tmp_path, source_frame, source, operation)
+    write_frame_checkpoint(tmp_path / "derived.h5", derived)
+
+    assert (
+        _checkpoint_content_sha256(tmp_path / "derived.h5")
+        == _COPYING_IMPLEMENTATION_CONTENT_SHA256[(source_frame, source, operation)]
+    )
+
+
+@pytest.mark.parametrize(("source_frame", "source", "operation"), _COMPARISON_CASES)
+def test_adopted_frames_write_the_bytes_of_copied_frames(
+    tmp_path: Path, source_frame: str, source: str, operation: str
+) -> None:
+    """A shared table layout writes the same file as a copied one.
+
+    The reference rebuilds the derived frame through the copying constructor,
+    which merges each table's internal blocks. Both files are written in this
+    process, so the comparison does not depend on HDF5 library bytes that
+    differ between platforms.
+    """
+
+    derived = _derived_frame(tmp_path, source_frame, source, operation)
+    copied = Frame(
+        dict(frame_checkpoint_module._frame_tables(derived)),
+        derived.schema,
+        {entity: derived.weights_for(entity) for entity in derived.weighted_entities},
+        derived.strata,
+        mass_log=derived.mass_log,
+        metadata=derived.metadata,
+    )
+
+    write_frame_checkpoint(tmp_path / "derived.h5", derived)
+    write_frame_checkpoint(tmp_path / "copied.h5", copied)
+
+    assert (tmp_path / "derived.h5").read_bytes() == (
+        tmp_path / "copied.h5"
+    ).read_bytes()
+
+
+def test_writer_refuses_a_frame_whose_shared_column_changed(tmp_path: Path) -> None:
+    source = _checkpoint_frame()
+    shared = source.replace_tables()
+    np.add.at(source.table("person")["float_measure"].to_numpy(), [0], 1.0)
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        write_frame_checkpoint(tmp_path / "frame.h5", shared)
+
+    assert raised.value.changed_columns == (("person", "float_measure"),)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_loading_hashes_nothing_until_a_loaded_column_is_shared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "frame.h5"
+    write_frame_checkpoint(path, _checkpoint_frame())
+    hashed_lengths: list[int] = []
+    original_digest = shared_columns_module._buffer_digest
+
+    def counting_digest(stored: shared_columns_module._StoredArray) -> bytes:
+        hashed_lengths.append(len(stored.values))
+        return original_digest(stored)
+
+    monkeypatch.setattr(shared_columns_module, "_buffer_digest", counting_digest)
+
+    loaded = load_frame_checkpoint(path).frame
+    assert hashed_lengths == []
+
+    shared = loaded.replace_tables()
+    assert hashed_lengths != []
+    np.add.at(loaded.table("person")["float_measure"].to_numpy(), [0], 1.0)
+    with pytest.raises(SharedColumnChangedError):
+        shared.check_shared_columns()

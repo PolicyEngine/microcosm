@@ -1,7 +1,8 @@
 """A syntactic check for raw writes that pandas copy-on-write does not protect.
 
-:meth:`Frame.replace_tables` and :meth:`Frame.with_columns` build frames that
-share the memory of every unchanged column with their source frame
+:meth:`Frame.replace_tables`, :meth:`Frame.with_columns`,
+:meth:`Frame.with_weights`, :meth:`Frame.place` and :meth:`Frame.select` build
+frames that share the memory of unchanged columns with their source frame
 (:meth:`Frame._adopt`). pandas copy-on-write keeps a write made through pandas
 (``.loc``, column assignment, in-place methods) on one frame from reaching
 the other, but it does not see a raw write into the shared memory. Checked
@@ -136,6 +137,26 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "which _pre_residential_household_weights creates with "
         "np.asarray(...).copy() from the household weights. Review again if "
         "either of those functions changes."
+    ),
+    (
+        "packages/microcosm-frame/src/microcosm/frame/shared_columns.py",
+        "_column_buffers",
+        "pandas-private-attribute",
+        "values._data",
+        "64ca7d79dc01",
+    ): (
+        "Read only, so the shared-column check can hash a nullable column's "
+        "values. pandas has no public access to them when values are missing."
+    ),
+    (
+        "packages/microcosm-frame/src/microcosm/frame/shared_columns.py",
+        "_column_buffers",
+        "pandas-private-attribute",
+        "values._mask",
+        "64ca7d79dc01",
+    ): (
+        "Read only, so the shared-column check can hash a nullable column's "
+        "missing-value mask. pandas exposes only a copy of it."
     ),
 }
 

@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame.bundle import Frame
+from microcosm.frame.shared_columns import check_shared_columns
 
 __all__ = [
     "PyTablesBooleanMaterialization",
@@ -156,8 +157,14 @@ def put_frame_table(
     preferred_format: str,
     data_columns: bool | list[str] | None = None,
 ) -> PyTablesBooleanMaterialization:
-    """Write one Frame table through the shared nullable-boolean boundary."""
+    """Write one Frame table through the shared nullable-boolean boundary.
 
+    Raises:
+        SharedColumnChangedError: If a raw write changed a column of ``table``
+            that frames share. Nothing is written for this table.
+    """
+
+    check_shared_columns({key: table})
     materialized = materialize_nullable_booleans_for_pytables(table)
     hdf_format = materialized.hdf_format(preferred_format)
     options: dict[str, object] = {}
@@ -282,8 +289,13 @@ def engine_tables(
         Entity name -> copied table, in :attr:`Frame.entities` order, with
         each selected entity's ``{entity}_weight`` column overwritten from
         its typed weights.
+
+    Raises:
+        SharedColumnChangedError: If a raw write changed a column the frame
+            shares. The copies made here could not show it later.
     """
 
+    frame.check_shared_columns()
     tables = {name: frame.table(name).copy() for name in frame.entities}
     selected = (
         frame.weighted_entities

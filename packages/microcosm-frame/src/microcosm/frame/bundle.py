@@ -21,13 +21,19 @@ Frame operations return new frames. Entity-table access follows a read-only
 caller convention; integrity-critical receipts belong in the frame's private,
 immutable metadata rather than in mutable table columns.
 
-The constructor deep-copies every table it is given. :meth:`Frame.replace_tables`
-and :meth:`Frame.with_columns` instead build a frame that shares the memory of
-every unchanged column with its source frame when pandas copy-on-write is on,
-and deep-copy when it is off (see :meth:`Frame._adopt`).
+The constructor deep-copies every table it is given. :meth:`Frame.replace_tables`,
+:meth:`Frame.with_columns`, :meth:`Frame.with_weights`, :meth:`Frame.place` and
+:meth:`Frame.select` instead build a frame that shares the memory of every
+unchanged column with its source frame when pandas copy-on-write is on, and
+deep-copy when it is off (see :meth:`Frame._adopt`). Those operations record a
+digest of each column of this frame they start sharing, and
+:meth:`Frame.check_shared_columns` compares the digests, which finds a raw write
+into memory the checked frame still holds (see
+:mod:`microcosm.frame.shared_columns`).
 """
 
 import re
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -36,6 +42,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame.schema import EntitySchema
+from microcosm.frame.shared_columns import check_shared_columns, record_shared_columns
 from microcosm.frame.weights import (
     MassChange,
     MassChangeRecord,
@@ -113,6 +120,8 @@ class Frame:
         mass_log: tuple[MassChangeRecord, ...] = (),
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
+        # The deep copies made below could not show an earlier raw write.
+        check_shared_columns(tables, strata=strata)
         self._assemble(
             tables,
             schema,
@@ -158,7 +167,9 @@ class Frame:
         ``to_numpy()`` returns a writable view of the column's data for, for
         example, the nullable integer, float and boolean types when the
         column has no missing value, python-backed strings, and sparse
-        columns without gaps.
+        columns without gaps. :meth:`check_shared_columns` finds such a write
+        afterwards, for columns a frame operation recorded when it started
+        sharing them.
 
         When copy-on-write is off (the pandas 2.x default), a shallow copy
         shares data even for ordinary pandas writes, so the tables and strata
@@ -245,6 +256,22 @@ class Frame:
         self._validate_global_columns()
         self._validate_weights()
         self._validate_reserved_weight_columns()
+
+    def check_shared_columns(self) -> None:
+        """Refuse this frame if a raw write changed a column it shares.
+
+        Every table, link table and the strata are compared with the digests
+        recorded when frame operations started sharing their columns. Writers
+        of checkpoints and outputs call this first. Columns that were never
+        shared have no digest and cost nothing here.
+
+        Raises:
+            SharedColumnChangedError: Naming each changed table and column.
+        """
+        check_shared_columns(
+            {**self._tables, **self._link_tables},
+            strata=self._strata,
+        )
 
     def revalidate(self) -> None:
         """Re-run every constructor invariant against the current state.
@@ -841,7 +868,11 @@ class Frame:
                 :class:`~microcosm.frame.weights.MassChange`. Required.
 
         Returns:
-            A new validated bundle.
+            A new validated bundle. Its tables are built through
+            :meth:`_adopt`, so under pandas copy-on-write they share every
+            column's memory with this bundle; each bundle holds its own
+            DataFrame objects, so a write made through pandas to either
+            never reaches the other.
 
         Raises:
             TypeError: If ``weights`` is not a :class:`Weights`, or ``mass`` is
@@ -851,6 +882,47 @@ class Frame:
                 changed total (the message carries both totals), or a
                 :class:`MassChange` whose declared ``factor`` does not match
                 the realized ratio.
+        """
+        record = self._checked_weight_change(entity, weights, mass=mass)
+        new_weights = dict(self._weights)
+        new_weights[entity] = weights
+        new_mass_log = self._mass_log if record is None else (*self._mass_log, record)
+        return Frame._adopt(
+            self._shallow_table_copies(),
+            self._schema,
+            new_weights,
+            self._strata,
+            mass_log=new_mass_log,
+            metadata=self._metadata,
+        )
+
+    def _checked_weight_change(
+        self,
+        entity: str,
+        weights: Weights,
+        *,
+        mass: "str | MassChange",
+    ) -> MassChangeRecord | None:
+        """Check a replacement of ``entity``'s weights without building a frame.
+
+        Runs every check :meth:`with_weights` makes on the new weights before
+        it builds the new frame, with the same errors: the entity name, the
+        argument types, the kind transition, and the mass policy. A caller
+        that needs only the checked weights, such as
+        ``calibrate(return_frame=False)``, calls this instead of building a
+        frame it would discard. The constructor's checks, which
+        :meth:`with_weights` runs when it builds the frame, are not run: that
+        the weight vector's length matches the entity table, and every table
+        invariant this frame passed when it was built (those fail only if a
+        caller changed a table in place since; see :meth:`revalidate`).
+
+        Returns:
+            The :class:`~microcosm.frame.weights.MassChangeRecord` a
+            :class:`MassChange` policy appends to the mass log, or ``None``
+            under :data:`CONSERVE_MASS`.
+
+        Raises:
+            TypeError, ValueError: As :meth:`with_weights` raises them.
         """
         self.table(entity)  # validates the entity name
         if not isinstance(weights, Weights):
@@ -884,18 +956,20 @@ class Frame:
                 ) from None
         else:
             record = self._mass_change_record(entity, existing, weights, mass)
+        return record
 
-        new_weights = dict(self._weights)
-        new_weights[entity] = weights
-        new_mass_log = self._mass_log if record is None else (*self._mass_log, record)
-        return Frame(
-            {**self._tables, **self._link_tables},
-            self._schema,
-            new_weights,
-            self._strata,
-            mass_log=new_mass_log,
-            metadata=self._metadata,
-        )
+    def _shallow_table_copies(self) -> dict[str, pd.DataFrame]:
+        """A shallow copy of every entity and link table, keyed by name.
+
+        Each copy is a new DataFrame object over the same data. A frame built
+        from them through :meth:`_adopt` therefore shares this frame's column
+        memory under copy-on-write but never its DataFrame objects, so a
+        write made through pandas to either frame cannot reach the other.
+        The columns are recorded for :meth:`check_shared_columns`.
+        """
+        tables = {**self._tables, **self._link_tables}
+        _record_columns_being_shared(tables, strata=self._strata)
+        return {name: table.copy(deep=False) for name, table in tables.items()}
 
     @staticmethod
     def _mass_change_record(
@@ -935,7 +1009,9 @@ class Frame:
         pandas to either side never reaches the other. Each frame still holds
         its own DataFrame objects, so the caller may go on writing to the
         DataFrames it passed. Raw writes into the shared memory are not
-        protected (see :meth:`_adopt`). Weights, strata, the mass log and
+        protected (see :meth:`_adopt`). A replacement's columns are recorded
+        for :meth:`check_shared_columns` only once a later operation shares
+        them. Weights, strata, the mass log and
         metadata are carried unchanged. When copy-on-write is off, every
         table is deep-copied instead.
 
@@ -955,10 +1031,7 @@ class Frame:
         """
 
         _require_dataframes(changed_tables)
-        tables = {
-            name: table.copy(deep=False)
-            for name, table in {**self._tables, **self._link_tables}.items()
-        }
+        tables = self._shallow_table_copies()
         tables.update(
             {name: table.copy(deep=False) for name, table in changed_tables.items()}
         )
@@ -1096,7 +1169,10 @@ class Frame:
                 exactly one member per group.
 
         Returns:
-            A new validated bundle with the column on ``entity``.
+            A new validated bundle with the column on ``entity``, built
+            through :meth:`_adopt`: under pandas copy-on-write it shares the
+            memory of every column it does not move with this bundle, in
+            DataFrame objects of its own.
 
         Raises:
             ValueError: On unknown column/entity, structural columns, a
@@ -1141,13 +1217,18 @@ class Frame:
         else:
             placed = self._aggregate_group_to_group(column, owner, entity, values, how)
 
-        tables = {name: table for name, table in self._tables.items()}
-        tables.update(self._link_tables)
-        destination = tables[entity].copy()
-        destination[column] = placed
-        tables[entity] = destination
-        tables[owner] = tables[owner].drop(columns=[column])
-        return Frame(
+        tables = self._shallow_table_copies()
+        destination = tables[entity]
+        with warnings.catch_warnings():
+            # The shallow copy keeps the source table's internal blocks, and
+            # a table loaded from a checkpoint holds one block per column, so
+            # inserting into a wide table would warn that it is fragmented.
+            # Merging the blocks would copy the whole table; the inserted
+            # values and dtype are the same either way.
+            warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
+            destination[column] = placed
+        tables[owner] = self._tables[owner].drop(columns=[column])
+        return Frame._adopt(
             tables,
             self._schema,
             dict(self._weights),
@@ -1410,7 +1491,8 @@ class Frame:
         Returns:
             A new validated bundle containing the masked persons, the group
             rows they reference, the matching weight slices, and the matching
-            strata.
+            strata, built through :meth:`_adopt`: under pandas copy-on-write
+            the selected tables are not copied a second time.
 
         Raises:
             NotImplementedError: If the frame carries link tables (links are
@@ -1446,6 +1528,11 @@ class Frame:
             )
 
         person_entity = self._schema.person_entity
+        every_person_kept = bool(mask.all())
+        # A table keeps sharing its source's memory only when every row stays.
+        tables_kept_whole: dict[str, pd.DataFrame] = {}
+        if every_person_kept:
+            tables_kept_whole[person_entity] = person
         tables: dict[str, pd.DataFrame] = {person_entity: person.loc[mask]}
         weights: dict[str, Weights] = {}
         if person_entity in self._weights:
@@ -1460,6 +1547,8 @@ class Frame:
             referenced = np.unique(membership)
             table = self._tables[group]
             keep = table[self._schema.id_column(group)].isin(referenced).to_numpy()
+            if keep.all():
+                tables_kept_whole[group] = table
             tables[group] = table.loc[keep].reset_index(drop=True)
             if group in self._weights:
                 existing = self._weights[group]
@@ -1467,7 +1556,14 @@ class Frame:
                     existing.values[keep], kind=existing.kind
                 )
         strata = self._strata.loc[mask]
-        return Frame(
+        _record_columns_being_shared(
+            tables_kept_whole,
+            strata=self._strata if every_person_kept else None,
+        )
+        # Row selection makes new DataFrame objects, so the result can own
+        # them; under copy-on-write, a table that kept every row still shares
+        # the source's memory.
+        return Frame._adopt(
             tables,
             self._schema,
             weights,
@@ -1553,6 +1649,14 @@ def _require_dataframes(tables: Mapping[str, Any]) -> None:
                 f"Table {name!r} must be a pandas DataFrame, got "
                 f"{type(table).__name__}."
             )
+
+
+def _record_columns_being_shared(
+    tables: Mapping[str, pd.DataFrame], *, strata: pd.Series | None = None
+) -> None:
+    """Record columns a new frame will share; nothing is shared without copy-on-write."""
+    if _pandas_copy_on_write():
+        record_shared_columns(tables, strata=strata)
 
 
 def _pandas_copy_on_write() -> bool:
