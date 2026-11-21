@@ -148,8 +148,8 @@ What the later d2283 PRs owe this library:
   lists, the US data owner deciding.
 - PR 4 reads the id dtypes of staging's real pooled tables, then tightens
   :func:`_integral_ids`, which today passes object-held digit strings and
-  booleans through ``pd.to_numeric`` and refuses a boolean dtype and
-  complex or temporal data (lead call L5).
+  booleans through ``pd.to_numeric`` and refuses a boolean dtype and any
+  data but integers, real numbers and strings (lead call L5).
 - PR 4 writes both frame records into the population manifest: the spine
   assembly record :func:`to_assembled_provenance` puts under
   ``SPINE_ASSEMBLY_MANIFEST_KEY`` and the record
@@ -185,7 +185,7 @@ The module certifies no numbers: no build calls it yet.
 
 from __future__ import annotations
 
-import datetime
+import decimal
 import json
 import math
 import numbers
@@ -781,51 +781,105 @@ def _provenance_columns(entity: str) -> tuple[str, str, str, str, str]:
     )
 
 
-#: Scalar types a real-number read changes: ``pd.to_numeric`` keeps a
-#: complex value complex and the float64 conversion after it drops the
-#: imaginary part (``2024+1j`` reads as 2024), and it reads a
-#: ``numpy.timedelta64`` as its count of time units. ``pd.Timestamp`` and
-#: ``pd.Timedelta`` subclass the ``datetime`` types.
-_COMPLEX_OR_TEMPORAL_VALUES: tuple[type, ...] = (
-    complex,
-    np.complexfloating,
-    datetime.date,
-    datetime.time,
-    datetime.timedelta,
-    np.datetime64,
-    np.timedelta64,
-    pd.Period,
+#: Why :func:`_complex_or_temporal`'s refusals refuse, in their messages.
+_READ_AS_NUMBERS = (
+    "the contract reads only integer, real-number and string data as numbers, "
+    "since a conversion would drop an imaginary part, turn a time into a count "
+    "or misread other data."
 )
 
 
-def _complex_or_temporal(series: pd.Series) -> str | None:
-    """What complex or temporal data ``series`` holds, or None if none.
+def _is_real_number(value: object) -> bool:
+    """``value`` is a real-number scalar, and not a boolean or a numpy time.
 
-    A complex, datetime, timedelta or period dtype; a categorical whose
-    categories hold one; or such a value in an object column (PR #1685
-    review r2, should-fix 1). Each must refuse before any conversion to real
-    numbers, which would drop an imaginary part or turn a time into a count.
+    Numpy registers ``timedelta64`` as an integer (it derives it from
+    ``signedinteger``), so an ``isinstance`` test against :mod:`numbers`
+    takes it for one. Comparisons read it as its count of time units for
+    every unit, and for some units ``int()`` does too
+    (``np.timedelta64(1, "ns") in (1, 2, 3)`` holds). A ``timedelta64`` and a
+    ``datetime64`` are never numbers here (PR #1685 review r3, should-fix 2).
+    """
+
+    return isinstance(value, numbers.Real) and not isinstance(
+        value, bool | np.bool_ | np.timedelta64 | np.datetime64
+    )
+
+
+def _is_integer(value: object) -> bool:
+    """``value`` is an integer scalar: a real number (:func:`_is_real_number`)
+    of an integral type."""
+
+    return _is_real_number(value) and isinstance(value, numbers.Integral)
+
+
+def _readable_value(value: object) -> bool:
+    """``value`` may sit in an object column read as numbers.
+
+    A string, a real number (booleans included, which ``pd.to_numeric``
+    reads as 0 and 1, and ``decimal.Decimal``), or a null the null checks
+    after this one count. Anything else refuses: a complex value, a time,
+    and any other object ``pd.to_numeric`` might read as a number (a
+    zero-dimensional numpy array of a ``timedelta64`` or a complex value
+    reads as its count or its real part).
+    """
+
+    return (
+        value is None
+        or value is pd.NA
+        or isinstance(value, str | bytes | bool | np.bool_ | decimal.Decimal)
+        or _is_real_number(value)
+    )
+
+
+def _complex_or_temporal(series: pd.Series) -> str | None:
+    """What ``series`` holds other than integers, real numbers or strings.
+
+    Returns None when the data may be read as numbers. The name is older
+    than the rule: review r2 found complex and temporal data read as
+    numbers, and review r3 an Arrow dictionary of times (PR #1685,
+    should-fix 1 each), so the check now names the data it accepts and
+    refuses the rest. It reads the value type behind a categorical's
+    categories and behind an Arrow dictionary, then accepts an integer,
+    unsigned or floating type, a string type, or an object column whose
+    every value passes :func:`_readable_value`. Any other dtype refuses by
+    name: complex, datetime, timedelta, period, interval, boolean, Arrow
+    decimal and the rest.
     """
 
     dtype = series.dtype
     if isinstance(dtype, pd.CategoricalDtype):
         found = _complex_or_temporal(pd.Series(dtype.categories))
         return None if found is None else f"categories of {found}"
-    if getattr(dtype, "kind", None) in ("c", "m", "M") or isinstance(
-        dtype, pd.PeriodDtype
-    ):
-        return f"{dtype} values"
+    if isinstance(dtype, pd.ArrowDtype):
+        import pyarrow as pa
+
+        value_type = dtype.pyarrow_dtype
+        if pa.types.is_dictionary(value_type):
+            value_type = value_type.value_type
+        readable = (
+            pa.types.is_integer(value_type)
+            or pa.types.is_floating(value_type)
+            or pa.types.is_string(value_type)
+            or pa.types.is_large_string(value_type)
+        )
+        return None if readable else f"{dtype} values"
+    if isinstance(dtype, pd.StringDtype) or dtype.kind in ("i", "u", "f"):
+        return None
     if not pd.api.types.is_object_dtype(dtype):
-        return None
+        return f"{dtype} values"
     values = series.to_numpy()
-    if not any(
-        issubclass(kind, _COMPLEX_OR_TEMPORAL_VALUES) for kind in set(map(type, values))
-    ):
+    unreadable = {
+        kind
+        for kind, value in {type(value): value for value in values}.items()
+        if not _readable_value(value)
+    }
+    if not unreadable:
         return None
-    found = [
-        value for value in values if isinstance(value, _COMPLEX_OR_TEMPORAL_VALUES)
-    ]
-    return f"{len(found)} complex or temporal value(s), such as {found[:3]!r}"
+    found = [value for value in values if type(value) in unreadable]
+    return (
+        f"{len(found)} value(s) that are not real numbers or strings, such as "
+        f"{found[:3]!r}"
+    )
 
 
 def _integral_ids(series: pd.Series, *, refusal: str) -> np.ndarray:
@@ -836,9 +890,9 @@ def _integral_ids(series: pd.Series, *, refusal: str) -> np.ndarray:
     integer column into float64 when the other origin lacks it). Object
     values go through ``pd.to_numeric``, so digit strings (``"601"``,
     ``"6.0"``) and booleans held in an object column pass as their numbers.
-    A boolean dtype refuses, and so does complex or temporal data, as a
-    dtype or as values, before that conversion reads it
-    (:func:`_complex_or_temporal`).
+    A boolean dtype refuses, and so does any data but integers, real
+    numbers and strings, as a dtype or as values, before that conversion
+    reads it (:func:`_complex_or_temporal`).
     """
 
     if pd.api.types.is_bool_dtype(series.dtype):
@@ -846,8 +900,7 @@ def _integral_ids(series: pd.Series, *, refusal: str) -> np.ndarray:
     found = _complex_or_temporal(series)
     if found is not None:
         raise OnePopulationContractError(
-            f"{refusal}: it holds {found}, not integers; a conversion to real "
-            "numbers would drop an imaginary part or turn a time into a count."
+            f"{refusal}: it holds {found}, not integers; {_READ_AS_NUMBERS}"
         )
     nulls = int(series.isna().sum())
     if nulls:
@@ -1031,19 +1084,30 @@ def _keyed_weights(values: object, *, origin: str) -> dict[object, float]:
     Only a keyed input is taken (d2283 lead call L3's check): PR 1's ACS
     starting weights come in selection order and staging's ACS households
     in id order, so a weight given by position cannot be tied to its
-    household, and no later clause would see the permutation.
+    household, and no later clause would see the permutation. The weights
+    pass the shared guard (:func:`_complex_or_temporal`) before the float64
+    conversion, which drops a complex weight's imaginary part and reads a
+    ``timedelta64`` or ``datetime64`` as its count (PR #1685 review r3,
+    should-fix 2).
     """
 
     key = _WEIGHT_KEYS[origin]
     if isinstance(values, pd.Series):
         keys, given = values.index.tolist(), values.to_numpy()
+        found = _complex_or_temporal(values)
     elif isinstance(values, Mapping):
         keys, given = list(values), list(values.values())
+        found = _complex_or_temporal(pd.Series(given, dtype=object))
     else:
         raise OnePopulationContractError(
             f"{origin} household weights must be keyed by {key} (a pandas Series "
             f"or a mapping), not a {type(values).__name__}: a weight given by "
             "position cannot be tied to its household."
+        )
+    if found is not None:
+        raise OnePopulationContractError(
+            f"{origin} household weights must be real numbers; they hold {found}: "
+            f"{_READ_AS_NUMBERS}"
         )
     try:
         array = np.asarray(given, dtype=np.float64)
@@ -1157,7 +1221,11 @@ def _require_disjoint_ids(origins: Mapping[str, Mapping[str, pd.DataFrame]]) -> 
     Every person membership must resolve to exactly one group row of its own
     origin, and every group row must hold a person of its origin. Staging
     offsets ACS ids clear of its own donor only, so an ACS frame staged on
-    another donor than the parent export collides here.
+    another donor than the parent export collides here. Each membership
+    column passes the shared guard (:func:`_complex_or_temporal`) before it
+    is matched: ``isin`` matches a complex ``5+0j`` with the id 5 (PR #1685
+    review r3, nit 2). This is the one place the five person links resolve,
+    on both paths, before any other clause reads them.
     """
 
     for entity in US_SCHEMA.entities:
@@ -1191,6 +1259,13 @@ def _require_disjoint_ids(origins: Mapping[str, Mapping[str, pd.DataFrame]]) -> 
                     f"{membership_column!r}."
                 )
             membership = person[membership_column]
+            found = _complex_or_temporal(membership)
+            if found is not None:
+                raise OnePopulationContractError(
+                    f"Memberships do not resolve: {origin} persons' "
+                    f"{membership_column!r} holds {found}, not ids; "
+                    f"{_READ_AS_NUMBERS}"
+                )
             unresolved = int((~membership.isin(group_ids)).sum())
             if unresolved:
                 raise OnePopulationContractError(
@@ -1317,13 +1392,13 @@ def _integral_value(value: object) -> int | None:
     """``value`` as an int when it is a non-boolean integral number, else None.
 
     A ``numpy.timedelta64`` registers as an integer (numpy derives it from
-    ``signedinteger``), and ``int()`` reads it as its count of time units, so
-    it is refused like a boolean (PR #1685 review r2, should-fix 1).
+    ``signedinteger``), and for some units ``int()`` reads it as its count of
+    time units (``"ns"``; ``"us"`` raises), so it is refused like a boolean
+    (PR #1685 review r2, should-fix 1), through the shared
+    :func:`_is_real_number` (review r3, should-fix 2).
     """
 
-    if isinstance(value, bool | np.bool_ | np.timedelta64) or not isinstance(
-        value, numbers.Real
-    ):
+    if not _is_real_number(value):
         return None
     if isinstance(value, numbers.Integral):
         return int(value)
@@ -2288,11 +2363,7 @@ def _require_acs_household_type(acs_household: pd.DataFrame) -> None:
         raise OnePopulationContractError(f"{rule}; the household table lacks it.")
     values = acs_household[_TYPEHUGQ]
     bad = ~values.map(
-        lambda value: (
-            isinstance(value, numbers.Real)
-            and not isinstance(value, bool | np.bool_)
-            and value in _ACS_HOUSEHOLD_TYPES
-        )
+        lambda value: _is_real_number(value) and value in _ACS_HOUSEHOLD_TYPES
     ).astype(bool)
     if bad.any():
         raise OnePopulationContractError(
@@ -2443,10 +2514,9 @@ def _tail_donor_set(parent_tail_donor_ids: object) -> frozenset[int]:
             "parent_tail_donor_ids must be a set of int donor ids, got "
             f"{type(parent_tail_donor_ids).__name__}."
         )
-    if any(
-        isinstance(value, bool | np.bool_) or not isinstance(value, numbers.Integral)
-        for value in parent_tail_donor_ids
-    ):
+    # Through the shared predicate, which refuses a numpy timedelta64 that
+    # numbers.Integral accepts (PR #1685 review r3, should-fix 2).
+    if not all(_is_integer(value) for value in parent_tail_donor_ids):
         raise TypeError("parent_tail_donor_ids must hold int donor ids only.")
     return frozenset(int(value) for value in parent_tail_donor_ids)
 
@@ -2460,7 +2530,7 @@ def _require_parent_tail_donors(tax_unit: pd.DataFrame, parent: frozenset[int]) 
     is_flag = applied_values.map(
         lambda value: (
             isinstance(value, bool | np.bool_)
-            or (isinstance(value, numbers.Real) and value in (0, 1))
+            or (_is_real_number(value) and value in (0, 1))
         )
     ).astype(bool)
     if not is_flag.all():
@@ -2815,9 +2885,9 @@ def _channel_masks(
 
 
 def _is_count(value: object) -> bool:
-    return isinstance(value, numbers.Integral) and not isinstance(
-        value, bool | np.bool_
-    )
+    # The shared predicate refuses a boolean and a numpy timedelta64, which
+    # numbers.Integral accepts (PR #1685 review r3, should-fix 2).
+    return _is_integer(value)
 
 
 def _role_counts(
@@ -2925,13 +2995,14 @@ def _require_acs_roles_by_rule(
         )
     relshipp = person.loc[acs_rows, _RELSHIPP]
     # Before the conversion below, which reads 20+1j as code 20 and a
-    # timedelta64 of 20 units as 20 (PR #1685 review r2, should-fix 1).
+    # timedelta64 of 20 units as 20 (PR #1685 review r2, should-fix 1), and
+    # an Arrow dictionary of durations as their counts (review r3,
+    # should-fix 1).
     found = _complex_or_temporal(relshipp)
     if found is not None:
         raise OnePopulationContractError(
-            f"{rule}: {_RELSHIPP} on ACS rows holds {found}, not integer codes; a "
-            "conversion to real numbers would drop an imaginary part or turn a "
-            "time into a count."
+            f"{rule}: {_RELSHIPP} on ACS rows holds {found}, not integer codes; "
+            f"{_READ_AS_NUMBERS}"
         )
     codes = pd.to_numeric(relshipp, errors="coerce").to_numpy(
         dtype=np.float64, na_value=np.nan

@@ -72,6 +72,15 @@ included, with ``pd.NaT`` and numpy's ``NaT`` refused (nit 1); the lineage
 diagnostic ahead of a missing weight (nit 2); an ACS SPM unit merger on
 both paths and a CPS crossing at R1 (nit 3); and a lone CPS ``pd.NA`` at
 R6 and an ACS ``pd.NA`` beside written zeros (nit 4).
+
+Round 3 adds: the shared guard as an allowlist, which reads the value type
+behind a categorical or an Arrow dictionary and refuses an Arrow dictionary
+of times in lineage values and ``RELSHIPP``, with 27 cases that pin dtype
+forms it must keep accepting (should-fix 1); numpy timedelta64 refused
+wherever the module tests for a number (donor ids, counts, ``TYPEHUGQ``,
+the tail flag) and complex or temporal household weights refused
+(should-fix 2); membership links of ACS and CPS persons through the same
+guard (nit 2); and ``pd.NA`` reported ahead of another null at R6 (nit 3).
 """
 
 from __future__ import annotations
@@ -79,6 +88,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import datetime
+import decimal
 import hashlib
 import inspect
 import json
@@ -89,11 +99,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from microcosm.build.gates import GateResult
+from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from microcosm.build.us_runtime import one_population_contract as contract
 from microcosm.build.us_runtime import one_population_selection as selection
 from microcosm.build.us_runtime.acs_local_hours import prepare_acs_local_hours_donor
@@ -1403,6 +1415,31 @@ def _acs_weight_not_finite(p):
     return {"acs_weights": weights}
 
 
+def _acs_weight_complex(p):
+    # Review r3, should-fix 2: the float64 conversion dropped the imaginary
+    # part, with only a ComplexWarning, and kept the real weight.
+    weights = p.keyed_acs_household_weights.astype(np.complex128)
+    weights.iloc[0] += 1j
+    return {"acs_weights": weights}
+
+
+def _cps_weight_numpy_complex(p):
+    weights = dict(p.keyed_cps_household_weights.items())
+    first = next(iter(weights))
+    weights[first] = np.complex128(weights[first] + 1j)
+    return {"cps_weights": weights}
+
+
+def _cps_weight_timedelta(p):
+    # The float64 conversion read each weight as its count of nanoseconds.
+    weights = p.keyed_cps_household_weights
+    return {
+        "cps_weights": pd.Series(
+            pd.to_timedelta(weights.to_numpy(), unit="ns"), index=weights.index
+        )
+    }
+
+
 def _ids_collide_across_origins(p):
     # Staged on another donor: staging gave the ACS tax units no offset, so
     # their native ids sit on the export's.
@@ -1778,6 +1815,19 @@ _REFUSALS = [
     (_acs_weight_key_repeats, "ACS household weights repeat a key: ['acs:"),
     (_cps_weight_negative, "CPS household weights must be finite and non-negative."),
     (_acs_weight_not_finite, "ACS household weights must be finite and non-negative."),
+    (
+        _acs_weight_complex,
+        "ACS household weights must be real numbers; they hold complex128 values",
+    ),
+    (
+        _cps_weight_numpy_complex,
+        "CPS household weights must be real numbers; they hold 1 value(s) that are "
+        "not real numbers or strings, such as [np.complex128(",
+    ),
+    (
+        _cps_weight_timedelta,
+        "CPS household weights must be real numbers; they hold timedelta64[ns] values",
+    ),
     # P6b: frame ids and memberships across origins.
     (
         _ids_collide_across_origins,
@@ -1959,6 +2009,37 @@ def test_a_cps_group_unit_across_households_refuses(population, group) -> None:
         _rewrite(population, _cps_unit_spans_households(population, group))
 
 
+def _complex_membership(person: pd.DataFrame, row: int, column: str) -> None:
+    """``row``'s ``column`` as a numpy complex, its real part the same id."""
+
+    _set(person, row, column, np.complex128(int(person[column].iloc[row]) + 0j))
+    assert person[column].dtype == np.dtype(object)
+
+
+_GROUPS = ("household", "spm_unit", "tax_unit", "family", "marital_unit")
+
+
+@pytest.mark.parametrize("group", _GROUPS)
+@pytest.mark.parametrize("origin", ["acs", "cps"])
+def test_a_complex_membership_refuses(population, origin, group) -> None:
+    # PR #1685 review r3, nit 2: isin matches a complex 5+0j with the id 5,
+    # so a person's link held that way resolved and the frame passed.
+    # P6b, where the five person links resolve, reads each through the
+    # shared guard first, on both origins' persons.
+    tables = _copies(population, origin)
+    column = US_SCHEMA.membership_column(group)
+    _complex_membership(tables["person"], 0, column)
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            f"Memberships do not resolve: {origin.upper()} persons' {column!r} "
+            "holds 1 value(s) that are not real numbers or strings, such as "
+            "[np.complex128("
+        ),
+    ):
+        _rewrite(population, {origin: tables})
+
+
 def test_union_form_refuses_a_fractional_sporder(population) -> None:
     union = with_staging_union_columns(population)
     acs = {entity: table.copy() for entity, table in union.acs_tables.items()}
@@ -1985,6 +2066,12 @@ def _with_source_year(person: pd.DataFrame, form: str) -> None:
         _set(person, 0, "source_year", complex(int(years.iloc[0]), 1))
     elif form == "timedelta64 column":
         person["source_year"] = pd.to_timedelta(years.to_numpy(), unit="ns")
+    elif form.startswith("Arrow dictionary"):
+        # Review r3, should-fix 1: the dtype's kind is "O" but it is not an
+        # object dtype, so the r2 guard skipped it and pd.to_numeric read
+        # each time as its count of nanoseconds.
+        unit = pa.timestamp("ns") if "timestamps" in form else pa.duration("ns")
+        person["source_year"] = _arrow_dictionary(years, unit)
     else:
         # The last person, not the first: pd.to_numeric reads a leading
         # numpy timedelta64 in an object column as NaN but a later one as
@@ -1992,12 +2079,37 @@ def _with_source_year(person: pd.DataFrame, form: str) -> None:
         _set(person, -1, "source_year", np.timedelta64(int(years.iloc[-1]), "ns"))
 
 
+def _arrow_dictionary(values: pd.Series, arrow_type) -> pd.Series:
+    """``values`` (integers, or null) as an Arrow dictionary of ``arrow_type``.
+
+    A timestamp or duration value holds the integer as its count of units,
+    the encoding review r3's should-fix 1 found read as that integer.
+    """
+
+    array = pa.array(
+        [None if pd.isna(value) else int(value) for value in values],
+        type=arrow_type,
+    ).dictionary_encode()
+    return pd.Series(pd.arrays.ArrowExtensionArray(array), index=values.index)
+
+
 _COMPLEX_OR_TEMPORAL_FORMS = {
     "complex128 column": "it holds complex128 values, not integers",
-    "complex in object": "it holds 1 complex or temporal value(s), such as [(2024+1j)]",
+    "complex in object": (
+        "it holds 1 value(s) that are not real numbers or strings, such as [(2024+1j)]"
+    ),
     "timedelta64 column": "it holds timedelta64[ns] values, not integers",
     "numpy timedelta64 in object": (
-        "it holds 1 complex or temporal value(s), such as [np.timedelta64(2024,"
+        "it holds 1 value(s) that are not real numbers or strings, such as "
+        "[np.timedelta64(2024,"
+    ),
+    "Arrow dictionary of timestamps": (
+        "it holds dictionary<values=timestamp[ns], indices=int32, ordered=0>"
+        "[pyarrow] values, not integers"
+    ),
+    "Arrow dictionary of durations": (
+        "it holds dictionary<values=duration[ns], indices=int32, ordered=0>"
+        "[pyarrow] values, not integers"
     ),
 }
 
@@ -2025,14 +2137,43 @@ def test_a_complex_or_temporal_source_year_refuses(population, form) -> None:
 
 
 @pytest.mark.parametrize(
+    "dtype",
+    [
+        "Int64",
+        "UInt16",
+        CANONICAL_STRING_DTYPE,
+        "int64[pyarrow]",
+        "Arrow dictionary of int64",
+        "category",
+    ],
+    ids=str,
+)
+def test_a_source_year_in_a_real_dtype_passes(population, dtype) -> None:
+    # Review r3, should-fix 1: the allowlist reads these as the integer
+    # 2024, at the public entry as in _integral_ids.
+    acs = _copies(population, "acs")
+    years = acs["person"]["source_year"]
+    if dtype == "Arrow dictionary of int64":
+        acs["person"]["source_year"] = _arrow_dictionary(years, pa.int64())
+    elif dtype is CANONICAL_STRING_DTYPE:
+        acs["person"]["source_year"] = years.astype(str).astype(dtype)
+    else:
+        acs["person"]["source_year"] = years.astype(dtype)
+    _rewrite(population, {"acs": acs})
+
+
+@pytest.mark.parametrize(
     ("values", "found"),
     [
         (pd.Series(np.array([7 + 0j, 7 + 1j])), "complex128 values"),
         (pd.Series(np.array([7 + 0j], dtype=np.complex64)), "complex64 values"),
-        (pd.Series([7, complex(7, 0)], dtype=object), "1 complex or temporal value(s)"),
+        (
+            pd.Series([7, complex(7, 0)], dtype=object),
+            "1 value(s) that are not real numbers or strings",
+        ),
         (
             pd.Series([7, np.complex64(7)], dtype=object),
-            "1 complex or temporal value(s)",
+            "1 value(s) that are not real numbers or strings",
         ),
         (pd.Series(pd.to_datetime(["2024-01-01"])), "datetime64["),
         (pd.Series(pd.to_datetime(["2024-01-01"]).tz_localize("UTC")), "datetime64["),
@@ -2043,27 +2184,27 @@ def test_a_complex_or_temporal_source_year_refuses(population, form) -> None:
         ),
         (
             pd.Series([7, pd.Timestamp(7)], dtype=object),
-            "1 complex or temporal value(s)",
+            "1 value(s) that are not real numbers or strings",
         ),
         (
             pd.Series([7, pd.Timedelta(7)], dtype=object),
-            "1 complex or temporal value(s)",
+            "1 value(s) that are not real numbers or strings",
         ),
         (
             pd.Series([7, np.datetime64(7, "ns")], dtype=object),
-            "1 complex or temporal value(s)",
+            "1 value(s) that are not real numbers or strings",
         ),
         (
             pd.Series([7, np.timedelta64(7, "ns")], dtype=object),
-            "1 complex or temporal value(s)",
+            "1 value(s) that are not real numbers or strings",
         ),
         (
             pd.Series([7, pd.Period("2024", freq="Y")], dtype=object),
-            "1 complex or temporal value(s)",
+            "1 value(s) that are not real numbers or strings",
         ),
         (
             pd.Series([7, datetime.date(2024, 1, 1)], dtype=object),
-            "1 complex or temporal value(s)",
+            "1 value(s) that are not real numbers or strings",
         ),
         (pd.Series([7 + 1j], dtype="category"), "categories of complex128 values"),
     ],
@@ -2094,6 +2235,123 @@ def test_integral_ids_refuse_complex_and_temporal_data(values, found) -> None:
     ids=["int64", "integral float64", "Int64", "object", "category"],
 )
 def test_integral_ids_still_read_real_ids(values) -> None:
+    np.testing.assert_array_equal(
+        contract._integral_ids(values, refusal="ids"), np.array([7, 8])
+    )
+
+
+def _arrow(values: list, arrow_type) -> pd.Series:
+    return pd.Series(pd.arrays.ArrowExtensionArray(pa.array(values, type=arrow_type)))
+
+
+@pytest.mark.parametrize(
+    ("values", "found"),
+    [
+        (
+            _arrow_dictionary(pd.Series([7, 8]), pa.timestamp("ns")),
+            "dictionary<values=timestamp[ns], indices=int32, ordered=0>[pyarrow] "
+            "values",
+        ),
+        (
+            _arrow_dictionary(pd.Series([7, 8]), pa.duration("ns")),
+            "dictionary<values=duration[ns], indices=int32, ordered=0>[pyarrow] values",
+        ),
+        (
+            pd.Series(pd.Categorical(_arrow([7, 8], pa.duration("ns")))),
+            "categories of duration[ns][pyarrow] values",
+        ),
+        (
+            _arrow([decimal.Decimal(7), decimal.Decimal(8)], pa.decimal128(10, 0)),
+            "decimal128(10, 0)[pyarrow] values",
+        ),
+        (_arrow(["7", "8"], pa.string_view()), "string_view[pyarrow] values"),
+        (pd.Series(pd.interval_range(7, 9)), "interval[int64, right] values"),
+        (
+            pd.Series([7, np.array(8, dtype="m8[ns]")], dtype=object),
+            "1 value(s) that are not real numbers or strings, such as "
+            "[array(8, dtype='timedelta64[ns]')]",
+        ),
+        (
+            pd.Series([7, np.array(8 + 0j)], dtype=object),
+            "1 value(s) that are not real numbers or strings, such as [array(8.+0.j)]",
+        ),
+    ],
+    ids=[
+        "Arrow dictionary of timestamps",
+        "Arrow dictionary of durations",
+        "category of Arrow durations",
+        "Arrow decimal",
+        "Arrow string_view",
+        "interval",
+        "zero-dimensional timedelta64 array in object",
+        "zero-dimensional complex array in object",
+    ],
+)
+def test_integral_ids_refuse_any_data_but_integers_reals_and_strings(
+    values, found
+) -> None:
+    # Review r3, should-fix 1: the guard is an allowlist. An Arrow
+    # dictionary's dtype has kind "O" but is not an object dtype, so the r2
+    # guard skipped it and pd.to_numeric read each time as its count; it
+    # also passed an Arrow decimal, raised NotImplementedError on an Arrow
+    # string_view, and passed a zero-dimensional numpy array in an object
+    # column, which pd.to_numeric reads as its count or its real part.
+    with pytest.raises(
+        OnePopulationContractError, match=re.escape(f"ids: it holds {found}")
+    ):
+        contract._integral_ids(values, refusal="ids")
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pd.Series([7, 8], dtype=np.int32),
+        pd.Series([7, 8], dtype=np.uint64),
+        pd.Series([7.0, 8.0], dtype=np.float32),
+        pd.Series([7, 8], dtype="UInt32"),
+        pd.Series([7.0, 8.0], dtype="Float64"),
+        pd.Series(["7", "8"], dtype=CANONICAL_STRING_DTYPE),
+        pd.Series(["7", "8"]),
+        pd.Series(["7", "8"], dtype="string[pyarrow]"),
+        pd.Series(["7", "8"], dtype="category"),
+        pd.Series([7, np.int64(8)], dtype=object),
+        _arrow([7, 8], pa.int64()),
+        _arrow([7, 8], pa.uint8()),
+        _arrow([7.0, 8.0], pa.float64()),
+        _arrow(["7", "8"], pa.string()),
+        _arrow(["7", "8"], pa.large_string()),
+        _arrow_dictionary(pd.Series([7, 8]), pa.int64()),
+        pd.Series(
+            pd.arrays.ArrowExtensionArray(pa.array(["7", "8"]).dictionary_encode())
+        ),
+    ],
+    ids=[
+        "int32",
+        "uint64",
+        "float32",
+        "UInt32",
+        "Float64",
+        "canonical string",
+        "pandas default string",
+        "string[pyarrow]",
+        "category of strings",
+        "object of numpy ints",
+        "Arrow int64",
+        "Arrow uint8",
+        "Arrow float64",
+        "Arrow string",
+        "Arrow large_string",
+        "Arrow dictionary of int64",
+        "Arrow dictionary of strings",
+    ],
+)
+def test_integral_ids_read_the_pinned_id_dtypes(values) -> None:
+    # Review r3, should-fix 1, the lead's call: the allowlist must not refuse
+    # a real input. The generator writes int64 ids, staging's pooled form
+    # float64 (both in the test above); the parent export's H5 load and
+    # staging's PUMS parse store strings in CANONICAL_STRING_DTYPE
+    # (serialization_dtypes); the review's probes kept unsigned, nullable,
+    # categorical and Arrow numeric ids valid.
     np.testing.assert_array_equal(
         contract._integral_ids(values, refusal="ids"), np.array([7, 8])
     )
@@ -2683,6 +2941,40 @@ class TestRequireOnePopulation:
         ):
             _require(population, frame)
 
+    def test_a_pd_na_is_reported_before_another_null(
+        self, population, assembled
+    ) -> None:
+        # Review r3, nit 3: R6 refuses a pd.NA in any release-written column
+        # before any other null, so a pd.NaT on an ACS row of one column
+        # cannot take the diagnostic from a pd.NA on a CPS row of another.
+        person = assembled.table("person")
+        nat_row = _row(person, "person", "acs")
+        frame = _with_column(
+            assembled,
+            "person",
+            "takes_up_ssi_if_eligible",
+            pd.Series(
+                [pd.NaT if row == nat_row else True for row in range(len(person))],
+                index=person.index,
+                dtype=object,
+            ),
+        )
+        column = "would_file_taxes_voluntarily"
+        entity = lock_engine_inputs()[column]
+        table = frame.table(entity)
+        values = pd.array([True] * len(table), dtype="boolean")
+        values[_row(table, entity, "cps")] = pd.NA
+        frame = _with_column(
+            frame, entity, column, pd.Series(values, index=table.index)
+        )
+        with pytest.raises(
+            OnePopulationContractError,
+            match=re.escape(
+                f"A pd.NA in a release-written input: {{'{entity}.{column}': 1}}"
+            ),
+        ):
+            _require(population, frame)
+
     @pytest.mark.parametrize(
         ("column", "dtype", "filled"),
         [
@@ -2817,6 +3109,19 @@ class TestRequireOnePopulation:
             _require(population, assembled, parent_tail_donor_ids={True})
         with pytest.raises(TypeError, match="declared_absences must map"):
             _require(population, assembled, declared_absences=["x"])
+
+    def test_timedelta_parent_donor_ids_refuse(self, population, assembled) -> None:
+        # PR #1685 review r3, should-fix 2: numpy registers timedelta64 as
+        # numbers.Integral and int() reads a nanosecond one as its count, so
+        # these ids read as the parent's own and R8 passed the frame.
+        donors = {
+            np.timedelta64(int(donor), "ns") for donor in population.tail_donor_ids
+        }
+        with pytest.raises(
+            TypeError,
+            match=re.escape("parent_tail_donor_ids must hold int donor ids only."),
+        ):
+            _require(population, assembled, parent_tail_donor_ids=donors)
 
 
 class TestExemptList:
@@ -3400,6 +3705,24 @@ def _p7_source_year_pd_na(p, f):
     return _rebuild(f, tables), {}
 
 
+def _source_year_as_arrow_times(f, arrow_type) -> Frame:
+    """Review r3, should-fix 1, on the frame R1 reads: every ``source_year``
+    as an Arrow dictionary of times, each holding the year as its count."""
+
+    tables = _tables(f)
+    person = tables["person"]
+    person["source_year"] = _arrow_dictionary(person["source_year"], arrow_type)
+    return _rebuild(f, tables)
+
+
+def _p7_source_year_arrow_timestamps(p, f):
+    return _source_year_as_arrow_times(f, pa.timestamp("ns")), {}
+
+
+def _p7_source_year_arrow_durations(p, f):
+    return _source_year_as_arrow_times(f, pa.duration("ns")), {}
+
+
 def _p6c_tax_unit_spans_households(p, f):
     # Review blocking 3 on the frame R1 reads: see
     # _acs_tax_unit_spans_households.
@@ -3562,6 +3885,16 @@ def _t1_typehugq_boolean(p, f):
     return _cell(f, "household", "TYPEHUGQ", True, origin="acs"), {}
 
 
+def _t1_typehugq_timedelta(p, f):
+    # Review r3, should-fix 2: numpy registers timedelta64 as a number, and
+    # np.timedelta64(1, "ns") in (1, 2, 3) holds, so T1 passed this code.
+    table = f.table("household")
+    code = int(table["TYPEHUGQ"].iloc[_row(table, "household", "acs")])
+    return _cell(
+        f, "household", "TYPEHUGQ", np.timedelta64(code, "ns"), origin="acs"
+    ), {}
+
+
 def _r3_computed_column(p, f):
     return _with_column(f, "spm_unit", "snap", 0.0), {}
 
@@ -3684,6 +4017,23 @@ def _r8_donor_applied_twice(p, f):
 def _r8_applied_not_a_flag(p, f):
     return _cell(
         f, "tax_unit", PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN, 2, origin="acs"
+    ), {}
+
+
+def _r8_applied_flag_timedelta(p, f):
+    # Review r3, should-fix 2: an applied CPS unit's flag held as
+    # np.timedelta64(1, "ns"), which numbers.Real accepts and which equals 1,
+    # so R8 read it as True and passed the frame.
+    applied = f.table("tax_unit")[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN].to_numpy(
+        dtype=bool
+    )
+    return _cell(
+        f,
+        "tax_unit",
+        PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+        np.timedelta64(1, "ns"),
+        origin="cps",
+        where=applied,
     ), {}
 
 
@@ -3815,6 +4165,18 @@ _FRAME_REFUSALS = [
         "ACS lineage does not survive: every ACS person needs an integral "
         "source_year: 1 value(s) are null",
     ),
+    (
+        _p7_source_year_arrow_timestamps,
+        "ACS lineage does not survive: every ACS person needs an integral "
+        "source_year: it holds dictionary<values=timestamp[ns], indices=int32, "
+        "ordered=0>[pyarrow] values, not integers",
+    ),
+    (
+        _p7_source_year_arrow_durations,
+        "ACS lineage does not survive: every ACS person needs an integral "
+        "source_year: it holds dictionary<values=duration[ns], indices=int32, "
+        "ordered=0>[pyarrow] values, not integers",
+    ),
     # P6c, after the assembly validator: groups nest in households, and ACS
     # SPM units are the households.
     (
@@ -3890,6 +4252,7 @@ _FRAME_REFUSALS = [
         "reads it to leave group quarters out); the household table lacks it.",
     ),
     (_t1_typehugq_boolean, "1 ACS household(s) hold [True]"),
+    (_t1_typehugq_timedelta, "1 ACS household(s) hold [np.timedelta64("),
     # R3.
     (_r3_computed_column, "A column the engine computes at 2024 is stored: ['snap']"),
     (
@@ -3960,6 +4323,12 @@ _FRAME_REFUSALS = [
         "'puf_capital_gains_tail_transfer_applied' holds non-flag values [2]",
     ),
     (
+        _r8_applied_flag_timedelta,
+        "The tail donor set differs from the parent's: "
+        "'puf_capital_gains_tail_transfer_applied' holds non-flag values "
+        "[np.timedelta64(1,'ns')]",
+    ),
+    (
         _r8_donor_moved_to_an_acs_unit,
         "The tail donor set differs from the parent's: 1 ACS tax unit(s) apply a "
         "tail donor",
@@ -4019,6 +4388,28 @@ def test_a_cps_group_unit_across_households_refuses_at_r1(
         match=re.escape(
             f"Group units do not nest in households: 1 CPS {group} unit(s) hold "
             "persons of more than one household"
+        ),
+    ):
+        _require(population, _rebuild(assembled, tables))
+
+
+@pytest.mark.parametrize("group", _GROUPS)
+@pytest.mark.parametrize("origin", ["acs", "cps"])
+def test_a_complex_membership_refuses_at_r1(
+    population, assembled, origin, group
+) -> None:
+    # Review r3, nit 2, on the frame R1 reads: as test_a_complex_membership_
+    # refuses, one person's link held as a numpy complex, on either origin.
+    tables = _tables(assembled)
+    person = tables["person"]
+    column = US_SCHEMA.membership_column(group)
+    _complex_membership(person, _row(person, "person", origin), column)
+    with pytest.raises(
+        OnePopulationContractError,
+        match=re.escape(
+            f"Memberships do not resolve: {origin.upper()} persons' {column!r} "
+            "holds 1 value(s) that are not real numbers or strings, such as "
+            "[np.complex128("
         ),
     ):
         _require(population, _rebuild(assembled, tables))
@@ -4300,6 +4691,11 @@ def _relshipp_as(frame: Frame, form: str) -> Frame:
         _set(person, row, "RELSHIPP", complex(code, 1))
     elif form == "timedelta64 column":
         person["RELSHIPP"] = pd.to_timedelta(person["RELSHIPP"].to_numpy(), unit="ns")
+    elif form.startswith("Arrow dictionary"):
+        # Review r3, should-fix 1: every code as an Arrow dictionary of
+        # times (CPS rows null), each holding the code as its count.
+        unit = pa.timestamp("ns") if "timestamps" in form else pa.duration("ns")
+        person["RELSHIPP"] = _arrow_dictionary(person["RELSHIPP"], unit)
     else:
         _set(person, row, "RELSHIPP", np.timedelta64(code, "ns"))
     return _rebuild(frame, tables)
@@ -4520,6 +4916,23 @@ _ROLE_RECORD_REFUSALS = [
         "must be integer counts",
     ),
     (
+        # Review r3, should-fix 2: numpy registers timedelta64 as an integer,
+        # and it compares equal to its count, so the record matched.
+        "timedelta count",
+        lambda f: (
+            {
+                **cps_role_record(f),
+                "persons_joined": np.timedelta64(
+                    cps_role_record(f)["persons_joined"], "ns"
+                ),
+            },
+            staging_role_receipt(f),
+            f,
+        ),
+        "The CPS role record does not match the frame's CPS rows: "
+        "['persons_joined'] must be integer counts",
+    ),
+    (
         "role source",
         lambda f: (
             cps_role_record(f),
@@ -4637,6 +5050,21 @@ _ROLE_RECORD_REFUSALS = [
         "Staging's ACS role receipt covers fewer rows than the frame's ACS rows: "
         "{'persons'",
     ),
+    (
+        # Review r3, should-fix 2: a numpy timedelta64 count passed as an
+        # integer at least the selected one.
+        "receipt timedelta count",
+        lambda f: (
+            cps_role_record(f),
+            {
+                **staging_role_receipt(f),
+                "spm_units": np.timedelta64(staging_role_receipt(f)["spm_units"], "ns"),
+            },
+            f,
+        ),
+        "Staging's ACS role receipt covers fewer rows than the frame's ACS rows: "
+        "{'spm_units'",
+    ),
     # Each ACS person's role is the one its RELSHIPP gives (review
     # should-fix 1): the receipt states counts only.
     (
@@ -4668,6 +5096,7 @@ _ROLE_RECORD_REFUSALS = [
     # or count of units. The complex forms and the timedelta64 column passed,
     # read as the person's own code; one numpy timedelta64 in an object
     # column already refused as off-domain, and now gets this message.
+    # Review r3, should-fix 1: the Arrow dictionaries of times passed too.
     *(
         (
             f"relshipp {form}",
@@ -4681,11 +5110,25 @@ _ROLE_RECORD_REFUSALS = [
         )
         for form, found in (
             ("complex128 column", "complex128 values, not integer codes"),
-            ("complex in object", "1 complex or temporal value(s), such as [("),
+            (
+                "complex in object",
+                "1 value(s) that are not real numbers or strings, such as [(",
+            ),
             ("timedelta64 column", "timedelta64[ns] values, not integer codes"),
             (
                 "numpy timedelta64 in object",
-                "1 complex or temporal value(s), such as [np.timedelta64(",
+                "1 value(s) that are not real numbers or strings, such as "
+                "[np.timedelta64(",
+            ),
+            (
+                "Arrow dictionary of durations",
+                "dictionary<values=duration[ns], indices=int32, ordered=0>"
+                "[pyarrow] values, not integer codes",
+            ),
+            (
+                "Arrow dictionary of timestamps",
+                "dictionary<values=timestamp[ns], indices=int32, ordered=0>"
+                "[pyarrow] values, not integer codes",
             ),
         )
     ),
@@ -4707,6 +5150,39 @@ def test_the_role_record_refuses_with_its_own_message(
 def test_the_role_record_refusal_messages_are_distinct() -> None:
     messages = [message for _, _, message in _ROLE_RECORD_REFUSALS]
     assert len(set(messages)) == len(messages)
+
+
+@pytest.mark.parametrize(
+    "form", ["Int64", "object", "int64[pyarrow]", "Arrow dictionary of int64"]
+)
+def test_relshipp_in_a_real_dtype_passes(assembled, form) -> None:
+    # Review r3, should-fix 1: the allowlist reads these codes. The frame
+    # holds RELSHIPP as float64, null on CPS rows (test_the_record_passes_
+    # the_real_role_gate covers it); staging's PUMS parse reads it as a
+    # number, and the review's probes kept nullable and object codes valid.
+    tables = _tables(assembled)
+    person = tables["person"]
+    codes = person["RELSHIPP"]
+    if form == "Arrow dictionary of int64":
+        person["RELSHIPP"] = _arrow_dictionary(codes, pa.int64())
+    elif form == "int64[pyarrow]":
+        person["RELSHIPP"] = pd.Series(
+            pd.arrays.ArrowExtensionArray(
+                pa.array([None if pd.isna(code) else int(code) for code in codes])
+            ),
+            index=codes.index,
+        )
+        assert str(person["RELSHIPP"].dtype) == form
+    elif form == "object":
+        person["RELSHIPP"] = pd.Series(
+            [None if pd.isna(code) else int(code) for code in codes],
+            index=codes.index,
+            dtype=object,
+        )
+    else:
+        person["RELSHIPP"] = codes.astype(form)
+    frame = _rebuild(assembled, tables)
+    combined_spm_role_record(*_role_inputs(frame), frame)
 
 
 def test_the_role_records_refusals_are_live_against_the_gate(assembled) -> None:
@@ -5079,6 +5555,21 @@ _ABSENCE_REFUSALS = [
         "fill rows",
         lambda f: {"fills": [{**_acs_fill(f, "tip_income"), "rows": 1}]},
         "The fill manifest does not describe this frame: its 'person' table had 1 rows",
+    ),
+    (
+        # Review r3, should-fix 2: a numpy timedelta64 count equals its count
+        # of units, so it passed as the table's row count.
+        "fill rows timedelta",
+        lambda f: {
+            "fills": [
+                {
+                    **_acs_fill(f, "tip_income"),
+                    "rows": np.timedelta64(len(f.table("person")), "ns"),
+                }
+            ]
+        },
+        "The fill manifest does not describe this frame: its 'person' table had "
+        "np.timedelta64(",
     ),
     (
         "fill spine tag",
