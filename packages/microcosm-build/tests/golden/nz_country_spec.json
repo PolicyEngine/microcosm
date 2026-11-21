@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "4214fdfade3c910bf8d8180c3d65e1953dbdbb3190642fed6e095b461bf88fd1",
+  "fingerprint": "d688376f4eb48aacd836f43e44c60a0cef4615ba1d80aa747e53ca783c1732f2",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -51,10 +51,11 @@
     "calibration_settings.json": "56e4d1da8468245da6bd41daf263425cc65e4e9c9f11ff45eee459d3aed1989e",
     "chronicle_feed.json": "598f4f50c0e68e28e7824470e262815bae88344c2ab7248339034841054dbffc",
     "concept_mapping.json": "1d527c093870839cf535f34f8b4d4ad477547ed1aa57d7acb35087ce0ec974e8",
-    "country_package.json": "53deee4d1ff74730a7ef0743c3ab9e42ee3352b41c2df6ae516b4283833b5d84",
+    "country_package.json": "2ab5232bf49b45763908864235bb21f3979fa8e30e9e08033d75a5af8d497571",
     "currency_bridge.json": "ddf6fdb30ce2b930496fcfe18e1c2848443ae0a5dbb4100e109403ec3620c6aa",
+    "donor_profile.json": "f8775a9c0c2904c2b209784bdf4109f04806eca37688bf57d86ed451691802b3",
     "earnings_bands.json": "7c9f6ae99bf4346fba0ae315037b3d65b59472cd588a1573e7a3f3091c168342",
-    "entitlement_graph.json": "89ac989202d339f681131c7083437333de5d40bc8d14ab69f1ce6ea494aa2d99",
+    "entitlement_graph.json": "d41a4575e2dd63dfa6a5accd710fd27e5e4ce3cfe271db99691cb57313b3a5ac",
     "export_contract.json": "3fb78dd3a6d1b0f59b6a2df8883f1a175b07a2a2f57f35c1eb89a8802c983993",
     "export_replay_bindings.json": "bc2e8b8a838e02b76955cf22b735bfc172495b6918d3b7f6594da67d0a02a136",
     "family_reconciliation.json": "20e3f9f3ce6266d57828d721c99d15bd3642e6c6314a7076ec38972de02bc69e",
@@ -83,16 +84,16 @@
     "rent_bands.json": "1feccbe80fe662bf14a11ab1a3a4047dd8cf62d0f813112aa2aa248799e620ed",
     "reporting_classifiers.json": "60f0936a9cab3776affda81e2612174dbc2192947630e9cc037b9b11277ca4d2",
     "scenarios.json": "86e102bb3f301ee78238f020fef0839dbbad54b367b7b1e9ce7824956f2d1135",
-    "source_stages.json": "cc82c68878ac0fc07ecbd796c1a66de6f34786ef8785125046425c37f26aff31",
+    "source_stages.json": "a9111d0e319f06de459236bf036468268726969b520ae30b5e68e346b29ad124",
     "spec/bundle.yaml": "e9716ce827e9006d4efdc392e7aaf9cbc33c16112a8fbc423e8f3e74ec506d8e",
     "spec/catalogs.yaml": "3ab2025af39cba93ead707b9463e428430a45b30696a43d0906cbcd97ed36631",
     "spec/geography.yaml": "0dbf9f850dc3cef983f166bf6783022094894ec2461ad71f4809607bcfd390a9",
-    "spec/sources.yaml": "afdaa4bef98cf520a1c72b6013d1e453162c761cd4b3c1548620184f6ba41297",
+    "spec/sources.yaml": "7f45520ec43639d061cbe2ba08300a8d2c89c35863a937e1d5b0103377be1037",
     "spec/spine.yaml": "b3e6a2832ff7671777cae113b7fc45f5e3492bb519526f229118d0851083533e",
     "spec/vintages.yaml": "1ecc1a3f952bd25b834c394314e8c933ddb5b095fd64ba492dddb03e3cdd803e",
     "target_references.json": "6af5258a4e3451d7742ab9f3b454fec9e0bd7cf320fab6e784ff002a8be211c8",
     "transport_atomic_geography_support.json": "53465827f67c87aaf5a06c305c082cbf1e6cdf28f3843e853d1e012635517d10",
-    "transport_graph.json": "4ada151226baf62377dd8da64314563cb15e0fd4caa6c757b4d0754b451271da",
+    "transport_graph.json": "01d6f501a9b2904f1bf0d32cba908431a426d3b5438b2a40a9a2a69c58adb699",
     "transport_inputs.json": "16d3957214d6305e3d3f41fe6343143a411d6055c75c43d3f171db3ee659ec2d"
   },
   "resources": [
@@ -149,7 +150,8 @@
     "gap_annualisation.json",
     "holdout_comparator_bindings.json",
     "as_encoding.json",
-    "export_replay_bindings.json"
+    "export_replay_bindings.json",
+    "donor_profile.json"
   ],
   "stage_names": [
     "load_populace_us_support_pool"
