@@ -1,0 +1,285 @@
+{
+ "dataset": "populace_us_2024.h5 (populace-us-2024-spm-20260915, sha256 6496cc43\u2026aee84)",
+ "rows": 166321,
+ "people": 340077323,
+ "social_security_columns": [
+  "social_security_retirement",
+  "social_security_disability",
+  "social_security_survivors",
+  "social_security_dependents"
+ ],
+ "shipped_attribution_is_schedule_c_rule": true,
+ "schedule_c_rule": {
+  "self_employed": {
+   "people": 36753477,
+   "rows": 11971
+  },
+  "in_medicare_proxy": {
+   "people": 7026405,
+   "rows": 2468
+  },
+  "in_proxy_age_65_plus": {
+   "people": 5900963,
+   "rows": 1948
+  },
+  "in_proxy_under_65_with_ssdi": {
+   "people": 1125443,
+   "rows": 520
+  },
+  "in_proxy_with_measured_esi": {
+   "people": 1439624,
+   "rows": 606
+  },
+  "in_proxy_outside_esi": {
+   "people": 5586782,
+   "rows": 1862
+  },
+  "in_proxy_outside_esi_takes_up_medicare": {
+   "people": 4851666,
+   "rows": 1540
+  },
+  "in_proxy_outside_esi_reported_premium_positive": {
+   "people": 1913960,
+   "rows": 725,
+   "amount": 7499944677
+  },
+  "in_proxy_outside_esi_reported_premium_zero": {
+   "people": 3672822,
+   "rows": 1137
+  },
+  "in_proxy_outside_esi_stored_medicare_premium_positive": {
+   "people": 3921447,
+   "rows": 1282,
+   "amount": 8689367931
+  },
+  "in_proxy_outside_esi_stored_medicare_premium_zero": {
+   "people": 1665334,
+   "rows": 580
+  },
+  "in_proxy_outside_esi_no_social_security": {
+   "people": 2565908,
+   "rows": 791
+  },
+  "in_proxy_outside_esi_no_social_security_reported_positive": {
+   "people": 859157,
+   "rows": 310,
+   "amount": 4622463324
+  },
+  "in_proxy_outside_esi_no_social_security_stored_medicare_positive": {
+   "people": 1870791,
+   "rows": 582,
+   "amount": 4169823160
+  },
+  "in_proxy_outside_esi_by_business": {
+   "schedule_c": {
+    "people": 5586782,
+    "rows": 1862,
+    "amount": 7499944677
+   },
+   "farm_without_schedule_c_profit": {
+    "people": 0,
+    "rows": 0,
+    "amount": 0
+   },
+   "partnership_without_schedule_c_or_farm_profit": {
+    "people": 0,
+    "rows": 0,
+    "amount": 0
+   }
+  },
+  "attributed_now": {
+   "people": 3744173,
+   "rows": 1379,
+   "amount": 18348182339
+  },
+  "in_proxy_outside_esi_by_channel": {
+   "asec": {
+    "reported": {
+     "people": 681241,
+     "rows": 259,
+     "amount": 1353387156
+    },
+    "stored_medicare": {
+     "people": 1499074,
+     "rows": 485,
+     "amount": 3183974327
+    },
+    "all": {
+     "people": 1860773,
+     "rows": 571
+    }
+   },
+   "puf_tax_detail": {
+    "reported": {
+     "people": 1232719,
+     "rows": 466,
+     "amount": 6146557521
+    },
+    "stored_medicare": {
+     "people": 2422374,
+     "rows": 797,
+     "amount": 5505393605
+    },
+    "all": {
+     "people": 3726009,
+     "rows": 1291
+    }
+   }
+  }
+ },
+ "widened_rule": {
+  "self_employed": {
+   "people": 39269671,
+   "rows": 13113
+  },
+  "in_medicare_proxy": {
+   "people": 8005584,
+   "rows": 2920
+  },
+  "in_proxy_age_65_plus": {
+   "people": 6724697,
+   "rows": 2320
+  },
+  "in_proxy_under_65_with_ssdi": {
+   "people": 1280887,
+   "rows": 600
+  },
+  "in_proxy_with_measured_esi": {
+   "people": 1701619,
+   "rows": 736
+  },
+  "in_proxy_outside_esi": {
+   "people": 6303965,
+   "rows": 2184
+  },
+  "in_proxy_outside_esi_takes_up_medicare": {
+   "people": 5505831,
+   "rows": 1825
+  },
+  "in_proxy_outside_esi_reported_premium_positive": {
+   "people": 2235557,
+   "rows": 880,
+   "amount": 8639296719
+  },
+  "in_proxy_outside_esi_reported_premium_zero": {
+   "people": 4068408,
+   "rows": 1304
+  },
+  "in_proxy_outside_esi_stored_medicare_premium_positive": {
+   "people": 4499684,
+   "rows": 1545,
+   "amount": 10375930749
+  },
+  "in_proxy_outside_esi_stored_medicare_premium_zero": {
+   "people": 1804281,
+   "rows": 639
+  },
+  "in_proxy_outside_esi_no_social_security": {
+   "people": 2910304,
+   "rows": 904
+  },
+  "in_proxy_outside_esi_no_social_security_reported_positive": {
+   "people": 983272,
+   "rows": 358,
+   "amount": 5300096809
+  },
+  "in_proxy_outside_esi_no_social_security_stored_medicare_positive": {
+   "people": 2191269,
+   "rows": 683,
+   "amount": 5233062321
+  },
+  "in_proxy_outside_esi_by_business": {
+   "schedule_c": {
+    "people": 5586782,
+    "rows": 1862,
+    "amount": 7499944677
+   },
+   "farm_without_schedule_c_profit": {
+    "people": 194570,
+    "rows": 139,
+    "amount": 276310473
+   },
+   "partnership_without_schedule_c_or_farm_profit": {
+    "people": 522614,
+    "rows": 183,
+    "amount": 863041569
+   }
+  },
+  "attributed_now": {
+   "people": 3880421,
+   "rows": 1468,
+   "amount": 19726344927
+  },
+  "in_proxy_outside_esi_by_channel": {
+   "asec": {
+    "reported": {
+     "people": 716957,
+     "rows": 293,
+     "amount": 1453582254
+    },
+    "stored_medicare": {
+     "people": 1538140,
+     "rows": 529,
+     "amount": 3294998820
+    },
+    "all": {
+     "people": 1899839,
+     "rows": 617
+    }
+   },
+   "puf_tax_detail": {
+    "reported": {
+     "people": 1518600,
+     "rows": 587,
+     "amount": 7185714465
+    },
+    "stored_medicare": {
+     "people": 2961544,
+     "rows": 1016,
+     "amount": 7080931929
+    },
+    "all": {
+     "people": 4404126,
+     "rows": 1567
+    }
+   }
+  }
+ },
+ "stored_medicare_premium": {
+  "all": {
+   "people": 50594106,
+   "rows": 21611,
+   "amount": 116957340960
+  },
+  "by_channel": {
+   "asec": {
+    "people": 23227792,
+    "rows": 8476,
+    "amount": 51857518726
+   },
+   "puf_tax_detail": {
+    "people": 27366315,
+    "rows": 13135,
+    "amount": 65099822234
+   }
+  },
+  "takes_up_medicare": {
+   "people": 59543500,
+   "rows": 24979
+  },
+  "age_65_plus": {
+   "people": 61167959,
+   "rows": 25445
+  },
+  "positive_among_age_65_plus": {
+   "people": 49011623,
+   "rows": 20943,
+   "amount": 113654712831
+  },
+  "positive_outside_proxy": {
+   "people": 903517,
+   "rows": 383,
+   "amount": 1848785909
+  }
+ }
+}
