@@ -1,0 +1,1 @@
+The UK firm generator's input-cost ratio now matches the corrected paper imputation, `0.2 + Beta(4, 2) × 0.6` with sector shifts and noise, clamped to [0.1, 0.95], instead of a ratio centred above 1 (microcosm#258). The 0.20 VAT rate is applied by the rules engine, not the generator.

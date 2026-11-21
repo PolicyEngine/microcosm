@@ -77,6 +77,25 @@ from microcosm.build.uk_runtime.firm_generation import (
     validate_uk_firm_population,
     write_uk_firm_population,
 )
+from microcosm.build.uk_runtime.firm_rules import (
+    LegacyVATEvaluatorRules,
+    UKFirmRuleOutputs,
+    UKFirmRules,
+    align_rule_outputs,
+    rule_period_for_vintage,
+)
+from microcosm.build.uk_runtime.firm_table import (
+    ASSUMED_INPUT_VAT_RATE,
+    UK_FIRM_TABLE_COLUMNS,
+    build_candidate_rules_table,
+    to_policyengine_uk_firm_table,
+    validate_uk_firm_table,
+)
+from microcosm.build.uk_runtime.firm_universe import (
+    assign_vat_scope_and_registration,
+    registration_propensity,
+    stratified_thin,
+)
 from microcosm.build.uk_runtime.fiscal_targets import (
     UK_CGT_REQUIRED_COLUMNS,
     UK_CGT_TARGET_COVERAGE_REQUIREMENTS,
@@ -977,6 +996,19 @@ __all__ = [
     "validate_geography_coverage",
     "write_geography_crosswalk",
     "write_uk_firm_population",
+    "LegacyVATEvaluatorRules",
+    "UKFirmRuleOutputs",
+    "UKFirmRules",
+    "align_rule_outputs",
+    "rule_period_for_vintage",
+    "ASSUMED_INPUT_VAT_RATE",
+    "UK_FIRM_TABLE_COLUMNS",
+    "build_candidate_rules_table",
+    "to_policyengine_uk_firm_table",
+    "validate_uk_firm_table",
+    "assign_vat_scope_and_registration",
+    "registration_propensity",
+    "stratified_thin",
     "write_uk_calibration_diagnostics",
     "load_bound_spine_sidecar",
     "spine_provenance_from_sidecar",
