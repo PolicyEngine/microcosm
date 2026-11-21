@@ -1,5 +1,5 @@
 {
-  "description": "Golden numbers from local runs of the firm-microsim-paper generator, generate(vintage='2024-25', write=False), seed 42, captured by tools/firm_paper_parity.py paper-extract. 'full' is the full synthetic census (paper release mode); 'fast' is the paper fast preset (window 0.30, tails 0.05); 'ci' is the thinning used by the Microcosm CI parity test (window 0.05, tails 0.01, paper's 1000 epochs). Net VAT uses the paper formula 0.20 x (turnover - inputs), GBP millions; counts are weighted firms.",
+  "description": "Golden numbers from local runs of the firm-microsim-paper generator, generate(vintage='2024-25', write=False), seed 42, captured by tools/uk_firm_paper_parity.py paper-extract. 'full' is the full synthetic census (paper release mode); 'fast' is the paper fast preset (window 0.30, tails 0.05); 'ci' is the thinning used by the Microcosm CI parity test (window 0.05, tails 0.01, paper's 1000 epochs). Net VAT uses the paper formula 0.20 x (turnover - inputs), GBP millions; counts are weighted firms.",
   "paper_repository": "PolicyEngine/firm-microsim-paper",
   "paper_commit": "aa1ce07045255b0ddc9942894810259be86b747f",
   "vintage": "2024-25",
@@ -239,7 +239,7 @@
   "runs": {
     "full": {
       "metadata": {
-        "command": "python tools/firm_paper_parity.py paper-extract --mode full (paper generate(write=False))",
+        "command": "python tools/uk_firm_paper_parity.py paper-extract --mode full (paper generate(write=False))",
         "mode": "full",
         "n_iterations": 1000,
         "paper_commit": "aa1ce07045255b0ddc9942894810259be86b747f",
@@ -424,7 +424,7 @@
     },
     "fast": {
       "metadata": {
-        "command": "python tools/firm_paper_parity.py paper-extract --mode fast (paper generate(write=False))",
+        "command": "python tools/uk_firm_paper_parity.py paper-extract --mode fast (paper generate(write=False))",
         "mode": "fast",
         "n_iterations": 1000,
         "paper_commit": "aa1ce07045255b0ddc9942894810259be86b747f",
@@ -609,7 +609,7 @@
     },
     "ci": {
       "metadata": {
-        "command": "python tools/firm_paper_parity.py paper-extract --mode ci (paper generate(write=False))",
+        "command": "python tools/uk_firm_paper_parity.py paper-extract --mode ci (paper generate(write=False))",
         "mode": "ci",
         "n_iterations": 1000,
         "paper_commit": "aa1ce07045255b0ddc9942894810259be86b747f",

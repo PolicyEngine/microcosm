@@ -3,7 +3,7 @@
 The committed fixture ``tests/fixtures/uk/firm_2024_25`` holds the six
 processed ONS/HMRC tables from PolicyEngine/firm-microsim-paper at aa1ce07 and
 ``paper_reference_2024_25.json``, golden numbers from local paper runs (see
-``tools/firm_paper_parity.py``). Parity is distributional, not row or weight
+``tools/uk_firm_paper_parity.py``). Parity is distributional, not row or weight
 identity: the generators use different random streams and calibration losses.
 
 The CI run here is thinned (window fraction 0.05, tail fraction 0.01) and

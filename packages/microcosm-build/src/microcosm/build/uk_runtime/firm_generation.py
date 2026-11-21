@@ -57,6 +57,7 @@ from microcosm.build.uk_runtime.firm_rules import (
 )
 from microcosm.build.uk_runtime.firm_table import build_candidate_rules_table
 from microcosm.build.uk_runtime.firm_universe import (
+    HMRC_BAND_NAMES,
     assign_vat_scope_and_registration,
     registration_propensity,
     stratified_thin,
@@ -196,16 +197,9 @@ CHRONICLE_ONS_TURNOVER_BANDS = LEDGER_ONS_TURNOVER_BANDS
 CHRONICLE_ONS_EMPLOYMENT_BANDS = LEDGER_ONS_EMPLOYMENT_BANDS
 CHRONICLE_HMRC_BANDS = LEDGER_HMRC_BANDS
 
-HMRC_BAND_COLUMNS: tuple[str, ...] = (
-    "Negative_or_Zero",
-    "£1_to_Threshold",
-    "£Threshold_to_£150k",
-    "£150k_to_£300k",
-    "£300k_to_£500k",
-    "£500k_to_£1m",
-    "£1m_to_£10m",
-    "Greater_than_£10m",
-)
+#: HMRC VAT turnover bands, in ``band_idx`` order; defined once in
+#: :mod:`~microcosm.build.uk_runtime.firm_universe`.
+HMRC_BAND_COLUMNS: tuple[str, ...] = HMRC_BAND_NAMES
 VAT_LIABILITY_BANDS: tuple[str, ...] = HMRC_BAND_COLUMNS[1:]
 #: Net-VAT bands that enter the calibration. ``£1_to_Threshold`` is reported
 #: but not calibrated, as in the paper: its HMRC total is remitted by voluntary
@@ -440,6 +434,13 @@ class UKFirmGenerationConfig:
     fraction, others at the tail fraction, with at least ``sample_cell_floor``
     rows per sector x HMRC band x window-side stratum. The defaults keep every
     row; :meth:`fast` is the paper's fast-iteration preset.
+
+    ``vat_threshold`` defaults to the ``data_vintage``'s threshold, resolved
+    once at construction. ``dataclasses.replace(config, data_vintage=...)``
+    therefore keeps the old vintage's threshold (it is passed back in as an
+    explicit value); use :meth:`with_vintage` to switch vintage and threshold
+    together. An explicit ``vat_threshold`` that differs from the vintage's
+    (a counterfactual threshold) is allowed.
     """
 
     data_vintage: str = DEFAULT_VINTAGE
@@ -482,6 +483,24 @@ class UKFirmGenerationConfig:
         }
         values.update(overrides)
         return cls(**values)
+
+    def with_vintage(self, data_vintage: str) -> UKFirmGenerationConfig:
+        """This configuration for ``data_vintage`` at that vintage's threshold.
+
+        Every other field is kept. Unlike ``dataclasses.replace(config,
+        data_vintage=...)``, the VAT threshold follows the new vintage.
+        """
+
+        if data_vintage not in VINTAGES:
+            raise ValueError(
+                f"Unknown UK firm vintage {data_vintage!r}; "
+                f"choose from {sorted(VINTAGES)}."
+            )
+        return replace(
+            self,
+            data_vintage=data_vintage,
+            vat_threshold=float(VINTAGES[data_vintage]["threshold"]),
+        )
 
     @property
     def thinned(self) -> bool:
@@ -1182,30 +1201,6 @@ def employment_band_index_array(employment: np.ndarray) -> np.ndarray:
     )
 
 
-def assign_vat_flags(
-    turnover_values: Tensor,
-    hmrc_bands: dict[str, float],
-    config: UKFirmGenerationConfig,
-) -> Tensor:
-    """Assign VAT-registration flags."""
-
-    threshold = float(config.vat_threshold)
-    device = turnover_values.device
-    below = (turnover_values > 0) & (turnover_values <= threshold)
-    flags = turnover_values > threshold
-    below_indices = below.nonzero(as_tuple=False).flatten()
-    if len(below_indices) == 0:
-        return flags
-    target_below = int(round(max(0.0, float(hmrc_bands["£1_to_Threshold"]))))
-    n_select = min(len(below_indices), target_below)
-    if n_select > 0:
-        selected = below_indices[
-            torch.randperm(len(below_indices), device=device)[:n_select]
-        ]
-        flags[selected] = True
-    return flags
-
-
 def build_firm_target_matrix(
     config: UKFirmGenerationConfig,
     turnover_values: np.ndarray | Tensor,
@@ -1556,40 +1551,6 @@ def evaluate_vat_liability_if_registered_k(
     return np.asarray(liability_gbp, dtype=np.float64) / 1000.0
 
 
-def calculate_vat_liability_values(
-    config: UKFirmGenerationConfig,
-    turnover_values: Tensor,
-    input_values: Tensor,
-    vat_registered: Tensor,
-) -> Tensor:
-    """Evaluate net VAT liability for candidate firms via configured VAT rules."""
-
-    evaluator = config.vat_rule_evaluator
-    if evaluator is None:
-        raise ValueError(
-            "UK firm VAT liability requires a VAT rule evaluator. "
-            "Pass AxiomVATRuleEvaluator with a compiled UK VAT RuleSpec artifact."
-        )
-    turnover_np = turnover_values.detach().cpu().numpy()
-    input_np = input_values.detach().cpu().numpy()
-    registered_np = vat_registered.detach().cpu().numpy().astype(bool)
-    liability_np = np.asarray(
-        evaluator.net_liability_k(
-            turnover_k=turnover_np,
-            input_cost_k=input_np,
-            vat_registered=registered_np,
-            data_vintage=config.data_vintage,
-        ),
-        dtype=np.float32,
-    )
-    if liability_np.shape != turnover_np.shape:
-        raise ValueError(
-            "VAT rule evaluator returned shape "
-            f"{liability_np.shape}, expected {turnover_np.shape}."
-        )
-    return torch.tensor(liability_np, dtype=torch.float32, device=config.device)
-
-
 def validate_uk_firm_population(
     firms: pd.DataFrame,
     data: UKFirmSourceData,
@@ -1842,12 +1803,12 @@ def _add_zero_turnover_firms(
 def _allocate_zero_turnover_sics(sic_codes: Tensor, target: int) -> list[int]:
     unique_sics, counts = torch.unique(sic_codes, return_counts=True)
     total = len(sic_codes)
-    exact_allocations = target * counts.float() / total
+    exact_allocations = target * counts.double() / total
     allocations = torch.floor(exact_allocations).to(torch.int64)
     remainder = target - int(allocations.sum().item())
     if remainder > 0:
         fractional_order = torch.argsort(
-            exact_allocations - allocations.float(),
+            exact_allocations - allocations.double(),
             descending=True,
         )
         allocations[fractional_order[:remainder]] += 1

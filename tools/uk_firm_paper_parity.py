@@ -11,13 +11,13 @@ with dropout and an L1 penalty; Microcosm minimises capped MAPE).
 Usage::
 
     # Compare Microcosm (full census draw) with the committed paper reference.
-    uv run --no-sync python tools/firm_paper_parity.py --full
+    uv run --no-sync python tools/uk_firm_paper_parity.py --full
 
     # Thinned Microcosm run (window 0.30, tails 0.05, the paper's fast preset).
-    uv run --no-sync python tools/firm_paper_parity.py --fast
+    uv run --no-sync python tools/uk_firm_paper_parity.py --fast
 
     # Also re-run the paper generator from a checkout and compare with that.
-    uv run --no-sync python tools/firm_paper_parity.py --full \
+    uv run --no-sync python tools/uk_firm_paper_parity.py --full \
         --paper-root ../firm-microsim-paper
 
 ``--paper-root`` runs the paper inside its own environment
@@ -391,7 +391,7 @@ def _paper_extract(mode: str, out_path: Path, n_iterations: int | None) -> None:
             "n_iterations": config.n_iterations,
             "runtime_seconds": round(runtime, 1),
             "command": (
-                "python tools/firm_paper_parity.py paper-extract "
+                "python tools/uk_firm_paper_parity.py paper-extract "
                 f"--mode {mode} (paper generate(write=False))"
             ),
         },
@@ -649,10 +649,15 @@ def parity_checks(
     return checks
 
 
+#: Values below this magnitude print with significant digits, not as integers.
+_SIGNIFICANT_DIGITS_BELOW = 10.0
+
+
 def _fmt(value: float | None, kind: str) -> str:
     if value is None:
         return "n/a"
-    if kind in {"min"} or (abs(value) < 10 and kind != "exact"):
+    small = abs(value) < _SIGNIFICANT_DIGITS_BELOW
+    if kind in {"min"} or (small and kind != "exact"):
         return f"{value:.6g}"
     return f"{value:,.0f}"
 
@@ -696,7 +701,7 @@ def render_table(checks: list[Check]) -> str:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "paper-extract":
-        parser = argparse.ArgumentParser(prog="firm_paper_parity.py paper-extract")
+        parser = argparse.ArgumentParser(prog="uk_firm_paper_parity.py paper-extract")
         parser.add_argument("--mode", choices=["full", "fast", "ci"], default="full")
         parser.add_argument("--out", type=Path, required=True)
         parser.add_argument("--n-iterations", type=int, default=None)

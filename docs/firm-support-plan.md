@@ -101,11 +101,11 @@ Acceptance gates:
 
 ## Phase 3: Rules-engine VAT Metrics
 
-Firm metrics come through the `UKFirmRules` seam. The production adapter is
-`PolicyEngineUKFirmRules`, which builds a policyengine-uk simulation from the
-firm table (policyengine-uk column names) and reads its firm variables. The
-Axiom adapter below stays as an optional cross-check, and builds record any
-difference between the two.
+Firm metrics come through the `UKFirmRules` seam. The production adapter will
+be `PolicyEngineUKFirmRules` (M4, not yet implemented), which will build a
+policyengine-uk simulation from the firm table (policyengine-uk column names)
+and read its firm variables. The Axiom adapter below stays as an optional
+cross-check, and builds will record any difference between the two.
 
 For the Axiom cross-check:
 
