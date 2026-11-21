@@ -101,7 +101,7 @@ def _state_targets(rows: list[tuple[str, float]]) -> pd.DataFrame:
 
 
 def _with_person(frame: Frame, person: pd.DataFrame) -> Frame:
-    """``frame`` with its person table replaced by ``person``."""
+    """Rebuild ``frame`` with ``person`` as its person table."""
 
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = person
@@ -226,7 +226,7 @@ class TestSourceTable:
         subsidy, to Route A's CPS rows. The state stage's source table and
         the shared receipt helper both read a null subsidy as 0, so neither
         anchors an ACS SPM unit, and each returns the same output as with
-        0.0 in the ACS cells. PR 3 leaves the SNAP code as main has it.
+        0.0 in the ACS cells.
         """
 
         frame = _one_population_snap_frame(np.nan)
