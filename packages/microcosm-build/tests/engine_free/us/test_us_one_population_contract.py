@@ -6454,9 +6454,11 @@ def test_the_mixed_origin_reader_frame_holds_both_origins(readers) -> None:
     ``acs_2024_1yr`` and no other, every ACS row has clone index 0, and the
     assembly record counts each entity's ACS rows. Each entity's CPS rows
     equal the ASEC-only assembled frame's, in order, over that frame's
-    columns, and keep their weights. The join adds ACS-only columns, null on
-    CPS rows, and widens a column the ACS rows lack (an integer ``MCARE``
-    becomes float), so the test compares values and ignores dtypes. On ACS
+    columns, and keep their weights; each ACS household keeps the weight the
+    generator drew for its ``SERIALNO``. The join adds ACS-only columns,
+    null on CPS rows, and widens a column the ACS rows lack (an integer
+    ``MCARE`` becomes float), so the test compares values and ignores
+    dtypes. On ACS
     rows the four gates' raw ASEC columns hold only nulls,
     ``weeks_unemployed`` holds 0, unemployment compensation stays finite and
     turns positive on some rows, Medicare take-up keeps a boolean dtype, and
@@ -6470,11 +6472,11 @@ def test_the_mixed_origin_reader_frame_holds_both_origins(readers) -> None:
                 getattr(population, form).table(entity),
                 getattr(readers, form).table(entity),
             )
-    mixed, assembled = population.mixed_origin, population.assembled
-    record = mixed.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]["native_row_counts"]
+    mixed_origin, assembled = population.mixed_origin, population.assembled
+    record = mixed_origin.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]["native_row_counts"]
     acs_rows: dict[str, np.ndarray] = {}
     for entity in US_SCHEMA.entities:
-        table = mixed.table(entity)
+        table = mixed_origin.table(entity)
         channel = table[support_channel_column(entity)]
         assert set(channel) == {
             BASE_ASEC_SUPPORT_CHANNEL,
@@ -6494,11 +6496,21 @@ def test_the_mixed_origin_reader_frame_holds_both_origins(readers) -> None:
         )
     assert int(acs_rows["household"].sum()) == 12
     np.testing.assert_array_equal(
-        mixed.resolve_weights("person").values[~acs_rows["person"]],
+        mixed_origin.resolve_weights("person").values[~acs_rows["person"]],
         assembled.resolve_weights("person").values,
     )
+    household = mixed_origin.table("household")
+    acs_households = acs_rows["household"]
+    assert {
+        str(serial): float(weight)
+        for serial, weight in zip(
+            household.loc[acs_households, "SERIALNO"],
+            mixed_origin.weights_for("household").values[acs_households],
+            strict=True,
+        )
+    } == population.acs_household_weights
 
-    person = mixed.table("person")
+    person = mixed_origin.table("person")
     acs_person = person.loc[acs_rows["person"]]
     raw = {
         column
@@ -6522,6 +6534,23 @@ def test_the_mixed_origin_reader_frame_holds_both_origins(readers) -> None:
         *US_RETIREMENT_DISTRIBUTION_OUTPUT_COLUMNS,
     ):
         assert (acs_person[column] == 0.0).all(), column
+
+
+def test_the_mixed_origin_builder_follows_its_seed_and_household_count() -> None:
+    """``seed`` draws the mixed-origin frame's ACS households and
+    ``n_acs_households`` sets how many it joins; a count below 1 raises."""
+
+    with pytest.raises(ValueError, match="at least 1"):
+        mixed_origin_reader_population(n_acs_households=0)
+    acs_people: dict[int, pd.DataFrame] = {}
+    for seed in (0, 1):
+        frame = mixed_origin_reader_population(seed, n_acs_households=3).mixed_origin
+        channel = frame.table("household")[support_channel_column("household")]
+        assert int(channel.eq(ACS_SUPPORT_CHANNEL).sum()) == 3, seed
+        person = frame.table("person")
+        acs = person[support_channel_column("person")].eq(ACS_SUPPORT_CHANNEL)
+        acs_people[seed] = person.loc[acs].reset_index(drop=True)
+    assert not acs_people[0].equals(acs_people[1])
 
 
 _X5_CASES = [

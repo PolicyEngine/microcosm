@@ -1779,11 +1779,17 @@ class MixedOriginReaderPopulation:
     :func:`~microcosm.build.us_runtime.one_population_contract.to_assembled_provenance`'s
     join of the same CPS tables and generated ACS tables: CPS rows first,
     then ACS rows, with each group table in id order.
+
+    ``acs_household_weights`` maps each ACS household's ``SERIALNO`` to the
+    weight the generator drew for it, in the row order the generator returns
+    them. The builder records that pairing before the join; it does not
+    check the pairing.
     """
 
     route_a: Frame
     assembled: Frame
     mixed_origin: Frame
+    acs_household_weights: Mapping[str, float]
 
 
 def mixed_origin_reader_population(
@@ -1836,6 +1842,14 @@ def mixed_origin_reader_population(
         for index in range(n_acs_households)
     ]
     acs, acs_weights, _, _ = _acs_tables(households, rng, tables)
+    acs_household_weights = MappingProxyType(
+        {
+            str(serial): float(weight)
+            for serial, weight in zip(
+                acs["household"]["SERIALNO"], acs_weights, strict=True
+            )
+        }
+    )
     # After _acs_tables, whose _typed refuses a column without a dtype.
     acs["person"] = _with_acs_reader_columns(acs["person"])
     mixed_origin = to_assembled_provenance(
@@ -1851,6 +1865,7 @@ def mixed_origin_reader_population(
         route_a=route_a,
         assembled=_asec_only_assembled(route_a, tables),
         mixed_origin=mixed_origin,
+        acs_household_weights=acs_household_weights,
     )
 
 
