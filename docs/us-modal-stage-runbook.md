@@ -3,7 +3,7 @@
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
 a registered tool run on Modal from a pinned commit, with inputs fetched by
-digest and outputs listed with sha256 receipts. Six tools are registered
+digest and outputs listed with sha256 receipts. Seven tools are registered
 (`TOOLS` in the plan module): `tools/build_us_acs_local_release.py` (tool
 `us-acs-local-release`, stages `materialize`, `calibrate`, `qa`,
 `finalize`, `package`, or `all`), Route A's PUF-support base,
@@ -15,7 +15,9 @@ its default-pool registration `us-puf-support-base-income-2023-2025` (the
 rerun's command on income years 2023-2025; see "The default-pool template"),
 the ACS multispine staging builder,
 `tools/build_us_acs_multispine_base.py` (tool `us-acs-multispine-staging`,
-stage `all`; see "ACS multispine staging"), and `runner-smoke` (stage
+stage `all`; see "ACS multispine staging"), the US head-to-head scorer,
+`tools/score_us_release_head_to_head.py` (tool `us-release-head-to-head`,
+stage `score`; see "Route A head-to-head (d844)"), and `runner-smoke` (stage
 `smoke`), an inline script that proves the run path on any pushed commit (see
 "Commands").
 
@@ -30,7 +32,15 @@ Two files do the work:
   and, for the base,
   `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py`.
   Staging tests are in
-  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_acs_multispine_staging.py`.
+  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_acs_multispine_staging.py`,
+  and the scorer's in
+  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_release_head_to_head.py`.
+
+The actual subprocess parser probe is covered by
+`packages/microcosm-build/tests/engine_contract/us/test_us_modal_stage_release_head_to_head.py`
+in `tools/ci_test_plan.py`'s `engine-contract-us` group. Importing the scorer
+loads the US engine through a sibling tool, so this regression runs in US
+engine CI.
 
 Nothing here uploads to the Hugging Face Hub, changes `releases.json` or
 notifies anyone. The furthest a stage goes is `package`, which writes the
@@ -416,24 +426,27 @@ local wall times in this table understate Modal's wall and cost.
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
 | PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores (limit 4), 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
 | ACS multispine staging (`all`) | 42.4 GB, 7,218 s wall, 103,105 CPU-s | acs-staging | 16 cores (limit 16), 80 GiB, 17 h timeout | about $2.79 ($8.38 non-preemptible) |
+| Route A head-to-head (`score`) | Mac only: 11.31 GiB peak `ru_maxrss` for one process holding both frames, 8.10 GiB peak `ru_maxrss` printed by 3 incumbent workers; no candidate worker measured; time on Modal not measured | head-to-head | 16 cores (limit 16), 288 GiB (limit 288), 15,705 s (4 h 22 min) timeout from the $40 cap | $40.00 non-preemptible compute through the timeout |
 
 The prices are Modal's list prices for standard compute, read from
 [modal.com/pricing](https://modal.com/pricing) on 22 September 2026 and
-unchanged on 29 September and 13 October:
+unchanged on 29 September, 10 October and 13 October:
 $0.0000131 per core-second and $0.00000222 per GiB-second. Modal bills the
 higher of the request and actual use (modal.com/docs/guide/resources). The
 heavy class costs about $1.21 an hour at its request, so an 8-hour timeout
 costs about $9.70 at the request; CPU or memory used above the request
 bills above that. With `"nonpreemptible": true` every figure is three times
-higher: about $3.63 an hour for the heavy class. The base and acs-staging
-classes set CPU limits equal to their requests; the others are request-only
-for CPU,
-and every class is request-only for memory, so a stage that used more cores
-or more memory than its request would be billed for them. The engine pass in
+higher: about $3.63 an hour for the heavy class. The base, acs-staging and
+head-to-head classes set CPU limits equal to their requests; the others are
+request-only for CPU. The head-to-head class also sets a memory limit equal
+to its request; every other class is request-only for memory, so a stage
+that used more cores or more memory than its request would be billed for
+them. The engine pass in
 materialize is single-threaded (CPU seconds roughly equal wall seconds), so
 extra cores would not speed it up. The table leaves out volume storage and
-image builds. The base class is sized in "Route A's base stage" below;
-the acs-staging class is sized in "ACS multispine staging".
+image builds. The base class is sized in "Route A's base stage" below,
+the acs-staging class in "ACS multispine staging", and the head-to-head
+class in "Route A head-to-head (d844)".
 
 ## Commands
 
@@ -1691,6 +1704,651 @@ and every log against their recorded bytes and sha256, and refuses extra
 state files. It does not accept a budget stop as a successful staging build.
 A receipt verifies artifact bytes; the later release's existing gates and
 certification still determine whether the release is accepted.
+
+## Route A head-to-head (d844)
+
+`docs/us-modal-stage-route-a-h2h-plan.json` compares the d1386 Route A
+build (`populace-us-2024-b5db384-8b0c1950b65f-20261024T083103Z`) with the US
+default (`populace-us-2024-spm-20260915`) on the frozen
+`consumer_facts_us_c5e5bf8.jsonl` ledger, the register d844 fixed before any
+result. The d1386 build was calibrated on `consumer_facts_us_51aa40f.jsonl`
+and the default on an older feed, so neither was fit to this register. The
+plan pins scorer commit `2cfe3043d747b929e349c8de2486acf80b5f17f2` on
+`main`, which carries #1171 (`--workers`, the per-slice release of Core's
+variable modules, and the recycling guard) and locks policyengine-us 2.2.1,
+the engine the d1386 manifest names. The runner registration comes from this
+checkout. A plan's pin is immutable and freezes the yardstick: to pick up a
+later scorer change, update `source.commit`, then repeat the local
+validation and the Modal check.
+
+The stage runs the local comparison's argv with staged paths and
+`--workers 16` added:
+
+```text
+--incumbent X --candidate Y --ledger-facts Z --out-prefix P --maximum-microsim-batch-size 2000 --workers 16
+```
+
+Only `workers`, `maximum_microsim_batch_size` and `worker_max_slices` are
+plan options. The d844 plan does not set `worker_max_slices`, so each
+worker lives for its artifact's whole pool. The scorer refuses recycling
+below Python 3.14.7, and the image's `3.14` resolves to 3.14.2 on Modal's
+2025.06 image builder (`modal/builder/base-images.json` in modal 1.3.0).
+Check mode reports the image venv's Python under `environment.python` and
+under the parser probe's `python`, and when a plan sets `worker_max_slices`
+it runs the scorer's own `_assert_worker_recycling_supported` in the image
+(`ToolSpec.option_preflights`), so a recycling plan fails the check instead
+of the paid run. Every path flag, `--out-prefix`, the candidate-manifest
+pin, both spellings of each boolean, and the alternative batch-size
+spelling are runner-owned. The builder omits `--age-targets` and
+`--allow-unaged-dollar-targets`, so the scorer uses the same defaults as the
+sequential run: `False` and `True`, respectively. The crosswalk and candidate
+pool/attestation flags are also omitted; the scorer chooses its normal
+bundled crosswalk. Changing this scoring yardstick requires a reviewed
+registration change. The plan sets the five native numerical thread counts
+to `1`, so sixteen spawned workers do not each start a sixteen-thread
+BLAS/OpenMP pool. That is an execution choice; the engine-free argv test
+does not prove numerical parity across platforms or thread counts.
+
+Both H5 inputs retain the filename `populace_us_2024.h5` in separate CAS
+directories and stage to `/work/inputs/incumbent_h5/populace_us_2024.h5`
+and `/work/inputs/candidate_h5/populace_us_2024.h5`. Keep the `.h5` suffix
+and this filename: `_resolved_artifact_path` preserves them for the loader
+and artifact identity. Do not upload either H5 under an extensionless hash.
+The incumbent is 826,917,837 bytes, the candidate 2,509,287,855 bytes and
+the ledger 164,603,204 bytes.
+
+**What the run does.** The scorer compiles the register once (33,147
+specs in five chunks of up to 8,192; chunk 5 holds 379, among them the
+eleven JCT reform measures), then scores the incumbent in one pool of
+spawned workers and the candidate in a fresh pool. Each artifact has the
+same number of 2,000-household slices in every chunk: 29 for the
+incumbent and 177 for the candidate, so 145 and 885 slices. Each worker
+receives the repaired frame once, when it starts.
+
+**Memory.** Class `head-to-head` requests 16 physical cores and 288 GiB,
+each limited at the request: 16 GiB for each of 16 workers plus 32 GiB for
+the parent, which retains the original and repaired frames. Two limits bound
+it, and the go/no-go watcher below judges neither. The class's hard limit
+OOM-kills the container. The scorer's own guard (`MAX_RSS_BYTES`, 20 GiB)
+raises `MemoryError` in any process whose peak RSS reaches it at a logged
+boundary. What has been measured, all on the Mac
+(`docs/evidence/us-h2h-speed`):
+
+- One process holding both frames peaked at 10.4 GiB of current RSS,
+  sampled every half second, and at 11.31 GiB of `ru_maxrss`, the peak the
+  scorer's lines and its guard use.
+- In a three-worker pool run of the pinned scorer, incumbent workers' slice
+  lines printed 4.38 to 8.10 GiB of `ru_maxrss` (their start lines 1.85 GiB)
+  and the parent's 3.66 to 5.01 GiB.
+- No candidate worker has run. "About 12 GiB per candidate worker" is an
+  inference from the September candidate's frame (5.45 GiB in-process and
+  2.17 GiB pickled, measured 10 October).
+
+Earlier runs and probes:
+
+- October's sequential run, under the older scorer, grew 37 to 60 MiB per
+  slice in chunks 2 to 4 (166 MiB per slice in chunk 1, from the loaded
+  frame) and died of a `MemoryError` at 20.3 GiB in chunk 5.
+- The local probe of 11 November, on the d1386 frame and the current scorer,
+  saw the traced heap grow 22 to 45 MB per slice after a one-time step at
+  slice 3, over six slices of chunk 5 only.
+- The 23 September materialize acceptance attempt peaked at 66.3 to 74.5 GB
+  on Modal against 51.0 GB on the Mac (1.30 to 1.46 times).
+
+An OOM-kill writes **no final receipt and mirrors no output**. Inspect the
+container logs and Modal's measurements, and do not assume the absence of a
+receipt means the attempt was free. The receipt's `peak_rss_bytes` is a
+child-process peak from `RUSAGE_CHILDREN`, not the sum of sixteen workers.
+
+**Time.** All of the timing below comes from the Mac
+(`docs/evidence/us-h2h-speed`).
+
+One process scored a slice in these times:
+
+| Artifact | Chunks 1 to 4 | Chunk 5 |
+|---|---|---|
+| Candidate | 34 to 42 s | about 200 s |
+| Incumbent | 33 to 50 s | 226 to 232 s |
+
+Extrapolated from two timed slices per chunk, all 1,030 slices come to
+about 74,100 s of slice work, or 4,631 s on 16 workers.
+
+The scorer's pool starts workers on demand, one at a time. A submit that
+finds no result token free starts a worker. Each start blocks the parent
+while the child imports the scorer and reads its arguments. On the Mac,
+the rebuilt pool dates the incumbent's three starts at 42, 36 and 44 s from
+the submit to the worker's first line. Those are intervals the model dates
+from the log, not measured blocks: `Process.start()` returns once the
+child's arguments are written, and the line comes after the worker's
+initializer, so how much of each interval blocked the parent is not
+measured.
+
+Nothing has timed this scorer on Modal, or a candidate worker's start
+anywhere. A simulation of 16-worker runs from the Mac times (not a
+measurement: `projection-grid.txt` there) shows when the run fits the $40
+budget: when its last slice ends at least 600 s before the budget does, the
+allowance the estimate keeps for the comparison and scorecards. The
+watcher's budget runs from `started-at`, written before `modal run`, so the
+container's start and staging come out of it too: with 300 s of those, the
+f = 1, T = 300 s run below gets `NO-GO` at 1,200 s, and the watcher stops
+it a poll later at the earliest, although it fits the runner's budget
+(`projection-grid-pre-tool-300.txt`). Let f be Modal's time
+per slice over the Mac's:
+
+- at f up to 1, if a worker starts in 300 s or less;
+- at f up to 1.5, if a worker starts in 175 s or less;
+- at f up to 2, if a worker starts in 100 s or less;
+- at f of 3 or more, never.
+
+The runbook's measured Modal slowdown for single-core materialize work, 3.3
+to 7.6 times per chunk, would not fit. October's sequential run, under an
+older scorer on free-threaded CPython, took 5 to 10 minutes per slice. That
+is 6 to 9 times the Mac times above in chunks 1 to 4, for reasons not
+tested.
+
+**Placement and the cap.** The plan runs non-preemptible. The scorer has no
+resume. At the preemption rate measured in "Preemption and restarts" (about
+0.67 per hour), a preemptible attempt of two to four hours, the span of
+the simulated runs that fit, would finish only 26% to 7% of the time.
+
+`HEAD_TO_HEAD_COST_CAP_USD` sets the class timeout: the cap divided by the
+class's non-preemptible list price,
+`(16 × $0.0000131 + 288 × $0.00000222) × 3 = $0.00254688` per second
+($9.17 an hour). At Max's $40 cap (10 October) that is 15,705 seconds
+(4.4 hours). The plan's `max_wall_seconds` of 14,505 leaves the runner's
+900-second reserve and 300 seconds for staging. Whether $40 is enough
+depends on Modal's speed for this scorer, which only a run can measure. The
+watcher below stops a run that will not fit.
+
+Raising the cap changes `HEAD_TO_HEAD_COST_CAP_USD`, the plan's
+`max_wall_seconds` (the new timeout less 1,200) and the figures the plan
+tests pin. The CPU and
+memory limits equal their requests, so the timeout bounds one attempt's
+compute bill. This ceiling is not a cap on total Modal account spend. These
+stay outside it:
+
+- startup and image work outside the timeout;
+- the check;
+- storage;
+- timeout-enforcement overshoot.
+
+A changed plan is a new plan sha256 with a fresh runner budget. Record every
+attempt's spend for this comparison in the run folder, and keep the total
+inside Max's cap yourself.
+
+Stage the inputs in the `policyengine` workspace. Set these variables to
+the existing local files; the ledger path is the one used by Route A's
+base. `upload-commands` only hashes files and prints commands: it performs
+no upload. Run it first to refuse a digest mismatch before uploading.
+If a CAS file already exists (the base may have staged the ledger), skip
+that `put` and let check mode verify its digest; do not overwrite it. Both
+H5s are in the `policyengine/populace-us` Hugging Face dataset under the
+revisions named for their releases. A download of each, or the local
+Hugging Face cache's copy, serves as the local file: `upload-commands`
+rehashes whatever it is given.
+
+```bash
+# Pin the workspace for every Modal command here (see below).
+export MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main
+INCUMBENT_H5=/path/to/populace-us-2024-spm-20260915/populace_us_2024.h5
+CANDIDATE_H5=/path/to/populace-us-2024-b5db384-8b0c1950b65f-20261024T083103Z/populace_us_2024.h5
+LEDGER_FACTS=/path/to/consumer_facts_us_c5e5bf8.jsonl
+python3 tools/modal_us_stage_plan.py upload-commands \
+  docs/us-modal-stage-route-a-h2h-plan.json \
+  incumbent_h5="$INCUMBENT_H5" candidate_h5="$CANDIDATE_H5" ledger_facts="$LEDGER_FACTS"
+
+modal volume put microcosm-us-stage-inputs "$INCUMBENT_H5" \
+  cas/sha256/6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84/populace_us_2024.h5
+modal volume put microcosm-us-stage-inputs "$CANDIDATE_H5" \
+  cas/sha256/2d9c8586c45c32e5ca27357317f4de93b526cc51dd28b15b71ed43e47e142e79/populace_us_2024.h5
+modal volume put microcosm-us-stage-inputs "$LEDGER_FACTS" \
+  cas/sha256/b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801/consumer_facts_us_c5e5bf8.jsonl
+
+# Validate locally, then check on Modal.
+python3 tools/modal_us_stage_plan.py validate docs/us-modal-stage-route-a-h2h-plan.json
+MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json \
+  modal run tools/modal_us_stage.py
+```
+
+Require `CHECK OK`, including the pinned parser and all three volume
+digests, before the paid run. Launch the paid run under launchd, never from a
+session shell: a restart of the launching session kills a session-owned
+client, and Modal then cancels the paid input (this happened to Route A's
+base on 2026-09-29). Launch it with `--run --spawn`, which returns once the
+stage is spawned (see "Commands"), and record the launch time, the app id
+(`ap-…`) and the printed `function_call_id`. From the checkout that holds
+this plan:
+
+Each attempt gets its own local folder, `modal-runs/$R/attempt-N`: the
+plan's run id, and so `runs/$R` on the volume, stays the same across
+attempts, but the watcher must not read an earlier attempt's streams. It
+refuses a folder whose streams hold scorer lines from before `started-at`.
+
+Pin the Modal workspace and environment for every Modal command of the
+attempt: the uploads and the check above, the launch, the watcher and the
+fetch below. Another session can switch the active profile (`modal profile activate`,
+`modal token new` or `modal token set`) or environment (`modal config
+set-environment`) mid-run; the app list and the stop would then read
+another workspace, and uploads would land where the pinned launch cannot
+read them, using up the attempt on a failed start. `~/.modal.toml` on the
+build Mac sets no environment
+(checked 2026-11-16), so the workspace's default, `main`, is inferred:
+confirm it with `modal environment list` before the launch. The watcher
+refuses to start unless both are set.
+
+```bash
+R=route-a-h2h-d844-d1386-r1
+A="modal-runs/$R/attempt-1"   # attempt-2 for a second attempt, and so on
+mkdir -p "$A"
+cat > "$A/launch.sh" <<SH
+#!/bin/bash
+set -euo pipefail
+cd "$PWD"
+export PATH="\$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+export MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main
+export MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-h2h-plan.json
+date -u +%Y-%m-%dT%H:%M:%SZ > $A/started-at
+exec modal run --detach tools/modal_us_stage.py --run --spawn
+SH
+chmod +x "$A/launch.sh"
+```
+
+Submit that script as a transient launchd job. On the build Mac the helper
+is `lsubmit.sh <label> <log> <cwd> /bin/bash <path to launch.sh>`; any
+launchd submission whose parent is launchd works. Do not run `launch.sh`
+directly in a session shell. Read the app id (`ap-…`) from this attempt's
+launch log, where `modal run` prints it in its "View run at" line. Do not
+take it from `modal app list`: every stage is the app `microcosm-us-stage`,
+so another session's running stage is listed beside this one with the same
+name, and the watcher would stop it on a `NO-GO`. The watcher refuses an app
+created more than `WATCH_CREATED_SLACK` seconds (60) before `started-at`, or
+one whose creation time it cannot read, but it cannot tell this attempt's
+app from another session's launched after `started-at`.
+
+**Go/no-go.** As soon as the app id is known, start
+`tools/us_head_to_head_watch.sh` as a second launchd job, from the same
+checkout:
+
+```bash
+lsubmit.sh <label> <log> "$PWD" /usr/bin/env \
+  PYTHON="$(command -v python3.14)" MODAL="$HOME/.local/bin/modal" \
+  MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main \
+  /bin/bash tools/us_head_to_head_watch.sh \
+  <ap-id> modal-runs/route-a-h2h-d844-d1386-r1/attempt-1 \
+  docs/us-modal-stage-route-a-h2h-plan.json \
+  docs/evidence/us-h2h-speed/chunk-weights.json
+```
+
+Write the attempt folder literally, as here, rather than `"$A"`: this line
+may run in a fresh shell, where `$A` is empty and the watcher refuses to
+start (exit 2), leaving the run unwatched though still bounded by the
+runner's budget.
+
+Pin `PYTHON` and `MODAL` too: launchd's `PATH` is short, and macOS's `/usr/bin/python3` (3.9)
+cannot run the projection, which needs CPython 3.11 or later and only its
+standard library. The watcher gives the projection a trial run before it
+watches, and refuses to start (exit 2) if it does not answer.
+
+The watcher streams `modal app logs` into `$A/app-N.log`, one
+file per stream. A stream that ends while the app runs is restarted within
+`WATCH_STEP` seconds the first time between two polls; a second end before
+the next poll waits for that poll, up to ten minutes. Each poll also
+restarts a stream that has ended before it reads the files, so a dead
+stream is never read as a quiet scorer: the new file starts empty, which
+holds the estimate until it delivers. Whether a fresh stream
+replays what the app printed before it is not known (it has not been tried
+against a live app), so start the watcher as soon as the app id is known,
+before the runner has pulled and staged its inputs. Slice lines a restart
+misses show up as `log_gap` once the
+parent's later lines arrive; a lost pool-opening line shows up as `log_gap`
+as soon as that pool's other lines do; a lost worker-start line, which the
+parent's later lines cannot reveal, shows up as `log_gap` once the rebuild
+no longer fits the log: it starts a slice after it ends, meets a submit
+that took no token and started no worker it can see, or counts starts it
+cannot explain (no intact simulated log does any of these). A stream
+restarted after the last one ended, if it does not replay, leaves a
+stretch no stream covers (unless it loses only part of one second's lines,
+below), which the projection reports as `stream_holes` and the watcher
+alarms on, once. The restart before acting on a `NO-GO` keeps the old
+stream running until the next poll, so a restart of a stream that had not
+hung leaves no such stretch (below). A slice line lost in a hole reads as
+a straggler before any `log_gap` shows, so after a hole the projection
+gives `WAIT` while a slice that began before the hole ended has no line
+(`hole_suspects`); a slice still running clears it when its line arrives,
+a lost one becomes `log_gap` when the parent takes its result. A
+restart that loses only some of one second's lines, while lines on both
+sides of the loss share that second, leaves no such stretch: the
+projection marks a hole only where a stream's first record comes after the
+second the earlier streams reached. No hold then applies, and a lost slice
+line reads as a straggler until the parent's receive line shows the gap;
+until then the estimate can give a false `NO-GO` with no damage flag
+(`docs/evidence/us-h2h-speed/README.md`, lost lines, gives a simulated
+case). A start line lost in a hole leaves the rebuild a worker short and
+its start cost off, which makes the estimate read late, the false-stop
+direction, until the rebuild needs the missing worker and shows `log_gap`.
+In a pool with fewer slices than two per worker it may never need it, and
+it places that worker's slices on another, so the pool's measured slice
+times read long too (in a simulated pool, a lost 34 s start read 62 s
+slices as 127 s). No later line tells that from a restart that lost
+nothing, but each worker prints its start line once, so a pool that has
+logged a start for every worker has lost none. Until then, after a hole
+that could hold the pool's start lines (one ending once the pool opened
+and beginning before its release line), a time `NO-GO` is held as `WAIT`
+(`starts_unconfirmed`): for the incumbent, past its release, for as long as
+the candidate's estimate reads its timing (its start cost, pace or
+first-slice extra, or its departures from the prior for a chunk the
+candidate has not measured). The hold leaves a stall's `NO-GO` as it is,
+and the watcher raises `ALARM` on it rather than stopping the run (below).
+A newest stream with nothing in it yet beside an earlier one with records
+may be a hole that has not ended: the estimate and
+the stall check wait for its first record (`newest_stream_empty`). The
+projection reports a stream that begins in the very second the earlier
+ones reached and repeats records from it as `restart_overlaps`, and counts
+each record there once, so that second may come up short. It does not
+report one that repeats none, having lost lines from that second (above).
+It reads `app-2.log` before `app-10.log`. `log_gap` raises a separate
+alarm, once, so the watcher still reports a lost line found after a hole.
+The runner prints its `BUDGET:` line just
+before it starts the tool, every time, so streams with scorer lines but no
+`BUDGET:` line began late or lost it and may have missed a shorter budget:
+that is `log_gap` too (`"runner"`). An `ATTEMPTS:` line, printed before
+staging, does not stand in for it: its budget can be longer, since
+`BUDGET:` cuts it to the time left before the class timeout. Every
+ten minutes the watcher runs `tools/us_head_to_head_projection.py` on those
+files, the plan, `started-at` and the chunk weights. The projection:
+
+- rebuilds both pools from the scorer's lines, under the on-demand model
+  above;
+- measures each chunk's seconds per slice, the start cost and the extra
+  cost of a worker's first slice;
+- replays the rest of the run: the incumbent's remainder, the candidate's
+  whole pool, then 600 s for the comparison and scorecards.
+
+It answers one of three verdicts:
+
+- `WAIT` until a chunk has three measured slices. In the simulated grid,
+  that is 600 to 3,000 s in. Also `WAIT` while the streams have lost lines
+  (the report's `log_gap`: the parent took a result whose slice line is
+  missing, a pool's lines came without its opening line, or the rebuild
+  does not fit the log), because the rebuilt pool is then wrong in an
+  unknown direction; after a hole while a slice from before it has no
+  line, or in place of a time `NO-GO` while a pool the hole could reach has
+  not logged a start for every worker (for the incumbent past its release,
+  only while the candidate's estimate reads its timing); and while the
+  streams began late (no `BUDGET:` line), when it is `GO` only once the candidate has scored every slice
+  (stopping then would throw the scores away) but a `NO-GO` against the
+  shortest budget seen still holds. The watcher raises `ALARM` once when
+  either happens, or on `stream_holes`; once `log_gap` shows lost slice or
+  opening lines, and after lost worker-start lines while the
+  `starts_unconfirmed` hold applies, nothing ends the run before the
+  runner's budget, and a stall raises `ALARM`. A lost incumbent start can
+  leave no `log_gap`, so once its hold lifts a time `NO-GO` can end the run
+  again.
+  The simulated search (`docs/evidence/us-h2h-speed/lost-lines.txt`)
+  removes whole seconds of the log, and its restarts inside one second lose
+  no lines, so it does not cover a restart that loses part of one second's
+  lines, which can give a false `NO-GO` to a run that fits (above). At the
+  polls it judged after lost stretches (up to 1,200 s after the last) and
+  after restarts inside one second (the next three 600 s polls), no lost
+  stretch gave `NO-GO` where the intact log gave none for runs with 265 s
+  to spare, and none moved the estimate later at polls that hold did not
+  cover; a hold can last past those polls. A restart that split one
+  second's lines between streams, losing nothing, did move it up to 24 s
+  later, the largest seen and not a bound. Otherwise the restarts searched
+  cost the early stop, not a wrong one: one that lost nothing while the
+  incumbent's workers were still starting delayed a `NO-GO` by up to
+  8,400 s ($21.39); logs with lost stretches gave `WAIT` at many polls
+  where the intact log gave `NO-GO` (the search did not measure how long
+  that delays a stop), and at some polls read early enough to give `GO`
+  where the intact log gave `NO-GO`.
+- `NO-GO` when the estimated end is past the tool's budget, or the log has
+  stalled. The budget is the plan's 14,505 s from `started-at`, or less
+  when the runner's `BUDGET:` line (or an `ATTEMPTS:` line) says so. A
+  stall is no scorer line for an hour, or for four times the slowest slice
+  if that is longer, counted from `started-at` until the first line
+  arrives. The watcher stops a run only on the first kind: a stall comes
+  with no line printed after a restart, so the watcher raises `ALARM` on
+  it instead (below).
+- `GO` otherwise.
+
+How the estimate has done so far (the estimate gives `NO-GO` at the times
+below; the watcher stops the app a poll later at the earliest):
+
+- On the one real pool log (three workers, Mac), it came 0.4% to 10% early.
+  The worst poll came while chunk 5 slowed within itself (slices 1 to 12 at
+  227 s, 13 to 29 at 288 s, cause unknown): a chunk in progress is paced by
+  the slices that have ended.
+- In the simulated grid, every run that does not fit got `NO-GO` by
+  3,000 s ($7.64). When chunk 5 ran 1.5 times slower than the weights say
+  for both artifacts, that took up to 5,400 s ($13.75). When only the
+  candidate's chunk 5 ran slower, which nothing shows until the candidate
+  reaches it, last, runs that did not fit got `NO-GO` at 7,800 to 12,000 s
+  ($19.87 to $30.56).
+- Whole-second stamps bias the first chunks slow: on the toy pool in the
+  tests, ties misdate three slices with no note and chunk 1 reads 6.3% slow
+  (chunk 2 5.5%); on simulated 16-worker pools chunk 1 read more than 5%
+  slow in 29 of 200. A run that fits with less spare than that can be
+  stopped.
+- When the incumbent's measured chunk 5 departs from the weights, the
+  estimate carries that departure onto the candidate whether or not the
+  candidate shares it: 300 to 600 s late on the grid (f = 1 to 1.75), and
+  about 800 s late in review r4's chunk-by-chunk scenario even with the
+  pooled ratio.
+- "Fits" keeps the 600 s allowance after the last slice. That allowance is
+  unmeasured for the candidate (the measured 12 s tail is the
+  incumbent's), so the watcher stops a run whose last slice ends less than
+  600 s before the budget, though it would very likely complete: f = 2,
+  T = 175 s (last slice at 13,941 s) gets `NO-GO` at 1,200 s ($3.06).
+- No simulated run that fits got a `NO-GO` in the grid that starts the
+  tool at `started-at`. With 300 s before the tool starts, the f = 1,
+  T = 300 s run, which fits, got one at 1,200 s (above). The grid scales
+  every chunk by one factor, though. When the prior is off on the one
+  chunk the first estimate measures, that estimate is off by the
+  departure's share of the scoring still ahead: with chunk 1 at 1.1 times
+  the prior, late by up to a tenth of it. A run that fits with less spare
+  than that can be stopped, and a stop cannot be taken back.
+- The grid also gives every worker start one cost, and with uneven start
+  costs the estimate can give `NO-GO` to a run that fits, with no line
+  lost. In the simulated d844 shape with a 320 s first start and 200 s for
+  each of the rest, the last slice plus the 600 s allowance ends at
+  11,309 s (`docs/evidence/us-h2h-speed/lost-lines.txt`). With an 11,574 s
+  budget (265 s to spare), the whole log, polled every 5 s, gives `NO-GO`
+  from +670 to +1,780 s (11,839 s at +1,200 s) and again from +3,975 to
+  +4,770 s, with no damage flag. So the watcher stops the run at most of
+  its poll phases (inferred from its rule): one that polls at +900 and
+  +1,500 s stops it, and one that polls at +1,200 and +1,800 s does not
+  (`docs/evidence/us-h2h-speed/README.md`, lost lines, gives the count).
+  Nothing has measured how much worker start-up varies on Modal.
+
+Memory is reported in each verdict but never judged; the class limit and
+the scorer's 20 GiB guard bound it. The estimate is not a bound either: the
+class timeout and the runner's budget bound the spend.
+
+On a `NO-GO` that comes through a restart of the stream, with a scorer
+record printed after that restart (below), the watcher runs
+`modal app stop`, confirms the stop in `modal app list`, and retries up to
+`WATCH_STOP_TRIES` times (default 5).
+Every poll and action goes to `go-no-go.log`. Its exit codes:
+
+- 0: the app is no longer running and the watcher did not stop it: it
+  finished, or the runner's budget, the class timeout, a crash or a stop by
+  hand ended it.
+- 3: stopped on `NO-GO`.
+- 4: stopped because the projection gave no usable verdict for three polls
+  in a row. A `WAIT` more than `WATCH_WAIT_GRACE` seconds past the budget's
+  deadline counts as no verdict. That escalation acts only after the class
+  timeout, so it cleans up rather than saves spend.
+- 5: a stop it could not confirm. It has written `$A/ALARM`;
+  stop the app by hand.
+- 2: bad arguments, or a refused start: `MODAL_PROFILE` or
+  `MODAL_ENVIRONMENT` is unset, the folder holds an earlier attempt's
+  streams, the app is not running, it was created more than
+  `WATCH_CREATED_SLACK` seconds before `started-at` or its creation time
+  cannot be read, `modal app list` could not be read or
+  did not list the app in three tries, or the projection did not answer
+  its trial run. A refused start is written to `go-no-go.log` and `ALARM`.
+
+An app list that cannot be read, that does not have the shape the watcher
+expects, or that does not list the app (as a list from another workspace
+would not), never counts as stopped: a stop is retried until confirmed
+or `WATCH_STOP_TRIES` run out (exit 5), and a log stream that ends while the
+list cannot be read is restarted, not taken as the app's end. Settings
+(environment):
+`WATCH_INTERVAL` (seconds between polls, 600), `WATCH_STEP` (seconds
+between checks that the stream is alive, 10), `WATCH_MAX_FAILURES` (3),
+`WATCH_WAIT_GRACE` (1800), `WATCH_STOP_TRIES` (5), `WATCH_STOP_WAIT`
+(seconds after each stop request, 30), `WATCH_START_TRIES` (3),
+`WATCH_START_WAIT` (10), `WATCH_CREATED_SLACK` (60), `WATCH_SETTLE`
+(120), `WATCH_READY` (30), `WATCH_RECONNECTS` (2), `WATCH_KILL_GRACE` (5),
+`MODAL`, `PYTHON`, and the required
+`MODAL_PROFILE` and `MODAL_ENVIRONMENT`.
+
+`ALARM` is only a file. Nothing notices it, or a watcher that has died, and
+a launchd job does not survive a reboot. Whoever launches the run checks
+`go-no-go.log` and `ALARM` while it runs.
+
+A `modal app logs` stream can hang while its process lives on: the
+modal 1.3 client sets no deadline or keepalive on it (read from its source;
+not seen to happen). A hung stream reads as a scorer that has gone quiet,
+which the time rule or the stall check turns into `NO-GO`. It can hang
+after its file grew earlier in the same poll interval, so growth since the
+last poll does not show that the stream still delivers: in the simulated
+d844 shape at f = 1, T = 300 s, a stream that grows after the +11,400 s poll
+and hangs at +11,580 s gives `NO-GO` at +12,000 s, estimating 14,925 s,
+where the whole log gives `GO` at 14,240 s. So the watcher never acts on
+the first `NO-GO` after a `GO` or `WAIT`, or after the watcher starts: it
+starts a new stream, whether or not the file grew, and leaves the verdict
+to the next poll. The old stream runs on beside the new one until the next
+poll has projected both, and the watcher then ends it. So a restart of a
+stream that had not hung leaves no hole, even when the new stream does not
+replay what the app printed before it. The watcher also does not act on a
+`NO-GO` read from a stream that started less than `WATCH_SETTLE` seconds
+(120) earlier, which may still be replaying an old stretch.
+
+A later `NO-GO` stops the app only when a stream started at or after the
+last restart holds a scorer record stamped after both the poll before (the
+restart's own, or a later one) and the stream's own start, counted from
+`WATCH_READY` seconds (30) after its launch on the projection's clock. What
+a stream replays covers the log only up to its connection, which a client
+makes within those seconds (inferred), so a replay alone never passes,
+whichever restart, reconnect or replacement started the stream; and a
+stream that delivered after the restart but has since ended or hung cannot
+vouch for a later poll (review r9). A
+restart that could not create its file, or a new stream that replays only
+what the hung one had, shows no such record, and the frozen log gives
+`NO-GO` again (16,125 s at +12,600 s in the case above; review r9). A
+scorer that has gone quiet shows none either, and the log cannot tell it
+from those, so the watcher no longer stops a stall, or a run with no scorer
+record an hour after the launch. Without such a record it raises `ALARM`,
+once per run of `NO-GO`s, starts another stream up to `WATCH_RECONNECTS`
+(2) more times, and otherwise leaves the run to the runner's budget (before
+the tool starts, to the class timeout); whoever launched the run then
+checks the app by hand. The next `GO` or `WAIT` re-arms the restarts; a
+poll with no verdict does not, and nor does a `WAIT` that only waits for an
+empty newest stream (`newest_stream_empty`), since a second reader left
+connected but silent would otherwise re-arm them at every `NO-GO` (review
+r9). The record shows that a new connection
+delivered a line printed after the last poll, not that it still delivers at
+the poll that reads it: a new stream that does so and then hangs, or a delay
+that every stream shares, can still give a stale `NO-GO` (inferred; nobody
+has seen either).
+
+Every stop on a `NO-GO` therefore comes at least a poll after the first
+`NO-GO`, about $1.53 more than the grid's times above, and later when a
+`GO` or `WAIT` falls between `NO-GO`s, since each one re-arms the restart
+(a `WAIT` on an empty newest stream does not). The stop after three polls
+with no usable verdict (exit 4) needs no `NO-GO`. In a model of
+the watcher's poll loop over the projection (simulated, in PR #1190's
+review record), the restart moved the stop by at most 600 s in 44 d844
+runs that overrun (16 against the plan's 14,505 s, 14 against budgets
+600 s short of the true end and 14 against 1,800 s short) and by
+up to 2,400 s ($6.11) in 78 runs of seed 3's random pools against budgets
+600 s short; in two of those the runner's budget ended the run less than a
+poll after the first `NO-GO`. With 265 s to spare, the modelled watcher
+stopped 3 of 92 runs that fit, where one that acts on the first `NO-GO`
+stopped 11. The model stops on every `NO-GO` that comes through a restart;
+the watcher also needs a line printed after the last poll by a stream
+started since the restart, which a run still scoring prints within a poll
+(inferred), so the figures assume that.
+
+When the old stream had hung, only a new stream that replays carries what
+the app printed after the hang. One that does not leaves a hole from the
+hang to its first record, and the holds above can keep a time `NO-GO` as
+`WAIT`: in the lossless search, a restart that lost nothing while the
+incumbent's workers were still starting delayed a `NO-GO` by up to
+8,400 s ($21.39). A new stream that does not replay also holds the
+estimate and the stall check until it delivers a record.
+
+Nobody has run two `modal app logs` streams of one app at once, as each
+restart does for one poll interval. A new stream gets `WATCH_READY`
+seconds (30) to show it works: by then it has delivered a scorer record,
+or it still runs. One that ends with no record while the old one runs, as
+a refused second reader would, makes the watcher end the old one and
+reconnect one stream at a time, up to `WATCH_RECONNECTS` tries, and raise
+`ALARM` if none works. That gives up the overlap, so a reconnect that does
+not replay leaves a hole. If Modal both refuses a second reader and does
+not replay, every restart becomes such a reconnect, the hole's holds give a
+`WAIT` that re-arms the restart, and each run of `NO-GO`s can end in
+another such `WAIT`, so only the runner's budget may end a run that
+overruns (inferred; the hole alarm goes out once). A stream
+that runs but delivers nothing leaves the newest file empty, which holds
+the estimate and the stall check (`newest_stream_empty`). After two such
+polls in a row the watcher replaces that stream, once a poll, up to
+`WATCH_RECONNECTS` times, then raises `ALARM` and leaves the run to the
+runner's budget. A replacement started alone gets the app to itself, so if
+Modal serves one reader at a time it delivers, and the next `NO-GO` stops
+the run once that stream shows a line printed after its own start and the
+last poll (inferred). Each stream the
+watcher ends gets TERM, then KILL after `WATCH_KILL_GRACE` seconds (5), and
+the watcher reaps it, so a client that ignores TERM cannot hold the loop;
+a replaced stream still running when the watcher exits ends the same way.
+The watcher signals only a pid that is still its own running child, so a
+pid that a stream which already ended has freed gets nothing.
+Only the tests' fake `modal` has exercised these paths (Modal's behaviour
+is inferred). The watcher's other Modal calls (`app list`, `app stop`) and
+the projection have no timeouts, so a hung one would freeze its loop,
+leaving only the runner's budget to end the run; nobody has seen one hang.
+
+It detects and uses Modal CLI 1.4's `--follow` and 1.4.2's `--yes`. Its
+tests run it against a fake `modal` only: never test its stop on a live
+app.
+
+If the watcher dies, start it again on the same attempt folder. It numbers
+new streams after the files it finds, and the projection counts each record
+once across streams. A relaunch gets a new attempt folder. An attempt
+ended from outside the runner (the watcher's or a hand `modal app stop`,
+the class timeout or a container crash) writes no receipt;
+record its spend in the run folder. One the runner ends itself (a scorer
+failure, or its own budget stop) still pushes its state and writes a
+receipt, which `verify-receipt` rejects as not completed but which holds
+its logs. Another attempt is a new spend against Max's cap and needs his
+go.
+
+Once the stage ends, read its receipt name from the runs volume
+(`runs/$R/receipts/`) and fetch that `score-<utc>.json` and the two
+scorecards. The receipt's `outputs` lists their relative paths, byte counts
+and sha256s. Fetch the tiny complete state, including the logs, so strict
+verification covers everything:
+
+```bash
+export MODAL_PROFILE=policyengine MODAL_ENVIRONMENT=main
+R=route-a-h2h-d844-d1386-r1
+mkdir -p "modal-runs/$R"
+modal volume get microcosm-us-stage-runs "runs/$R/receipts" "./modal-runs/$R/"
+modal volume get microcosm-us-stage-runs "runs/$R/state" "./modal-runs/$R/"
+RECEIPT="./modal-runs/$R/receipts/score-<utc>.json"
+python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
+  --state-root "./modal-runs/$R/state" --strict
+ls -l "./modal-runs/$R/state/h2h.json" "./modal-runs/$R/state/h2h.md"
+```
+
+Use the actual receipt name and confirm the downloaded directory layout
+(Modal CLI versions can add a level; see "Commands"). Verification requires
+`COMPLETED` and no budget stop, and rehashes both scorecards and every
+other state file. Inspect `h2h.json` and `h2h.md` only after it passes. A
+stage the watcher stopped writes no receipt; its attempt record under
+`runs/$R/attempts/` stops advancing. A successful receipt proves those
+bytes; Max's d844 decision remains separate from running this comparison.
 
 ## Preemption and restarts
 
