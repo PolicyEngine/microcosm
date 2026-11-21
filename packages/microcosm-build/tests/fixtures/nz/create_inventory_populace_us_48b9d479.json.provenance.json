@@ -1,10 +1,10 @@
 {
   "captured": {
-    "commit": "main 7ff5a26bc2 plus #1688, #1698 and #1699",
-    "date": "2026-11-20",
+    "commit": "main 32f341d475 (after #1688, #1699, #1700 and #1698 merged) plus this change",
+    "date": "2026-11-21",
     "how": "One in-memory probe: prepare_create_outputs(spec, sources, resume='forbid') with no inventory store, on the pinned donor and the NZ Chronicle feed artifact, with NZ's packaged spec selecting donor_profile.json. CREATE did not refuse."
   },
-  "create_implementation_hash": "bd47b92814e5c0ad01571b43ff1665563ae3ea85cedc6d8168bde75523b3de0f",
+  "create_implementation_hash": "135f21143c6cc9bc7c355d5bf248a0c2c5731bd969d22bc591f201762bc7c867",
   "create_kernel": "transport.create@1",
   "donor": {
     "revision": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
@@ -41,7 +41,7 @@
     "version": 1
   },
   "kind": "nz_create_inventory_fixture",
-  "note": "Measured at capture under the locked numpy 2.4.6, pandas 3.0.3 and tables 3.11.1: create@1's implementation hash is the value above. The staged columns household.tenure (string), person.enrolled_full_time (bool) and person.legal_marital_status (string) are the three columns this payload adds to the attempt-7 inventory (payload sha256 305107d61aacfbeebfb1c693dc9440f652441d273257a0460e1f7291203d6b6d); every other column and dtype is unchanged.",
+  "note": "Measured at capture under the locked numpy 2.4.6, pandas 3.0.3 and tables 3.11.1: create@1's implementation hash is the value above. The staged columns household.tenure (string), person.enrolled_full_time (bool) and person.legal_marital_status (string) are the three columns this payload adds to the attempt-7 inventory (payload sha256 305107d61aacfbeebfb1c693dc9440f652441d273257a0460e1f7291203d6b6d); every other column and dtype is unchanged. A capture on 2026-11-20, before #1698's last staging edits, gave the same payload and receipt counts under create@1 hash bd47b928.",
   "payload_format": "microcosm.transport.create-inventory/1 store payload: CREATE's non-structural output columns with dtypes (transport/cli.py prepare_create_outputs)",
   "payload_sha256": "b5f6ee552ec53f655af43da45221e3224d49c1c95e7e9e93adfe00e931349047",
   "refresh": "Rerun prepare_create_outputs(spec, sources, resume='forbid') on the pinned donor and replace both files whenever the donor pin, donor_profile.json or CREATE's staging changes.",
