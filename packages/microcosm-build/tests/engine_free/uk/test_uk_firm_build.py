@@ -26,6 +26,11 @@ from microcosm.build.uk_runtime.firm_build import (
     UK_FIRM_TABLE_FILE,
     build_uk_firm_dataset,
 )
+from microcosm.build.uk_runtime.firm_employment_allowance import (
+    UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
+    UK_FIRM_EMPLOYMENT_ALLOWANCE_METHOD,
+    uk_firm_employment_allowance_flags,
+)
 from microcosm.build.uk_runtime.firm_generation import (
     LARGE_EMPLOYMENT_CAP,
     LARGE_EMPLOYMENT_MEAN,
@@ -44,6 +49,7 @@ from microcosm.build.uk_runtime.firm_rules import (
 from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_EXTENDED_TABLE_COLUMNS,
     UK_FIRM_PAYBILL_TABLE_COLUMNS,
+    uk_firm_table_columns,
     validate_uk_firm_table,
 )
 from test_support.paths import paths_for
@@ -87,7 +93,11 @@ def _config(rules: _StandardRateDouble) -> UKFirmGenerationConfig:
     ).with_vintage("2024-25")
 
 
-def _build(output_dir: Path, paybill_dir: Path | None = None) -> dict:
+def _build(
+    output_dir: Path,
+    paybill_dir: Path | None = None,
+    employment_allowance: bool = False,
+) -> dict:
     rules = _StandardRateDouble()
     return build_uk_firm_dataset(
         processed_dir=PROCESSED,
@@ -96,6 +106,7 @@ def _build(output_dir: Path, paybill_dir: Path | None = None) -> dict:
         rules=rules,
         config=_config(rules),
         paybill_dir=paybill_dir,
+        employment_allowance=employment_allowance,
     )
 
 
@@ -423,3 +434,33 @@ def test_tool_writes_the_library_build(
     assert config.data_vintage == "2024-25"
     receipt = json.loads((out / UK_FIRM_RECEIPT_FILE).read_text(encoding="utf-8"))
     assert _comparable(receipt) == _comparable(builds[0]["receipt"])
+
+
+def test_employment_allowance_build_adds_only_the_assumed_flags(
+    builds, tmp_path: Path
+) -> None:
+    built = _build(tmp_path / "allowance", employment_allowance=True)
+    table = built["table"]
+    receipt = json.loads(built["receipt_path"].read_text(encoding="utf-8"))
+    base = builds[0]["table"]
+
+    assert tuple(table.columns) == uk_firm_table_columns(
+        ["attributes", "employment_allowance"]
+    )
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    # The flags read no random numbers: every other column is unchanged.
+    pd.testing.assert_frame_equal(table[list(UK_FIRM_EXTENDED_TABLE_COLUMNS)], base)
+    flags = uk_firm_employment_allowance_flags(
+        table["ons_legal_status"].to_numpy(), table["firm_employees"].to_numpy()
+    )
+    for column, values in flags.items():
+        assert table[column].to_numpy(bool).tolist() == values.tolist()
+    record = receipt["uk_firm_employment_allowance"]
+    assert record["status"] == "assumed"
+    assert record["method"] == UK_FIRM_EMPLOYMENT_ALLOWANCE_METHOD
+    weight = table["firm_weight"].to_numpy(float)
+    for column in UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS:
+        assert record["weighted_firms_where_true"][column] == pytest.approx(
+            float(weight[table[column].to_numpy(bool)].sum())
+        )
+    assert "uk_firm_employment_allowance" not in builds[0]["receipt"]

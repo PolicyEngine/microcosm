@@ -42,6 +42,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "(tax year 2024-25 only, so --vintage 2024-25; omit to leave it unset)"
         ),
     )
+    parser.add_argument(
+        "--employment-allowance-flags",
+        action="store_true",
+        help=(
+            "set the assumed Employment Allowance flags "
+            "(firm_claims_employment_allowance, firm_is_single_director_company) "
+            "from ONS legal status and employment"
+        ),
+    )
     parser.add_argument("--rules", choices=RULES_CHOICES, required=True)
     parser.add_argument(
         "--axiom-artifact",
@@ -100,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         rules=rules,
         config=_config(args, rules),
         paybill_dir=args.paybill_dir,
+        employment_allowance=args.employment_allowance_flags,
     )
     receipt = built["receipt"]
     print(

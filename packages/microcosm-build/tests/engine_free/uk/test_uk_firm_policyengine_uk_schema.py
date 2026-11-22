@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.firm_table import (
+    UK_FIRM_EXPORT_GROUPS,
     UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS,
     UK_FIRM_EXTENDED_TABLE_COLUMNS,
     UK_FIRM_INPUT_STATUSES,
@@ -32,6 +33,7 @@ from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_SIC_SECTIONS,
     UK_FIRM_TABLE_COLUMNS,
     to_policyengine_uk_firm_table,
+    uk_firm_policyengine_uk_columns,
 )
 from test_support.paths import paths_for
 
@@ -127,7 +129,10 @@ def test_input_status_covers_exactly_the_snapshot_inputs() -> None:
         for name, status in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS.items()
         if status in ("set", "derived", "assumed")
     }
-    assert exported == set(UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS)
+    assert exported == set(
+        uk_firm_policyengine_uk_columns(group.name for group in UK_FIRM_EXPORT_GROUPS)
+    )
+    assert set(UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS) <= exported
     assert set(UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS) <= exported
     assert set(UK_FIRM_POLICYENGINE_UK_COLUMNS) <= exported
 

@@ -113,9 +113,11 @@ MODEL_CAVEATS: Mapping[str, str] = {
         + " Model: employer Class 1 secondary NICs after the Employment "
         "Allowance, accrued; official: cash, and also includes Class 1A "
         "(benefits in kind), so the official figure is larger in concept. "
-        "Employment Allowance: firm_is_single_director_company is unset, so no "
-        "firm is excluded as a single-director company and the allowance is "
-        "overstated. Employers outside the generated VAT/PAYE frame (e.g. "
+        "Employment Allowance: unless the build sets the assumed flags "
+        "(--employment-allowance-flags), firm_is_single_director_company and "
+        "firm_claims_employment_allowance are left at their defaults, so no firm "
+        "is excluded as a single-director company or as having no employees, and "
+        "the allowance is overstated. Employers outside the generated VAT/PAYE frame (e.g. "
         "households employing domestic staff) pay into the official total."
     ),
     "apprenticeship_levy": (

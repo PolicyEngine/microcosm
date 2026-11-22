@@ -31,6 +31,11 @@ The groups today:
 - ``paybill``: ``firm_paybill`` (pounds, from
   ``firm_paybill.assign_uk_firm_paybill``), carried unchanged. It extends
   ``attributes``; with it the layout is ``UK_FIRM_PAYBILL_TABLE_COLUMNS``.
+- ``employment_allowance``: the assumed ``firm_claims_employment_allowance``
+  and ``firm_is_single_director_company`` flags (from
+  ``firm_employment_allowance.assign_uk_firm_employment_allowance``), checked
+  against ``ons_legal_status`` and ``firm_employees``. It extends
+  ``attributes``.
 
 ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS`` records, for every formula-less
 policyengine-uk firm input, whether the fullest table (every group) sets it.
@@ -49,6 +54,10 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.firm_employment_allowance import (
+    UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
+    uk_firm_employment_allowance_flags,
+)
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_SIC2007_SECTION_DIVISIONS,
     uk_sic2007_sections,
@@ -250,7 +259,11 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_n_associated_companies": "not_set",
         "firm_is_bank": "not_set",
         "firm_is_charity": "not_set",
-        "firm_is_single_director_company": "not_set",
+        # Assumed from ONS legal status and employment
+        # (firm_employment_allowance.py): a company with employment 1 is a
+        # single-director company. Only when the build sets the Employment
+        # Allowance flags.
+        "firm_is_single_director_company": "assumed",
         "firm_in_freeport": "not_set",
         # VAT.
         "firm_zero_rated_supplies": "not_set",
@@ -283,7 +296,11 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_non_trading_profits": "not_set",
         # Employer costs.
         "firm_apprenticeship_levy_allowance_share": "not_set",
-        "firm_claims_employment_allowance": "not_set",
+        # Assumed (firm_employment_allowance.py): sole proprietors with
+        # employment of at most 1 and partnerships with employment of at
+        # most 2 are their proprietors alone and do not claim. Only when the build sets the
+        # Employment Allowance flags.
+        "firm_claims_employment_allowance": "assumed",
         "firm_zero_rated_class_1_earnings": "not_set",
         # Pay distribution within the paybill (policyengine-uk ca037fad2).
         "firm_employees_above_auto_enrolment_upper_limit": "not_set",
@@ -431,6 +448,28 @@ def _paybill_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
     return {"firm_paybill": ordered["firm_paybill"].to_numpy(np.float64)}
 
 
+def _employment_allowance_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {
+        column: ordered[column].to_numpy(bool)
+        for column in UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS
+    }
+
+
+def _validate_employment_allowance_columns(df: pd.DataFrame) -> None:
+    for column in UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS:
+        if not pd.api.types.is_bool_dtype(df[column]):
+            raise ValueError(f"UK firm {column} must be boolean.")
+    expected = uk_firm_employment_allowance_flags(
+        df["ons_legal_status"].to_numpy(np.int64),
+        df["firm_employees"].to_numpy(np.int64),
+    )
+    for column, values in expected.items():
+        if not np.array_equal(df[column].to_numpy(bool), values):
+            raise ValueError(
+                f"UK firm {column} does not follow ons_legal_status and firm_employees."
+            )
+
+
 def _validate_paybill_columns(df: pd.DataFrame) -> None:
     for column in UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS:
         values = df[column].to_numpy(np.float64)
@@ -484,6 +523,15 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         requires=("attributes",),
         columns=_paybill_group_columns,
         validate=_validate_paybill_columns,
+    ),
+    UKFirmExportGroup(
+        name="employment_allowance",
+        source_columns=UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
+        policyengine_uk_columns=UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
+        microcosm_columns=(),
+        requires=("attributes",),
+        columns=_employment_allowance_group_columns,
+        validate=_validate_employment_allowance_columns,
     ),
 )
 

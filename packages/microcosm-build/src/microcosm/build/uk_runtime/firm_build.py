@@ -8,6 +8,8 @@
 3. ``assign_uk_firm_attributes`` draws ONS region and legal status;
 4. with a ``paybill_dir``, ``assign_uk_firm_paybill`` sets ``firm_paybill``
    to employees times the ONS ASHE section mean annual gross pay;
+   with ``employment_allowance``, ``assign_uk_firm_employment_allowance``
+   sets the assumed Employment Allowance flags;
 5. ``to_policyengine_uk_firm_table`` exports policyengine-uk firm columns;
 6. ``validate_uk_firm_table`` checks the table.
 
@@ -20,6 +22,8 @@ provenance the rules reported; with a ``paybill_dir``, also the paybill CSV's
 hash (``inputs.paybill``), the paybill fallback counts, the weighted
 paybill, its in-frame split (``uk_firm_paybill_in_frame``) and its status
 (``uk_firm_paybill``). Without one, the receipt has no paybill key at all.
+With ``employment_allowance``, it also holds the flags' status, method and
+weighted counts of firms where each flag is true (``uk_firm_employment_allowance``).
 It holds no timestamp, hostname or absolute path, so two builds from the same inputs write the same receipt.
 """
 
@@ -41,6 +45,12 @@ from microcosm.build.uk_runtime.firm_attributes import (
     assign_uk_firm_attributes,
     read_uk_firm_attribute_source_data,
     uk_firm_attribute_fallback_counts,
+)
+from microcosm.build.uk_runtime.firm_employment_allowance import (
+    UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
+    UK_FIRM_EMPLOYMENT_ALLOWANCE_METHOD,
+    UK_FIRM_EMPLOYMENT_ALLOWANCE_STATUS,
+    assign_uk_firm_employment_allowance,
 )
 from microcosm.build.uk_runtime.firm_generation import (
     UKFirmGenerationConfig,
@@ -97,6 +107,7 @@ def build_uk_firm_dataset(
     rules: UKFirmRules,
     config: UKFirmGenerationConfig,
     paybill_dir: str | Path | None = None,
+    employment_allowance: bool = False,
 ) -> dict[str, Any]:
     """Build the UK firm table and its receipt into ``output_dir``.
 
@@ -107,7 +118,9 @@ def build_uk_firm_dataset(
     (``tests/fixtures/uk/firm_paybill_2024``) and adds ``firm_paybill`` to
     the table; without it the table and receipt are as before. The paybill
     table is for tax year ``UK_FIRM_PAYBILL_TAX_YEAR``; a ``paybill_dir``
-    with any other ``config.data_vintage`` raises ``ValueError``. Returns ``table`` (the
+    with any other ``config.data_vintage`` raises ``ValueError``.
+    ``employment_allowance`` adds the assumed Employment Allowance flags
+    (``firm_employment_allowance.py``); they read no random numbers. Returns ``table`` (the
     validated policyengine-uk firm table), ``receipt`` (the dict written as
     JSON), ``result`` (the ``UKFirmGenerationResult``), ``table_path`` and
     ``receipt_path``.
@@ -141,6 +154,8 @@ def build_uk_firm_dataset(
     if paybill_dir is not None:
         paybill_source = read_uk_firm_paybill_source(paybill_dir)
         firms = firms.assign(firm_paybill=assign_uk_firm_paybill(firms, paybill_source))
+    if employment_allowance:
+        firms = assign_uk_firm_employment_allowance(firms)
     table = to_policyengine_uk_firm_table(
         firms, threshold_k=float(result.config.vat_threshold)
     )
@@ -216,6 +231,16 @@ def build_uk_firm_dataset(
             "status": UK_FIRM_PAYBILL_STATUS,
             "method": UK_FIRM_PAYBILL_METHOD,
             "tax_year": UK_FIRM_PAYBILL_TAX_YEAR,
+        }
+    if employment_allowance:
+        weight = table["firm_weight"].to_numpy(np.float64)
+        receipt["uk_firm_employment_allowance"] = {
+            "status": UK_FIRM_EMPLOYMENT_ALLOWANCE_STATUS,
+            "method": UK_FIRM_EMPLOYMENT_ALLOWANCE_METHOD,
+            "weighted_firms_where_true": {
+                column: float(weight[table[column].to_numpy(bool)].sum())
+                for column in UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS
+            },
         }
     receipt = _json_safe(receipt)
     receipt_path = output / UK_FIRM_RECEIPT_FILE

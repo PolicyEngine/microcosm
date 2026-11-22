@@ -6,6 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.firm_employment_allowance import (
+    UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
+    assign_uk_firm_employment_allowance,
+)
 from microcosm.build.uk_runtime.firm_table import (
     ASSUMED_INPUT_VAT_RATE,
     UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS,
@@ -467,7 +471,9 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         for name, status in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS.items()
         if status in ("set", "derived", "assumed")
     }
-    assert exported == set(UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS)
+    assert exported == set(
+        uk_firm_policyengine_uk_columns(group.name for group in UK_FIRM_EXPORT_GROUPS)
+    )
     # The same set straight from the registry: the base and every group.
     assert exported == set(UK_FIRM_POLICYENGINE_UK_COLUMNS) | {
         column
@@ -487,6 +493,8 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         "firm_is_public_body",
         "firm_in_england",
         "firm_paybill",
+        "firm_claims_employment_allowance",
+        "firm_is_single_director_company",
     }
     assert all(
         name.startswith("firm_") for name in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS
@@ -501,8 +509,8 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
 def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
     assert all(isinstance(group, UKFirmExportGroup) for group in UK_FIRM_EXPORT_GROUPS)
     names = [group.name for group in UK_FIRM_EXPORT_GROUPS]
-    assert names == ["attributes", "paybill"]
-    attributes, paybill = UK_FIRM_EXPORT_GROUPS
+    assert names == ["attributes", "paybill", "employment_allowance"]
+    attributes, paybill, allowance = UK_FIRM_EXPORT_GROUPS
     assert attributes.source_columns == UK_FIRM_ONS_ATTRIBUTE_COLUMNS
     assert attributes.policyengine_uk_columns == (
         UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS
@@ -513,6 +521,10 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
     assert paybill.policyengine_uk_columns == UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS
     assert paybill.microcosm_columns == ()
     assert paybill.requires == ("attributes",)
+    assert allowance.source_columns == UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS
+    assert allowance.policyengine_uk_columns == UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS
+    assert allowance.microcosm_columns == ()
+    assert allowance.requires == ("attributes",)
     # Each group comes after the groups it extends, and no column repeats.
     for index, group in enumerate(UK_FIRM_EXPORT_GROUPS):
         assert set(group.requires) <= set(names[:index])
@@ -525,6 +537,12 @@ def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
         (): UK_FIRM_TABLE_COLUMNS,
         ("attributes",): UK_FIRM_EXTENDED_TABLE_COLUMNS,
         ("attributes", "paybill"): UK_FIRM_PAYBILL_TABLE_COLUMNS,
+        ("attributes", "employment_allowance"): uk_firm_table_columns(
+            ["attributes", "employment_allowance"]
+        ),
+        ("attributes", "paybill", "employment_allowance"): uk_firm_table_columns(
+            ["attributes", "paybill", "employment_allowance"]
+        ),
     }
     assert uk_firm_table_columns() == UK_FIRM_TABLE_COLUMNS
     assert uk_firm_policyengine_uk_columns() == UK_FIRM_POLICYENGINE_UK_COLUMNS
@@ -553,3 +571,30 @@ def test_export_groups_follow_the_rows_source_columns() -> None:
         uk_firm_export_groups(_attributed_firms().drop(columns="ons_region_code"))
     with pytest.raises(ValueError, match="firm_paybill without"):
         uk_firm_export_groups(_firms().assign(firm_paybill=0.0))
+    allowance = assign_uk_firm_employment_allowance(_attributed_firms())
+    assert uk_firm_export_groups(allowance) == ("attributes", "employment_allowance")
+    with pytest.raises(ValueError, match="needs both"):
+        uk_firm_export_groups(allowance.drop(columns="firm_is_single_director_company"))
+
+
+def test_employment_allowance_export_follows_status_and_employment() -> None:
+    firms = assign_uk_firm_employment_allowance(_attributed_firms())
+    table = to_policyengine_uk_firm_table(firms, threshold_k=90.0)
+    assert tuple(table.columns) == uk_firm_table_columns(
+        ["attributes", "employment_allowance"]
+    )
+    validate_uk_firm_table(table)
+    base = to_policyengine_uk_firm_table(_attributed_firms(), threshold_k=90.0)
+    pd.testing.assert_frame_equal(table[list(base.columns)], base)
+    by_status = table.set_index("ons_legal_status")
+    # The partnership has employment 0 and the sole trader employment 1: both
+    # are their proprietors alone; the company has employment 12.
+    assert not by_status.loc[3, "firm_claims_employment_allowance"]
+    assert not by_status.loc[2, "firm_claims_employment_allowance"]
+    assert by_status.loc[1, "firm_claims_employment_allowance"]
+    assert not table["firm_is_single_director_company"].any()
+    broken = table.assign(
+        firm_claims_employment_allowance=~table["firm_claims_employment_allowance"]
+    )
+    with pytest.raises(ValueError, match="does not follow"):
+        validate_uk_firm_table(broken)

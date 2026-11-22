@@ -124,12 +124,10 @@ def test_candidate_statuses_families_and_fixture_tables() -> None:
 #: declared for them.
 _NOT_SET_WITHOUT_CANDIDATE = {
     "firm_apprenticeship_levy_allowance_share",
-    "firm_claims_employment_allowance",
     "firm_deductions_allowance_share",
     "firm_exempt_distributions",
     "firm_in_freeport",
     "firm_is_limited_cost_trader",
-    "firm_is_single_director_company",
     "firm_reduced_rated_supplies",
     "firm_uses_flat_rate_scheme",
     "firm_zero_rated_class_1_earnings",
