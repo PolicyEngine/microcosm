@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import json
+import re
 import sys
 from functools import cache
 
@@ -72,6 +73,23 @@ def test_fixture_has_required_columns_and_sourced_figures() -> None:
             assert row["note"].strip(), row["tax"]
     # The reader enforces the same rule.
     assert set(tool.read_receipts(RECEIPTS)) == set(TAXES)
+
+
+def test_every_provenance_source_has_a_content_hash() -> None:
+    provenance = json.loads(
+        RECEIPTS.with_name(RECEIPTS.name + ".provenance.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    sources = provenance["sources"]
+    assert sources
+    covered = set()
+    for name, source in sources.items():
+        digest = source.get("sha256", "")
+        assert re.fullmatch(r"[0-9a-f]{64}", digest), name
+        assert source["url"].startswith("https://assets.publishing.service.gov.uk/")
+        covered.update(source["taxes"])
+    assert covered == set(TAXES)
 
 
 def test_reader_refuses_a_figure_without_a_source(tmp_path) -> None:
