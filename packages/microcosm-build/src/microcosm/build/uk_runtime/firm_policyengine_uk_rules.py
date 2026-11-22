@@ -1,4 +1,4 @@
-"""policyengine-uk as the VAT rules for the UK firm generator.
+"""policyengine-uk as the firm tax rules for the UK firm generator.
 
 policyengine-uk's firm entity is the rules home for Microcosm's UK firms.
 ``PolicyEngineUKFirmRules`` implements ``firm_rules.UKFirmRules``: it loads
@@ -8,14 +8,34 @@ as a policyengine-uk firm table beside a one-person stub household, runs a
 firm. The Axiom RuleSpec evaluator stays an optional cross-check through
 ``firm_rules.LegacyVATEvaluatorRules``; it is no longer the rules home.
 
-Only VAT is read so far. ``POLICYENGINE_UK_FIRM_REGISTERED_VARIABLE`` names
-``firm_vat_registered``, which a later step reconciles with the generator's
-registration flags; this adapter does not read it yet. No other firm tax
-(employer NIC, corporation tax, business rates) is read.
+The generator's rules seam reads only VAT. ``POLICYENGINE_UK_FIRM_REGISTERED_VARIABLE``
+names ``firm_vat_registered``, which a later step reconciles with the
+generator's registration flags; the seam does not read it yet.
+
+``evaluate_uk_firm_taxes`` reads every firm tax from the exported firm table
+(``to_policyengine_uk_firm_table``, ``uk_firms.parquet``):
+``POLICYENGINE_UK_FIRM_TAX_VARIABLES`` lists firm VAT, employer NIC (after the
+Employment Allowance), the apprenticeship levy, corporation tax, the bank
+surcharge and business rates, then two informational outputs that are not
+additional taxes: the Employment Allowance (already netted out of
+``firm_employer_ni``) and the employer's automatic enrolment minimum
+contribution (an employment cost). It hands policyengine-uk only the table's
+policyengine-uk firm inputs (keys of
+``firm_table.UK_FIRM_POLICYENGINE_UK_INPUT_STATUS``), so microcosm-only
+columns such as ``vat_registered`` are dropped and policyengine-uk applies its
+own registration test; any other ``firm_*`` column that is not a known input
+is dropped with a warning (an output, or an input newer than the committed
+policyengine-uk snapshot). Inputs the export does not set (profit, rateable
+value, capital expenditure, R&D, the bank flag; paybill unless the build is
+given ``--paybill-dir``) take policyengine-uk's zero defaults, so corporation
+tax, the bank surcharge and business rates are zero, and employer NIC, the
+levy and auto-enrolment are zero without paybill. ``weighted_uk_firm_tax_totals`` sums each output by
+``firm_weight``.
 
 policyengine-uk is imported only inside the default simulation factory, so
 importing this module needs no engine. The firm entity and its VAT variables
-come with PolicyEngine/policyengine-uk#2940; a policyengine-uk without them,
+and the other firm taxes come with PolicyEngine/policyengine-uk#2940; a
+policyengine-uk without them,
 such as the release Microcosm's ``uk`` extra pins today, makes the default
 factory raise a ``RuntimeError`` naming that pull request.
 
@@ -52,7 +72,8 @@ threshold changed in April 2025, which is why the period is the start year.
 from __future__ import annotations
 
 import importlib.metadata
-from collections.abc import Callable, Mapping
+import warnings
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -60,7 +81,11 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.uk_runtime.firm_rules import UKFirmRuleOutputs
-from microcosm.build.uk_runtime.firm_table import UK_FIRM_CANDIDATE_RULES_COLUMNS
+from microcosm.build.uk_runtime.firm_table import (
+    UK_FIRM_CANDIDATE_RULES_COLUMNS,
+    UK_FIRM_MICROCOSM_ONLY_COLUMNS,
+    UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
+)
 
 #: The firm variable the adapter reads: the VAT a firm would owe if
 #: registered, in pounds per year (``firm_vat`` charges it when registered).
@@ -80,6 +105,44 @@ POLICYENGINE_UK_FIRM_ENTITY = "firm"
 POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES = (
     "firm_id",
     POLICYENGINE_UK_FIRM_LIABILITY_VARIABLE,
+)
+
+#: Firm taxes ``evaluate_uk_firm_taxes`` reads: Firm-entity GBP-per-year
+#: formula variables of policyengine-uk (PolicyEngine/policyengine-uk#2940),
+#: each with its file under ``policyengine_uk/variables/gov/``:
+#:
+#: - ``firm_vat``: hmrc/vat/firm/firm_vat.py, net VAT, zero when not
+#:   registered, negative for a repayment;
+#: - ``firm_employer_ni``: hmrc/national_insurance/employer/firm/, secondary
+#:   Class 1 after the Employment Allowance;
+#: - ``apprenticeship_levy``: hmrc/apprenticeship_levy/;
+#: - ``corporation_tax``: hmrc/corporation_tax/, after the R&D expenditure
+#:   credit and without the bank surcharge;
+#: - ``bank_surcharge``: hmrc/bank_surcharge/;
+#: - ``firm_business_rates``: hmrc/business_rates/firm/, England only.
+POLICYENGINE_UK_FIRM_TAXES: tuple[str, ...] = (
+    "firm_vat",
+    "firm_employer_ni",
+    "apprenticeship_levy",
+    "corporation_tax",
+    "bank_surcharge",
+    "firm_business_rates",
+)
+
+#: Firm-entity GBP outputs read beside the taxes for information. Not
+#: additional taxes: ``employment_allowance``
+#: (hmrc/national_insurance/employment_allowance/) is already subtracted in
+#: ``firm_employer_ni``, and ``firm_auto_enrolment_employer_contribution``
+#: (dwp/auto_enrolment/) is an employment cost. Do not add them to the taxes.
+POLICYENGINE_UK_FIRM_INFORMATIONAL_VARIABLES: tuple[str, ...] = (
+    "employment_allowance",
+    "firm_auto_enrolment_employer_contribution",
+)
+
+#: Everything ``evaluate_uk_firm_taxes`` reads by default, taxes first.
+POLICYENGINE_UK_FIRM_TAX_VARIABLES: tuple[str, ...] = (
+    *POLICYENGINE_UK_FIRM_TAXES,
+    *POLICYENGINE_UK_FIRM_INFORMATIONAL_VARIABLES,
 )
 
 #: Candidate-table columns handed to policyengine-uk as firm inputs, in order.
@@ -105,10 +168,19 @@ class UKFirmSimulation(Protocol):
 UKFirmSimulationFactory = Callable[[pd.DataFrame, int], UKFirmSimulation]
 
 
-def _missing_firm_support_message(detail: str) -> str:
+def _missing_firm_support_message(
+    detail: str,
+    variables: Sequence[str] = POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES,
+) -> str:
+    needed = ", ".join(name for name in variables if name != "firm_id")
+    what = (
+        "VAT"
+        if tuple(variables) == POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES
+        else "taxes"
+    )
     return (
-        f"The installed policyengine-uk cannot evaluate UK firm VAT: {detail}. "
-        f"It needs the firm entity and {POLICYENGINE_UK_FIRM_LIABILITY_VARIABLE} "
+        f"The installed policyengine-uk cannot evaluate UK firm {what}: "
+        f"{detail}. It needs the firm entity and {needed} "
         f"from {POLICYENGINE_UK_FIRM_PULL_REQUEST}; install a policyengine-uk "
         "that includes it."
     )
@@ -117,31 +189,40 @@ def _missing_firm_support_message(detail: str) -> str:
 def require_policyengine_uk_firm_rules(
     tax_benefit_system: Any,
     dataset_class: Any = None,
+    *,
+    variables: Sequence[str] = POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES,
 ) -> None:
-    """Raise ``RuntimeError`` unless policyengine-uk can evaluate firm VAT.
+    """Raise ``RuntimeError`` unless policyengine-uk can evaluate firm rules.
 
-    Checks that ``tax_benefit_system`` has the firm entity and
-    ``POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES`` as firm variables and, when
-    given, that ``dataset_class`` (``UKSingleYearDataset``) takes a ``firm``
-    table. The error names PolicyEngine/policyengine-uk#2940.
+    Checks that ``tax_benefit_system`` has the firm entity and ``variables``
+    (by default ``POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES``, what the VAT path
+    reads) as firm variables and, when given, that ``dataset_class``
+    (``UKSingleYearDataset``) takes a ``firm`` table. The error names the
+    missing variable and PolicyEngine/policyengine-uk#2940.
     """
+
+    variables = tuple(variables)
 
     entity_keys = {
         getattr(entity, "key", None)
         for entity in getattr(tax_benefit_system, "entities", ())
     }
     if POLICYENGINE_UK_FIRM_ENTITY not in entity_keys:
-        raise RuntimeError(_missing_firm_support_message("it has no Firm entity"))
-    variables = getattr(tax_benefit_system, "variables", {})
-    for name in POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES:
-        variable = variables.get(name)
+        raise RuntimeError(
+            _missing_firm_support_message("it has no Firm entity", variables)
+        )
+    system_variables = getattr(tax_benefit_system, "variables", {})
+    for name in variables:
+        variable = system_variables.get(name)
         if variable is None:
             raise RuntimeError(
-                _missing_firm_support_message(f"it has no {name} variable")
+                _missing_firm_support_message(f"it has no {name} variable", variables)
             )
         if getattr(variable.entity, "key", None) != POLICYENGINE_UK_FIRM_ENTITY:
             raise RuntimeError(
-                _missing_firm_support_message(f"{name} is not a firm variable")
+                _missing_firm_support_message(
+                    f"{name} is not a firm variable", variables
+                )
             )
     if dataset_class is not None:
         import inspect
@@ -154,7 +235,8 @@ def require_policyengine_uk_firm_rules(
             raise RuntimeError(
                 _missing_firm_support_message(
                     f"{getattr(dataset_class, '__name__', dataset_class)} "
-                    "takes no firm table"
+                    "takes no firm table",
+                    variables,
                 )
             )
 
@@ -199,14 +281,25 @@ def policyengine_uk_firm_simulation(
     a one-person stub household and ``firm_table`` as its firm table.
     """
 
+    return _policyengine_uk_firm_simulation(
+        firm_table, period, POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES
+    )
+
+
+def _policyengine_uk_firm_simulation(
+    firm_table: pd.DataFrame, period: int, variables: Sequence[str]
+) -> UKFirmSimulation:
+    variables = tuple(variables)
     try:
         from policyengine_uk import CountryTaxBenefitSystem, Microsimulation
         from policyengine_uk.data import UKSingleYearDataset
     except ImportError as error:
         raise RuntimeError(
-            _missing_firm_support_message(f"importing it failed ({error})")
+            _missing_firm_support_message(f"importing it failed ({error})", variables)
         ) from error
-    require_policyengine_uk_firm_rules(CountryTaxBenefitSystem(), UKSingleYearDataset)
+    require_policyengine_uk_firm_rules(
+        CountryTaxBenefitSystem(), UKSingleYearDataset, variables=variables
+    )
     dataset = UKSingleYearDataset(
         **_stub_household_tables(),
         firm=firm_table,
@@ -301,16 +394,140 @@ class PolicyEngineUKFirmRules:
         }
 
 
+#: Columns of a firm table ``evaluate_uk_firm_taxes`` may hand to
+#: policyengine-uk: its formula-less firm inputs.
+_POLICYENGINE_UK_FIRM_INPUTS = frozenset(
+    {"firm_id", "firm_weight", *UK_FIRM_POLICYENGINE_UK_INPUT_STATUS}
+)
+
+
+def _default_tax_simulation_factory(
+    variables: Sequence[str],
+) -> UKFirmSimulationFactory:
+    required = ("firm_id", *variables)
+
+    def factory(firm_table: pd.DataFrame, period: int) -> UKFirmSimulation:
+        return _policyengine_uk_firm_simulation(firm_table, period, required)
+
+    return factory
+
+
+def evaluate_uk_firm_taxes(
+    firm_table: pd.DataFrame,
+    *,
+    period: int,
+    simulation_factory: UKFirmSimulationFactory | None = None,
+    variables: Sequence[str] = POLICYENGINE_UK_FIRM_TAX_VARIABLES,
+) -> pd.DataFrame:
+    """Each firm's policyengine-uk taxes in ``period``, keyed by ``firm_id``.
+
+    ``firm_table`` is the policyengine-uk-named export
+    (``firm_table.to_policyengine_uk_firm_table``, ``uk_firms.parquet``). Its
+    columns that are policyengine-uk firm inputs (keys of
+    ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS``), in the table's column order,
+    go to ``simulation_factory`` with ``period``; every other column
+    (microcosm-only ones, or one named after an output) is dropped, so it
+    cannot override a rule. ``firm_id`` is required.
+
+    Returns one row per input row, in input order: ``firm_id`` (int64),
+    ``firm_weight`` (float64) when the table has it, then one float64 column
+    per name in ``variables`` (pounds per year). Raises ``ValueError`` if a
+    variable comes back with the wrong shape or a non-finite value, or if the
+    simulation's ``firm_id`` order differs from the table's.
+
+    ``simulation_factory`` defaults to a policyengine-uk ``Microsimulation``
+    (as ``policyengine_uk_firm_simulation``) that first checks every name in
+    ``variables`` is a firm variable, raising a ``RuntimeError`` that names
+    the missing one and PolicyEngine/policyengine-uk#2940.
+    """
+
+    variables = tuple(variables)
+    if not variables:
+        raise ValueError("evaluate_uk_firm_taxes needs at least one variable.")
+    if len(set(variables)) != len(variables):
+        raise ValueError(f"UK firm tax variables {list(variables)} repeat a name.")
+    clashing = [name for name in variables if name in ("firm_id", "firm_weight")]
+    if clashing:
+        raise ValueError(f"UK firm tax variables cannot include {clashing}.")
+    if "firm_id" not in firm_table.columns:
+        raise ValueError("UK firm table misses column firm_id.")
+
+    period = int(period)
+    inputs = [
+        column
+        for column in firm_table.columns
+        if column in _POLICYENGINE_UK_FIRM_INPUTS
+    ]
+    unknown = [
+        column
+        for column in firm_table.columns
+        if str(column).startswith("firm_")
+        and column not in _POLICYENGINE_UK_FIRM_INPUTS
+        and column not in UK_FIRM_MICROCOSM_ONLY_COLUMNS
+    ]
+    if unknown:
+        warnings.warn(
+            f"evaluate_uk_firm_taxes drops firm columns {unknown}: they are not "
+            "policyengine-uk firm inputs in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS "
+            "(an output, or an input newer than the committed snapshot).",
+            stacklevel=2,
+        )
+    handed = firm_table.loc[:, inputs].reset_index(drop=True)
+    firm_id = handed["firm_id"].to_numpy(np.int64)
+    factory = simulation_factory or _default_tax_simulation_factory(variables)
+    simulation = factory(handed, period)
+
+    simulated_ids = _firm_values(simulation, "firm_id", period, len(firm_id))
+    if not np.array_equal(simulated_ids.astype(np.int64), firm_id):
+        raise ValueError(
+            "policyengine-uk's firm_id order differs from the firm table's, "
+            "so its taxes cannot be keyed by firm_id."
+        )
+    columns: dict[str, np.ndarray] = {"firm_id": firm_id}
+    if "firm_weight" in handed.columns:
+        columns["firm_weight"] = handed["firm_weight"].to_numpy(np.float64)
+    for name in variables:
+        values = _firm_values(simulation, name, period, len(firm_id)).astype(np.float64)
+        if not np.all(np.isfinite(values)):
+            raise ValueError(f"policyengine-uk returned a non-finite {name}.")
+        columns[name] = values
+    return pd.DataFrame(columns)
+
+
+def weighted_uk_firm_tax_totals(taxes: pd.DataFrame) -> dict[str, float]:
+    """Weighted total of each output of ``evaluate_uk_firm_taxes``.
+
+    Returns ``sum(value * firm_weight)`` for every column other than
+    ``firm_id`` and ``firm_weight``, in pounds per year. Each total stands
+    alone: the informational outputs
+    (``POLICYENGINE_UK_FIRM_INFORMATIONAL_VARIABLES``) are not taxes to add.
+    """
+
+    if "firm_weight" not in taxes.columns:
+        raise ValueError("UK firm taxes miss column firm_weight.")
+    weight = taxes["firm_weight"].to_numpy(np.float64)
+    return {
+        str(column): float(np.dot(taxes[column].to_numpy(np.float64), weight))
+        for column in taxes.columns
+        if column not in ("firm_id", "firm_weight")
+    }
+
+
 __all__ = [
+    "POLICYENGINE_UK_FIRM_INFORMATIONAL_VARIABLES",
     "POLICYENGINE_UK_FIRM_INPUT_COLUMNS",
     "POLICYENGINE_UK_FIRM_LIABILITY_VARIABLE",
     "POLICYENGINE_UK_FIRM_PULL_REQUEST",
     "POLICYENGINE_UK_FIRM_REGISTERED_VARIABLE",
     "POLICYENGINE_UK_FIRM_REQUIRED_VARIABLES",
+    "POLICYENGINE_UK_FIRM_TAXES",
+    "POLICYENGINE_UK_FIRM_TAX_VARIABLES",
     "PolicyEngineUKFirmRules",
     "UKFirmSimulation",
     "UKFirmSimulationFactory",
+    "evaluate_uk_firm_taxes",
     "policyengine_uk_firm_simulation",
     "policyengine_uk_version",
     "require_policyengine_uk_firm_rules",
+    "weighted_uk_firm_tax_totals",
 ]
