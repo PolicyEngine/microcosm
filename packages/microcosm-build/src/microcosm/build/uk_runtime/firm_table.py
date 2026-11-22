@@ -206,7 +206,7 @@ UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS = ("firm_paybill",)
 UK_FIRM_INPUT_STATUSES = ("set", "derived", "assumed", "not_set")
 
 #: Every formula-less policyengine-uk firm input (branch firm-entity-engine
-#: at ``ca037fad2``, the committed snapshot; policyengine_uk/variables/firm/) -> how the paybill export, the fullest
+#: at ``57a99a67a``, the committed snapshot; policyengine_uk/variables/firm/) -> how the paybill export, the fullest
 #: one, fills it. The keys with status other than ``not_set`` are exactly the
 #: base policyengine-uk columns and those of every ``UK_FIRM_EXPORT_GROUPS``
 #: entry (``UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS``); a table
@@ -276,6 +276,7 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_sba_qualifying_cost_brought_forward": "not_set",
         "firm_special_rate_pool_brought_forward": "not_set",
         # Corporation tax.
+        "firm_bank_surcharge_allowance_share": "not_set",
         "firm_deductions_allowance_share": "not_set",
         "firm_exempt_distributions": "not_set",
         "firm_losses_brought_forward": "not_set",

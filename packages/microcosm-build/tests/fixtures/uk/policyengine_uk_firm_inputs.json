@@ -3,6 +3,7 @@
   "firm_input_names": [
     "firm_aia_share",
     "firm_apprenticeship_levy_allowance_share",
+    "firm_bank_surcharge_allowance_share",
     "firm_capex_main_pool_new",
     "firm_capex_main_pool_used",
     "firm_capex_special_rate_new",
@@ -248,6 +249,17 @@
       "has_formula": true,
       "name": "firm_auto_enrolment_qualifying_earnings",
       "unit": "GBP",
+      "value_type": "float"
+    },
+    "firm_bank_surcharge_allowance_share": {
+      "default_value": 1,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/corporation_tax/firm_bank_surcharge_allowance_share.py",
+      "has_formula": false,
+      "name": "firm_bank_surcharge_allowance_share",
+      "unit": "/1",
       "value_type": "float"
     },
     "firm_business_rates": {
@@ -1602,7 +1614,7 @@
   ],
   "policyengine_uk": {
     "dirty": false,
-    "head_commit": "ca037fad273159ece4e5625ee17887f4a69ee95d",
+    "head_commit": "57a99a67ac26ba186c7b622c11d28888b54d67a9",
     "pull_request": "PolicyEngine/policyengine-uk#2940"
   },
   "policyengine_uk_variable_names": [
@@ -2049,6 +2061,7 @@
     "firm_augmented_profits",
     "firm_auto_enrolment_employer_contribution",
     "firm_auto_enrolment_qualifying_earnings",
+    "firm_bank_surcharge_allowance_share",
     "firm_business_rates",
     "firm_business_rates_multiplier",
     "firm_business_rates_reliefs",

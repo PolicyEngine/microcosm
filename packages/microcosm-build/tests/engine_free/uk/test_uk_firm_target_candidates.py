@@ -134,6 +134,8 @@ _NOT_SET_WITHOUT_CANDIDATE = {
     "firm_uses_flat_rate_scheme",
     "firm_zero_rated_class_1_earnings",
     "firm_zero_rated_supplies",
+    # Bank surcharge allowance share (policyengine-uk 57a99a67a).
+    "firm_bank_surcharge_allowance_share",
     # Pay-distribution and minimum-wage inputs (policyengine-uk ca037fad2).
     "firm_employees_above_auto_enrolment_upper_limit",
     "firm_employees_below_auto_enrolment_earnings_trigger",
