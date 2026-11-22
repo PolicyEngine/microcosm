@@ -26,7 +26,12 @@ from microcosm.build.uk_runtime.firm_build import (
     UK_FIRM_TABLE_FILE,
     build_uk_firm_dataset,
 )
-from microcosm.build.uk_runtime.firm_generation import UKFirmGenerationConfig
+from microcosm.build.uk_runtime.firm_generation import (
+    LARGE_EMPLOYMENT_CAP,
+    LARGE_EMPLOYMENT_MEAN,
+    ONS_EMPLOYMENT_BANDS,
+    UKFirmGenerationConfig,
+)
 from microcosm.build.uk_runtime.firm_paybill import (
     UK_FIRM_PAYBILL_METHOD,
     UK_FIRM_PAYBILL_STATUS,
@@ -48,6 +53,7 @@ FIXTURES = PATHS.tests / "fixtures" / "uk"
 PROCESSED = FIXTURES / "firm_2024_25"
 ATTRIBUTES = FIXTURES / "firm_attributes_2025"
 PAYBILL = FIXTURES / "firm_paybill_2024"
+SIZE = FIXTURES / "firm_2024_25_size"
 TOOL = PATHS.repository / "tools" / "build_uk_firms.py"
 SEED = 42
 ITERATIONS = 20
@@ -217,6 +223,64 @@ def test_paybill_build_sets_firm_paybill_and_records_its_source(
         weighted
     )
     assert str(PAYBILL) not in built["receipt_path"].read_text(encoding="utf-8")
+
+
+def _dbt_large_firms() -> pd.DataFrame:
+    return pd.read_csv(SIZE / "dbt_bpe_private_250plus.csv")
+
+
+def test_dbt_large_firm_fixture_matches_its_provenance_and_the_mean() -> None:
+    provenance = json.loads((SIZE / ".provenance.json").read_text(encoding="utf-8"))
+    record = provenance["files"]["dbt_bpe_private_250plus.csv"]
+    assert _sha256(SIZE / "dbt_bpe_private_250plus.csv") == record["sha256"]
+    assert provenance["source"]["access_date"] == "2026-11-22"
+    assert len(provenance["source"]["sha256"]) == 64
+    large = _dbt_large_firms()
+    assert int(large["businesses"].sum()) == 8_250
+    mean = (
+        1_000.0
+        * float(large["employment_thousand"].sum())
+        / float(large["businesses"].sum())
+    )
+    assert LARGE_EMPLOYMENT_MEAN == pytest.approx(mean)
+
+
+def test_large_firm_employment_matches_the_dbt_mean_without_a_clamp(
+    builds, tmp_path: Path
+) -> None:
+    """With the DBT mean set, the 250+ band's weighted mean headcount is
+    DBT's within 15% and no clamp at 2,000 remains; every other column, and
+    every headcount below 250, matches the default build."""
+
+    rules = _StandardRateDouble()
+    built = build_uk_firm_dataset(
+        processed_dir=PROCESSED,
+        attributes_dir=ATTRIBUTES,
+        output_dir=tmp_path / "out",
+        rules=rules,
+        config=dataclasses.replace(
+            _config(rules), large_employment_mean=LARGE_EMPLOYMENT_MEAN
+        ),
+    )
+    table = built["table"]
+    base = builds[0]["table"]
+    pd.testing.assert_frame_equal(
+        table.drop(columns="firm_employees"), base.drop(columns="firm_employees")
+    )
+    legacy = base["firm_employees"].to_numpy(dtype=np.float64)
+    assert legacy.max() <= 2_000
+    employees = table["firm_employees"].to_numpy(dtype=np.float64)
+    weights = table["firm_weight"].to_numpy(dtype=np.float64)
+    large = employees >= 250
+    np.testing.assert_array_equal(large, legacy >= 250)
+    np.testing.assert_array_equal(employees[~large], legacy[~large])
+    weighted_mean = float((weights * employees)[large].sum() / weights[large].sum())
+    assert weighted_mean == pytest.approx(LARGE_EMPLOYMENT_MEAN, rel=0.15)
+    # The default clamps the band to [250, 2000]; no clamp at 2000 remains.
+    assert ONS_EMPLOYMENT_BANDS["250+"][1] == 2_000 < LARGE_EMPLOYMENT_CAP
+    assert employees.max() > 2_000
+    assert employees.max() <= LARGE_EMPLOYMENT_CAP
+    assert float((employees == 2_000).sum()) < 0.01 * float(large.sum())
 
 
 def test_paybill_build_refuses_another_vintage(tmp_path: Path) -> None:

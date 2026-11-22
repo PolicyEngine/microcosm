@@ -22,6 +22,8 @@ from microcosm.build.uk_runtime.firm_generation import (
     INPUT_FILES,
     INPUT_RATIO_LOWER,
     INPUT_RATIO_UPPER,
+    LARGE_EMPLOYMENT_CAP,
+    LARGE_EMPLOYMENT_MEAN,
     UK_FIRM_TARGET_IDS,
     VAT_LIABILITY_BANDS_CALIBRATED,
     AxiomVATRuleEvaluator,
@@ -35,6 +37,8 @@ from microcosm.build.uk_runtime.firm_generation import (
     generate_input_values,
     generate_uk_firm_population,
     hmrc_band_name,
+    large_employment_pareto_shape,
+    large_employment_slice_means,
     read_uk_firm_source_data,
     resolve_uk_firm_rules,
     uk_firm_source_data_from_frames,
@@ -701,6 +705,58 @@ def test_assign_employment_is_sector_conditional() -> None:
     unknown = employment[100:]
     assert (unknown <= 4).any() and (unknown >= 250).any()
     assert assign_employment(sic[:0], ons_employment).shape == (0,)
+
+
+def test_large_employment_slices_hit_the_mean_inside_the_band() -> None:
+    shape = large_employment_pareto_shape()
+    # DBT's 250-499 / 500-999 / 1000+ shares are 0.51 / 0.26 / 0.23.
+    tail = 1.0 - (250.0 / LARGE_EMPLOYMENT_CAP) ** shape
+    above_1000 = ((250.0 / 1_000.0) ** shape - (1.0 - tail)) / tail
+    assert 1.0 < shape < 1.3
+    assert above_1000 == pytest.approx(0.234, abs=0.04)
+    for masses in (np.ones(1), np.ones(2_000), np.linspace(0.5, 50.0, 997)):
+        means = large_employment_slice_means(masses)
+        assert np.all(np.diff(means) > 0)
+        assert means.min() >= 250.0
+        assert means.max() <= LARGE_EMPLOYMENT_CAP
+        weighted = float((masses * means).sum() / masses.sum())
+        assert weighted == pytest.approx(LARGE_EMPLOYMENT_MEAN, rel=1e-9)
+    # A zero-mass slice takes its quantile rather than dividing by zero.
+    assert np.isfinite(large_employment_slice_means(np.array([1.0, 0.0, 1.0]))).all()
+    with pytest.raises(ValueError, match="non-negative"):
+        large_employment_slice_means(np.array([-1.0, 1.0]))
+
+
+def test_assign_employment_weights_the_large_band_mean() -> None:
+    ons_employment = pd.DataFrame(
+        [{"SIC Code": 2, "Description": "Large", "0-4": 0, "250+": 5}]
+    )
+    torch.manual_seed(0)
+    sic = torch.full((400,), 2, dtype=torch.int64)
+    weights = np.linspace(1.0, 40.0, 400)
+
+    employment = assign_employment(
+        sic,
+        ons_employment,
+        weights=weights,
+        large_employment_mean=LARGE_EMPLOYMENT_MEAN,
+    ).numpy()
+    torch.manual_seed(0)
+    legacy = assign_employment(sic, ons_employment, weights=weights).numpy()
+
+    assert employment.min() >= 250 and employment.max() > 2_000
+    weighted = float((weights * employment).sum() / weights.sum())
+    assert weighted == pytest.approx(LARGE_EMPLOYMENT_MEAN, rel=1e-3)
+    # The default keeps the paper's draw, clamped to [250, 2000], and both
+    # rank the rows by the same lognormal draw.
+    assert legacy.min() >= 250 and legacy.max() <= 2_000
+    inside = (legacy > 250) & (legacy < 2_000)
+    order = np.argsort(legacy[inside], kind="stable")
+    ranked = employment[inside][order]
+    distinct = np.diff(legacy[inside][order]) > 0
+    assert np.all(np.diff(ranked)[distinct] >= 0)
+    with pytest.raises(ValueError, match="large_employment_mean"):
+        UKFirmGenerationConfig(large_employment_mean=100.0)
 
 
 def test_employment_band_index_array_matches_band_names() -> None:
