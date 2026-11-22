@@ -259,9 +259,11 @@ def test_dbt_large_firm_fixture_matches_its_provenance_and_the_mean() -> None:
 def test_large_firm_employment_matches_the_dbt_mean_without_a_clamp(
     builds, tmp_path: Path
 ) -> None:
-    """With the DBT mean set, the 250+ band's weighted mean headcount is
-    DBT's within 15% and no clamp at 2,000 remains; every other column, and
-    every headcount below 250, matches the default build."""
+    """With the DBT mean set, the in-frame 250+ band's weighted mean
+    headcount is DBT's within 15% and no clamp at 2,000 remains. Out-of-frame
+    rows draw below 250, which can move their legal status (drawn jointly
+    with the employment band); every other column, and every headcount the
+    default build draws below 250, matches the default build."""
 
     rules = _StandardRateDouble()
     built = build_uk_firm_dataset(
@@ -275,16 +277,29 @@ def test_large_firm_employment_matches_the_dbt_mean_without_a_clamp(
     )
     table = built["table"]
     base = builds[0]["table"]
+    in_frame = base["in_frame"].to_numpy(bool)
+    np.testing.assert_array_equal(table["in_frame"].to_numpy(bool), in_frame)
+    band_dependent = [
+        "firm_employees",
+        "firm_legal_form",
+        "firm_is_public_body",
+        "ons_legal_status",
+    ]
     pd.testing.assert_frame_equal(
-        table.drop(columns="firm_employees"), base.drop(columns="firm_employees")
+        table.drop(columns=band_dependent), base.drop(columns=band_dependent)
+    )
+    pd.testing.assert_frame_equal(
+        table.loc[in_frame, band_dependent[1:]], base.loc[in_frame, band_dependent[1:]]
     )
     legacy = base["firm_employees"].to_numpy(dtype=np.float64)
     assert legacy.max() <= 2_000
     employees = table["firm_employees"].to_numpy(dtype=np.float64)
     weights = table["firm_weight"].to_numpy(dtype=np.float64)
     large = employees >= 250
-    np.testing.assert_array_equal(large, legacy >= 250)
-    np.testing.assert_array_equal(employees[~large], legacy[~large])
+    np.testing.assert_array_equal(large, (legacy >= 250) & in_frame)
+    assert not large[~in_frame].any()
+    below = legacy < 250
+    np.testing.assert_array_equal(employees[below], legacy[below])
     weighted_mean = float((weights * employees)[large].sum() / weights[large].sum())
     assert weighted_mean == pytest.approx(LARGE_EMPLOYMENT_MEAN, rel=0.15)
     # The default clamps the band to [250, 2000]; no clamp at 2000 remains.
