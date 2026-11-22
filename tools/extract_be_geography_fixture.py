@@ -67,7 +67,7 @@ def extract(artifact: Path, feed: dict) -> dict[str, bytes]:
                 selected = RECORD_SETS.get(fact["layout"]["record_set_id"])
                 if selected is not None:
                     geography_id, value = fact["geography"]["id"], fact["value"]
-            except (ValueError, KeyError, TypeError) as error:
+            except (ValueError, KeyError, TypeError, RecursionError) as error:
                 problem = ValueError(f"Artifact line {number} is not a fact: {error}")
                 continue
             if selected is None:

@@ -25,6 +25,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -85,6 +86,7 @@ _COMMUNE_RECORD_SET = (
 _NUTS1_RECORD_SET = "statbel.population_structure.cy2025.people.by_nuts1_age_sex"
 _TOTAL = 11825551
 _NUTS1_TOTALS = {"BE1": 1255795, "BE2": 6864766, "BE3": 3704990}
+_GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"
 
 # The four pinned sources, as the committed strings name them.
 _Z = (
@@ -677,6 +679,16 @@ def test_committed_assignment_binds_to_the_committed_support(chain):
     renamed["systems"][0]["id"] = "be-nis"
     with pytest.raises(ValueError, match="support systems differ"):
         geography._bind(renamed, supports)
+    # The system's level, code system and vintage must equal the support's.
+    for field, value in (
+        ("level", "municipality"),
+        ("code_system", "be_ins"),
+        ("vintage", "nis_2024"),
+    ):
+        mutated = _document(_ASSIGNMENT)
+        mutated["systems"][0][field] = value
+        with pytest.raises(ValueError, match="support identity differs"):
+            geography._bind(mutated, supports)
 
 
 def test_committed_pair_runs_support_assign_derive_and_gate_on_the_fixture(chain):
@@ -703,7 +715,7 @@ def test_committed_pair_runs_support_assign_derive_and_gate_on_the_fixture(chain
     assert first == ["62063", "36015", "62032", "55086", "11002"]
     shares = frame["region_nuts1"].value_counts(normalize=True)
     for region, population in _NUTS1_TOTALS.items():
-        assert abs(shares[region] - population / _TOTAL) < 0.03, region
+        assert abs(shares.get(region, 0.0) - population / _TOTAL) < 0.03, region
     index = {str(area): i for i, area in enumerate(arrays["area"])}
     rows = frame[outputs["area"]].map(index)
     assert rows.notna().all()
@@ -723,8 +735,9 @@ def test_fixture_is_the_recorded_583_artifact_lines():
         _FIXTURE.with_name(_FIXTURE.name + ".provenance.json").read_text()
     )
     compressed = _FIXTURE.read_bytes()
-    # gzip header: magic, deflate, no flags, mtime 0, so the bytes rebuild alike.
-    assert compressed[:8] == b"\x1f\x8b\x08\x00\x00\x00\x00\x00"
+    # gzip header: magic, deflate, no flags, mtime 0, level 9 (XFL 2) and OS
+    # unknown, so the bytes rebuild alike.
+    assert compressed[:10] == _GZIP_HEADER
     raw = gzip.decompress(compressed)
     assert hashlib.sha256(raw).hexdigest() == provenance["output_sha256"]
     assert len(raw) == provenance["output_bytes"]
@@ -742,15 +755,16 @@ def test_fixture_is_the_recorded_583_artifact_lines():
     ]
     # Each entry names its fact's record set, at a line after the one before.
     labels = {_COMMUNE_RECORD_SET: "commune_total", _NUTS1_RECORD_SET: "nuts1_age_sex"}
-    assert extractor.RECORD_SETS == {
-        _COMMUNE_RECORD_SET: ("commune_total", 565),
-        _NUTS1_RECORD_SET: ("nuts1_age_sex", 18),
-    }
+    assert list(extractor.RECORD_SETS.items()) == [
+        (_COMMUNE_RECORD_SET, ("commune_total", 565)),
+        (_NUTS1_RECORD_SET, ("nuts1_age_sex", 18)),
+    ]
     assert provenance["record_sets"] == list(labels)
     assert [entry["record_set"] for entry in provenance["lines"]] == [
         labels[fact["layout"]["record_set_id"]] for fact in facts
     ]
     numbers = [entry["artifact_line"] for entry in provenance["lines"]]
+    assert all(type(number) is int for number in numbers)
     assert numbers[0] >= 1
     assert numbers == sorted(set(numbers))
     assert sum(_fixture_values(_COMMUNE_RECORD_SET).values()) == _TOTAL
@@ -761,6 +775,20 @@ def test_fixture_is_the_recorded_583_artifact_lines():
     assert source["chronicle_source_commit"] == feed["source_commit"]
     assert source["facts_sha256"] == feed["facts_sha256"]
     assert source["manifest_sha256"] == feed["manifest_sha256"]
+    # The committed fields, with the extractor's selection text.
+    assert provenance["schema_version"] == 1
+    assert list(source) == [
+        "artifact",
+        "chronicle_source_commit",
+        "facts_sha256",
+        "manifest_sha256",
+    ]
+    assert {tuple(entry) for entry in provenance["lines"]} == {
+        ("artifact_line", "record_set", "geography_id", "value", "sha256")
+    }
+    for record_set, (label, count) in extractor.RECORD_SETS.items():
+        selected = f"{record_set} ({count} lines, record_set {label})"
+        assert selected in provenance["selection"], record_set
 
 
 def _fact_line(record_set: str, geography: str, value: int) -> bytes:
@@ -822,7 +850,7 @@ def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
     extractor.main(arguments)
     extractor.main([*arguments, "--check"])
     compressed = (out / extractor.FIXTURE).read_bytes()
-    assert compressed[:8] == b"\x1f\x8b\x08\x00\x00\x00\x00\x00"
+    assert compressed[:10] == _GZIP_HEADER
     assert gzip.decompress(compressed) == b"".join(selected)
     provenance = json.loads((out / extractor.PROVENANCE).read_text())
     assert provenance["source"]["chronicle_source_commit"] == "c" * 40
@@ -848,8 +876,9 @@ def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
         _FIXTURE.with_name(_FIXTURE.name + ".provenance.json").read_text()
     )
     assert list(committed) == list(provenance)
-    for key in ("kind", "use", "line_sha256", "refresh"):
+    for key in ("schema_version", "kind", "use", "line_sha256", "refresh"):
         assert committed[key] == provenance[key], key
+    assert committed["source"]["artifact"] == provenance["source"]["artifact"]
 
 
 def test_fixture_extractor_refuses_an_artifact_the_feed_does_not_pin(
@@ -877,27 +906,53 @@ def test_fixture_extractor_refuses_an_artifact_the_feed_does_not_pin(
         extractor.extract(artifact, feed)
 
 
+_DEEP = b"[" * 100_000 + b'"' + extractor.MARKER + b'"' + b"]" * 100_000 + b"\n"
+
+
 @pytest.mark.parametrize(
-    "line",
+    ("line", "message"),
     [
-        extractor.MARKER + b" is not JSON\n",
-        json.dumps({"layout": {"record_set_id": _COMMUNE_RECORD_SET}}).encode() + b"\n",
+        (extractor.MARKER + b" is not JSON\n", "is not a fact"),
+        (
+            json.dumps({"layout": {"record_set_id": _COMMUNE_RECORD_SET}}).encode()
+            + b"\n",
+            "is not a fact",
+        ),
+        # Too deep for json.loads, which raises RecursionError.
+        (_DEEP, "is not a fact"),
+        (_fact_line(_COMMUNE_RECORD_SET, "11001", 7)[:-1], "has no trailing newline"),
     ],
-    ids=["not-json", "no-geography"],
+    ids=["not-json", "no-geography", "too-deep", "no-trailing-newline"],
 )
 def test_fixture_extractor_refuses_a_line_that_is_not_a_fact_after_the_pin_check(
-    tmp_path, line
+    tmp_path, line, message
 ):
     artifact, feed = _fake_artifact(tmp_path, [line])
     # An artifact the feed does not pin is refused as such, whatever it holds.
     with pytest.raises(ValueError, match="is not the artifact"):
         extractor.extract(artifact, {**feed, "facts_sha256": "0" * 64})
-    with pytest.raises(ValueError, match="Artifact line 1 is not a fact"):
+    with pytest.raises(ValueError, match=f"Artifact line 1 {message}"):
         extractor.extract(artifact, feed)
 
 
+# Opens of these real paths are counted. An audit hook sees every open, by
+# Path.open, open, io.open or os.open alike; hooks cannot be removed, so one is
+# added once and counts only while a test watches a path.
+_WATCHED_OPENS: dict[str, int] = {}
+_OPEN_HOOK: list[bool] = []
+
+
+def _count_watched_opens(event: str, args: tuple) -> None:
+    if event != "open" or not _WATCHED_OPENS or not args:
+        return
+    if isinstance(args[0], (str, bytes, os.PathLike)):
+        path = os.path.realpath(os.fsdecode(args[0]))
+        if path in _WATCHED_OPENS:
+            _WATCHED_OPENS[path] += 1
+
+
 def test_fixture_extractor_selects_from_the_bytes_it_checks(tmp_path, monkeypatch):
-    """A facts file replaced after it is first opened cannot supply the lines."""
+    """The extractor opens the facts once, so a replaced file cannot supply lines."""
     monkeypatch.setattr(
         extractor,
         "RECORD_SETS",
@@ -911,6 +966,11 @@ def test_fixture_extractor_selects_from_the_bytes_it_checks(tmp_path, monkeypatc
     facts = artifact / "consumer_facts.jsonl"
     replacement = tmp_path / "replacement.jsonl"
     replacement.write_bytes(_fact_line(_COMMUNE_RECORD_SET, "11001", 8))
+    if not _OPEN_HOOK:
+        sys.addaudithook(_count_watched_opens)
+        _OPEN_HOOK.append(True)
+    watched = os.path.realpath(facts)
+    monkeypatch.setitem(_WATCHED_OPENS, watched, 0)
     opened = []
     real_open = Path.open
 
@@ -925,7 +985,8 @@ def test_fixture_extractor_selects_from_the_bytes_it_checks(tmp_path, monkeypatc
 
     monkeypatch.setattr(Path, "open", open_then_replace)
     files = extractor.extract(artifact, feed)
-    assert len(opened) == 1
+    # One open by any route: the hash and the selection read the same bytes.
+    assert _WATCHED_OPENS[watched] == 1
     assert gzip.decompress(files[extractor.FIXTURE]) == pinned
 
 
@@ -956,7 +1017,7 @@ _SYNTHETIC = [
         [("46003", "BE236"), ("46013", "BE236"), ("11056", "BE211")],
     ),
     ("63049", "60000", "03000", [("63049", "BE335")]),
-    ("71072", "70000", "02000", [("71022", "BE223"), ("73040", "BE224")]),
+    ("71072", "70000", "02000", [("71022", "BE224"), ("73040", "BE223")]),
     *((code, "60000", "03000", [(code, "BE336")]) for code in GERMAN),
 ]
 # The NUTS3 codes of a synthetic classification: those above, plus the ones
@@ -965,9 +1026,9 @@ _SYNTHETIC_NUTS3 = (
     "BE100",
     "BE211",
     "BE212",
-    "BE221",
     "BE223",
     "BE224",
+    "BE225",
     "BE234",
     "BE235",
     "BE236",
@@ -1121,16 +1182,21 @@ def _prepend(key: str, row: tuple):
         (_add_part("11001", "46030"), "Rule 2: the crosswalk lists 2024 code 11001"),
         (_prepend("lau", ("11056", "BE212")), "Rule 2: Eurostat lists LAU 11056"),
         (_move("11001", "BE21!"), r"Rule 2: NUTS 2024 has no NUTS3 area \['BE21!'\]"),
-        (_move("11001", "BE213"), r"Rule 2: NUTS 2024 has no NUTS3 area \['BE213'\]"),
+        # NUTS 2021's Arr. Hasselt, which NUTS 2024 recodes as BE224.
+        (_move("11001", "BE221"), r"Rule 2: NUTS 2024 has no NUTS3 area \['BE221'\]"),
+        (_add_part("11001", "11001"), "Rule 2: the crosswalk lists 2024 code 11001"),
+        (_add_lau("11001", "BE211"), "Rule 2: Eurostat lists LAU 11001"),
         (_move("11056", "BE335"), "Rule 3: 46030 spans NUTS1"),
         (_restate("71072", region="03000"), "Rule 3: Statbel regions"),
-        (_move("73040", "BE223"), "Rule 4: NUTS straddlers"),
+        (_move("73040", "BE224"), "Rule 4: NUTS straddlers"),
         (_move("44045", "BE236"), "Rule 4: NUTS straddlers"),
-        # 46030 still spans two NUTS3 areas, but both now lie in BE23.
+        # 46030 still spans two NUTS3 areas, but both now lie in BE23. The
+        # pinned NUTS3 memberships refuse this too; the NUTS2 list cross-checks
+        # the two constants.
         (_move("11056", "BE235"), "Rule 4: NUTS straddlers"),
         (_add_lau("11099", "BE212", target="11001"), "Rule 4: NUTS straddlers"),
         # 46030 still spans two NUTS2 areas, now BE22 and BE23.
-        (_move("11056", "BE221"), "Rule 4: NUTS straddlers"),
+        (_move("11056", "BE225"), "Rule 4: NUTS straddlers"),
         # 46030 gains a third NUTS2 area.
         (_add_lau("46099", "BE242", target="46030"), "Rule 4: NUTS straddlers"),
         (_restate("11001", province="40000"), "Rule 4: Statbel provinces"),
@@ -1138,6 +1204,7 @@ def _prepend(key: str, row: tuple):
         (_relabel("BE336", "Bezirk Verviers"), "Rule 5"),
         (_relabel("BE335", "Arr. Verviers"), "Rule 5"),
         (_prepend("labels", ("BE336", "Bezirk Verviers")), "Rule 5: NUTS 2024 lists"),
+        (_prepend("labels", ("BE336", _BE336)), "Rule 5: NUTS 2024 lists BE336"),
         (_move("63087", "BE335"), "Rule 6"),
         (_move("63049", "BE336"), "Rule 6"),
         (_add_lau("63002", "BE336", target="63001"), "Rule 6"),
@@ -1155,6 +1222,8 @@ def _prepend(key: str, row: tuple):
         "rule2-conflicting-lau-row-before-the-valid-one",
         "rule2-lau-cell-not-a-nuts-code",
         "rule2-lau-cell-not-in-the-classification",
+        "rule2-crosswalk-repeats-an-identical-row",
+        "rule2-lau-repeats-an-identical-row",
         "rule3-merger-spans-nuts1",
         "rule3-region-not-one-to-one",
         "rule4-71072-no-longer-straddles-nuts3",
@@ -1168,6 +1237,7 @@ def _prepend(key: str, row: tuple):
         "rule5-be336-label",
         "rule5-be335-label",
         "rule5-conflicting-label-row-before-the-valid-one",
+        "rule5-labels-repeat-an-identical-row",
         "rule6-eight-german-communes",
         "rule6-ten-german-communes",
         "rule6-german-commune-merged",
@@ -1236,22 +1306,26 @@ def test_builder_refuses_a_pinned_file_whose_bytes_differ(tmp_path, monkeypatch)
         builder.read_sources(tmp_path)
 
 
-def _cli_out(tmp_path: Path, monkeypatch) -> Path:
+def _cli_out(tmp_path: Path, monkeypatch) -> tuple[Path, list[Path]]:
+    """Return an output directory and the list of directories sources are read from."""
     out = tmp_path / "be"
     out.mkdir()
     for name in ("precal_references.json", *_FILES):
         shutil.copyfile(_BE / name, out / name)
     hierarchy = _independent_hierarchy()
-    monkeypatch.setattr(builder, "read_sources", lambda directory: {})
+    read = []
+    monkeypatch.setattr(
+        builder, "read_sources", lambda directory: read.append(directory) or {}
+    )
     monkeypatch.setattr(
         builder, "hierarchy_from_sources", lambda sources: copy.deepcopy(hierarchy)
     )
-    return out
+    return out, read
 
 
 @pytest.mark.parametrize("drift", [None, _SUPPORT, _ASSIGNMENT, "crlf", "missing"])
 def test_cli_check_compares_bytes_and_never_writes(tmp_path, monkeypatch, drift):
-    out = _cli_out(tmp_path, monkeypatch)
+    out, read = _cli_out(tmp_path, monkeypatch)
     if drift == "missing":
         (out / _SUPPORT).unlink()
     elif drift == "crlf":
@@ -1272,6 +1346,7 @@ def test_cli_check_compares_bytes_and_never_writes(tmp_path, monkeypatch, drift)
     else:
         with pytest.raises(SystemExit, match="Stale generated resource"):
             builder.main(arguments)
+    assert read == [tmp_path / "sources"]
     assert {
         path.name: (path.read_bytes(), path.stat().st_mtime_ns)
         for path in sorted(out.iterdir())
@@ -1279,12 +1354,18 @@ def test_cli_check_compares_bytes_and_never_writes(tmp_path, monkeypatch, drift)
 
 
 def test_cli_writes_the_committed_bytes_and_needs_sources(tmp_path, monkeypatch):
-    out = _cli_out(tmp_path, monkeypatch)
+    out, read = _cli_out(tmp_path, monkeypatch)
     for name in _FILES:
         (out / name).unlink()
     builder.main(["--sources", str(tmp_path / "sources"), "--out", str(out)])
     for name in _FILES:
         assert (out / name).read_bytes() == (_BE / name).read_bytes(), name
+    # BE_GEOGRAPHY_SOURCES names the directory when --sources is absent, and
+    # the flag wins when both are given.
+    monkeypatch.setenv("BE_GEOGRAPHY_SOURCES", str(tmp_path / "from-env"))
+    builder.main(["--out", str(out), "--check"])
+    builder.main(["--sources", str(tmp_path / "flag"), "--out", str(out), "--check"])
+    assert read == [tmp_path / "sources", tmp_path / "from-env", tmp_path / "flag"]
     monkeypatch.delenv("BE_GEOGRAPHY_SOURCES", raising=False)
     codes = []
     with pytest.raises(SystemExit) as unset:
