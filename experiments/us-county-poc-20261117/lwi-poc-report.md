@@ -1,14 +1,16 @@
 ---
 kind: proposal
 client: "Living Wage Institute"
-status: "draft v0.2 (2026-11-19): for María and Max to review, not for sending"
+title: "County Files proof of concept: 2024 county file — a PolicyEngine report"
+status: "draft v0.3 (2026-11-20): for María and Max to review, not for sending"
 pe-doc:
   psl_foundation: false
-  split_tables: true
+  split_tables: false
+  budget_widths: false
   pdf_name: "PolicyEngine - County Files proof of concept report"
 ---
 
-# County Files proof of concept: the 2024 county file
+# County Files proof of concept: 2024 county file
 
 **What we built, how well it matches official county statistics, and what comes next**
 
@@ -25,20 +27,19 @@ A PolicyEngine report · for the Living Wage Institute · November 2026
 
 ## What we are delivering
 
-| Item | In the agreement | Status for Monday |
-|---|---|---|
-| The 2024 county file | Yes | Built on 18 November 2026. Every check that can stop the build passed (see the appendix). Shared in a private Hugging Face repository, `policyengine/lwi-county-files`, with a read-only access token. |
-| A written delivery notice | Yes | Max Ghenis sends it. |
-| This report: the fit and the limits | For the proof of concept | This document. |
-| Methods documentation | Yes | Delivered with this report, in the same repository. |
-| Schema documentation | Yes | Delivered with this report, in the same repository: every table and column of the file, with its type and its missing values, and the changes from the sample column list sent with the agreement. |
-| The 2026 and 2027 county files | Stretch goal | Not yet produced. |
-| Household measures (earnings, gross income and net income for each household) | Stretch goal | Not yet produced. |
+| Item | Status in this delivery |
+|--------------------------------|------------------------------------------------|
+| The 2024 county file | Delivered as `populace_us_2024_acs_local.h5`, in the private Hugging Face repository `policyengine/lwi-county-files`, shared with a read-only access token. |
+| This report: the fit and the limits | Delivered as this document, in the same repository. |
+| Methods documentation | Delivered as a document in the same repository. |
+| Schema documentation | Delivered as a document in the same repository. It lists every table and column of the file, with its type and its missing values, and the changes from the sample column list sent with the agreement. |
+| The 2026 and 2027 county files | A stretch goal, not yet produced. |
+| Household measures (earnings, gross income and net income for each household) | A stretch goal, not yet produced. |
 
 ## The 2024 county file
 
 | Feature | Value |
-|---|---|
+|------------------|----------------------------------------------------------------|
 | Year | 2024 |
 | Geography | 3,144 counties and county-equivalents on the 2023 county codes, including Connecticut's nine planning regions; 436 congressional districts. Puerto Rico is not included. |
 | Household records | 1,586,908: 1,529,668 from the 2024 American Community Survey (ACS), of which 181,260 are one-person group-quarters records (for example, in nursing homes or college dormitories), and 57,240 national donor households |
@@ -54,7 +55,7 @@ Every county has at least one household. Counting households in housing units (A
 The method has four steps. The methods documentation, delivered with this report, gives the detail, and our working papers explain the main choices.
 
 1. **Households and their counties.** We start from the 2024 ACS 1-year public-use microdata. The ACS gives each household's PUMA, not its county. So we draw a county for each ACS household within its PUMA, with odds in proportion to the population each county shares with that PUMA. Each household keeps its whole weight in the county it draws.
-2. **National donor households.** The ACS does not collect detailed tax items. We add 57,240 donor households from PolicyEngine's published national file, which combines the Current Population Survey (CPS ASEC) with tax detail imputed from the IRS public-use file. For this proof of concept, we patched a copy of that file: we added three work columns from the CPS ASEC and two columns of zeros, and kept every record. These households keep the county that the national file gives them.
+2. **National donor households.** The ACS does not collect detailed tax items. We add 57,240 donor households from PolicyEngine's published 2024 national file, built on 28 July 2026 from the Current Population Survey (CPS ASEC), with tax detail imputed from the IRS public-use file. These households keep the county that the national file gives them.
 3. **Imputation.** We give ACS households most of the characteristics the ACS lacks, such as detailed tax items, from the donor households, with quantile regression forests (working paper: [microcosm.institute/support/paper](https://microcosm.institute/support/paper)). A few come from elsewhere: the household's own ACS answer sets SNAP receipt, a model trained on the Survey of Income and Program Participation sets SSI disability status, and rules and seeded random draws set immigration status and program take-up. Inputs still blank after that take the model's default values, such as zero tips and zero net worth. Imputation gives records their characteristics. It does not change how many households each record represents.
 4. **Calibration.** We then adjust the household weights so that the file comes close to 16,440 targets at once: 4,482 for states, 436 for congressional districts and 11,522 for counties. The targets come from official statistics, but not all of them equal a published figure: we age IRS dollar amounts to 2024, split each state's IRS totals of returns and adjusted gross income across its counties by the counties' shares in the IRS county data, and take every population target from 2020 Census block populations. A cap keeps each household's final weight at most five times its starting weight. A paper on this calibration method is in preparation.
 
@@ -69,7 +70,7 @@ We measure each target's error as the difference between the file's estimate and
 ### States and the nation
 
 | Targets | Number | Within 10% | Median error |
-|---|---|---|---|
+|-----------------------------------|-----------:|---------------:|---------------:|
 | IRS tax statistics, by state | 4,227 | 96.0% | 0.12% |
 | SNAP households and benefits, by state | 102 | 100% | 0.11% |
 | Medicaid enrollment, by state | 51 | 100% | 0.08% |
@@ -88,7 +89,7 @@ National totals are the sum of the state estimates, compared with the sum of the
 ### Counties: targets used in calibration
 
 | County targets | Number | Within 10% | Median error |
-|---|---|---|---|
+|-----------------------------------|-----------:|---------------:|---------------:|
 | Population | 3,144 | 67.5% | 3.7% |
 | IRS tax returns | 2,702 | 70.8% | 3.6% |
 | IRS adjusted gross income | 2,846 | 82.3% | 0.4% |
@@ -102,7 +103,7 @@ In 856 counties (27%), every county target used in calibration is within 10%. Be
 For the 1,052 held-out county targets, we compare the file with a simple baseline: each state's total split across its counties by population.
 
 | Held-out county targets | Number | Median error: file | Median error: baseline | Within 10%: file | Within 10%: baseline |
-|---|---|---|---|---|---|
+|----------------------|------:|------------:|------------:|------------:|------------:|
 | IRS tax returns | 441 | 14.8% | 5.7% | 36.7% | 73.0% |
 | IRS adjusted gross income | 297 | 32.8% | 39.2% | 13.5% | 11.8% |
 | ACS households | 314 | 19.6% | 5.4% | 26.1% | 76.4% |
@@ -115,7 +116,7 @@ The file beats the baseline for county adjusted gross income, but not for counts
 For these checks, a county's comparison value is the file's own state total, split across the state's counties in the published ACS county proportions. The checks therefore test how the file divides each state among its counties, not its state totals. The baseline splits the same state total by population.
 
 | ACS county statistic | Median error: file | Median error: baseline | Counties where the file is closer |
-|---|---|---|---|
+|-------------------------------------|------------:|------------:|----------------:|
 | Total earnings | 19.3% | 28.8% | 61% |
 | Total household income (approximate) | 13.8% | 21.3% | 63% |
 | Households with earnings | 15.8% | 7.2% | 30% |
@@ -125,16 +126,12 @@ The file also ranks counties better than the baseline by earnings per person and
 
 The file's median household income is too high in most counties: in the median county it is 17% above the published ACS value. Its rank correlation with the published county medians is 0.30.
 
-### Compared with the earlier state-and-district file
-
-PolicyEngine's published 2024 state-and-district file did not have county targets. On the 4,459 targets that both files used, the share within 10% is almost the same: 97.0% before and 96.9% now. Two things are lower in the county file: congressional district population fell from 97.0% to 92.2% within 10%, and the national effective sample fell from about 12,100 to about 7,900. The two files also differ in some of their other targets, so we cannot yet say how much of either change comes from the county targets.
-
 ## How reliable each county is
 
 Each county gets a provisional reliability grade from two measures: its effective sample and its largest error. The largest error is taken over the county's calibration targets, its held-out targets and its ACS checks.
 
 | Grade | Rule | Counties |
-|---|---|---|
+|-------|---------------------------------------------------------------|---------:|
 | A | Effective sample at least 400, and largest error at most 10% | 0 |
 | B | Effective sample at least 100, and largest error at most 20% | 3 |
 | C | Effective sample at least 30, and largest error at most 50% | 103 |
@@ -187,14 +184,14 @@ Most D grades have both causes: 2,905 counties have an effective sample below 30
 
 1. **Raise the effective sample in each county.** Spread each county's weight over more households, mainly by lowering the share of the weight that donor households carry. We will measure progress with the effective sample per county and the share of the population in counties at grade C or better.
 2. **Balance the contribution of cloned records to the calibration.** Keep any single source household, together with its copies, from dominating the weights that the calibration chooses.
-3. **Improve the calibration fit.** Give the county targets more weight, so that held-out county targets beat the population-share baseline, and fix the national tax outliers listed above. We will also bring district population back to its earlier fit.
+3. **Improve the calibration fit.** Give the county targets more weight, so that held-out county targets beat the population-share baseline, and fix the national tax outliers listed above. We will also improve the fit to congressional district population.
 4. **Complete the stretch goals.** Produce the 2026 and 2027 county files and the household measures.
-5. **Build the final County Files.** Rebuild from PolicyEngine's certified national data and remove the shortcuts this proof of concept uses.
+5. **Build the final County Files.** Remove the shortcuts this proof of concept uses.
 
 ## Appendix: file provenance
 
 | Item | Value |
-|---|---|
+|----------------|----------------------------------------------------------------|
 | Build | `populace-us-2024-buildo-acs-local-f8b1039f00-20261118T011728Z` |
 | File | `populace_us_2024_acs_local.h5`, 10,637,811,669 bytes |
 | SHA-256 | `82314a3b5a6a95762faf6eb4f5b499ce56608ad6a39a27b75e11c75b4945bd3c` |
@@ -209,4 +206,4 @@ Most D grades have both causes: 2,905 counties have an effective sample below 30
 
 ¹ The income distribution error is the sum, over the 16 ACS income brackets, of the absolute differences between the file's number of households and the comparison value, divided by the sum of the county's comparison values. Each bracket's comparison value is the file's state total for that bracket, split across counties in the published ACS proportions. When the two totals agree, an error of 100% means that half of the households fall in the wrong bracket.
 
-Sources: US Census Bureau, American Community Survey 2024 1-year public-use microdata and 2020–2024 5-year county tables B11001, B19001, B19013, B19025, B19051 and B19061; US Census Bureau, 2020 Census block populations and the 2020 tract-to-PUMA and block-to-congressional-district files; IRS Statistics of Income, state, county and congressional district data and national totals (Publication 1304); Congressional Budget Office, revenue projections, February 2026; USDA Food and Nutrition Service, SNAP state participation and benefits, fiscal year 2024, and the SNAP participation rate; CMS, Medicaid and CHIP enrollment data, December 2024; Social Security Administration, SSI Monthly Statistics, December 2024; HHS Office of the Assistant Secretary for Planning and Evaluation, Welfare Indicators report; US Census Bureau, Survey of Income and Program Participation 2023 public-use file; Pew Research Center and the Higher Ed Immigration Portal; US Census Bureau and Bureau of Labor Statistics, Current Population Survey Annual Social and Economic Supplement 2023–2025, through PolicyEngine's national data and directly for three work columns; the IRS Statistics of Income public-use file (tax year 2015), through PolicyEngine's national data. The methods documentation gives each source's vintage and use.
+Sources: US Census Bureau, American Community Survey 2024 1-year public-use microdata and 2020–2024 5-year county tables B11001, B19001, B19013, B19025, B19051 and B19061; US Census Bureau, 2020 Census block populations and the 2020 tract-to-PUMA and block-to-congressional-district files; IRS Statistics of Income, state, county and congressional district data and national totals (Publication 1304); Congressional Budget Office, revenue projections, February 2026; USDA Food and Nutrition Service, SNAP state participation and benefits, fiscal year 2024, and the SNAP participation rate; CMS, Medicaid and CHIP enrollment data, December 2024; Social Security Administration, SSI Monthly Statistics, December 2024; HHS Office of the Assistant Secretary for Planning and Evaluation, Welfare Indicators report; US Census Bureau, Survey of Income and Program Participation 2023 public-use file; Pew Research Center and the Higher Ed Immigration Portal; US Census Bureau and Bureau of Labor Statistics, Current Population Survey Annual Social and Economic Supplement 2023–2025, the survey behind PolicyEngine's national data; the IRS Statistics of Income public-use file (tax year 2015), through PolicyEngine's national data. The methods documentation gives each source's vintage and use.
