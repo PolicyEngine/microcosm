@@ -22,16 +22,17 @@ The two Eurostat files are kept, with their URLs, under
 ``~/reviews/belgium-2026-10-12/transport-port/sources/eurostat-2026-11-22/``;
 Eurostat updates them in place, so a fresh download may not match the pins.
 
-The builder refuses unless the sources agree (``hierarchy_from_sources``,
-rules 1 to 7): the crosswalk lists each 2024 code once, Eurostat lists each
-LAU once with a NUTS3 code of the pinned NUTS 2024 classification, and the
-classification lists each code once, at the NUTS level its length gives; the
-crosswalk maps exactly Eurostat's 2024 LAUs onto exactly Statbel's 2025
-communes; Statbel's three regions map one to one onto NUTS 2024 level 1, as
-02000 BE2, 03000 BE3 and 04000 BE1; its province codes, with 04000 for the 19
-Brussels-Capital communes, which belong to no province, map one to one onto
-level 2, leaving out the commune 46030, whose
-2024 parts lie in BE21 and BE23; the communes whose 2024 parts span two NUTS3
+Reading the NUTS 2024 sheet, ``nuts_labels`` refuses a Belgian code whose
+declared level is not its length less two. The builder then refuses unless
+the sources agree (``hierarchy_from_sources``, rules 1 to 7): the crosswalk
+lists each 2024 code once, Eurostat lists each LAU once with a NUTS3 code of
+the pinned NUTS 2024 classification, and the classification lists each code
+once; the crosswalk maps exactly Eurostat's 2024 LAUs onto exactly Statbel's
+2025 communes; Statbel's three regions map one to one onto NUTS 2024 level 1,
+as 02000 BE2, 03000 BE3 and 04000 BE1; its province codes, with 04000 for the
+19 Brussels-Capital communes, which belong to no province, map one to one onto
+level 2, leaving out the commune 46030, whose 2024 parts lie in BE21 and
+BE23; the communes whose 2024 parts span two NUTS3
 areas are exactly 46029 (BE234 and BE236), 46030 (BE211 and BE236) and 71072
 (BE223 and BE224); the BE335 and BE336 labels equal their pins; and NUTS3
 BE336, "Bezirk Verviers — Deutschsprachige Gemeinschaft", holds exactly nine
@@ -377,7 +378,8 @@ def hierarchy_from_sources(sources: dict) -> dict[str, dict[str, str]]:
         ((statbel[c][1], nuts1[c]) for c in statbel),
         "Rule 3: Statbel regions and NUTS1 differ",
     )
-    # Rule 4: provinces one to one with NUTS2 where a commune's parts share one.
+    # Rule 4: Statbel province codes (04000 for Brussels-Capital) one to one with
+    # NUTS2 where a commune's parts share one.
     straddle3 = {
         c: tuple(sorted(cells)) for c, cells in sorted(nuts3.items()) if len(cells) > 1
     }
@@ -392,7 +394,7 @@ def hierarchy_from_sources(sources: dict) -> dict[str, dict[str, str]]:
             for c in statbel
             if c not in straddle2
         ),
-        "Rule 4: Statbel provinces and NUTS2 differ",
+        "Rule 4: Statbel province codes and NUTS2 differ",
     )
     # Rule 5: the Verviers NUTS3 labels are the pinned ones.
     if any(labels.get(code) != label for code, label in NUTS3_LABELS.items()):

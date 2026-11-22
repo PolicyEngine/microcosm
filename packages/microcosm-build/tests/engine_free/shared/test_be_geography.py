@@ -89,9 +89,11 @@ _NUTS1_RECORD_SET = "statbel.population_structure.cy2025.people.by_nuts1_age_sex
 _TOTAL = 11825551
 _NUTS1_TOTALS = {"BE1": 1255795, "BE2": 6864766, "BE3": 3704990}
 _GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"
-# The support sha the shared kernel gave on CPython 3.13 and 3.14 under macOS.
-# It covers NPZ bytes that can differ by platform (ZipInfo.create_system), so
-# the test checks fixed draws only through the independent draw under this sha.
+# A support sha the shared kernel gave at 494d9613c0, on CPython 3.13 and 3.14
+# under macOS. The fixed first five draws are the independent draw under it,
+# which pins the uniform and the CDF. It is not compared with the kernel's
+# sha, whose NPZ bytes can differ by platform (ZipInfo.create_system), so a
+# support edit, which re-draws every household, leaves it as a record.
 _SUPPORT_SHA256 = "c9634636b82e5aeb8545cf592d89d093fbad8e905bf4c5b8842e89fd2b7e2b9d"
 
 # The four pinned sources, as the committed strings name them.
@@ -884,6 +886,9 @@ def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
         extractor.main([*arguments, "--check"])
     assert not list(out.iterdir())
     extractor.main(arguments)
+    # Read-only files and unchanged times: --check writes nothing.
+    for path in out.iterdir():
+        path.chmod(0o444)
     written = {path.name: path.stat().st_mtime_ns for path in out.iterdir()}
     extractor.main([*arguments, "--check"])
     assert {path.name: path.stat().st_mtime_ns for path in out.iterdir()} == written
@@ -943,7 +948,26 @@ def test_fixture_extractor_refuses_an_artifact_the_feed_does_not_pin(
     )
     with pytest.raises(ValueError, match="Selected line counts"):
         extractor.extract(artifact, feed)
-    # The commune count is right, but the NUTS1 count is not.
+    # Too many NUTS1 lines, with the commune count right.
+    (tmp_path / "two").mkdir()
+    two, two_feed = _fake_artifact(
+        tmp_path / "two",
+        [
+            _fact_line(_COMMUNE_RECORD_SET, "11001", 7),
+            _fact_line(_NUTS1_RECORD_SET, "BE2", 9),
+        ],
+    )
+    monkeypatch.setattr(
+        extractor,
+        "RECORD_SETS",
+        {
+            _COMMUNE_RECORD_SET: ("commune_total", 1),
+            _NUTS1_RECORD_SET: ("nuts1_age_sex", 0),
+        },
+    )
+    with pytest.raises(ValueError, match="Selected line counts"):
+        extractor.extract(two, two_feed)
+    # The commune count is right, but the NUTS1 count is too low.
     monkeypatch.setattr(
         extractor,
         "RECORD_SETS",
@@ -1056,15 +1080,15 @@ def test_fixture_extractor_selects_from_the_bytes_it_checks(tmp_path, monkeypatc
 
 
 class _ChangesOnRewind(io.BytesIO):
-    """A facts stream whose bytes change once it is rewound, as a file
-    rewritten in place between two passes would."""
+    """A facts stream whose bytes change once it is rewound after a read, as a
+    file rewritten in place between two passes would."""
 
     def __init__(self, first: bytes, later: bytes):
         super().__init__(first)
         self._later = later
 
     def seek(self, offset, whence=io.SEEK_SET):
-        if self._later is not None:
+        if self._later is not None and super().tell() > 0:
             later, self._later = self._later, None
             super().seek(0)
             super().truncate()
@@ -1073,7 +1097,13 @@ class _ChangesOnRewind(io.BytesIO):
 
 
 def test_fixture_extractor_selects_in_the_pass_that_hashes(tmp_path, monkeypatch):
-    """A second pass over the same handle, after a rewind, cannot supply lines."""
+    """The extractor selects from the stream it hashes, in one pass.
+
+    io.open and open serve the facts path as a stream of the pinned bytes that
+    change on a rewind, while the file on disk holds other bytes. A second pass
+    over the stream, or a read of the facts by any route that skips the stream,
+    gives a line the pin does not cover.
+    """
     monkeypatch.setattr(
         extractor,
         "RECORD_SETS",
@@ -1083,9 +1113,12 @@ def test_fixture_extractor_selects_in_the_pass_that_hashes(tmp_path, monkeypatch
         },
     )
     pinned = _fact_line(_COMMUNE_RECORD_SET, "11001", 7)
+    other = _fact_line(_COMMUNE_RECORD_SET, "11001", 8)
     artifact, feed = _fake_artifact(tmp_path, [pinned])
-    watched = os.path.realpath(artifact / "consumer_facts.jsonl")
-    stream = _ChangesOnRewind(pinned, _fact_line(_COMMUNE_RECORD_SET, "11001", 8))
+    facts = artifact / "consumer_facts.jsonl"
+    facts.write_bytes(other)
+    watched = os.path.realpath(facts)
+    stream = _ChangesOnRewind(pinned, other)
     real_open = io.open
 
     def open_facts_as_stream(file, *args, **kwargs):
@@ -1099,6 +1132,8 @@ def test_fixture_extractor_selects_in_the_pass_that_hashes(tmp_path, monkeypatch
     monkeypatch.setattr(builtins, "open", open_facts_as_stream)
     files = extractor.extract(artifact, feed)
     assert gzip.decompress(files[extractor.FIXTURE]) == pinned
+    # It read and closed the stream it was served.
+    assert stream.closed
 
 
 # --- the builder ------------------------------------------------------------
@@ -1314,8 +1349,8 @@ def _prepend(key: str, row: tuple):
         (_move("11056", "BE225"), "Rule 4: NUTS straddlers"),
         # 46030 gains a third NUTS2 area.
         (_add_lau("46099", "BE242", target="46030"), "Rule 4: NUTS straddlers"),
-        (_restate("11001", province="40000"), "Rule 4: Statbel provinces"),
-        (_restate("63049", province="60001"), "Rule 4: Statbel provinces"),
+        (_restate("11001", province="40000"), "Rule 4: Statbel province codes"),
+        (_restate("63049", province="60001"), "Rule 4: Statbel province codes"),
         (_relabel("BE336", "Bezirk Verviers"), "Rule 5"),
         (_relabel("BE335", "Arr. Verviers"), "Rule 5"),
         (_prepend("labels", ("BE336", "Bezirk Verviers")), "Rule 5: NUTS 2024 lists"),
@@ -1400,8 +1435,20 @@ def test_builder_reads_nuts_labels_and_refuses_a_level_its_code_does_not_give():
         changed = [*rows[:4], ("BE", "BE211", "Arr. Antwerpen", level, 1)]
         with pytest.raises(ValueError, match="Rule 2: NUTS 2024 gives 'BE211' level"):
             builder.nuts_labels(changed)
-    with pytest.raises(ValueError, match="Unexpected NUTS 2024 header"):
-        builder.nuts_labels([("NUTS Code", "Country code"), ("BE", "BE")])
+    for row, code in (
+        (("BE", "BE2", "Vlaams Gewest", 2, 1), "'BE2'"),
+        # Level 1 is the length of str(211) less two, so only its type refuses it.
+        (("BE", 211, "Arr. Antwerpen", 1, 1), "211"),
+    ):
+        with pytest.raises(ValueError, match=f"Rule 2: NUTS 2024 gives {code} level"):
+            builder.nuts_labels([header, row])
+    for wrong in (
+        ("NUTS Code", "Country code", "NUTS label", "NUTS level"),
+        ("Country code", "NUTS label", "NUTS Code", "NUTS level"),
+        ("Country code", "NUTS Code", "NUTS label"),
+    ):
+        with pytest.raises(ValueError, match="Unexpected NUTS 2024 header"):
+            builder.nuts_labels([wrong, ("BE", "BE", "Belgique/België", 0)])
 
 
 def test_builder_refuses_precal_rows_that_differ_from_the_communes():
