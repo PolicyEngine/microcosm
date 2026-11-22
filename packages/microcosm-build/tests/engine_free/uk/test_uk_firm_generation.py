@@ -376,7 +376,7 @@ def test_vat_liability_uses_input_tax_credit_not_full_input_cost() -> None:
 def test_firm_generation_uses_only_public_calibrate_names() -> None:
     """microcosm#636: no private ``microcosm.calibrate.solve`` imports."""
 
-    tree = ast.parse(Path(firm_generation.__file__).read_text())
+    tree = ast.parse(Path(firm_generation.__file__).read_text(encoding="utf-8"))
     imported = [
         alias.name
         for node in ast.walk(tree)
@@ -484,7 +484,7 @@ def test_vat_liability_rows_align_rule_outputs_by_firm_id() -> None:
     hmrc = _source_frames()["hmrc_population_band"].iloc[1]
     bands = firms["annual_turnover_k"].apply(lambda t: hmrc_band_name(t, threshold))
     diagnostics = result.target_diagnostics.set_index("target_name")
-    assert rules.periods == [2025]
+    assert rules.periods == [2024]
     for band in VAT_LIABILITY_BANDS_CALIBRATED:
         members = firms["in_frame"] & (bands == band)
         if not members.any():

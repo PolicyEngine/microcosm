@@ -63,10 +63,8 @@ def _candidates() -> pd.DataFrame:
     )
 
 
-@pytest.mark.parametrize(("vintage", "period"), [("2024-25", 2025), ("2023-24", 2024)])
-def test_rule_period_is_the_year_of_the_tax_years_first_january(
-    vintage, period
-) -> None:
+@pytest.mark.parametrize(("vintage", "period"), [("2024-25", 2024), ("2023-24", 2023)])
+def test_rule_period_is_the_tax_years_start_year(vintage, period) -> None:
     assert rule_period_for_vintage(vintage) == period
     assert UK_FIRM_VINTAGE_BY_RULE_PERIOD[period] == vintage
 
@@ -139,7 +137,7 @@ def test_align_refuses_mismatched_ids(produced, requested, match) -> None:
 def test_legacy_adapter_converts_units_and_registers_every_firm() -> None:
     evaluator = _RecordingEvaluator()
     candidates = _candidates()
-    outputs = LegacyVATEvaluatorRules(evaluator).evaluate(candidates, period=2025)
+    outputs = LegacyVATEvaluatorRules(evaluator).evaluate(candidates, period=2024)
 
     (call,) = evaluator.calls
     assert call["data_vintage"] == "2024-25"
@@ -152,7 +150,7 @@ def test_legacy_adapter_converts_units_and_registers_every_firm() -> None:
     )
     assert outputs.provenance["evaluator"] == "_RecordingEvaluator"
     assert outputs.provenance["data_vintage"] == "2024-25"
-    assert outputs.provenance["period"] == "2025"
+    assert outputs.provenance["period"] == "2024"
 
 
 def test_legacy_adapter_agrees_with_the_tables_input_vat() -> None:
@@ -160,7 +158,7 @@ def test_legacy_adapter_agrees_with_the_tables_input_vat() -> None:
 
     candidates = _candidates()
     outputs = LegacyVATEvaluatorRules(_RecordingEvaluator()).evaluate(
-        candidates, period=2024
+        candidates, period=2023
     )
     expected = (
         ASSUMED_INPUT_VAT_RATE * candidates["firm_standard_rated_supplies"]
@@ -176,7 +174,7 @@ def test_legacy_adapter_refuses_an_unknown_period_and_missing_columns() -> None:
     with pytest.raises(ValueError, match="rule period 2026"):
         rules.evaluate(_candidates(), period=2026)
     with pytest.raises(ValueError, match="firm_input_costs"):
-        rules.evaluate(_candidates().drop(columns="firm_input_costs"), period=2025)
+        rules.evaluate(_candidates().drop(columns="firm_input_costs"), period=2024)
 
 
 def test_legacy_adapter_refuses_a_wrong_shape() -> None:
@@ -185,4 +183,4 @@ def test_legacy_adapter_refuses_a_wrong_shape() -> None:
             return np.zeros(1)
 
     with pytest.raises(ValueError, match="returned shape"):
-        LegacyVATEvaluatorRules(_Short()).evaluate(_candidates(), period=2025)
+        LegacyVATEvaluatorRules(_Short()).evaluate(_candidates(), period=2024)
