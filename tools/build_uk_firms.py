@@ -75,6 +75,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "firm_rateable_value"
         ),
     )
+    parser.add_argument(
+        "--pay-distribution-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS ASHE section pay percentiles; sets the "
+            "assumed count and pay of employees at or below the secondary "
+            "threshold (needs --paybill-dir)"
+        ),
+    )
     parser.add_argument("--rules", choices=RULES_CHOICES, required=True)
     parser.add_argument(
         "--axiom-artifact",
@@ -137,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         public_sector_dir=args.public_sector_dir,
         profit_dir=args.profit_dir,
         rateable_value_dir=args.rateable_value_dir,
+        pay_distribution_dir=args.pay_distribution_dir,
     )
     receipt = built["receipt"]
     print(

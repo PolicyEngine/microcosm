@@ -499,6 +499,8 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         "firm_is_single_director_company",
         "firm_taxable_trading_profit",
         "firm_rateable_value",
+        "firm_employees_below_secondary_threshold",
+        "firm_paybill_below_secondary_threshold",
     }
     assert all(
         name.startswith("firm_") for name in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS
@@ -517,10 +519,23 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         "attributes",
         "paybill",
         "employment_allowance",
+        "pay_distribution",
         "profit",
         "rateable_value",
     ]
-    attributes, paybill, allowance, profit, rateable_value = UK_FIRM_EXPORT_GROUPS
+    (
+        attributes,
+        paybill,
+        allowance,
+        pay_distribution,
+        profit,
+        rateable_value,
+    ) = UK_FIRM_EXPORT_GROUPS
+    assert pay_distribution.requires == ("attributes", "paybill")
+    assert pay_distribution.policyengine_uk_columns == (
+        "firm_employees_below_secondary_threshold",
+        "firm_paybill_below_secondary_threshold",
+    )
     assert attributes.source_columns == UK_FIRM_ONS_ATTRIBUTE_COLUMNS
     assert attributes.policyengine_uk_columns == (
         UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS
@@ -551,12 +566,20 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
 
 
 def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
-    # The base, then attributes with any subset of the four groups that
-    # extend it.
-    extending = ["paybill", "employment_allowance", "profit", "rateable_value"]
+    # The base, then attributes with any subset of the groups that extend
+    # it; pay_distribution also needs paybill.
+    extending = [
+        "paybill",
+        "employment_allowance",
+        "pay_distribution",
+        "profit",
+        "rateable_value",
+    ]
     expected = {(): UK_FIRM_TABLE_COLUMNS}
     for size in range(len(extending) + 1):
         for chosen in itertools.combinations(extending, size):
+            if "pay_distribution" in chosen and "paybill" not in chosen:
+                continue
             names = ("attributes", *chosen)
             expected[names] = uk_firm_table_columns(names)
     assert dict(UK_FIRM_TABLE_LAYOUTS) == expected

@@ -498,12 +498,20 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         public_sector_dir=FIXTURES / "firm_public_sector_2025",
         profit_dir=FIXTURES / "firm_ct_2024",
         rateable_value_dir=FIXTURES / "firm_rateable_value_2024",
+        pay_distribution_dir=FIXTURES / "firm_pay_distribution_2024",
     )
     table = built["table"]
     receipt = built["receipt"]
     base = builds[0]["table"]
     assert tuple(table.columns) == uk_firm_table_columns(
-        ["attributes", "paybill", "employment_allowance", "profit", "rateable_value"]
+        [
+            "attributes",
+            "paybill",
+            "employment_allowance",
+            "pay_distribution",
+            "profit",
+            "rateable_value",
+        ]
     )
     validate_uk_firm_table(pd.read_parquet(built["table_path"]))
     public = base["ons_legal_status"].isin([5, 6]).to_numpy()
@@ -536,7 +544,10 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
     assert value.max() > 0
     assert not value[~table["firm_in_england"].to_numpy(bool)].any()
     assert receipt["uk_firm_rateable_value"]["status"] == "assumed"
-    for role in ("public_sector", "profit", "rateable_value"):
+    below = table["firm_employees_below_secondary_threshold"].to_numpy()
+    assert 0 < below.sum() and (below <= table["firm_employees"].to_numpy()).all()
+    assert receipt["uk_firm_pay_distribution"]["threshold_gbp"] == 9_100.0
+    for role in ("public_sector", "profit", "rateable_value", "pay_distribution"):
         assert len(receipt["inputs"][role]) == 1
     for key in ("uk_firm_public_sector", "uk_firm_profit", "uk_firm_rateable_value"):
         assert key not in builds[0]["receipt"]
@@ -548,6 +559,7 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         ("public_sector_dir", "firm_public_sector_2025"),
         ("profit_dir", "firm_ct_2024"),
         ("rateable_value_dir", "firm_rateable_value_2024"),
+        ("pay_distribution_dir", "firm_pay_distribution_2024"),
     ],
 )
 def test_opt_in_sources_refuse_another_vintage(

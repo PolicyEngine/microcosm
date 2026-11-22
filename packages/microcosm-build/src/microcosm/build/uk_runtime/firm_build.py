@@ -57,6 +57,12 @@ from microcosm.build.uk_runtime.firm_generation import (
     generate_uk_firm_population,
     read_uk_firm_source_data,
 )
+from microcosm.build.uk_runtime.firm_pay_distribution import (
+    UK_FIRM_PAY_DISTRIBUTION_METHOD,
+    UK_FIRM_PAY_DISTRIBUTION_STATUS,
+    assign_uk_firm_pay_below_secondary_threshold,
+    read_uk_firm_pay_distribution_source,
+)
 from microcosm.build.uk_runtime.firm_paybill import (
     UK_FIRM_PAYBILL_METHOD,
     UK_FIRM_PAYBILL_STATUS,
@@ -95,6 +101,11 @@ from microcosm.build.uk_runtime.firm_table import (
     validate_uk_firm_table,
 )
 
+#: policyengine-uk's 2024-25 annual secondary threshold: £175 a week
+#: (``gov.hmrc.national_insurance.class_1.employer_scale``, bracket 1) times
+#: 52.
+UK_FIRM_SECONDARY_THRESHOLD_GBP = 175.0 * 52
+
 #: Version of the ``uk_firms.receipt.json`` layout.
 UK_FIRM_BUILD_RECEIPT_SCHEMA_VERSION = 1
 UK_FIRM_TABLE_FILE = "uk_firms.parquet"
@@ -131,6 +142,7 @@ def build_uk_firm_dataset(
     public_sector_dir: str | Path | None = None,
     profit_dir: str | Path | None = None,
     rateable_value_dir: str | Path | None = None,
+    pay_distribution_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build the UK firm table and its receipt into ``output_dir``.
 
@@ -152,7 +164,10 @@ def build_uk_firm_dataset(
     (``tests/fixtures/uk/firm_rateable_value_2024``) the assumed
     ``firm_rateable_value``. Each is opt-in, reads its own fixed-seed
     generator if any, and leaves the table and receipt unchanged when
-    omitted. Returns ``table`` (the
+    omitted. ``pay_distribution_dir``
+    (``tests/fixtures/uk/firm_pay_distribution_2024``), which needs a
+    ``paybill_dir``, adds the assumed count and pay of employees at or below
+    the secondary threshold (``UK_FIRM_SECONDARY_THRESHOLD_GBP``). Returns ``table`` (the
     validated policyengine-uk firm table), ``receipt`` (the dict written as
     JSON), ``result`` (the ``UKFirmGenerationResult``), ``table_path`` and
     ``receipt_path``.
@@ -171,12 +186,15 @@ def build_uk_firm_dataset(
         ("public_sector_dir", public_sector_dir),
         ("profit_dir", profit_dir),
         ("rateable_value_dir", rateable_value_dir),
+        ("pay_distribution_dir", pay_distribution_dir),
     ):
         if directory is not None and config.data_vintage != "2024-25":
             raise ValueError(
                 f"The UK firm {name} source is for tax year 2024-25; "
                 f"config.data_vintage is {config.data_vintage}."
             )
+    if pay_distribution_dir is not None and paybill_dir is None:
+        raise ValueError("pay_distribution_dir needs paybill_dir.")
     processed = Path(processed_dir)
     attributes = Path(attributes_dir)
     output = Path(output_dir)
@@ -201,6 +219,18 @@ def build_uk_firm_dataset(
     if paybill_dir is not None:
         paybill_source = read_uk_firm_paybill_source(paybill_dir)
         firms = firms.assign(firm_paybill=assign_uk_firm_paybill(firms, paybill_source))
+    pay_distribution_source = None
+    if pay_distribution_dir is not None:
+        pay_distribution_source = read_uk_firm_pay_distribution_source(
+            pay_distribution_dir
+        )
+        firms = firms.assign(
+            **assign_uk_firm_pay_below_secondary_threshold(
+                firms,
+                pay_distribution_source,
+                threshold_gbp=UK_FIRM_SECONDARY_THRESHOLD_GBP,
+            )
+        )
     if employment_allowance:
         firms = assign_uk_firm_employment_allowance(firms)
     profit_source = None
@@ -318,6 +348,21 @@ def build_uk_firm_dataset(
         receipt["uk_firm_public_sector"] = {
             "status": UK_FIRM_PUBLIC_SECTOR_STATUS,
             **public_sector,
+        }
+    if pay_distribution_source is not None:
+        receipt["inputs"]["pay_distribution"] = {
+            pay_distribution_source.file: pay_distribution_source.sha256
+        }
+        receipt["uk_firm_pay_distribution"] = {
+            "status": UK_FIRM_PAY_DISTRIBUTION_STATUS,
+            "method": UK_FIRM_PAY_DISTRIBUTION_METHOD,
+            "threshold_gbp": UK_FIRM_SECONDARY_THRESHOLD_GBP,
+            "weighted_employees_below": float(
+                (weight * table["firm_employees_below_secondary_threshold"]).sum()
+            ),
+            "weighted_paybill_below_gbp": float(
+                (weight * table["firm_paybill_below_secondary_threshold"]).sum()
+            ),
         }
     if profit_source is not None:
         receipt["inputs"]["profit"] = {profit_source.file: profit_source.sha256}

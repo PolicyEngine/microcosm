@@ -36,6 +36,11 @@ The groups today:
   ``firm_employment_allowance.assign_uk_firm_employment_allowance``), checked
   against ``ons_legal_status`` and ``firm_employees``. It extends
   ``attributes``.
+- ``pay_distribution``: the assumed
+  ``firm_employees_below_secondary_threshold`` and
+  ``firm_paybill_below_secondary_threshold`` (from
+  ``firm_pay_distribution.assign_uk_firm_pay_below_secondary_threshold``).
+  It extends ``attributes`` and ``paybill``.
 - ``profit``: the assumed ``firm_taxable_trading_profit`` (pounds, from
   ``firm_profit.assign_uk_firm_taxable_profit``), zero for non-companies.
   It extends ``attributes``.
@@ -321,10 +326,14 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # Pay distribution within the paybill (policyengine-uk ca037fad2).
         "firm_employees_above_auto_enrolment_upper_limit": "not_set",
         "firm_employees_below_auto_enrolment_earnings_trigger": "not_set",
-        "firm_employees_below_secondary_threshold": "not_set",
+        # Assumed (firm_pay_distribution.py): the share of the section's
+        # ASHE 2025 jobs at or below the secondary threshold, from a linear
+        # percentile curve. Only when the build is given a pay distribution
+        # source.
+        "firm_employees_below_secondary_threshold": "assumed",
         "firm_paybill_above_auto_enrolment_upper_limit": "not_set",
         "firm_paybill_below_auto_enrolment_earnings_trigger": "not_set",
-        "firm_paybill_below_secondary_threshold": "not_set",
+        "firm_paybill_below_secondary_threshold": "assumed",
         # National Minimum Wage floor (policyengine-uk ca037fad2).
         "firm_low_paid_hours": "not_set",
         "firm_low_paid_paybill": "not_set",
@@ -504,6 +513,49 @@ def _non_negative(df: pd.DataFrame, column: str) -> np.ndarray:
     return values
 
 
+#: policyengine-uk inputs the pay distribution group adds.
+UK_FIRM_PAY_DISTRIBUTION_COLUMNS = (
+    "firm_employees_below_secondary_threshold",
+    "firm_paybill_below_secondary_threshold",
+)
+
+
+def _pay_distribution_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {
+        "firm_employees_below_secondary_threshold": ordered[
+            "firm_employees_below_secondary_threshold"
+        ].to_numpy(np.int64),
+        "firm_paybill_below_secondary_threshold": ordered[
+            "firm_paybill_below_secondary_threshold"
+        ].to_numpy(np.float64),
+    }
+
+
+def _validate_pay_distribution_columns(df: pd.DataFrame) -> None:
+    count = df["firm_employees_below_secondary_threshold"].to_numpy()
+    if not np.issubdtype(count.dtype, np.integer) or np.any(count < 0):
+        raise ValueError(
+            "UK firm firm_employees_below_secondary_threshold must be "
+            "non-negative integers."
+        )
+    if np.any(count > df["firm_employees"].to_numpy(np.int64)):
+        raise ValueError(
+            "UK firm firm_employees_below_secondary_threshold must not exceed "
+            "firm_employees."
+        )
+    pay = _non_negative(df, "firm_paybill_below_secondary_threshold")
+    if np.any(pay > df["firm_paybill"].to_numpy(np.float64)):
+        raise ValueError(
+            "UK firm firm_paybill_below_secondary_threshold must not exceed "
+            "firm_paybill."
+        )
+    if np.any(pay[count == 0]):
+        raise ValueError(
+            "UK firm firm_paybill_below_secondary_threshold must be zero "
+            "without employees below the threshold."
+        )
+
+
 def _validate_profit_columns(df: pd.DataFrame) -> None:
     profit = _non_negative(df, "firm_taxable_trading_profit")
     not_company = df["ons_legal_status"].to_numpy(np.int64) != 1
@@ -582,6 +634,15 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         requires=("attributes",),
         columns=_employment_allowance_group_columns,
         validate=_validate_employment_allowance_columns,
+    ),
+    UKFirmExportGroup(
+        name="pay_distribution",
+        source_columns=UK_FIRM_PAY_DISTRIBUTION_COLUMNS,
+        policyengine_uk_columns=UK_FIRM_PAY_DISTRIBUTION_COLUMNS,
+        microcosm_columns=(),
+        requires=("attributes", "paybill"),
+        columns=_pay_distribution_group_columns,
+        validate=_validate_pay_distribution_columns,
     ),
     UKFirmExportGroup(
         name="profit",
