@@ -46,7 +46,7 @@ conditioned on the turnover band through Table 13 and on the employment band
 through Table 12), with Table 15 held out, and
 feed policyengine-uk's `firm_region`, `firm_in_england`, `firm_legal_form` and
 `firm_is_public_body`. `firm_table.UK_FIRM_POLICYENGINE_UK_INPUT_STATUS` records
-which of policyengine-uk's 61 firm inputs (at `57a99a67a`) microcosm sets.
+which of policyengine-uk's 66 firm inputs (at `d856de5a7`) microcosm sets.
 `firm_paybill` is an opt-in assumed input (headcount × ONS ASHE section mean
 pay, `uk_runtime/firm_paybill.py`); the rest (the pay distribution within it,
 profit, capital expenditure, R&D, rateable value and several flags) wait for

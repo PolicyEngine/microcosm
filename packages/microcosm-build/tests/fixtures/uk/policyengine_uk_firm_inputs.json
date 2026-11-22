@@ -10,6 +10,7 @@
     "firm_capex_special_rate_used",
     "firm_capex_structures",
     "firm_claims_employment_allowance",
+    "firm_class_1a_benefits",
     "firm_deductions_allowance_share",
     "firm_disposal_proceeds_main_pool",
     "firm_employees",
@@ -27,6 +28,7 @@
     "firm_is_charity",
     "firm_is_industrial_property",
     "firm_is_limited_cost_trader",
+    "firm_is_live_music_venue",
     "firm_is_pub_or_live_music_venue",
     "firm_is_public_body",
     "firm_is_rhl_property",
@@ -48,8 +50,11 @@
     "firm_property_occupied",
     "firm_qualifying_rd_expenditure",
     "firm_rateable_value",
+    "firm_rd_staff_paye_nic",
+    "firm_rdec_paye_nic_cap_supplied",
     "firm_reduced_rated_supplies",
     "firm_region",
+    "firm_relevant_paye_nic_liabilities",
     "firm_sba_qualifying_cost_brought_forward",
     "firm_sic_section",
     "firm_special_rate_pool_brought_forward",
@@ -405,6 +410,28 @@
       "unit": "GBP",
       "value_type": "float"
     },
+    "firm_class_1a_benefits": {
+      "default_value": 0,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/firm_class_1a_benefits.py",
+      "has_formula": false,
+      "name": "firm_class_1a_benefits",
+      "unit": "GBP",
+      "value_type": "float"
+    },
+    "firm_class_1a_ni": {
+      "default_value": null,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/gov/hmrc/national_insurance/employer/firm/firm_class_1a_ni.py",
+      "has_formula": true,
+      "name": "firm_class_1a_ni",
+      "unit": "GBP",
+      "value_type": "float"
+    },
     "firm_corporation_tax_lower_limit": {
       "default_value": null,
       "definition_period": "year",
@@ -710,6 +737,17 @@
       "file": "variables/firm/vat/firm_is_limited_cost_trader.py",
       "has_formula": false,
       "name": "firm_is_limited_cost_trader",
+      "unit": null,
+      "value_type": "bool"
+    },
+    "firm_is_live_music_venue": {
+      "default_value": false,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/business_rates/firm_is_live_music_venue.py",
+      "has_formula": false,
+      "name": "firm_is_live_music_venue",
       "unit": null,
       "value_type": "bool"
     },
@@ -1150,6 +1188,17 @@
       "unit": "GBP",
       "value_type": "float"
     },
+    "firm_rates_in_england": {
+      "default_value": null,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/gov/hmrc/business_rates/firm/firm_rates_in_england.py",
+      "has_formula": true,
+      "name": "firm_rates_in_england",
+      "unit": null,
+      "value_type": "bool"
+    },
     "firm_rd_additional_deduction": {
       "default_value": null,
       "definition_period": "year",
@@ -1194,6 +1243,17 @@
       "unit": "GBP",
       "value_type": "float"
     },
+    "firm_rd_staff_paye_nic": {
+      "default_value": 0,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/rd/firm_rd_staff_paye_nic.py",
+      "has_formula": false,
+      "name": "firm_rd_staff_paye_nic",
+      "unit": "GBP",
+      "value_type": "float"
+    },
     "firm_rd_surrenderable_loss": {
       "default_value": null,
       "definition_period": "year",
@@ -1215,6 +1275,17 @@
       "name": "firm_rdec_excess_payable",
       "unit": "GBP",
       "value_type": "float"
+    },
+    "firm_rdec_paye_nic_cap_supplied": {
+      "default_value": false,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/rd/firm_rdec_paye_nic_cap_supplied.py",
+      "has_formula": false,
+      "name": "firm_rdec_paye_nic_cap_supplied",
+      "unit": null,
+      "value_type": "bool"
     },
     "firm_recoverable_input_vat": {
       "default_value": null,
@@ -1265,6 +1336,17 @@
       "name": "firm_region",
       "unit": null,
       "value_type": "Enum"
+    },
+    "firm_relevant_paye_nic_liabilities": {
+      "default_value": 0,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/rd/firm_relevant_paye_nic_liabilities.py",
+      "has_formula": false,
+      "name": "firm_relevant_paye_nic_liabilities",
+      "unit": "GBP",
+      "value_type": "float"
     },
     "firm_retail_hospitality_leisure_rate_relief": {
       "default_value": null,
@@ -1614,7 +1696,7 @@
   ],
   "policyengine_uk": {
     "dirty": false,
-    "head_commit": "57a99a67ac26ba186c7b622c11d28888b54d67a9",
+    "head_commit": "d856de5a7e11ae387e6031e6e1bca69962506b5e",
     "pull_request": "PolicyEngine/policyengine-uk#2940"
   },
   "policyengine_uk_variable_names": [
@@ -2075,6 +2157,8 @@
     "firm_claims_employment_allowance",
     "firm_claims_rd_sme_relief",
     "firm_class_1_earnings_above_secondary_threshold",
+    "firm_class_1a_benefits",
+    "firm_class_1a_ni",
     "firm_corporation_tax_lower_limit",
     "firm_corporation_tax_upper_limit",
     "firm_deductions_allowance_share",
@@ -2103,6 +2187,7 @@
     "firm_is_charity",
     "firm_is_industrial_property",
     "firm_is_limited_cost_trader",
+    "firm_is_live_music_venue",
     "firm_is_pub_or_live_music_venue",
     "firm_is_public_body",
     "firm_is_rd_intensive",
@@ -2142,15 +2227,19 @@
     "firm_pubs_and_live_music_venues_rate_relief",
     "firm_qualifying_rd_expenditure",
     "firm_rateable_value",
+    "firm_rates_in_england",
     "firm_rd_additional_deduction",
     "firm_rd_expenditure_credit",
     "firm_rd_intensity",
     "firm_rd_payable_credit",
+    "firm_rd_staff_paye_nic",
     "firm_rd_surrenderable_loss",
     "firm_rdec_excess_payable",
+    "firm_rdec_paye_nic_cap_supplied",
     "firm_recoverable_input_vat",
     "firm_reduced_rated_supplies",
     "firm_region",
+    "firm_relevant_paye_nic_liabilities",
     "firm_retail_hospitality_leisure_rate_relief",
     "firm_sba_qualifying_cost_brought_forward",
     "firm_sic_section",

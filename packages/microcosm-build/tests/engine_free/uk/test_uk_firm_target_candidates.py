@@ -123,6 +123,13 @@ def test_candidate_statuses_families_and_fixture_tables() -> None:
 #: not_set policyengine-uk inputs that no candidate informs yet: no source is
 #: declared for them.
 _NOT_SET_WITHOUT_CANDIDATE = {
+    # Class 1A, live music venue relief and the RDEC PAYE/NIC cap
+    # (policyengine-uk d856de5a7).
+    "firm_class_1a_benefits",
+    "firm_is_live_music_venue",
+    "firm_rd_staff_paye_nic",
+    "firm_rdec_paye_nic_cap_supplied",
+    "firm_relevant_paye_nic_liabilities",
     "firm_apprenticeship_levy_allowance_share",
     "firm_deductions_allowance_share",
     "firm_exempt_distributions",

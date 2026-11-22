@@ -221,11 +221,11 @@ UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS = ("firm_paybill",)
 UK_FIRM_INPUT_STATUSES = ("set", "derived", "assumed", "not_set")
 
 #: Every formula-less policyengine-uk firm input (branch firm-entity-engine
-#: at ``57a99a67a``, the committed snapshot; policyengine_uk/variables/firm/) -> how the paybill export, the fullest
-#: one, fills it. The keys with status other than ``not_set`` are exactly the
-#: base policyengine-uk columns and those of every ``UK_FIRM_EXPORT_GROUPS``
-#: entry (``UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS``); a table
-#: without some groups sets a subset of them.
+#: at ``d856de5a7``, the committed snapshot; policyengine_uk/variables/firm/)
+#: -> how the fullest export, with every group, fills it. The keys with status
+#: other than ``not_set`` are exactly the base policyengine-uk columns and those
+#: of every ``UK_FIRM_EXPORT_GROUPS`` entry; a table without some groups sets a
+#: subset of them.
 UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
     {
         # Generator columns, mapped directly (thousands of pounds to pounds,
@@ -286,6 +286,7 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # Business rates.
         "firm_is_industrial_property": "not_set",
         "firm_is_pub_or_live_music_venue": "not_set",
+        "firm_is_live_music_venue": "not_set",
         "firm_is_rhl_property": "not_set",
         "firm_months_empty": "not_set",
         "firm_n_properties": "not_set",
@@ -315,6 +316,8 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # Employment Allowance flags.
         "firm_claims_employment_allowance": "assumed",
         "firm_zero_rated_class_1_earnings": "not_set",
+        # Class 1A on benefits in kind (policyengine-uk d856de5a7).
+        "firm_class_1a_benefits": "not_set",
         # Pay distribution within the paybill (policyengine-uk ca037fad2).
         "firm_employees_above_auto_enrolment_upper_limit": "not_set",
         "firm_employees_below_auto_enrolment_earnings_trigger": "not_set",
@@ -328,6 +331,10 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # R&D.
         "firm_is_sme": "not_set",
         "firm_qualifying_rd_expenditure": "not_set",
+        # RDEC PAYE/NIC cap (policyengine-uk d856de5a7).
+        "firm_rdec_paye_nic_cap_supplied": "not_set",
+        "firm_rd_staff_paye_nic": "not_set",
+        "firm_relevant_paye_nic_liabilities": "not_set",
         "firm_total_relevant_expenditure": "not_set",
     }
 )
