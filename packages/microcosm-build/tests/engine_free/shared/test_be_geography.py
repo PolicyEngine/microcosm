@@ -1182,7 +1182,7 @@ def _prepend(key: str, row: tuple):
         (_add_part("11001", "46030"), "Rule 2: the crosswalk lists 2024 code 11001"),
         (_prepend("lau", ("11056", "BE212")), "Rule 2: Eurostat lists LAU 11056"),
         (_move("11001", "BE21!"), r"Rule 2: NUTS 2024 has no NUTS3 area \['BE21!'\]"),
-        # NUTS 2021's Arr. Hasselt, which NUTS 2024 recodes as BE224.
+        # A code the pinned NUTS 2021 to 2024 workbook does not list.
         (_move("11001", "BE221"), r"Rule 2: NUTS 2024 has no NUTS3 area \['BE221'\]"),
         (_add_part("11001", "11001"), "Rule 2: the crosswalk lists 2024 code 11001"),
         (_add_lau("11001", "BE211"), "Rule 2: Eurostat lists LAU 11001"),
