@@ -1483,8 +1483,8 @@
     "vat_scope"
   ],
   "policyengine_uk": {
-    "dirty": true,
-    "head_commit": "95974f6accfff442c3d2b310967898eb8f4eb5c9",
+    "dirty": false,
+    "head_commit": "efeb6f6de4024769e63e2bc7e8f68c9f1f35ef43",
     "pull_request": "PolicyEngine/policyengine-uk#2940"
   },
   "policyengine_uk_variable_names": [

@@ -11,13 +11,18 @@ attribute tables the firm attribute draws read. They are declarations only:
 - nothing reads them in calibration; ``uk_firms_targets.json`` keeps the
   committed contract's targets;
 - ``feeds_inputs`` names the formula-less policyengine-uk firm inputs a
-  target would inform, so the inputs registered as not set can point at the
-  candidate that would set them.
+  target would inform, so most inputs registered as not set can point at a
+  candidate that would inform them. Some not-set inputs have no candidate
+  yet; the tests pin which.
 
 ``status`` is ``pending_ledger_source`` for a statistic no Ledger source or
-Microcosm fixture holds, and ``fixture_available`` for an ONS UK Business
-table Microcosm holds as a test fixture. Publications are series titles; the
-edition a target reads is the Ledger source's choice. Concepts follow
+Microcosm fixture holds in the form the candidate needs, and
+``fixture_available`` for an ONS UK Business table Microcosm holds as a test
+fixture at the candidate's dimensions. ``publication`` is the title as the
+publisher gives it: an edition title (with its year) where the candidate
+names one edition, such as the ONS UK Business 2025 tables Microcosm holds,
+and a series title otherwise, where the edition a target reads is the Ledger
+source's choice. Concepts follow
 ``uk_firms_targets.json`` (``uk.firm.count``, ``uk.firm.annual_turnover``,
 ``uk.firm.sic_code``, ``uk.firm.turnover_band``, ``uk.firm.employment_band``),
 with new ``uk.firm.*`` and ``uk.tax.*`` ids in the same style where the
@@ -28,18 +33,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-#: A statistic no Ledger source or Microcosm fixture holds yet.
+#: A statistic no Ledger source or Microcosm fixture holds yet, at the
+#: candidate's dimensions.
 PENDING_LEDGER_SOURCE = "pending_ledger_source"
-#: An ONS UK Business table Microcosm holds as a test fixture.
+#: An ONS UK Business table Microcosm holds as a test fixture, at the
+#: candidate's dimensions.
 FIXTURE_AVAILABLE = "fixture_available"
 UK_FIRM_TARGET_CANDIDATE_STATUSES = (PENDING_LEDGER_SOURCE, FIXTURE_AVAILABLE)
 
-_ONS_UK_BUSINESS_2025 = "UK business: activity, size and location: 2025"
+_ONS_UK_BUSINESS_2025 = "UK business; activity, size and location: 2025"
 _DBT_BPE_2025 = "Business population estimates for the UK and regions 2025"
-_ONS_ABS = "Non-financial business economy, UK and regional (Annual Business Survey)"
+#: The UK-level ABS release, which carries the SIC-level estimates. The
+#: combined "UK and regional" title was retired after the 2021 results.
+_ONS_ABS = "Non-financial business economy, UK (Annual Business Survey)"
 _HMRC_CT = "Corporation Tax statistics"
-_HMRC_CAPITAL_ALLOWANCES = "Capital allowances statistics"
-_HMRC_RD = "Research and Development Tax Credits statistics"
+_HMRC_RD = "Research and Development Tax Credits Statistics"
 _HMRC_PAYE_RTI = (
     "Earnings and employment from Pay As You Earn Real Time Information, UK"
 )
@@ -72,7 +80,7 @@ class UKFirmTargetCandidate:
     feeds_inputs: tuple[str, ...]
     dimensions: tuple[str, ...] = ()
     filters: tuple[UKFirmTargetFilter, ...] = ()
-    #: The table of ``publication`` for a fixture-available candidate.
+    #: The table of ``publication`` the candidate reads, where it names one.
     source_table: str | None = None
     entity: str = "firm"
     ledger_record_set_id: str | None = None
@@ -133,25 +141,32 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
         ),
     ),
     UKFirmTargetCandidate(
+        # Table 3 is SIC division x employment band x region; Microcosm holds
+        # no regional extract of it, so it waits for a source like the rest.
         target_id="ons.uk_business.enterprise_count.region_employment_bands",
         family="ons_uk_business",
         source_name="ons",
         publication=_ONS_UK_BUSINESS_2025,
         source_table="Table 3",
         concept="uk.firm.count",
-        dimensions=("uk.firm.region", "uk.firm.employment_band"),
-        status=FIXTURE_AVAILABLE,
+        dimensions=(
+            "uk.firm.sic_code",
+            "uk.firm.region",
+            "uk.firm.employment_band",
+        ),
+        status=PENDING_LEDGER_SOURCE,
         feeds_inputs=("firm_region", "firm_in_england", "firm_employees"),
     ),
     # DBT business population estimates: all private-sector businesses,
-    # unregistered ones included.
+    # unregistered ones included. BPE's legal forms (companies, sole
+    # proprietorships, partnerships) are not ONS legal status codes 1-7.
     UKFirmTargetCandidate(
-        target_id="dbt.bpe.business_count.legal_status_employment_bands",
+        target_id="dbt.bpe.business_count.legal_form_employment_bands",
         family="dbt_bpe",
         source_name="dbt",
         publication=_DBT_BPE_2025,
         concept="uk.firm.count",
-        dimensions=("uk.firm.legal_status", "uk.firm.employment_band"),
+        dimensions=("uk.firm.legal_form", "uk.firm.employment_band"),
         status=PENDING_LEDGER_SOURCE,
         feeds_inputs=("firm_legal_form", "firm_employees"),
     ),
@@ -222,14 +237,16 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
             "firm_capex_structures",
         ),
     ),
-    # HMRC Corporation Tax statistics: companies only.
+    # HMRC Corporation Tax statistics: companies only. Companies and
+    # liability are banded by corporation tax liability (Tables 10A/10B),
+    # not by taxable profit.
     UKFirmTargetCandidate(
-        target_id="hmrc.corporation_tax.company_count.taxable_profit_bands",
+        target_id="hmrc.corporation_tax.company_count.liability_bands",
         family="hmrc_corporation_tax",
         source_name="hmrc",
         publication=_HMRC_CT,
         concept="uk.firm.count",
-        dimensions=("uk.firm.taxable_profit_band",),
+        dimensions=("uk.tax.corporation_tax.liability_band",),
         filters=(_COMPANY,),
         status=PENDING_LEDGER_SOURCE,
         feeds_inputs=(
@@ -239,12 +256,12 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
         ),
     ),
     UKFirmTargetCandidate(
-        target_id="hmrc.corporation_tax.liability.taxable_profit_bands",
+        target_id="hmrc.corporation_tax.liability.liability_bands",
         family="hmrc_corporation_tax",
         source_name="hmrc",
         publication=_HMRC_CT,
         concept="uk.tax.corporation_tax.liability",
-        dimensions=("uk.firm.taxable_profit_band",),
+        dimensions=("uk.tax.corporation_tax.liability_band",),
         filters=(_COMPANY,),
         status=PENDING_LEDGER_SOURCE,
         feeds_inputs=(
@@ -265,12 +282,15 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
         status=PENDING_LEDGER_SOURCE,
         feeds_inputs=("firm_taxable_trading_profit", "firm_is_bank"),
     ),
-    # HMRC capital allowances statistics: allowances claimed by type.
+    # HMRC capital allowances: Tables 12-14 of the Corporation Tax
+    # statistics (12A claims by allowance type; 14A qualifying expenditure
+    # by type). There is no separate capital allowances series.
     UKFirmTargetCandidate(
         target_id="hmrc.capital_allowances.amount_claimed.allowance_type",
         family="hmrc_capital_allowances",
         source_name="hmrc",
-        publication=_HMRC_CAPITAL_ALLOWANCES,
+        publication=_HMRC_CT,
+        source_table="Table 12A",
         concept="uk.tax.corporation_tax.capital_allowances",
         dimensions=("uk.tax.capital_allowance_type",),
         filters=(_COMPANY,),
@@ -296,6 +316,7 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
         publication=_HMRC_RD,
         concept="uk.firm.count",
         dimensions=("uk.tax.rd_relief_scheme",),
+        filters=(_COMPANY,),
         status=PENDING_LEDGER_SOURCE,
         feeds_inputs=("firm_is_sme", "firm_qualifying_rd_expenditure"),
     ),
@@ -306,6 +327,7 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
         publication=_HMRC_RD,
         concept="uk.firm.qualifying_rd_expenditure",
         dimensions=("uk.tax.rd_relief_scheme",),
+        filters=(_COMPANY,),
         status=PENDING_LEDGER_SOURCE,
         feeds_inputs=(
             "firm_is_sme",
@@ -325,6 +347,9 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
         feeds_inputs=("firm_employees",),
     ),
     UKFirmTargetCandidate(
+        # PAYE RTI regions are the employee's residence (NUTS1), not the
+        # employer's region, so this does not inform firm_region or
+        # firm_in_england.
         target_id="hmrc.paye_rti.payrolled_employees.region",
         family="hmrc_paye_rti",
         source_name="hmrc",
@@ -332,9 +357,11 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
         concept="uk.firm.employees",
         dimensions=("uk.firm.region",),
         status=PENDING_LEDGER_SOURCE,
-        feeds_inputs=("firm_employees", "firm_region", "firm_in_england"),
+        feeds_inputs=("firm_employees",),
     ),
     UKFirmTargetCandidate(
+        # Derived, not published: PAYE RTI gives mean pay and payrolled
+        # employees by SIC section, and the paybill would be their product.
         target_id="hmrc.paye_rti.paybill.sic",
         family="hmrc_paye_rti",
         source_name="hmrc",
@@ -373,6 +400,7 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
             "firm_months_empty",
         ),
     ),
+    # The VOA stock of properties covers England and Wales only.
     UKFirmTargetCandidate(
         target_id="voa.non_domestic_rating.rateable_value.sector_region",
         family="voa_non_domestic_rating",

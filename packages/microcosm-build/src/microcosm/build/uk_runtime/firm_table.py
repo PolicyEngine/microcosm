@@ -219,11 +219,14 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # GSS code to Region member, one to one.
         "firm_region": "set",
         # Turnover split by VAT scope; voluntary registration from the
-        # registration threshold; England from the region code.
+        # registration threshold.
         "firm_standard_rated_supplies": "derived",
         "firm_exempt_supplies": "derived",
         "firm_vat_voluntarily_registered": "derived",
-        "firm_in_england": "derived",
+        # policyengine-uk's firm_in_england means the firm's property is in
+        # England; the export reads it from the enterprise's ONS region, so a
+        # multi-site enterprise's property is assumed to sit in its region.
+        "firm_in_england": "assumed",
         # ASSUMED_INPUT_VAT_RATE on all input costs; ONS statuses 4-7 to
         # OTHER; ONS statuses 5 and 6 as public authorities.
         "firm_input_vat": "assumed",

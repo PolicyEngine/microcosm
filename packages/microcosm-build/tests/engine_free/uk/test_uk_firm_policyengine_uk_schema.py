@@ -86,7 +86,8 @@ def test_snapshot_records_the_policyengine_uk_checkout() -> None:
 
     assert source["pull_request"] == "PolicyEngine/policyengine-uk#2940"
     assert len(source["head_commit"]) == 40
-    assert isinstance(source["dirty"], bool)
+    # A dirty checkout's HEAD does not identify the source it was read from.
+    assert source["dirty"] is False
     assert snapshot["firm_input_names"] == sorted(
         name
         for name, variable in snapshot["firm_variables"].items()

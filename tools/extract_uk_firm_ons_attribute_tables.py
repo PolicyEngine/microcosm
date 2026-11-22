@@ -27,8 +27,9 @@ counted in ``.provenance.json``; the 2025 workbook has none.
 Region codes are the GSS codes from the workbook's own headers (E12000001 to
 E12000009, W92000004, S92000003, N92000002). ``rowwise_geography`` writes
 placeholder codes for the devolved nations (``W99999999`` and so on), so its
-map is not reused here; the engine-free fixture test checks the codes against
-``incumbent_surface_evaluation.GSS_REGION_CODES``.
+map is not reused here; the engine-free fixture test checks the codes, in
+order, against ``microcosm.calibrate.geography_constants.UK_REGION_TIER`` and
+``UK_REGION_TIER_ENUM``.
 
 openpyxl is imported only when a workbook is read, so engine-free CI, which
 runs the fixture test against the committed CSVs, never needs it.

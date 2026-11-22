@@ -22,10 +22,10 @@ label ``"lo-hi"`` in thousands of pounds is the interval ``[lo, hi + 1)`` and
 is ``[50, 100)``. An industry-group key ``"01-03"`` covers SIC divisions 1 to
 3 inclusive and ``"45"`` covers division 45 alone.
 
-Fallback (an assumption, documented in the M2/M3 decision for
-microcosm#1706): when a firm's cell holds no enterprises, or its division or
-group is absent from the table, the draw uses the row total of its division or
-group over every band, then the UK total over every division and band.
+Fallback (an assumption; see ``docs/firm-support-plan.md``): when a firm's
+cell holds no enterprises, or its division or group is absent from the table,
+the draw uses the row total of its division or group over every band, then the
+UK total over every division and band.
 Out-of-frame firms (``in_frame`` False, or zero or negative turnover: the
 HMRC Negative_or_Zero traders appended before calibration) have no ONS band,
 and were allocated to sectors by the sector shares of the frame, so they draw

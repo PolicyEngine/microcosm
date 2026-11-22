@@ -23,6 +23,10 @@ and so not in the snapshot.
 date differs from ``--out``, so a moved policyengine-uk HEAD or a changed firm
 variable shows up before the fixture is refreshed.
 
+The tool refuses a checkout with a dirty working tree, since its HEAD commit
+would not identify the source it read; ``--allow-dirty`` overrides that for a
+local look (the snapshot then records ``dirty`` true).
+
 Usage::
 
     uv run --no-sync python tools/snapshot_policyengine_uk_firm_inputs.py \\
@@ -297,12 +301,24 @@ def _git(root: Path, *args: str) -> str:
     ).stdout
 
 
-def build_snapshot(root: Path, *, snapshot_date: str) -> dict[str, Any]:
-    """The firm-input snapshot of the policyengine-uk checkout at ``root``."""
+def build_snapshot(
+    root: Path, *, snapshot_date: str, allow_dirty: bool = False
+) -> dict[str, Any]:
+    """The firm-input snapshot of the policyengine-uk checkout at ``root``.
+
+    Raises ``ValueError`` when the checkout's working tree is dirty, unless
+    ``allow_dirty``.
+    """
 
     package_dir = root / PACKAGE_NAME
     if not package_dir.is_dir():
         raise ValueError(f"{root} holds no {PACKAGE_NAME} package.")
+    dirty = bool(_git(root, "status", "--porcelain").strip())
+    if dirty and not allow_dirty:
+        raise ValueError(
+            f"{root} has a dirty working tree; commit or stash the changes, "
+            "or pass --allow-dirty."
+        )
     modules = _read_modules(package_dir)
     variable_names: set[str] = set()
     firm_variables: dict[str, dict[str, Any]] = {}
@@ -329,7 +345,7 @@ def build_snapshot(root: Path, *, snapshot_date: str) -> dict[str, Any]:
         "firm_variables": firm_variables,
         "microcosm_only_columns_checked": sorted(MICROCOSM_ONLY_COLUMNS),
         "policyengine_uk": {
-            "dirty": bool(_git(root, "status", "--porcelain").strip()),
+            "dirty": dirty,
             "head_commit": _git(root, "rev-parse", "HEAD").strip(),
             "pull_request": POLICYENGINE_UK_PULL_REQUEST,
         },
@@ -358,11 +374,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Fail if --out differs from a fresh snapshot (ignoring its date).",
     )
-    args = parser.parse_args(argv)
-    snapshot = build_snapshot(
-        args.policyengine_uk_root.resolve(),
-        snapshot_date=datetime.now(UTC).date().isoformat(),
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Read a policyengine-uk checkout with a dirty working tree.",
     )
+    args = parser.parse_args(argv)
+    try:
+        snapshot = build_snapshot(
+            args.policyengine_uk_root.resolve(),
+            snapshot_date=datetime.now(UTC).date().isoformat(),
+            allow_dirty=args.allow_dirty,
+        )
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
     if args.check:
         committed = json.loads(args.out.read_text(encoding="utf-8"))
         if _stable(committed) != _stable(snapshot):

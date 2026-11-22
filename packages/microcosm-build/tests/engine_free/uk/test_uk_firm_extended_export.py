@@ -96,12 +96,23 @@ def test_extended_export_validates_and_keeps_the_base_columns() -> None:
     assert not extended.isna().to_numpy().any()
 
 
-def test_only_empty_divisions_fall_back_to_the_uk_distribution() -> None:
+def test_in_frame_firms_use_cells_and_out_of_frame_firms_their_row() -> None:
     source = read_uk_firm_attribute_source_data(FIXTURES / "firm_attributes_2025")
-    counts = uk_firm_attribute_fallback_counts(_with_attributes(), source)
-    uk_level = counts[counts["level"] == "uk"].set_index("attribute")["firms"]
+    firms = _with_attributes()
+    counts = uk_firm_attribute_fallback_counts(firms, source)
+    by_level = counts.set_index(["attribute", "level"])["firms"]
+    in_frame = int(firms["in_frame"].to_numpy(dtype=bool).sum())
+    out_of_frame = len(firms) - in_frame
 
-    assert int(uk_level.sum()) == 0
+    assert in_frame > 0
+    assert out_of_frame > 0
+    for attribute in ("ons_region_code", "ons_legal_status"):
+        # Every in-frame firm has positive turnover and a populated cell; the
+        # out-of-frame traders draw from their division's or group's row; no
+        # firm reaches the UK total.
+        assert int(by_level[(attribute, "cell")]) == in_frame
+        assert int(by_level[(attribute, "row")]) == out_of_frame
+        assert int(by_level[(attribute, "uk")]) == 0
 
 
 def test_weighted_region_by_legal_status_tracks_held_out_table_15() -> None:

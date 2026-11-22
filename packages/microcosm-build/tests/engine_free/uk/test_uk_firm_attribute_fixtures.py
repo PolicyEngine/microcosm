@@ -19,7 +19,10 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from microcosm.build.uk_runtime.incumbent_surface_evaluation import GSS_REGION_CODES
+from microcosm.calibrate.geography_constants import (
+    UK_REGION_TIER,
+    UK_REGION_TIER_ENUM,
+)
 from test_support.paths import paths_for
 
 FIXTURES = paths_for("microcosm-build").tests / "fixtures" / "uk"
@@ -27,20 +30,8 @@ FIXTURE_DIR = FIXTURES / "firm_attributes_2025"
 ONS_TURNOVER = FIXTURES / "firm_2024_25" / "ons_firm_turnover.csv"
 RELATIVE_TOLERANCE = 0.01
 
-REGION_CODES = (
-    "E12000001",
-    "E12000002",
-    "E12000003",
-    "E12000004",
-    "E12000005",
-    "E12000006",
-    "E12000007",
-    "E12000008",
-    "E12000009",
-    "W92000004",
-    "S92000003",
-    "N92000002",
-)
+#: The twelve ITL1 region-tier GSS codes, in the workbook's column order.
+REGION_CODES = tuple(code for _, code in UK_REGION_TIER)
 TABLE_8_BANDS = ("0-49", "50-99", "100-249", "250-499", "500-999", "1000-4999", "5000+")
 TABLE_13_BANDS = (
     "0-49",
@@ -195,9 +186,8 @@ def test_sic_divisions_match_the_paper_turnover_table() -> None:
     assert list(divisions) == list(paper)
 
 
-def test_region_codes_are_canonical_gss_codes() -> None:
-    assert set(REGION_CODES) <= set(GSS_REGION_CODES)
-    assert not any(code.endswith("99999999") for code in REGION_CODES)
+def test_region_codes_are_the_uk_region_tier() -> None:
+    assert set(REGION_CODES) == set(UK_REGION_TIER_ENUM)
 
 
 def test_regional_table_sums_track_uk_totals() -> None:

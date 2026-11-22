@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime import firm_generation
 from microcosm.build.uk_runtime.firm_attributes import (
     UK_FIRM_ATTRIBUTE_FALLBACK_LEVELS,
     UK_FIRM_LEGAL_STATUS_TURNOVER_FILE,
@@ -215,6 +216,20 @@ def test_draws_are_reproducible_by_seed(source) -> None:
     assert not first["ons_region_code"].equals(other["ons_region_code"])
 
 
+def test_draws_use_one_generator_seeded_at_seed_plus_two(source) -> None:
+    # One cell for each attribute: division 1, "0-49" (regions 600/300/100)
+    # and group 01-03, "0-49" (statuses 100/800/100). Region draws first.
+    seed = 3
+    firms = _firms([1] * 40, [10.0] * 40)
+    result = assign_uk_firm_attributes(firms, source, seed=seed)
+
+    rng = np.random.default_rng(seed + 2)
+    region = rng.choice(3, size=40, p=np.array([600, 300, 100]) / 1000)
+    status = rng.choice(3, size=40, p=np.array([100, 800, 100]) / 1000)
+    assert result["ons_region_code"].tolist() == [REGIONS[i] for i in region]
+    assert result["ons_legal_status"].tolist() == [STATUSES[i] for i in status]
+
+
 def test_zero_count_categories_are_never_drawn(source) -> None:
     # Division 1, "100+": region shares 50/900/50; group 45 "150+" is all
     # status 1; division 45 "100+" is all London.
@@ -375,10 +390,14 @@ def test_real_fixtures_cover_every_ons_division() -> None:
         source.region_turnover["sic_division"].astype(str).str.strip().astype(int)
     )
     assert sorted(set(divisions) - region_divisions) == []
-    # Table 8 uses the generator's seven ONS bands, labelled alike.
-    assert list(
-        parse_turnover_band_lowers(source.region_turnover["turnover_band"])
-    ) == [label for label in turnover.columns if label[0].isdigit()]
+    # Table 8 uses the generator's seven ONS bands, labelled alike, with the
+    # same lower edges.
+    lowers = parse_turnover_band_lowers(source.region_turnover["turnover_band"])
+    assert list(lowers) == [label for label in turnover.columns if label[0].isdigit()]
+    assert lowers == {
+        band: lower
+        for band, (lower, _, _) in firm_generation.ONS_TURNOVER_BANDS.items()
+    }
     # Divisions Table 8 counts no enterprise in (05, 07, 12, ...) have none in
     # the generator's frame either, so only out-of-frame traders reach the UK
     # total; every division with enterprises resolves to a cell or its row.

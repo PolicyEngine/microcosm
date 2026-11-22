@@ -448,6 +448,13 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         if status in ("set", "derived", "assumed")
     }
     assert exported == set(UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS)
+    # firm_in_england is the enterprise's region standing in for its
+    # property's location, so it is an assumption, not a derivation.
+    assert {
+        name
+        for name, status in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS.items()
+        if status == "assumed"
+    } == {"firm_input_vat", "firm_legal_form", "firm_is_public_body", "firm_in_england"}
     assert all(
         name.startswith("firm_") for name in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS
     )
