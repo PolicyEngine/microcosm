@@ -263,6 +263,40 @@ LARGE_EMPLOYMENT_MEAN = 11_115_000.0 / 8_250.0
 LARGE_EMPLOYMENT_CAP = 500_000.0
 
 
+#: Shape bracket of the Pareto bisection. The truncated mean falls as the
+#: shape rises, so the bracket's ends bound the means a shape can reach.
+LARGE_EMPLOYMENT_SHAPE_BRACKET = (0.05, 20.0)
+
+
+def _large_employment_truncated_mean(shape: float, lower: float, cap: float) -> float:
+    tail = (lower / cap) ** shape
+    if abs(shape - 1.0) < 1e-9:
+        return lower * math.log(cap / lower) / (1.0 - tail)
+    return (
+        shape
+        * lower**shape
+        * (cap ** (1.0 - shape) - lower ** (1.0 - shape))
+        / ((1.0 - shape) * (1.0 - tail))
+    )
+
+
+def large_employment_mean_range(
+    lower: float = 250.0, cap: float = LARGE_EMPLOYMENT_CAP
+) -> tuple[float, float]:
+    """The 250+ means the Pareto draw can hit exactly, ``(smallest, largest)``.
+
+    They are the truncated means at the ends of
+    ``LARGE_EMPLOYMENT_SHAPE_BRACKET``; a mean outside them would make the
+    bisection saturate at a bracket end and miss the mean silently.
+    """
+
+    low_shape, high_shape = LARGE_EMPLOYMENT_SHAPE_BRACKET
+    return (
+        _large_employment_truncated_mean(high_shape, lower, cap),
+        _large_employment_truncated_mean(low_shape, lower, cap),
+    )
+
+
 def large_employment_pareto_shape(
     mean: float = LARGE_EMPLOYMENT_MEAN,
     lower: float = 250.0,
@@ -271,29 +305,27 @@ def large_employment_pareto_shape(
     """Shape of the Pareto on ``[lower, cap]`` whose mean is ``mean``.
 
     The truncated mean falls as the shape rises, so bisection on
-    ``(0.05, 20)`` converges; the shape-one case is its logarithmic limit.
+    ``LARGE_EMPLOYMENT_SHAPE_BRACKET`` converges; the shape-one case is its
+    logarithmic limit. A mean outside ``large_employment_mean_range`` raises
+    ``ValueError`` rather than saturating at a bracket end.
     """
 
     if not lower < mean < cap:
         raise ValueError(
             f"Large-firm mean {mean!r} must lie strictly inside ({lower}, {cap})."
         )
-
-    def truncated_mean(shape: float) -> float:
-        tail = (lower / cap) ** shape
-        if abs(shape - 1.0) < 1e-9:
-            return lower * math.log(cap / lower) / (1.0 - tail)
-        return (
-            shape
-            * lower**shape
-            * (cap ** (1.0 - shape) - lower ** (1.0 - shape))
-            / ((1.0 - shape) * (1.0 - tail))
+    smallest, largest = large_employment_mean_range(lower, cap)
+    if not smallest <= mean <= largest:
+        raise ValueError(
+            f"Large-firm mean {mean!r} is outside [{smallest:,.2f}, "
+            f"{largest:,.2f}], the means a Pareto shape in "
+            f"{LARGE_EMPLOYMENT_SHAPE_BRACKET} can reach on [{lower}, {cap}]."
         )
 
-    low, high = 0.05, 20.0
+    low, high = LARGE_EMPLOYMENT_SHAPE_BRACKET
     for _ in range(200):
         middle = 0.5 * (low + high)
-        if truncated_mean(middle) > mean:
+        if _large_employment_truncated_mean(middle, lower, cap) > mean:
             low = middle
         else:
             high = middle
@@ -631,13 +663,14 @@ class UKFirmGenerationConfig:
             raise ValueError("sample_window_lo_k must not exceed sample_window_hi_k.")
         if self.sample_cell_floor < 0:
             raise ValueError("sample_cell_floor must be non-negative.")
-        if self.large_employment_mean is not None and not (
-            250.0 < float(self.large_employment_mean) < LARGE_EMPLOYMENT_CAP
-        ):
-            raise ValueError(
-                "large_employment_mean must lie strictly between 250 and "
-                f"{LARGE_EMPLOYMENT_CAP:,.0f}."
-            )
+        if self.large_employment_mean is not None:
+            smallest, largest = large_employment_mean_range()
+            if not smallest <= float(self.large_employment_mean) <= largest:
+                raise ValueError(
+                    f"large_employment_mean must lie in [{smallest:,.2f}, "
+                    f"{largest:,.2f}], the means the Pareto draw can hit "
+                    "exactly."
+                )
 
 
 def _vat_rule_period(data_vintage: str) -> dict[str, str]:

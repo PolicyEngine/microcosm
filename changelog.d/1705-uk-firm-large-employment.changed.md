@@ -11,3 +11,5 @@ The default is unchanged because the model's 250+ population is not DBT's. On th
 The DBT mean overshoots DBT's 11.1 million private 250+ employment and falls outside the ASHE paybill guard in `test_uk_firm_extended_export.py` (0.85–1.25), which is why it is opt-in.
 
 The default stays the legacy draw. Changing it is blocked until public and non-profit 250+ firms are separated and out-of-frame zero-turnover traders stop drawing 250+ headcounts (1,511 weighted firms on the thinned build). Paybill is already 1.064× ASHE jobs × mean at 7.98m 250+ employment, so reaching DBT's 11.1m may also need sub-250 employment or per-head pay rebalanced.
+
+The "DBT total" row sets the mean to DBT's 11,115,000 divided by the thinned build's base-weighted 250+ count (13,235). It was measured on one local build and is not fixtured. A mean the Pareto cannot hit exactly, outside about 263 to 56,876 on [250, 500,000], is refused.

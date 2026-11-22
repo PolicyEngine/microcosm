@@ -37,6 +37,7 @@ from microcosm.build.uk_runtime.firm_generation import (
     generate_input_values,
     generate_uk_firm_population,
     hmrc_band_name,
+    large_employment_mean_range,
     large_employment_pareto_shape,
     large_employment_slice_means,
     read_uk_firm_source_data,
@@ -757,6 +758,22 @@ def test_assign_employment_weights_the_large_band_mean() -> None:
     assert np.all(np.diff(ranked)[distinct] >= 0)
     with pytest.raises(ValueError, match="large_employment_mean"):
         UKFirmGenerationConfig(large_employment_mean=100.0)
+
+
+@pytest.mark.parametrize("mean", [255.0, 100_000.0])
+def test_large_employment_mean_outside_the_reachable_range_raises(
+    mean: float,
+) -> None:
+    """Means a bracketed Pareto shape cannot reach raise, not saturate."""
+
+    smallest, largest = large_employment_mean_range()
+    assert not smallest <= mean <= largest
+    with pytest.raises(ValueError, match="outside"):
+        large_employment_pareto_shape(mean)
+    with pytest.raises(ValueError, match="large_employment_mean"):
+        UKFirmGenerationConfig(large_employment_mean=mean)
+    # The DBT mean is well inside the range.
+    assert smallest < LARGE_EMPLOYMENT_MEAN < largest
 
 
 def test_employment_band_index_array_matches_band_names() -> None:
