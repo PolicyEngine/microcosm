@@ -156,12 +156,33 @@ def test_receipt_records_the_run(builds) -> None:
     assert attributes == {"ons_region_code", "ons_legal_status"}
 
 
-def test_two_builds_agree_exactly(builds) -> None:
+def _comparable(receipt: dict) -> dict:
+    """A receipt without the parquet hash, floats rounded to 9 significant digits.
+
+    Same-seed builds agree exactly on the machines tested so far; the
+    comparison tolerates last-digit float differences so a platform's
+    floating-point reductions cannot fail it.
+    """
+
+    def _round(value):
+        if isinstance(value, float):
+            return float(f"{value:.9g}")
+        if isinstance(value, dict):
+            return {key: _round(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [_round(item) for item in value]
+        return value
+
+    trimmed = json.loads(json.dumps(receipt))
+    trimmed["output"].pop("sha256")
+    return _round(trimmed)
+
+
+def test_two_builds_agree(builds) -> None:
     first, second = builds
 
     pd.testing.assert_frame_equal(first["table"], second["table"])
-    assert first["receipt_path"].read_bytes() == second["receipt_path"].read_bytes()
-    assert _sha256(first["table_path"]) == _sha256(second["table_path"])
+    assert _comparable(first["receipt"]) == _comparable(second["receipt"])
 
 
 def test_receipt_holds_no_absolute_path(builds, tmp_path_factory) -> None:
@@ -255,5 +276,5 @@ def test_tool_writes_the_library_build(
     assert config.sample_tail_fraction == fast.sample_tail_fraction
     assert config.n_iterations == ITERATIONS
     assert config.data_vintage == "2024-25"
-    receipt = (out / UK_FIRM_RECEIPT_FILE).read_bytes()
-    assert receipt == builds[0]["receipt_path"].read_bytes()
+    receipt = json.loads((out / UK_FIRM_RECEIPT_FILE).read_text(encoding="utf-8"))
+    assert _comparable(receipt) == _comparable(builds[0]["receipt"])

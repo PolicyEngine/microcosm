@@ -105,7 +105,7 @@ SIC-by-turnover, ONS SIC-by-employment, HMRC VAT-registered firms by SIC, and
 HMRC net VAT liability by SIC. VAT liability comes from a rules engine through
 the `UKFirmRules` seam in `uk_runtime/firm_rules.py`, whose outputs are keyed by
 `firm_id`. The firm rules home is policyengine-uk: `PolicyEngineUKFirmRules`
-(`uk_runtime/firm_policyengine_uk_rules.py`) reads its firm VAT variables once
+(`uk_runtime/firm_policyengine_uk_rules.py`) reads its firm VAT liability once
 the policyengine-uk firm entity is installed. An Axiom RuleSpec artifact can
 still be passed through `AxiomVATRuleEvaluator`, which the seam wraps
 (`LegacyVATEvaluatorRules`), as an optional cross-check. `tools/build_uk_firms.py`

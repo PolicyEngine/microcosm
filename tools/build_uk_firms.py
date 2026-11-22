@@ -1,4 +1,4 @@
-"""Build the UK firm table locally (microcosm#1706).
+"""Build the UK firm table locally (microcosm#1705).
 
 Runs ``microcosm.build.uk_runtime.firm_build.build_uk_firm_dataset`` on the
 processed ONS/HMRC tables in ``--processed-dir`` and the ONS attribute tables
@@ -8,7 +8,8 @@ in ``--attributes-dir``, and writes ``uk_firms.parquet`` and
 ``--rules`` picks the VAT rules and has no default:
 
 - ``policyengine-uk`` runs policyengine-uk's firm entity
-  (``PolicyEngineUKFirmRules``), which needs the UK engine extra;
+  (``PolicyEngineUKFirmRules``), which needs a policyengine-uk that includes
+  PolicyEngine/policyengine-uk#2940 (the ``uk`` extra's release does not);
 - ``axiom`` runs a compiled Axiom UK VAT RuleSpec artifact, named by
   ``--axiom-artifact``, through ``axiom-rules-engine``.
 """

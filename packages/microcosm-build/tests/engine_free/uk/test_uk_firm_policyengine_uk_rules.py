@@ -47,7 +47,7 @@ MODULE = "microcosm.build.uk_runtime.firm_policyengine_uk_rules"
 
 @cache
 def snapshot() -> dict:
-    return json.loads(SNAPSHOT.read_text())
+    return json.loads(SNAPSHOT.read_text(encoding="utf-8"))
 
 
 def candidates() -> pd.DataFrame:
@@ -125,7 +125,7 @@ def test_the_factory_gets_only_formula_less_firm_inputs() -> None:
     table = candidates().assign(
         firm_weight=1.0, **{POLICYENGINE_UK_FIRM_LIABILITY_VARIABLE: 0.0}
     )
-    PolicyEngineUKFirmRules(simulation_factory=factory).evaluate(table, period=2025)
+    PolicyEngineUKFirmRules(simulation_factory=factory).evaluate(table, period=2024)
 
     (handed, _, _), *rest = factory.calls
     assert not rest
@@ -165,12 +165,12 @@ def test_the_period_is_forwarded_and_firm_ids_keep_their_rows() -> None:
 
 def test_provenance_names_the_rules_version_variable_and_period() -> None:
     outputs = PolicyEngineUKFirmRules(simulation_factory=FakeFactory()).evaluate(
-        candidates(), period=2025
+        candidates(), period=2024
     )
     provenance = dict(outputs.provenance)
     assert provenance["rules"] == "policyengine_uk"
     assert provenance["variable"] == POLICYENGINE_UK_FIRM_LIABILITY_VARIABLE
-    assert provenance["period"] == "2025"
+    assert provenance["period"] == "2024"
     assert provenance["policyengine_uk_version"]
 
 
@@ -187,7 +187,7 @@ def test_provenance_names_the_rules_version_variable_and_period() -> None:
 def test_a_bad_liability_from_the_factory_raises(liability) -> None:
     rules = PolicyEngineUKFirmRules(simulation_factory=FakeFactory(liability=liability))
     with pytest.raises(ValueError, match=POLICYENGINE_UK_FIRM_LIABILITY_VARIABLE):
-        rules.evaluate(candidates(), period=2025)
+        rules.evaluate(candidates(), period=2024)
 
 
 def test_firm_ids_out_of_order_in_the_simulation_raise() -> None:
@@ -196,13 +196,13 @@ def test_firm_ids_out_of_order_in_the_simulation_raise() -> None:
         simulation_factory=FakeFactory(firm_id=table["firm_id"].to_numpy()[::-1])
     )
     with pytest.raises(ValueError, match="firm_id order"):
-        rules.evaluate(table, period=2025)
+        rules.evaluate(table, period=2024)
 
 
 def test_a_table_without_a_candidate_column_raises() -> None:
     rules = PolicyEngineUKFirmRules(simulation_factory=FakeFactory())
     with pytest.raises(ValueError, match="firm_input_vat"):
-        rules.evaluate(candidates().drop(columns="firm_input_vat"), period=2025)
+        rules.evaluate(candidates().drop(columns="firm_input_vat"), period=2024)
 
 
 def fake_system(*, entities=("person", "benunit", "household", "firm"), variables=()):
