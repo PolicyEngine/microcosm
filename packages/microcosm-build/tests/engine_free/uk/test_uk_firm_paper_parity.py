@@ -97,7 +97,9 @@ def _run(seed: int = SEED) -> Any:
 
 @cache
 def _reference() -> dict[str, Any]:
-    return json.loads((FIXTURE_DIR / "paper_reference_2024_25.json").read_text())
+    return json.loads(
+        (FIXTURE_DIR / "paper_reference_2024_25.json").read_text(encoding="utf-8")
+    )
 
 
 @cache
@@ -244,7 +246,9 @@ def _paper_full() -> dict[str, Any]:
 
 
 def test_fixture_matches_recorded_paper_provenance() -> None:
-    provenance = json.loads((FIXTURE_DIR / ".provenance.json").read_text())
+    provenance = json.loads(
+        (FIXTURE_DIR / ".provenance.json").read_text(encoding="utf-8")
+    )
 
     assert provenance["paper_commit"].startswith("aa1ce07")
     for name, entry in provenance["files"].items():
@@ -258,8 +262,12 @@ def test_fixture_matches_recorded_paper_provenance() -> None:
 
 
 def test_golden_full_run_reproduces_the_published_paper_headline() -> None:
-    reference = json.loads((FIXTURE_DIR / "paper_reference_2024_25.json").read_text())
-    provenance = json.loads((FIXTURE_DIR / ".provenance.json").read_text())
+    reference = json.loads(
+        (FIXTURE_DIR / "paper_reference_2024_25.json").read_text(encoding="utf-8")
+    )
+    provenance = json.loads(
+        (FIXTURE_DIR / ".provenance.json").read_text(encoding="utf-8")
+    )
     headline = reference["paper_published_headline"]
     full = reference["runs"]["full"]["summary"]
 

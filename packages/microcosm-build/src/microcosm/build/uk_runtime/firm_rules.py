@@ -35,16 +35,16 @@ import pandas as pd
 if TYPE_CHECKING:
     from microcosm.build.uk_runtime.firm_generation import UKFirmVATRuleEvaluator
 
-#: The policyengine-uk period (a calendar year) each firm data vintage (a tax
-#: year) is evaluated in. policyengine-uk reads the VAT registration threshold
-#: in force on 1 January of the period. The threshold rose from £85,000 to
-#: £90,000 on 2024-04-01, so 1 January 2025 gives the 2024-25 threshold and
-#: 1 January 2024 the 2023-24 one. The tax year's own start year would read
-#: the previous threshold for the 2024-25 vintage.
+#: The policyengine-uk period (a year label) each firm data vintage (a tax
+#: year) is evaluated in: the tax year's start year. policyengine-uk annualises
+#: its ``gov`` parameters so that period Y takes the value in force on 30 April
+#: Y (``convert_to_fiscal_year_parameters``), which is the Y-to-Y+1 tax year's
+#: value. Period 2024 therefore reads the £90,000 VAT registration threshold
+#: that took effect on 2024-04-01, and period 2023 the £85,000 one.
 UK_FIRM_RULE_PERIOD_BY_VINTAGE: Mapping[str, int] = MappingProxyType(
     {
-        "2023-24": 2024,
-        "2024-25": 2025,
+        "2023-24": 2023,
+        "2024-25": 2024,
     }
 )
 
@@ -57,9 +57,9 @@ UK_FIRM_VINTAGE_BY_RULE_PERIOD: Mapping[int, str] = MappingProxyType(
 def rule_period_for_vintage(data_vintage: str) -> int:
     """The policyengine-uk period a firm data vintage is evaluated in.
 
-    ``"2024-25"`` gives 2025 and ``"2023-24"`` gives 2024: see
-    ``UK_FIRM_RULE_PERIOD_BY_VINTAGE`` for why the period is the year in which
-    the tax year's 1 January falls. Any other vintage raises ``ValueError``.
+    ``"2024-25"`` gives 2024 and ``"2023-24"`` gives 2023: see
+    ``UK_FIRM_RULE_PERIOD_BY_VINTAGE`` for why the period is the tax year's
+    start year. Any other vintage raises ``ValueError``.
     """
 
     try:
