@@ -1,0 +1,24 @@
+{
+  "kind": "uk_firm_tax_receipts_fixture",
+  "schema_version": 1,
+  "period": "2024-25",
+  "accessed": "2026-11-22",
+  "method": "Figures were read from the downloaded publications on the access date and multiplied from GBP million to GBP; none was filled from memory. corporation_tax is onshore CT, derived as Corporation Tax less its Offshore component.",
+  "sources": {
+    "hmrc_receipts": {
+      "landing_page": "https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk",
+      "url": "https://assets.publishing.service.gov.uk/media/6af706889be17c68c69ca800/NS_Table.ods",
+      "edition": "Published 0700 20 November 2026; next update 22 December 2026",
+      "sheet": "Receipts_Annually (Table 2, cash basis, GBP million), row '2024 to 2025'",
+      "sha256": "485a2fef86fbdc1339547253e401029e49a9cae781210affdebd1fa87caddc22",
+      "taxes": ["firm_vat", "firm_employer_ni", "apprenticeship_levy", "corporation_tax", "bank_surcharge"]
+    },
+    "mhclg_nndr3": {
+      "landing_page": "https://www.gov.uk/government/statistics/national-non-domestic-rates-collected-by-councils-in-england-2025-to-2026",
+      "url": "https://www.gov.uk/government/statistics/national-non-domestic-rates-collected-by-councils-in-england-2025-to-2026/national-non-domestic-rates-collected-by-local-authorities-in-england-2025-to-2026",
+      "edition": "Published 22 July 2026; the 2024-25 column agrees with the 2024-25 release updated 27 January 2026",
+      "table": "Table 1, row 'Gross Rates Payable in year less total cost of reliefs', column '2024 to 2025' (GBP million)",
+      "taxes": ["firm_business_rates"]
+    }
+  }
+}
