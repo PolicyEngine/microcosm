@@ -160,6 +160,8 @@ def test_report_end_to_end(tmp_path) -> None:
         assert "input not populated" in lines[tax]
         assert "%" not in lines[tax]
     assert "England only" in lines["firm_business_rates"]
+    assert "Assumed input" in lines["firm_business_rates"]
+    assert "In-sample" in lines["corporation_tax"]
     for tax in ("firm_employer_ni", "apprenticeship_levy"):
         assert "not a validation" in lines[tax]
         assert "ASHE 2025" in lines[tax]

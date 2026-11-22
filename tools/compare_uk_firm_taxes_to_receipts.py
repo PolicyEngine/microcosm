@@ -127,6 +127,11 @@ MODEL_CAVEATS: Mapping[str, str] = {
         "VAT/PAYE frame."
     ),
     "corporation_tax": (
+        "In-sample when firm_taxable_trading_profit comes from the opt-in "
+        "firm_profit.py imputation (--profit-dir): it allots HMRC Corporation "
+        "Tax statistics liability bands for 2024-25 to companies, so the model "
+        "total reproduces HMRC's CT liabilities by construction and agreement "
+        "here does not validate the model. "
         "Model: onshore CT after the R&D expenditure credit, accrued, excluding "
         "the bank surcharge; official: onshore cash receipts gross of provisional "
         "tax credits (offshore ring-fence CT removed, Bank Surcharge and Bank Levy "
@@ -137,7 +142,12 @@ MODEL_CAVEATS: Mapping[str, str] = {
         "official: cash receipts. Bank Levy is not compared."
     ),
     "firm_business_rates": (
-        "England only on both sides: the model gives 0 outside England. Model: "
+        "England only on both sides: the model gives 0 outside England. Assumed "
+        "input: with --rateable-value-dir, firm_rateable_value allots the VOA "
+        "2023-list stock of hereditaments in England to firms by headcount rank, "
+        "one property per firm, so small business rate relief is overstated "
+        "for multi-site firms and properties of non-firm ratepayers are handed "
+        "to firms. Model: "
         "gross rates less reliefs, one aggregate property per firm; official: "
         "NNDR3 gross rates payable less reliefs, before transitional "
         "arrangements, and including non-firm ratepayers (e.g. public bodies)."
