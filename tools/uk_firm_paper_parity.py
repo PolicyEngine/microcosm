@@ -22,8 +22,9 @@ Usage::
 
 ``--paper-root`` runs the paper inside its own environment
 (``<paper-root>/.venv/bin/python`` when present, else ``uv run --project``)
-by invoking this file's ``paper-extract`` subcommand there. The same
-subcommand produced the committed ``paper_reference_2024_25.json`` fixture.
+by invoking this file's ``paper-extract`` subcommand there. The committed
+``paper_reference_2024_25.json`` fixture was assembled by hand from one
+``paper-extract`` run per mode; ``.provenance.json`` records the commands.
 
 VAT rules: Microcosm keeps VAT law out of the generator and requires a rules
 object. ``--rules paper-formula`` supplies a PARITY-ONLY double defined in this

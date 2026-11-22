@@ -11,7 +11,7 @@ uses the generator's default 1,000 epochs, as the paper does. At 300 epochs
 the net-VAT-by-band mean accuracy was 0.938, below the 0.96 bar; at 1,000 it
 is 0.994. It is compared with the paper's full-census golden numbers at the
 thinned tolerances of the scoping decision. Seed reproducibility uses a
-separate short run pair to keep the module under a minute.
+separate short run pair; the main thinned solve takes about 30 seconds.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from microcosm.build.uk_runtime.firm_generation import (
     read_uk_firm_source_data,
 )
 from microcosm.build.uk_runtime.firm_rules import UKFirmRuleOutputs
+from microcosm.build.uk_runtime.firm_universe import HMRC_BAND_NAMES
 from test_support.paths import paths_for
 
 FIXTURE_DIR = paths_for("microcosm-build").tests / "fixtures" / "uk" / "firm_2024_25"
@@ -43,16 +44,7 @@ CI_EPOCHS = 1_000
 REPRODUCIBILITY_EPOCHS = 50
 PAPER_FORMULA_RATE = 0.20
 
-HMRC_BANDS = (
-    "Negative_or_Zero",
-    "£1_to_Threshold",
-    "£Threshold_to_£150k",
-    "£150k_to_£300k",
-    "£300k_to_£500k",
-    "£500k_to_£1m",
-    "£1m_to_£10m",
-    "Greater_than_£10m",
-)
+HMRC_BANDS = HMRC_BAND_NAMES
 CALIBRATED_VAT_BANDS = HMRC_BANDS[2:]
 EMPLOYMENT_BANDS = ("0-4", "5-9", "10-19", "20-49", "50-99", "100-249", "250+")
 
@@ -259,6 +251,25 @@ def test_fixture_matches_recorded_paper_provenance() -> None:
         digest = hashlib.sha256((FIXTURE_DIR / name).read_bytes()).hexdigest()
         assert digest == entry["sha256"], name
     assert len(provenance["files"]) == 6
+    reference_digest = hashlib.sha256(
+        (FIXTURE_DIR / "paper_reference_2024_25.json").read_bytes()
+    ).hexdigest()
+    assert reference_digest == provenance["reference"]["sha256"]
+
+
+def test_golden_full_run_reproduces_the_published_paper_headline() -> None:
+    reference = json.loads((FIXTURE_DIR / "paper_reference_2024_25.json").read_text())
+    provenance = json.loads((FIXTURE_DIR / ".provenance.json").read_text())
+    headline = reference["paper_published_headline"]
+    full = reference["runs"]["full"]["summary"]
+
+    assert reference["paper_commit"] == provenance["paper_commit"]
+    assert (
+        round(full["weighted_frame_population"])
+        == headline["weighted_frame_population"]
+    )
+    assert round(full["registered_traders"]) == headline["registered_traders"]
+    assert full["pre_thinning_rows"] == headline["rows"]
 
 
 def test_pre_thinning_row_count_matches_paper() -> None:

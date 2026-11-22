@@ -35,5 +35,15 @@
       "source_path": "data/processed/2024-25/ons_firm_turnover.csv",
       "bytes": 7452
     }
+  },
+  "reference": {
+    "file": "paper_reference_2024_25.json",
+    "sha256": "cfac6e8258a2f2ed4a3774fd1ccc91bd77d6bcc8356e0328c14fce29d80024fa",
+    "commands": {
+      "full": "python tools/uk_firm_paper_parity.py paper-extract --mode full (paper generate(write=False))",
+      "fast": "python tools/uk_firm_paper_parity.py paper-extract --mode fast (paper generate(write=False))",
+      "ci": "python tools/uk_firm_paper_parity.py paper-extract --mode ci (paper generate(write=False))"
+    },
+    "note": "Assembled by hand from one `tools/uk_firm_paper_parity.py paper-extract` run per mode (full, fast, ci) in the paper environment at aa1ce07, plus targets derived from the fixture tables and the published headline in results/calibration_accuracy.txt."
   }
 }
