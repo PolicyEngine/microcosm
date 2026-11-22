@@ -25,10 +25,12 @@ Eurostat updates them in place, so a fresh download may not match the pins.
 The builder refuses unless the sources agree (``hierarchy_from_sources``,
 rules 1 to 7): the crosswalk lists each 2024 code once, Eurostat lists each
 LAU once with a NUTS3 code of the pinned NUTS 2024 classification, and the
-classification lists each code once; the crosswalk maps exactly Eurostat's
-2024 LAUs onto exactly Statbel's 2025 communes; Statbel's three regions map one
-to one onto NUTS 2024 level 1, as 02000 BE2, 03000 BE3 and 04000 BE1; its
-provinces map one to one onto level 2, leaving out the commune 46030, whose
+classification lists each code once, at the NUTS level its length gives; the
+crosswalk maps exactly Eurostat's 2024 LAUs onto exactly Statbel's 2025
+communes; Statbel's three regions map one to one onto NUTS 2024 level 1, as
+02000 BE2, 03000 BE3 and 04000 BE1; its province codes, with 04000 for the 19
+Brussels-Capital communes, which belong to no province, map one to one onto
+level 2, leaving out the commune 46030, whose
 2024 parts lie in BE21 and BE23; the communes whose 2024 parts span two NUTS3
 areas are exactly 46029 (BE234 and BE236), 46030 (BE211 and BE236) and 71072
 (BE223 and BE224); the BE335 and BE336 labels equal their pins; and NUTS3
@@ -263,11 +265,7 @@ def read_sources(directory: Path) -> dict:
         read_only=True,
         data_only=True,
     )
-    labels = [
-        (str(row[1]), str(row[2]))
-        for row in book["NUTS2024"].iter_rows(values_only=True)
-        if row[0] == "BE"
-    ]
+    labels = nuts_labels(list(book["NUTS2024"].iter_rows(values_only=True)))
     return {"statbel": statbel, "crosswalk": crosswalk, "lau": lau, "labels": labels}
 
 
@@ -285,6 +283,29 @@ def lau_pairs(rows: list[tuple]) -> list[tuple[str, str]]:
                 f"Eurostat LAU {code} has NUTS3 {nuts3!r}, not a five-character BE code."
             )
         pairs.append((str(code), nuts3))
+    return pairs
+
+
+def nuts_labels(rows: list[tuple]) -> list[tuple[str, str]]:
+    """Read Belgium's (code, label) pairs from the NUTS 2024 sheet's rows.
+
+    Each Belgian row's declared NUTS level must equal its code's length less the
+    two-letter country code, so Rule 2 can read a five-character code as NUTS3.
+    """
+
+    header = ("Country code", "NUTS Code", "NUTS label", "NUTS level")
+    if rows[0][:4] != header:
+        raise ValueError(f"Unexpected NUTS 2024 header {rows[0][:4]}.")
+    pairs = []
+    for country, code, label, level, *_ in rows[1:]:
+        if country != "BE":
+            continue
+        if not (isinstance(code, str) and level == len(code) - 2):
+            raise ValueError(
+                f"Rule 2: NUTS 2024 gives {code!r} level {level!r}, "
+                "which its length does not."
+            )
+        pairs.append((code, str(label)))
     return pairs
 
 

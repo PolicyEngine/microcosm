@@ -19,9 +19,11 @@ artifact.
 
 from __future__ import annotations
 
+import builtins
 import copy
 import gzip
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -87,6 +89,10 @@ _NUTS1_RECORD_SET = "statbel.population_structure.cy2025.people.by_nuts1_age_sex
 _TOTAL = 11825551
 _NUTS1_TOTALS = {"BE1": 1255795, "BE2": 6864766, "BE3": 3704990}
 _GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"
+# The support sha the shared kernel gave on CPython 3.13 and 3.14 under macOS.
+# It covers NPZ bytes that can differ by platform (ZipInfo.create_system), so
+# the test checks fixed draws only through the independent draw under this sha.
+_SUPPORT_SHA256 = "c9634636b82e5aeb8545cf592d89d093fbad8e905bf4c5b8842e89fd2b7e2b9d"
 
 # The four pinned sources, as the committed strings name them.
 _Z = (
@@ -613,28 +619,38 @@ def _assign_derive_gate(chain, households: int = 5000):
     return frame
 
 
-def _independent_draw(chain, household: int) -> str:
-    """One household's commune, drawn here rather than by the shared kernel.
+def _independent_draws(chain, households, support_sha256: str) -> list[str]:
+    """Households' communes, drawn here rather than by the shared kernel.
 
-    The uniform is keyed as the draw key is documented (household, system,
+    The uniforms are keyed as the draw key is documented (household, system,
     stage level, canonical spec sha, support sha). The weights are the
     fixture's commune counts, not the support's, cumulated in code order, and
     the integer inverse CDF picks the first commune whose running total passes
-    the threshold.
+    each threshold.
     """
-    definition = hashlib.sha256(canonical_json(json.loads(chain.definition))).digest()
-    (u,) = keyed_uniform(
+    definition = hashlib.sha256(
+        canonical_json(json.loads(chain.definition))
+    ).hexdigest()
+    uniforms = keyed_uniform(
         stream=tuple(ASSIGNMENT["stream"]),
-        keys=[(household, SYSTEM_ID, "area", definition.hex(), chain.support.sha256)],
+        keys=[
+            (int(household), SYSTEM_ID, "area", definition, support_sha256)
+            for household in households
+        ],
     )
     weights = _fixture_values(_COMMUNE_RECORD_SET)
-    threshold = (int(u * 2**53) * sum(weights.values())) // 2**53
-    running = 0
+    total = sum(weights.values())
+    running, cumulative = 0, []
     for code in sorted(weights):
         running += weights[code]
-        if running > threshold:
-            return code
-    raise AssertionError("The threshold passed every commune.")
+        cumulative.append((running, code))
+    communes = []
+    for u in uniforms:
+        threshold = (int(u * 2**53) * total) // 2**53
+        communes.append(
+            next(code for running, code in cumulative if running > threshold)
+        )
+    return communes
 
 
 def _gate(chain, frame):
@@ -679,6 +695,12 @@ def test_committed_assignment_binds_to_the_committed_support(chain):
     renamed["systems"][0]["id"] = "be-nis"
     with pytest.raises(ValueError, match="support systems differ"):
         geography._bind(renamed, supports)
+    # A stage must weight by a weight column of the support.
+    for weight in ("area", "households"):
+        mutated = _document(_ASSIGNMENT)
+        mutated["systems"][0]["stages"][0]["weight"] = weight
+        with pytest.raises(ValueError, match="unknown stage column"):
+            geography._bind(mutated, supports)
     # The system's level, code system and vintage must equal the support's.
     for field, value in (
         ("level", "municipality"),
@@ -707,12 +729,22 @@ def test_committed_pair_runs_support_assign_derive_and_gate_on_the_fixture(chain
     frame = _assign_derive_gate(chain)
     outputs = ASSIGNMENT["outputs"]
     assert set(frame[outputs["system"]]) == {SYSTEM_ID}
-    # The draw follows Statbel's weights: an independent inverse CDF gives the
-    # first households' communes, and the regions of all 5,000 draws come close
-    # to the NUTS1 shares (a uniform draw would give BE3 about 46%, not 31%).
-    first = [_independent_draw(chain, household) for household in range(1, 6)]
-    assert frame[outputs["area"]].head(5).tolist() == first
-    assert first == ["62063", "36015", "62032", "55086", "11002"]
+    # The draw follows Statbel's weights: an independent inverse CDF over the
+    # fixture's commune counts gives every household's commune, and the regions
+    # come close to the NUTS1 shares (a uniform draw would give BE3 about 46%,
+    # not 31%). The fixed first five hold for the support sha recorded above,
+    # whichever sha this platform's support bytes give.
+    households = frame["household_id"].tolist()
+    assert frame[outputs["area"]].tolist() == _independent_draws(
+        chain, households, chain.support.sha256
+    )
+    assert _independent_draws(chain, range(1, 6), _SUPPORT_SHA256) == [
+        "62063",
+        "36015",
+        "62032",
+        "55086",
+        "11002",
+    ]
     shares = frame["region_nuts1"].value_counts(normalize=True)
     for region, population in _NUTS1_TOTALS.items():
         assert abs(shares.get(region, 0.0) - population / _TOTAL) < 0.03, region
@@ -775,7 +807,7 @@ def test_fixture_is_the_recorded_583_artifact_lines():
     assert source["chronicle_source_commit"] == feed["source_commit"]
     assert source["facts_sha256"] == feed["facts_sha256"]
     assert source["manifest_sha256"] == feed["manifest_sha256"]
-    # The committed fields, with the extractor's selection text.
+    # The committed fields and selection text.
     assert provenance["schema_version"] == 1
     assert list(source) == [
         "artifact",
@@ -786,9 +818,13 @@ def test_fixture_is_the_recorded_583_artifact_lines():
     assert {tuple(entry) for entry in provenance["lines"]} == {
         ("artifact_line", "record_set", "geography_id", "value", "sha256")
     }
-    for record_set, (label, count) in extractor.RECORD_SETS.items():
-        selected = f"{record_set} ({count} lines, record_set {label})"
-        assert selected in provenance["selection"], record_set
+    assert provenance["selection"] == (
+        "The artifact's consumer_facts.jsonl lines whose layout.record_set_id is "
+        f"{_COMMUNE_RECORD_SET} (565 lines, record_set commune_total) or "
+        f"{_NUTS1_RECORD_SET} (18 lines, record_set nuts1_age_sex), copied byte "
+        "for byte in artifact order (the two sets interleave) and gzipped at "
+        "level 9 with mtime 0 and no file name."
+    )
 
 
 def _fact_line(record_set: str, geography: str, value: int) -> bytes:
@@ -848,7 +884,9 @@ def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
         extractor.main([*arguments, "--check"])
     assert not list(out.iterdir())
     extractor.main(arguments)
+    written = {path.name: path.stat().st_mtime_ns for path in out.iterdir()}
     extractor.main([*arguments, "--check"])
+    assert {path.name: path.stat().st_mtime_ns for path in out.iterdir()} == written
     compressed = (out / extractor.FIXTURE).read_bytes()
     assert compressed[:10] == _GZIP_HEADER
     assert gzip.decompress(compressed) == b"".join(selected)
@@ -871,6 +909,7 @@ def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
         )
     ]
     assert provenance["output_sha256"] == hashlib.sha256(b"".join(selected)).hexdigest()
+    assert provenance["output_bytes"] == len(b"".join(selected))
     # The committed provenance has the same fields and the same fixed text.
     committed = json.loads(
         _FIXTURE.with_name(_FIXTURE.name + ".provenance.json").read_text()
@@ -904,40 +943,66 @@ def test_fixture_extractor_refuses_an_artifact_the_feed_does_not_pin(
     )
     with pytest.raises(ValueError, match="Selected line counts"):
         extractor.extract(artifact, feed)
+    # The commune count is right, but the NUTS1 count is not.
+    monkeypatch.setattr(
+        extractor,
+        "RECORD_SETS",
+        {
+            _COMMUNE_RECORD_SET: ("commune_total", 1),
+            _NUTS1_RECORD_SET: ("nuts1_age_sex", 1),
+        },
+    )
+    with pytest.raises(ValueError, match="Selected line counts"):
+        extractor.extract(artifact, feed)
 
 
 _DEEP = b"[" * 100_000 + b'"' + extractor.MARKER + b'"' + b"]" * 100_000 + b"\n"
 
 
+_VALID = _fact_line(_COMMUNE_RECORD_SET, "11001", 7)
+
+
 @pytest.mark.parametrize(
-    ("line", "message"),
+    ("lines", "message"),
     [
-        (extractor.MARKER + b" is not JSON\n", "is not a fact"),
+        ([extractor.MARKER + b" is not JSON\n"], "line 1 is not a fact"),
         (
-            json.dumps({"layout": {"record_set_id": _COMMUNE_RECORD_SET}}).encode()
-            + b"\n",
-            "is not a fact",
+            [
+                json.dumps({"layout": {"record_set_id": _COMMUNE_RECORD_SET}}).encode()
+                + b"\n"
+            ],
+            "line 1 is not a fact",
         ),
         # Too deep for json.loads, which raises RecursionError.
-        (_DEEP, "is not a fact"),
-        (_fact_line(_COMMUNE_RECORD_SET, "11001", 7)[:-1], "has no trailing newline"),
+        ([_DEEP], "line 1 is not a fact"),
+        ([_VALID[:-1]], "line 1 has no trailing newline"),
+        # A malformed line after a selected fact is refused too.
+        ([_VALID, extractor.MARKER + b" is not JSON\n"], "line 2 is not a fact"),
     ],
-    ids=["not-json", "no-geography", "too-deep", "no-trailing-newline"],
+    ids=[
+        "not-json",
+        "no-geography",
+        "too-deep",
+        "no-trailing-newline",
+        "not-json-after-a-fact",
+    ],
 )
 def test_fixture_extractor_refuses_a_line_that_is_not_a_fact_after_the_pin_check(
-    tmp_path, line, message
+    tmp_path, lines, message
 ):
-    artifact, feed = _fake_artifact(tmp_path, [line])
+    artifact, feed = _fake_artifact(tmp_path, lines)
     # An artifact the feed does not pin is refused as such, whatever it holds.
     with pytest.raises(ValueError, match="is not the artifact"):
         extractor.extract(artifact, {**feed, "facts_sha256": "0" * 64})
-    with pytest.raises(ValueError, match=f"Artifact line 1 {message}"):
+    with pytest.raises(ValueError, match=f"Artifact {message}"):
         extractor.extract(artifact, feed)
 
 
-# Opens of these real paths are counted. An audit hook sees every open, by
-# Path.open, open, io.open or os.open alike; hooks cannot be removed, so one is
-# added once and counts only while a test watches a path.
+# Opens of these real paths are counted. An audit hook sees an open by
+# Path.open, open, io.open or os.open alike, but this one can match only a path
+# it can resolve: absolute, or relative to the working directory, not relative
+# to a dir_fd. Hooks cannot be removed, so one is added once and counts only
+# while a test watches a path.
 _WATCHED_OPENS: dict[str, int] = {}
 _OPEN_HOOK: list[bool] = []
 
@@ -985,8 +1050,54 @@ def test_fixture_extractor_selects_from_the_bytes_it_checks(tmp_path, monkeypatc
 
     monkeypatch.setattr(Path, "open", open_then_replace)
     files = extractor.extract(artifact, feed)
-    # One open by any route: the hash and the selection read the same bytes.
+    # One open of the path: the hash and the selection read the same file.
     assert _WATCHED_OPENS[watched] == 1
+    assert gzip.decompress(files[extractor.FIXTURE]) == pinned
+
+
+class _ChangesOnRewind(io.BytesIO):
+    """A facts stream whose bytes change once it is rewound, as a file
+    rewritten in place between two passes would."""
+
+    def __init__(self, first: bytes, later: bytes):
+        super().__init__(first)
+        self._later = later
+
+    def seek(self, offset, whence=io.SEEK_SET):
+        if self._later is not None:
+            later, self._later = self._later, None
+            super().seek(0)
+            super().truncate()
+            super().write(later)
+        return super().seek(offset, whence)
+
+
+def test_fixture_extractor_selects_in_the_pass_that_hashes(tmp_path, monkeypatch):
+    """A second pass over the same handle, after a rewind, cannot supply lines."""
+    monkeypatch.setattr(
+        extractor,
+        "RECORD_SETS",
+        {
+            _COMMUNE_RECORD_SET: ("commune_total", 1),
+            _NUTS1_RECORD_SET: ("nuts1_age_sex", 0),
+        },
+    )
+    pinned = _fact_line(_COMMUNE_RECORD_SET, "11001", 7)
+    artifact, feed = _fake_artifact(tmp_path, [pinned])
+    watched = os.path.realpath(artifact / "consumer_facts.jsonl")
+    stream = _ChangesOnRewind(pinned, _fact_line(_COMMUNE_RECORD_SET, "11001", 8))
+    real_open = io.open
+
+    def open_facts_as_stream(file, *args, **kwargs):
+        # Path.open goes through io.open; open is the same function.
+        if isinstance(file, (str, bytes, os.PathLike)):
+            if os.path.realpath(os.fsdecode(file)) == watched:
+                return stream
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(io, "open", open_facts_as_stream)
+    monkeypatch.setattr(builtins, "open", open_facts_as_stream)
+    files = extractor.extract(artifact, feed)
     assert gzip.decompress(files[extractor.FIXTURE]) == pinned
 
 
@@ -1174,6 +1285,10 @@ def _prepend(key: str, row: tuple):
     ("change", "message"),
     [
         (_restate("11001", province="20001", first_only=True), "two provinces"),
+        (
+            _restate("11001", region="03000", first_only=True),
+            "two provinces or regions",
+        ),
         (_drop_target("11001"), "Rule 1"),
         (_add_lau("99998", "BE211", target="99998"), "Rule 1"),
         (_add_lau("99999", "BE211"), "Rule 2"),
@@ -1214,6 +1329,7 @@ def _prepend(key: str, row: tuple):
     ],
     ids=[
         "statbel-two-provinces",
+        "statbel-two-regions",
         "rule1-crosswalk-misses-a-commune",
         "rule1-crosswalk-names-another-commune",
         "rule2-extra-lau",
@@ -1262,6 +1378,30 @@ def test_builder_reads_lau_rows_and_refuses_a_cell_that_is_not_a_be_nuts3_code()
             builder.lau_pairs([header, (cell, "11001", "Aartselaar")])
     with pytest.raises(ValueError, match="Unexpected Eurostat LAU header"):
         builder.lau_pairs([("LAU CODE", "NUTS3"), ("11001", "BE211")])
+
+
+def test_builder_reads_nuts_labels_and_refuses_a_level_its_code_does_not_give():
+    header = ("Country code", "NUTS Code", "NUTS label", "NUTS level", "Country order")
+    rows = [
+        header,
+        ("BE", "BE", "Belgique/België", 0, 1),
+        ("BE", "BE2", "Vlaams Gewest", 1, 1),
+        ("BE", "BE21", "Prov. Antwerpen", 2, 1),
+        ("BE", "BE211", "Arr. Antwerpen", 3, 1),
+        ("FR", "FR101", "Paris", 3, 2),
+    ]
+    assert builder.nuts_labels(rows) == [
+        ("BE", "Belgique/België"),
+        ("BE2", "Vlaams Gewest"),
+        ("BE21", "Prov. Antwerpen"),
+        ("BE211", "Arr. Antwerpen"),
+    ]
+    for level in (2, 4, "3", None):
+        changed = [*rows[:4], ("BE", "BE211", "Arr. Antwerpen", level, 1)]
+        with pytest.raises(ValueError, match="Rule 2: NUTS 2024 gives 'BE211' level"):
+            builder.nuts_labels(changed)
+    with pytest.raises(ValueError, match="Unexpected NUTS 2024 header"):
+        builder.nuts_labels([("NUTS Code", "Country code"), ("BE", "BE")])
 
 
 def test_builder_refuses_precal_rows_that_differ_from_the_communes():
@@ -1378,7 +1518,8 @@ def test_cli_writes_the_committed_bytes_and_needs_sources(tmp_path, monkeypatch)
         with pytest.raises(SystemExit) as error:
             builder.main(["--out", str(out), "--check"])
         codes.append(error.value.code)
-        monkeypatch.delenv("BE_GEOGRAPHY_SOURCES")
+        # A blank flag is refused even when the variable names a directory.
+        monkeypatch.setenv("BE_GEOGRAPHY_SOURCES", str(tmp_path / "from-env"))
         with pytest.raises(SystemExit) as error:
             builder.main(["--sources", blank, "--out", str(out), "--check"])
         codes.append(error.value.code)
