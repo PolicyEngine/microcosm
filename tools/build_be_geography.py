@@ -22,16 +22,20 @@ The two Eurostat files are kept, with their URLs, under
 Eurostat updates them in place, so a fresh download may not match the pins.
 
 The builder refuses unless the sources agree (``hierarchy_from_sources``):
-Statbel's regions map one to one onto NUTS 2024 level 1, its provinces onto
-level 2, and NUTS3 BE336, "Bezirk Verviers — Deutschsprachige Gemeinschaft",
-holds exactly nine communes that are unchanged from 2024 to 2025. Those nine
-take the language region ``german``; every other commune takes its Statbel
-region's language region. That reading is inferred, as no pinned file states
-it: BE336's communes are the German-speaking Community's territory, that
-territory is the German language region, and each Region's territory is its
-language region or regions.
+Statbel's three regions map one to one onto NUTS 2024 level 1, as 02000 BE2,
+03000 BE3 and 04000 BE1; its provinces map one to one onto level 2, except
+46030, whose 2024 parts lie in BE21 and BE23; the communes whose 2024 parts
+span two NUTS3 areas are exactly 46029, 46030 and 71072; and NUTS3 BE336,
+"Bezirk Verviers — Deutschsprachige Gemeinschaft", holds exactly nine
+communes that are unchanged from 2024 to 2025. Those nine take the language
+region ``german``; every other commune takes its Statbel region's language
+region. That reading is inferred, as no pinned file states it: BE336's
+communes are the German-speaking Community's territory, that territory is the
+German language region, and each Region's territory is its language region or
+regions.
 
-``--check`` compares the committed files with a fresh build and never writes.
+``--check`` compares the committed files' bytes with a fresh build and never
+writes.
 """
 
 from __future__ import annotations
@@ -98,6 +102,7 @@ GERMAN_COMMUNES = (
 )
 NUTS3_STRADDLERS = ("46029", "46030", "71072")
 NUTS2_STRADDLERS = ("46030",)
+NUTS1_BY_REGION = {"02000": "BE2", "03000": "BE3", "04000": "BE1"}
 LANGUAGE_BY_REGION = {
     "02000": "dutch",
     "03000": "french",
@@ -120,6 +125,10 @@ PRECAL_USE = "atomic_geography_support"
 
 def _pin(key: str) -> str:
     return f"{key}@sha256:{SOURCES[key]['sha256']}"
+
+
+def _pairs(mapping: dict[str, str]) -> str:
+    return ", ".join(f"{key} {value}" for key, value in mapping.items())
 
 
 _ZIP = _pin("statbel-population-structure-2025")
@@ -159,7 +168,7 @@ COLUMNS = {
         "kind": "code",
         "source": (
             f"{_ZIP}#CD_RGN_REFNIS, renamed one to one to NUTS 2024 level 1 "
-            f"(02000 BE2, 03000 BE3, 04000 BE1) by {_LAU}#BE/NUTS3 via "
+            f"({_pairs(NUTS1_BY_REGION)}) by {_LAU}#BE/NUTS3 via "
             f"{_CROSSWALK}"
         ),
         "vintage": "nuts1_2025",
@@ -172,8 +181,8 @@ COLUMNS = {
             f"'{NUTS3_LABELS[GERMAN_NUTS3]}' (beside BE335 "
             f"'{NUTS3_LABELS[FRENCH_VERVIERS_NUTS3]}') by {_LAU}#BE/NUTS3 via "
             f"{_CROSSWALK}, labels {_NUTS}#NUTS2024; otherwise from "
-            f"{_ZIP}#CD_RGN_REFNIS (02000 dutch, 03000 french, 04000 "
-            "brussels_bilingual); inferred, as no pinned file states it: "
+            f"{_ZIP}#CD_RGN_REFNIS ({_pairs(LANGUAGE_BY_REGION)}); "
+            "inferred, as no pinned file states it: "
             "BE336's communes are the German-speaking Community's territory, that "
             "territory is the German language region, and each Region's territory "
             "is its language region or regions (Constitution art. 4 names the four "
@@ -237,10 +246,7 @@ def read_sources(directory: Path) -> dict:
         read_only=True,
         data_only=True,
     )
-    rows = list(book["BE"].iter_rows(values_only=True))
-    if rows[0][:2] != ("NUTS3", "LAU CODE"):
-        raise ValueError(f"Unexpected Eurostat LAU header {rows[0][:2]}.")
-    lau = [(str(row[1]), str(row[0])) for row in rows[1:] if row[1] is not None]
+    lau = lau_pairs(list(book["BE"].iter_rows(values_only=True)))
     book = openpyxl.load_workbook(
         io.BytesIO(_read_pinned(directory, "eurostat-nuts-2021-2024")),
         read_only=True,
@@ -252,6 +258,21 @@ def read_sources(directory: Path) -> dict:
         if row[0] == "BE"
     ]
     return {"statbel": statbel, "crosswalk": crosswalk, "lau": lau, "labels": labels}
+
+
+def lau_pairs(rows: list[tuple]) -> list[tuple[str, str]]:
+    """Read (2024 LAU, NUTS3) pairs from the Eurostat LAU sheet's rows."""
+
+    if rows[0][:2] != ("NUTS3", "LAU CODE"):
+        raise ValueError(f"Unexpected Eurostat LAU header {rows[0][:2]}.")
+    pairs = []
+    for nuts3, code, *_ in rows[1:]:
+        if code is None:
+            continue
+        if not (isinstance(nuts3, str) and len(nuts3) == 5 and nuts3[:2] == "BE"):
+            raise ValueError(f"Eurostat LAU {code} has NUTS3 {nuts3!r}, not a BE code.")
+        pairs.append((str(code), nuts3))
+    return pairs
 
 
 def statbel_population(sources: dict) -> dict[str, int]:
@@ -327,9 +348,9 @@ def hierarchy_from_sources(sources: dict) -> dict[str, dict[str, str]]:
         nuts3[c] != {GERMAN_NUTS3} or parts[c] != {c} for c in german
     ):
         raise ValueError(f"Rule 6: BE336 members {german} differ from the pin.")
-    # Rule 7: Statbel's three regions.
-    if set(region) != set(LANGUAGE_BY_REGION):
-        raise ValueError(f"Rule 7: unexpected Statbel regions {sorted(region)}.")
+    # Rule 7: Statbel's three regions, each with its pinned NUTS1 code.
+    if region != NUTS1_BY_REGION:
+        raise ValueError(f"Rule 7: Statbel regions and NUTS1 {region} differ.")
     return {
         commune: {
             "province_nis": province,
@@ -419,14 +440,14 @@ def stale_files(documents: dict[str, dict], out: Path) -> list[str]:
         str(out / name)
         for name, document in documents.items()
         if not (out / name).exists()
-        or (out / name).read_text(encoding="utf-8") != encode(document)
+        or (out / name).read_bytes() != encode(document).encode("utf-8")
     ]
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--sources", type=Path, default=os.environ.get("BE_GEOGRAPHY_SOURCES")
+        "--sources", type=Path, default=os.environ.get("BE_GEOGRAPHY_SOURCES") or None
     )
     parser.add_argument("--out", type=Path, default=SPEC)
     parser.add_argument("--check", action="store_true")
@@ -442,7 +463,7 @@ def main(argv=None):
             raise SystemExit(f"Stale generated resource(s): {stale}")
         return
     for name, document in documents.items():
-        (args.out / name).write_text(encode(document), encoding="utf-8")
+        (args.out / name).write_bytes(encode(document).encode("utf-8"))
 
 
 if __name__ == "__main__":

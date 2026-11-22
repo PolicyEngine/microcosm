@@ -706,6 +706,12 @@ def test_fixture_is_the_recorded_583_artifact_lines():
     ]
     assert sum(_fixture_values(_COMMUNE_RECORD_SET).values()) == _TOTAL
     assert _fixture_values(_NUTS1_RECORD_SET) == _NUTS1_TOTALS
+    # The refresh rule: the fixture comes from the artifact the feed pins.
+    feed = _document("chronicle_feed.json")
+    source = provenance["source"]
+    assert source["chronicle_source_commit"] == feed["source_commit"]
+    assert source["facts_sha256"] == feed["facts_sha256"]
+    assert source["manifest_sha256"] == feed["manifest_sha256"]
 
 
 # --- the builder ------------------------------------------------------------
@@ -836,6 +842,13 @@ def _add_lau(part: str, nuts3: str, *, target=None):
     return change
 
 
+def _add_part(part: str, target: str):
+    def change(sources):
+        sources["crosswalk"].append((part, target))
+
+    return change
+
+
 def _relabel(code: str, label: str):
     def change(sources):
         sources["labels"] = [
@@ -850,34 +863,46 @@ def _relabel(code: str, label: str):
     [
         (_restate("11001", province="20001", first_only=True), "two provinces"),
         (_drop_target("11001"), "Rule 1"),
+        (_add_lau("99998", "BE211", target="99998"), "Rule 1"),
         (_add_lau("99999", "BE211"), "Rule 2"),
+        (_add_part("99997", "11001"), "Rule 2"),
         (_move("11056", "BE335"), "Rule 3: 46030 spans NUTS1"),
         (_restate("71072", region="03000"), "Rule 3: Statbel regions"),
         (_move("72002", "BE221"), "Rule 4: NUTS straddlers"),
         (_move("44011", "BE236"), "Rule 4: NUTS straddlers"),
+        # 46030 still spans two NUTS3 areas, but both now lie in BE23.
+        (_move("11056", "BE235"), "Rule 4: NUTS straddlers"),
         (_restate("11001", province="40000"), "Rule 4: Statbel provinces"),
+        (_restate("63049", province="60001"), "Rule 4: Statbel provinces"),
         (_relabel("BE336", "Bezirk Verviers"), "Rule 5"),
         (_relabel("BE335", "Arr. Verviers"), "Rule 5"),
         (_move("63087", "BE335"), "Rule 6"),
         (_move("63049", "BE336"), "Rule 6"),
         (_add_lau("63002", "BE336", target="63001"), "Rule 6"),
         (_restate("21001", region="04001"), "Rule 7"),
+        # One to one, but Brussels-Capital would be NUTS1 BE4.
+        (_move("21001", "BE400"), "Rule 7"),
     ],
     ids=[
         "statbel-two-provinces",
         "rule1-crosswalk-misses-a-commune",
+        "rule1-crosswalk-names-another-commune",
         "rule2-extra-lau",
+        "rule2-crosswalk-part-missing-from-lau",
         "rule3-merger-spans-nuts1",
         "rule3-region-not-one-to-one",
-        "rule4-straddler-gone",
-        "rule4-nuts2-straddler-gone",
-        "rule4-province-not-one-to-one",
+        "rule4-71072-no-longer-straddles-nuts3",
+        "rule4-46029-no-longer-straddles-nuts3",
+        "rule4-46030-no-longer-straddles-nuts2",
+        "rule4-province-spans-two-nuts2",
+        "rule4-two-provinces-share-a-nuts2",
         "rule5-be336-label",
         "rule5-be335-label",
         "rule6-eight-german-communes",
         "rule6-ten-german-communes",
         "rule6-german-commune-merged",
         "rule7-unknown-region",
+        "rule7-region-has-another-nuts1",
     ],
 )
 def test_builder_refuses_each_source_inconsistency(change, message):
@@ -886,6 +911,17 @@ def test_builder_refuses_each_source_inconsistency(change, message):
     change(sources)
     with pytest.raises(ValueError, match=message):
         builder.hierarchy_from_sources(sources)
+
+
+def test_builder_reads_lau_rows_and_refuses_a_cell_that_is_not_a_be_nuts3_code():
+    header = ("NUTS3", "LAU CODE", "LAU NAME NATIONAL")
+    rows = [header, ("BE211", "11001", "Aartselaar"), (None, None, "note")]
+    assert builder.lau_pairs(rows) == [("11001", "BE211")]
+    for cell in (None, "XX100", "BE21", 21100):
+        with pytest.raises(ValueError, match="not a BE code"):
+            builder.lau_pairs([header, (cell, "11001", "Aartselaar")])
+    with pytest.raises(ValueError, match="Unexpected Eurostat LAU header"):
+        builder.lau_pairs([("LAU CODE", "NUTS3"), ("11001", "BE211")])
 
 
 def test_builder_refuses_precal_rows_that_differ_from_the_communes():
@@ -943,11 +979,15 @@ def _cli_out(tmp_path: Path, monkeypatch) -> Path:
     return out
 
 
-@pytest.mark.parametrize("drift", [None, _SUPPORT, _ASSIGNMENT, "missing"])
+@pytest.mark.parametrize("drift", [None, _SUPPORT, _ASSIGNMENT, "crlf", "missing"])
 def test_cli_check_compares_bytes_and_never_writes(tmp_path, monkeypatch, drift):
     out = _cli_out(tmp_path, monkeypatch)
     if drift == "missing":
         (out / _SUPPORT).unlink()
+    elif drift == "crlf":
+        # The same text with other line endings.
+        data = (out / _ASSIGNMENT).read_bytes()
+        (out / _ASSIGNMENT).write_bytes(data.replace(b"\n", b"\r\n"))
     elif drift is not None:
         # A formatting-only edit: the same JSON, other bytes.
         document = json.loads((out / drift).read_text(encoding="utf-8"))
@@ -976,8 +1016,13 @@ def test_cli_writes_the_committed_bytes_and_needs_sources(tmp_path, monkeypatch)
     for name in _FILES:
         assert (out / name).read_bytes() == (_BE / name).read_bytes(), name
     monkeypatch.delenv("BE_GEOGRAPHY_SOURCES", raising=False)
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as unset:
         builder.main(["--out", str(out), "--check"])
+    # An empty variable is unset too, not the current directory.
+    monkeypatch.setenv("BE_GEOGRAPHY_SOURCES", "")
+    with pytest.raises(SystemExit) as empty:
+        builder.main(["--out", str(out), "--check"])
+    assert unset.value.code == empty.value.code == 2
 
 
 # --- activation -------------------------------------------------------------
@@ -1045,9 +1090,6 @@ def test_fixture_lines_are_lines_of_the_pinned_artifact(artifact_path, chain):
     provenance = json.loads(
         _FIXTURE.with_name(_FIXTURE.name + ".provenance.json").read_text()
     )
-    feed = _document("chronicle_feed.json")
-    assert provenance["source"]["facts_sha256"] == feed["facts_sha256"]
-    assert provenance["source"]["manifest_sha256"] == feed["manifest_sha256"]
     numbers = [entry["artifact_line"] for entry in provenance["lines"]]
     assert numbers == sorted(set(numbers))
     recorded = dict(
