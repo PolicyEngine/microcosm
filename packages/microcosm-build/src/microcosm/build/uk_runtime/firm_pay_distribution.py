@@ -20,14 +20,20 @@ Method, all of it assumption beyond the source (status ``assumed``):
   line runs between its published neighbours (section A has no p10 in 2025,
   so its line runs from 0 pounds at p0 to p20). The straight line from 0
   pounds at p0 to the first published percentile is a guess: ASHE publishes
-  nothing below p10;
+  nothing below p10. In most sections the 2024-25 threshold (9,100 pounds)
+  is below p10, so the share is 10% x 9,100 / p10 and the mean pay below is
+  exactly 4,550 pounds: both rest wholly on that guess;
 - the share of a section's jobs paid at or below the threshold is the
   percentile at which that line reaches the threshold, and their mean pay is
   the line's average below that percentile;
 - a section with no published percentiles (section U in 2025), one whose
   highest published percentile is below the threshold, and ``UNKNOWN`` take
   the ``ALL EMPLOYEES`` row, as ``firm_paybill`` does;
-- every firm in a section has that section's share, whatever its size;
+- every firm in a section has that section's share, whatever its size. The
+  section total is unbiased, but a micro firm whose draw puts every employee
+  below the threshold has the rest of its paybill charged with no threshold
+  at all in policyengine-uk, which makes the split lumpy per firm (it matters
+  for the Employment Allowance);
 - the head count is an integer (policyengine-uk ``value_type = int``):
   ``floor(employees x share)`` plus one with probability equal to the
   remainder, drawn from a fixed-seed generator of its own

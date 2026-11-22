@@ -48,9 +48,12 @@ feed policyengine-uk's `firm_region`, `firm_in_england`, `firm_legal_form` and
 `firm_is_public_body`. `firm_table.UK_FIRM_POLICYENGINE_UK_INPUT_STATUS` records
 which of policyengine-uk's 66 firm inputs (at `d856de5a7`) microcosm sets.
 `firm_paybill` is an opt-in assumed input (headcount × ONS ASHE section mean
-pay, `uk_runtime/firm_paybill.py`); the rest (the pay distribution within it,
-profit, capital expenditure, R&D, rateable value and several flags) wait for
-sources. An engine-free test checks the export against a committed snapshot of
+pay, `uk_runtime/firm_paybill.py`). Further opt-in assumed inputs, each from
+a saved source, are the Employment Allowance flags, public sector headcounts,
+the pay split below the secondary threshold, taxable profit (HMRC Corporation
+Tax statistics, so CT is in-sample) and rateable value (VOA). The rest
+(capital expenditure, R&D, the other pay-distribution inputs and several
+flags) wait for sources. An engine-free test checks the export against a committed snapshot of
 policyengine-uk's firm variables. Value-free target candidates for the next
 Ledger sources are declared in `uk_runtime/firm_target_candidates.py`; they are
 not yet in `uk/uk_firms_targets.json` or the solve.
