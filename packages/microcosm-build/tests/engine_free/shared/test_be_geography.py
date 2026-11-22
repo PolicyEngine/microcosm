@@ -914,19 +914,33 @@ def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
     extractor.main(arguments)
     current = {path.name: path.read_bytes() for path in out.iterdir()}
     assert set(current) == {extractor.FIXTURE, extractor.PROVENANCE}
-    # An existing stale output is refused alone, and the refusal writes nothing.
+    # An existing stale output, one byte longer or the same length, is refused
+    # alone. Every output and the directory are read-only meanwhile, so the
+    # refusal cannot write.
     for name, data in current.items():
         stale = out / name
-        stale.write_bytes(data + b"\n")
-        stale.chmod(0o444)
-        before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in out.iterdir()}
-        with pytest.raises(
-            SystemExit, match=re.escape(f"Stale fixture file(s): {[str(stale)]}")
-        ):
-            extractor.main([*arguments, "--check"])
-        after = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in out.iterdir()}
-        assert after == before
-        stale.chmod(0o644)
+        for changed in (data + b"\n", data[:-1] + bytes([data[-1] ^ 1])):
+            stale.write_bytes(changed)
+            for path in out.iterdir():
+                path.chmod(0o444)
+            out.chmod(0o555)
+            before = {
+                p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in out.iterdir()
+            }
+            try:
+                with pytest.raises(
+                    SystemExit,
+                    match=re.escape(f"Stale fixture file(s): {[str(stale)]}"),
+                ):
+                    extractor.main([*arguments, "--check"])
+            finally:
+                out.chmod(0o755)
+                for path in out.iterdir():
+                    path.chmod(0o644)
+            after = {
+                p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in out.iterdir()
+            }
+            assert after == before
         stale.write_bytes(data)
     # Read-only files and unchanged times: --check writes nothing.
     for path in out.iterdir():
@@ -1150,6 +1164,16 @@ class _ChangesOnRewind(io.BytesIO):
             super().write(later)
             after = super().seek(after)
         return after
+
+
+def test_changes_on_rewind_changes_only_on_a_seek_that_moves_back():
+    stream = _ChangesOnRewind(b"ab", b"cd")
+    assert stream.read(1) == b"a"
+    stream.seek(0, io.SEEK_CUR)
+    stream.seek(2)
+    assert stream.getvalue() == b"ab"
+    stream.seek(0)
+    assert stream.getvalue() == b"cd"
 
 
 def test_fixture_extractor_selects_in_the_pass_that_hashes(tmp_path, monkeypatch):
@@ -1434,11 +1458,19 @@ def _prepend(key: str, row: tuple):
         (_move("11056", "BE225"), "Rule 4: NUTS straddlers"),
         # 46030 gains a third NUTS2 area.
         (_add_lau("46099", "BE242", target="46030"), "Rule 4: NUTS straddlers"),
-        (_restate("11001", province="40000"), "Rule 4: Statbel province codes"),
-        (_restate("63049", province="60001"), "Rule 4: Statbel province codes"),
+        # The one-to-one check refuses these, before the pinned map.
+        (
+            _restate("11001", province="40000"),
+            "Rule 4: Statbel province codes and NUTS2 differ:",
+        ),
+        (
+            _restate("63049", province="60001"),
+            "Rule 4: Statbel province codes and NUTS2 differ:",
+        ),
         # One to one, but not the pinned map.
         (_set_province("99999", old="04000"), "Rule 4: .* differ from the pin"),
         (_set_province("10001", old="10000"), "Rule 4: .* differ from the pin"),
+        # 46030 is left out of the map, and its province is pinned apart.
         (
             _set_province("", commune="46030"),
             "Rule 4: Statbel gives the NUTS2 straddler 46030 province ''",

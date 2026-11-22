@@ -33,8 +33,9 @@ as 02000 BE2, 03000 BE3 and 04000 BE1; its province codes map onto level 2
 as ``PROVINCE_NUTS2`` pins them, 04000, the code of the 19 Brussels-Capital
 communes, which belong to no province, onto BE10, leaving out the commune
 46030, whose 2024 parts lie in BE21 and BE23 and whose province is pinned as
-40000; the communes whose 2024 parts span two NUTS3 areas are exactly 46029 (BE234 and BE236), 46030 (BE211 and BE236) and 71072
-(BE223 and BE224); the BE335 and BE336 labels equal their pins; and NUTS3
+40000; the communes whose 2024 parts span two NUTS3 areas are exactly 46029
+(BE234 and BE236), 46030 (BE211 and BE236) and 71072 (BE223 and BE224); the
+BE335 and BE336 labels equal their pins; and NUTS3
 BE336, "Bezirk Verviers — Deutschsprachige Gemeinschaft", holds exactly nine
 communes that are unchanged from 2024 to 2025. Those nine take the language
 region ``german``; every other commune takes its Statbel region's language
