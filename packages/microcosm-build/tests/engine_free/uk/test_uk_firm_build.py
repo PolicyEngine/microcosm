@@ -540,3 +540,27 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         assert len(receipt["inputs"][role]) == 1
     for key in ("uk_firm_public_sector", "uk_firm_profit", "uk_firm_rateable_value"):
         assert key not in builds[0]["receipt"]
+
+
+@pytest.mark.parametrize(
+    ("argument", "fixture"),
+    [
+        ("public_sector_dir", "firm_public_sector_2025"),
+        ("profit_dir", "firm_ct_2024"),
+        ("rateable_value_dir", "firm_rateable_value_2024"),
+    ],
+)
+def test_opt_in_sources_refuse_another_vintage(
+    argument: str, fixture: str, tmp_path: Path
+) -> None:
+    rules = _StandardRateDouble()
+    with pytest.raises(ValueError, match="tax year 2024-25"):
+        build_uk_firm_dataset(
+            processed_dir=PROCESSED,
+            attributes_dir=ATTRIBUTES,
+            output_dir=tmp_path / "out",
+            rules=rules,
+            config=_config(rules).with_vintage("2023-24"),
+            **{argument: FIXTURES / fixture},
+        )
+    assert not (tmp_path / "out").exists()

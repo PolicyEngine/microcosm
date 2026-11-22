@@ -3,9 +3,9 @@
 The experimental UK firm generator draws ``ons_legal_status`` from the ONS
 *UK business: activity, size and location* tables, which count VAT- and
 PAYE-registered enterprises. Central government (status 5) and local
-authority (status 6) rows are therefore few and small: on the 2024-25 build
-they carry roughly 0.3 million weighted employees, where ONS counts about six
-million public sector employees. Employer NIC and the apprenticeship levy,
+authority (status 6) rows are therefore few and small: on the full 2024-25
+build they carry about 0.66 million weighted employees (0.47 million and 0.19
+million), where ONS counts about six million in central and local government. Employer NIC and the apprenticeship levy,
 which follow the paybill, come out low for public bodies.
 
 ``scale_uk_firm_public_sector_employment`` multiplies the headcount of the

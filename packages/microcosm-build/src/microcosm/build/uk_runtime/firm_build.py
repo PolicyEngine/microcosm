@@ -167,6 +167,16 @@ def build_uk_firm_dataset(
             f"The UK firm paybill table is for tax year {UK_FIRM_PAYBILL_TAX_YEAR}; "
             f"config.data_vintage is {config.data_vintage}."
         )
+    for name, directory in (
+        ("public_sector_dir", public_sector_dir),
+        ("profit_dir", profit_dir),
+        ("rateable_value_dir", rateable_value_dir),
+    ):
+        if directory is not None and config.data_vintage != "2024-25":
+            raise ValueError(
+                f"The UK firm {name} source is for tax year 2024-25; "
+                f"config.data_vintage is {config.data_vintage}."
+            )
     processed = Path(processed_dir)
     attributes = Path(attributes_dir)
     output = Path(output_dir)

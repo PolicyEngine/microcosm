@@ -8,7 +8,8 @@ one published table, HMRC *Corporation Tax Statistics 2026*, Tables 9A and 9B
 the total liability in each of thirteen liability bands, and the number with
 no liability. The extracted CSV and its provenance sit in
 ``tests/fixtures/uk/firm_ct_2024/`` (``tools/extract_uk_firm_ct_tables.py``
-re-creates it). Nothing here is wired into the build; the status of the
+re-creates it). ``build_uk_firm_dataset(profit_dir=...)`` and
+``tools/build_uk_firms.py --profit-dir`` turn it on; the status of the
 result is ``assumed``.
 
 **Inversion.** With no associated companies, no exempt distributions and a

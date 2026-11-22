@@ -258,8 +258,6 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # working proprietors, stands in for employees. Only when the build
         # is given a paybill source.
         "firm_paybill": "assumed",
-        # Not drawn: no source yet. Placeholders would flow into NIC, CT,
-        # VAT and business rates revenue.
         # Assumed (firm_profit.py): HMRC Corporation Tax statistics
         # liability bands (2024-25) inverted through the rate schedule and
         # allotted to companies by turnover rank. In-sample for CT. Only when
@@ -269,6 +267,8 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # England allotted to firms by headcount rank. Only when the build is
         # given a rateable value source.
         "firm_rateable_value": "assumed",
+        # Not drawn: no source yet. Placeholders would flow into NIC, CT,
+        # VAT and business rates revenue.
         "firm_n_associated_companies": "not_set",
         "firm_is_bank": "not_set",
         "firm_is_charity": "not_set",
