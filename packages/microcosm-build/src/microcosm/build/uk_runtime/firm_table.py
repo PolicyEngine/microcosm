@@ -12,13 +12,17 @@ Two views of the experimental UK firm generator's rows:
   the rows carry the ONS attribute draws (``ons_legal_status`` and
   ``ons_region_code``), it is the extended table
   (``UK_FIRM_EXTENDED_TABLE_COLUMNS``), which adds ``firm_legal_form``,
-  ``firm_region``, ``firm_in_england`` and ``firm_is_public_body``.
+  ``firm_region``, ``firm_in_england`` and ``firm_is_public_body``. When
+  the attributed rows also carry ``firm_paybill`` (pounds, from
+  ``firm_paybill.assign_uk_firm_paybill``), it is the paybill table
+  (``UK_FIRM_PAYBILL_TABLE_COLUMNS``), which adds ``firm_paybill`` after the
+  extended policyengine-uk columns.
 
 ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS`` records, for every formula-less
-policyengine-uk firm input, whether the extended table sets it. The base table
-leaves ``firm_region`` and ``firm_legal_form`` unset, so policyengine-uk's
-defaults (London, company) apply; ``firm_paybill`` and the other money inputs
-are never set.
+policyengine-uk firm input, whether the fullest (paybill) table sets it. The
+base table leaves ``firm_region`` and ``firm_legal_form`` unset, so
+policyengine-uk's defaults (London, company) apply; without a paybill source
+``firm_paybill`` is unset too, and the other money inputs are never set.
 """
 
 from __future__ import annotations
@@ -194,6 +198,22 @@ UK_FIRM_EXTENDED_TABLE_COLUMNS = (
     *UK_FIRM_MICROCOSM_ONLY_COLUMNS,
 )
 
+#: policyengine-uk firm inputs the paybill export adds to the extended one.
+UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS = ("firm_paybill",)
+
+#: policyengine-uk firm input variables in the paybill export, in order.
+UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS = (
+    *UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS,
+    *UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS,
+)
+
+#: The paybill export's columns, in order: the extended table with
+#: ``firm_paybill`` after its policyengine-uk columns.
+UK_FIRM_PAYBILL_TABLE_COLUMNS = (
+    *UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS,
+    *UK_FIRM_MICROCOSM_ONLY_COLUMNS,
+)
+
 #: Values of ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS``:
 #:
 #: - ``set``: mapped directly from a generator column or ONS draw;
@@ -202,10 +222,11 @@ UK_FIRM_EXTENDED_TABLE_COLUMNS = (
 #: - ``not_set``: not exported; policyengine-uk's default applies.
 UK_FIRM_INPUT_STATUSES = ("set", "derived", "assumed", "not_set")
 
-#: Every formula-less policyengine-uk firm input (branch firm-entity-engine,
-#: policyengine_uk/variables/firm/) -> how the extended export fills it.
-#: The keys with status other than ``not_set`` are exactly
-#: ``UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS``.
+#: Every formula-less policyengine-uk firm input (branch firm-entity-engine
+#: at ``ca037fad2``, the committed snapshot; policyengine_uk/variables/firm/) -> how the paybill export, the fullest
+#: one, fills it. The keys with status other than ``not_set`` are exactly
+#: ``UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS``; the base and
+#: extended exports set a prefix of them.
 UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
     {
         # Generator columns, mapped directly (thousands of pounds to pounds,
@@ -232,9 +253,14 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_input_vat": "assumed",
         "firm_legal_form": "assumed",
         "firm_is_public_body": "assumed",
+        # Headcount x ONS ASHE 2025 (tax year 2024-25) all-employees mean
+        # annual gross pay of the firm's SIC section (firm_paybill.py): every
+        # firm pays its section's mean, and ONS employment, which counts
+        # working proprietors, stands in for employees. Only when the build
+        # is given a paybill source.
+        "firm_paybill": "assumed",
         # Not drawn: no source yet. Placeholders would flow into NIC, CT,
         # VAT and business rates revenue.
-        "firm_paybill": "not_set",
         "firm_taxable_trading_profit": "not_set",
         "firm_rateable_value": "not_set",
         "firm_n_associated_companies": "not_set",
@@ -274,6 +300,16 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_apprenticeship_levy_allowance_share": "not_set",
         "firm_claims_employment_allowance": "not_set",
         "firm_zero_rated_class_1_earnings": "not_set",
+        # Pay distribution within the paybill (policyengine-uk ca037fad2).
+        "firm_employees_above_auto_enrolment_upper_limit": "not_set",
+        "firm_employees_below_auto_enrolment_earnings_trigger": "not_set",
+        "firm_employees_below_secondary_threshold": "not_set",
+        "firm_paybill_above_auto_enrolment_upper_limit": "not_set",
+        "firm_paybill_below_auto_enrolment_earnings_trigger": "not_set",
+        "firm_paybill_below_secondary_threshold": "not_set",
+        # National Minimum Wage floor (policyengine-uk ca037fad2).
+        "firm_low_paid_hours": "not_set",
+        "firm_low_paid_paybill": "not_set",
         # R&D.
         "firm_is_sme": "not_set",
         "firm_qualifying_rd_expenditure": "not_set",
@@ -296,6 +332,8 @@ _NON_NEGATIVE_COLUMNS = (
     "firm_exempt_supplies",
     "firm_input_vat",
 )
+#: Columns of the paybill table that must be finite and non-negative too.
+_PAYBILL_NON_NEGATIVE_COLUMNS = UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS
 
 
 def _require(frame: pd.DataFrame, columns: tuple[str, ...], label: str) -> None:
@@ -446,7 +484,10 @@ def to_policyengine_uk_firm_table(
     ``UK_FIRM_TABLE_COLUMNS``, ordered by ``firm_id``. When ``firms`` also
     carries both ``UK_FIRM_ONS_ATTRIBUTE_COLUMNS`` it returns
     ``UK_FIRM_EXTENDED_TABLE_COLUMNS``; one without the other raises
-    ``ValueError``. Columns:
+    ``ValueError``. When attributed ``firms`` also carry ``firm_paybill``
+    (pounds a year, from ``firm_paybill.assign_uk_firm_paybill``) it returns
+    ``UK_FIRM_PAYBILL_TABLE_COLUMNS``; ``firm_paybill`` without the ONS
+    attribute columns raises ``ValueError``. Columns:
 
     - turnover and input costs are the generator's thousands of pounds times
       1000;
@@ -463,7 +504,8 @@ def to_policyengine_uk_firm_table(
       ``firm_in_england`` is an English region and ``firm_is_public_body`` an
       ONS status in ``UK_FIRM_PUBLIC_BODY_ONS_LEGAL_STATUSES``. A code outside
       those maps raises: nothing falls back to policyengine-uk's London or
-      company defaults.
+      company defaults;
+    - paybill only: ``firm_paybill`` is carried from the row unchanged.
 
     The result passes ``validate_uk_firm_table``.
     """
@@ -477,6 +519,13 @@ def to_policyengine_uk_firm_table(
             "both."
         )
     extended = bool(present)
+    paybill = "firm_paybill" in firms.columns
+    if paybill and not extended:
+        raise ValueError(
+            "UK firm population carries firm_paybill without "
+            f"{list(UK_FIRM_ONS_ATTRIBUTE_COLUMNS)}; the paybill export extends "
+            "the attribute one."
+        )
     if not np.isfinite(threshold_k) or threshold_k <= 0:
         raise ValueError("UK firm threshold_k must be positive.")
     for column in ("vat_scope", "vat_registered", "in_frame"):
@@ -520,7 +569,12 @@ def to_policyengine_uk_firm_table(
             "ons_legal_status": status,
             "ons_region_code": region_code,
         }
-        table = table.assign(**attributes)[list(UK_FIRM_EXTENDED_TABLE_COLUMNS)]
+        if paybill:
+            attributes["firm_paybill"] = ordered["firm_paybill"].to_numpy(np.float64)
+            columns = UK_FIRM_PAYBILL_TABLE_COLUMNS
+        else:
+            columns = UK_FIRM_EXTENDED_TABLE_COLUMNS
+        table = table.assign(**attributes)[list(columns)]
     validate_uk_firm_table(table)
     return table
 
@@ -528,8 +582,9 @@ def to_policyengine_uk_firm_table(
 def validate_uk_firm_table(df: pd.DataFrame) -> None:
     """Raise ``ValueError`` unless ``df`` meets the UK firm table contract.
 
-    The contract: exactly ``UK_FIRM_TABLE_COLUMNS`` or exactly
-    ``UK_FIRM_EXTENDED_TABLE_COLUMNS``, in order; no missing value in any
+    The contract: exactly ``UK_FIRM_TABLE_COLUMNS``,
+    ``UK_FIRM_EXTENDED_TABLE_COLUMNS`` or ``UK_FIRM_PAYBILL_TABLE_COLUMNS``,
+    in order; no missing value in any
     column (policyengine-uk rejects NaN); integer ``firm_id``, unique and
     ascending; finite non-negative weights and money; non-negative integer
     employees; ``SICSection`` member names; boolean flags; supplies that
@@ -537,14 +592,20 @@ def validate_uk_firm_table(df: pd.DataFrame) -> None:
     registered firms. The extended table also needs ONS legal status codes,
     GSS region codes, and ``firm_legal_form``, ``firm_region``,
     ``firm_in_england`` and ``firm_is_public_body`` as those codes give them.
+    The paybill table also needs a finite non-negative ``firm_paybill`` that
+    is zero for a firm without employees.
     """
 
     columns = tuple(df.columns)
-    if columns not in (UK_FIRM_TABLE_COLUMNS, UK_FIRM_EXTENDED_TABLE_COLUMNS):
+    layouts = (
+        UK_FIRM_TABLE_COLUMNS,
+        UK_FIRM_EXTENDED_TABLE_COLUMNS,
+        UK_FIRM_PAYBILL_TABLE_COLUMNS,
+    )
+    if columns not in layouts:
         raise ValueError(
-            f"UK firm table columns {list(df.columns)} are not "
-            f"{list(UK_FIRM_TABLE_COLUMNS)} or "
-            f"{list(UK_FIRM_EXTENDED_TABLE_COLUMNS)}."
+            f"UK firm table columns {list(df.columns)} are not one of "
+            f"{[list(layout) for layout in layouts]}."
         )
     missing = [column for column in columns if df[column].isna().any()]
     if missing:
@@ -575,8 +636,15 @@ def validate_uk_firm_table(df: pd.DataFrame) -> None:
     voluntary = df["firm_vat_voluntarily_registered"].to_numpy(bool)
     if np.any(voluntary & ~df["vat_registered"].to_numpy(bool)):
         raise ValueError("UK firm voluntary registration needs vat_registered.")
-    if columns == UK_FIRM_EXTENDED_TABLE_COLUMNS:
+    if columns != UK_FIRM_TABLE_COLUMNS:
         _validate_attribute_columns(df)
+    if columns == UK_FIRM_PAYBILL_TABLE_COLUMNS:
+        for column in _PAYBILL_NON_NEGATIVE_COLUMNS:
+            values = df[column].to_numpy(np.float64)
+            if not np.all(np.isfinite(values)) or np.any(values < 0):
+                raise ValueError(f"UK firm {column} must be finite and non-negative.")
+        if np.any(df["firm_paybill"].to_numpy(np.float64)[employees.to_numpy() == 0]):
+            raise ValueError("UK firm firm_paybill must be zero without employees.")
 
 
 def _validate_attribute_columns(df: pd.DataFrame) -> None:
@@ -614,6 +682,9 @@ __all__ = [
     "UK_FIRM_MICROCOSM_ONLY_COLUMNS",
     "UK_FIRM_ONS_ATTRIBUTE_COLUMNS",
     "UK_FIRM_ONS_LEGAL_STATUS_TO_LEGAL_FORM",
+    "UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS",
+    "UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS",
+    "UK_FIRM_PAYBILL_TABLE_COLUMNS",
     "UK_FIRM_POLICYENGINE_UK_COLUMNS",
     "UK_FIRM_POLICYENGINE_UK_INPUT_STATUS",
     "UK_FIRM_PUBLIC_BODY_ONS_LEGAL_STATUSES",

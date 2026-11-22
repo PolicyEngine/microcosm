@@ -44,7 +44,9 @@ Region and legal status are drawn after calibration from ONS UK Business 2025
 Tables 8 and 13 (`uk_runtime/firm_attributes.py`), with Table 15 held out, and
 feed policyengine-uk's `firm_region`, `firm_in_england`, `firm_legal_form` and
 `firm_is_public_body`. `firm_table.UK_FIRM_POLICYENGINE_UK_INPUT_STATUS` records
-which of policyengine-uk's 52 firm inputs microcosm sets; the rest (paybill,
+which of policyengine-uk's 60 firm inputs (at `ca037fad2`) microcosm sets.
+`firm_paybill` is an opt-in assumed input (headcount × ONS ASHE section mean
+pay, `uk_runtime/firm_paybill.py`); the rest (the pay distribution within it,
 profit, capital expenditure, R&D, rateable value and several flags) wait for
 sources. An engine-free test checks the export against a committed snapshot of
 policyengine-uk's firm variables. Value-free target candidates for the next

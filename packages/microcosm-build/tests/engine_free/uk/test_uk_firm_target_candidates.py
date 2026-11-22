@@ -134,6 +134,15 @@ _NOT_SET_WITHOUT_CANDIDATE = {
     "firm_uses_flat_rate_scheme",
     "firm_zero_rated_class_1_earnings",
     "firm_zero_rated_supplies",
+    # Pay-distribution and minimum-wage inputs (policyengine-uk ca037fad2).
+    "firm_employees_above_auto_enrolment_upper_limit",
+    "firm_employees_below_auto_enrolment_earnings_trigger",
+    "firm_employees_below_secondary_threshold",
+    "firm_low_paid_hours",
+    "firm_low_paid_paybill",
+    "firm_paybill_above_auto_enrolment_upper_limit",
+    "firm_paybill_below_auto_enrolment_earnings_trigger",
+    "firm_paybill_below_secondary_threshold",
 }
 
 

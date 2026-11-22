@@ -12,6 +12,7 @@ from functools import cache
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.uk_runtime.firm_attributes import (
     assign_uk_firm_attributes,
@@ -24,9 +25,15 @@ from microcosm.build.uk_runtime.firm_generation import (
     generate_uk_firm_population,
     read_uk_firm_source_data,
 )
+from microcosm.build.uk_runtime.firm_paybill import (
+    assign_uk_firm_paybill,
+    read_uk_firm_paybill_source,
+    uk_firm_paybill_fallback_counts,
+)
 from microcosm.build.uk_runtime.firm_rules import UKFirmRuleOutputs
 from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_EXTENDED_TABLE_COLUMNS,
+    UK_FIRM_PAYBILL_TABLE_COLUMNS,
     UK_FIRM_TABLE_COLUMNS,
     to_policyengine_uk_firm_table,
     validate_uk_firm_table,
@@ -139,3 +146,31 @@ def test_weighted_region_by_legal_status_tracks_held_out_table_15() -> None:
     company = modelled.xs(1, level="legal_status").sum()
     official_company = official.xs(1, level="legal_status").sum()
     assert abs(company - official_company) < 0.02
+
+
+def test_paybill_export_tracks_ashe_jobs_times_mean_pay() -> None:
+    """A coarse headcount check: weighted paybill near ASHE jobs x mean pay.
+
+    Not calibrated: headcount x section mean, with proprietors and
+    out-of-frame traders included. ASHE 2025's all-employees row gives
+    24,889 thousand jobs at a mean of 40,444.9 pounds, about 1.007 trillion
+    pounds; the band only catches gross failures, such as a headcount or
+    unit error. Every firm here has a published section, so none falls back
+    to the all-employees mean.
+    """
+
+    source = read_uk_firm_paybill_source(FIXTURES / "firm_paybill_2024")
+    firms = _with_attributes()
+    firms = firms.assign(firm_paybill=assign_uk_firm_paybill(firms, source))
+    table = to_policyengine_uk_firm_table(
+        firms, threshold_k=_generated().config.vat_threshold
+    )
+
+    assert tuple(table.columns) == UK_FIRM_PAYBILL_TABLE_COLUMNS
+    validate_uk_firm_table(table)
+    weighted = float((table["firm_weight"] * table["firm_paybill"]).sum())
+    ashe = 24_889_000 * 40_444.9
+    assert 0.85 < weighted / ashe < 1.25
+    counts = uk_firm_paybill_fallback_counts(table, source).set_index("level")
+    assert float(counts["weighted_paybill_gbp"].sum()) == pytest.approx(weighted)
+    assert int(counts.loc["all_employees", "firms"]) == 0

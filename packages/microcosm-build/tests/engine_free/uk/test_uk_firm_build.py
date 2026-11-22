@@ -27,17 +27,27 @@ from microcosm.build.uk_runtime.firm_build import (
     build_uk_firm_dataset,
 )
 from microcosm.build.uk_runtime.firm_generation import UKFirmGenerationConfig
+from microcosm.build.uk_runtime.firm_paybill import (
+    UK_FIRM_PAYBILL_METHOD,
+    UK_FIRM_PAYBILL_STATUS,
+    UK_FIRM_PAYBILL_TAX_YEAR,
+)
 from microcosm.build.uk_runtime.firm_rules import (
     UKFirmRuleOutputs,
     rule_period_for_vintage,
 )
-from microcosm.build.uk_runtime.firm_table import validate_uk_firm_table
+from microcosm.build.uk_runtime.firm_table import (
+    UK_FIRM_EXTENDED_TABLE_COLUMNS,
+    UK_FIRM_PAYBILL_TABLE_COLUMNS,
+    validate_uk_firm_table,
+)
 from test_support.paths import paths_for
 
 PATHS = paths_for("microcosm-build")
 FIXTURES = PATHS.tests / "fixtures" / "uk"
 PROCESSED = FIXTURES / "firm_2024_25"
 ATTRIBUTES = FIXTURES / "firm_attributes_2025"
+PAYBILL = FIXTURES / "firm_paybill_2024"
 TOOL = PATHS.repository / "tools" / "build_uk_firms.py"
 SEED = 42
 ITERATIONS = 20
@@ -71,7 +81,7 @@ def _config(rules: _StandardRateDouble) -> UKFirmGenerationConfig:
     ).with_vintage("2024-25")
 
 
-def _build(output_dir: Path) -> dict:
+def _build(output_dir: Path, paybill_dir: Path | None = None) -> dict:
     rules = _StandardRateDouble()
     return build_uk_firm_dataset(
         processed_dir=PROCESSED,
@@ -79,6 +89,7 @@ def _build(output_dir: Path) -> dict:
         output_dir=output_dir,
         rules=rules,
         config=_config(rules),
+        paybill_dir=paybill_dir,
     )
 
 
@@ -154,6 +165,76 @@ def test_receipt_records_the_run(builds) -> None:
         row["attribute"] for row in receipt["uk_firm_attribute_fallback_counts"]
     }
     assert attributes == {"ons_region_code", "ons_legal_status"}
+    # Without a paybill source nothing paybill-shaped is written.
+    assert receipt["output"]["columns"] == list(UK_FIRM_EXTENDED_TABLE_COLUMNS)
+    assert "paybill" not in receipt["inputs"]
+    assert "weighted_paybill_gbp" not in receipt["output"]
+    assert "uk_firm_paybill_fallback_counts" not in receipt
+    assert "uk_firm_paybill" not in receipt
+    assert "uk_firm_paybill_in_frame" not in receipt
+
+
+def test_paybill_build_sets_firm_paybill_and_records_its_source(
+    builds, tmp_path: Path
+) -> None:
+    built = _build(tmp_path / "paybill", paybill_dir=PAYBILL)
+    table = built["table"]
+    receipt = json.loads(built["receipt_path"].read_text(encoding="utf-8"))
+    base = builds[0]["table"]
+
+    assert tuple(table.columns) == UK_FIRM_PAYBILL_TABLE_COLUMNS
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    # The paybill adds a column and changes nothing else.
+    pd.testing.assert_frame_equal(table[list(UK_FIRM_EXTENDED_TABLE_COLUMNS)], base)
+    assert receipt["inputs"]["paybill"] == {
+        "ashe_section_annual_pay.csv": _sha256(PAYBILL / "ashe_section_annual_pay.csv")
+    }
+    weighted = float((table["firm_weight"] * table["firm_paybill"]).sum())
+    assert receipt["output"]["weighted_paybill_gbp"] == pytest.approx(weighted)
+    levels = {row["level"]: row for row in receipt["uk_firm_paybill_fallback_counts"]}
+    assert set(levels) == {"section", "all_employees"}
+    assert sum(row["firms"] for row in levels.values()) == len(table)
+    assert sum(row["weighted_paybill_gbp"] for row in levels.values()) == pytest.approx(
+        weighted
+    )
+    assert receipt["uk_firm_paybill"] == {
+        "status": UK_FIRM_PAYBILL_STATUS,
+        "method": UK_FIRM_PAYBILL_METHOD,
+        "tax_year": UK_FIRM_PAYBILL_TAX_YEAR,
+    }
+    assert receipt["uk_firm_paybill"]["status"] == "assumed"
+    split = {row["in_frame"]: row for row in receipt["uk_firm_paybill_in_frame"]}
+    assert set(split) == {True, False}
+    for flag, row in split.items():
+        rows = table[table["in_frame"] == flag]
+        assert row["weighted_paybill_gbp"] == pytest.approx(
+            float((rows["firm_weight"] * rows["firm_paybill"]).sum())
+        )
+        assert row["weighted_employees"] == pytest.approx(
+            float((rows["firm_weight"] * rows["firm_employees"]).sum())
+        )
+    assert sum(row["weighted_paybill_gbp"] for row in split.values()) == pytest.approx(
+        weighted
+    )
+    assert str(PAYBILL) not in built["receipt_path"].read_text(encoding="utf-8")
+
+
+def test_paybill_build_refuses_another_vintage(tmp_path: Path) -> None:
+    """The ASHE 2025 table is tax year 2024-25; another vintage is refused
+    before anything is generated or written."""
+
+    rules = _StandardRateDouble()
+    config = _config(rules).with_vintage("2023-24")
+    with pytest.raises(ValueError, match="tax year 2024-25"):
+        build_uk_firm_dataset(
+            processed_dir=PROCESSED,
+            attributes_dir=ATTRIBUTES,
+            output_dir=tmp_path / "out",
+            rules=rules,
+            config=config,
+            paybill_dir=PAYBILL,
+        )
+    assert not (tmp_path / "out").exists()
 
 
 def _comparable(receipt: dict) -> dict:

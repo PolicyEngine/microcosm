@@ -2,7 +2,8 @@
 
 Runs ``microcosm.build.uk_runtime.firm_build.build_uk_firm_dataset`` on the
 processed ONS/HMRC tables in ``--processed-dir`` and the ONS attribute tables
-in ``--attributes-dir``, and writes ``uk_firms.parquet`` and
+in ``--attributes-dir`` (and, with ``--paybill-dir``, the ONS ASHE section
+pay table that sets ``firm_paybill``), and writes ``uk_firms.parquet`` and
 ``uk_firms.receipt.json`` to ``--out-dir``. Nothing is published or uploaded.
 
 ``--rules`` picks the VAT rules and has no default:
@@ -33,6 +34,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--processed-dir", type=Path, required=True)
     parser.add_argument("--attributes-dir", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument(
+        "--paybill-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS ASHE section pay CSV; sets firm_paybill "
+            "(tax year 2024-25 only, so --vintage 2024-25; omit to leave it unset)"
+        ),
+    )
     parser.add_argument("--rules", choices=RULES_CHOICES, required=True)
     parser.add_argument(
         "--axiom-artifact",
@@ -90,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         output_dir=args.out_dir,
         rules=rules,
         config=_config(args, rules),
+        paybill_dir=args.paybill_dir,
     )
     receipt = built["receipt"]
     print(

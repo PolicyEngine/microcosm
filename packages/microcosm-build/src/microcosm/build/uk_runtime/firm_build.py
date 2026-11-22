@@ -6,16 +6,21 @@
 2. ``generate_uk_firm_population`` draws and calibrates the firms, with VAT
    liability from the ``rules`` it is given;
 3. ``assign_uk_firm_attributes`` draws ONS region and legal status;
-4. ``to_policyengine_uk_firm_table`` exports policyengine-uk firm columns;
-5. ``validate_uk_firm_table`` checks the table.
+4. with a ``paybill_dir``, ``assign_uk_firm_paybill`` sets ``firm_paybill``
+   to employees times the ONS ASHE section mean annual gross pay;
+5. ``to_policyengine_uk_firm_table`` exports policyengine-uk firm columns;
+6. ``validate_uk_firm_table`` checks the table.
 
 It writes ``uk_firms.parquet`` and ``uk_firms.receipt.json`` to the output
 directory and nothing else: there is no publication, staging or upload path.
 The receipt holds the inputs' hashes keyed by role and file name, the
 configuration's JSON-safe fields, the output's hash and shape, the
 calibration's accuracy figures, the attribute fallback counts and the
-provenance the rules reported. It holds no timestamp, hostname or absolute
-path, so two builds from the same inputs write the same receipt.
+provenance the rules reported; with a ``paybill_dir``, also the paybill CSV's
+hash (``inputs.paybill``), the paybill fallback counts, the weighted
+paybill, its in-frame split (``uk_firm_paybill_in_frame``) and its status
+(``uk_firm_paybill``). Without one, the receipt has no paybill key at all.
+It holds no timestamp, hostname or absolute path, so two builds from the same inputs write the same receipt.
 """
 
 from __future__ import annotations
@@ -41,6 +46,14 @@ from microcosm.build.uk_runtime.firm_generation import (
     UKFirmGenerationConfig,
     generate_uk_firm_population,
     read_uk_firm_source_data,
+)
+from microcosm.build.uk_runtime.firm_paybill import (
+    UK_FIRM_PAYBILL_METHOD,
+    UK_FIRM_PAYBILL_STATUS,
+    UK_FIRM_PAYBILL_TAX_YEAR,
+    assign_uk_firm_paybill,
+    read_uk_firm_paybill_source,
+    uk_firm_paybill_fallback_counts,
 )
 from microcosm.build.uk_runtime.firm_rules import (
     UKFirmRuleOutputs,
@@ -83,12 +96,18 @@ def build_uk_firm_dataset(
     output_dir: str | Path,
     rules: UKFirmRules,
     config: UKFirmGenerationConfig,
+    paybill_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build the UK firm table and its receipt into ``output_dir``.
 
     ``config`` is run with ``firm_rules`` set to ``rules`` (wrapped so the
     receipt can record the provenance it reports); a ``config`` that already
-    carries other firm rules raises ``ValueError``. Returns ``table`` (the
+    carries other firm rules raises ``ValueError``. ``paybill_dir``, when
+    given, holds the ONS ASHE section pay CSV
+    (``tests/fixtures/uk/firm_paybill_2024``) and adds ``firm_paybill`` to
+    the table; without it the table and receipt are as before. The paybill
+    table is for tax year ``UK_FIRM_PAYBILL_TAX_YEAR``; a ``paybill_dir``
+    with any other ``config.data_vintage`` raises ``ValueError``. Returns ``table`` (the
     validated policyengine-uk firm table), ``receipt`` (the dict written as
     JSON), ``result`` (the ``UKFirmGenerationResult``), ``table_path`` and
     ``receipt_path``.
@@ -97,6 +116,11 @@ def build_uk_firm_dataset(
     if config.firm_rules is not None and config.firm_rules is not rules:
         raise ValueError(
             "config.firm_rules differs from rules; pass the rules once, as rules."
+        )
+    if paybill_dir is not None and config.data_vintage != UK_FIRM_PAYBILL_TAX_YEAR:
+        raise ValueError(
+            f"The UK firm paybill table is for tax year {UK_FIRM_PAYBILL_TAX_YEAR}; "
+            f"config.data_vintage is {config.data_vintage}."
         )
     processed = Path(processed_dir)
     attributes = Path(attributes_dir)
@@ -113,6 +137,10 @@ def build_uk_firm_dataset(
     firms = assign_uk_firm_attributes(
         result.firms, attribute_source, seed=result.config.seed
     )
+    paybill_source = None
+    if paybill_dir is not None:
+        paybill_source = read_uk_firm_paybill_source(paybill_dir)
+        firms = firms.assign(firm_paybill=assign_uk_firm_paybill(firms, paybill_source))
     table = to_policyengine_uk_firm_table(
         firms, threshold_k=float(result.config.vat_threshold)
     )
@@ -158,6 +186,37 @@ def build_uk_firm_dataset(
         "uk_firm_attribute_fallback_counts": _records(fallback),
         "rules_provenance": recorder.provenance,
     }
+    if paybill_source is not None:
+        receipt["inputs"]["paybill"] = {paybill_source.file: paybill_source.sha256}
+        receipt["output"]["weighted_paybill_gbp"] = float(
+            (table["firm_weight"] * table["firm_paybill"]).sum()
+        )
+        receipt["uk_firm_paybill_fallback_counts"] = _records(
+            uk_firm_paybill_fallback_counts(table, paybill_source)
+        )
+        in_frame = table["in_frame"].to_numpy(bool)
+        weight = table["firm_weight"].to_numpy(np.float64)
+        receipt["uk_firm_paybill_in_frame"] = [
+            {
+                "in_frame": flag,
+                "weighted_employees": float(
+                    (weight * table["firm_employees"].to_numpy(np.float64))[
+                        in_frame == flag
+                    ].sum()
+                ),
+                "weighted_paybill_gbp": float(
+                    (weight * table["firm_paybill"].to_numpy(np.float64))[
+                        in_frame == flag
+                    ].sum()
+                ),
+            }
+            for flag in (True, False)
+        ]
+        receipt["uk_firm_paybill"] = {
+            "status": UK_FIRM_PAYBILL_STATUS,
+            "method": UK_FIRM_PAYBILL_METHOD,
+            "tax_year": UK_FIRM_PAYBILL_TAX_YEAR,
+        }
     receipt = _json_safe(receipt)
     receipt_path = output / UK_FIRM_RECEIPT_FILE
     receipt_path.write_text(

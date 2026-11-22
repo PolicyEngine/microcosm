@@ -24,6 +24,8 @@ from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_MICROCOSM_COLUMNS,
     UK_FIRM_MICROCOSM_ONLY_COLUMNS,
     UK_FIRM_ONS_LEGAL_STATUS_TO_LEGAL_FORM,
+    UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS,
+    UK_FIRM_PAYBILL_TABLE_COLUMNS,
     UK_FIRM_POLICYENGINE_UK_COLUMNS,
     UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
     UK_FIRM_REGION_CODE_TO_REGION,
@@ -54,7 +56,7 @@ def _inputs() -> set[str]:
     return set(_snapshot()["firm_input_names"])
 
 
-def _firms(*, attributes: bool) -> pd.DataFrame:
+def _firms(*, attributes: bool, paybill: bool = False) -> pd.DataFrame:
     firms = pd.DataFrame(
         {
             "firm_id": np.array([4, 2, 1, 3], dtype=np.int64),
@@ -77,6 +79,9 @@ def _firms(*, attributes: bool) -> pd.DataFrame:
     if attributes:
         firms["ons_legal_status"] = np.array([1, 2, 5, 7], dtype=np.int64)
         firms["ons_region_code"] = ["E12000007", "W92000004", "S92000003", "N92000002"]
+    if paybill:
+        # Headcount x a pay per head; the source is test_uk_firm_paybill's.
+        firms["firm_paybill"] = firms["employment"].to_numpy(np.float64) * 30000.0
     return firms
 
 
@@ -99,7 +104,12 @@ def test_snapshot_records_the_policyengine_uk_checkout() -> None:
 
 
 @pytest.mark.parametrize(
-    "columns", [UK_FIRM_TABLE_COLUMNS, UK_FIRM_EXTENDED_TABLE_COLUMNS]
+    "columns",
+    [
+        UK_FIRM_TABLE_COLUMNS,
+        UK_FIRM_EXTENDED_TABLE_COLUMNS,
+        UK_FIRM_PAYBILL_TABLE_COLUMNS,
+    ],
 )
 def test_exported_firm_columns_are_policyengine_uk_firm_inputs(columns) -> None:
     firm_columns = [column for column in columns if column.startswith("firm_")]
@@ -117,7 +127,8 @@ def test_input_status_covers_exactly_the_snapshot_inputs() -> None:
         for name, status in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS.items()
         if status in ("set", "derived", "assumed")
     }
-    assert exported == set(UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS)
+    assert exported == set(UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS)
+    assert set(UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS) <= exported
     assert set(UK_FIRM_POLICYENGINE_UK_COLUMNS) <= exported
 
 
@@ -155,12 +166,20 @@ def test_microcosm_only_columns_collide_with_no_policyengine_uk_variable() -> No
 _DTYPE_KINDS = {"float": "f", "int": "i", "bool": "b"}
 
 
-@pytest.mark.parametrize("attributes", [False, True])
-def test_export_dtypes_match_policyengine_uk_value_types(attributes) -> None:
+@pytest.mark.parametrize(
+    ("attributes", "paybill", "expected"),
+    [
+        (False, False, UK_FIRM_TABLE_COLUMNS),
+        (True, False, UK_FIRM_EXTENDED_TABLE_COLUMNS),
+        (True, True, UK_FIRM_PAYBILL_TABLE_COLUMNS),
+    ],
+)
+def test_export_dtypes_match_policyengine_uk_value_types(
+    attributes, paybill, expected
+) -> None:
     table = to_policyengine_uk_firm_table(
-        _firms(attributes=attributes), threshold_k=90.0
+        _firms(attributes=attributes, paybill=paybill), threshold_k=90.0
     )
-    expected = UK_FIRM_EXTENDED_TABLE_COLUMNS if attributes else UK_FIRM_TABLE_COLUMNS
     assert tuple(table.columns) == expected
 
     for column in (c for c in table.columns if c.startswith("firm_")):

@@ -19,6 +19,9 @@ from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_MICROCOSM_ONLY_COLUMNS,
     UK_FIRM_ONS_ATTRIBUTE_COLUMNS,
     UK_FIRM_ONS_LEGAL_STATUS_TO_LEGAL_FORM,
+    UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS,
+    UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS,
+    UK_FIRM_PAYBILL_TABLE_COLUMNS,
     UK_FIRM_POLICYENGINE_UK_COLUMNS,
     UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
     UK_FIRM_PUBLIC_BODY_ONS_LEGAL_STATUSES,
@@ -314,6 +317,17 @@ def test_extended_columns_add_the_attributes_after_the_base_ones() -> None:
         *UK_FIRM_MICROCOSM_ONLY_COLUMNS,
     )
     assert "region" not in UK_FIRM_EXTENDED_TABLE_COLUMNS
+    # The paybill table adds firm_paybill after the extended policyengine-uk
+    # columns and keeps the Microcosm-only tail.
+    assert UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS == ("firm_paybill",)
+    assert UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS == (
+        *UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS,
+        "firm_paybill",
+    )
+    assert UK_FIRM_PAYBILL_TABLE_COLUMNS == (
+        *UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS,
+        *UK_FIRM_MICROCOSM_ONLY_COLUMNS,
+    )
     assert len(set(UK_FIRM_EXTENDED_TABLE_COLUMNS)) == len(
         UK_FIRM_EXTENDED_TABLE_COLUMNS
     )
@@ -439,7 +453,7 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
     assert set(UK_FIRM_POLICYENGINE_UK_INPUT_STATUS.values()) <= set(
         UK_FIRM_INPUT_STATUSES
     )
-    assert set(UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS) <= set(
+    assert set(UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS) <= set(
         UK_FIRM_POLICYENGINE_UK_INPUT_STATUS
     )
     exported = {
@@ -447,14 +461,21 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         for name, status in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS.items()
         if status in ("set", "derived", "assumed")
     }
-    assert exported == set(UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS)
+    assert exported == set(UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS)
     # firm_in_england is the enterprise's region standing in for its
-    # property's location, so it is an assumption, not a derivation.
+    # property's location, so it is an assumption, not a derivation; the
+    # paybill gives every firm its section's mean pay per head.
     assert {
         name
         for name, status in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS.items()
         if status == "assumed"
-    } == {"firm_input_vat", "firm_legal_form", "firm_is_public_body", "firm_in_england"}
+    } == {
+        "firm_input_vat",
+        "firm_legal_form",
+        "firm_is_public_body",
+        "firm_in_england",
+        "firm_paybill",
+    }
     assert all(
         name.startswith("firm_") for name in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS
     )
