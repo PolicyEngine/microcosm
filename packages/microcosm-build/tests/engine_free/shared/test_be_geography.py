@@ -3,8 +3,9 @@
 ``be/transport_atomic_geography_support.json`` has one row per NIS 2025 commune
 that the 565 ``atomic_geography_support`` pre-calibration rows name, and
 ``be/geography_assignment.json`` draws one commune per household nationally by
-Statbel population, then derives the four layers geography.yaml lists. Belgium
-declares no transport graph, so nothing reads either file yet. Every
+Statbel population, then derives the four layers geography.yaml lists. The
+package and transport spec loaders read and hash both files, but Belgium
+declares no transport graph, so no executable graph consumes them yet. Every
 number-shaping choice is a proposal under d1902 (METHOD-CARD-BE row BE-MC12).
 
 The documents, their source strings and the NIS-code hierarchy are literals
@@ -66,6 +67,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.kernel import ArtifactValue, NumericScope
+from microcosm.graph.randomness import keyed_uniform
 from test_support.paths import paths_for
 from tools import build_be_geography as builder
 from tools import extract_be_geography_fixture as extractor
@@ -609,6 +611,30 @@ def _assign_derive_gate(chain, households: int = 5000):
     return frame
 
 
+def _independent_draw(chain, household: int) -> str:
+    """One household's commune, drawn here rather than by the shared kernel.
+
+    The uniform is keyed as the draw key is documented (household, system,
+    stage level, canonical spec sha, support sha). The weights are the
+    fixture's commune counts, not the support's, cumulated in code order, and
+    the integer inverse CDF picks the first commune whose running total passes
+    the threshold.
+    """
+    definition = hashlib.sha256(canonical_json(json.loads(chain.definition))).digest()
+    (u,) = keyed_uniform(
+        stream=tuple(ASSIGNMENT["stream"]),
+        keys=[(household, SYSTEM_ID, "area", definition.hex(), chain.support.sha256)],
+    )
+    weights = _fixture_values(_COMMUNE_RECORD_SET)
+    threshold = (int(u * 2**53) * sum(weights.values())) // 2**53
+    running = 0
+    for code in sorted(weights):
+        running += weights[code]
+        if running > threshold:
+            return code
+    raise AssertionError("The threshold passed every commune.")
+
+
 def _gate(chain, frame):
     return _run_geography(
         chain,
@@ -669,6 +695,15 @@ def test_committed_pair_runs_support_assign_derive_and_gate_on_the_fixture(chain
     frame = _assign_derive_gate(chain)
     outputs = ASSIGNMENT["outputs"]
     assert set(frame[outputs["system"]]) == {SYSTEM_ID}
+    # The draw follows Statbel's weights: an independent inverse CDF gives the
+    # first households' communes, and the regions of all 5,000 draws come close
+    # to the NUTS1 shares (a uniform draw would give BE3 about 46%, not 31%).
+    first = [_independent_draw(chain, household) for household in range(1, 6)]
+    assert frame[outputs["area"]].head(5).tolist() == first
+    assert first == ["62063", "36015", "62032", "55086", "11002"]
+    shares = frame["region_nuts1"].value_counts(normalize=True)
+    for region, population in _NUTS1_TOTALS.items():
+        assert abs(shares[region] - population / _TOTAL) < 0.03, region
     index = {str(area): i for i, area in enumerate(arrays["area"])}
     rows = frame[outputs["area"]].map(index)
     assert rows.notna().all()
@@ -705,6 +740,19 @@ def test_fixture_is_the_recorded_583_artifact_lines():
     assert [(fact["geography"]["id"], fact["value"]) for fact in facts] == [
         (entry["geography_id"], entry["value"]) for entry in provenance["lines"]
     ]
+    # Each entry names its fact's record set, at a line after the one before.
+    labels = {_COMMUNE_RECORD_SET: "commune_total", _NUTS1_RECORD_SET: "nuts1_age_sex"}
+    assert extractor.RECORD_SETS == {
+        _COMMUNE_RECORD_SET: ("commune_total", 565),
+        _NUTS1_RECORD_SET: ("nuts1_age_sex", 18),
+    }
+    assert provenance["record_sets"] == list(labels)
+    assert [entry["record_set"] for entry in provenance["lines"]] == [
+        labels[fact["layout"]["record_set_id"]] for fact in facts
+    ]
+    numbers = [entry["artifact_line"] for entry in provenance["lines"]]
+    assert numbers[0] >= 1
+    assert numbers == sorted(set(numbers))
     assert sum(_fixture_values(_COMMUNE_RECORD_SET).values()) == _TOTAL
     assert _fixture_values(_NUTS1_RECORD_SET) == _NUTS1_TOTALS
     # The refresh rule: the fixture comes from the artifact the feed pins.
@@ -804,16 +852,81 @@ def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
         assert committed[key] == provenance[key], key
 
 
-def test_fixture_extractor_refuses_an_artifact_the_feed_does_not_pin(tmp_path):
+def test_fixture_extractor_refuses_an_artifact_the_feed_does_not_pin(
+    tmp_path, monkeypatch
+):
     artifact, feed = _fake_artifact(
         tmp_path, [_fact_line(_COMMUNE_RECORD_SET, "11001", 7)]
     )
     for key in ("facts_sha256", "manifest_sha256"):
         with pytest.raises(ValueError, match="is not the artifact"):
             extractor.extract(artifact, {**feed, key: "0" * 64})
-    # The pinned artifact must also hold 565 commune lines and 18 NUTS1 lines.
+    # The pinned artifact must also hold 565 commune lines and 18 NUTS1 lines,
+    # no fewer and no more.
     with pytest.raises(ValueError, match="Selected line counts"):
         extractor.extract(artifact, feed)
+    monkeypatch.setattr(
+        extractor,
+        "RECORD_SETS",
+        {
+            _COMMUNE_RECORD_SET: ("commune_total", 0),
+            _NUTS1_RECORD_SET: ("nuts1_age_sex", 0),
+        },
+    )
+    with pytest.raises(ValueError, match="Selected line counts"):
+        extractor.extract(artifact, feed)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        extractor.MARKER + b" is not JSON\n",
+        json.dumps({"layout": {"record_set_id": _COMMUNE_RECORD_SET}}).encode() + b"\n",
+    ],
+    ids=["not-json", "no-geography"],
+)
+def test_fixture_extractor_refuses_a_line_that_is_not_a_fact_after_the_pin_check(
+    tmp_path, line
+):
+    artifact, feed = _fake_artifact(tmp_path, [line])
+    # An artifact the feed does not pin is refused as such, whatever it holds.
+    with pytest.raises(ValueError, match="is not the artifact"):
+        extractor.extract(artifact, {**feed, "facts_sha256": "0" * 64})
+    with pytest.raises(ValueError, match="Artifact line 1 is not a fact"):
+        extractor.extract(artifact, feed)
+
+
+def test_fixture_extractor_selects_from_the_bytes_it_checks(tmp_path, monkeypatch):
+    """A facts file replaced after it is first opened cannot supply the lines."""
+    monkeypatch.setattr(
+        extractor,
+        "RECORD_SETS",
+        {
+            _COMMUNE_RECORD_SET: ("commune_total", 1),
+            _NUTS1_RECORD_SET: ("nuts1_age_sex", 0),
+        },
+    )
+    pinned = _fact_line(_COMMUNE_RECORD_SET, "11001", 7)
+    artifact, feed = _fake_artifact(tmp_path, [pinned])
+    facts = artifact / "consumer_facts.jsonl"
+    replacement = tmp_path / "replacement.jsonl"
+    replacement.write_bytes(_fact_line(_COMMUNE_RECORD_SET, "11001", 8))
+    opened = []
+    real_open = Path.open
+
+    def open_then_replace(self, *args, **kwargs):
+        handle = real_open(self, *args, **kwargs)
+        if self == facts:
+            opened.append(self)
+            if len(opened) == 1:
+                # A new inode: the handle just opened keeps the pinned bytes.
+                os.replace(replacement, facts)
+        return handle
+
+    monkeypatch.setattr(Path, "open", open_then_replace)
+    files = extractor.extract(artifact, feed)
+    assert len(opened) == 1
+    assert gzip.decompress(files[extractor.FIXTURE]) == pinned
 
 
 # --- the builder ------------------------------------------------------------
@@ -834,12 +947,33 @@ _BE335 = "Arr. Verviers — communes francophones"
 _SYNTHETIC = [
     ("11001", "10000", "02000", [("11001", "BE211")]),
     ("21001", "04000", "04000", [("21001", "BE100")]),
-    ("46029", "40000", "02000", [("44011", "BE234"), ("46020", "BE236")]),
-    ("46030", "40000", "02000", [("46003", "BE236"), ("11056", "BE211")]),
+    ("46029", "40000", "02000", [("44045", "BE234"), ("46014", "BE236")]),
+    # The three-part merger of Beveren, Kruibeke and Zwijndrecht.
+    (
+        "46030",
+        "40000",
+        "02000",
+        [("46003", "BE236"), ("46013", "BE236"), ("11056", "BE211")],
+    ),
     ("63049", "60000", "03000", [("63049", "BE335")]),
-    ("71072", "70000", "02000", [("71001", "BE221"), ("72002", "BE222")]),
+    ("71072", "70000", "02000", [("71022", "BE223"), ("73040", "BE224")]),
     *((code, "60000", "03000", [(code, "BE336")]) for code in GERMAN),
 ]
+# The NUTS3 codes of a synthetic classification: those above, plus the ones
+# the refusal cases below move LAUs to.
+_SYNTHETIC_NUTS3 = (
+    "BE100",
+    "BE211",
+    "BE212",
+    "BE221",
+    "BE223",
+    "BE224",
+    "BE234",
+    "BE235",
+    "BE236",
+    "BE242",
+    "BE400",
+)
 
 
 def _synthetic_sources() -> dict:
@@ -850,7 +984,13 @@ def _synthetic_sources() -> dict:
         for part, nuts3 in parts:
             crosswalk.append((part, commune))
             lau.append((part, nuts3))
-    labels = [("BE335", _BE335), ("BE336", _BE336), ("BE100", "Arr. de Bruxelles")]
+    labels = [
+        ("BE", "Belgique/België"),
+        ("BE3", "Région wallonne"),
+        ("BE335", _BE335),
+        ("BE336", _BE336),
+        *((code, f"Synthetic {code}") for code in _SYNTHETIC_NUTS3),
+    ]
     return {"statbel": statbel, "crosswalk": crosswalk, "lau": lau, "labels": labels}
 
 
@@ -960,6 +1100,15 @@ def _relabel(code: str, label: str):
     return change
 
 
+def _prepend(key: str, row: tuple):
+    """Put a row before the valid ones, where a dict would let them win."""
+
+    def change(sources):
+        sources[key].insert(0, row)
+
+    return change
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [
@@ -968,17 +1117,27 @@ def _relabel(code: str, label: str):
         (_add_lau("99998", "BE211", target="99998"), "Rule 1"),
         (_add_lau("99999", "BE211"), "Rule 2"),
         (_add_part("99997", "11001"), "Rule 2"),
+        # 11001 is already the one part of 11001, in BE211 like 46030's 11056.
+        (_add_part("11001", "46030"), "Rule 2: the crosswalk lists 2024 code 11001"),
+        (_prepend("lau", ("11056", "BE212")), "Rule 2: Eurostat lists LAU 11056"),
+        (_move("11001", "BE21!"), r"Rule 2: NUTS 2024 has no NUTS3 area \['BE21!'\]"),
+        (_move("11001", "BE213"), r"Rule 2: NUTS 2024 has no NUTS3 area \['BE213'\]"),
         (_move("11056", "BE335"), "Rule 3: 46030 spans NUTS1"),
         (_restate("71072", region="03000"), "Rule 3: Statbel regions"),
-        (_move("72002", "BE221"), "Rule 4: NUTS straddlers"),
-        (_move("44011", "BE236"), "Rule 4: NUTS straddlers"),
+        (_move("73040", "BE223"), "Rule 4: NUTS straddlers"),
+        (_move("44045", "BE236"), "Rule 4: NUTS straddlers"),
         # 46030 still spans two NUTS3 areas, but both now lie in BE23.
         (_move("11056", "BE235"), "Rule 4: NUTS straddlers"),
         (_add_lau("11099", "BE212", target="11001"), "Rule 4: NUTS straddlers"),
+        # 46030 still spans two NUTS2 areas, now BE22 and BE23.
+        (_move("11056", "BE221"), "Rule 4: NUTS straddlers"),
+        # 46030 gains a third NUTS2 area.
+        (_add_lau("46099", "BE242", target="46030"), "Rule 4: NUTS straddlers"),
         (_restate("11001", province="40000"), "Rule 4: Statbel provinces"),
         (_restate("63049", province="60001"), "Rule 4: Statbel provinces"),
         (_relabel("BE336", "Bezirk Verviers"), "Rule 5"),
         (_relabel("BE335", "Arr. Verviers"), "Rule 5"),
+        (_prepend("labels", ("BE336", "Bezirk Verviers")), "Rule 5: NUTS 2024 lists"),
         (_move("63087", "BE335"), "Rule 6"),
         (_move("63049", "BE336"), "Rule 6"),
         (_add_lau("63002", "BE336", target="63001"), "Rule 6"),
@@ -992,16 +1151,23 @@ def _relabel(code: str, label: str):
         "rule1-crosswalk-names-another-commune",
         "rule2-extra-lau",
         "rule2-crosswalk-part-missing-from-lau",
+        "rule2-crosswalk-lists-a-2024-code-twice",
+        "rule2-conflicting-lau-row-before-the-valid-one",
+        "rule2-lau-cell-not-a-nuts-code",
+        "rule2-lau-cell-not-in-the-classification",
         "rule3-merger-spans-nuts1",
         "rule3-region-not-one-to-one",
         "rule4-71072-no-longer-straddles-nuts3",
         "rule4-46029-no-longer-straddles-nuts3",
         "rule4-46030-no-longer-straddles-nuts2",
         "rule4-11001-starts-to-straddle-nuts3",
+        "rule4-46030-part-moves-to-another-nuts3",
+        "rule4-46030-gains-a-third-nuts2",
         "rule4-province-spans-two-nuts2",
         "rule4-two-provinces-share-a-nuts2",
         "rule5-be336-label",
         "rule5-be335-label",
+        "rule5-conflicting-label-row-before-the-valid-one",
         "rule6-eight-german-communes",
         "rule6-ten-german-communes",
         "rule6-german-commune-merged",

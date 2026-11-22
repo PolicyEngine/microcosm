@@ -7,10 +7,12 @@ name, so the same lines give the same bytes. A provenance file beside it records
 each line's artifact line number and sha256, and the artifact it came from.
 
 The tool refuses an artifact whose ``consumer_facts.jsonl`` or ``manifest.json``
-sha256 differs from ``be/chronicle_feed.json``'s pin, and it takes the source
-commit from that pin. Run it whenever the pin moves: test_be_geography.py's
-fixture test fails until the provenance names the pinned artifact. ``--check``
-compares the committed bytes with a fresh extraction and never writes.
+sha256 differs from ``be/chronicle_feed.json``'s pin, hashing the facts in the
+same pass that selects the lines, and it takes the source commit from that pin.
+Maintainers run it after the pin moves; CI has no artifact to run it on, and
+test_be_geography.py's fixture test fails until the provenance names the pinned
+artifact. ``--check`` compares the committed bytes with a fresh extraction and
+never writes.
 """
 
 from __future__ import annotations
@@ -41,45 +43,52 @@ RECORD_SETS = {
 MARKER = b"statbel.population_structure.cy2025.people.by_"
 
 
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def extract(artifact: Path, feed: dict) -> dict[str, bytes]:
     """Return the fixture's and the provenance's bytes, keyed by file name."""
 
-    facts_path = artifact / "consumer_facts.jsonl"
+    unpinned = ValueError(
+        f"{artifact} is not the artifact be/chronicle_feed.json pins."
+    )
     manifest_sha = hashlib.sha256((artifact / "manifest.json").read_bytes()).hexdigest()
-    if (_file_sha256(facts_path), manifest_sha) != (
-        feed["facts_sha256"],
-        feed["manifest_sha256"],
-    ):
-        raise ValueError(f"{artifact} is not the artifact be/chronicle_feed.json pins.")
-    lines, records = [], []
-    with facts_path.open("rb") as handle:
+    if manifest_sha != feed["manifest_sha256"]:
+        raise unpinned
+    # One pass hashes every line it selects from, so the selected lines and the
+    # pin check come from the same read. A line problem waits for the pin check,
+    # so an unpinned artifact is refused as unpinned.
+    digest = hashlib.sha256()
+    lines, records, problem = [], [], None
+    with (artifact / "consumer_facts.jsonl").open("rb") as handle:
         for number, raw in enumerate(handle, start=1):
-            if MARKER not in raw:
+            digest.update(raw)
+            if problem or MARKER not in raw:
                 continue
-            fact = json.loads(raw)
-            selected = RECORD_SETS.get(fact["layout"]["record_set_id"])
+            try:
+                fact = json.loads(raw)
+                selected = RECORD_SETS.get(fact["layout"]["record_set_id"])
+                if selected is not None:
+                    geography_id, value = fact["geography"]["id"], fact["value"]
+            except (ValueError, KeyError, TypeError) as error:
+                problem = ValueError(f"Artifact line {number} is not a fact: {error}")
+                continue
             if selected is None:
                 continue
             if not raw.endswith(b"\n"):
-                raise ValueError(f"Artifact line {number} has no trailing newline.")
+                problem = ValueError(f"Artifact line {number} has no trailing newline.")
+                continue
             lines.append(raw)
             records.append(
                 {
                     "artifact_line": number,
                     "record_set": selected[0],
-                    "geography_id": fact["geography"]["id"],
-                    "value": fact["value"],
+                    "geography_id": geography_id,
+                    "value": value,
                     "sha256": hashlib.sha256(raw[:-1]).hexdigest(),
                 }
             )
+    if digest.hexdigest() != feed["facts_sha256"]:
+        raise unpinned
+    if problem:
+        raise problem
     expected = dict(RECORD_SETS.values())
     counts = {name: sum(r["record_set"] == name for r in records) for name in expected}
     if counts != expected:

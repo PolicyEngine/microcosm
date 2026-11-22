@@ -3,7 +3,8 @@
 Writes ``be/transport_atomic_geography_support.json``, one row per NIS 2025
 commune that ``be/precal_references.json`` names as atomic geography support,
 and ``be/geography_assignment.json``, one national commune draw followed by four
-derived layers. Both stay inactive: Belgium declares no transport graph yet.
+derived layers. Both stay inactive: the package and transport spec loaders
+read and hash them, but Belgium declares no transport graph to consume them.
 Every number-shaping choice here is a proposal of METHOD-CARD-BE row BE-MC12,
 pending Max's ruling d1902.
 
@@ -22,13 +23,16 @@ The two Eurostat files are kept, with their URLs, under
 Eurostat updates them in place, so a fresh download may not match the pins.
 
 The builder refuses unless the sources agree (``hierarchy_from_sources``,
-rules 1 to 7): the crosswalk maps exactly Eurostat's 2024 LAUs onto exactly
-Statbel's 2025 communes; Statbel's three regions map one to one onto NUTS 2024
-level 1, as 02000 BE2, 03000 BE3 and 04000 BE1; its provinces map one to one
-onto level 2, leaving out the commune 46030, whose 2024 parts lie in BE21 and
-BE23; the communes whose 2024 parts span two NUTS3 areas are exactly 46029,
-46030 and 71072; the BE335 and BE336 labels equal their pins; and NUTS3 BE336,
-"Bezirk Verviers — Deutschsprachige Gemeinschaft", holds exactly nine
+rules 1 to 7): the crosswalk lists each 2024 code once, Eurostat lists each
+LAU once with a NUTS3 code of the pinned NUTS 2024 classification, and the
+classification lists each code once; the crosswalk maps exactly Eurostat's
+2024 LAUs onto exactly Statbel's 2025 communes; Statbel's three regions map one
+to one onto NUTS 2024 level 1, as 02000 BE2, 03000 BE3 and 04000 BE1; its
+provinces map one to one onto level 2, leaving out the commune 46030, whose
+2024 parts lie in BE21 and BE23; the communes whose 2024 parts span two NUTS3
+areas are exactly 46029 (BE234 and BE236), 46030 (BE211 and BE236) and 71072
+(BE223 and BE224); the BE335 and BE336 labels equal their pins; and NUTS3
+BE336, "Bezirk Verviers — Deutschsprachige Gemeinschaft", holds exactly nine
 communes that are unchanged from 2024 to 2025. Those nine take the language
 region ``german``; every other commune takes its Statbel region's language
 region. That reading is inferred, as no pinned file states it: BE336's
@@ -102,7 +106,12 @@ GERMAN_COMMUNES = (
     "63067",
     "63087",
 )
-NUTS3_STRADDLERS = ("46029", "46030", "71072")
+# Each commune whose 2024 parts lie in two NUTS3 areas, with those areas.
+NUTS3_STRADDLERS = {
+    "46029": ("BE234", "BE236"),
+    "46030": ("BE211", "BE236"),
+    "71072": ("BE223", "BE224"),
+}
 NUTS2_STRADDLERS = ("46030",)
 NUTS1_BY_REGION = {"02000": "BE2", "03000": "BE3", "04000": "BE1"}
 LANGUAGE_BY_REGION = {
@@ -288,6 +297,17 @@ def statbel_population(sources: dict) -> dict[str, int]:
     return dict(totals)
 
 
+def _unique(pairs, message: str) -> dict:
+    """Return the pairs as a mapping, refusing a key that appears twice."""
+
+    mapping = {}
+    for key, value in pairs:
+        if key in mapping:
+            raise ValueError(message.format(key))
+        mapping[key] = value
+    return mapping
+
+
 def _one_to_one(pairs, rule: str) -> dict:
     forward, backward = defaultdict(set), defaultdict(set)
     for left, right in pairs:
@@ -305,17 +325,25 @@ def hierarchy_from_sources(sources: dict) -> dict[str, dict[str, str]]:
     for commune, province, region, _ in sources["statbel"]:
         if statbel.setdefault(commune, (province, region)) != (province, region):
             raise ValueError(f"Statbel gives {commune} two provinces or regions.")
+    # Each key appears once, so no later row can hide a conflicting earlier one.
+    targets = _unique(
+        sources["crosswalk"], "Rule 2: the crosswalk lists 2024 code {} twice."
+    )
+    lau = _unique(sources["lau"], "Rule 2: Eurostat lists LAU {} twice.")
+    labels = _unique(sources["labels"], "Rule 5: NUTS 2024 lists {} twice.")
     parts = defaultdict(set)
-    for source, target in sources["crosswalk"]:
+    for source, target in targets.items():
         parts[target].add(source)
-    lau = dict(sources["lau"])
-    labels = dict(sources["labels"])
     # Rule 1: the crosswalk covers exactly Statbel's 2025 communes.
     if set(parts) != set(statbel):
         raise ValueError("Rule 1: crosswalk targets differ from Statbel's communes.")
-    # Rule 2: the crosswalk's 2024 codes are exactly Eurostat's 2024 LAUs.
-    if set().union(*parts.values()) != set(lau):
+    # Rule 2: the crosswalk's 2024 codes are exactly Eurostat's 2024 LAUs, each
+    # in a NUTS3 area of the pinned NUTS 2024 classification.
+    if set(targets) != set(lau):
         raise ValueError("Rule 2: crosswalk sources differ from Eurostat's LAUs.")
+    unknown = sorted(set(lau.values()) - {code for code in labels if len(code) == 5})
+    if unknown:
+        raise ValueError(f"Rule 2: NUTS 2024 has no NUTS3 area {unknown}.")
     nuts3 = {commune: {lau[part] for part in codes} for commune, codes in parts.items()}
     # Rule 3: one NUTS1 per commune, one to one with Statbel's regions.
     nuts1 = {}
@@ -329,11 +357,13 @@ def hierarchy_from_sources(sources: dict) -> dict[str, dict[str, str]]:
         "Rule 3: Statbel regions and NUTS1 differ",
     )
     # Rule 4: provinces one to one with NUTS2 where a commune's parts share one.
-    straddle3 = sorted(c for c, cells in nuts3.items() if len(cells) > 1)
+    straddle3 = {
+        c: tuple(sorted(cells)) for c, cells in sorted(nuts3.items()) if len(cells) > 1
+    }
     straddle2 = sorted(
         c for c, cells in nuts3.items() if len({x[:4] for x in cells}) > 1
     )
-    if (tuple(straddle3), tuple(straddle2)) != (NUTS3_STRADDLERS, NUTS2_STRADDLERS):
+    if (straddle3, tuple(straddle2)) != (NUTS3_STRADDLERS, NUTS2_STRADDLERS):
         raise ValueError(f"Rule 4: NUTS straddlers {straddle3}, {straddle2} differ.")
     _one_to_one(
         (
