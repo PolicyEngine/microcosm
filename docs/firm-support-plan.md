@@ -28,7 +28,10 @@ public solver (microcosm#636) and fixes the input-ratio imputation
 export with policyengine-uk's firm column names (`uk_runtime/firm_table.py`).
 The existing Axiom VAT evaluator is wrapped behind the seam. A
 `PolicyEngineUKFirmRules` adapter that reads policyengine-uk's firm variables
-lands after the policyengine-uk firm entity does.
+lands after the policyengine-uk firm entity does. A parity test on the
+paper's committed 2024-25 tables (`test_uk_firm_paper_parity.py`) checks the
+generator against golden numbers from paper runs, and
+`tools/uk_firm_paper_parity.py` prints the full comparison locally.
 
 ## External Prerequisites
 
