@@ -26,9 +26,16 @@ public solver (microcosm#636) and fixes the input-ratio imputation
 (microcosm#258). It adds the rules seam (`uk_runtime/firm_rules.py`: a
 `UKFirmRules` protocol whose outputs are keyed by `firm_id`) and a firm table
 export with policyengine-uk's firm column names (`uk_runtime/firm_table.py`).
-The existing Axiom VAT evaluator is wrapped behind the seam. A
-`PolicyEngineUKFirmRules` adapter that reads policyengine-uk's firm variables
-lands after the policyengine-uk firm entity does. A parity test on the
+The existing Axiom VAT evaluator is wrapped behind the seam.
+`uk_runtime/firm_policyengine_uk_rules.py` adds `PolicyEngineUKFirmRules`, which
+runs policyengine-uk's firm entity on the candidate table and reads
+`firm_vat_liability_if_registered`. It is tested engine-free with a fake
+simulation; the released policyengine-uk has no firm entity yet, so its only
+real-engine check is local, against PolicyEngine/policyengine-uk#2940.
+`tools/build_uk_firms.py` (`uk_runtime/firm_build.py`) runs a local UK firm
+build: generation, attributes and export to `uk_firms.parquet` with a JSON
+receipt of inputs, configuration, accuracy and rules provenance. It has no
+publish or staging path. A parity test on the
 paper's committed 2024-25 tables (`test_uk_firm_paper_parity.py`) checks the
 generator against golden numbers from paper runs, and
 `tools/uk_firm_paper_parity.py` prints the full comparison locally.
@@ -65,9 +72,8 @@ The first integration should depend on these upstream artifacts:
   - `uk:policies/govuk/vat#net_vat_liability`
 
 Microcosm should reject a UK firm build if those Ledger packages/profile are not
-available. A build needs one rules engine (policyengine-uk by default once its
-adapter exists; Axiom is accepted only as a cross-check or a stand-in until
-then). It should not fall back to repo-local CSV targets.
+available. A build needs one rules engine (policyengine-uk once its firm entity is
+released; Axiom is accepted only as a cross-check or a stand-in until then). It should not fall back to repo-local CSV targets.
 
 ## Phase 1: Frame Contract
 
@@ -115,10 +121,11 @@ Acceptance gates:
 
 ## Phase 3: Rules-engine VAT Metrics
 
-Firm metrics come through the `UKFirmRules` seam. The production adapter will
-be `PolicyEngineUKFirmRules` (M4, not yet implemented), which will build a
+Firm metrics come through the `UKFirmRules` seam. The production adapter is
+`PolicyEngineUKFirmRules` (M4; VAT only so far, verified locally against the
+unreleased policyengine-uk firm entity), which builds a
 policyengine-uk simulation from the firm table (policyengine-uk column names)
-and read its firm variables. The Axiom adapter below stays as an optional
+and reads its firm variables. The Axiom adapter below stays as an optional
 cross-check, and builds will record any difference between the two.
 
 For the Axiom cross-check:

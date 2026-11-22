@@ -51,6 +51,9 @@ from microcosm.build.uk_runtime.firm_attributes import (
     read_uk_firm_attribute_source_data,
     uk_firm_attribute_fallback_counts,
 )
+from microcosm.build.uk_runtime.firm_build import (
+    build_uk_firm_dataset,
+)
 from microcosm.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -81,6 +84,9 @@ from microcosm.build.uk_runtime.firm_generation import (
     uk_firm_source_data_from_ledger_facts,
     validate_uk_firm_population,
     write_uk_firm_population,
+)
+from microcosm.build.uk_runtime.firm_policyengine_uk_rules import (
+    PolicyEngineUKFirmRules,
 )
 from microcosm.build.uk_runtime.firm_rules import (
     LegacyVATEvaluatorRules,
@@ -1021,6 +1027,8 @@ __all__ = [
     "assign_vat_scope_and_registration",
     "registration_propensity",
     "stratified_thin",
+    "build_uk_firm_dataset",
+    "PolicyEngineUKFirmRules",
     "UKFirmAttributeSourceData",
     "assign_uk_firm_attributes",
     "read_uk_firm_attribute_source_data",
