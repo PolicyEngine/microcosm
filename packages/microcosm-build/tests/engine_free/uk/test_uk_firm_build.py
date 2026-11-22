@@ -479,3 +479,64 @@ def test_employment_allowance_build_adds_only_the_assumed_flags(
             float(weight[table[column].to_numpy(bool)].sum())
         )
     assert "uk_firm_employment_allowance" not in builds[0]["receipt"]
+
+
+def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> None:
+    """Every opt-in source at once: public sector headcounts change only
+    central government and local authority rows, and profit and rateable
+    value add one column each."""
+
+    rules = _StandardRateDouble()
+    built = build_uk_firm_dataset(
+        processed_dir=PROCESSED,
+        attributes_dir=ATTRIBUTES,
+        output_dir=tmp_path / "out",
+        rules=rules,
+        config=_config(rules),
+        paybill_dir=PAYBILL,
+        employment_allowance=True,
+        public_sector_dir=FIXTURES / "firm_public_sector_2025",
+        profit_dir=FIXTURES / "firm_ct_2024",
+        rateable_value_dir=FIXTURES / "firm_rateable_value_2024",
+    )
+    table = built["table"]
+    receipt = built["receipt"]
+    base = builds[0]["table"]
+    assert tuple(table.columns) == uk_firm_table_columns(
+        ["attributes", "paybill", "employment_allowance", "profit", "rateable_value"]
+    )
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    public = base["ons_legal_status"].isin([5, 6]).to_numpy()
+    pd.testing.assert_frame_equal(
+        table.loc[~public, list(base.columns)], base.loc[~public]
+    )
+    pd.testing.assert_frame_equal(
+        table.loc[public, list(base.columns)].drop(columns="firm_employees"),
+        base.loc[public].drop(columns="firm_employees"),
+    )
+    weight = table["firm_weight"].to_numpy(float)
+    for status, sector in ((5, "central_government"), (6, "local_government")):
+        rows = table["ons_legal_status"].to_numpy() == status
+        record = next(
+            row
+            for row in receipt["uk_firm_public_sector"]["sectors"].values()
+            if row["ons_legal_status"] == status
+        )
+        assert float((weight * table["firm_employees"])[rows].sum()) == (
+            pytest.approx(record["target_weighted_employment"], rel=1e-3)
+        ), sector
+    profit = table["firm_taxable_trading_profit"].to_numpy(float)
+    assert profit.max() > 0
+    assert not profit[table["ons_legal_status"].to_numpy() != 1].any()
+    assert receipt["uk_firm_profit"]["status"] == "assumed"
+    assert receipt["uk_firm_profit"]["weighted_profit_gbp"] == pytest.approx(
+        float((weight * profit).sum())
+    )
+    value = table["firm_rateable_value"].to_numpy(float)
+    assert value.max() > 0
+    assert not value[~table["firm_in_england"].to_numpy(bool)].any()
+    assert receipt["uk_firm_rateable_value"]["status"] == "assumed"
+    for role in ("public_sector", "profit", "rateable_value"):
+        assert len(receipt["inputs"][role]) == 1
+    for key in ("uk_firm_public_sector", "uk_firm_profit", "uk_firm_rateable_value"):
+        assert key not in builds[0]["receipt"]

@@ -1,0 +1,108 @@
+{
+  "kind": "uk_firm_rateable_value_fixture",
+  "schema_version": 1,
+  "accessed": "2026-11-22",
+  "rating_list": "2023 rating list (England and Wales), as at 31 March 2026",
+  "method": "Every figure was copied digit for digit from the downloaded VOA CSV bundle by the tool on the access date; none was filled from memory and none is computed. Rateable values stay in the source's unit, GBP thousand (the bundle's metadata file ndr_sop_variable_names.csv: 'Total rateable value (GBP thousands)'). Band bounds are parsed from the band labels.",
+  "source": {
+    "publisher": "Valuation Office Agency",
+    "title": "Non-domestic rating: stock of properties, March 2026",
+    "landing_page": "https://www.gov.uk/government/statistics/non-domestic-rating-stock-of-properties-march-2026",
+    "collection_page": "https://www.gov.uk/government/collections/non-domestic-rating-stock-of-properties-collection",
+    "url": "https://assets.publishing.service.gov.uk/media/69f9bdf9a96f4d06cda76fbf/ndr_stock_of_properties_2026.zip",
+    "edition": "Non-domestic rating: stock of properties, March 2026 (published 14 May 2026): stock on the 2023 central and local rating lists as at 31 March 2026",
+    "edition_note": "The collection page listed this as the latest edition on the access date (landing page public-updated-at 2026-05-14T09:30:00+01:00).",
+    "zip_file": "ndr_stock_of_properties_2026.zip",
+    "sha256": "722d59ae5894ba77e08f5eea39f7eb8cf69285b2ef93bf5e2c7b6a21ff643961",
+    "zip_bytes": 1076301,
+    "members": {
+      "table_SOP1_2.csv": {
+        "sha256": "e1fdfbd208ad23018e54e9af4311b12a462d66da759f2a4df40acf852b84c243",
+        "bytes": 5472
+      },
+      "table_SOP2_1.csv": {
+        "sha256": "b1ec4ce75288b0ec7a8cc97c4643815d9bacb23386e0f1d0d9dce9e8367380d2",
+        "bytes": 2142
+      },
+      "table_SOP2_2.csv": {
+        "sha256": "f84ca3e08f389ec39f104aa2a7484696f4382f451bf3865b8e323c131fbec304",
+        "bytes": 2141
+      },
+      "table_SOP2_3.csv": {
+        "sha256": "f225b7b684836cabf2d92ee53474f09c0d3adea22f3be383d3de3fd5518cc7d9",
+        "bytes": 1878
+      },
+      "table_SOP3_1.csv": {
+        "sha256": "bbb1ff44e56aa93fbee5548240a588bbc55debebc847738f2359b1bc1e747921",
+        "bytes": 64846
+      },
+      "table_SOP3_2.csv": {
+        "sha256": "f1f9fc86691c9c50555973eedbeefd8dac6a4d07358559224bbbb32002e77f9e",
+        "bytes": 74340
+      }
+    },
+    "licence": "Open Government Licence v3.0"
+  },
+  "coverage": "Hereditaments (rateable properties), not firms, in England and Wales. Scotland and Northern Ireland have their own valuation rolls and are not in the release. Table SOP1.1 of the same bundle lists central rating list rateable value separately; it is not extracted.",
+  "reference_period": "Stock at 31 March 2026 on the 2023 rating lists (in force 1 April 2023 to 31 March 2026). The directory is named for the firm build's rule period, 2024 (tax year 2024-25), not for the VOA edition; voa_stock_by_year.csv carries the all-property stock at 31 March 2024, 2025 and 2026 from the same bundle.",
+  "suppression": "A Table SOP1.2 row the VOA marks '[c]' keeps blank numbers and the marker; it is never written as 0.",
+  "extraction_date": "2026-11-22",
+  "tool": "tools/extract_uk_firm_rateable_value_tables.py",
+  "command": "uv run --no-sync python tools/extract_uk_firm_rateable_value_tables.py --zip <download>/ndr_stock_of_properties_2026.zip",
+  "files": {
+    "voa_rv_band_sector.csv": {
+      "sha256": "b8ee4c5b6912d97a5597a4264d49accf8afbd51e6a41bb13205da5909cab288b",
+      "bytes": 16453,
+      "rows": 285,
+      "columns": [
+        "geography",
+        "rv_band",
+        "band_lower_gbp",
+        "band_upper_gbp",
+        "sector",
+        "hereditaments",
+        "total_rv_gbp_thousand"
+      ],
+      "source_members": [
+        "table_SOP2_1.csv",
+        "table_SOP2_2.csv",
+        "table_SOP2_3.csv"
+      ]
+    },
+    "voa_property_type.csv": {
+      "sha256": "4e8c86e0daa35c6e6bb3f5790939a2a35bd12e34e1876db1dad1d5a4de4db066",
+      "bytes": 9534,
+      "rows": 138,
+      "columns": [
+        "geography",
+        "prop_type_code",
+        "parent_code",
+        "level",
+        "description",
+        "hereditaments",
+        "total_rv_gbp_thousand",
+        "mean_rv_gbp_thousand",
+        "median_rv_gbp_thousand",
+        "marker"
+      ],
+      "source_members": [
+        "table_SOP1_2.csv"
+      ]
+    },
+    "voa_stock_by_year.csv": {
+      "sha256": "7ac8cc506c6e8a80f3598e06c37266ecb26102075ec1042a95a0418e73eba1f3",
+      "bytes": 394,
+      "rows": 9,
+      "columns": [
+        "geography",
+        "as_at",
+        "hereditaments",
+        "total_rv_gbp_thousand"
+      ],
+      "source_members": [
+        "table_SOP3_1.csv",
+        "table_SOP3_2.csv"
+      ]
+    }
+  }
+}

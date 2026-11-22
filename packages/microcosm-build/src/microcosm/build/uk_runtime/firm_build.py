@@ -65,12 +65,32 @@ from microcosm.build.uk_runtime.firm_paybill import (
     read_uk_firm_paybill_source,
     uk_firm_paybill_fallback_counts,
 )
+from microcosm.build.uk_runtime.firm_profit import (
+    UK_FIRM_PROFIT_METHOD,
+    UK_FIRM_PROFIT_STATUS,
+    assign_uk_firm_taxable_profit,
+    read_uk_firm_profit_source,
+    uk_firm_profit_diagnostics,
+)
+from microcosm.build.uk_runtime.firm_public_sector import (
+    UK_FIRM_PUBLIC_SECTOR_STATUS,
+    read_uk_firm_public_sector_source,
+    scale_uk_firm_public_sector_employment,
+    uk_firm_public_sector_diagnostics,
+)
+from microcosm.build.uk_runtime.firm_rateable_value import (
+    UK_FIRM_RATEABLE_VALUE_METHOD,
+    UK_FIRM_RATEABLE_VALUE_STATUS,
+    assign_uk_firm_rateable_value,
+    read_uk_firm_rateable_value_source,
+)
 from microcosm.build.uk_runtime.firm_rules import (
     UKFirmRuleOutputs,
     UKFirmRules,
     rule_period_for_vintage,
 )
 from microcosm.build.uk_runtime.firm_table import (
+    UK_FIRM_ENGLISH_REGION_CODES,
     to_policyengine_uk_firm_table,
     validate_uk_firm_table,
 )
@@ -108,6 +128,9 @@ def build_uk_firm_dataset(
     config: UKFirmGenerationConfig,
     paybill_dir: str | Path | None = None,
     employment_allowance: bool = False,
+    public_sector_dir: str | Path | None = None,
+    profit_dir: str | Path | None = None,
+    rateable_value_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build the UK firm table and its receipt into ``output_dir``.
 
@@ -120,7 +143,16 @@ def build_uk_firm_dataset(
     table is for tax year ``UK_FIRM_PAYBILL_TAX_YEAR``; a ``paybill_dir``
     with any other ``config.data_vintage`` raises ``ValueError``.
     ``employment_allowance`` adds the assumed Employment Allowance flags
-    (``firm_employment_allowance.py``); they read no random numbers. Returns ``table`` (the
+    (``firm_employment_allowance.py``); they read no random numbers.
+    ``public_sector_dir`` (``tests/fixtures/uk/firm_public_sector_2025``)
+    scales the headcount of central government and local authority rows to
+    ONS public sector employment before the paybill is set;
+    ``profit_dir`` (``tests/fixtures/uk/firm_ct_2024``) adds the assumed
+    ``firm_taxable_trading_profit``; ``rateable_value_dir``
+    (``tests/fixtures/uk/firm_rateable_value_2024``) the assumed
+    ``firm_rateable_value``. Each is opt-in, reads its own fixed-seed
+    generator if any, and leaves the table and receipt unchanged when
+    omitted. Returns ``table`` (the
     validated policyengine-uk firm table), ``receipt`` (the dict written as
     JSON), ``result`` (the ``UKFirmGenerationResult``), ``table_path`` and
     ``receipt_path``.
@@ -150,12 +182,38 @@ def build_uk_firm_dataset(
     firms = assign_uk_firm_attributes(
         result.firms, attribute_source, seed=result.config.seed
     )
+    public_sector = None
+    if public_sector_dir is not None:
+        public_sector_source = read_uk_firm_public_sector_source(public_sector_dir)
+        public_sector = uk_firm_public_sector_diagnostics(firms, public_sector_source)
+        firms = scale_uk_firm_public_sector_employment(firms, public_sector_source)
     paybill_source = None
     if paybill_dir is not None:
         paybill_source = read_uk_firm_paybill_source(paybill_dir)
         firms = firms.assign(firm_paybill=assign_uk_firm_paybill(firms, paybill_source))
     if employment_allowance:
         firms = assign_uk_firm_employment_allowance(firms)
+    profit_source = None
+    if profit_dir is not None:
+        profit_source = read_uk_firm_profit_source(profit_dir)
+        firms = firms.assign(
+            firm_taxable_trading_profit=assign_uk_firm_taxable_profit(
+                firms, profit_source
+            )
+        )
+    rateable_value_source = None
+    if rateable_value_dir is not None:
+        rateable_value_source = read_uk_firm_rateable_value_source(rateable_value_dir)
+        in_england = firms.assign(
+            firm_in_england=firms["ons_region_code"].isin(
+                list(UK_FIRM_ENGLISH_REGION_CODES)
+            )
+        )
+        firms = firms.assign(
+            firm_rateable_value=assign_uk_firm_rateable_value(
+                in_england, rateable_value_source
+            )
+        )
     table = to_policyengine_uk_firm_table(
         firms, threshold_k=float(result.config.vat_threshold)
     )
@@ -241,6 +299,36 @@ def build_uk_firm_dataset(
                 column: float(weight[table[column].to_numpy(bool)].sum())
                 for column in UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS
             },
+        }
+    weight = table["firm_weight"].to_numpy(np.float64)
+    if public_sector is not None:
+        receipt["inputs"]["public_sector"] = {
+            public_sector_source.file: public_sector_source.sha256
+        }
+        receipt["uk_firm_public_sector"] = {
+            "status": UK_FIRM_PUBLIC_SECTOR_STATUS,
+            **public_sector,
+        }
+    if profit_source is not None:
+        receipt["inputs"]["profit"] = {profit_source.file: profit_source.sha256}
+        receipt["uk_firm_profit"] = {
+            "status": UK_FIRM_PROFIT_STATUS,
+            "method": UK_FIRM_PROFIT_METHOD,
+            "weighted_profit_gbp": float(
+                (weight * table["firm_taxable_trading_profit"]).sum()
+            ),
+            "bands": _records(uk_firm_profit_diagnostics(firms, profit_source)),
+        }
+    if rateable_value_source is not None:
+        receipt["inputs"]["rateable_value"] = {
+            rateable_value_source.file: rateable_value_source.sha256
+        }
+        receipt["uk_firm_rateable_value"] = {
+            "status": UK_FIRM_RATEABLE_VALUE_STATUS,
+            "method": UK_FIRM_RATEABLE_VALUE_METHOD,
+            "weighted_rateable_value_gbp": float(
+                (weight * table["firm_rateable_value"]).sum()
+            ),
         }
     receipt = _json_safe(receipt)
     receipt_path = output / UK_FIRM_RECEIPT_FILE

@@ -36,6 +36,12 @@ The groups today:
   ``firm_employment_allowance.assign_uk_firm_employment_allowance``), checked
   against ``ons_legal_status`` and ``firm_employees``. It extends
   ``attributes``.
+- ``profit``: the assumed ``firm_taxable_trading_profit`` (pounds, from
+  ``firm_profit.assign_uk_firm_taxable_profit``), zero for non-companies.
+  It extends ``attributes``.
+- ``rateable_value``: the assumed ``firm_rateable_value`` (pounds, from
+  ``firm_rateable_value.assign_uk_firm_rateable_value``), zero outside
+  England. It extends ``attributes``.
 
 ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS`` records, for every formula-less
 policyengine-uk firm input, whether the fullest table (every group) sets it.
@@ -254,8 +260,15 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_paybill": "assumed",
         # Not drawn: no source yet. Placeholders would flow into NIC, CT,
         # VAT and business rates revenue.
-        "firm_taxable_trading_profit": "not_set",
-        "firm_rateable_value": "not_set",
+        # Assumed (firm_profit.py): HMRC Corporation Tax statistics
+        # liability bands (2024-25) inverted through the rate schedule and
+        # allotted to companies by turnover rank. In-sample for CT. Only when
+        # the build is given a profit source.
+        "firm_taxable_trading_profit": "assumed",
+        # Assumed (firm_rateable_value.py): VOA 2023-list hereditaments in
+        # England allotted to firms by headcount rank. Only when the build is
+        # given a rateable value source.
+        "firm_rateable_value": "assumed",
         "firm_n_associated_companies": "not_set",
         "firm_is_bank": "not_set",
         "firm_is_charity": "not_set",
@@ -470,6 +483,36 @@ def _validate_employment_allowance_columns(df: pd.DataFrame) -> None:
             )
 
 
+def _single_column(column: str) -> Callable[[pd.DataFrame], dict[str, np.ndarray]]:
+    def columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+        return {column: ordered[column].to_numpy(np.float64)}
+
+    return columns
+
+
+def _non_negative(df: pd.DataFrame, column: str) -> np.ndarray:
+    values = df[column].to_numpy(np.float64)
+    if not np.all(np.isfinite(values)) or np.any(values < 0):
+        raise ValueError(f"UK firm {column} must be finite and non-negative.")
+    return values
+
+
+def _validate_profit_columns(df: pd.DataFrame) -> None:
+    profit = _non_negative(df, "firm_taxable_trading_profit")
+    not_company = df["ons_legal_status"].to_numpy(np.int64) != 1
+    if np.any(profit[not_company]):
+        raise ValueError(
+            "UK firm firm_taxable_trading_profit must be zero for firms that "
+            "are not companies."
+        )
+
+
+def _validate_rateable_value_columns(df: pd.DataFrame) -> None:
+    value = _non_negative(df, "firm_rateable_value")
+    if np.any(value[~df["firm_in_england"].to_numpy(bool)]):
+        raise ValueError("UK firm firm_rateable_value must be zero outside England.")
+
+
 def _validate_paybill_columns(df: pd.DataFrame) -> None:
     for column in UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS:
         values = df[column].to_numpy(np.float64)
@@ -532,6 +575,24 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         requires=("attributes",),
         columns=_employment_allowance_group_columns,
         validate=_validate_employment_allowance_columns,
+    ),
+    UKFirmExportGroup(
+        name="profit",
+        source_columns=("firm_taxable_trading_profit",),
+        policyengine_uk_columns=("firm_taxable_trading_profit",),
+        microcosm_columns=(),
+        requires=("attributes",),
+        columns=_single_column("firm_taxable_trading_profit"),
+        validate=_validate_profit_columns,
+    ),
+    UKFirmExportGroup(
+        name="rateable_value",
+        source_columns=("firm_rateable_value",),
+        policyengine_uk_columns=("firm_rateable_value",),
+        microcosm_columns=(),
+        requires=("attributes",),
+        columns=_single_column("firm_rateable_value"),
+        validate=_validate_rateable_value_columns,
     ),
 )
 

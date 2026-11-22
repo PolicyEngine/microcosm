@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -495,6 +497,8 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         "firm_paybill",
         "firm_claims_employment_allowance",
         "firm_is_single_director_company",
+        "firm_taxable_trading_profit",
+        "firm_rateable_value",
     }
     assert all(
         name.startswith("firm_") for name in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS
@@ -509,8 +513,14 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
 def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
     assert all(isinstance(group, UKFirmExportGroup) for group in UK_FIRM_EXPORT_GROUPS)
     names = [group.name for group in UK_FIRM_EXPORT_GROUPS]
-    assert names == ["attributes", "paybill", "employment_allowance"]
-    attributes, paybill, allowance = UK_FIRM_EXPORT_GROUPS
+    assert names == [
+        "attributes",
+        "paybill",
+        "employment_allowance",
+        "profit",
+        "rateable_value",
+    ]
+    attributes, paybill, allowance, profit, rateable_value = UK_FIRM_EXPORT_GROUPS
     assert attributes.source_columns == UK_FIRM_ONS_ATTRIBUTE_COLUMNS
     assert attributes.policyengine_uk_columns == (
         UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS
@@ -525,6 +535,14 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
     assert allowance.policyengine_uk_columns == UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS
     assert allowance.microcosm_columns == ()
     assert allowance.requires == ("attributes",)
+    for group, column in (
+        (profit, "firm_taxable_trading_profit"),
+        (rateable_value, "firm_rateable_value"),
+    ):
+        assert group.source_columns == (column,)
+        assert group.policyengine_uk_columns == (column,)
+        assert group.microcosm_columns == ()
+        assert group.requires == ("attributes",)
     # Each group comes after the groups it extends, and no column repeats.
     for index, group in enumerate(UK_FIRM_EXPORT_GROUPS):
         assert set(group.requires) <= set(names[:index])
@@ -533,17 +551,19 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
 
 
 def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
-    assert dict(UK_FIRM_TABLE_LAYOUTS) == {
-        (): UK_FIRM_TABLE_COLUMNS,
-        ("attributes",): UK_FIRM_EXTENDED_TABLE_COLUMNS,
-        ("attributes", "paybill"): UK_FIRM_PAYBILL_TABLE_COLUMNS,
-        ("attributes", "employment_allowance"): uk_firm_table_columns(
-            ["attributes", "employment_allowance"]
-        ),
-        ("attributes", "paybill", "employment_allowance"): uk_firm_table_columns(
-            ["attributes", "paybill", "employment_allowance"]
-        ),
-    }
+    # The base, then attributes with any subset of the four groups that
+    # extend it.
+    extending = ["paybill", "employment_allowance", "profit", "rateable_value"]
+    expected = {(): UK_FIRM_TABLE_COLUMNS}
+    for size in range(len(extending) + 1):
+        for chosen in itertools.combinations(extending, size):
+            names = ("attributes", *chosen)
+            expected[names] = uk_firm_table_columns(names)
+    assert dict(UK_FIRM_TABLE_LAYOUTS) == expected
+    assert UK_FIRM_TABLE_LAYOUTS[("attributes",)] == UK_FIRM_EXTENDED_TABLE_COLUMNS
+    assert UK_FIRM_TABLE_LAYOUTS[("attributes", "paybill")] == (
+        UK_FIRM_PAYBILL_TABLE_COLUMNS
+    )
     assert uk_firm_table_columns() == UK_FIRM_TABLE_COLUMNS
     assert uk_firm_policyengine_uk_columns() == UK_FIRM_POLICYENGINE_UK_COLUMNS
     # Order of the names given does not matter: the registry orders them.

@@ -51,6 +51,30 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "from ONS legal status and employment"
         ),
     )
+    parser.add_argument(
+        "--public-sector-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS public sector employment CSV; scales "
+            "central government and local authority headcounts to it"
+        ),
+    )
+    parser.add_argument(
+        "--profit-dir",
+        type=Path,
+        help=(
+            "directory holding the HMRC Corporation Tax liability bands; sets "
+            "the assumed firm_taxable_trading_profit"
+        ),
+    )
+    parser.add_argument(
+        "--rateable-value-dir",
+        type=Path,
+        help=(
+            "directory holding the VOA rateable value bands; sets the assumed "
+            "firm_rateable_value"
+        ),
+    )
     parser.add_argument("--rules", choices=RULES_CHOICES, required=True)
     parser.add_argument(
         "--axiom-artifact",
@@ -110,6 +134,9 @@ def main(argv: list[str] | None = None) -> int:
         config=_config(args, rules),
         paybill_dir=args.paybill_dir,
         employment_allowance=args.employment_allowance_flags,
+        public_sector_dir=args.public_sector_dir,
+        profit_dir=args.profit_dir,
+        rateable_value_dir=args.rateable_value_dir,
     )
     receipt = built["receipt"]
     print(
