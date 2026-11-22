@@ -29,11 +29,11 @@ lists each 2024 code once, Eurostat lists each LAU once with a NUTS3 code of
 the pinned NUTS 2024 classification, and the classification lists each code
 once; the crosswalk maps exactly Eurostat's 2024 LAUs onto exactly Statbel's
 2025 communes; Statbel's three regions map one to one onto NUTS 2024 level 1,
-as 02000 BE2, 03000 BE3 and 04000 BE1; its province codes, with 04000 for the
-19 Brussels-Capital communes, which belong to no province, map one to one onto
-level 2, leaving out the commune 46030, whose 2024 parts lie in BE21 and
-BE23; the communes whose 2024 parts span two NUTS3
-areas are exactly 46029 (BE234 and BE236), 46030 (BE211 and BE236) and 71072
+as 02000 BE2, 03000 BE3 and 04000 BE1; its province codes map onto level 2
+as ``PROVINCE_NUTS2`` pins them, 04000, the code of the 19 Brussels-Capital
+communes, which belong to no province, onto BE10, leaving out the commune
+46030, whose 2024 parts lie in BE21 and BE23 and whose province is pinned as
+40000; the communes whose 2024 parts span two NUTS3 areas are exactly 46029 (BE234 and BE236), 46030 (BE211 and BE236) and 71072
 (BE223 and BE224); the BE335 and BE336 labels equal their pins; and NUTS3
 BE336, "Bezirk Verviers — Deutschsprachige Gemeinschaft", holds exactly nine
 communes that are unchanged from 2024 to 2025. Those nine take the language
@@ -115,7 +115,23 @@ NUTS3_STRADDLERS = {
     "46030": ("BE211", "BE236"),
     "71072": ("BE223", "BE224"),
 }
-NUTS2_STRADDLERS = ("46030",)
+# Each commune whose 2024 parts lie in two NUTS2 areas, with its 2025 province.
+NUTS2_STRADDLERS = {"46030": "40000"}
+# Statbel's 2025 province codes and their NUTS 2024 level-2 areas; 04000, the
+# code of the 19 Brussels-Capital communes, which belong to no province, is BE10.
+PROVINCE_NUTS2 = {
+    "04000": "BE10",
+    "10000": "BE21",
+    "20001": "BE24",
+    "20002": "BE31",
+    "30000": "BE25",
+    "40000": "BE23",
+    "50000": "BE32",
+    "60000": "BE33",
+    "70000": "BE22",
+    "80000": "BE34",
+    "90000": "BE35",
+}
 NUTS1_BY_REGION = {"02000": "BE2", "03000": "BE3", "04000": "BE1"}
 LANGUAGE_BY_REGION = {
     "02000": "dutch",
@@ -301,7 +317,9 @@ def nuts_labels(rows: list[tuple]) -> list[tuple[str, str]]:
     for country, code, label, level, *_ in rows[1:]:
         if country != "BE":
             continue
-        if not (isinstance(code, str) and level == len(code) - 2):
+        if not (
+            isinstance(code, str) and type(level) is int and level == len(code) - 2
+        ):
             raise ValueError(
                 f"Rule 2: NUTS 2024 gives {code!r} level {level!r}, "
                 "which its length does not."
@@ -378,17 +396,18 @@ def hierarchy_from_sources(sources: dict) -> dict[str, dict[str, str]]:
         ((statbel[c][1], nuts1[c]) for c in statbel),
         "Rule 3: Statbel regions and NUTS1 differ",
     )
-    # Rule 4: Statbel province codes (04000 for Brussels-Capital) one to one with
-    # NUTS2 where a commune's parts share one.
+    # Rule 4: Statbel province codes (04000 for Brussels-Capital) map onto NUTS2
+    # as pinned where a commune's parts share one; the NUTS2 straddler's
+    # province is pinned.
     straddle3 = {
         c: tuple(sorted(cells)) for c, cells in sorted(nuts3.items()) if len(cells) > 1
     }
     straddle2 = sorted(
         c for c, cells in nuts3.items() if len({x[:4] for x in cells}) > 1
     )
-    if (straddle3, tuple(straddle2)) != (NUTS3_STRADDLERS, NUTS2_STRADDLERS):
+    if (straddle3, tuple(straddle2)) != (NUTS3_STRADDLERS, tuple(NUTS2_STRADDLERS)):
         raise ValueError(f"Rule 4: NUTS straddlers {straddle3}, {straddle2} differ.")
-    _one_to_one(
+    provinces = _one_to_one(
         (
             (statbel[c][0], next(iter(nuts3[c]))[:4])
             for c in statbel
@@ -396,6 +415,17 @@ def hierarchy_from_sources(sources: dict) -> dict[str, dict[str, str]]:
         ),
         "Rule 4: Statbel province codes and NUTS2 differ",
     )
+    unpinned = {p: n for p, n in provinces.items() if PROVINCE_NUTS2.get(p) != n}
+    if unpinned:
+        raise ValueError(
+            f"Rule 4: Statbel province codes and NUTS2 {unpinned} differ from the pin."
+        )
+    for commune, province in NUTS2_STRADDLERS.items():
+        if statbel[commune][0] != province:
+            raise ValueError(
+                f"Rule 4: Statbel gives the NUTS2 straddler {commune} province "
+                f"{statbel[commune][0]!r}, not {province}."
+            )
     # Rule 5: the Verviers NUTS3 labels are the pinned ones.
     if any(labels.get(code) != label for code, label in NUTS3_LABELS.items()):
         raise ValueError("Rule 5: a Verviers NUTS3 label differs from its pin.")

@@ -26,6 +26,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import sys
 from collections import Counter
@@ -91,9 +92,10 @@ _NUTS1_TOTALS = {"BE1": 1255795, "BE2": 6864766, "BE3": 3704990}
 _GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"
 # A support sha the shared kernel gave at 494d9613c0, on CPython 3.13 and 3.14
 # under macOS. The fixed first five draws are the independent draw under it,
-# which pins the uniform and the CDF. It is not compared with the kernel's
-# sha, whose NPZ bytes can differ by platform (ZipInfo.create_system), so a
-# support edit, which re-draws every household, leaves it as a record.
+# which pins the uniform and the CDF. It is not compared with the sha of the
+# support bytes the kernel writes here, which can differ by platform
+# (ZipInfo.create_system), so a support edit, which re-draws every household,
+# leaves it as a record.
 _SUPPORT_SHA256 = "c9634636b82e5aeb8545cf592d89d093fbad8e905bf4c5b8842e89fd2b7e2b9d"
 
 # The four pinned sources, as the committed strings name them.
@@ -273,6 +275,21 @@ REGION_OF_PROVINCE = {
     "90000": "BE3",
 }
 LANGUAGE_OF_REGION = {"BE1": "brussels_bilingual", "BE2": "dutch", "BE3": "french"}
+# Each province code's NUTS 2024 level-2 area, from the NUTS 2024 labels
+# (BE10 Brussels-Capital, BE21 Prov. Antwerpen, ..., BE35 Prov. Namur).
+PROVINCE_NUTS2 = {
+    "04000": "BE10",
+    "10000": "BE21",
+    "20001": "BE24",
+    "20002": "BE31",
+    "30000": "BE25",
+    "40000": "BE23",
+    "50000": "BE32",
+    "60000": "BE33",
+    "70000": "BE22",
+    "80000": "BE34",
+    "90000": "BE35",
+}
 PROVINCE_COUNTS = {
     "04000": 19,
     "10000": 67,
@@ -727,6 +744,14 @@ def test_committed_pair_runs_support_assign_derive_and_gate_on_the_fixture(chain
     assert by_commune == _fixture_values(_COMMUNE_RECORD_SET)
     assert sum(by_commune.values()) == _TOTAL
     assert by_region == _fixture_values(_NUTS1_RECORD_SET) == _NUTS1_TOTALS
+    # The decoded support's codes are the committed rows', keyed by area.
+    decoded = {
+        str(area): {column: str(arrays[column][i]) for column in CODE_COLUMNS}
+        for i, area in enumerate(arrays["area"])
+    }
+    assert decoded == {
+        row["codes"]["area"]: row["codes"] for row in _document(_SUPPORT)["rows"]
+    }
 
     frame = _assign_derive_gate(chain)
     outputs = ASSIGNMENT["outputs"]
@@ -734,11 +759,12 @@ def test_committed_pair_runs_support_assign_derive_and_gate_on_the_fixture(chain
     # The draw follows Statbel's weights: an independent inverse CDF over the
     # fixture's commune counts gives every household's commune, and the regions
     # come close to the NUTS1 shares (a uniform draw would give BE3 about 46%,
-    # not 31%). The fixed first five hold for the support sha recorded above,
-    # whichever sha this platform's support bytes give.
+    # not 31%). The draws are keyed with the sha256 of the support's bytes,
+    # computed here, not the decoder's. The fixed first five hold for the
+    # support sha recorded above, whichever sha this platform's bytes give.
     households = frame["household_id"].tolist()
     assert frame[outputs["area"]].tolist() == _independent_draws(
-        chain, households, chain.support.sha256
+        chain, households, hashlib.sha256(chain.payload).hexdigest()
     )
     assert _independent_draws(chain, range(1, 6), _SUPPORT_SHA256) == [
         "62063",
@@ -886,6 +912,22 @@ def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
         extractor.main([*arguments, "--check"])
     assert not list(out.iterdir())
     extractor.main(arguments)
+    current = {path.name: path.read_bytes() for path in out.iterdir()}
+    assert set(current) == {extractor.FIXTURE, extractor.PROVENANCE}
+    # An existing stale output is refused alone, and the refusal writes nothing.
+    for name, data in current.items():
+        stale = out / name
+        stale.write_bytes(data + b"\n")
+        stale.chmod(0o444)
+        before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in out.iterdir()}
+        with pytest.raises(
+            SystemExit, match=re.escape(f"Stale fixture file(s): {[str(stale)]}")
+        ):
+            extractor.main([*arguments, "--check"])
+        after = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in out.iterdir()}
+        assert after == before
+        stale.chmod(0o644)
+        stale.write_bytes(data)
     # Read-only files and unchanged times: --check writes nothing.
     for path in out.iterdir():
         path.chmod(0o444)
@@ -978,6 +1020,17 @@ def test_fixture_extractor_refuses_an_artifact_the_feed_does_not_pin(
     )
     with pytest.raises(ValueError, match="Selected line counts"):
         extractor.extract(artifact, feed)
+    # One record set's excess does not make up for the other's shortfall.
+    monkeypatch.setattr(
+        extractor,
+        "RECORD_SETS",
+        {
+            _COMMUNE_RECORD_SET: ("commune_total", 2),
+            _NUTS1_RECORD_SET: ("nuts1_age_sex", 0),
+        },
+    )
+    with pytest.raises(ValueError, match="Selected line counts"):
+        extractor.extract(two, two_feed)
 
 
 _DEEP = b"[" * 100_000 + b'"' + extractor.MARKER + b'"' + b"]" * 100_000 + b"\n"
@@ -1080,20 +1133,23 @@ def test_fixture_extractor_selects_from_the_bytes_it_checks(tmp_path, monkeypatc
 
 
 class _ChangesOnRewind(io.BytesIO):
-    """A facts stream whose bytes change once it is rewound after a read, as a
-    file rewritten in place between two passes would."""
+    """A facts stream whose bytes change the first time a seek moves it back,
+    as a file rewritten in place between two passes would."""
 
     def __init__(self, first: bytes, later: bytes):
         super().__init__(first)
         self._later = later
 
     def seek(self, offset, whence=io.SEEK_SET):
-        if self._later is not None and super().tell() > 0:
+        before = super().tell()
+        after = super().seek(offset, whence)
+        if self._later is not None and after < before:
             later, self._later = self._later, None
             super().seek(0)
             super().truncate()
             super().write(later)
-        return super().seek(offset, whence)
+            after = super().seek(after)
+        return after
 
 
 def test_fixture_extractor_selects_in_the_pass_that_hashes(tmp_path, monkeypatch):
@@ -1250,6 +1306,35 @@ def test_hierarchy_from_sources_on_synthetic_rows():
     }
 
 
+def test_builder_pins_each_province_to_its_nuts2_area():
+    assert builder.PROVINCE_NUTS2 == PROVINCE_NUTS2
+    assert builder.NUTS2_STRADDLERS == {"46030": "40000"}
+    for province, nuts2 in PROVINCE_NUTS2.items():
+        assert nuts2[:3] == REGION_OF_PROVINCE[province], province
+
+
+def _set_province(new: str, *, commune=None, old=None):
+    def change(sources):
+        sources["statbel"] = [
+            (code, new if code == commune or province == old else province, *rest)
+            for code, province, *rest in sources["statbel"]
+        ]
+
+    return change
+
+
+def _swap_regions(first: str, second: str):
+    swap = {first: second, second: first}
+
+    def change(sources):
+        sources["statbel"] = [
+            (code, province, swap.get(region, region), population)
+            for code, province, region, population in sources["statbel"]
+        ]
+
+    return change
+
+
 def _move(part: str, nuts3: str):
     def change(sources):
         sources["lau"] = [
@@ -1351,6 +1436,17 @@ def _prepend(key: str, row: tuple):
         (_add_lau("46099", "BE242", target="46030"), "Rule 4: NUTS straddlers"),
         (_restate("11001", province="40000"), "Rule 4: Statbel province codes"),
         (_restate("63049", province="60001"), "Rule 4: Statbel province codes"),
+        # One to one, but not the pinned map.
+        (_set_province("99999", old="04000"), "Rule 4: .* differ from the pin"),
+        (_set_province("10001", old="10000"), "Rule 4: .* differ from the pin"),
+        (
+            _set_province("", commune="46030"),
+            "Rule 4: Statbel gives the NUTS2 straddler 46030 province ''",
+        ),
+        (
+            _set_province("10000", commune="46030"),
+            "Rule 4: Statbel gives the NUTS2 straddler 46030 province '10000'",
+        ),
         (_relabel("BE336", "Bezirk Verviers"), "Rule 5"),
         (_relabel("BE335", "Arr. Verviers"), "Rule 5"),
         (_prepend("labels", ("BE336", "Bezirk Verviers")), "Rule 5: NUTS 2024 lists"),
@@ -1359,8 +1455,12 @@ def _prepend(key: str, row: tuple):
         (_move("63049", "BE336"), "Rule 6"),
         (_add_lau("63002", "BE336", target="63001"), "Rule 6"),
         (_restate("21001", region="04001"), "Rule 7"),
-        # One to one, but Brussels-Capital would be NUTS1 BE4.
-        (_move("21001", "BE400"), "Rule 7"),
+        # One to one, but Brussels-Capital would be NUTS1 BE4: the pinned
+        # province map refuses it before Rule 7.
+        (_move("21001", "BE400"), "Rule 4: .* differ from the pin"),
+        # Statbel's Flemish and Walloon region codes swap: each region still has
+        # one NUTS1, and each province its pinned NUTS2.
+        (_swap_regions("02000", "03000"), "Rule 7"),
     ],
     ids=[
         "statbel-two-provinces",
@@ -1385,6 +1485,10 @@ def _prepend(key: str, row: tuple):
         "rule4-46030-gains-a-third-nuts2",
         "rule4-province-spans-two-nuts2",
         "rule4-two-provinces-share-a-nuts2",
+        "rule4-brussels-province-code-renamed",
+        "rule4-province-code-renamed",
+        "rule4-46030-province-blank",
+        "rule4-46030-province-of-another-part",
         "rule5-be336-label",
         "rule5-be335-label",
         "rule5-conflicting-label-row-before-the-valid-one",
@@ -1393,7 +1497,8 @@ def _prepend(key: str, row: tuple):
         "rule6-ten-german-communes",
         "rule6-german-commune-merged",
         "rule7-unknown-region",
-        "rule7-region-has-another-nuts1",
+        "rule4-brussels-moves-to-another-nuts1",
+        "rule7-regions-swap-nuts1",
     ],
 )
 def test_builder_refuses_each_source_inconsistency(change, message):
@@ -1439,6 +1544,9 @@ def test_builder_reads_nuts_labels_and_refuses_a_level_its_code_does_not_give():
         (("BE", "BE2", "Vlaams Gewest", 2, 1), "'BE2'"),
         # Level 1 is the length of str(211) less two, so only its type refuses it.
         (("BE", 211, "Arr. Antwerpen", 1, 1), "211"),
+        # True and False equal 1 and 0, so only their type refuses them.
+        (("BE", "BE2", "Vlaams Gewest", True, 1), "'BE2'"),
+        (("BE", "BE", "Belgique/België", False, 1), "'BE'"),
     ):
         with pytest.raises(ValueError, match=f"Rule 2: NUTS 2024 gives {code} level"):
             builder.nuts_labels([header, row])
