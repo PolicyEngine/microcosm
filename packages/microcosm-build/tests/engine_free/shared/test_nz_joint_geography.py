@@ -554,6 +554,49 @@ def test_committed_support_executes_atomic_assignment_derivation_and_gate() -> N
         geography.validate_geography(corrupted, specification, supports)
 
 
+def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
+    """The bytes nz.geo.assign, nz.geo.derive and nz.geo.gate read, unmodified.
+
+    Each layer's source, vintage and relation must equal the support column it
+    reads, or the shared binder refuses before any household is placed.
+    """
+    definition = _read(_SPEC / "transport_atomic_geography_support.json")
+    specification = _read(_SPEC / "geography_assignment.json")
+    (system,) = specification["systems"]
+    references = _references()
+    support = geography.decode_atomic_support(
+        support_from_surface(
+            _surface(references, [1000] * len(references)),
+            definition,
+            system=system["id"],
+        )
+    )
+    supports = {system["id"]: support}
+    households = pd.DataFrame({"household_id": np.arange(len(support.arrays["area"]))})
+    assigned = pd.concat(
+        [households, geography.assign_atomic(households, specification, supports)],
+        axis=1,
+    )
+    completed = pd.concat(
+        [assigned, geography.derive_geography(assigned, specification, supports)],
+        axis=1,
+    )
+    assert (
+        geography.validate_geography(completed, specification, supports)["outcome"]
+        == "pass"
+    )
+    for position, layer in enumerate(system["layers"]):
+        for key in ("source", "vintage", "relation"):
+            changed = copy.deepcopy(specification)
+            changed["systems"][0]["layers"][position][key] = (
+                min(geography.RELATIONS - {layer[key]})
+                if key == "relation"
+                else layer[key] + " (changed)"
+            )
+            with pytest.raises(ValueError, match="layer source, relation or vintage"):
+                geography.assign_atomic(households, changed, supports)
+
+
 @pytest.fixture(scope="module")
 def staged_joint() -> tuple[dict, dict, list[dict], dict, dict]:
     source_name = os.environ.get("NZ_AS_AREA_SOURCES")
