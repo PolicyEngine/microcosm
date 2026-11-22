@@ -1,4 +1,4 @@
-"""Region and legal status draws for UK firms from ONS Tables 8 and 13."""
+"""Region and legal status draws for UK firms from ONS Tables 8, 12 and 13."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import pytest
 from microcosm.build.uk_runtime import firm_generation
 from microcosm.build.uk_runtime.firm_attributes import (
     UK_FIRM_ATTRIBUTE_FALLBACK_LEVELS,
+    UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE,
     UK_FIRM_LEGAL_STATUS_TURNOVER_FILE,
     UK_FIRM_REGION_TURNOVER_FILE,
     UKFirmAttributeSourceData,
@@ -46,6 +47,28 @@ STATUS_COUNTS = {
     },
     "45": {"0-49": (300, 700, 0), "50-149": (0, 0, 0), "150+": (1000, 0, 0)},
 }
+EMPLOYMENT_BANDS = ("0-4", "5-49", "50+")
+#: Table 12 counts by industry group, then employment band, then legal status.
+#: In 01-03, P(band | status) is (.2, .8, 0) for status 1, (.9, .1, 0) for
+#: status 2 and (0, .5, .5) for status 5. Group 45 is absent, so division 45
+#: uses the UK total, where group 46 moves status 1 to (.1, .4, .5).
+EMPLOYMENT_COUNTS = {
+    "01-03": {"0-4": (200, 900, 0), "5-49": (800, 100, 100), "50+": (0, 0, 100)},
+    "46": {"0-4": (0, 0, 0), "5-49": (0, 0, 0), "50+": (1000, 0, 0)},
+}
+
+
+def _write_employment(directory: Path) -> Path:
+    pd.DataFrame(
+        [
+            (group, status, band, count)
+            for group, bands in EMPLOYMENT_COUNTS.items()
+            for band, counts in bands.items()
+            for status, count in zip(STATUSES, counts, strict=True)
+        ],
+        columns=["industry_group", "legal_status", "employment_band", "enterprises"],
+    ).to_csv(directory / UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE, index=False)
+    return directory
 
 
 def _write_source(directory: Path) -> Path:
@@ -73,6 +96,13 @@ def _write_source(directory: Path) -> Path:
 @pytest.fixture
 def source(tmp_path: Path) -> UKFirmAttributeSourceData:
     return read_uk_firm_attribute_source_data(_write_source(tmp_path))
+
+
+@pytest.fixture
+def employment_source(tmp_path: Path) -> UKFirmAttributeSourceData:
+    return read_uk_firm_attribute_source_data(
+        _write_employment(_write_source(tmp_path))
+    )
 
 
 def _firms(division: list[int], turnover: list[float], **extra) -> pd.DataFrame:
@@ -371,6 +401,138 @@ def test_nan_turnover_is_refused(source) -> None:
         assign_uk_firm_attributes(_firms([1], [float("nan")]), source, seed=0)
 
 
+# Employment (Table 12) ----------------------------------------------------
+
+
+def test_table_12_is_read_only_when_present(source, employment_source) -> None:
+    assert source.legal_status_employment is None
+    frame = employment_source.legal_status_employment
+    assert frame is not None
+    assert list(frame.columns) == [
+        "industry_group",
+        "legal_status",
+        "employment_band",
+        "enterprises",
+    ]
+
+
+def test_table_12_must_hold_the_table_13_statuses(tmp_path: Path) -> None:
+    directory = _write_employment(_write_source(tmp_path))
+    source = read_uk_firm_attribute_source_data(directory)
+    employment = source.legal_status_employment.copy()
+    employment["legal_status"] = employment["legal_status"].replace(5, 6)
+    with pytest.raises(ValueError, match="different legal status codes"):
+        UKFirmAttributeSourceData(
+            region_turnover=source.region_turnover,
+            legal_status_turnover=source.legal_status_turnover,
+            legal_status_employment=employment,
+        )
+    with pytest.raises(ValueError, match="missing columns"):
+        UKFirmAttributeSourceData(
+            region_turnover=source.region_turnover,
+            legal_status_turnover=source.legal_status_turnover,
+            legal_status_employment=employment.drop(columns="employment_band"),
+        )
+
+
+def test_employment_draw_continues_the_same_generator(employment_source) -> None:
+    # Division 1, turnover "0-49" (100/800/100), employment band "0-4"
+    # (likelihoods .2/.9/0): weights 20/720/0. Region draws first, unchanged.
+    seed = 3
+    firms = _firms([1] * 40, [10.0] * 40)
+    result = assign_uk_firm_attributes(firms, employment_source, seed=seed)
+
+    rng = np.random.default_rng(seed + 2)
+    region = rng.choice(3, size=40, p=np.array([600, 300, 100]) / 1000)
+    status = rng.choice(3, size=40, p=np.array([20, 720, 0]) / 740)
+    assert result["ons_region_code"].tolist() == [REGIONS[i] for i in region]
+    assert result["ons_legal_status"].tolist() == [STATUSES[i] for i in status]
+
+
+def test_employment_leaves_region_and_fallback_levels_unchanged(
+    source, employment_source
+) -> None:
+    firms = _large_frame()
+    firms["employment"] = np.random.default_rng(1).integers(0, 400, len(firms))
+    without = assign_uk_firm_attributes(firms, source, seed=9)
+    with_employment = assign_uk_firm_attributes(firms, employment_source, seed=9)
+    pd.testing.assert_series_equal(
+        without["ons_region_code"], with_employment["ons_region_code"]
+    )
+    pd.testing.assert_frame_equal(
+        uk_firm_attribute_fallback_counts(firms, source),
+        uk_firm_attribute_fallback_counts(firms, employment_source),
+    )
+
+
+@pytest.mark.parametrize(
+    ("division", "turnover", "employment", "expected"),
+    [
+        # Turnover cell 100/800/100 times likelihoods for each band.
+        (1, 10.0, 0, (20, 720, 0)),
+        (1, 10.0, 12, (80, 80, 50)),
+        # A large firm cannot be a sole proprietor in 01-03: only status 5.
+        (1, 10.0, 300, (0, 0, 1)),
+        # Out of frame: group 01-03's row total (1500/1350/150) x "5-49".
+        (2, 0.0, 12, (1200, 135, 75)),
+        # Division 45 has no Table 12 group: the UK total's likelihoods.
+        (45, 10.0, 1, (30, 630, 0)),
+        # Group 45 "150+" is all status 1, whose "50+" likelihood is .5 in
+        # the UK total.
+        (45, 400.0, 300, (1, 0, 0)),
+    ],
+)
+def test_status_shares_track_turnover_times_employment_likelihood(
+    employment_source, division, turnover, employment, expected
+) -> None:
+    n = 40_000
+    firms = _firms([division] * n, [turnover] * n, employment=[employment] * n)
+    result = assign_uk_firm_attributes(firms, employment_source, seed=4)
+    expected = np.asarray(expected, dtype=float)
+    np.testing.assert_allclose(
+        _shares(result["ons_legal_status"], np.ones(n), STATUSES),
+        expected / expected.sum(),
+        atol=0.01,
+    )
+
+
+def test_an_all_zero_product_drops_the_employment_factor(tmp_path: Path) -> None:
+    # Group 01-03 "150+" is 900/50/50; with a Table 12 in which no status
+    # has a "50+" enterprise, the product is zero and Table 13 alone applies.
+    directory = _write_employment(_write_source(tmp_path))
+    employment = pd.read_csv(directory / UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE)
+    employment.loc[employment["employment_band"] == "50+", "enterprises"] = 0
+    employment.to_csv(directory / UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE, index=False)
+    source = read_uk_firm_attribute_source_data(directory)
+    n = 40_000
+    firms = _firms([1] * n, [400.0] * n, employment=[300] * n)
+    result = assign_uk_firm_attributes(firms, source, seed=8)
+    np.testing.assert_allclose(
+        _shares(result["ons_legal_status"], np.ones(n), STATUSES),
+        np.array([900, 50, 50]) / 1000,
+        atol=0.01,
+    )
+
+
+@pytest.mark.parametrize(
+    ("employment", "match"),
+    [([float("nan")], "NaN"), ([-1], "non-negative")],
+)
+def test_bad_employment_is_refused(employment_source, employment, match) -> None:
+    firms = _firms([1], [10.0], employment=employment)
+    with pytest.raises(ValueError, match=match):
+        assign_uk_firm_attributes(firms, employment_source, seed=0)
+
+
+def test_missing_employment_is_refused_only_with_table_12(
+    source, employment_source
+) -> None:
+    firms = _firms([1], [10.0]).drop(columns="employment")
+    assign_uk_firm_attributes(firms, source, seed=0)
+    with pytest.raises(ValueError, match="employment"):
+        assign_uk_firm_attributes(firms, employment_source, seed=0)
+
+
 # Real fixtures ------------------------------------------------------------
 
 
@@ -416,3 +578,29 @@ def test_real_fixtures_cover_every_ons_division() -> None:
     )
     counts = uk_firm_attribute_fallback_counts(firms, source)
     assert set(counts.loc[counts["firms"] > 0, "level"]) <= {"cell", "row"}
+
+
+def test_real_table_12_shares_table_13_groups_and_bounds_sole_proprietors() -> None:
+    source = read_uk_firm_attribute_source_data(ATTRIBUTE_FIXTURES)
+    employment = source.legal_status_employment
+    assert employment is not None
+    assert set(employment["industry_group"]) == set(
+        source.legal_status_turnover["industry_group"]
+    )
+    lowers = parse_turnover_band_lowers(employment["employment_band"])
+    assert list(lowers.values()) == [0.0, 5.0, 10.0, 20.0, 50.0, 100.0, 250.0]
+    # A sole proprietor with a large headcount is rare in Table 12, so with
+    # employment in the draw it is rare among drawn firms of that size too,
+    # whatever their turnover.
+    n = 20_000
+    rng = np.random.default_rng(0)
+    firms = _firms(
+        rng.choice([1, 41, 47, 56, 86], size=n).tolist(),
+        rng.choice([20.0, 300.0, 1500.0], size=n).tolist(),
+        employment=rng.choice([1, 300], size=n),
+    )
+    result = assign_uk_firm_attributes(firms, source, seed=5)
+    sole = result["ons_legal_status"].to_numpy() == 2
+    large = firms["employment"].to_numpy() == 300
+    assert sole[~large].mean() > 0.05
+    assert sole[large].mean() < 0.01

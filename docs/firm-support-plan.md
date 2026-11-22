@@ -41,7 +41,9 @@ generator against golden numbers from paper runs, and
 `tools/uk_firm_paper_parity.py` prints the full comparison locally.
 
 Region and legal status are drawn after calibration from ONS UK Business 2025
-Tables 8 and 13 (`uk_runtime/firm_attributes.py`), with Table 15 held out, and
+Tables 8, 12 and 13 (`uk_runtime/firm_attributes.py`; legal status is
+conditioned on the turnover band through Table 13 and on the employment band
+through Table 12), with Table 15 held out, and
 feed policyengine-uk's `firm_region`, `firm_in_england`, `firm_legal_form` and
 `firm_is_public_body`. `firm_table.UK_FIRM_POLICYENGINE_UK_INPUT_STATUS` records
 which of policyengine-uk's 60 firm inputs (at `ca037fad2`) microcosm sets.

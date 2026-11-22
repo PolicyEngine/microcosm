@@ -141,8 +141,9 @@ def test_weighted_region_by_legal_status_tracks_held_out_table_15() -> None:
 
     # Held out, not calibrated: region and legal status are drawn
     # independently given SIC x turnover cells, so the joint share is
-    # loose. Locally (seed 42) the total variation distance is 0.033 and the
-    # company share 0.767 against 0.767; gate only gross failures.
+    # loose. Locally (seed 42, legal status coupled to employment band) the
+    # total variation distance is 0.035 and the
+    # company share 0.768 against 0.767; gate only gross failures.
     assert float((modelled - official).abs().sum()) / 2 < 0.06
     company = modelled.xs(1, level="legal_status").sum()
     official_company = official.xs(1, level="legal_status").sum()

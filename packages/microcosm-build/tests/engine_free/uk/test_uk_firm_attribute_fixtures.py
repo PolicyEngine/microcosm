@@ -1,7 +1,7 @@
 """The ONS UK Business 2025 attribute fixtures for the experimental firm table.
 
 ``tests/fixtures/uk/firm_attributes_2025`` holds long-format enterprise counts
-from Tables 8, 13 and 15 of the ONS workbook tracked in firm-microsim-paper,
+from Tables 8, 12, 13 and 15 of the ONS workbook tracked in firm-microsim-paper,
 written by ``tools/extract_uk_firm_ons_attribute_tables.py``. These checks read
 only the committed CSVs and ``.provenance.json``; they never open the workbook.
 
@@ -45,6 +45,7 @@ TABLE_13_BANDS = (
     "10000-49999",
     "50000+",
 )
+TABLE_12_BANDS = ("0-4", "5-9", "10-19", "20-49", "50-99", "100-249", "250+")
 LEGAL_STATUSES = tuple(range(1, 8))
 INDUSTRY_GROUPS = (
     "01-03",
@@ -85,6 +86,15 @@ FILES: dict[str, dict[str, Any]] = {
         },
         "rows": len(INDUSTRY_GROUPS) * len(LEGAL_STATUSES) * len(TABLE_13_BANDS),
     },
+    "ons_legal_status_employment.csv": {
+        "columns": ["industry_group", "legal_status", "employment_band", "enterprises"],
+        "keys": {
+            "industry_group": INDUSTRY_GROUPS,
+            "legal_status": LEGAL_STATUSES,
+            "employment_band": TABLE_12_BANDS,
+        },
+        "rows": len(INDUSTRY_GROUPS) * len(LEGAL_STATUSES) * len(TABLE_12_BANDS),
+    },
     "ons_legal_status_region_turnover.csv": {
         "columns": ["region_code", "legal_status", "turnover_band", "enterprises"],
         "keys": {
@@ -111,6 +121,7 @@ def _table(name: str) -> pd.DataFrame:
             "region_code": str,
             "industry_group": str,
             "turnover_band": str,
+            "employment_band": str,
         },
     )
     return frame
@@ -159,6 +170,11 @@ def test_provenance_records_the_source() -> None:
     assert bands["ons_legal_status_turnover.csv"] == list(TABLE_13_BANDS)
     assert set(bands["table_13_to_table_8"]) == set(TABLE_13_BANDS)
     assert set(bands["table_13_to_table_8"].values()) == set(TABLE_8_BANDS)
+    employment = provenance["employment_bands"]
+    assert employment["ons_legal_status_employment.csv"] == list(TABLE_12_BANDS)
+    assert provenance["files"]["ons_legal_status_employment.csv"]["source_sheet"] == (
+        "Table 12"
+    )
 
 
 @pytest.mark.parametrize("name", sorted(FILES))
@@ -218,3 +234,22 @@ def test_legal_status_table_sums_track_uk_totals(name: str, label: str) -> None:
     _assert_close(
         int(frame["enterprises"].sum()), int(totals["Total"]), f"{label} total"
     )
+
+
+def test_employment_table_tracks_uk_total_and_table_13_statuses() -> None:
+    """Table 12 counts the same enterprises as Table 13, by employment."""
+
+    employment = _table("ons_legal_status_employment.csv")
+    turnover = _table("ons_legal_status_turnover.csv")
+    _assert_close(
+        int(employment["enterprises"].sum()),
+        int(_uk_totals()["Total"]),
+        "Table 12 total",
+    )
+    by_status = employment.groupby("legal_status")["enterprises"].sum()
+    expected = turnover.groupby("legal_status")["enterprises"].sum()
+    for status in LEGAL_STATUSES:
+        if expected[status] >= 1000:
+            _assert_close(
+                int(by_status[status]), int(expected[status]), f"status {status}"
+            )

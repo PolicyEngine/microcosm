@@ -46,6 +46,7 @@ from microcosm.build.uk_runtime.diagnostics import (
     write_uk_calibration_diagnostics,
 )
 from microcosm.build.uk_runtime.firm_attributes import (
+    UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE,
     UKFirmAttributeSourceData,
     assign_uk_firm_attributes,
     read_uk_firm_attribute_source_data,
@@ -1077,6 +1078,7 @@ __all__ = [
     "assign_uk_firm_attributes",
     "read_uk_firm_attribute_source_data",
     "uk_firm_attribute_fallback_counts",
+    "UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE",
     "UK_FIRM_TARGET_CANDIDATES",
     "UKFirmTargetCandidate",
     "UKFirmTargetFilter",

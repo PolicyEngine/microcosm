@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extract ONS UK Business 2025 attribute tables for the experimental UK firm table.
 
-Reads three sheets of the ONS *UK Business: Activity, Size and Location, 2025*
+Reads four sheets of the ONS *UK Business: Activity, Size and Location, 2025*
 workbook (``ukbusinessworkbook2025new.xlsx``, tracked in
 PolicyEngine/firm-microsim-paper under ``data/raw/ons/``) and writes long-format
 CSVs of enterprise counts:
@@ -12,13 +12,16 @@ CSVs of enterprise counts:
 * ``ons_legal_status_turnover.csv`` from **Table 13**: broad industry group x
   legal status x the ten Table 13 turnover sizebands (``industry_group,
   legal_status,turnover_band,enterprises``).
+* ``ons_legal_status_employment.csv`` from **Table 12**: broad industry group
+  x legal status x the seven employment sizebands (``industry_group,
+  legal_status,employment_band,enterprises``).
 * ``ons_legal_status_region_turnover.csv`` from **Table 15**: region x legal
   status x the ten sizebands (``region_code,legal_status,turnover_band,
   enterprises``). Held out: not a draw input.
 
 Each CSV is the full rectangular grid in workbook order, zero cells included.
 The aggregate geographies (United Kingdom, Great Britain, England and Wales,
-England), every ``Total`` column and row and Table 13/15's ``Total`` legal
+England), every ``Total`` column and row and Table 12/13/15's ``Total`` legal
 status block are dropped. Counts are control-rounded to base 5 by ONS (note 7:
 values may be rounded down to zero, so a zero is not necessarily a true zero).
 A blank or non-numeric cell inside a table's data block is written as 0 and
@@ -130,7 +133,10 @@ TABLE_13_TO_TABLE_8_BAND = {
     "50000+": "5000+",
 }
 
-#: ONS IDBR legal status codes, labels verbatim from Tables 13 and 15 row 4.
+#: Table 12's seven employment sizebands (persons employed; workbook note 5).
+TABLE_12_BANDS = ("0-4", "5-9", "10-19", "20-49", "50-99", "100-249", "250+")
+
+#: ONS IDBR legal status codes, labels verbatim from Tables 12, 13 and 15 row 4.
 LEGAL_STATUSES: tuple[tuple[int, str], ...] = (
     (1, "Company (incl. Building Society)"),
     (2, "Sole Proprietor"),
@@ -170,6 +176,7 @@ FIRST_DATA_ROW = 6
 REGION_TURNOVER = "ons_region_turnover.csv"
 LEGAL_STATUS_TURNOVER = "ons_legal_status_turnover.csv"
 LEGAL_STATUS_REGION_TURNOVER = "ons_legal_status_region_turnover.csv"
+LEGAL_STATUS_EMPLOYMENT = "ons_legal_status_employment.csv"
 
 
 @dataclass
@@ -304,9 +311,9 @@ def extract_region_turnover(rows: list[tuple[Any, ...]]) -> Extracted:
 
 
 def _status_columns(
-    rows: list[tuple[Any, ...]], sheet: str
+    rows: list[tuple[Any, ...]], sheet: str, bands: Sequence[str] = TABLE_13_BANDS
 ) -> dict[int, dict[str, int]]:
-    columns = _band_columns(rows, sheet, TABLE_13_BANDS)
+    columns = _band_columns(rows, sheet, bands)
     by_status: dict[int, dict[str, int]] = {}
     expected = [*(f"{code} - {label}" for code, label in LEGAL_STATUSES), "Total"]
     if list(columns) != expected:
@@ -316,14 +323,18 @@ def _status_columns(
     return by_status
 
 
-def extract_legal_status_turnover(rows: list[tuple[Any, ...]]) -> Extracted:
-    sheet = "Table 13"
+def _extract_legal_status_by_group(
+    rows: list[tuple[Any, ...]],
+    sheet: str,
+    band_column: str,
+    bands: Sequence[str],
+) -> Extracted:
     table = Extracted(
         sheet=sheet,
         title=_title(rows),
-        header=("industry_group", "legal_status", "turnover_band", "enterprises"),
+        header=("industry_group", "legal_status", band_column, "enterprises"),
     )
-    columns = _status_columns(rows, sheet)
+    columns = _status_columns(rows, sheet, bands)
     data = _data_rows(rows, sheet)
     groups = [_split_label(row[0]) for row in data]
     if groups != list(INDUSTRY_GROUPS):
@@ -332,10 +343,22 @@ def extract_legal_status_turnover(rows: list[tuple[Any, ...]]) -> Extracted:
         )
     for row, (group, _) in zip(data, groups, strict=True):
         for status, _label in LEGAL_STATUSES:
-            for band in TABLE_13_BANDS:
+            for band in bands:
                 value = _count(row[columns[status][band]], table)
                 table.rows.append((group, status, band, value))
     return table
+
+
+def extract_legal_status_turnover(rows: list[tuple[Any, ...]]) -> Extracted:
+    return _extract_legal_status_by_group(
+        rows, "Table 13", "turnover_band", TABLE_13_BANDS
+    )
+
+
+def extract_legal_status_employment(rows: list[tuple[Any, ...]]) -> Extracted:
+    return _extract_legal_status_by_group(
+        rows, "Table 12", "employment_band", TABLE_12_BANDS
+    )
 
 
 def extract_legal_status_region_turnover(rows: list[tuple[Any, ...]]) -> Extracted:
@@ -364,6 +387,7 @@ def extract_legal_status_region_turnover(rows: list[tuple[Any, ...]]) -> Extract
 EXTRACTORS = {
     REGION_TURNOVER: ("Table 8", extract_region_turnover),
     LEGAL_STATUS_TURNOVER: ("Table 13", extract_legal_status_turnover),
+    LEGAL_STATUS_EMPLOYMENT: ("Table 12", extract_legal_status_employment),
     LEGAL_STATUS_REGION_TURNOVER: ("Table 15", extract_legal_status_region_turnover),
 }
 
@@ -436,6 +460,9 @@ def provenance(
     files[LEGAL_STATUS_REGION_TURNOVER]["role"] = (
         "held out: a check on drawn legal status by region, not a draw input"
     )
+    files[LEGAL_STATUS_EMPLOYMENT]["role"] = (
+        "draw input: conditions legal status on employment within industry group"
+    )
     return {
         "source_repository": PAPER_REPOSITORY,
         **_paper_state(workbook),
@@ -450,6 +477,11 @@ def provenance(
             "reference_period_note": (
                 "Workbook note 4: turnover for most traders is from VAT returns "
                 "covering the financial year 2023/2024."
+            ),
+            "employment_note": (
+                "Workbook note 5: IDBR employment is drawn mainly from BRES, with "
+                "PAYE jobs or employment imputed from VAT turnover for the "
+                "smallest units."
             ),
         },
         "extraction_date": dt.date.today().isoformat(),
@@ -478,13 +510,13 @@ def provenance(
             "K04000001 (England and Wales), E92000001 (England)",
             "Table 15 aggregate geography rows (the same four codes)",
             "every Total column and the Total row of each table",
-            "the Total legal status block of Tables 13 and 15",
+            "the Total legal status block of Tables 12, 13 and 15",
         ],
         "region_codes": dict(REGIONS),
         "legal_status": {
             str(code): {
                 "label": label,
-                "source": "Tables 13 and 15 row 4, verbatim",
+                "source": "Tables 12, 13 and 15 row 4, verbatim",
             }
             for code, label in LEGAL_STATUSES
         },
@@ -502,6 +534,10 @@ def provenance(
                 "tests/fixtures/uk/firm_2024_25/ons_firm_turnover.csv."
             ),
             "table_13_to_table_8": dict(TABLE_13_TO_TABLE_8_BAND),
+        },
+        "employment_bands": {
+            "unit": "persons employed (IDBR employment, workbook note 5)",
+            LEGAL_STATUS_EMPLOYMENT: list(TABLE_12_BANDS),
         },
         "sic_division_key": (
             "Two-digit SIC 2007 division as text ('01'); read with dtype=str. "

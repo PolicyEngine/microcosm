@@ -11,7 +11,8 @@
     "published": "2025-09-24",
     "source_url": "https://www.ons.gov.uk/businessindustryandtrade/business/activitysizeandlocation/datasets/ukbusinessactivitysizeandlocation",
     "source_url_note": "ONS dataset landing page, as recorded for the 2025 edition in firm-microsim-paper data/README.md; not a direct file link.",
-    "reference_period_note": "Workbook note 4: turnover for most traders is from VAT returns covering the financial year 2023/2024."
+    "reference_period_note": "Workbook note 4: turnover for most traders is from VAT returns covering the financial year 2023/2024.",
+    "employment_note": "Workbook note 5: IDBR employment is drawn mainly from BRES, with PAYE jobs or employment imputed from VAT turnover for the smallest units."
   },
   "extraction_date": "2026-11-22",
   "tool": "tools/extract_uk_firm_ons_attribute_tables.py",
@@ -26,7 +27,7 @@
     "Table 8 aggregate geographies K02000001 (UK), K03000001 (GB), K04000001 (England and Wales), E92000001 (England)",
     "Table 15 aggregate geography rows (the same four codes)",
     "every Total column and the Total row of each table",
-    "the Total legal status block of Tables 13 and 15"
+    "the Total legal status block of Tables 12, 13 and 15"
   ],
   "region_codes": {
     "E12000001": "North East",
@@ -45,31 +46,31 @@
   "legal_status": {
     "1": {
       "label": "Company (incl. Building Society)",
-      "source": "Tables 13 and 15 row 4, verbatim"
+      "source": "Tables 12, 13 and 15 row 4, verbatim"
     },
     "2": {
       "label": "Sole Proprietor",
-      "source": "Tables 13 and 15 row 4, verbatim"
+      "source": "Tables 12, 13 and 15 row 4, verbatim"
     },
     "3": {
       "label": "Partnership",
-      "source": "Tables 13 and 15 row 4, verbatim"
+      "source": "Tables 12, 13 and 15 row 4, verbatim"
     },
     "4": {
       "label": "Public Corporation/Nationalised Body",
-      "source": "Tables 13 and 15 row 4, verbatim"
+      "source": "Tables 12, 13 and 15 row 4, verbatim"
     },
     "5": {
       "label": "Central Government",
-      "source": "Tables 13 and 15 row 4, verbatim"
+      "source": "Tables 12, 13 and 15 row 4, verbatim"
     },
     "6": {
       "label": "Local Authority",
-      "source": "Tables 13 and 15 row 4, verbatim"
+      "source": "Tables 12, 13 and 15 row 4, verbatim"
     },
     "7": {
       "label": "Non-profit Body or Mutual Association",
-      "source": "Tables 13 and 15 row 4, verbatim"
+      "source": "Tables 12, 13 and 15 row 4, verbatim"
     }
   },
   "industry_groups": {
@@ -191,6 +192,18 @@
       "50000+": "5000+"
     }
   },
+  "employment_bands": {
+    "unit": "persons employed (IDBR employment, workbook note 5)",
+    "ons_legal_status_employment.csv": [
+      "0-4",
+      "5-9",
+      "10-19",
+      "20-49",
+      "50-99",
+      "100-249",
+      "250+"
+    ]
+  },
   "sic_division_key": "Two-digit SIC 2007 division as text ('01'); read with dtype=str. All 88 divisions of Table 8, all-zero divisions included.",
   "files": {
     "ons_region_turnover.csv": {
@@ -224,6 +237,23 @@
       "blank_cells_written_as_zero": 0,
       "non_numeric_cells_written_as_zero": {},
       "zero_cells": 449
+    },
+    "ons_legal_status_employment.csv": {
+      "sha256": "26b7e18afa1965eb92a5907d4c119da0de9aa2d4d800bdf329842933cbddb816",
+      "bytes": 13020,
+      "rows": 833,
+      "columns": [
+        "industry_group",
+        "legal_status",
+        "employment_band",
+        "enterprises"
+      ],
+      "source_sheet": "Table 12",
+      "source_title": "Table 12 - Number of VAT and/or PAYE based enterprises by legal status, broad industry group and employment sizebands [note 1] [note 2] [note 3] [note 5] [note 6] [note 7]",
+      "blank_cells_written_as_zero": 0,
+      "non_numeric_cells_written_as_zero": {},
+      "zero_cells": 325,
+      "role": "draw input: conditions legal status on employment within industry group"
     },
     "ons_legal_status_region_turnover.csv": {
       "sha256": "18c46f4de27a3dcdd273230df7ff1f3feee2ca4ece20943616a9cc8729b07bd4",

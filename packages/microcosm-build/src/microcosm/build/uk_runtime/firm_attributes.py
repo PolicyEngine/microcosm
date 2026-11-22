@@ -7,6 +7,9 @@ entity needs but the firm generator does not draw:
   turnover bands; it gives ``ons_region_code``.
 - Table 13 counts enterprises by broad industry group, legal status and its
   own ten turnover bands; it gives ``ons_legal_status`` (ONS codes 1 to 7).
+- Table 12 counts enterprises by the same industry groups, legal status and
+  seven employment sizebands; when present it conditions ``ons_legal_status``
+  on the firm's ONS ``employment`` as well as its turnover.
 
 :func:`assign_uk_firm_attributes` draws both after calibration, so it never
 changes a weight or an existing column. Region is drawn conditional on the
@@ -15,6 +18,21 @@ firm's (SIC division, Table 8 band) cell and legal status conditional on its
 those cells: no published table crosses region with legal status by industry,
 so any dependence beyond what sector and turnover carry is not modelled
 (Table 15, region by legal status by turnover, is held out to check it).
+
+No published table crosses legal status with both turnover and employment, so
+the legal status weights combine the two tables under an assumption: within an
+industry group and legal status, a firm's employment band is independent of
+its turnover band. The firm's Table 13 distribution (cell, row or UK total, as
+below) is multiplied, status by status, by Table 12's share of that status's
+enterprises in the group that fall in the firm's employment band,
+``P(employment band | group, status)``. Without that factor, a sole
+proprietor's draw ignored headcount and firms of any size became sole
+proprietors at their turnover cell's rate. When every product is zero (no
+status in the turnover distribution has enterprises in that employment band)
+the factor is dropped and the Table 13 distribution alone is used; a division
+without a Table 12 group uses Table 12's UK total over groups. Employment
+bands are parsed from Table 12's labels like turnover bands ("0-4" is
+``[0, 5)``).
 
 Band edges and industry groups are parsed from the tables' own labels. A band
 label ``"lo-hi"`` in thousands of pounds is the interval ``[lo, hi + 1)`` and
@@ -47,6 +65,7 @@ import pandas as pd
 
 __all__ = [
     "UK_FIRM_ATTRIBUTE_FALLBACK_LEVELS",
+    "UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE",
     "UK_FIRM_LEGAL_STATUS_TURNOVER_FILE",
     "UK_FIRM_REGION_TURNOVER_FILE",
     "UKFirmAttributeSourceData",
@@ -60,6 +79,7 @@ __all__ = [
 
 UK_FIRM_REGION_TURNOVER_FILE = "ons_region_turnover.csv"
 UK_FIRM_LEGAL_STATUS_TURNOVER_FILE = "ons_legal_status_turnover.csv"
+UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE = "ons_legal_status_employment.csv"
 
 #: The distribution each firm's draw used, most specific first.
 UK_FIRM_ATTRIBUTE_FALLBACK_LEVELS: tuple[str, ...] = ("cell", "row", "uk")
@@ -70,6 +90,12 @@ _LEGAL_STATUS_COLUMNS = (
     "industry_group",
     "legal_status",
     "turnover_band",
+    "enterprises",
+)
+_LEGAL_STATUS_EMPLOYMENT_COLUMNS = (
+    "industry_group",
+    "legal_status",
+    "employment_band",
     "enterprises",
 )
 _CLOSED_BAND = re.compile(r"^\s*(\d+)\s*-\s*(\d+)\s*$")
@@ -178,8 +204,9 @@ def _cell_table(
     *,
     row_key: pd.Series,
     category: pd.Series,
+    band_column: str = "turnover_band",
 ) -> _CellTable:
-    band_lowers = parse_turnover_band_lowers(frame["turnover_band"])
+    band_lowers = parse_turnover_band_lowers(frame[band_column])
     band_position = {label: i for i, label in enumerate(band_lowers)}
     row_values = sorted(set(row_key))
     row_index = {value: i for i, value in enumerate(row_values)}
@@ -197,7 +224,7 @@ def _cell_table(
         counts,
         (
             row_key.map(row_index).to_numpy(dtype=np.int64),
-            frame["turnover_band"].map(band_position).to_numpy(dtype=np.int64),
+            frame[band_column].map(band_position).to_numpy(dtype=np.int64),
             category.map(category_index).to_numpy(dtype=np.int64),
         ),
         enterprises,
@@ -212,6 +239,24 @@ def _cell_table(
     )
 
 
+def _group_status_table(frame: pd.DataFrame, band_column: str) -> _CellTable:
+    groups = frame["industry_group"].astype(str).str.strip()
+    statuses = frame["legal_status"].astype(str).str.strip().astype(int)
+    if not statuses.between(1, 7).all():
+        raise ValueError("ONS legal status codes run from 1 to 7")
+    # Row ids are the industry groups' positions in key order; the division
+    # map sends each division to its group's position.
+    group_keys = sorted(set(groups))
+    industry_group_divisions(group_keys)
+    position = {key: i for i, key in enumerate(group_keys)}
+    return _cell_table(
+        frame,
+        row_key=groups.map(position),
+        category=statuses,
+        band_column=band_column,
+    )
+
+
 @dataclass(frozen=True)
 class UKFirmAttributeSourceData:
     """The ONS UK Business 2025 tables the attribute draws read.
@@ -219,28 +264,48 @@ class UKFirmAttributeSourceData:
     ``region_turnover`` is Table 8 in long form (``sic_division``,
     ``region_code``, ``turnover_band``, ``enterprises``) and
     ``legal_status_turnover`` is Table 13 (``industry_group``,
-    ``legal_status``, ``turnover_band``, ``enterprises``). Keys are strings,
-    except ``legal_status`` (int) and ``enterprises`` (float).
+    ``legal_status``, ``turnover_band``, ``enterprises``). The optional
+    ``legal_status_employment`` is Table 12 (``industry_group``,
+    ``legal_status``, ``employment_band``, ``enterprises``); without it legal
+    status is conditioned on turnover alone. Keys are strings, except
+    ``legal_status`` (int) and ``enterprises`` (float).
     """
 
     region_turnover: pd.DataFrame
     legal_status_turnover: pd.DataFrame
+    legal_status_employment: pd.DataFrame | None = None
 
     def __post_init__(self) -> None:
-        for name, frame, columns in (
+        tables = [
             ("region_turnover", self.region_turnover, _REGION_COLUMNS),
             (
                 "legal_status_turnover",
                 self.legal_status_turnover,
                 _LEGAL_STATUS_COLUMNS,
             ),
-        ):
+        ]
+        if self.legal_status_employment is not None:
+            tables.append(
+                (
+                    "legal_status_employment",
+                    self.legal_status_employment,
+                    _LEGAL_STATUS_EMPLOYMENT_COLUMNS,
+                )
+            )
+        for name, frame, columns in tables:
             missing = [column for column in columns if column not in frame.columns]
             if missing:
                 raise ValueError(f"{name} is missing columns {missing}")
         # Parse once here so a malformed table fails on read, not on draw.
         self._region_table()
-        self._legal_status_table()
+        status_table = self._legal_status_table()
+        if self.legal_status_employment is not None:
+            employment_table = self._legal_status_employment_table()
+            if employment_table.categories != status_table.categories:
+                raise ValueError(
+                    "legal_status_employment and legal_status_turnover hold "
+                    "different legal status codes"
+                )
 
     def _region_table(self) -> _CellTable:
         frame = self.region_turnover
@@ -251,22 +316,17 @@ class UKFirmAttributeSourceData:
         )
 
     def _legal_status_table(self) -> _CellTable:
-        frame = self.legal_status_turnover
-        groups = frame["industry_group"].astype(str).str.strip()
-        statuses = frame["legal_status"].astype(str).str.strip().astype(int)
-        if not statuses.between(1, 7).all():
-            raise ValueError("ONS legal status codes run from 1 to 7")
-        # Row ids are the industry groups' positions in key order; the
-        # division map below sends each division to its group's position.
-        group_keys = sorted(set(groups))
-        industry_group_divisions(group_keys)
-        position = {key: i for i, key in enumerate(group_keys)}
-        return _cell_table(frame, row_key=groups.map(position), category=statuses)
+        return _group_status_table(self.legal_status_turnover, "turnover_band")
 
-    def _division_group_rows(self) -> dict[int, int]:
-        groups = sorted(
-            set(self.legal_status_turnover["industry_group"].astype(str).str.strip())
-        )
+    def _legal_status_employment_table(self) -> _CellTable:
+        if self.legal_status_employment is None:
+            raise ValueError("no legal_status_employment table")
+        return _group_status_table(self.legal_status_employment, "employment_band")
+
+    def _division_group_rows(self, frame: pd.DataFrame | None = None) -> dict[int, int]:
+        if frame is None:
+            frame = self.legal_status_turnover
+        groups = sorted(set(frame["industry_group"].astype(str).str.strip()))
         position = {key: i for i, key in enumerate(groups)}
         return {
             division: position[key]
@@ -277,9 +337,27 @@ class UKFirmAttributeSourceData:
 def read_uk_firm_attribute_source_data(
     directory: str | Path,
 ) -> UKFirmAttributeSourceData:
-    """Read Table 8 and Table 13 from ``directory`` (the fixture CSVs)."""
+    """Read Tables 8, 13 and, when present, 12 from ``directory``.
+
+    ``directory`` holds the fixture CSVs. Table 12
+    (:data:`UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE`) is optional; without it
+    legal status is drawn on turnover alone.
+    """
 
     directory = Path(directory)
+    employment_path = directory / UK_FIRM_LEGAL_STATUS_EMPLOYMENT_FILE
+    legal_status_employment = None
+    if employment_path.is_file():
+        legal_status_employment = pd.read_csv(
+            employment_path,
+            dtype={
+                "industry_group": str,
+                "legal_status": int,
+                "employment_band": str,
+                "enterprises": float,
+            },
+            keep_default_na=False,
+        )
     return UKFirmAttributeSourceData(
         region_turnover=pd.read_csv(
             directory / UK_FIRM_REGION_TURNOVER_FILE,
@@ -301,6 +379,7 @@ def read_uk_firm_attribute_source_data(
             },
             keep_default_na=False,
         ),
+        legal_status_employment=legal_status_employment,
     )
 
 
@@ -405,6 +484,78 @@ def _legal_status_rows(
     return table, _map_rows(source._division_group_rows(), division)
 
 
+def _employment(firms: pd.DataFrame) -> np.ndarray:
+    if "employment" not in firms.columns:
+        raise ValueError("firms frame is missing 'employment'")
+    employment = firms["employment"].to_numpy(dtype=np.float64)
+    if np.isnan(employment).any():
+        raise ValueError("employment holds NaN")
+    if (employment < 0).any():
+        raise ValueError("employment must be non-negative")
+    return employment
+
+
+def _employment_weighting(
+    source: UKFirmAttributeSourceData,
+    division: np.ndarray,
+    employment: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each firm's employment key and ``P(band | group, status)`` per key.
+
+    Keys index the rows of the returned likelihood: ``row * n_bands + band``,
+    where row is the firm's Table 12 group, or the extra UK row after the
+    groups when its division has none.
+    """
+
+    table = source._legal_status_employment_table()
+    n_rows, n_bands, _ = table.counts.shape
+    counts = np.concatenate([table.counts, table.counts.sum(axis=0)[None]], axis=0)
+    status_total = counts.sum(axis=1, keepdims=True)
+    likelihood = np.divide(
+        counts,
+        status_total,
+        out=np.zeros_like(counts),
+        where=status_total > 0,
+    )
+    rows = _map_rows(
+        source._division_group_rows(source.legal_status_employment), division
+    )
+    rows = np.where(rows >= 0, rows, n_rows)
+    band = turnover_band_index(employment, table.band_lowers)
+    return rows * n_bands + band, likelihood.reshape((n_rows + 1) * n_bands, -1)
+
+
+def _legal_status_distributions(
+    source: UKFirmAttributeSourceData,
+    division: np.ndarray,
+    turnover: np.ndarray,
+    banded: np.ndarray,
+    employment: np.ndarray | None,
+) -> tuple[_CellTable, np.ndarray, np.ndarray, np.ndarray]:
+    """``(table, distribution, counts, employment_dropped)`` for legal status.
+
+    Without Table 12 (or ``employment``) these are the Table 13 distributions.
+    With it, each distribution is a (Table 13 distribution, employment key)
+    pair, numbered in ascending pair order, whose weights are the Table 13
+    counts times the employment likelihood, or the Table 13 counts alone when
+    that product is all zero (``employment_dropped`` is True for those firms).
+    """
+
+    table, rows = _legal_status_rows(source, division)
+    distribution, _ = _resolve(table, rows, turnover, banded)
+    counts = _distributions(table)
+    dropped = np.zeros(len(distribution), dtype=bool)
+    if source.legal_status_employment is None or employment is None:
+        return table, distribution, counts, dropped
+    key, likelihood = _employment_weighting(source, division, employment)
+    pair = distribution * len(likelihood) + key
+    unique, inverse = np.unique(pair, return_inverse=True)
+    weights = counts[unique // len(likelihood)] * likelihood[unique % len(likelihood)]
+    empty = weights.sum(axis=1) <= 0
+    weights[empty] = counts[unique[empty] // len(likelihood)]
+    return table, inverse.reshape(-1), weights, empty[inverse.reshape(-1)]
+
+
 def assign_uk_firm_attributes(
     firms: pd.DataFrame,
     source: UKFirmAttributeSourceData,
@@ -416,19 +567,25 @@ def assign_uk_firm_attributes(
     Run after calibration: weights and every existing column are unchanged.
     One generator, ``default_rng(seed + 2)``, draws region first and legal
     status second, each with one categorical draw per distribution (cell, row
-    total or UK total) in ascending distribution order, so the result depends
-    only on the frame, the tables and the seed. See the module docstring for
-    the conditioning, the independence assumption and the fallback.
+    total or UK total; for legal status, paired with the firm's employment
+    band when Table 12 is present) in ascending distribution order, so the
+    result depends only on the frame, the tables and the seed. See the module
+    docstring for the conditioning, the independence assumptions and the
+    fallback. With Table 12, ``firms`` needs a non-negative ``employment``.
     """
 
     division, turnover, banded = _firm_inputs(firms)
+    employment = (
+        _employment(firms) if source.legal_status_employment is not None else None
+    )
     rng = np.random.default_rng(seed + 2)
     region_table, region_rows = _region_rows(source, division)
     region_distribution, _ = _resolve(region_table, region_rows, turnover, banded)
     region = _draw(rng, region_distribution, _distributions(region_table))
-    status_table, status_rows = _legal_status_rows(source, division)
-    status_distribution, _ = _resolve(status_table, status_rows, turnover, banded)
-    status = _draw(rng, status_distribution, _distributions(status_table))
+    status_table, status_distribution, status_counts, _ = _legal_status_distributions(
+        source, division, turnover, banded, employment
+    )
+    status = _draw(rng, status_distribution, status_counts)
 
     result = firms.copy()
     result["ons_region_code"] = pd.Series(
