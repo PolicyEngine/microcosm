@@ -113,7 +113,10 @@ propensity), optional stratified thinning (`UKFirmGenerationConfig.fast()`), and
 the public `solve_constraint_system`. `uk_runtime/firm_table.py` exports the
 result with policyengine-uk's firm column names. The processed-table reader
 remains for paper-repository migration comparisons; `tools/uk_firm_paper_parity.py`
-runs that comparison locally.
+runs that comparison locally. `uk_runtime/firm_attributes.py` adds region and
+legal status from the ONS UK Business tables, and
+`uk_runtime/firm_target_candidates.py` lists the value-free target candidates
+for the next Ledger sources.
 
 Build the row-wise local-geography H5 from a compact Microcosm UK H5 with:
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from importlib import resources as importlib_resources
 
 from microcosm.build.uk_runtime.firm_generation import (
@@ -12,22 +11,8 @@ from microcosm.build.uk_runtime.firm_generation import (
     load_uk_firms_contract,
     uk_firm_target_profile_from_mapping,
 )
+from test_support.microcosm_build.uk_firm_target_keys import carried_forbidden_keys
 
-FORBIDDEN_VALUE_KEYS = {"aggregation", "operation", "registry", "target_value", "value"}
-FORBIDDEN_RUNTIME_KEYS = {
-    "callable",
-    "command",
-    "execute",
-    "executable",
-    "function",
-    "import",
-    "imports",
-    "module",
-    "python_code",
-    "runtime_code",
-    "script",
-    "solver",
-}
 FIRM_SELECTOR_KEYS = {
     "source_name",
     "source_measure_id",
@@ -39,31 +24,6 @@ FIRM_SELECTOR_KEYS = {
 
 def _load() -> dict:
     return load_uk_firms_contract()
-
-
-def _is_filter_predicate(node: Mapping) -> bool:
-    return (
-        "value" in node
-        and "operator" in node
-        and ("concept" in node or "variable" in node)
-    )
-
-
-def _carried_forbidden_keys(node, *, in_defaults: bool = False) -> set[str]:
-    carried: set[str] = set()
-    if isinstance(node, Mapping):
-        forbidden = set(FORBIDDEN_VALUE_KEYS | FORBIDDEN_RUNTIME_KEYS)
-        if _is_filter_predicate(node):
-            forbidden.discard("value")
-        if in_defaults:
-            forbidden.discard("operation")
-        carried.update(forbidden.intersection(node))
-        for child in node.values():
-            carried.update(_carried_forbidden_keys(child))
-    elif isinstance(node, (list, tuple)):
-        for child in node:
-            carried.update(_carried_forbidden_keys(child))
-    return carried
 
 
 def test_uk_firms_targets_are_registered_in_the_country_package() -> None:
@@ -104,12 +64,10 @@ def test_uk_firms_targets_have_unique_target_ids_in_runtime_order() -> None:
 def test_uk_firms_targets_are_value_free_and_hook_free() -> None:
     resource = _load()
 
-    carried = _carried_forbidden_keys(
+    carried = carried_forbidden_keys(
         {key: value for key, value in resource.items() if key != "resolution_defaults"}
     )
-    carried |= _carried_forbidden_keys(
-        resource["resolution_defaults"], in_defaults=True
-    )
+    carried |= carried_forbidden_keys(resource["resolution_defaults"], in_defaults=True)
     assert not carried, sorted(carried)
 
 

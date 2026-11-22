@@ -45,6 +45,12 @@ from microcosm.build.uk_runtime.diagnostics import (
     uk_zero_weight_strata,
     write_uk_calibration_diagnostics,
 )
+from microcosm.build.uk_runtime.firm_attributes import (
+    UKFirmAttributeSourceData,
+    assign_uk_firm_attributes,
+    read_uk_firm_attribute_source_data,
+    uk_firm_attribute_fallback_counts,
+)
 from microcosm.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -85,10 +91,18 @@ from microcosm.build.uk_runtime.firm_rules import (
 )
 from microcosm.build.uk_runtime.firm_table import (
     ASSUMED_INPUT_VAT_RATE,
+    UK_FIRM_EXTENDED_TABLE_COLUMNS,
+    UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
     UK_FIRM_TABLE_COLUMNS,
     build_candidate_rules_table,
     to_policyengine_uk_firm_table,
     validate_uk_firm_table,
+)
+from microcosm.build.uk_runtime.firm_target_candidates import (
+    UK_FIRM_TARGET_CANDIDATES,
+    UKFirmTargetCandidate,
+    UKFirmTargetFilter,
+    uk_firm_target_candidates_feeding,
 )
 from microcosm.build.uk_runtime.firm_universe import (
     assign_vat_scope_and_registration,
@@ -1007,6 +1021,16 @@ __all__ = [
     "assign_vat_scope_and_registration",
     "registration_propensity",
     "stratified_thin",
+    "UKFirmAttributeSourceData",
+    "assign_uk_firm_attributes",
+    "read_uk_firm_attribute_source_data",
+    "uk_firm_attribute_fallback_counts",
+    "UK_FIRM_TARGET_CANDIDATES",
+    "UKFirmTargetCandidate",
+    "UKFirmTargetFilter",
+    "uk_firm_target_candidates_feeding",
+    "UK_FIRM_EXTENDED_TABLE_COLUMNS",
+    "UK_FIRM_POLICYENGINE_UK_INPUT_STATUS",
     "write_uk_calibration_diagnostics",
     "load_bound_spine_sidecar",
     "spine_provenance_from_sidecar",

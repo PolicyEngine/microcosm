@@ -33,6 +33,17 @@ paper's committed 2024-25 tables (`test_uk_firm_paper_parity.py`) checks the
 generator against golden numbers from paper runs, and
 `tools/uk_firm_paper_parity.py` prints the full comparison locally.
 
+Region and legal status are drawn after calibration from ONS UK Business 2025
+Tables 8 and 13 (`uk_runtime/firm_attributes.py`), with Table 15 held out, and
+feed policyengine-uk's `firm_region`, `firm_in_england`, `firm_legal_form` and
+`firm_is_public_body`. `firm_table.UK_FIRM_POLICYENGINE_UK_INPUT_STATUS` records
+which of policyengine-uk's 52 firm inputs microcosm sets; the rest (paybill,
+profit, capital expenditure, R&D, rateable value and several flags) wait for
+sources. An engine-free test checks the export against a committed snapshot of
+policyengine-uk's firm variables. Value-free target candidates for the next
+Ledger sources are declared in `uk_runtime/firm_target_candidates.py`; they are
+not yet in `uk/uk_firms_targets.json` or the solve.
+
 ## External Prerequisites
 
 The first integration should depend on these upstream artifacts:
