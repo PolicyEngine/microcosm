@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.national_frame import UK_TOTAL_COLUMNS
 from microcosm.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UKInputMassParityPolicy,
@@ -1112,6 +1113,7 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
         "person.trading_allowance_full_relief",
+        *(f"household.{column}" for column in UK_TOTAL_COLUMNS),
     }
     basis = register["household.atomic_area_basis"]
     assert basis.approved_by == "juaristi22"
@@ -1150,6 +1152,44 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     assert full_relief.expires_on == "2027-05-11"
     assert not full_relief.release_lines
     assert full_relief.reason.strip()
+    # The release boundary writes each UK total the same on every row
+    # (microcosm#1687), on both lines.
+    for column in UK_TOTAL_COLUMNS:
+        total = register[f"household.{column}"]
+        assert total.adjudication.startswith("microcosm#1687 ")
+        assert total.approved_by == "juaristi22"
+        assert total.approved_on == "2026-11-22"
+        assert total.expires_on == "2027-05-22"
+        assert not total.release_lines
+        assert total.reason.strip()
+
+
+def test_committed_register_admits_the_uk_totals_the_release_writes() -> None:
+    # microcosm#1687: every uk_total_* column the release writes is the same on
+    # every row, and the gate refuses a constant column the register lacks.
+    base = _dataset()
+    dataset = SimpleNamespace(
+        person=base.person,
+        benunit=base.benunit,
+        household=base.household.assign(
+            **{column: 1.0e12 for column in UK_TOTAL_COLUMNS}
+        ),
+    )
+    totals = sorted(f"household.{column}" for column in UK_TOTAL_COLUMNS)
+
+    refused = uk_degenerate_release_surface_gate(
+        dataset, reviewed_exclusions={}, now=date(2026, 11, 22)
+    )
+    admitted = uk_degenerate_release_surface_gate(
+        dataset,
+        reviewed_exclusions=uk_default_degenerate_reviewed_exclusions(),
+        now=date(2026, 11, 22),
+    )
+
+    assert not refused.passed
+    assert refused.details["constant_columns"] == totals
+    assert admitted.passed, admitted.failures
+    assert sorted(admitted.details["reviewed_exclusions"]) == totals
 
 
 def test_policy_of_record_is_immutable_and_loaded_once() -> None:

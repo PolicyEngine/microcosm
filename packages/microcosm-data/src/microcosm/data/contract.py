@@ -946,7 +946,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # is a vintage pin that moves with every reviewed register edit (the same
 # tripwire as the policy digest).
 _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "a6ebc171cadf45b691a2b83632bc1f87f3116ad31aebf073e3786ce90ecc0307"
+    "7906286f9ca7eacea56276d2f63f37746031866c6edd8e5c29adbd3749e90e52"
 )
 
 
