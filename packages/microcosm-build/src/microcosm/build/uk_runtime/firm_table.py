@@ -6,28 +6,44 @@ Two views of the experimental UK firm generator's rows:
   (``firm_rules.UKFirmRules``) evaluate: no weight, no VAT scope and no
   registration, with all turnover standard-rated so the rules return each
   firm's liability if registered.
-- ``to_policyengine_uk_firm_table`` is the calibrated export, with
-  policyengine-uk's firm inputs followed by the Microcosm-only columns
-  (``UK_FIRM_TABLE_COLUMNS``), checked by ``validate_uk_firm_table``. When
-  the rows carry the ONS attribute draws (``ons_legal_status`` and
-  ``ons_region_code``), it is the extended table
-  (``UK_FIRM_EXTENDED_TABLE_COLUMNS``), which adds ``firm_legal_form``,
-  ``firm_region``, ``firm_in_england`` and ``firm_is_public_body``. When
-  the attributed rows also carry ``firm_paybill`` (pounds, from
-  ``firm_paybill.assign_uk_firm_paybill``), it is the paybill table
-  (``UK_FIRM_PAYBILL_TABLE_COLUMNS``), which adds ``firm_paybill`` after the
-  extended policyengine-uk columns.
+- ``to_policyengine_uk_firm_table`` is the calibrated export, checked by
+  ``validate_uk_firm_table``.
+
+The export's layout is a base plus optional input groups. The base is
+policyengine-uk's firm inputs the generator always gives
+(``UK_FIRM_POLICYENGINE_UK_COLUMNS``) followed by the Microcosm-only columns
+(``UK_FIRM_MICROCOSM_COLUMNS``): ``UK_FIRM_TABLE_COLUMNS``.
+``UK_FIRM_EXPORT_GROUPS`` registers each optional group
+(``UKFirmExportGroup``): the source columns that switch it on, the
+policyengine-uk and Microcosm-only columns it adds, the groups it extends,
+and how it fills and checks its columns. The export emits the base and every
+group whose source columns the rows carry; ``uk_firm_table_columns`` gives a
+set of groups' layout, which places every group's policyengine-uk columns,
+in registry order, after the base ones, and its Microcosm-only columns after
+the base Microcosm-only ones. Adding an input is one registry entry.
+
+The groups today:
+
+- ``attributes``: the ONS attribute draws (``ons_legal_status`` and
+  ``ons_region_code``) give ``firm_legal_form``, ``firm_region``,
+  ``firm_in_england`` and ``firm_is_public_body``; the draws stay as
+  Microcosm-only columns. Its layout is ``UK_FIRM_EXTENDED_TABLE_COLUMNS``.
+- ``paybill``: ``firm_paybill`` (pounds, from
+  ``firm_paybill.assign_uk_firm_paybill``), carried unchanged. It extends
+  ``attributes``; with it the layout is ``UK_FIRM_PAYBILL_TABLE_COLUMNS``.
 
 ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS`` records, for every formula-less
-policyengine-uk firm input, whether the fullest (paybill) table sets it. The
-base table leaves ``firm_region`` and ``firm_legal_form`` unset, so
+policyengine-uk firm input, whether the fullest table (every group) sets it.
+The base table leaves ``firm_region`` and ``firm_legal_form`` unset, so
 policyengine-uk's defaults (London, company) apply; without a paybill source
 ``firm_paybill`` is unset too, and the other money inputs are never set.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import itertools
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 
 import numpy as np
@@ -178,41 +194,8 @@ UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS = (
     "firm_is_public_body",
 )
 
-#: policyengine-uk firm input variables in the extended export, in order.
-UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS = (
-    *UK_FIRM_POLICYENGINE_UK_COLUMNS,
-    *UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS,
-)
-
-#: Microcosm-only columns the extended export carries after the
-#: policyengine-uk ones. None is a policyengine-uk variable name (``region``
-#: is a household variable there, so the region code is ``ons_region_code``).
-UK_FIRM_MICROCOSM_ONLY_COLUMNS = (
-    *UK_FIRM_MICROCOSM_COLUMNS,
-    *UK_FIRM_ONS_ATTRIBUTE_COLUMNS,
-)
-
-#: The extended export's columns, in order.
-UK_FIRM_EXTENDED_TABLE_COLUMNS = (
-    *UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS,
-    *UK_FIRM_MICROCOSM_ONLY_COLUMNS,
-)
-
-#: policyengine-uk firm inputs the paybill export adds to the extended one.
+#: policyengine-uk firm inputs the paybill group adds.
 UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS = ("firm_paybill",)
-
-#: policyengine-uk firm input variables in the paybill export, in order.
-UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS = (
-    *UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS,
-    *UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS,
-)
-
-#: The paybill export's columns, in order: the extended table with
-#: ``firm_paybill`` after its policyengine-uk columns.
-UK_FIRM_PAYBILL_TABLE_COLUMNS = (
-    *UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS,
-    *UK_FIRM_MICROCOSM_ONLY_COLUMNS,
-)
 
 #: Values of ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS``:
 #:
@@ -224,9 +207,10 @@ UK_FIRM_INPUT_STATUSES = ("set", "derived", "assumed", "not_set")
 
 #: Every formula-less policyengine-uk firm input (branch firm-entity-engine
 #: at ``ca037fad2``, the committed snapshot; policyengine_uk/variables/firm/) -> how the paybill export, the fullest
-#: one, fills it. The keys with status other than ``not_set`` are exactly
-#: ``UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS``; the base and
-#: extended exports set a prefix of them.
+#: one, fills it. The keys with status other than ``not_set`` are exactly the
+#: base policyengine-uk columns and those of every ``UK_FIRM_EXPORT_GROUPS``
+#: entry (``UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS``); a table
+#: without some groups sets a subset of them.
 UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
     {
         # Generator columns, mapped directly (thousands of pounds to pounds,
@@ -332,8 +316,6 @@ _NON_NEGATIVE_COLUMNS = (
     "firm_exempt_supplies",
     "firm_input_vat",
 )
-#: Columns of the paybill table that must be finite and non-negative too.
-_PAYBILL_NON_NEGATIVE_COLUMNS = UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS
 
 
 def _require(frame: pd.DataFrame, columns: tuple[str, ...], label: str) -> None:
@@ -415,6 +397,240 @@ def _attribute_columns(
     }
 
 
+def _validate_attribute_columns(df: pd.DataFrame) -> None:
+    status, region_code = _ons_attributes(df)
+    for column in ("firm_in_england", "firm_is_public_body"):
+        if not pd.api.types.is_bool_dtype(df[column]):
+            raise ValueError(f"UK firm {column} must be boolean.")
+    if not df["firm_legal_form"].isin(UK_FIRM_LEGAL_FORMS).all():
+        raise ValueError("UK firm firm_legal_form must be FirmLegalForm member names.")
+    if not df["firm_region"].isin(list(UK_FIRM_REGION_CODE_TO_REGION.values())).all():
+        raise ValueError("UK firm firm_region must be Region member names.")
+    expected = _attribute_columns(status, region_code)
+    for column, values in expected.items():
+        if not np.array_equal(df[column].to_numpy(values.dtype), values):
+            source = (
+                "ons_region_code"
+                if column in ("firm_region", "firm_in_england")
+                else "ons_legal_status"
+            )
+            raise ValueError(f"UK firm {column} does not follow {source}.")
+
+
+def _attribute_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    status, region_code = _ons_attributes(ordered)
+    return {
+        **_attribute_columns(status, region_code),
+        "ons_legal_status": status,
+        "ons_region_code": region_code,
+    }
+
+
+def _paybill_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {"firm_paybill": ordered["firm_paybill"].to_numpy(np.float64)}
+
+
+def _validate_paybill_columns(df: pd.DataFrame) -> None:
+    for column in UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS:
+        values = df[column].to_numpy(np.float64)
+        if not np.all(np.isfinite(values)) or np.any(values < 0):
+            raise ValueError(f"UK firm {column} must be finite and non-negative.")
+    no_employees = df["firm_employees"].to_numpy() == 0
+    if np.any(df["firm_paybill"].to_numpy(np.float64)[no_employees]):
+        raise ValueError("UK firm firm_paybill must be zero without employees.")
+
+
+@dataclass(frozen=True)
+class UKFirmExportGroup:
+    """An optional input group of the policyengine-uk firm export.
+
+    ``source_columns`` are the generator rows' columns that switch the group
+    on: the export emits it when the rows carry all of them and raises when
+    they carry only some. ``requires`` names the groups it extends, which
+    must be emitted too. ``policyengine_uk_columns`` and
+    ``microcosm_columns`` are the columns it adds, in order.
+    ``columns(ordered)`` fills both from the rows ordered by ``firm_id``;
+    ``validate(table)`` raises ``ValueError`` unless the table's columns of
+    the group meet its contract.
+    """
+
+    name: str
+    source_columns: tuple[str, ...]
+    policyengine_uk_columns: tuple[str, ...]
+    microcosm_columns: tuple[str, ...]
+    requires: tuple[str, ...]
+    columns: Callable[[pd.DataFrame], Mapping[str, np.ndarray]]
+    validate: Callable[[pd.DataFrame], None]
+
+
+#: The export's optional input groups, in column order. A group appears
+#: after every group it requires.
+UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
+    UKFirmExportGroup(
+        name="attributes",
+        source_columns=UK_FIRM_ONS_ATTRIBUTE_COLUMNS,
+        policyengine_uk_columns=UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS,
+        microcosm_columns=UK_FIRM_ONS_ATTRIBUTE_COLUMNS,
+        requires=(),
+        columns=_attribute_group_columns,
+        validate=_validate_attribute_columns,
+    ),
+    UKFirmExportGroup(
+        name="paybill",
+        source_columns=("firm_paybill",),
+        policyengine_uk_columns=UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS,
+        microcosm_columns=(),
+        requires=("attributes",),
+        columns=_paybill_group_columns,
+        validate=_validate_paybill_columns,
+    ),
+)
+
+_GROUPS_BY_NAME: Mapping[str, UKFirmExportGroup] = MappingProxyType(
+    {group.name: group for group in UK_FIRM_EXPORT_GROUPS}
+)
+
+
+def _check_export_groups() -> None:
+    seen: set[str] = set()
+    columns = list(UK_FIRM_TABLE_COLUMNS)
+    for group in UK_FIRM_EXPORT_GROUPS:
+        if group.name in seen:
+            raise ValueError(f"UK firm export group {group.name} repeats.")
+        unknown = [name for name in group.requires if name not in seen]
+        if unknown:
+            raise ValueError(
+                f"UK firm export group {group.name} requires {unknown}, which "
+                "must come before it."
+            )
+        seen.add(group.name)
+        columns += [*group.policyengine_uk_columns, *group.microcosm_columns]
+    if len(set(columns)) != len(columns):
+        raise ValueError("UK firm export groups repeat a column.")
+
+
+_check_export_groups()
+
+
+def _ordered_groups(groups: Iterable[str]) -> tuple[UKFirmExportGroup, ...]:
+    names = set(groups)
+    unknown = sorted(names - set(_GROUPS_BY_NAME))
+    if unknown:
+        raise ValueError(f"Unknown UK firm export groups {unknown}.")
+    ordered = tuple(g for g in UK_FIRM_EXPORT_GROUPS if g.name in names)
+    for group in ordered:
+        missing = [name for name in group.requires if name not in names]
+        if missing:
+            raise ValueError(
+                f"UK firm export group {group.name} extends {missing}, which "
+                "are not included."
+            )
+    return ordered
+
+
+def uk_firm_policyengine_uk_columns(groups: Iterable[str] = ()) -> tuple[str, ...]:
+    """policyengine-uk columns of the export with ``groups``, in order."""
+
+    return (
+        *UK_FIRM_POLICYENGINE_UK_COLUMNS,
+        *(
+            column
+            for group in _ordered_groups(groups)
+            for column in group.policyengine_uk_columns
+        ),
+    )
+
+
+def uk_firm_table_columns(groups: Iterable[str] = ()) -> tuple[str, ...]:
+    """The export's columns with ``groups``, in order.
+
+    The base and each group's policyengine-uk columns, then the base and
+    each group's Microcosm-only columns, groups in registry order. A group
+    without a group it requires raises ``ValueError``.
+    """
+
+    names = tuple(groups)
+    ordered = _ordered_groups(names)
+    return (
+        *uk_firm_policyengine_uk_columns(names),
+        *UK_FIRM_MICROCOSM_COLUMNS,
+        *(column for group in ordered for column in group.microcosm_columns),
+    )
+
+
+def _layouts() -> Mapping[tuple[str, ...], tuple[str, ...]]:
+    layouts: dict[tuple[str, ...], tuple[str, ...]] = {}
+    names = [group.name for group in UK_FIRM_EXPORT_GROUPS]
+    for size in range(len(names) + 1):
+        for combination in itertools.combinations(names, size):
+            chosen = set(combination)
+            if all(
+                set(_GROUPS_BY_NAME[name].requires) <= chosen for name in combination
+            ):
+                layouts[combination] = uk_firm_table_columns(combination)
+    return MappingProxyType(layouts)
+
+
+#: Every valid set of export groups (names in registry order) -> its layout.
+UK_FIRM_TABLE_LAYOUTS: Mapping[tuple[str, ...], tuple[str, ...]] = _layouts()
+
+
+def uk_firm_export_groups(firms: pd.DataFrame) -> tuple[str, ...]:
+    """Names of the export groups whose source columns ``firms`` carries.
+
+    Raises ``ValueError`` when ``firms`` carries some of a group's source
+    columns but not all, or a group without one it extends.
+    """
+
+    present: list[str] = []
+    for group in UK_FIRM_EXPORT_GROUPS:
+        carried = [c for c in group.source_columns if c in firms.columns]
+        if not carried:
+            continue
+        if len(carried) != len(group.source_columns):
+            needs = "both" if len(group.source_columns) == 2 else "all of them"
+            raise ValueError(
+                f"UK firm population carries {carried} without the rest of "
+                f"{list(group.source_columns)}; the {group.name} export needs "
+                f"{needs}."
+            )
+        for name in group.requires:
+            if name not in present:
+                raise ValueError(
+                    f"UK firm population carries {', '.join(carried)} without "
+                    f"{list(_GROUPS_BY_NAME[name].source_columns)}; the "
+                    f"{group.name} export extends the {name} one."
+                )
+        present.append(group.name)
+    return tuple(present)
+
+
+#: policyengine-uk firm input variables in the extended export (base and
+#: attributes), in order.
+UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS = uk_firm_policyengine_uk_columns(
+    ("attributes",)
+)
+
+#: Microcosm-only columns the extended export carries after the
+#: policyengine-uk ones: the base ones and the ONS attribute draws.
+UK_FIRM_MICROCOSM_ONLY_COLUMNS = (
+    *UK_FIRM_MICROCOSM_COLUMNS,
+    *_GROUPS_BY_NAME["attributes"].microcosm_columns,
+)
+
+#: The extended export's columns (base and attributes), in order.
+UK_FIRM_EXTENDED_TABLE_COLUMNS = uk_firm_table_columns(("attributes",))
+
+#: policyengine-uk firm input variables in the paybill export (base,
+#: attributes and paybill), in order.
+UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS = uk_firm_policyengine_uk_columns(
+    ("attributes", "paybill")
+)
+
+#: The paybill export's columns (base, attributes and paybill), in order.
+UK_FIRM_PAYBILL_TABLE_COLUMNS = uk_firm_table_columns(("attributes", "paybill"))
+
+
 def uk_firm_sic_sections(sic_code: pd.Series | np.ndarray) -> np.ndarray:
     """policyengine-uk ``SICSection`` member names for two-digit SIC divisions.
 
@@ -481,13 +697,16 @@ def to_policyengine_uk_firm_table(
     """The calibrated firm table in policyengine-uk names and pounds.
 
     Reads ``UK_FIRM_EXPORT_SOURCE_COLUMNS`` and returns
-    ``UK_FIRM_TABLE_COLUMNS``, ordered by ``firm_id``. When ``firms`` also
-    carries both ``UK_FIRM_ONS_ATTRIBUTE_COLUMNS`` it returns
-    ``UK_FIRM_EXTENDED_TABLE_COLUMNS``; one without the other raises
-    ``ValueError``. When attributed ``firms`` also carry ``firm_paybill``
-    (pounds a year, from ``firm_paybill.assign_uk_firm_paybill``) it returns
-    ``UK_FIRM_PAYBILL_TABLE_COLUMNS``; ``firm_paybill`` without the ONS
-    attribute columns raises ``ValueError``. Columns:
+    ``uk_firm_table_columns`` of the ``UK_FIRM_EXPORT_GROUPS`` whose source
+    columns ``firms`` carries (``uk_firm_export_groups``), ordered by
+    ``firm_id``: ``UK_FIRM_TABLE_COLUMNS`` with none,
+    ``UK_FIRM_EXTENDED_TABLE_COLUMNS`` with both
+    ``UK_FIRM_ONS_ATTRIBUTE_COLUMNS`` and ``UK_FIRM_PAYBILL_TABLE_COLUMNS``
+    when attributed ``firms`` also carry ``firm_paybill`` (pounds a year,
+    from ``firm_paybill.assign_uk_firm_paybill``). Some of a group's source
+    columns without the rest (one ONS attribute column without the other),
+    or a group without one it extends (``firm_paybill`` without the ONS
+    attribute columns), raises ``ValueError``. Columns:
 
     - turnover and input costs are the generator's thousands of pounds times
       1000;
@@ -511,21 +730,7 @@ def to_policyengine_uk_firm_table(
     """
 
     _require(firms, UK_FIRM_EXPORT_SOURCE_COLUMNS, "UK firm population")
-    present = [c for c in UK_FIRM_ONS_ATTRIBUTE_COLUMNS if c in firms.columns]
-    if present and len(present) != len(UK_FIRM_ONS_ATTRIBUTE_COLUMNS):
-        raise ValueError(
-            f"UK firm population carries {present} without the rest of "
-            f"{list(UK_FIRM_ONS_ATTRIBUTE_COLUMNS)}; the extended export needs "
-            "both."
-        )
-    extended = bool(present)
-    paybill = "firm_paybill" in firms.columns
-    if paybill and not extended:
-        raise ValueError(
-            "UK firm population carries firm_paybill without "
-            f"{list(UK_FIRM_ONS_ATTRIBUTE_COLUMNS)}; the paybill export extends "
-            "the attribute one."
-        )
+    groups = _ordered_groups(uk_firm_export_groups(firms))
     if not np.isfinite(threshold_k) or threshold_k <= 0:
         raise ValueError("UK firm threshold_k must be positive.")
     for column in ("vat_scope", "vat_registered", "in_frame"):
@@ -562,19 +767,12 @@ def to_policyengine_uk_firm_table(
         },
         columns=list(UK_FIRM_TABLE_COLUMNS),
     )
-    if extended:
-        status, region_code = _ons_attributes(ordered)
-        attributes = {
-            **_attribute_columns(status, region_code),
-            "ons_legal_status": status,
-            "ons_region_code": region_code,
-        }
-        if paybill:
-            attributes["firm_paybill"] = ordered["firm_paybill"].to_numpy(np.float64)
-            columns = UK_FIRM_PAYBILL_TABLE_COLUMNS
-        else:
-            columns = UK_FIRM_EXTENDED_TABLE_COLUMNS
-        table = table.assign(**attributes)[list(columns)]
+    if groups:
+        added: dict[str, np.ndarray] = {}
+        for group in groups:
+            added.update(group.columns(ordered))
+        layout = uk_firm_table_columns([group.name for group in groups])
+        table = table.assign(**added)[list(layout)]
     validate_uk_firm_table(table)
     return table
 
@@ -582,30 +780,29 @@ def to_policyengine_uk_firm_table(
 def validate_uk_firm_table(df: pd.DataFrame) -> None:
     """Raise ``ValueError`` unless ``df`` meets the UK firm table contract.
 
-    The contract: exactly ``UK_FIRM_TABLE_COLUMNS``,
-    ``UK_FIRM_EXTENDED_TABLE_COLUMNS`` or ``UK_FIRM_PAYBILL_TABLE_COLUMNS``,
-    in order; no missing value in any
-    column (policyengine-uk rejects NaN); integer ``firm_id``, unique and
-    ascending; finite non-negative weights and money; non-negative integer
-    employees; ``SICSection`` member names; boolean flags; supplies that
-    split turnover by VAT scope; and voluntary registration only for
-    registered firms. The extended table also needs ONS legal status codes,
-    GSS region codes, and ``firm_legal_form``, ``firm_region``,
-    ``firm_in_england`` and ``firm_is_public_body`` as those codes give them.
-    The paybill table also needs a finite non-negative ``firm_paybill`` that
-    is zero for a firm without employees.
+    The contract: exactly one of ``UK_FIRM_TABLE_LAYOUTS`` (the base table
+    and each valid set of ``UK_FIRM_EXPORT_GROUPS``), in order; no missing
+    value in any column (policyengine-uk rejects NaN); integer ``firm_id``,
+    unique and ascending; finite non-negative weights and money;
+    non-negative integer employees; ``SICSection`` member names; boolean
+    flags; supplies that split turnover by VAT scope; voluntary registration
+    only for registered firms; and each present group's own checks. The
+    attribute group needs ONS legal status codes, GSS region codes, and
+    ``firm_legal_form``, ``firm_region``, ``firm_in_england`` and
+    ``firm_is_public_body`` as those codes give them; the paybill group a
+    finite non-negative ``firm_paybill`` that is zero for a firm without
+    employees.
     """
 
     columns = tuple(df.columns)
-    layouts = (
-        UK_FIRM_TABLE_COLUMNS,
-        UK_FIRM_EXTENDED_TABLE_COLUMNS,
-        UK_FIRM_PAYBILL_TABLE_COLUMNS,
+    groups = next(
+        (names for names, layout in UK_FIRM_TABLE_LAYOUTS.items() if layout == columns),
+        None,
     )
-    if columns not in layouts:
+    if groups is None:
         raise ValueError(
             f"UK firm table columns {list(df.columns)} are not one of "
-            f"{[list(layout) for layout in layouts]}."
+            f"{[list(layout) for layout in UK_FIRM_TABLE_LAYOUTS.values()]}."
         )
     missing = [column for column in columns if df[column].isna().any()]
     if missing:
@@ -636,35 +833,8 @@ def validate_uk_firm_table(df: pd.DataFrame) -> None:
     voluntary = df["firm_vat_voluntarily_registered"].to_numpy(bool)
     if np.any(voluntary & ~df["vat_registered"].to_numpy(bool)):
         raise ValueError("UK firm voluntary registration needs vat_registered.")
-    if columns != UK_FIRM_TABLE_COLUMNS:
-        _validate_attribute_columns(df)
-    if columns == UK_FIRM_PAYBILL_TABLE_COLUMNS:
-        for column in _PAYBILL_NON_NEGATIVE_COLUMNS:
-            values = df[column].to_numpy(np.float64)
-            if not np.all(np.isfinite(values)) or np.any(values < 0):
-                raise ValueError(f"UK firm {column} must be finite and non-negative.")
-        if np.any(df["firm_paybill"].to_numpy(np.float64)[employees.to_numpy() == 0]):
-            raise ValueError("UK firm firm_paybill must be zero without employees.")
-
-
-def _validate_attribute_columns(df: pd.DataFrame) -> None:
-    status, region_code = _ons_attributes(df)
-    for column in ("firm_in_england", "firm_is_public_body"):
-        if not pd.api.types.is_bool_dtype(df[column]):
-            raise ValueError(f"UK firm {column} must be boolean.")
-    if not df["firm_legal_form"].isin(UK_FIRM_LEGAL_FORMS).all():
-        raise ValueError("UK firm firm_legal_form must be FirmLegalForm member names.")
-    if not df["firm_region"].isin(list(UK_FIRM_REGION_CODE_TO_REGION.values())).all():
-        raise ValueError("UK firm firm_region must be Region member names.")
-    expected = _attribute_columns(status, region_code)
-    for column, values in expected.items():
-        if not np.array_equal(df[column].to_numpy(values.dtype), values):
-            source = (
-                "ons_region_code"
-                if column in ("firm_region", "firm_in_england")
-                else "ons_legal_status"
-            )
-            raise ValueError(f"UK firm {column} does not follow {source}.")
+    for group in _ordered_groups(groups):
+        group.validate(df)
 
 
 __all__ = [
@@ -673,6 +843,7 @@ __all__ = [
     "UK_FIRM_CANDIDATE_RULES_COLUMNS",
     "UK_FIRM_CANDIDATE_SOURCE_COLUMNS",
     "UK_FIRM_ENGLISH_REGION_CODES",
+    "UK_FIRM_EXPORT_GROUPS",
     "UK_FIRM_EXPORT_SOURCE_COLUMNS",
     "UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS",
     "UK_FIRM_EXTENDED_TABLE_COLUMNS",
@@ -692,8 +863,13 @@ __all__ = [
     "UK_FIRM_SIC_SECTIONS",
     "UK_FIRM_SIC_SECTION_UNKNOWN",
     "UK_FIRM_TABLE_COLUMNS",
+    "UK_FIRM_TABLE_LAYOUTS",
+    "UKFirmExportGroup",
     "build_candidate_rules_table",
     "to_policyengine_uk_firm_table",
+    "uk_firm_export_groups",
+    "uk_firm_policyengine_uk_columns",
     "uk_firm_sic_sections",
+    "uk_firm_table_columns",
     "validate_uk_firm_table",
 ]

@@ -38,6 +38,7 @@ from microcosm.build.uk_runtime.firm_table import (
     to_policyengine_uk_firm_table,
     validate_uk_firm_table,
 )
+from microcosm.calibrate.geography_constants import UK_REGION_TIER_ENUM
 from test_support.paths import paths_for
 
 FIXTURES = paths_for("microcosm-build").tests / "fixtures" / "uk"
@@ -174,3 +175,138 @@ def test_paybill_export_tracks_ashe_jobs_times_mean_pay() -> None:
     counts = uk_firm_paybill_fallback_counts(table, source).set_index("level")
     assert float(counts["weighted_paybill_gbp"].sum()) == pytest.approx(weighted)
     assert int(counts.loc["all_employees", "firms"]) == 0
+
+
+#: The three export layouts as named constants spelled them before the group
+#: registry (microcosm#1705), written out so a registry change cannot move
+#: them unnoticed. Each column's dtype kind: integer, float, bool or string.
+_BASE_POLICYENGINE_UK = (
+    ("firm_id", "int"),
+    ("firm_weight", "float"),
+    ("firm_turnover", "float"),
+    ("firm_input_costs", "float"),
+    ("firm_employees", "int"),
+    ("firm_sic_section", "str"),
+    ("firm_standard_rated_supplies", "float"),
+    ("firm_exempt_supplies", "float"),
+    ("firm_vat_voluntarily_registered", "bool"),
+    ("firm_input_vat", "float"),
+)
+_ATTRIBUTE_POLICYENGINE_UK = (
+    ("firm_legal_form", "str"),
+    ("firm_region", "str"),
+    ("firm_in_england", "bool"),
+    ("firm_is_public_body", "bool"),
+)
+_PAYBILL_POLICYENGINE_UK = (("firm_paybill", "float"),)
+_BASE_MICROCOSM = (
+    ("in_frame", "bool"),
+    ("vat_scope", "bool"),
+    ("vat_registered", "bool"),
+    ("base_weight", "float"),
+    ("data_vintage", "str"),
+    ("source_firm_id", "int"),
+    ("source_firm_key", "str"),
+)
+_ATTRIBUTE_MICROCOSM = (("ons_legal_status", "int"), ("ons_region_code", "str"))
+_LEGACY_LAYOUTS = {
+    "base": (*_BASE_POLICYENGINE_UK, *_BASE_MICROCOSM),
+    "extended": (
+        *_BASE_POLICYENGINE_UK,
+        *_ATTRIBUTE_POLICYENGINE_UK,
+        *_BASE_MICROCOSM,
+        *_ATTRIBUTE_MICROCOSM,
+    ),
+    "paybill": (
+        *_BASE_POLICYENGINE_UK,
+        *_ATTRIBUTE_POLICYENGINE_UK,
+        *_PAYBILL_POLICYENGINE_UK,
+        *_BASE_MICROCOSM,
+        *_ATTRIBUTE_MICROCOSM,
+    ),
+}
+_DTYPE_CHECKS = {
+    "int": lambda series: series.dtype == np.int64,
+    "float": lambda series: series.dtype == np.float64,
+    "bool": lambda series: series.dtype == np.bool_,
+    "str": pd.api.types.is_string_dtype,
+}
+
+
+def _legacy_extended(base: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFrame:
+    """The pre-registry assembly of the extended export, spelled out.
+
+    ``rows`` are the attributed generator rows ordered by ``firm_id``. ONS
+    legal statuses 4-7 are OTHER, 5 and 6 public bodies; the nine E12 codes
+    are English regions.
+    """
+
+    status = rows["ons_legal_status"].to_numpy(np.int64)
+    code = rows["ons_region_code"].to_numpy(object)
+    legal_form = {1: "COMPANY", 2: "SOLE_TRADER", 3: "PARTNERSHIP"}
+    region = dict(UK_REGION_TIER_ENUM)
+    table = base.assign(
+        firm_legal_form=np.array(
+            [legal_form.get(int(s), "OTHER") for s in status], dtype=object
+        ),
+        firm_region=np.array([region[c] for c in code], dtype=object),
+        firm_in_england=np.array([c.startswith("E12") for c in code], dtype=bool),
+        firm_is_public_body=np.isin(status, [5, 6]),
+        ons_legal_status=status,
+        ons_region_code=code,
+    )
+    return table[[column for column, _ in _LEGACY_LAYOUTS["extended"]]]
+
+
+def _exports() -> dict[str, pd.DataFrame]:
+    threshold_k = _generated().config.vat_threshold
+    attributed = _with_attributes()
+    source = read_uk_firm_paybill_source(FIXTURES / "firm_paybill_2024")
+    paybill = attributed.assign(firm_paybill=assign_uk_firm_paybill(attributed, source))
+    return {
+        layout: to_policyengine_uk_firm_table(firms, threshold_k=threshold_k)
+        for layout, firms in (
+            ("base", _generated().firms),
+            ("extended", attributed),
+            ("paybill", paybill),
+        )
+    }
+
+
+def test_export_layouts_match_the_pre_registry_constants() -> None:
+    """Same-seed builds export the three layouts the named constants gave.
+
+    Columns, their order and dtypes are the literal pre-registry layouts;
+    the named constants still spell them; the extended and paybill exports
+    equal the base export assembled with their columns as the pre-registry
+    code assembled them.
+    """
+
+    assert UK_FIRM_TABLE_COLUMNS == tuple(c for c, _ in _LEGACY_LAYOUTS["base"])
+    assert UK_FIRM_EXTENDED_TABLE_COLUMNS == tuple(
+        c for c, _ in _LEGACY_LAYOUTS["extended"]
+    )
+    assert UK_FIRM_PAYBILL_TABLE_COLUMNS == tuple(
+        c for c, _ in _LEGACY_LAYOUTS["paybill"]
+    )
+    exports = _exports()
+    for layout, table in exports.items():
+        expected = _LEGACY_LAYOUTS[layout]
+        assert list(table.columns) == [column for column, _ in expected], layout
+        for column, kind in expected:
+            assert _DTYPE_CHECKS[kind](table[column]), (layout, column)
+        validate_uk_firm_table(table)
+        assert table.index.equals(pd.RangeIndex(len(table)))
+
+    base, extended, paybill = (exports[k] for k in ("base", "extended", "paybill"))
+    rows = _with_attributes().sort_values("firm_id", kind="stable")
+    legacy_extended = _legacy_extended(base, rows)
+    pd.testing.assert_frame_equal(extended, legacy_extended, check_exact=True)
+    source = read_uk_firm_paybill_source(FIXTURES / "firm_paybill_2024")
+    legacy_paybill = legacy_extended.assign(
+        firm_paybill=np.asarray(assign_uk_firm_paybill(rows, source), np.float64)
+    )[[column for column, _ in _LEGACY_LAYOUTS["paybill"]]]
+    pd.testing.assert_frame_equal(paybill, legacy_paybill, check_exact=True)
+    # Exporting the same seed's rows again gives the same tables.
+    for layout, table in _exports().items():
+        pd.testing.assert_frame_equal(table, exports[layout], check_exact=True)

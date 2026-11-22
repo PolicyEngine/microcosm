@@ -114,14 +114,20 @@ from microcosm.build.uk_runtime.firm_rules import (
 )
 from microcosm.build.uk_runtime.firm_table import (
     ASSUMED_INPUT_VAT_RATE,
+    UK_FIRM_EXPORT_GROUPS,
     UK_FIRM_EXTENDED_TABLE_COLUMNS,
     UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS,
     UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS,
     UK_FIRM_PAYBILL_TABLE_COLUMNS,
     UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
     UK_FIRM_TABLE_COLUMNS,
+    UK_FIRM_TABLE_LAYOUTS,
+    UKFirmExportGroup,
     build_candidate_rules_table,
     to_policyengine_uk_firm_table,
+    uk_firm_export_groups,
+    uk_firm_policyengine_uk_columns,
+    uk_firm_table_columns,
     validate_uk_firm_table,
 )
 from microcosm.build.uk_runtime.firm_target_candidates import (
@@ -1077,6 +1083,12 @@ __all__ = [
     "uk_firm_target_candidates_feeding",
     "UK_FIRM_EXTENDED_TABLE_COLUMNS",
     "UK_FIRM_POLICYENGINE_UK_INPUT_STATUS",
+    "UK_FIRM_EXPORT_GROUPS",
+    "UK_FIRM_TABLE_LAYOUTS",
+    "UKFirmExportGroup",
+    "uk_firm_export_groups",
+    "uk_firm_policyengine_uk_columns",
+    "uk_firm_table_columns",
     "write_uk_calibration_diagnostics",
     "load_bound_spine_sidecar",
     "spine_provenance_from_sidecar",

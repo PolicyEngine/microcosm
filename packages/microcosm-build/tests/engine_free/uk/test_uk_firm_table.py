@@ -11,6 +11,7 @@ from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS,
     UK_FIRM_CANDIDATE_RULES_COLUMNS,
     UK_FIRM_ENGLISH_REGION_CODES,
+    UK_FIRM_EXPORT_GROUPS,
     UK_FIRM_EXTENDED_POLICYENGINE_UK_COLUMNS,
     UK_FIRM_EXTENDED_TABLE_COLUMNS,
     UK_FIRM_INPUT_STATUSES,
@@ -28,9 +29,14 @@ from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_REGION_CODE_TO_REGION,
     UK_FIRM_SIC_SECTIONS,
     UK_FIRM_TABLE_COLUMNS,
+    UK_FIRM_TABLE_LAYOUTS,
+    UKFirmExportGroup,
     build_candidate_rules_table,
     to_policyengine_uk_firm_table,
+    uk_firm_export_groups,
+    uk_firm_policyengine_uk_columns,
     uk_firm_sic_sections,
+    uk_firm_table_columns,
     validate_uk_firm_table,
 )
 from microcosm.build.uk_runtime.occupation_constants import (
@@ -462,6 +468,12 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         if status in ("set", "derived", "assumed")
     }
     assert exported == set(UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS)
+    # The same set straight from the registry: the base and every group.
+    assert exported == set(UK_FIRM_POLICYENGINE_UK_COLUMNS) | {
+        column
+        for group in UK_FIRM_EXPORT_GROUPS
+        for column in group.policyengine_uk_columns
+    }
     # firm_in_england is the enterprise's region standing in for its
     # property's location, so it is an assumption, not a derivation; the
     # paybill gives every firm its section's mean pay per head.
@@ -484,3 +496,60 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
     )
     with pytest.raises(TypeError):
         UK_FIRM_POLICYENGINE_UK_INPUT_STATUS["firm_paybill"] = "set"  # type: ignore[index]
+
+
+def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
+    assert all(isinstance(group, UKFirmExportGroup) for group in UK_FIRM_EXPORT_GROUPS)
+    names = [group.name for group in UK_FIRM_EXPORT_GROUPS]
+    assert names == ["attributes", "paybill"]
+    attributes, paybill = UK_FIRM_EXPORT_GROUPS
+    assert attributes.source_columns == UK_FIRM_ONS_ATTRIBUTE_COLUMNS
+    assert attributes.policyengine_uk_columns == (
+        UK_FIRM_ATTRIBUTE_POLICYENGINE_UK_COLUMNS
+    )
+    assert attributes.microcosm_columns == UK_FIRM_ONS_ATTRIBUTE_COLUMNS
+    assert attributes.requires == ()
+    assert paybill.source_columns == ("firm_paybill",)
+    assert paybill.policyengine_uk_columns == UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS
+    assert paybill.microcosm_columns == ()
+    assert paybill.requires == ("attributes",)
+    # Each group comes after the groups it extends, and no column repeats.
+    for index, group in enumerate(UK_FIRM_EXPORT_GROUPS):
+        assert set(group.requires) <= set(names[:index])
+    every = uk_firm_table_columns(names)
+    assert len(set(every)) == len(every)
+
+
+def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
+    assert dict(UK_FIRM_TABLE_LAYOUTS) == {
+        (): UK_FIRM_TABLE_COLUMNS,
+        ("attributes",): UK_FIRM_EXTENDED_TABLE_COLUMNS,
+        ("attributes", "paybill"): UK_FIRM_PAYBILL_TABLE_COLUMNS,
+    }
+    assert uk_firm_table_columns() == UK_FIRM_TABLE_COLUMNS
+    assert uk_firm_policyengine_uk_columns() == UK_FIRM_POLICYENGINE_UK_COLUMNS
+    # Order of the names given does not matter: the registry orders them.
+    assert uk_firm_table_columns(["paybill", "attributes"]) == (
+        UK_FIRM_PAYBILL_TABLE_COLUMNS
+    )
+    assert uk_firm_policyengine_uk_columns(iter(["attributes", "paybill"])) == (
+        UK_FIRM_PAYBILL_EXTENDED_POLICYENGINE_UK_COLUMNS
+    )
+    assert uk_firm_table_columns(iter(["attributes"])) == (
+        UK_FIRM_EXTENDED_TABLE_COLUMNS
+    )
+    with pytest.raises(ValueError, match="extends"):
+        uk_firm_table_columns(["paybill"])
+    with pytest.raises(ValueError, match="Unknown"):
+        uk_firm_table_columns(["not_a_registered_group"])
+
+
+def test_export_groups_follow_the_rows_source_columns() -> None:
+    assert uk_firm_export_groups(_firms()) == ()
+    assert uk_firm_export_groups(_attributed_firms()) == ("attributes",)
+    paybill = _attributed_firms().assign(firm_paybill=0.0)
+    assert uk_firm_export_groups(paybill) == ("attributes", "paybill")
+    with pytest.raises(ValueError, match="needs both"):
+        uk_firm_export_groups(_attributed_firms().drop(columns="ons_region_code"))
+    with pytest.raises(ValueError, match="firm_paybill without"):
+        uk_firm_export_groups(_firms().assign(firm_paybill=0.0))
