@@ -1,0 +1,4103 @@
+{
+  "schema_version": 1,
+  "kind": "be_statbel_commune_population_2025_fixture",
+  "use": "test_be_geography.py compiles Belgium's 565 atomic_geography_support precal rows from these facts, builds the support from be/transport_atomic_geography_support.json, runs assignment, derivation and the gate, and checks region sums against the NUTS1 facts.",
+  "source": {
+    "artifact": "Belgium's pinned Chronicle consumer artifact (be/chronicle_feed.json)",
+    "chronicle_source_commit": "14181d7cdf42a846c256019c1fbfbba45054d88a",
+    "facts_sha256": "607ea9b210eb366110826ed6a8317cc317d1c99c2828d142ce11b21f793aedfc",
+    "manifest_sha256": "e40d48b4157473e2aa454bac08a2815c04d165c906c8f3e515c6d461f1c119b3"
+  },
+  "selection": "The artifact's consumer_facts.jsonl lines whose layout.record_set_id is statbel.population_structure.cy2025.people.by_commune_nis2025.total (565 lines, record_set commune_total) or statbel.population_structure.cy2025.people.by_nuts1_age_sex (18 lines, record_set nuts1_age_sex), copied byte for byte in artifact order (the two sets interleave) and gzipped at level 9 with mtime 0 and no file name.",
+  "record_sets": [
+    "statbel.population_structure.cy2025.people.by_commune_nis2025.total",
+    "statbel.population_structure.cy2025.people.by_nuts1_age_sex"
+  ],
+  "line_sha256": "Each lines entry's sha256 is of that line's bytes without its trailing newline.",
+  "lines": [
+    {
+      "artifact_line": 83122,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE1",
+      "value": 137223,
+      "sha256": "051a2cb8faf7670ab339cb3ef60821566c70029828750fd6016ae8a163934c15"
+    },
+    {
+      "artifact_line": 83123,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE1",
+      "value": 409193,
+      "sha256": "539257ee64d5e94f1a91b05b8797bc46e756a3b1c70a4c5e3d7b36f32c142dc8"
+    },
+    {
+      "artifact_line": 83124,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE1",
+      "value": 68929,
+      "sha256": "a75be97de7686a512dfd23d64df7bc2fc474e6c60d96fe44ecfcea0ba222373d"
+    },
+    {
+      "artifact_line": 83125,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE1",
+      "value": 131517,
+      "sha256": "5ab75820c1e4cab905175b84d2b09575af1d64384b11a760a4ae51bb928e65a2"
+    },
+    {
+      "artifact_line": 83126,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE1",
+      "value": 412811,
+      "sha256": "66d2c7e439c5423b15644dc1e0e37a5dd96335ea71af0fbc5e81774eff4b34c6"
+    },
+    {
+      "artifact_line": 83127,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE1",
+      "value": 96122,
+      "sha256": "2217852e9c3aff202c904b9290f7d4433b11d2f7cb755161369f03dce9b87b37"
+    },
+    {
+      "artifact_line": 83128,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE2",
+      "value": 673449,
+      "sha256": "c83b8c20b411b977b921b5cd88d80c17e07d8d5640f91babd84311a39316fda7"
+    },
+    {
+      "artifact_line": 83129,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE2",
+      "value": 2042553,
+      "sha256": "1f857f5723a07be60d55b02cda2db1505153c3c6dca248164130fcc02047df2e"
+    },
+    {
+      "artifact_line": 83130,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE2",
+      "value": 683817,
+      "sha256": "4a72fe227228c5b185a190c84522dbe4d6fc3146fc1c8ee257f6397d509811d0"
+    },
+    {
+      "artifact_line": 83131,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE2",
+      "value": 642319,
+      "sha256": "fc3abe072b6fe08ca196b61cefc15e635aee696fdff47dc7b40f340a49eb063c"
+    },
+    {
+      "artifact_line": 83132,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE2",
+      "value": 2014794,
+      "sha256": "421290879cee5a89c1e8adc50c245557ee74041f9b19e090847f2ff510c0929d"
+    },
+    {
+      "artifact_line": 83133,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE2",
+      "value": 807834,
+      "sha256": "d56fb17d2a05a65cf67b485e9b2831a69c5924aa15b189acf5b79aff433b5f23"
+    },
+    {
+      "artifact_line": 83134,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE3",
+      "value": 376599,
+      "sha256": "18df89b4dfcc9346e129a199a2251f37f92c47907f51a3fd89e4425bb4341595"
+    },
+    {
+      "artifact_line": 83135,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE3",
+      "value": 1111407,
+      "sha256": "ecf875d2554201504afe9c6d4b8d39ed1f3b2a67cb7d1a05792d076d643b22d0"
+    },
+    {
+      "artifact_line": 83136,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE3",
+      "value": 326852,
+      "sha256": "0ba577341050c0792c4e032f3b94ce53d7fb3329000fc9e7671a39ef2056ce0f"
+    },
+    {
+      "artifact_line": 83137,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE3",
+      "value": 359663,
+      "sha256": "7d838daca5706187b343a495baf5296fbab7ac28485bf1128e4bdaca2d0a70c2"
+    },
+    {
+      "artifact_line": 83138,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE3",
+      "value": 1108708,
+      "sha256": "343d212f59af4d4ec67c67e2a0711fc49bda6e47a2190feb5331aa550743e60c"
+    },
+    {
+      "artifact_line": 83139,
+      "record_set": "nuts1_age_sex",
+      "geography_id": "BE3",
+      "value": 421761,
+      "sha256": "8d5ba2cfab74686fd5154bf723a2303d59ab148731ace65eb19bac711f431769"
+    },
+    {
+      "artifact_line": 83158,
+      "record_set": "commune_total",
+      "geography_id": "11001",
+      "value": 15093,
+      "sha256": "2108f5cee601f2ba54bd8b1dae2d1f08217df0bbf7f90753cbefbcfd35120146"
+    },
+    {
+      "artifact_line": 83159,
+      "record_set": "commune_total",
+      "geography_id": "11002",
+      "value": 562002,
+      "sha256": "b3e888a4d3ff61b7886022522df0bc57a20a01577df2726ba2116ebe52919a2b"
+    },
+    {
+      "artifact_line": 83160,
+      "record_set": "commune_total",
+      "geography_id": "11004",
+      "value": 14084,
+      "sha256": "77f02405a583377217d4e605dd0307677d2d25a55ff577b61c7a854761311b62"
+    },
+    {
+      "artifact_line": 83161,
+      "record_set": "commune_total",
+      "geography_id": "11005",
+      "value": 19699,
+      "sha256": "4504bb1a3a72c3af5d2efb4306d53015e2d6d21a27442401cabceee6704cca3e"
+    },
+    {
+      "artifact_line": 83162,
+      "record_set": "commune_total",
+      "geography_id": "11008",
+      "value": 38416,
+      "sha256": "b1bc50eff0669f09924ef980b502f5cbbaa0cacb703e188af2cb76e3951639da"
+    },
+    {
+      "artifact_line": 83163,
+      "record_set": "commune_total",
+      "geography_id": "11009",
+      "value": 30664,
+      "sha256": "bbb9ad151b569cda925d1a59a4f24fb75e855946fc2a217130831a2c114740b5"
+    },
+    {
+      "artifact_line": 83164,
+      "record_set": "commune_total",
+      "geography_id": "11013",
+      "value": 23502,
+      "sha256": "394e4bff79cbfc5aeb7956fd262be7ce5ac79f97b17538e853156c80c92a47a4"
+    },
+    {
+      "artifact_line": 83165,
+      "record_set": "commune_total",
+      "geography_id": "11016",
+      "value": 19606,
+      "sha256": "8a9523248130384f14601928b01743e301d03e10f1dd0c155ef7c2d6f5eb34d7"
+    },
+    {
+      "artifact_line": 83166,
+      "record_set": "commune_total",
+      "geography_id": "11018",
+      "value": 12428,
+      "sha256": "ac65253cbb00d344cc517ebd6b58452ab2568134be81b638a09a8bfd996dd796"
+    },
+    {
+      "artifact_line": 83167,
+      "record_set": "commune_total",
+      "geography_id": "11021",
+      "value": 8366,
+      "sha256": "598668ad60540f752da6d5ed8088fcf7a2f2b265e3bba74b718756fd0670b413"
+    },
+    {
+      "artifact_line": 83168,
+      "record_set": "commune_total",
+      "geography_id": "11022",
+      "value": 19712,
+      "sha256": "9cd58c19bce4b077c3170ed06338aa8160e71c6fcf9dff24a3210fafb36c8613"
+    },
+    {
+      "artifact_line": 83169,
+      "record_set": "commune_total",
+      "geography_id": "11023",
+      "value": 27976,
+      "sha256": "4005211f0397fab45e2585968e26ac32a34b1d07ea0607b2081763cae0314a94"
+    },
+    {
+      "artifact_line": 83170,
+      "record_set": "commune_total",
+      "geography_id": "11024",
+      "value": 21801,
+      "sha256": "ee8deabac58487f74578983969974f466e499f5a12ccf95bd58bdd45d48cc82a"
+    },
+    {
+      "artifact_line": 83171,
+      "record_set": "commune_total",
+      "geography_id": "11025",
+      "value": 8499,
+      "sha256": "f97ae884a9a4ba7f68620b80edc4ed40a95f8a17a3cd6bf94a0c05821380f3c3"
+    },
+    {
+      "artifact_line": 83172,
+      "record_set": "commune_total",
+      "geography_id": "11029",
+      "value": 26736,
+      "sha256": "82378c5f21f81f3a2d2f097c0746b1869ae05c97d84b96964bbcb97b01361a13"
+    },
+    {
+      "artifact_line": 83173,
+      "record_set": "commune_total",
+      "geography_id": "11030",
+      "value": 11032,
+      "sha256": "ea5f594a0db8a11b33be565d20826f9b4a84883d3093e28346086eb92a5fcca7"
+    },
+    {
+      "artifact_line": 83174,
+      "record_set": "commune_total",
+      "geography_id": "11035",
+      "value": 19755,
+      "sha256": "a2662f4b99797a74c18fc63c071f2ae53d9fc6753a1b3de58fa47f32df524b1a"
+    },
+    {
+      "artifact_line": 83175,
+      "record_set": "commune_total",
+      "geography_id": "11037",
+      "value": 15692,
+      "sha256": "55a2131c42b09c4bce03e82e61d51d64026dd8c9b6d6a38273daf0d82ff8ef93"
+    },
+    {
+      "artifact_line": 83176,
+      "record_set": "commune_total",
+      "geography_id": "11038",
+      "value": 8682,
+      "sha256": "4067593f6d9475499d42d32d1ee7a0ca5c101542fcd91e41dc0110e41a445959"
+    },
+    {
+      "artifact_line": 83177,
+      "record_set": "commune_total",
+      "geography_id": "11039",
+      "value": 20508,
+      "sha256": "9c23a98f5f276c6c63361ea93189bb89807560ec262893c4fbac91a7941a1b22"
+    },
+    {
+      "artifact_line": 83178,
+      "record_set": "commune_total",
+      "geography_id": "11040",
+      "value": 34926,
+      "sha256": "4a69bc54b51173d0692b446355d36e77d7b3f7e48303231616e074c3501dd141"
+    },
+    {
+      "artifact_line": 83179,
+      "record_set": "commune_total",
+      "geography_id": "11044",
+      "value": 18970,
+      "sha256": "9304e9869156200b79ecfaa3894ef967458c8ead9a51042dc8105dbef17dd99e"
+    },
+    {
+      "artifact_line": 83180,
+      "record_set": "commune_total",
+      "geography_id": "11050",
+      "value": 10650,
+      "sha256": "829e0a987973fe119a7984bf9149c16974b389e037cc2840528e6d7a89f0d03d"
+    },
+    {
+      "artifact_line": 83181,
+      "record_set": "commune_total",
+      "geography_id": "11052",
+      "value": 13564,
+      "sha256": "7df462fb05472ffcd337d1bae23ed03f2860f5e5371dbdb949e9cddfa76eb3b7"
+    },
+    {
+      "artifact_line": 83182,
+      "record_set": "commune_total",
+      "geography_id": "11053",
+      "value": 21941,
+      "sha256": "e99b7bfe0f3a119af3067d7dd2cd14d37c39a7c9e2a7f934789153829f0580f7"
+    },
+    {
+      "artifact_line": 83183,
+      "record_set": "commune_total",
+      "geography_id": "11054",
+      "value": 13423,
+      "sha256": "b34578d6496f81897be51e9974c8527adbb5acf92a3434e206af00e0804474f6"
+    },
+    {
+      "artifact_line": 83184,
+      "record_set": "commune_total",
+      "geography_id": "11055",
+      "value": 22770,
+      "sha256": "68c1c9f1f2bda636fbb6125bc8b4bec283f8ee546533db4b4102929f41e2d396"
+    },
+    {
+      "artifact_line": 83185,
+      "record_set": "commune_total",
+      "geography_id": "11057",
+      "value": 16248,
+      "sha256": "03de599c7170529bbc0f7d033f12ad69199ce3a417ec4d8712911d3070d91327"
+    },
+    {
+      "artifact_line": 83186,
+      "record_set": "commune_total",
+      "geography_id": "12002",
+      "value": 12115,
+      "sha256": "067497e4da4d9d9c2d5fa08511e8d462cba1b7a7c1016c26d579ef0ba0354fc3"
+    },
+    {
+      "artifact_line": 83187,
+      "record_set": "commune_total",
+      "geography_id": "12005",
+      "value": 15641,
+      "sha256": "0bf7da46722625f6c57a1bc9c7f3a42587af654a623e22a18c3b8b0a88c84dfc"
+    },
+    {
+      "artifact_line": 83188,
+      "record_set": "commune_total",
+      "geography_id": "12007",
+      "value": 22232,
+      "sha256": "811749b0324493194cea20513c4d1d15705a9a15454d275ab902f9f08c88bf97"
+    },
+    {
+      "artifact_line": 83189,
+      "record_set": "commune_total",
+      "geography_id": "12009",
+      "value": 18100,
+      "sha256": "a65e146b6a363d59728a8363fa2d147752ac5dedc53519335c9081c78ce298fb"
+    },
+    {
+      "artifact_line": 83190,
+      "record_set": "commune_total",
+      "geography_id": "12014",
+      "value": 44723,
+      "sha256": "0ec0cea3331942c08980f4d43c0571bef5803fcf3a49f7dd42240ae790e4c83c"
+    },
+    {
+      "artifact_line": 83191,
+      "record_set": "commune_total",
+      "geography_id": "12021",
+      "value": 38517,
+      "sha256": "4927a7828a08de5a22071f951086269f440862459f6b2e090a53e13337ba4b5d"
+    },
+    {
+      "artifact_line": 83192,
+      "record_set": "commune_total",
+      "geography_id": "12025",
+      "value": 89655,
+      "sha256": "01d68ec5c8e0aae313bc1f920706cdc8cd29662ef2cb0e54caf8fc2ab2520786"
+    },
+    {
+      "artifact_line": 83193,
+      "record_set": "commune_total",
+      "geography_id": "12026",
+      "value": 23747,
+      "sha256": "4fbd16e76b5c7b55c282b6fd6c70b6e7d97eda219e8cd68da82299bea81c2037"
+    },
+    {
+      "artifact_line": 83194,
+      "record_set": "commune_total",
+      "geography_id": "12029",
+      "value": 19091,
+      "sha256": "3a53f13d2d6d2d4cd82c718afa5c034a47303f011ec659008b572d3c1283a3fc"
+    },
+    {
+      "artifact_line": 83195,
+      "record_set": "commune_total",
+      "geography_id": "12035",
+      "value": 21917,
+      "sha256": "df387679a59ca581bf99d2a1cf1815618d5d66199d22ffeef40254d9be39fed8"
+    },
+    {
+      "artifact_line": 83196,
+      "record_set": "commune_total",
+      "geography_id": "12040",
+      "value": 28620,
+      "sha256": "99cd2ee2222a4d3ff691decd9ce31a1f80c00ba913fff0128bfc3c5b2f60b2f6"
+    },
+    {
+      "artifact_line": 83197,
+      "record_set": "commune_total",
+      "geography_id": "12041",
+      "value": 27066,
+      "sha256": "8bf7cd70653e265008c5ca893cfc90897d3e3aefcb562253be306231c533bd02"
+    },
+    {
+      "artifact_line": 83198,
+      "record_set": "commune_total",
+      "geography_id": "13001",
+      "value": 13323,
+      "sha256": "8bd01c3d03433c46c9eb0d4f397ae69163786c6e4c99f908d97b956bc5615d79"
+    },
+    {
+      "artifact_line": 83199,
+      "record_set": "commune_total",
+      "geography_id": "13002",
+      "value": 3083,
+      "sha256": "95142fed2e862cee8d4072c0754b52e01c42359f4fa2ade11335bffb58972f6a"
+    },
+    {
+      "artifact_line": 83200,
+      "record_set": "commune_total",
+      "geography_id": "13003",
+      "value": 23777,
+      "sha256": "3159298afeca2d9e8f07f32714de4dbde0d98e4a70df84caad21ec62d2ab0bf6"
+    },
+    {
+      "artifact_line": 83201,
+      "record_set": "commune_total",
+      "geography_id": "13004",
+      "value": 18710,
+      "sha256": "04ef6d29ae1fe1c31e06f4d5a4f351aa3496209ef454c1ac2ec74674ea425362"
+    },
+    {
+      "artifact_line": 83202,
+      "record_set": "commune_total",
+      "geography_id": "13006",
+      "value": 10076,
+      "sha256": "acc862e6d82570738b1921d31c27075f45bdf18ffb43e2bd4c484076b8dac6db"
+    },
+    {
+      "artifact_line": 83203,
+      "record_set": "commune_total",
+      "geography_id": "13008",
+      "value": 42427,
+      "sha256": "65d7b0b1d0325eb96759d6875a743287640fd2e192268d74174550b46c279bf5"
+    },
+    {
+      "artifact_line": 83204,
+      "record_set": "commune_total",
+      "geography_id": "13010",
+      "value": 11609,
+      "sha256": "fcd51f3599a49a5c8427dc52d0a59669f60838d3df02d779de21100b02b37de9"
+    },
+    {
+      "artifact_line": 83205,
+      "record_set": "commune_total",
+      "geography_id": "13011",
+      "value": 29001,
+      "sha256": "1c119d5f3218123ea59eea8de48e50f82e6eee2a66def70950517b8d59150049"
+    },
+    {
+      "artifact_line": 83206,
+      "record_set": "commune_total",
+      "geography_id": "13012",
+      "value": 9504,
+      "sha256": "711292de52ed32b4f9b96733539098b143ed61ac131e89e4b493d18406cb097d"
+    },
+    {
+      "artifact_line": 83207,
+      "record_set": "commune_total",
+      "geography_id": "13013",
+      "value": 14829,
+      "sha256": "6205a115ca6e2532170e7291d69473899aca6027d3df160a55ca396027cd7f91"
+    },
+    {
+      "artifact_line": 83208,
+      "record_set": "commune_total",
+      "geography_id": "13014",
+      "value": 22403,
+      "sha256": "844873639a8d789a586fee88a4eb6cf5157bf90293544d3da13af1e67ce55b9d"
+    },
+    {
+      "artifact_line": 83209,
+      "record_set": "commune_total",
+      "geography_id": "13016",
+      "value": 10634,
+      "sha256": "dce58d7c673ab4d360d81f8d609334e4731953e3c228968c420685e7b1304f19"
+    },
+    {
+      "artifact_line": 83210,
+      "record_set": "commune_total",
+      "geography_id": "13017",
+      "value": 19802,
+      "sha256": "980504fa20666a856b37b8c16bae5e62414b1fedae9f2481c84cbaf15b28ce8c"
+    },
+    {
+      "artifact_line": 83211,
+      "record_set": "commune_total",
+      "geography_id": "13019",
+      "value": 17130,
+      "sha256": "a681ecb75d7c82e2eaac085adbb2d487baa53f32a4b17b1dea732ec1b277e978"
+    },
+    {
+      "artifact_line": 83212,
+      "record_set": "commune_total",
+      "geography_id": "13021",
+      "value": 10377,
+      "sha256": "219679bc9ad967af874cf329984dbea2beb08f37d634eab0b0c635ba6d370051"
+    },
+    {
+      "artifact_line": 83213,
+      "record_set": "commune_total",
+      "geography_id": "13023",
+      "value": 8921,
+      "sha256": "4a1d9928c6050e676d136dc8658dbc4a3b1e04889872b3231204b6453139bc86"
+    },
+    {
+      "artifact_line": 83214,
+      "record_set": "commune_total",
+      "geography_id": "13025",
+      "value": 38701,
+      "sha256": "bef4069452da0e608e5740601618bc5a272c6c9450bd7622fbf32dcf56479996"
+    },
+    {
+      "artifact_line": 83215,
+      "record_set": "commune_total",
+      "geography_id": "13029",
+      "value": 12915,
+      "sha256": "aa8232e3ba516636dd40eb24b8b77cab8442ea6cd7a1d6813bbe381080b77683"
+    },
+    {
+      "artifact_line": 83216,
+      "record_set": "commune_total",
+      "geography_id": "13031",
+      "value": 15045,
+      "sha256": "7e0d31dc453511b4de3a33fe28d22fa63ac84472d4fc31584a7bc4f26f6e32ee"
+    },
+    {
+      "artifact_line": 83217,
+      "record_set": "commune_total",
+      "geography_id": "13035",
+      "value": 15712,
+      "sha256": "981461b826f0d06fc499885182d5a7abdd09d69c5f12cd586e929fe25c42ff10"
+    },
+    {
+      "artifact_line": 83218,
+      "record_set": "commune_total",
+      "geography_id": "13036",
+      "value": 11995,
+      "sha256": "3c0eff87f492aafd88f85808c8f7861c7bcb21a9879be051c9c966e9963add4c"
+    },
+    {
+      "artifact_line": 83219,
+      "record_set": "commune_total",
+      "geography_id": "13037",
+      "value": 12560,
+      "sha256": "15dfcfef63d2f493352b9bf34309815a4a8d2843b2fdb485fb8aedb5d8f56750"
+    },
+    {
+      "artifact_line": 83220,
+      "record_set": "commune_total",
+      "geography_id": "13040",
+      "value": 47965,
+      "sha256": "ce155bc5165871f9fa519edbfad8ec7aa44118d00c74bef0b73557938590dacb"
+    },
+    {
+      "artifact_line": 83221,
+      "record_set": "commune_total",
+      "geography_id": "13044",
+      "value": 8079,
+      "sha256": "55298da361204b639bda42e858a1d8cb6f9336f27be45e62818190127e448568"
+    },
+    {
+      "artifact_line": 83222,
+      "record_set": "commune_total",
+      "geography_id": "13046",
+      "value": 11816,
+      "sha256": "ee9899e83ecd5599acdd33306aa303b0dbdf595d2d35f85fa2d71e0e371a877c"
+    },
+    {
+      "artifact_line": 83223,
+      "record_set": "commune_total",
+      "geography_id": "13049",
+      "value": 25691,
+      "sha256": "0c9ef48e076f5efca1a7665551444196a83e133b7fb05d26a1055c0f2eeace62"
+    },
+    {
+      "artifact_line": 83224,
+      "record_set": "commune_total",
+      "geography_id": "13053",
+      "value": 16935,
+      "sha256": "63689b6f1223d0f39d649a24bc37267b05390ffb38c458e6a72eca9e958bd841"
+    },
+    {
+      "artifact_line": 83225,
+      "record_set": "commune_total",
+      "geography_id": "21001",
+      "value": 128724,
+      "sha256": "936c552301a6c565a063e1d229e72f3d40e4a777c58ccda039d796a391bc2a49"
+    },
+    {
+      "artifact_line": 83226,
+      "record_set": "commune_total",
+      "geography_id": "21002",
+      "value": 35698,
+      "sha256": "4c544c134c65d0040032e89d0dd948274223493e72a8fac9145aed1de22118e7"
+    },
+    {
+      "artifact_line": 83227,
+      "record_set": "commune_total",
+      "geography_id": "21003",
+      "value": 25803,
+      "sha256": "4daf1047cb917f9cc6f94dc69ac566968b55bdc7a4fe002febb5898d85d90a5f"
+    },
+    {
+      "artifact_line": 83228,
+      "record_set": "commune_total",
+      "geography_id": "21004",
+      "value": 198314,
+      "sha256": "af564fc271905249fe340f73091c7e627c18511dc1b4dc81e96bf9cb4d371ac6"
+    },
+    {
+      "artifact_line": 83229,
+      "record_set": "commune_total",
+      "geography_id": "21005",
+      "value": 49131,
+      "sha256": "c882ebcb9598c7b67080a4f1877404bcd963fc87be256a265b069a9779dcaff9"
+    },
+    {
+      "artifact_line": 83230,
+      "record_set": "commune_total",
+      "geography_id": "21006",
+      "value": 45892,
+      "sha256": "19bb729db38b2b13c2fbb5421f2a526e1b030242b4dd0317a4db559acbfca985"
+    },
+    {
+      "artifact_line": 83231,
+      "record_set": "commune_total",
+      "geography_id": "21007",
+      "value": 58675,
+      "sha256": "297f18c000fc819b5d5525f01ca798ddf3e4468ad1f999e40cc62691bf5866df"
+    },
+    {
+      "artifact_line": 83232,
+      "record_set": "commune_total",
+      "geography_id": "21008",
+      "value": 25693,
+      "sha256": "1b604937a7b1e9f75722b5dbf021c0bfac2f72b8a0845d0d411a1e47f7e086d3"
+    },
+    {
+      "artifact_line": 83233,
+      "record_set": "commune_total",
+      "geography_id": "21009",
+      "value": 89897,
+      "sha256": "3f9fb25046c174ad94ab66a204a1344a00735e9e8c303e9c72d6088c4cb18af1"
+    },
+    {
+      "artifact_line": 83234,
+      "record_set": "commune_total",
+      "geography_id": "21010",
+      "value": 54390,
+      "sha256": "fe4b27da7dc7cc561f5228e23ed870972b523dda203599de80d2c810520e90ff"
+    },
+    {
+      "artifact_line": 83235,
+      "record_set": "commune_total",
+      "geography_id": "21011",
+      "value": 22979,
+      "sha256": "8e129c97146acd1c75922498662db793f0d0d77b266df83728140dadbfa79623"
+    },
+    {
+      "artifact_line": 83236,
+      "record_set": "commune_total",
+      "geography_id": "21012",
+      "value": 98713,
+      "sha256": "54ccb86dd435abad2a5d20f72662e7ef1ce1ba7a6d95cbc80d96ff4b76839a91"
+    },
+    {
+      "artifact_line": 83237,
+      "record_set": "commune_total",
+      "geography_id": "21013",
+      "value": 48827,
+      "sha256": "aca0bdc156bff5e76ec59d27830bf42689788ad53f028a7a51a4cfdb4666e1d8"
+    },
+    {
+      "artifact_line": 83238,
+      "record_set": "commune_total",
+      "geography_id": "21014",
+      "value": 27258,
+      "sha256": "976f1cc1734c14d53687b9ecf7f337b08ec5b64b569d3b532b7569c86c9aeda1"
+    },
+    {
+      "artifact_line": 83239,
+      "record_set": "commune_total",
+      "geography_id": "21015",
+      "value": 129775,
+      "sha256": "3c5e94c0d9ef855fa31cfcab076e2e34e91676a8824bc7e51fc51f1bf09e8fcf"
+    },
+    {
+      "artifact_line": 83240,
+      "record_set": "commune_total",
+      "geography_id": "21016",
+      "value": 87194,
+      "sha256": "c79bce1ccf24452082b793e97130baa5f71762f90ceef4cbc6b4ad9885715cff"
+    },
+    {
+      "artifact_line": 83241,
+      "record_set": "commune_total",
+      "geography_id": "21017",
+      "value": 25327,
+      "sha256": "b02c844594e863be3c97ad585014c91b12e2a0c675ebf53994a198db6ce7f608"
+    },
+    {
+      "artifact_line": 83242,
+      "record_set": "commune_total",
+      "geography_id": "21018",
+      "value": 60956,
+      "sha256": "18087a037ad8489aa17c3f756e9da5169ef56e4bed473c970c7c6dfbddbda8ca"
+    },
+    {
+      "artifact_line": 83243,
+      "record_set": "commune_total",
+      "geography_id": "21019",
+      "value": 42549,
+      "sha256": "20befbcb276a946370bd49e7e9ced1fbced79504fa602728b6966543df7b066b"
+    },
+    {
+      "artifact_line": 83244,
+      "record_set": "commune_total",
+      "geography_id": "23002",
+      "value": 35882,
+      "sha256": "84002611365a1b2de6ac5074f55f77988567861db867281596d9b80632f42c26"
+    },
+    {
+      "artifact_line": 83245,
+      "record_set": "commune_total",
+      "geography_id": "23003",
+      "value": 26593,
+      "sha256": "b8d554bb38d9c920097386daca47761c900cd2a915739f72e3a47a20f2b749e1"
+    },
+    {
+      "artifact_line": 83246,
+      "record_set": "commune_total",
+      "geography_id": "23009",
+      "value": 2266,
+      "sha256": "276b8b66db0ec6974299b80752fece7decde2d90de4972c2ef9ec5211db81f50"
+    },
+    {
+      "artifact_line": 83247,
+      "record_set": "commune_total",
+      "geography_id": "23016",
+      "value": 45069,
+      "sha256": "0293deeb97f3999463acdc1c9569ad4419b0619b85248639b513b79037332bc2"
+    },
+    {
+      "artifact_line": 83248,
+      "record_set": "commune_total",
+      "geography_id": "23025",
+      "value": 40062,
+      "sha256": "96276a598de085746f9297c77e545ad0e028ab7066eb3466cc158a85a1eed476"
+    },
+    {
+      "artifact_line": 83249,
+      "record_set": "commune_total",
+      "geography_id": "23027",
+      "value": 42884,
+      "sha256": "544a8c2ed26a68f6aacbe92c8f5297db84f78c66eb19f567edc015c24f74000e"
+    },
+    {
+      "artifact_line": 83250,
+      "record_set": "commune_total",
+      "geography_id": "23033",
+      "value": 11565,
+      "sha256": "26631736ccad49aa1b713c3096d6818676ded28082b655266cb99aea85c2c245"
+    },
+    {
+      "artifact_line": 83251,
+      "record_set": "commune_total",
+      "geography_id": "23038",
+      "value": 12606,
+      "sha256": "9ac143b90e5d48460865a8727ba487abab934f1f6514e0556376d735e6ee1d65"
+    },
+    {
+      "artifact_line": 83252,
+      "record_set": "commune_total",
+      "geography_id": "23039",
+      "value": 9806,
+      "sha256": "2ab6678cdfe1e199347f5c4a0d19e7d5d9edd629bdf79992bc29af2a6ea58ae5"
+    },
+    {
+      "artifact_line": 83253,
+      "record_set": "commune_total",
+      "geography_id": "23044",
+      "value": 14155,
+      "sha256": "9e16782e1b36925ebf96bc0e04746afd34197f4b6cc5bd9daa41f8b55e89f99d"
+    },
+    {
+      "artifact_line": 83254,
+      "record_set": "commune_total",
+      "geography_id": "23045",
+      "value": 19491,
+      "sha256": "6409f4867e6abd6ee76667ece73feec569da3aad3be42f3d3a3a8c1a48ad7dcc"
+    },
+    {
+      "artifact_line": 83255,
+      "record_set": "commune_total",
+      "geography_id": "23047",
+      "value": 16784,
+      "sha256": "c8fb59b04a763ec32cd6beb1ea41974d7ae77e9a8ae1c37a767b9e611837c2e6"
+    },
+    {
+      "artifact_line": 83256,
+      "record_set": "commune_total",
+      "geography_id": "23050",
+      "value": 20392,
+      "sha256": "0744a355547eff2ea6350c850402f6c89ef2500b4984df31b284bcbbe786e6b2"
+    },
+    {
+      "artifact_line": 83257,
+      "record_set": "commune_total",
+      "geography_id": "23052",
+      "value": 18361,
+      "sha256": "6323ceda1c2c98b26a9c8c548e8fb188d7f5d35707384e5c7d5f3c7463849897"
+    },
+    {
+      "artifact_line": 83258,
+      "record_set": "commune_total",
+      "geography_id": "23060",
+      "value": 15006,
+      "sha256": "cdcba103fd3e646659029b0c8c5202d5ec6a37f51623436d3422c42ac59c6afd"
+    },
+    {
+      "artifact_line": 83259,
+      "record_set": "commune_total",
+      "geography_id": "23062",
+      "value": 26250,
+      "sha256": "588b17022411b2d206fdce4b589596f5b4cca0a4e70670ff68ffcb6647bc97b8"
+    },
+    {
+      "artifact_line": 83260,
+      "record_set": "commune_total",
+      "geography_id": "23064",
+      "value": 4564,
+      "sha256": "66ea3d00d8fb81a95f9c6b985619778841ff8d361222254399bdcd9d09d29ff2"
+    },
+    {
+      "artifact_line": 83261,
+      "record_set": "commune_total",
+      "geography_id": "23077",
+      "value": 36732,
+      "sha256": "fb677eda901c9acee84dd368c0fdb2915beee59fb0ecce65ecfe6fdbca512722"
+    },
+    {
+      "artifact_line": 83262,
+      "record_set": "commune_total",
+      "geography_id": "23081",
+      "value": 12727,
+      "sha256": "69f4270c9f8994710ae53f962595f44ce20478381760a4b4658d1088418f1b9e"
+    },
+    {
+      "artifact_line": 83263,
+      "record_set": "commune_total",
+      "geography_id": "23086",
+      "value": 16691,
+      "sha256": "804e3d593499171f8da2dd3766ec47c6373f695adad28ef0f967bd605f71bade"
+    },
+    {
+      "artifact_line": 83264,
+      "record_set": "commune_total",
+      "geography_id": "23088",
+      "value": 48040,
+      "sha256": "8e1e274adb86f0c54ae0175e9938b67b0fd434914bbbd6d88856b2bb8421798c"
+    },
+    {
+      "artifact_line": 83265,
+      "record_set": "commune_total",
+      "geography_id": "23094",
+      "value": 37271,
+      "sha256": "19c8fdee71d11dc7090056fb4fd81ebda0974031d87a1a030e570aa3bcfcf6da"
+    },
+    {
+      "artifact_line": 83266,
+      "record_set": "commune_total",
+      "geography_id": "23096",
+      "value": 23369,
+      "sha256": "49657c4759a50c7592464f9536c9cb95fe03da91357885e93ef7b061baecf680"
+    },
+    {
+      "artifact_line": 83267,
+      "record_set": "commune_total",
+      "geography_id": "23097",
+      "value": 12021,
+      "sha256": "5ff789773764677492e3e0d77e05f9c14bbf31fe082b13f4ad16dbd625ec3026"
+    },
+    {
+      "artifact_line": 83268,
+      "record_set": "commune_total",
+      "geography_id": "23098",
+      "value": 6040,
+      "sha256": "055e2665d18d11813fc6a8bc73cc9a527c4319b161cae40c83fcad50e98b078c"
+    },
+    {
+      "artifact_line": 83269,
+      "record_set": "commune_total",
+      "geography_id": "23099",
+      "value": 13940,
+      "sha256": "3fe1ed000e6d4a82e8fd9d7fa528129d713d52d8de294694b280ce5de56024c1"
+    },
+    {
+      "artifact_line": 83270,
+      "record_set": "commune_total",
+      "geography_id": "23100",
+      "value": 4646,
+      "sha256": "e425d7e8766de5be321a5573428166b0657800de5822b29bc04e5e4471dd2b7d"
+    },
+    {
+      "artifact_line": 83271,
+      "record_set": "commune_total",
+      "geography_id": "23101",
+      "value": 18700,
+      "sha256": "82322b55ab059a03157fd1e9013f9b0081ac7d93e0c1c36115b4f2bead2b0529"
+    },
+    {
+      "artifact_line": 83272,
+      "record_set": "commune_total",
+      "geography_id": "23102",
+      "value": 18292,
+      "sha256": "79d39f80a8cdfd205c2bd417398d304c43a2bb5cf93f2d5c85eaf53c99247ced"
+    },
+    {
+      "artifact_line": 83273,
+      "record_set": "commune_total",
+      "geography_id": "23103",
+      "value": 14760,
+      "sha256": "07bd072966e1c40d13609894e388f11ed754c4e73956f6236cbd27a984552e85"
+    },
+    {
+      "artifact_line": 83274,
+      "record_set": "commune_total",
+      "geography_id": "23104",
+      "value": 9481,
+      "sha256": "158f494361b29e7f32c5dc7e60af7fe2eae9f6a8864d88e28bed06cefe3d857d"
+    },
+    {
+      "artifact_line": 83275,
+      "record_set": "commune_total",
+      "geography_id": "23105",
+      "value": 13770,
+      "sha256": "2f51754e17e69d2f9651a5d3dc3f8e3ca8a08065599f55521fcba25e1191083e"
+    },
+    {
+      "artifact_line": 83276,
+      "record_set": "commune_total",
+      "geography_id": "23106",
+      "value": 25287,
+      "sha256": "37ca2a1afa380ddcb704e94c1c0a9bfe905db86518e6ea048ed73adf4daea034"
+    },
+    {
+      "artifact_line": 83277,
+      "record_set": "commune_total",
+      "geography_id": "24001",
+      "value": 31514,
+      "sha256": "85b102de39f422f7d865741bab4630305e72b63553c32d595e7f4f9b9ff02292"
+    },
+    {
+      "artifact_line": 83278,
+      "record_set": "commune_total",
+      "geography_id": "24007",
+      "value": 10642,
+      "sha256": "b6700fb18f619ba7b361d569dc758db0f04deb7e5e72560c3e4b9957c8dc24b7"
+    },
+    {
+      "artifact_line": 83279,
+      "record_set": "commune_total",
+      "geography_id": "24008",
+      "value": 6922,
+      "sha256": "42f7cad3e5925a2850f05e5fc2c582a886394d3f828350b04ff372dae029b80c"
+    },
+    {
+      "artifact_line": 83280,
+      "record_set": "commune_total",
+      "geography_id": "24009",
+      "value": 10342,
+      "sha256": "4787c31ffc73897437673168d5c90231a7e93cfa808ec8b91339c0d114750846"
+    },
+    {
+      "artifact_line": 83281,
+      "record_set": "commune_total",
+      "geography_id": "24011",
+      "value": 10778,
+      "sha256": "d58ec0c003e8c265d8e92e9797863d9c4e7556835a90af41351e6613f42dac71"
+    },
+    {
+      "artifact_line": 83282,
+      "record_set": "commune_total",
+      "geography_id": "24014",
+      "value": 13400,
+      "sha256": "63ef8777edde1f45b2dff7a4f6c69a374bc61e6e3f554dba245a4921b22222c0"
+    },
+    {
+      "artifact_line": 83283,
+      "record_set": "commune_total",
+      "geography_id": "24016",
+      "value": 8709,
+      "sha256": "35628d3bee8deb6a67db78577d898802eb8ac780d9d0a2f03df8a0b3a6ec944c"
+    },
+    {
+      "artifact_line": 83284,
+      "record_set": "commune_total",
+      "geography_id": "24020",
+      "value": 25141,
+      "sha256": "106c90d444548a5f530be73ab457c81a132de9b3021c255a04d300c62811178b"
+    },
+    {
+      "artifact_line": 83285,
+      "record_set": "commune_total",
+      "geography_id": "24028",
+      "value": 6342,
+      "sha256": "2d40f049779a665172d7e452973b3deca8c181bfe625eee84ec2ba875d044f7c"
+    },
+    {
+      "artifact_line": 83286,
+      "record_set": "commune_total",
+      "geography_id": "24033",
+      "value": 15671,
+      "sha256": "755b89cee25fe43c7f1edd1db278ef239367fbce0ccc3790c01ddb5012c49ec1"
+    },
+    {
+      "artifact_line": 83287,
+      "record_set": "commune_total",
+      "geography_id": "24038",
+      "value": 23081,
+      "sha256": "849e9a45d1e7751e2edb803043eb08e66f6ddf61e428a75eeb0229a1215f21e0"
+    },
+    {
+      "artifact_line": 83288,
+      "record_set": "commune_total",
+      "geography_id": "24041",
+      "value": 6963,
+      "sha256": "f84a7ee49071944820a87c9d6d460c23685d7db492ba6c6541754815a308c776"
+    },
+    {
+      "artifact_line": 83289,
+      "record_set": "commune_total",
+      "geography_id": "24043",
+      "value": 10234,
+      "sha256": "61262b9884ccee8f4f7bd49f51382caf3512db0781772ee8f2f4592903d8cbde"
+    },
+    {
+      "artifact_line": 83290,
+      "record_set": "commune_total",
+      "geography_id": "24045",
+      "value": 10071,
+      "sha256": "b6a5103b309904a582fdda7698185c99d49ba5e88dfc1f076c4f7784c406dfd6"
+    },
+    {
+      "artifact_line": 83291,
+      "record_set": "commune_total",
+      "geography_id": "24048",
+      "value": 13355,
+      "sha256": "564d6ef045f126925d4d14b84207519d436adc90e1754ab0d4351406225bedb6"
+    },
+    {
+      "artifact_line": 83292,
+      "record_set": "commune_total",
+      "geography_id": "24054",
+      "value": 7984,
+      "sha256": "d32996a2dd637cbd4b4d75548e91503309712eed87c6c5774e733cb4a2aff01e"
+    },
+    {
+      "artifact_line": 83293,
+      "record_set": "commune_total",
+      "geography_id": "24055",
+      "value": 21386,
+      "sha256": "512ba58576b36f3938d95180c4faf5c1c3d155f322a865bbeea2ed9311ee0dcb"
+    },
+    {
+      "artifact_line": 83294,
+      "record_set": "commune_total",
+      "geography_id": "24059",
+      "value": 16375,
+      "sha256": "50088771857e6b1eec37cb61fb2cfd07eb4954f419b83b917dc76f846909fcb3"
+    },
+    {
+      "artifact_line": 83295,
+      "record_set": "commune_total",
+      "geography_id": "24062",
+      "value": 104906,
+      "sha256": "77a179188514181eeceaa83889e3a22d6dc0f80a584570d309ad427408e03cac"
+    },
+    {
+      "artifact_line": 83296,
+      "record_set": "commune_total",
+      "geography_id": "24066",
+      "value": 15236,
+      "sha256": "301c9497ae83acd56e9365323da58a9c9c02d38a2edce58f4b057e9c96f4b861"
+    },
+    {
+      "artifact_line": 83297,
+      "record_set": "commune_total",
+      "geography_id": "24086",
+      "value": 11406,
+      "sha256": "00f36d9aed459770fc43ac2c25435c1a6f566086491ba973a1aeed771e93fca4"
+    },
+    {
+      "artifact_line": 83298,
+      "record_set": "commune_total",
+      "geography_id": "24094",
+      "value": 17689,
+      "sha256": "b83d3ce9f86e8753ff98a497e4203e13d9108d11a8838506169b91804223f8a4"
+    },
+    {
+      "artifact_line": 83299,
+      "record_set": "commune_total",
+      "geography_id": "24104",
+      "value": 23246,
+      "sha256": "9c8f31259bd3e240eab090faf0afac7eb86c7a11e148358190168e9d956b450c"
+    },
+    {
+      "artifact_line": 83300,
+      "record_set": "commune_total",
+      "geography_id": "24107",
+      "value": 36890,
+      "sha256": "7e5b5b80145079e5f311711b24eb7260cebb7f95755e8ee68c883e6c8ee57cdd"
+    },
+    {
+      "artifact_line": 83301,
+      "record_set": "commune_total",
+      "geography_id": "24109",
+      "value": 15418,
+      "sha256": "3235aa2ebc9ad7e125326e3d9038b9331d622135cc4bcf3bbae7b829ffc54c99"
+    },
+    {
+      "artifact_line": 83302,
+      "record_set": "commune_total",
+      "geography_id": "24130",
+      "value": 8766,
+      "sha256": "87a5b9ad2da13134c8fd17e7fb0841553fc1e63a82cb4a694e083438b8d48b7a"
+    },
+    {
+      "artifact_line": 83303,
+      "record_set": "commune_total",
+      "geography_id": "24133",
+      "value": 7354,
+      "sha256": "d62ee3efdc186e41b75c211473ff0e26f6420ca5b9f481c08d941ed15fbeea20"
+    },
+    {
+      "artifact_line": 83304,
+      "record_set": "commune_total",
+      "geography_id": "24134",
+      "value": 24200,
+      "sha256": "3297cb887c8932ed8a3937c1d9b8bdf541159209880e9c9d802bb8f274adcfbc"
+    },
+    {
+      "artifact_line": 83305,
+      "record_set": "commune_total",
+      "geography_id": "24135",
+      "value": 11568,
+      "sha256": "86940df4a4095aafc4ab61c3a817f70c3f0e4cf3d9b01f8c1a7eb5aede30d2a9"
+    },
+    {
+      "artifact_line": 83306,
+      "record_set": "commune_total",
+      "geography_id": "24137",
+      "value": 5449,
+      "sha256": "40575b1ddef2143bbd32841e07a2885c4e167120ec206a817b33863a6222a6ef"
+    },
+    {
+      "artifact_line": 83307,
+      "record_set": "commune_total",
+      "geography_id": "25005",
+      "value": 7242,
+      "sha256": "2aa81adce0f583f1646e8338511dd131e6235cb07a194a175069ef89a27d3ee7"
+    },
+    {
+      "artifact_line": 83308,
+      "record_set": "commune_total",
+      "geography_id": "25014",
+      "value": 40756,
+      "sha256": "7229a7649612e321f3b524c392a72f6b89efbedea6bc9179cfd045bc9124aa02"
+    },
+    {
+      "artifact_line": 83309,
+      "record_set": "commune_total",
+      "geography_id": "25015",
+      "value": 10638,
+      "sha256": "e870ded9e3670b5f8b201ea64d49ecbfd9c20a4883a0a4d3a42f7b913813baa9"
+    },
+    {
+      "artifact_line": 83310,
+      "record_set": "commune_total",
+      "geography_id": "25018",
+      "value": 11894,
+      "sha256": "dfd343f99ad50e3adcf756b15792285054284a7f301699ddeab9fc05cd01b509"
+    },
+    {
+      "artifact_line": 83311,
+      "record_set": "commune_total",
+      "geography_id": "25023",
+      "value": 10927,
+      "sha256": "7a26931d564d8bdb4a09906c8e33abc64e80dffafe47f24249df71872e8b5ca2"
+    },
+    {
+      "artifact_line": 83312,
+      "record_set": "commune_total",
+      "geography_id": "25031",
+      "value": 16160,
+      "sha256": "871b14ff22ff94fd32526f938c7c946ed13012bd1686137ca1c9fec0dbe15107"
+    },
+    {
+      "artifact_line": 83313,
+      "record_set": "commune_total",
+      "geography_id": "25037",
+      "value": 14014,
+      "sha256": "a93e78f62440e422d1bc5444008bcfac9812d034ca10bd1b86052aae8eb67c1d"
+    },
+    {
+      "artifact_line": 83314,
+      "record_set": "commune_total",
+      "geography_id": "25043",
+      "value": 5658,
+      "sha256": "d5f87ef2e5bef3e76ab8969555acab453484ac189dca0c8dc3117f07d0d559b9"
+    },
+    {
+      "artifact_line": 83315,
+      "record_set": "commune_total",
+      "geography_id": "25044",
+      "value": 6963,
+      "sha256": "a6f6c83b95b8027a3c27a7d2a2921cab6efc668b12fc39f413618a7521eb9f60"
+    },
+    {
+      "artifact_line": 83316,
+      "record_set": "commune_total",
+      "geography_id": "25048",
+      "value": 14935,
+      "sha256": "5409c43b50727ebe573c50441a129a84b5c2fbe38c013c6240eaffbc678991a0"
+    },
+    {
+      "artifact_line": 83317,
+      "record_set": "commune_total",
+      "geography_id": "25050",
+      "value": 7482,
+      "sha256": "50a0fb1d88e82dbbf9e031b68ea9aaf21734345b487707c8ee21943fd7c7e292"
+    },
+    {
+      "artifact_line": 83318,
+      "record_set": "commune_total",
+      "geography_id": "25068",
+      "value": 8451,
+      "sha256": "6c436fa8559fea6e074d2f39954dd6095b34148895e3a98afea5b94a3a58ccf2"
+    },
+    {
+      "artifact_line": 83319,
+      "record_set": "commune_total",
+      "geography_id": "25072",
+      "value": 29429,
+      "sha256": "6f741462b9b2c55f9414e4436d801d1e665bad4aef2ea1db9ad005f78ec6a1d8"
+    },
+    {
+      "artifact_line": 83320,
+      "record_set": "commune_total",
+      "geography_id": "25084",
+      "value": 9844,
+      "sha256": "f124844ae8369b2296cb614eaee766ac8a7cb7fc0ef74d4689b79bc06a83aafe"
+    },
+    {
+      "artifact_line": 83321,
+      "record_set": "commune_total",
+      "geography_id": "25091",
+      "value": 23052,
+      "sha256": "6efb14abddc68a418e05dc032cf9d558a0e823711eea57a819f2381934d7e08e"
+    },
+    {
+      "artifact_line": 83322,
+      "record_set": "commune_total",
+      "geography_id": "25105",
+      "value": 28716,
+      "sha256": "e431c00a2f56deb1b0cdb889057df7ef842bc00d40f658dd89814b23d8b2ee6d"
+    },
+    {
+      "artifact_line": 83323,
+      "record_set": "commune_total",
+      "geography_id": "25107",
+      "value": 11059,
+      "sha256": "5fcbf642ce4cf8d6df57b9d168704ea86807db21a11daaef59551249310aa747"
+    },
+    {
+      "artifact_line": 83324,
+      "record_set": "commune_total",
+      "geography_id": "25110",
+      "value": 30389,
+      "sha256": "d8f9fdf4ca14e1c12d675ad8a16ce0e8988c871b2c11622b2c73c778154dfc9a"
+    },
+    {
+      "artifact_line": 83325,
+      "record_set": "commune_total",
+      "geography_id": "25112",
+      "value": 35581,
+      "sha256": "6e57aa9873790a7c92b809f4a7083478b34ee0ba939e0d1aedf07d2d313a1a25"
+    },
+    {
+      "artifact_line": 83326,
+      "record_set": "commune_total",
+      "geography_id": "25117",
+      "value": 7813,
+      "sha256": "2153b5f40103ff4f6b804ab65b26f78d1b41173348354eefd49ed1d7452fecaf"
+    },
+    {
+      "artifact_line": 83327,
+      "record_set": "commune_total",
+      "geography_id": "25118",
+      "value": 3894,
+      "sha256": "64d831a51a0104eb4f2ca9735c110fe4e2f57a1cca2f92ee251bfa093a3d3b4a"
+    },
+    {
+      "artifact_line": 83328,
+      "record_set": "commune_total",
+      "geography_id": "25119",
+      "value": 14175,
+      "sha256": "ecb84473e147af91cc56d0a726b46a2deb179836d87d747d2c9667aad5b574fb"
+    },
+    {
+      "artifact_line": 83329,
+      "record_set": "commune_total",
+      "geography_id": "25120",
+      "value": 9092,
+      "sha256": "4b2069d108213d23d462b526a7b212fdc0f643cae4f91ec671f32b57c34bc605"
+    },
+    {
+      "artifact_line": 83330,
+      "record_set": "commune_total",
+      "geography_id": "25121",
+      "value": 31766,
+      "sha256": "11fd70386c987333371f8742a576589a81b7ac20e44fcf431a5b0167333cf4fc"
+    },
+    {
+      "artifact_line": 83331,
+      "record_set": "commune_total",
+      "geography_id": "25122",
+      "value": 6710,
+      "sha256": "c27b8e024d8b649a639e522b40c5f98d6ac667ad6ed2057ae28ca4889a4476ed"
+    },
+    {
+      "artifact_line": 83332,
+      "record_set": "commune_total",
+      "geography_id": "25123",
+      "value": 11185,
+      "sha256": "4c310f6db7794a3afeaa770ad12e5f3714437e55a61910ca6ce7fee247ed0208"
+    },
+    {
+      "artifact_line": 83333,
+      "record_set": "commune_total",
+      "geography_id": "25124",
+      "value": 7556,
+      "sha256": "26822e14cdf7825a732f6447076f718ac99814833d3b8c11964cea8b72216f60"
+    },
+    {
+      "artifact_line": 83334,
+      "record_set": "commune_total",
+      "geography_id": "31003",
+      "value": 16318,
+      "sha256": "c98a7a64cf4121038ec1d8daae7dfb3cf4b17286937c899c34d7d3e807f3c019"
+    },
+    {
+      "artifact_line": 83335,
+      "record_set": "commune_total",
+      "geography_id": "31004",
+      "value": 20654,
+      "sha256": "898c9e16507bb18d4bdd4b29b82bdadc5769c704e15d0a134fbb702cc8bdcce5"
+    },
+    {
+      "artifact_line": 83336,
+      "record_set": "commune_total",
+      "geography_id": "31005",
+      "value": 120283,
+      "sha256": "3eaa4fd734bca4b2ec46164e89b80a13d445486a62650d5c6dace7af9886c39b"
+    },
+    {
+      "artifact_line": 83337,
+      "record_set": "commune_total",
+      "geography_id": "31006",
+      "value": 11278,
+      "sha256": "3f50c52a384ade66687bdc42b2e2cd44b6b331334b4f6f23c95007c49a454f42"
+    },
+    {
+      "artifact_line": 83338,
+      "record_set": "commune_total",
+      "geography_id": "31012",
+      "value": 14932,
+      "sha256": "581451a529946a000a584b695edf8b63dd1d87701baae5acec50b4bd912027d2"
+    },
+    {
+      "artifact_line": 83339,
+      "record_set": "commune_total",
+      "geography_id": "31022",
+      "value": 24142,
+      "sha256": "f7c3102eea5575f0a53d9adb70173505bf8f518ab62f172eb0cd47d316c9b9c4"
+    },
+    {
+      "artifact_line": 83340,
+      "record_set": "commune_total",
+      "geography_id": "31033",
+      "value": 21159,
+      "sha256": "38d5bb0125471b9d25ccf54d72d2492112b013fd43f4a4fe2b3320e6e23ca4fb"
+    },
+    {
+      "artifact_line": 83341,
+      "record_set": "commune_total",
+      "geography_id": "31040",
+      "value": 23635,
+      "sha256": "d04038c60da9f89033779d067a035251b83c38ea803f7d887835ec3cda534eb9"
+    },
+    {
+      "artifact_line": 83342,
+      "record_set": "commune_total",
+      "geography_id": "31042",
+      "value": 2657,
+      "sha256": "a0237aa9254a555c2885fd1a591679ad265ced37025b537c73acfe9fcf4130cb"
+    },
+    {
+      "artifact_line": 83343,
+      "record_set": "commune_total",
+      "geography_id": "31043",
+      "value": 32415,
+      "sha256": "6d93d750b5cd06f92e4e8d9db86d7bf0d29a9332aad5864e5603b07bc53daea7"
+    },
+    {
+      "artifact_line": 83344,
+      "record_set": "commune_total",
+      "geography_id": "32003",
+      "value": 17337,
+      "sha256": "a0b1e2faed2d91cfa1eb8605cfa3e8c0fa40e7e9b29fa3f05727c1a6170d2717"
+    },
+    {
+      "artifact_line": 83345,
+      "record_set": "commune_total",
+      "geography_id": "32006",
+      "value": 10525,
+      "sha256": "2aaec0803aef0aeaf56df8af708ebab912691dff56119e2379b7f165e00c31dd"
+    },
+    {
+      "artifact_line": 83346,
+      "record_set": "commune_total",
+      "geography_id": "32010",
+      "value": 8801,
+      "sha256": "66919e01f466170a0c84b39f993902f78b675c111790dd025222fcecfecddc5e"
+    },
+    {
+      "artifact_line": 83347,
+      "record_set": "commune_total",
+      "geography_id": "32011",
+      "value": 12882,
+      "sha256": "2290da13b88a49e17c1c03b6223ed8e38a6917db6649b31f50d8ddd729958dcb"
+    },
+    {
+      "artifact_line": 83348,
+      "record_set": "commune_total",
+      "geography_id": "32030",
+      "value": 3183,
+      "sha256": "f16de6c29d2a679956ffb9cfa4dd0d0b2f24368ed48a0edebf256d15f0cb793d"
+    },
+    {
+      "artifact_line": 83349,
+      "record_set": "commune_total",
+      "geography_id": "33011",
+      "value": 35587,
+      "sha256": "efa374b6395d923b76aa814f0d5ff22472956d6267375d0fbbadf07332f8c016"
+    },
+    {
+      "artifact_line": 83350,
+      "record_set": "commune_total",
+      "geography_id": "33016",
+      "value": 1071,
+      "sha256": "02fa751b8a88d9bf99f8bc04951ea8bfdc602c90541e1b659c16f0e638466c4e"
+    },
+    {
+      "artifact_line": 83351,
+      "record_set": "commune_total",
+      "geography_id": "33021",
+      "value": 19962,
+      "sha256": "07fecb745f355253282a6a66c0940578fdfec590a4c03d6f931e0ef704c8b081"
+    },
+    {
+      "artifact_line": 83352,
+      "record_set": "commune_total",
+      "geography_id": "33029",
+      "value": 19207,
+      "sha256": "e231aadf5b2a4b9e5068d43a574812f4b9cd2a59e04fcd8ecbf049a3a41c9281"
+    },
+    {
+      "artifact_line": 83353,
+      "record_set": "commune_total",
+      "geography_id": "33037",
+      "value": 12769,
+      "sha256": "9af9d87affe409ebc945a7ffa8dc0319b6fdb1ee3398c78aa946964d68698417"
+    },
+    {
+      "artifact_line": 83354,
+      "record_set": "commune_total",
+      "geography_id": "33039",
+      "value": 8021,
+      "sha256": "09c6fa848fb3e1731981e02fd4b535c58a8ff0634b31a97cc4d909cfa7faebb8"
+    },
+    {
+      "artifact_line": 83355,
+      "record_set": "commune_total",
+      "geography_id": "33040",
+      "value": 8202,
+      "sha256": "80b235bb5ed493f5adbfb377a71941c3b4bbf9e3202f0773b435517bb8b162af"
+    },
+    {
+      "artifact_line": 83356,
+      "record_set": "commune_total",
+      "geography_id": "33041",
+      "value": 3583,
+      "sha256": "4cb9973717dc2cd2b31b8ff1ad434a55052e95a3dfde4737063d434b11ec0119"
+    },
+    {
+      "artifact_line": 83357,
+      "record_set": "commune_total",
+      "geography_id": "34002",
+      "value": 15246,
+      "sha256": "3cfc3cf07dd099c06f9a81d86d7bb3df41a1e7355b2ba55962afb798a2b38e43"
+    },
+    {
+      "artifact_line": 83358,
+      "record_set": "commune_total",
+      "geography_id": "34003",
+      "value": 10450,
+      "sha256": "b053fabdb0f43fc809d6a620751a165684bc83c8c8c3747c89611a8a0ab264b8"
+    },
+    {
+      "artifact_line": 83359,
+      "record_set": "commune_total",
+      "geography_id": "34009",
+      "value": 12690,
+      "sha256": "b9b67bb693e67e397f1789a5d4f9f843fcea8d41e86faf503038719b2957ba76"
+    },
+    {
+      "artifact_line": 83360,
+      "record_set": "commune_total",
+      "geography_id": "34013",
+      "value": 30311,
+      "sha256": "0c57a72565a6c493f668d9762ef9946c63a8f9e20d27edccb9a2fe24c8691fde"
+    },
+    {
+      "artifact_line": 83361,
+      "record_set": "commune_total",
+      "geography_id": "34022",
+      "value": 80776,
+      "sha256": "1055b6c89c968665e293f12400216a51bc1549492970fd900d1f43883f16c177"
+    },
+    {
+      "artifact_line": 83362,
+      "record_set": "commune_total",
+      "geography_id": "34023",
+      "value": 14244,
+      "sha256": "239667e77cb6d0c3e4446040578be0d52b5c87a0e88f4ff2dd036784d72f8ed9"
+    },
+    {
+      "artifact_line": 83363,
+      "record_set": "commune_total",
+      "geography_id": "34025",
+      "value": 5849,
+      "sha256": "f7c29f6748941eb230d8c76ed3c6fad97d360e324da301efe3dcad8784408308"
+    },
+    {
+      "artifact_line": 83364,
+      "record_set": "commune_total",
+      "geography_id": "34027",
+      "value": 34585,
+      "sha256": "efdf67be1645645318a60c74d9a92437a8b6d829e24d4c27b8b88ccf90933757"
+    },
+    {
+      "artifact_line": 83365,
+      "record_set": "commune_total",
+      "geography_id": "34040",
+      "value": 40436,
+      "sha256": "40b0d9d9ef80171cd8dfc23bd514364053dec5339b4b696420e20befa599b5d4"
+    },
+    {
+      "artifact_line": 83366,
+      "record_set": "commune_total",
+      "geography_id": "34041",
+      "value": 31940,
+      "sha256": "6374050862042d0e979eb8dbd3d6fe2411a4c15fa9de61e2dc928b9de805f354"
+    },
+    {
+      "artifact_line": 83367,
+      "record_set": "commune_total",
+      "geography_id": "34042",
+      "value": 25870,
+      "sha256": "85f6f6f977f8fc0b2e74265846b3eee4b25cdc2efbbfdf740080ea6c6588076c"
+    },
+    {
+      "artifact_line": 83368,
+      "record_set": "commune_total",
+      "geography_id": "34043",
+      "value": 2053,
+      "sha256": "37e133b04970a3ec1fada313ea6207a40a733970e2e8beb5053b6501d71d6b13"
+    },
+    {
+      "artifact_line": 83369,
+      "record_set": "commune_total",
+      "geography_id": "35002",
+      "value": 18196,
+      "sha256": "833ae6eeef436ae87b63cbcaafeae5d454679bbe535c90f4d574f40912116cee"
+    },
+    {
+      "artifact_line": 83370,
+      "record_set": "commune_total",
+      "geography_id": "35005",
+      "value": 12117,
+      "sha256": "088088f282425b17387880fc0f4503062059851ce2df78e04df72b8dd0524fe9"
+    },
+    {
+      "artifact_line": 83371,
+      "record_set": "commune_total",
+      "geography_id": "35006",
+      "value": 14622,
+      "sha256": "cc167876d3963c78d1ce27f3b5f056e29ab1879e16aa1b18532803267655a773"
+    },
+    {
+      "artifact_line": 83372,
+      "record_set": "commune_total",
+      "geography_id": "35011",
+      "value": 20023,
+      "sha256": "4f639c933b2defb59f1750eb80fd87518f54a9e04978d7b1b2506c095faa7ae0"
+    },
+    {
+      "artifact_line": 83373,
+      "record_set": "commune_total",
+      "geography_id": "35013",
+      "value": 72817,
+      "sha256": "bfac806ffd9a80d97bf0ea8a2f22d0dc2ce1ccfb98541aa5bb5576c10601be3a"
+    },
+    {
+      "artifact_line": 83374,
+      "record_set": "commune_total",
+      "geography_id": "35014",
+      "value": 10231,
+      "sha256": "6ba400bd52cee03cf6c26c032918ddbf0244f88dbde16fa7f87e5d95a925529e"
+    },
+    {
+      "artifact_line": 83375,
+      "record_set": "commune_total",
+      "geography_id": "35029",
+      "value": 12627,
+      "sha256": "9bf2d178466d1f5060d08200d6ca5dd60d841e77eb085f9c85bcb6feeadeee71"
+    },
+    {
+      "artifact_line": 83376,
+      "record_set": "commune_total",
+      "geography_id": "36006",
+      "value": 10312,
+      "sha256": "8f5b863c94fc4418c88416104abcffb2b9d18a4add96ef22dffec9fea857e8ff"
+    },
+    {
+      "artifact_line": 83377,
+      "record_set": "commune_total",
+      "geography_id": "36007",
+      "value": 11597,
+      "sha256": "6d1ea667ac7c32f470fc2ff260c7138d479c4effb07de3f2ca363e4715264405"
+    },
+    {
+      "artifact_line": 83378,
+      "record_set": "commune_total",
+      "geography_id": "36008",
+      "value": 29427,
+      "sha256": "20061e73d09109727a5cddcc79de544893fe3b5c203808abb63ec8667190245a"
+    },
+    {
+      "artifact_line": 83379,
+      "record_set": "commune_total",
+      "geography_id": "36010",
+      "value": 9775,
+      "sha256": "2b8bc4f163a1918d373c88b6cb3c8ebbd46aa4598128a485f8e2d3b90b5b1a37"
+    },
+    {
+      "artifact_line": 83380,
+      "record_set": "commune_total",
+      "geography_id": "36011",
+      "value": 9437,
+      "sha256": "80cd1ee1f86f241ea1ce69b30accccc15b278cb923b260ba5323e4acfc04a233"
+    },
+    {
+      "artifact_line": 83381,
+      "record_set": "commune_total",
+      "geography_id": "36012",
+      "value": 11504,
+      "sha256": "cb93e4161a15c96e34156eba0b5f4f684cfc88b147af6036d1b3484845a4f308"
+    },
+    {
+      "artifact_line": 83382,
+      "record_set": "commune_total",
+      "geography_id": "36015",
+      "value": 66888,
+      "sha256": "13bb274233dbe4542ba291c58c01accb2800c5a37a46ca07d54617fb27169d1c"
+    },
+    {
+      "artifact_line": 83383,
+      "record_set": "commune_total",
+      "geography_id": "36019",
+      "value": 11696,
+      "sha256": "761c3915aec07c34d8078795c552274a0f33b8af4bb227be61b3d0e8fb006e48"
+    },
+    {
+      "artifact_line": 83384,
+      "record_set": "commune_total",
+      "geography_id": "37002",
+      "value": 8673,
+      "sha256": "cbe47c4fc7291af836594c487bf46fead60856313625d1614e3f94a4b2d4d758"
+    },
+    {
+      "artifact_line": 83385,
+      "record_set": "commune_total",
+      "geography_id": "37010",
+      "value": 8013,
+      "sha256": "cfc4a756755df609baed3dd3e95eb49a87b40957992dbfe204a9d129bb4474d3"
+    },
+    {
+      "artifact_line": 83386,
+      "record_set": "commune_total",
+      "geography_id": "37011",
+      "value": 6971,
+      "sha256": "cff8becc79bd25fbe081040ccd55a88e67b4a5ef1bd9c6b71eb834a23ab6fe45"
+    },
+    {
+      "artifact_line": 83387,
+      "record_set": "commune_total",
+      "geography_id": "37017",
+      "value": 10256,
+      "sha256": "2a7ef1deea8de945950b48a7f342a8755fb0c1519145d33b5d1053d5c02621ca"
+    },
+    {
+      "artifact_line": 83388,
+      "record_set": "commune_total",
+      "geography_id": "37020",
+      "value": 9514,
+      "sha256": "4aca369b2087fa8160e5763fe8ef9a0dce60deb89d8c13ad997390185447f37e"
+    },
+    {
+      "artifact_line": 83389,
+      "record_set": "commune_total",
+      "geography_id": "37021",
+      "value": 20781,
+      "sha256": "a8df7d461aa284c54a2708f666830c9ba227dd70d7c61f38a885b71b8183f82a"
+    },
+    {
+      "artifact_line": 83390,
+      "record_set": "commune_total",
+      "geography_id": "37022",
+      "value": 31908,
+      "sha256": "ea01602d1b668ab2cfbb4cb051aeabce50ffa8d88c7b6c45fd020d5dbeb9e970"
+    },
+    {
+      "artifact_line": 83391,
+      "record_set": "commune_total",
+      "geography_id": "38002",
+      "value": 4966,
+      "sha256": "eac26c388b573668c162a909a520d5ebdba2fa73bdfc858ad5f853185133f004"
+    },
+    {
+      "artifact_line": 83392,
+      "record_set": "commune_total",
+      "geography_id": "38008",
+      "value": 10874,
+      "sha256": "33de806654dc70ef43aac49df9d2e36c57ddab58d3bb5c9fe9209c2a0eff825b"
+    },
+    {
+      "artifact_line": 83393,
+      "record_set": "commune_total",
+      "geography_id": "38014",
+      "value": 21344,
+      "sha256": "a74f44968bea6deafab7c065e7e7426753cfae583a78164ea8fe23595cbe44c3"
+    },
+    {
+      "artifact_line": 83394,
+      "record_set": "commune_total",
+      "geography_id": "38016",
+      "value": 11399,
+      "sha256": "80209cb0f2ee37b11acbdd9d7c5a51437b24520d401233f74da2c18ebe1defcd"
+    },
+    {
+      "artifact_line": 83395,
+      "record_set": "commune_total",
+      "geography_id": "38025",
+      "value": 12564,
+      "sha256": "a86f2218ed7c48b029a8511a58673b14bdc6cc73a9da3487e1c99447a446b71e"
+    },
+    {
+      "artifact_line": 83396,
+      "record_set": "commune_total",
+      "geography_id": "41002",
+      "value": 92131,
+      "sha256": "bae0b61bd86c1dc9100ca2e2b3157c6e9cbb39c5c7c55ea5e700c5375bc0a54e"
+    },
+    {
+      "artifact_line": 83397,
+      "record_set": "commune_total",
+      "geography_id": "41011",
+      "value": 21257,
+      "sha256": "9ca3b445dfe3f69c3d0c1de884c78960bb86954a90c0f0f1df52b4012a318234"
+    },
+    {
+      "artifact_line": 83398,
+      "record_set": "commune_total",
+      "geography_id": "41018",
+      "value": 35236,
+      "sha256": "4ef5a1ff937b1c82dee1600f55bafe972d3c3e84cb12a176c77a481d3a3235ea"
+    },
+    {
+      "artifact_line": 83399,
+      "record_set": "commune_total",
+      "geography_id": "41024",
+      "value": 19517,
+      "sha256": "c91ff13c0f187471f7c6230a3d6c15fdee2f948eb7f5b95d43fe7e6901136f3d"
+    },
+    {
+      "artifact_line": 83400,
+      "record_set": "commune_total",
+      "geography_id": "41027",
+      "value": 19179,
+      "sha256": "c5184d355610aacc66f06e659aa189c5047cac93106fd6fe8eea21c9ad385c40"
+    },
+    {
+      "artifact_line": 83401,
+      "record_set": "commune_total",
+      "geography_id": "41034",
+      "value": 19425,
+      "sha256": "bb73c135af8e922d710ef0cef56a99c909851824efda10ccfd99ba4c64bea4c7"
+    },
+    {
+      "artifact_line": 83402,
+      "record_set": "commune_total",
+      "geography_id": "41048",
+      "value": 40580,
+      "sha256": "9d7bbd8e040399d7034e3d343b00b3122bd36ae3fee06956beef2bac059b0428"
+    },
+    {
+      "artifact_line": 83403,
+      "record_set": "commune_total",
+      "geography_id": "41063",
+      "value": 10748,
+      "sha256": "3219a3b8abad2bf83eea120aa895b9f9a63361d96e87cba4bc90f1c14d482405"
+    },
+    {
+      "artifact_line": 83404,
+      "record_set": "commune_total",
+      "geography_id": "41081",
+      "value": 28236,
+      "sha256": "a850c8199df780dd04ea7234ad9aee2efaca005b31b4be8c8bd6839cebbf593c"
+    },
+    {
+      "artifact_line": 83405,
+      "record_set": "commune_total",
+      "geography_id": "41082",
+      "value": 21117,
+      "sha256": "dcee8703567f17dc2be9848a7e72a2d12548e2a6a9a7310c0ee9dfa040120d35"
+    },
+    {
+      "artifact_line": 83406,
+      "record_set": "commune_total",
+      "geography_id": "42003",
+      "value": 15425,
+      "sha256": "f0d568b64e6b5d0e4edb126de26b3906032efe32d8ae7eccfd094bd67365856a"
+    },
+    {
+      "artifact_line": 83407,
+      "record_set": "commune_total",
+      "geography_id": "42004",
+      "value": 15079,
+      "sha256": "ab41fa356b94793296aa1ddcbdb28a883e58b23e65d86f0db6837ed5023e4b35"
+    },
+    {
+      "artifact_line": 83408,
+      "record_set": "commune_total",
+      "geography_id": "42006",
+      "value": 47539,
+      "sha256": "9f089a28fb848595a9eed73e83e215483bc922c29a27c798ed4c57a54f37fe0f"
+    },
+    {
+      "artifact_line": 83409,
+      "record_set": "commune_total",
+      "geography_id": "42008",
+      "value": 25706,
+      "sha256": "f40360bc04fa93fb8458ab8c5dd54dcbaa6be543f6b41f49453a3d1fa71415d9"
+    },
+    {
+      "artifact_line": 83410,
+      "record_set": "commune_total",
+      "geography_id": "42010",
+      "value": 12496,
+      "sha256": "c1403f59b0036521d7623e38fb460388a81bcbed5af2b71033a16d113baf5f7f"
+    },
+    {
+      "artifact_line": 83411,
+      "record_set": "commune_total",
+      "geography_id": "42011",
+      "value": 20298,
+      "sha256": "3a9219a1951b7100d95e0cc7d46829795b23e07063fb1733d444a6cee81c81e2"
+    },
+    {
+      "artifact_line": 83412,
+      "record_set": "commune_total",
+      "geography_id": "42023",
+      "value": 11395,
+      "sha256": "7650ed1efa9a1e226c1ac45953d8504d69a5794da0273bf2ca0ebb4dc387739b"
+    },
+    {
+      "artifact_line": 83413,
+      "record_set": "commune_total",
+      "geography_id": "42025",
+      "value": 26926,
+      "sha256": "1f1b620bf3b0044225e71ff31ca32f8ac9c77875be6428db8a650dde27430e4f"
+    },
+    {
+      "artifact_line": 83414,
+      "record_set": "commune_total",
+      "geography_id": "42026",
+      "value": 12050,
+      "sha256": "a3fe0359cf2c28f419c70405b30261ec3c352c4146def4fa2231698fb92b098e"
+    },
+    {
+      "artifact_line": 83415,
+      "record_set": "commune_total",
+      "geography_id": "42028",
+      "value": 21521,
+      "sha256": "38ea0609e2523babf8d6eca75c93ea3ddc61b75eb391bf82c54434911864e197"
+    },
+    {
+      "artifact_line": 83416,
+      "record_set": "commune_total",
+      "geography_id": "43002",
+      "value": 14617,
+      "sha256": "1136bccc474e0b9624c7c908b1052d3707c2cc13a1e5cd1fea892179b4aeed94"
+    },
+    {
+      "artifact_line": 83417,
+      "record_set": "commune_total",
+      "geography_id": "43005",
+      "value": 22733,
+      "sha256": "f1cea87ddc254f2c158647cad8f5809abffec9baab2b9bfa5ad8731421c98f53"
+    },
+    {
+      "artifact_line": 83418,
+      "record_set": "commune_total",
+      "geography_id": "43007",
+      "value": 6638,
+      "sha256": "cfaee6f43a638546fd7bcc37add9b047c606715e69bccc3f9f4f2ca637cbb1ed"
+    },
+    {
+      "artifact_line": 83419,
+      "record_set": "commune_total",
+      "geography_id": "43010",
+      "value": 24883,
+      "sha256": "0583c6e592102efba00e16acb71820d4740ee39187b5318211e2efd347bf010a"
+    },
+    {
+      "artifact_line": 83420,
+      "record_set": "commune_total",
+      "geography_id": "43014",
+      "value": 6941,
+      "sha256": "9b2f8a2678e0443259fa7765e630f86d986f9ee308bfa075881e6aea23857767"
+    },
+    {
+      "artifact_line": 83421,
+      "record_set": "commune_total",
+      "geography_id": "43018",
+      "value": 13653,
+      "sha256": "0cf7ea5bbcdb35cdd9de5e85ab82f9e33a6221afef238caf24d30bd55493491e"
+    },
+    {
+      "artifact_line": 83422,
+      "record_set": "commune_total",
+      "geography_id": "44013",
+      "value": 19088,
+      "sha256": "00a8cc1e2029203b2f60ffac9b93d00fec83c566489742cb38ecc1bcd8284195"
+    },
+    {
+      "artifact_line": 83423,
+      "record_set": "commune_total",
+      "geography_id": "44019",
+      "value": 37254,
+      "sha256": "978610f201c1b53503c891b46c2258589d5908d4ac5f83e59d05783cd8e54281"
+    },
+    {
+      "artifact_line": 83424,
+      "record_set": "commune_total",
+      "geography_id": "44020",
+      "value": 13353,
+      "sha256": "b2555562f288d6f92ac513f0712577d62805ae3ca2af046e602a9e57973a53a6"
+    },
+    {
+      "artifact_line": 83425,
+      "record_set": "commune_total",
+      "geography_id": "44021",
+      "value": 272657,
+      "sha256": "c734f3f1ef45c7147b3b63a5a8b10dc2fe4339eb4f93a2f0b3ddadc2a63ede7b"
+    },
+    {
+      "artifact_line": 83426,
+      "record_set": "commune_total",
+      "geography_id": "44052",
+      "value": 14088,
+      "sha256": "a47d39c5e954de207ad77cc26b07fc91adc538e78b6ccf51dc7c41617f2fa045"
+    },
+    {
+      "artifact_line": 83427,
+      "record_set": "commune_total",
+      "geography_id": "44064",
+      "value": 8149,
+      "sha256": "b10c02bdcb53b62d24d2cba791597b54a3fa4fbc7cd23ea305b4c12a1fd85c61"
+    },
+    {
+      "artifact_line": 83428,
+      "record_set": "commune_total",
+      "geography_id": "44081",
+      "value": 16233,
+      "sha256": "c74150ab52e03d997c2d6fdc8a3e4f83d25e6e82cbedebf6ba835fdb4bc772a3"
+    },
+    {
+      "artifact_line": 83429,
+      "record_set": "commune_total",
+      "geography_id": "44083",
+      "value": 46026,
+      "sha256": "06db63d17c3cf475450afdfd86f94b9d93d79608c64cccef53cfeb8c293a67b7"
+    },
+    {
+      "artifact_line": 83430,
+      "record_set": "commune_total",
+      "geography_id": "44084",
+      "value": 29830,
+      "sha256": "da2a442dde9236fd832d12fee8bbe1984a21fbf91de057aaf4fb59f8eed31140"
+    },
+    {
+      "artifact_line": 83431,
+      "record_set": "commune_total",
+      "geography_id": "44085",
+      "value": 27350,
+      "sha256": "020f54ffebfc44b9d6d9962bc2aa17554a4b32b17d01baedba97c5e5a24f4655"
+    },
+    {
+      "artifact_line": 83432,
+      "record_set": "commune_total",
+      "geography_id": "44086",
+      "value": 23574,
+      "sha256": "6f32717929a64e2e1ca84a9aade9695e49e0066202b8887eeafbf38018ac4705"
+    },
+    {
+      "artifact_line": 83433,
+      "record_set": "commune_total",
+      "geography_id": "44087",
+      "value": 30916,
+      "sha256": "08fda139d7db22d0faec3bd9706911015c21155bc7a904dedfd960194d0a60bf"
+    },
+    {
+      "artifact_line": 83434,
+      "record_set": "commune_total",
+      "geography_id": "44088",
+      "value": 37369,
+      "sha256": "a476d4d6ac2c907b608ca1b329076f57ee865e749b23c048d14ddde1924f70cc"
+    },
+    {
+      "artifact_line": 83435,
+      "record_set": "commune_total",
+      "geography_id": "45035",
+      "value": 32930,
+      "sha256": "7c8b5baf369fe8252fa9feeb3e379849e8d55f4569c172be8eb6c5c128181c96"
+    },
+    {
+      "artifact_line": 83436,
+      "record_set": "commune_total",
+      "geography_id": "45041",
+      "value": 27577,
+      "sha256": "308c7d22fc3eb97929626694eac67856c5b96c6c7bd061fd9f2720c884275042"
+    },
+    {
+      "artifact_line": 83437,
+      "record_set": "commune_total",
+      "geography_id": "45059",
+      "value": 15127,
+      "sha256": "8abe917c5b31c75c1c3892929375a0753d224e3a55e6576472f452f3a605d524"
+    },
+    {
+      "artifact_line": 83438,
+      "record_set": "commune_total",
+      "geography_id": "45060",
+      "value": 6869,
+      "sha256": "4f97afd8cb53405c1ad24f016ca690c858d59875545539e7b3335643561db90e"
+    },
+    {
+      "artifact_line": 83439,
+      "record_set": "commune_total",
+      "geography_id": "45061",
+      "value": 6545,
+      "sha256": "44dc34fdcca1e89134735015afe640a607f3dad82ba2fc53af2f2e1ab8210325"
+    },
+    {
+      "artifact_line": 83440,
+      "record_set": "commune_total",
+      "geography_id": "45062",
+      "value": 2026,
+      "sha256": "ad302b4e4ccc31d08e894309bf6a7ea460a211c0a762b628e3609e2958a98ae0"
+    },
+    {
+      "artifact_line": 83441,
+      "record_set": "commune_total",
+      "geography_id": "45063",
+      "value": 6858,
+      "sha256": "e8be1c642ef6bba64d0e957c47dcacc895ed7a995e2a23213a247bd53b7aa465"
+    },
+    {
+      "artifact_line": 83442,
+      "record_set": "commune_total",
+      "geography_id": "45064",
+      "value": 6320,
+      "sha256": "51f21cf3730ae801ee5b92951fce08c2007ec2c4e7d142f707305df725b53201"
+    },
+    {
+      "artifact_line": 83443,
+      "record_set": "commune_total",
+      "geography_id": "45065",
+      "value": 8348,
+      "sha256": "f42cc6f4aa0067143e56bda58e94cc4ff7005b86c8f3c652203b9c57d27da012"
+    },
+    {
+      "artifact_line": 83444,
+      "record_set": "commune_total",
+      "geography_id": "45068",
+      "value": 16006,
+      "sha256": "a07182eeb70029961fb430e1db96cf2544dda32fd7f101b4e443d9eafd3c18ca"
+    },
+    {
+      "artifact_line": 83445,
+      "record_set": "commune_total",
+      "geography_id": "46020",
+      "value": 20139,
+      "sha256": "b4662b78a118c26a417125dd5a150a05002c81fc805e09765138e798677e3d3e"
+    },
+    {
+      "artifact_line": 83446,
+      "record_set": "commune_total",
+      "geography_id": "46021",
+      "value": 82661,
+      "sha256": "a06d2b846d2121fdff5090617820400878337e08bab641fc7f506b58770cf734"
+    },
+    {
+      "artifact_line": 83447,
+      "record_set": "commune_total",
+      "geography_id": "46024",
+      "value": 19767,
+      "sha256": "e057831f2b8c16924682b90127f692e45c62e34e8e159794af98c1729a45d7b7"
+    },
+    {
+      "artifact_line": 83448,
+      "record_set": "commune_total",
+      "geography_id": "46025",
+      "value": 31613,
+      "sha256": "b30b84737863f38b9a2d0f8b275118028bfbde0b8b2f49bb1468e09630318ca3"
+    },
+    {
+      "artifact_line": 83449,
+      "record_set": "commune_total",
+      "geography_id": "46029",
+      "value": 50606,
+      "sha256": "7bc1d15b5eff9759c469bb12db3f2246c9cc2e52a8ec7c4d3de89e34c259c87f"
+    },
+    {
+      "artifact_line": 83450,
+      "record_set": "commune_total",
+      "geography_id": "46030",
+      "value": 87927,
+      "sha256": "593bb36109c54368c44919e724f55d71beac154d8e345df2fcc4a95a66d8a030"
+    },
+    {
+      "artifact_line": 83451,
+      "record_set": "commune_total",
+      "geography_id": "51004",
+      "value": 30123,
+      "sha256": "5733aeefe9d44de2c20bc1994df6e33a4320b7fcd4414816a182f8add0c643e9"
+    },
+    {
+      "artifact_line": 83452,
+      "record_set": "commune_total",
+      "geography_id": "51008",
+      "value": 14232,
+      "sha256": "6684f4534348ca9e114a1ff02f938ca9603c254343495566e902d310d05de0b3"
+    },
+    {
+      "artifact_line": 83453,
+      "record_set": "commune_total",
+      "geography_id": "51009",
+      "value": 11894,
+      "sha256": "0df33d37f3e5cf1ed77941d41c041f4875ace468dcb3c154f919192a5b4a1c8b"
+    },
+    {
+      "artifact_line": 83454,
+      "record_set": "commune_total",
+      "geography_id": "51012",
+      "value": 3878,
+      "sha256": "321ae29e02dd7eedd5259044ad0470b327b971dc86b39e0003c974a1920dd3a0"
+    },
+    {
+      "artifact_line": 83455,
+      "record_set": "commune_total",
+      "geography_id": "51014",
+      "value": 7145,
+      "sha256": "aecd90a0b1db296833a432a90b8bfa60b32cabadd6a12112aff021d5b514e9de"
+    },
+    {
+      "artifact_line": 83456,
+      "record_set": "commune_total",
+      "geography_id": "51017",
+      "value": 5948,
+      "sha256": "415d7f8ad50eb209235186b3309bd63d0a723665ccf52e5924c6e0641b0bd094"
+    },
+    {
+      "artifact_line": 83457,
+      "record_set": "commune_total",
+      "geography_id": "51019",
+      "value": 3441,
+      "sha256": "7fac968221f04bc290fdb447f71cc2de6f6bd46baafa7bf8e5b4c23ec69293d1"
+    },
+    {
+      "artifact_line": 83458,
+      "record_set": "commune_total",
+      "geography_id": "51065",
+      "value": 12256,
+      "sha256": "7aaf67cb960fca4593ff306545d96e5f8d50b3d16e02432b66cf1cacc0a88f50"
+    },
+    {
+      "artifact_line": 83459,
+      "record_set": "commune_total",
+      "geography_id": "51067",
+      "value": 14567,
+      "sha256": "ab464e7f2a49c2c678061951a363f71725040d370dc8193385d0adbaf24e35a6"
+    },
+    {
+      "artifact_line": 83460,
+      "record_set": "commune_total",
+      "geography_id": "51068",
+      "value": 8422,
+      "sha256": "f81ab1d4ecf24c0aa3e921c66ae114d591ccedec207a5fdeb435277e6926578f"
+    },
+    {
+      "artifact_line": 83461,
+      "record_set": "commune_total",
+      "geography_id": "51069",
+      "value": 18853,
+      "sha256": "3fd2c88d4f9e974f77a6d53f79bcf32a0fb411b6e96a2a1673875ffa8bc147e7"
+    },
+    {
+      "artifact_line": 83462,
+      "record_set": "commune_total",
+      "geography_id": "52010",
+      "value": 15030,
+      "sha256": "d8e042079e8d13b88c1ff00ff0fb9ad26d543ceae6243691f7d452308d78e7c7"
+    },
+    {
+      "artifact_line": 83463,
+      "record_set": "commune_total",
+      "geography_id": "52011",
+      "value": 205763,
+      "sha256": "4c12cd39702486919672401cc68cc5f5fced1138bbac7e8380c95c0e3a9f3d03"
+    },
+    {
+      "artifact_line": 83464,
+      "record_set": "commune_total",
+      "geography_id": "52012",
+      "value": 35979,
+      "sha256": "7c55962a8634ddf3500b7d85332364c7eb3ea615e01f857ecea8eec359f00b3d"
+    },
+    {
+      "artifact_line": 83465,
+      "record_set": "commune_total",
+      "geography_id": "52015",
+      "value": 31436,
+      "sha256": "07bde7fb94fb224342dc87b561a2c2de9a82393c4e072a650ef465f05d9a69c0"
+    },
+    {
+      "artifact_line": 83466,
+      "record_set": "commune_total",
+      "geography_id": "52018",
+      "value": 11471,
+      "sha256": "8150b97af535d2cf8d6986c6ecf37c9f9738afe54c107ce88464f7d35f389aa4"
+    },
+    {
+      "artifact_line": 83467,
+      "record_set": "commune_total",
+      "geography_id": "52021",
+      "value": 22922,
+      "sha256": "9055a5e20639d9d2d089baf6ce724a7b8a6491777052b5f329c84772baf9ebc4"
+    },
+    {
+      "artifact_line": 83468,
+      "record_set": "commune_total",
+      "geography_id": "52022",
+      "value": 17985,
+      "sha256": "3ff2d25ded0a66dd6a534b5e4993896f3d1ba1ea2bc8763e98a27633517fe549"
+    },
+    {
+      "artifact_line": 83469,
+      "record_set": "commune_total",
+      "geography_id": "52025",
+      "value": 12900,
+      "sha256": "a4e0beb9356349dd91544b47b2eff4bb2776ccd72b8158dc5afeb89fb0cefcba"
+    },
+    {
+      "artifact_line": 83470,
+      "record_set": "commune_total",
+      "geography_id": "52048",
+      "value": 10170,
+      "sha256": "9d11a703a0f5ba5ab849261b182643adb8ee365644892fbf2f2718a2a06e7cc0"
+    },
+    {
+      "artifact_line": 83471,
+      "record_set": "commune_total",
+      "geography_id": "52055",
+      "value": 17662,
+      "sha256": "cfbece9f797d898e3eb9b23977a657baca7055b4c4b296f33dfa8e45b762b165"
+    },
+    {
+      "artifact_line": 83472,
+      "record_set": "commune_total",
+      "geography_id": "52074",
+      "value": 10956,
+      "sha256": "bbb9de20ce9d70b8cc2b427d99d5ed1e08060909588aa8d2469400eeecf8e4ca"
+    },
+    {
+      "artifact_line": 83473,
+      "record_set": "commune_total",
+      "geography_id": "52075",
+      "value": 9705,
+      "sha256": "210385e867058b1529f2e8f9996f569435aae2f55681f9f6094a5291665afdf5"
+    },
+    {
+      "artifact_line": 83474,
+      "record_set": "commune_total",
+      "geography_id": "53014",
+      "value": 20401,
+      "sha256": "f912d5ab4351fb308c01eea19163a074734981192c90eae06b5e4080fdb90cf2"
+    },
+    {
+      "artifact_line": 83475,
+      "record_set": "commune_total",
+      "geography_id": "53020",
+      "value": 16559,
+      "sha256": "9e8ec2c086d11d8c4b14d8b1546d6489cdf4ba7d6a52b642af9f8a06db50b69e"
+    },
+    {
+      "artifact_line": 83476,
+      "record_set": "commune_total",
+      "geography_id": "53028",
+      "value": 21630,
+      "sha256": "2c6a08ef2e9f1ed75ccbed285ce3604b569f3aa2f1c8f81467b1964cdeecc4c2"
+    },
+    {
+      "artifact_line": 83477,
+      "record_set": "commune_total",
+      "geography_id": "53039",
+      "value": 6776,
+      "sha256": "e135e73a8c9ff07775b3b76457acbbe32989d6befefe1ae870bba4b4f5c14ebe"
+    },
+    {
+      "artifact_line": 83478,
+      "record_set": "commune_total",
+      "geography_id": "53044",
+      "value": 10912,
+      "sha256": "01f25a45148574cadbd06d3476e2deb4d83e6ff8e7b3d1371f9feef518780bb4"
+    },
+    {
+      "artifact_line": 83479,
+      "record_set": "commune_total",
+      "geography_id": "53046",
+      "value": 4677,
+      "sha256": "ce5f298c677932d8802ef4143e900872abae83b7cef99e6f5d4db4a85245216c"
+    },
+    {
+      "artifact_line": 83480,
+      "record_set": "commune_total",
+      "geography_id": "53053",
+      "value": 97120,
+      "sha256": "7e7fa73d3dc3606c3ce4f50979d240deb63761d1984a2987c1d1968071b6028c"
+    },
+    {
+      "artifact_line": 83481,
+      "record_set": "commune_total",
+      "geography_id": "53065",
+      "value": 19022,
+      "sha256": "a60badca20e9c7a695507dc9564e1a5837bdec4a5c9c501e6174d22d0072968b"
+    },
+    {
+      "artifact_line": 83482,
+      "record_set": "commune_total",
+      "geography_id": "53068",
+      "value": 6861,
+      "sha256": "c3c4948e155cd51171caf51d92371d37decdee7bb59ac77a567d5463873c07e6"
+    },
+    {
+      "artifact_line": 83483,
+      "record_set": "commune_total",
+      "geography_id": "53070",
+      "value": 23756,
+      "sha256": "c9e5e6f7757006e5ee63593bc217907897cddc4961938723038aa8e61cb906cb"
+    },
+    {
+      "artifact_line": 83484,
+      "record_set": "commune_total",
+      "geography_id": "53082",
+      "value": 20813,
+      "sha256": "fb4d83404c85fd73c6e2c9e171a7c6cad019690f133d67439e6bb7354fc5d5aa"
+    },
+    {
+      "artifact_line": 83485,
+      "record_set": "commune_total",
+      "geography_id": "53083",
+      "value": 5104,
+      "sha256": "9808d0dc52600ccd93c17c5a8ba1d782985b5b9f59a28da2266887f614daf941"
+    },
+    {
+      "artifact_line": 83486,
+      "record_set": "commune_total",
+      "geography_id": "53084",
+      "value": 8194,
+      "sha256": "231d62d4c8fd31d7942e38aded6e5e4ce7a965a2e0a257c6bb927a83bc0d5c1c"
+    },
+    {
+      "artifact_line": 83487,
+      "record_set": "commune_total",
+      "geography_id": "55004",
+      "value": 23604,
+      "sha256": "9a3c5aa7c94592c214faa9bcb6cd4fb78157caae929339799544a15c02b2b510"
+    },
+    {
+      "artifact_line": 83488,
+      "record_set": "commune_total",
+      "geography_id": "55035",
+      "value": 8709,
+      "sha256": "e3dde090f012755b15044c35aa65e6d4ff095d3069a7ba49ebbb1e285d04d6ce"
+    },
+    {
+      "artifact_line": 83489,
+      "record_set": "commune_total",
+      "geography_id": "55040",
+      "value": 29249,
+      "sha256": "9d07d952677efde98fd0699953ebcbc5178a4fcfb525b562f617c0665d7795ea"
+    },
+    {
+      "artifact_line": 83490,
+      "record_set": "commune_total",
+      "geography_id": "55050",
+      "value": 11622,
+      "sha256": "03a6f02f0554c9ebebc9c087c20c74211f8baad71d76f862ef56901eaf6d30d8"
+    },
+    {
+      "artifact_line": 83491,
+      "record_set": "commune_total",
+      "geography_id": "55085",
+      "value": 11631,
+      "sha256": "c393a3684c68eed90d4a48db1b74ae642a6b055b11387cb07d81ed9e493d635c"
+    },
+    {
+      "artifact_line": 83492,
+      "record_set": "commune_total",
+      "geography_id": "55086",
+      "value": 24202,
+      "sha256": "0da1e1094cae70c64168622efa814fbc32524b2989b52b474008d287811da892"
+    },
+    {
+      "artifact_line": 83493,
+      "record_set": "commune_total",
+      "geography_id": "56001",
+      "value": 12955,
+      "sha256": "7e7f22b664812d1c66bf58e04eec75e52014f0a1cfc896a929e5b74cfa09d55e"
+    },
+    {
+      "artifact_line": 83494,
+      "record_set": "commune_total",
+      "geography_id": "56005",
+      "value": 7096,
+      "sha256": "9b1fd2adc52a9e4cb69a951d51e7f0b71d8a229a6b36eda1fabc3ebe4427a5b5"
+    },
+    {
+      "artifact_line": 83495,
+      "record_set": "commune_total",
+      "geography_id": "56016",
+      "value": 9673,
+      "sha256": "47166b52d309cf24d50e58e771ea4daed4cea45714a23d49e1450679b86050c1"
+    },
+    {
+      "artifact_line": 83496,
+      "record_set": "commune_total",
+      "geography_id": "56022",
+      "value": 9983,
+      "sha256": "05d18ee9b7cd8a17af8142eb121fd6edb102a8f17a78201206f7868d049a6772"
+    },
+    {
+      "artifact_line": 83497,
+      "record_set": "commune_total",
+      "geography_id": "56029",
+      "value": 4067,
+      "sha256": "38205ca53ddd7243417a557f01ec927587d8abcb8a37abf0df5683c637e5f689"
+    },
+    {
+      "artifact_line": 83498,
+      "record_set": "commune_total",
+      "geography_id": "56044",
+      "value": 5958,
+      "sha256": "b4d8ae0173ae4244a72814be91967ef9f157adea0c4736bf3e7501d51c5614bf"
+    },
+    {
+      "artifact_line": 83499,
+      "record_set": "commune_total",
+      "geography_id": "56049",
+      "value": 4137,
+      "sha256": "bfe7190ab2b4278b2913c7222f7d883cd65dc9a2ea07d1b81eecf24d106fa70d"
+    },
+    {
+      "artifact_line": 83500,
+      "record_set": "commune_total",
+      "geography_id": "56051",
+      "value": 5213,
+      "sha256": "e6ba50ee11d82f9e5f2608869d53aa842be2263f13271e1d9cb9b361e96bb218"
+    },
+    {
+      "artifact_line": 83501,
+      "record_set": "commune_total",
+      "geography_id": "56078",
+      "value": 14864,
+      "sha256": "3f0ec73ec952e4f8145ee7423381bbd33703c6194d1a6255366d93729e6591f6"
+    },
+    {
+      "artifact_line": 83502,
+      "record_set": "commune_total",
+      "geography_id": "56086",
+      "value": 13838,
+      "sha256": "e4a79b8338625992153ea5652470af2508ace948c1251b7bb2f34a4ca5345906"
+    },
+    {
+      "artifact_line": 83503,
+      "record_set": "commune_total",
+      "geography_id": "56088",
+      "value": 4862,
+      "sha256": "bf242530e0aa1dab6e11667a46639683a299b18ef1ed78b9f090c6e693bbbe41"
+    },
+    {
+      "artifact_line": 83504,
+      "record_set": "commune_total",
+      "geography_id": "57003",
+      "value": 7538,
+      "sha256": "d9818f787ab5e7d9f300ba287e292e622405dbe74786f18c8ea9e168e02563e1"
+    },
+    {
+      "artifact_line": 83505,
+      "record_set": "commune_total",
+      "geography_id": "57018",
+      "value": 5775,
+      "sha256": "ed7af8fd5812044e0760ce866a34a5bfef2b494f0a2b3a67b2fbadf171f164c7"
+    },
+    {
+      "artifact_line": 83506,
+      "record_set": "commune_total",
+      "geography_id": "57027",
+      "value": 10878,
+      "sha256": "d5bea18a56aee421004ce4dd20e97db3e43c47a37d4ad4218441ea587e7aa84c"
+    },
+    {
+      "artifact_line": 83507,
+      "record_set": "commune_total",
+      "geography_id": "57062",
+      "value": 5899,
+      "sha256": "e2c19a1ce63a8ec8e7945f68329f01d4d145198aece7d39d8bdcfb4e677bc0cf"
+    },
+    {
+      "artifact_line": 83508,
+      "record_set": "commune_total",
+      "geography_id": "57064",
+      "value": 17350,
+      "sha256": "c88731a2d27d14b17e064afa0627b1771168515496a7fc52e2fb9e882d4cdf2f"
+    },
+    {
+      "artifact_line": 83509,
+      "record_set": "commune_total",
+      "geography_id": "57072",
+      "value": 5345,
+      "sha256": "e942d7752242d0a6d0b4927da22c1c4f5114297709b0933314fea806cac93d67"
+    },
+    {
+      "artifact_line": 83510,
+      "record_set": "commune_total",
+      "geography_id": "57081",
+      "value": 68991,
+      "sha256": "7e2643d14235a3dd6a032b618556710bb159dfcb34f90dca722a3a59197acc98"
+    },
+    {
+      "artifact_line": 83511,
+      "record_set": "commune_total",
+      "geography_id": "57093",
+      "value": 8129,
+      "sha256": "43a3b04ff54faa9875ccbd6da5346e12aee168627269e4113ba8001da263d002"
+    },
+    {
+      "artifact_line": 83512,
+      "record_set": "commune_total",
+      "geography_id": "57094",
+      "value": 14200,
+      "sha256": "6bb3187b11df68df535275e6fd21009249eb3160afddb3a0e5c3f1b5cf8f90be"
+    },
+    {
+      "artifact_line": 83513,
+      "record_set": "commune_total",
+      "geography_id": "57095",
+      "value": 3838,
+      "sha256": "75f6b3031fe0a2f8802fac6b1d9fe92796dcd4e1f5b2a488136be7c7736668d2"
+    },
+    {
+      "artifact_line": 83514,
+      "record_set": "commune_total",
+      "geography_id": "57096",
+      "value": 60304,
+      "sha256": "388eeed641f4b5101a2b5ee899f906c80df1d1fec15dd3ad5726c15e3266a5df"
+    },
+    {
+      "artifact_line": 83515,
+      "record_set": "commune_total",
+      "geography_id": "57097",
+      "value": 18337,
+      "sha256": "28b7a4cd2e135b7f66c58dfa3a10c54fb0f37bd7662ce80a1f822d070856c1df"
+    },
+    {
+      "artifact_line": 83516,
+      "record_set": "commune_total",
+      "geography_id": "58001",
+      "value": 81674,
+      "sha256": "32e847be1d71b95994161cc45961cd2c1aa2c60fd704c79df96cf68c9bc02fab"
+    },
+    {
+      "artifact_line": 83517,
+      "record_set": "commune_total",
+      "geography_id": "58002",
+      "value": 33784,
+      "sha256": "dcf084361a9f3a1bb3c7aa2667157a9ec95f06af0b59467eed04603e81ee3461"
+    },
+    {
+      "artifact_line": 83518,
+      "record_set": "commune_total",
+      "geography_id": "58003",
+      "value": 7947,
+      "sha256": "d27a1af2d65ac3e6ed8b170d2640d8ff539d45ad61f0620610dd5191b5fa27c8"
+    },
+    {
+      "artifact_line": 83519,
+      "record_set": "commune_total",
+      "geography_id": "58004",
+      "value": 19113,
+      "sha256": "10cfaea40eac30a97abc8b0d5da5c00e4413892fc3a56f74ccab977f7503a497"
+    },
+    {
+      "artifact_line": 83520,
+      "record_set": "commune_total",
+      "geography_id": "61003",
+      "value": 14494,
+      "sha256": "74fa5a5fe1c2f0899aaac6a2ba39112f9589253d8db14e8979d7b779d220bfb3"
+    },
+    {
+      "artifact_line": 83521,
+      "record_set": "commune_total",
+      "geography_id": "61010",
+      "value": 3334,
+      "sha256": "7a2662cedf3775afb8b0ad55ed3b9bf64ff851736c1bcba5887d0ab5bfcfec1a"
+    },
+    {
+      "artifact_line": 83522,
+      "record_set": "commune_total",
+      "geography_id": "61012",
+      "value": 4989,
+      "sha256": "132246cfb518d330984ebb08f486b977e968d59523572650099d933c6f86c73f"
+    },
+    {
+      "artifact_line": 83523,
+      "record_set": "commune_total",
+      "geography_id": "61019",
+      "value": 5156,
+      "sha256": "4de7cc8af1c7f083647fde5b44a700c50d6b1befb5dd5cfc551fc8568f69abbb"
+    },
+    {
+      "artifact_line": 83524,
+      "record_set": "commune_total",
+      "geography_id": "61024",
+      "value": 3776,
+      "sha256": "7df32cfbe7b8e5910f28744263e18421ea7ae1c058207cedc538d710427857e3"
+    },
+    {
+      "artifact_line": 83525,
+      "record_set": "commune_total",
+      "geography_id": "61028",
+      "value": 5599,
+      "sha256": "4e272df9181224a3f8a78eeef4a37e1218200a782175b55fcdb2fb024fd522a9"
+    },
+    {
+      "artifact_line": 83526,
+      "record_set": "commune_total",
+      "geography_id": "61031",
+      "value": 21850,
+      "sha256": "95470c0c9b7fe7bd7ffd785962ddeb57067e6001ca8e52d304d6cd5fad26db21"
+    },
+    {
+      "artifact_line": 83527,
+      "record_set": "commune_total",
+      "geography_id": "61039",
+      "value": 5636,
+      "sha256": "ca584851641165fcc4d45a108ca10ed8bcc74a6ea06e49f4238bf2a747738560"
+    },
+    {
+      "artifact_line": 83528,
+      "record_set": "commune_total",
+      "geography_id": "61041",
+      "value": 4169,
+      "sha256": "6974954a7329e7a3abd49b9040e7cfca05111d2397320b6a8a97076db4cd5e43"
+    },
+    {
+      "artifact_line": 83529,
+      "record_set": "commune_total",
+      "geography_id": "61043",
+      "value": 5755,
+      "sha256": "8d021714497f34a590c22a97bc760bf6b80015ef0b22ccbaa69a11b1cfa4c75f"
+    },
+    {
+      "artifact_line": 83530,
+      "record_set": "commune_total",
+      "geography_id": "61048",
+      "value": 2822,
+      "sha256": "e48c180873bfc4c6d8ce679477a58e2c80de98b3d569063d3ebe122838395afc"
+    },
+    {
+      "artifact_line": 83531,
+      "record_set": "commune_total",
+      "geography_id": "61063",
+      "value": 4414,
+      "sha256": "fd06cabe69fc7b9b3a8ec5da714bb5730c3c048efd9ebe714d7f213e59331282"
+    },
+    {
+      "artifact_line": 83532,
+      "record_set": "commune_total",
+      "geography_id": "61068",
+      "value": 6869,
+      "sha256": "eb594224775dea37b2b2a4a1c6c3914bb239beb9832c84be08e8d5c29c9411da"
+    },
+    {
+      "artifact_line": 83533,
+      "record_set": "commune_total",
+      "geography_id": "61072",
+      "value": 14005,
+      "sha256": "96ad4ba276341d059401016965b1c4b1e131912988e6ff3af8ea0df64324782f"
+    },
+    {
+      "artifact_line": 83534,
+      "record_set": "commune_total",
+      "geography_id": "61079",
+      "value": 4204,
+      "sha256": "c8815b2ee77a16b4ba4c0fd385b2d2f5528730d2019f8c708e3d77e1c8cc17d0"
+    },
+    {
+      "artifact_line": 83535,
+      "record_set": "commune_total",
+      "geography_id": "61080",
+      "value": 6391,
+      "sha256": "52368b34fbfb510e5404e3ea9d5bb36d0d5fe78996679fd2058815c927574f84"
+    },
+    {
+      "artifact_line": 83536,
+      "record_set": "commune_total",
+      "geography_id": "61081",
+      "value": 2782,
+      "sha256": "8af03b5872622a2b0206919d47aaab3b1b7ce4120183cd47ad6224714b661ba2"
+    },
+    {
+      "artifact_line": 83537,
+      "record_set": "commune_total",
+      "geography_id": "62003",
+      "value": 29110,
+      "sha256": "83579e8ccdaf0c20fc478a0372616c7da867daebe7de4506d7945798a68d8c44"
+    },
+    {
+      "artifact_line": 83538,
+      "record_set": "commune_total",
+      "geography_id": "62006",
+      "value": 9373,
+      "sha256": "44fe318259c9dd2e592de8e244277cfb52ae344ebb44d80111e7c6ed651a5175"
+    },
+    {
+      "artifact_line": 83539,
+      "record_set": "commune_total",
+      "geography_id": "62009",
+      "value": 12969,
+      "sha256": "7169aa999c848fc1c887974832154cf276c460901bd1812c499aed5b71f9963d"
+    },
+    {
+      "artifact_line": 83540,
+      "record_set": "commune_total",
+      "geography_id": "62011",
+      "value": 9053,
+      "sha256": "f3d4a588512d277cf8f0f1c39aef72f9156c5ecabe09dc532793c6ab60df32bf"
+    },
+    {
+      "artifact_line": 83541,
+      "record_set": "commune_total",
+      "geography_id": "62015",
+      "value": 11977,
+      "sha256": "1b3a3bd7781fc0c31f5ac46d55cc067a16133045629b7b0949ac14432312b069"
+    },
+    {
+      "artifact_line": 83542,
+      "record_set": "commune_total",
+      "geography_id": "62022",
+      "value": 20523,
+      "sha256": "cdb21cb225f7e9d4f99f70ca5455d29ad72740cb45299547d7b900fc206bac1f"
+    },
+    {
+      "artifact_line": 83543,
+      "record_set": "commune_total",
+      "geography_id": "62026",
+      "value": 5366,
+      "sha256": "b804d3c085161f3b857f2ee5c8745c372fffd9ec6c9858b4f2c2a7debc91b188"
+    },
+    {
+      "artifact_line": 83544,
+      "record_set": "commune_total",
+      "geography_id": "62027",
+      "value": 7711,
+      "sha256": "894d33737e47ed4d8014ee6469e7197bed573a2c650f7498566802bb454ed094"
+    },
+    {
+      "artifact_line": 83545,
+      "record_set": "commune_total",
+      "geography_id": "62032",
+      "value": 12794,
+      "sha256": "4efb395eae5f4047eb38f4b3b9d5c05b1d9fd08f319ff09ee8f5e3f124fc0606"
+    },
+    {
+      "artifact_line": 83546,
+      "record_set": "commune_total",
+      "geography_id": "62038",
+      "value": 16374,
+      "sha256": "62b5cc999b8a03c16100a38da4135054eccf4094bb64752864f652ed370a0160"
+    },
+    {
+      "artifact_line": 83547,
+      "record_set": "commune_total",
+      "geography_id": "62051",
+      "value": 40834,
+      "sha256": "61f078c59759ba8a0fe22c683c82d416a55985a6d9e0daf3e61f1380278b8153"
+    },
+    {
+      "artifact_line": 83548,
+      "record_set": "commune_total",
+      "geography_id": "62060",
+      "value": 9906,
+      "sha256": "a0284b24c11339ead262ae683c4e4b87cc954679d85e268658f3e568605ac3b7"
+    },
+    {
+      "artifact_line": 83549,
+      "record_set": "commune_total",
+      "geography_id": "62063",
+      "value": 197323,
+      "sha256": "38e4357b60cc6b77ea649bebfd32f89998ae88b7af86daf0ab90f7d7f8e1e0f8"
+    },
+    {
+      "artifact_line": 83550,
+      "record_set": "commune_total",
+      "geography_id": "62079",
+      "value": 25846,
+      "sha256": "a0546a1413867cbb4997a79270b1601ab7af0f520363beebd6d817ba2484d558"
+    },
+    {
+      "artifact_line": 83551,
+      "record_set": "commune_total",
+      "geography_id": "62093",
+      "value": 24517,
+      "sha256": "fc92bfd82aaacf5a23823b7776f10b42c1cb557feb1b4494fe0de4c46a133885"
+    },
+    {
+      "artifact_line": 83552,
+      "record_set": "commune_total",
+      "geography_id": "62096",
+      "value": 64609,
+      "sha256": "4fe3488b41b626c2ee78d9db68bdd4f9a84f1b669fd4095d6a5fe80dd1921aa4"
+    },
+    {
+      "artifact_line": 83553,
+      "record_set": "commune_total",
+      "geography_id": "62099",
+      "value": 17265,
+      "sha256": "8ed30342ac395fd9bb99c989f58d624eac45e68e08bc3f276a2e2fd91b69d082"
+    },
+    {
+      "artifact_line": 83554,
+      "record_set": "commune_total",
+      "geography_id": "62100",
+      "value": 15171,
+      "sha256": "f6aa261bc76748e69fdca8194d66e5f293628478f2130d9b5ddf7f4b39185e33"
+    },
+    {
+      "artifact_line": 83555,
+      "record_set": "commune_total",
+      "geography_id": "62108",
+      "value": 18110,
+      "sha256": "881b2ad008d49176bb3f2be61a88cb5bce366d8ccf55e2b66e845f8664594af9"
+    },
+    {
+      "artifact_line": 83556,
+      "record_set": "commune_total",
+      "geography_id": "62118",
+      "value": 23416,
+      "sha256": "7d8c1b3eb192dbb544910f6e5c33ec8679cd946ac05152025401f196fdac14ab"
+    },
+    {
+      "artifact_line": 83557,
+      "record_set": "commune_total",
+      "geography_id": "62119",
+      "value": 13579,
+      "sha256": "244ea5eef62261a217356938d4457f8985ed27063d769fb0b4729a2f89b086e4"
+    },
+    {
+      "artifact_line": 83558,
+      "record_set": "commune_total",
+      "geography_id": "62120",
+      "value": 27045,
+      "sha256": "5e634a99d85a08498bef62a25497470945d519e471cce52ff55fd5d2e56bd649"
+    },
+    {
+      "artifact_line": 83559,
+      "record_set": "commune_total",
+      "geography_id": "62121",
+      "value": 9952,
+      "sha256": "4b5314b08fad1004c8a27415fe4bc48606d6272d0b8c3edbfee67db484c0c8c0"
+    },
+    {
+      "artifact_line": 83560,
+      "record_set": "commune_total",
+      "geography_id": "62122",
+      "value": 8200,
+      "sha256": "c12dc931b5f2ff9e6767c7f6a84d6c9d43db710664b00e90c77c37380a0aa495"
+    },
+    {
+      "artifact_line": 83561,
+      "record_set": "commune_total",
+      "geography_id": "63001",
+      "value": 5608,
+      "sha256": "77c1577a83bae251faf08ffaa322f277a444346f67ebea9f85ed730d473eedc6"
+    },
+    {
+      "artifact_line": 83562,
+      "record_set": "commune_total",
+      "geography_id": "63003",
+      "value": 4288,
+      "sha256": "199a7bd17f0820133a411cc250b03d42d69838ffee10b743a8f2470c134c4fc9"
+    },
+    {
+      "artifact_line": 83563,
+      "record_set": "commune_total",
+      "geography_id": "63004",
+      "value": 4529,
+      "sha256": "4a770af1292b11e264e2cdfd8a183ed7ca9f89d37e911fffac2be3a15ac14a48"
+    },
+    {
+      "artifact_line": 83564,
+      "record_set": "commune_total",
+      "geography_id": "63012",
+      "value": 5533,
+      "sha256": "2e003c0fe282e00630911991a249dd13f0944c9cc5ea97846bbbff5d065833f4"
+    },
+    {
+      "artifact_line": 83565,
+      "record_set": "commune_total",
+      "geography_id": "63013",
+      "value": 5586,
+      "sha256": "5582f4542e7c88fce3eeeeba528332280925b4823af1c3f093da27085f3b5f25"
+    },
+    {
+      "artifact_line": 83566,
+      "record_set": "commune_total",
+      "geography_id": "63020",
+      "value": 15226,
+      "sha256": "f897a39d215bdb4ed14bb3a3c9ddd95dabc6c132d29ca0493a273825f395a75f"
+    },
+    {
+      "artifact_line": 83567,
+      "record_set": "commune_total",
+      "geography_id": "63023",
+      "value": 20053,
+      "sha256": "34c0cb824008ab04b7becaa247737e97e4a513e748a6fd6e6855fb2f6132959b"
+    },
+    {
+      "artifact_line": 83568,
+      "record_set": "commune_total",
+      "geography_id": "63035",
+      "value": 17784,
+      "sha256": "76c79db8d01ea0e7a3d7f9f2d7c4294868d4506f40359ef4037a90678962ccc0"
+    },
+    {
+      "artifact_line": 83569,
+      "record_set": "commune_total",
+      "geography_id": "63038",
+      "value": 8770,
+      "sha256": "0a10575c0b22cdb958beb5db4e067c963d3fa3e8e16b1d4acb0b3ae572378c8a"
+    },
+    {
+      "artifact_line": 83570,
+      "record_set": "commune_total",
+      "geography_id": "63040",
+      "value": 11338,
+      "sha256": "5f15d14de91c89b713ddaa22c6917d25c6359eed4df06fc9384f88693ca5abb1"
+    },
+    {
+      "artifact_line": 83571,
+      "record_set": "commune_total",
+      "geography_id": "63045",
+      "value": 3611,
+      "sha256": "2b4912b2ccf891b6617f024aafee0ffdee5cf65d2d71e237e462df872e64638f"
+    },
+    {
+      "artifact_line": 83572,
+      "record_set": "commune_total",
+      "geography_id": "63046",
+      "value": 5689,
+      "sha256": "97dcd0983b62955f42ff2558923fb8573002a722469176c7e7357c5a423789c4"
+    },
+    {
+      "artifact_line": 83573,
+      "record_set": "commune_total",
+      "geography_id": "63048",
+      "value": 6092,
+      "sha256": "f66524c924e3a0f5f1f12b3ed39c7e715d135bd017851c3ecac9d0d0880e7c64"
+    },
+    {
+      "artifact_line": 83574,
+      "record_set": "commune_total",
+      "geography_id": "63049",
+      "value": 12991,
+      "sha256": "0c699e67756676ee6c88b6acf5807847ee45a89a0ff55296cf6e6044ab9411b7"
+    },
+    {
+      "artifact_line": 83575,
+      "record_set": "commune_total",
+      "geography_id": "63057",
+      "value": 4172,
+      "sha256": "046d6d7f818368115cb3601d97006eee48831ce89370fa4ff5e335adfe9d1702"
+    },
+    {
+      "artifact_line": 83576,
+      "record_set": "commune_total",
+      "geography_id": "63058",
+      "value": 9294,
+      "sha256": "622c89e34afaba4021d749feb25152c1382a266625e8eb0f91c50624ea6cafeb"
+    },
+    {
+      "artifact_line": 83577,
+      "record_set": "commune_total",
+      "geography_id": "63061",
+      "value": 11185,
+      "sha256": "5a27509c3916bfd8646058b2cd6008125037ee7adc5b74b73e56a0721eb406fe"
+    },
+    {
+      "artifact_line": 83578,
+      "record_set": "commune_total",
+      "geography_id": "63067",
+      "value": 10180,
+      "sha256": "15c34e6aedfbc994bf33e6a3f8b1ec4ce88bbb01ca70893a0198dfee835fba6a"
+    },
+    {
+      "artifact_line": 83579,
+      "record_set": "commune_total",
+      "geography_id": "63072",
+      "value": 9806,
+      "sha256": "baf71f2cb27ed667c5c5f8d0e4aa4451d338c25964c3231672d610565ce54dd9"
+    },
+    {
+      "artifact_line": 83580,
+      "record_set": "commune_total",
+      "geography_id": "63073",
+      "value": 7279,
+      "sha256": "9ade330c62bff2b534dfa7fc7fe8b97d89e80d3e700ce1659edead10aacdd28b"
+    },
+    {
+      "artifact_line": 83581,
+      "record_set": "commune_total",
+      "geography_id": "63075",
+      "value": 3233,
+      "sha256": "e9bc2a263845ac71eb42b9e72e35e535dce89ba8f66db78f5dedc2da0dfe42a3"
+    },
+    {
+      "artifact_line": 83582,
+      "record_set": "commune_total",
+      "geography_id": "63076",
+      "value": 12144,
+      "sha256": "e61f053488aba0204a3a20ef085bdd16a3b2645a2d44fb4221b3cd4ae825ee53"
+    },
+    {
+      "artifact_line": 83583,
+      "record_set": "commune_total",
+      "geography_id": "63079",
+      "value": 56127,
+      "sha256": "66745ab513ef1b64bea07b3d05516c3dd52b2723fef6bc5bdef09be373b404e9"
+    },
+    {
+      "artifact_line": 83584,
+      "record_set": "commune_total",
+      "geography_id": "63080",
+      "value": 7560,
+      "sha256": "57ef81ea90619a3757835990db5c5be615c37a96498e6df5e6aa028d3e428dc8"
+    },
+    {
+      "artifact_line": 83585,
+      "record_set": "commune_total",
+      "geography_id": "63084",
+      "value": 10521,
+      "sha256": "874d807416b083c6ee920b4c3b92ba281806b706c233e3e98bf45c389a20113b"
+    },
+    {
+      "artifact_line": 83586,
+      "record_set": "commune_total",
+      "geography_id": "63086",
+      "value": 2566,
+      "sha256": "63a0323e4903cfe6e74b26691f5b34e3c5defcd14b0672086a679222ea5b665b"
+    },
+    {
+      "artifact_line": 83587,
+      "record_set": "commune_total",
+      "geography_id": "63087",
+      "value": 3962,
+      "sha256": "b434ba825206a2edb02c4731b61b376307443dc164c77f4bcf9b93b2d046b39e"
+    },
+    {
+      "artifact_line": 83588,
+      "record_set": "commune_total",
+      "geography_id": "63088",
+      "value": 10814,
+      "sha256": "bb3186d0ea66391ca18d2ed6584267f0797156535b783db452b0ae063d5ac471"
+    },
+    {
+      "artifact_line": 83589,
+      "record_set": "commune_total",
+      "geography_id": "63089",
+      "value": 5584,
+      "sha256": "84afea4e8a9906a40bab67baa32c5d0e22617bd0538491eb1d9af1d3da6606f9"
+    },
+    {
+      "artifact_line": 83590,
+      "record_set": "commune_total",
+      "geography_id": "64008",
+      "value": 3394,
+      "sha256": "8dd636946efe3d0aa0fa08b685bfc12c93643ae8fad1b15f9cd6cb6b5a9a3e79"
+    },
+    {
+      "artifact_line": 83591,
+      "record_set": "commune_total",
+      "geography_id": "64015",
+      "value": 6476,
+      "sha256": "da5f582687bf9ce8cb2af0146dad415b48932559aa5cd5b0d81e6a96cdafacc2"
+    },
+    {
+      "artifact_line": 83592,
+      "record_set": "commune_total",
+      "geography_id": "64021",
+      "value": 3573,
+      "sha256": "bd3e945077fc7d62060728ea31519601971a2117e3819606cc2ee84cf1f660f4"
+    },
+    {
+      "artifact_line": 83593,
+      "record_set": "commune_total",
+      "geography_id": "64023",
+      "value": 3128,
+      "sha256": "ec57463ef07d9bb2df965ade7fba5e9aee9339676afe193eb045e384754d8fee"
+    },
+    {
+      "artifact_line": 83594,
+      "record_set": "commune_total",
+      "geography_id": "64025",
+      "value": 3399,
+      "sha256": "419920ed8825142f44aad3bece046f7517bb1730fe7d6a161e4114e908f848d6"
+    },
+    {
+      "artifact_line": 83595,
+      "record_set": "commune_total",
+      "geography_id": "64029",
+      "value": 3571,
+      "sha256": "c9645f5836dc9a373ba7cccacd352b948d0db4020e3d3c6013efe28cea8f53bd"
+    },
+    {
+      "artifact_line": 83596,
+      "record_set": "commune_total",
+      "geography_id": "64034",
+      "value": 17202,
+      "sha256": "60abc54ca318561d4aaaa7194919f430cd62a721b09def91f254d1e305b0e798"
+    },
+    {
+      "artifact_line": 83597,
+      "record_set": "commune_total",
+      "geography_id": "64047",
+      "value": 3375,
+      "sha256": "1ed399799a479de06b2929fccb1384392e53c20f690dddc81f309ee00e465145"
+    },
+    {
+      "artifact_line": 83598,
+      "record_set": "commune_total",
+      "geography_id": "64056",
+      "value": 4062,
+      "sha256": "c9ed070fd5b67ea97b1207f35c42d769490f4dd925d8ece28b28b53b030902c2"
+    },
+    {
+      "artifact_line": 83599,
+      "record_set": "commune_total",
+      "geography_id": "64063",
+      "value": 6023,
+      "sha256": "f22b04889dd8e9f783a767fd3b6562f2d6153275455d0bd7031cc826cff469b7"
+    },
+    {
+      "artifact_line": 83600,
+      "record_set": "commune_total",
+      "geography_id": "64065",
+      "value": 7184,
+      "sha256": "74b928fce2488df35b98cdf53ad4015885bc3c3aef6abdada2110514062cb6d2"
+    },
+    {
+      "artifact_line": 83601,
+      "record_set": "commune_total",
+      "geography_id": "64074",
+      "value": 15366,
+      "sha256": "80ae4fbddea951caac874442540b286764e454f47577b9b5f01277ea972b9696"
+    },
+    {
+      "artifact_line": 83602,
+      "record_set": "commune_total",
+      "geography_id": "64075",
+      "value": 3187,
+      "sha256": "273ba64cfe968238cb874ea1e897d3baf1d1d3c634888d76721ce82c6078123c"
+    },
+    {
+      "artifact_line": 83603,
+      "record_set": "commune_total",
+      "geography_id": "64076",
+      "value": 4192,
+      "sha256": "474b6691e0843254931e58e27daa0215a468e924155811d6f8cb895a26a8b634"
+    },
+    {
+      "artifact_line": 83604,
+      "record_set": "commune_total",
+      "geography_id": "71002",
+      "value": 8298,
+      "sha256": "209080744f3ce4f944fd163155b92008e77c67f1e8cbe9198d64e73141513f6c"
+    },
+    {
+      "artifact_line": 83605,
+      "record_set": "commune_total",
+      "geography_id": "71004",
+      "value": 48755,
+      "sha256": "3cf607f97e93caba12b294c5a1ad13d0ffcc5c65bee2cf5352e7de057f553262"
+    },
+    {
+      "artifact_line": 83606,
+      "record_set": "commune_total",
+      "geography_id": "71011",
+      "value": 19788,
+      "sha256": "bb587f5cbd3e3ec185aef337b88708890807fe2f582288c73c0687c7f493134b"
+    },
+    {
+      "artifact_line": 83607,
+      "record_set": "commune_total",
+      "geography_id": "71016",
+      "value": 68058,
+      "sha256": "9ae0f6076f97f03ee12c03247f787165151c9d63bbe1a00244dfa1f99dbeaab9"
+    },
+    {
+      "artifact_line": 83608,
+      "record_set": "commune_total",
+      "geography_id": "71017",
+      "value": 8788,
+      "sha256": "5a15fbaf7f1c2e30065cf36b9cacb203005c6038da49cebddb5ca41a98204516"
+    },
+    {
+      "artifact_line": 83609,
+      "record_set": "commune_total",
+      "geography_id": "71020",
+      "value": 9490,
+      "sha256": "ee793373efef3ec91ee5858165b88ac1e683555b5fd706797588f59e9a74f169"
+    },
+    {
+      "artifact_line": 83610,
+      "record_set": "commune_total",
+      "geography_id": "71024",
+      "value": 12927,
+      "sha256": "3f6bf1c67972fa938f0c0cf22bae63f1bfe9a4fde429cf2b439350ffb7767431"
+    },
+    {
+      "artifact_line": 83611,
+      "record_set": "commune_total",
+      "geography_id": "71034",
+      "value": 16858,
+      "sha256": "f081fd39aba5263219d2369f24d8e76777994ede090f2315c5faf207e15ae00e"
+    },
+    {
+      "artifact_line": 83612,
+      "record_set": "commune_total",
+      "geography_id": "71037",
+      "value": 15347,
+      "sha256": "4f2bb0e032e33759035027bca35211d8ad37cbb63ef22d7b7b4ff5d2d41dee3d"
+    },
+    {
+      "artifact_line": 83613,
+      "record_set": "commune_total",
+      "geography_id": "71045",
+      "value": 7328,
+      "sha256": "e5cb8a820d7bbeb495387c7bf4535ec4adbd607964036294f70d35fee53a8c32"
+    },
+    {
+      "artifact_line": 83614,
+      "record_set": "commune_total",
+      "geography_id": "71053",
+      "value": 41743,
+      "sha256": "181c7679abe5d7bdba002a2a79c78ebd439603cc06e1ce1da9d388ab0625e56e"
+    },
+    {
+      "artifact_line": 83615,
+      "record_set": "commune_total",
+      "geography_id": "71066",
+      "value": 21923,
+      "sha256": "1196920fc90971e3839edab6470c626f38d069ffec3ffe2b411c459ec38a3196"
+    },
+    {
+      "artifact_line": 83616,
+      "record_set": "commune_total",
+      "geography_id": "71067",
+      "value": 7404,
+      "sha256": "accf58934932896f4613488f184f259a2e83192e7849068df23d09c2f37bde8d"
+    },
+    {
+      "artifact_line": 83617,
+      "record_set": "commune_total",
+      "geography_id": "71070",
+      "value": 34985,
+      "sha256": "1cf30dfd9c2ae7d8234548e701d7ed6d6784c0ba863e4aa67d68f5e0b4e49ac5"
+    },
+    {
+      "artifact_line": 83618,
+      "record_set": "commune_total",
+      "geography_id": "71071",
+      "value": 30645,
+      "sha256": "ab06482f1e45b2819a1e09a93667b35526c52d2b0e484b08bd00c8e80a5843c1"
+    },
+    {
+      "artifact_line": 83619,
+      "record_set": "commune_total",
+      "geography_id": "71072",
+      "value": 90249,
+      "sha256": "f972ebc39de064746673bc91ec71d40486fb7a54debf5a2de4793fc6efe9c7dc"
+    },
+    {
+      "artifact_line": 83620,
+      "record_set": "commune_total",
+      "geography_id": "72003",
+      "value": 13875,
+      "sha256": "60d86e8d45342e5d5035c56a5c321712af46f04c3262518d1d052eb1035747b3"
+    },
+    {
+      "artifact_line": 83621,
+      "record_set": "commune_total",
+      "geography_id": "72004",
+      "value": 17210,
+      "sha256": "05ed7d9116d301c9946776851dd8f2c46a234e329169e0638a11d3ae291eb09b"
+    },
+    {
+      "artifact_line": 83622,
+      "record_set": "commune_total",
+      "geography_id": "72018",
+      "value": 12527,
+      "sha256": "88e948d50548aff1dcfcc9a7da91179fc446264c483b36b7d67c386803905f15"
+    },
+    {
+      "artifact_line": 83623,
+      "record_set": "commune_total",
+      "geography_id": "72020",
+      "value": 35208,
+      "sha256": "05fcbde18c6ab1fe23c70748036f1a65e62d9c0dd4421b02b0e491c37e2e7ba9"
+    },
+    {
+      "artifact_line": 83624,
+      "record_set": "commune_total",
+      "geography_id": "72021",
+      "value": 25828,
+      "sha256": "f51c1ad88384b3c4ed1767f65f8a42398f910b2c1719b6a6fb8b8f067dbb3b31"
+    },
+    {
+      "artifact_line": 83625,
+      "record_set": "commune_total",
+      "geography_id": "72030",
+      "value": 16685,
+      "sha256": "9e525ae2ec3c099765c58cc8ba17e0868c7e0a2e16bd1e42d4e3e4eff3329a21"
+    },
+    {
+      "artifact_line": 83626,
+      "record_set": "commune_total",
+      "geography_id": "72037",
+      "value": 14568,
+      "sha256": "c68da5a4b401b472cc2721be06c347def2dfffb5c155b2e80cfa48ccc58f6a71"
+    },
+    {
+      "artifact_line": 83627,
+      "record_set": "commune_total",
+      "geography_id": "72038",
+      "value": 13105,
+      "sha256": "da302d43a530242be9302f668e5586971a105deacff6fc2614894777d1a8fd75"
+    },
+    {
+      "artifact_line": 83628,
+      "record_set": "commune_total",
+      "geography_id": "72039",
+      "value": 30945,
+      "sha256": "9c7c476f8b0e065bd89a82c01a96a0c69c6f24c17cebca64e86fc79a6025e2ec"
+    },
+    {
+      "artifact_line": 83629,
+      "record_set": "commune_total",
+      "geography_id": "72041",
+      "value": 21486,
+      "sha256": "982c65aabfc343f549ab60763313c4f6f40cf165dec8fe158b81e428844f6fd4"
+    },
+    {
+      "artifact_line": 83630,
+      "record_set": "commune_total",
+      "geography_id": "72042",
+      "value": 23871,
+      "sha256": "f401919ff2532da90719940b018a91dbf644f3d0cd7d6c3cc093b2ea3cdbb74e"
+    },
+    {
+      "artifact_line": 83631,
+      "record_set": "commune_total",
+      "geography_id": "72043",
+      "value": 34635,
+      "sha256": "7e271df6cb24e839e8fd0a33b0ed02f8a3240467d2c19c214b5154fbc735242f"
+    },
+    {
+      "artifact_line": 83632,
+      "record_set": "commune_total",
+      "geography_id": "73001",
+      "value": 11937,
+      "sha256": "5d944475bda6ea02d64479a01c927663a24c49e6ce5cb6b9b14a8e63f726a55e"
+    },
+    {
+      "artifact_line": 83633,
+      "record_set": "commune_total",
+      "geography_id": "73022",
+      "value": 7574,
+      "sha256": "6d6cdde4a61d3fdd27b26a60387414c4203b6a5b3504dc0ccbb64b55c56ab801"
+    },
+    {
+      "artifact_line": 83634,
+      "record_set": "commune_total",
+      "geography_id": "73028",
+      "value": 75,
+      "sha256": "7e1ef890c99020c51f1dd2c0173cdc8d87b21be97b455eb6c6fffbd306e850f9"
+    },
+    {
+      "artifact_line": 83635,
+      "record_set": "commune_total",
+      "geography_id": "73042",
+      "value": 26457,
+      "sha256": "6c3863f7db76f9e42084fb2f518352306a3768f979c560e5e46d6f2100f9f7d6"
+    },
+    {
+      "artifact_line": 83636,
+      "record_set": "commune_total",
+      "geography_id": "73066",
+      "value": 16938,
+      "sha256": "177b46ab5b390ea46ab929df99776e20e7256249e6484f9c71b078a7428fb0ef"
+    },
+    {
+      "artifact_line": 83637,
+      "record_set": "commune_total",
+      "geography_id": "73098",
+      "value": 7479,
+      "sha256": "e31275dad03f9a0b68c367deea32812f4a7dc0087e729b0accd05065623a6116"
+    },
+    {
+      "artifact_line": 83638,
+      "record_set": "commune_total",
+      "geography_id": "73107",
+      "value": 40486,
+      "sha256": "e274c3d876695b8966ff08167d47e90be5358a0b6645ca5b0c1fc0b5f45a4b09"
+    },
+    {
+      "artifact_line": 83639,
+      "record_set": "commune_total",
+      "geography_id": "73109",
+      "value": 4412,
+      "sha256": "3510f5935699e1ea3cb0532bf9c2134d3fda14930fb0e5ceffae8b4a960cb1c0"
+    },
+    {
+      "artifact_line": 83640,
+      "record_set": "commune_total",
+      "geography_id": "73110",
+      "value": 43052,
+      "sha256": "5297d51a3401cddbe3ea1ad87cc861fc05b2a410cfc65b386031dcddf02c942e"
+    },
+    {
+      "artifact_line": 83641,
+      "record_set": "commune_total",
+      "geography_id": "73111",
+      "value": 43980,
+      "sha256": "f0ba8534a6e0051f740f5e58ca13e69d42b08ee5e576bb87069a15e65f387af3"
+    },
+    {
+      "artifact_line": 83642,
+      "record_set": "commune_total",
+      "geography_id": "81001",
+      "value": 31492,
+      "sha256": "574c056933b96f84cdbbd51c9807e0d3f5ea2034a8ad5691bdcdac302b8693b3"
+    },
+    {
+      "artifact_line": 83643,
+      "record_set": "commune_total",
+      "geography_id": "81003",
+      "value": 5788,
+      "sha256": "efd6a330fec8652e05a19bdf0b522406b308bac631708fe9ebe2a7ae46982571"
+    },
+    {
+      "artifact_line": 83644,
+      "record_set": "commune_total",
+      "geography_id": "81004",
+      "value": 17871,
+      "sha256": "3bfe8355563663ef6ae0d1458c8ef5d93910392b418f5f20faac99e0d71201c4"
+    },
+    {
+      "artifact_line": 83645,
+      "record_set": "commune_total",
+      "geography_id": "81013",
+      "value": 2124,
+      "sha256": "1ee2cb16ca18f626762e300f3eb71f5233ed5ebee26fceb8df7718895137f82a"
+    },
+    {
+      "artifact_line": 83646,
+      "record_set": "commune_total",
+      "geography_id": "81015",
+      "value": 8627,
+      "sha256": "7e3a47ea46f6fc15929eaa358285fdc958009abefdcccd7f5ee520e283c410d5"
+    },
+    {
+      "artifact_line": 83647,
+      "record_set": "commune_total",
+      "geography_id": "82009",
+      "value": 2512,
+      "sha256": "4d13eefc3741e324647535f788961ef260fa2ea23abced57ac351373a61f94e2"
+    },
+    {
+      "artifact_line": 83648,
+      "record_set": "commune_total",
+      "geography_id": "82014",
+      "value": 5336,
+      "sha256": "552abf6858d7583f67ec0c133865f265bd33740a84a30be9b50af028e8fdc0e4"
+    },
+    {
+      "artifact_line": 83649,
+      "record_set": "commune_total",
+      "geography_id": "82032",
+      "value": 7853,
+      "sha256": "d503850a8604a851510990277d0cd17fb81d529dac2b68d15cdc6b02ec232462"
+    },
+    {
+      "artifact_line": 83650,
+      "record_set": "commune_total",
+      "geography_id": "82036",
+      "value": 6352,
+      "sha256": "ed9f947ad7f88ddeafb2870a151699c41071ececeb1cebdf48361c0054c4763a"
+    },
+    {
+      "artifact_line": 83651,
+      "record_set": "commune_total",
+      "geography_id": "82037",
+      "value": 5452,
+      "sha256": "f91fb51a14400fbd0a41799188eb759b6c1d5422e167eb133a1b2dc13d5ebceb"
+    },
+    {
+      "artifact_line": 83652,
+      "record_set": "commune_total",
+      "geography_id": "82038",
+      "value": 2687,
+      "sha256": "c2a9247ccea1b34cd2e6164decb981c9b4fa30038060257a5c07bb61ac0e42f2"
+    },
+    {
+      "artifact_line": 83653,
+      "record_set": "commune_total",
+      "geography_id": "82039",
+      "value": 20940,
+      "sha256": "dffff80650e904b18b65bcb9a875b3af78621b46279e336cdb5e02a5dc06250d"
+    },
+    {
+      "artifact_line": 83654,
+      "record_set": "commune_total",
+      "geography_id": "83012",
+      "value": 11511,
+      "sha256": "f75b0e8ef19f454a8e2409d135b69c9f40fac593f81078d4802252114c61bd3f"
+    },
+    {
+      "artifact_line": 83655,
+      "record_set": "commune_total",
+      "geography_id": "83013",
+      "value": 3356,
+      "sha256": "aaf53a6d75e1eddf6fd595338714250bebaecaab986af52b1d0c42529000c253"
+    },
+    {
+      "artifact_line": 83656,
+      "record_set": "commune_total",
+      "geography_id": "83028",
+      "value": 5682,
+      "sha256": "c5aa055194754040164bd724f1461de7554a2c7d3eb0adb1c984f28188564cbf"
+    },
+    {
+      "artifact_line": 83657,
+      "record_set": "commune_total",
+      "geography_id": "83031",
+      "value": 4067,
+      "sha256": "fe3fb888c8a54415d055129f3c3220f19f8a9410ee108959140d1497001fdfbe"
+    },
+    {
+      "artifact_line": 83658,
+      "record_set": "commune_total",
+      "geography_id": "83034",
+      "value": 17946,
+      "sha256": "347c47b3ae2465f99215dedbf3c62129481dd5883bdeec53c9a0a6f4d284a867"
+    },
+    {
+      "artifact_line": 83659,
+      "record_set": "commune_total",
+      "geography_id": "83040",
+      "value": 5716,
+      "sha256": "f5939dd7fc0baa233998f9c2565922d40505122992654953349661db73692a26"
+    },
+    {
+      "artifact_line": 83660,
+      "record_set": "commune_total",
+      "geography_id": "83044",
+      "value": 2717,
+      "sha256": "8c5c5b2142e568e07d3cd0cd5ebde46142e5a9775372ab84e8a83f81c6d732a5"
+    },
+    {
+      "artifact_line": 83661,
+      "record_set": "commune_total",
+      "geography_id": "83049",
+      "value": 2876,
+      "sha256": "29ba83416c0b86d290d0b900d8020e943b9c626617fcaa49096b461b55bbad97"
+    },
+    {
+      "artifact_line": 83662,
+      "record_set": "commune_total",
+      "geography_id": "83055",
+      "value": 3762,
+      "sha256": "83283f0beb39a55919478809e53c5cc831a86ffb56edd167dccc3351a66dc3fb"
+    },
+    {
+      "artifact_line": 83663,
+      "record_set": "commune_total",
+      "geography_id": "84009",
+      "value": 9057,
+      "sha256": "f1f6400d63db6fc9b5592eebd6bcf5f83a04f1508264fb7affbcf292e4280a44"
+    },
+    {
+      "artifact_line": 83664,
+      "record_set": "commune_total",
+      "geography_id": "84010",
+      "value": 5351,
+      "sha256": "6a846995901278836f6577d2b65a53fd37496088f45b26002a9d5903ae9fea1f"
+    },
+    {
+      "artifact_line": 83665,
+      "record_set": "commune_total",
+      "geography_id": "84016",
+      "value": 1416,
+      "sha256": "4db7a1d5a5e6460be44753ffd3975e480237ab65a59851bd76d33a296b8bb350"
+    },
+    {
+      "artifact_line": 83666,
+      "record_set": "commune_total",
+      "geography_id": "84029",
+      "value": 1743,
+      "sha256": "19c3d87343e6bf70a263784c61321b08f15c6d686e64986b2badc9a7489c6492"
+    },
+    {
+      "artifact_line": 83667,
+      "record_set": "commune_total",
+      "geography_id": "84033",
+      "value": 5868,
+      "sha256": "ecf8f166dcb0fac50407cb0cc2511e2c224da0d32d3a876768fb429ac0004e51"
+    },
+    {
+      "artifact_line": 83668,
+      "record_set": "commune_total",
+      "geography_id": "84035",
+      "value": 5367,
+      "sha256": "1b4c68ae4712b234e7728a72cab347d12804e69d6ac9dc9e6b0f95df74f67bef"
+    },
+    {
+      "artifact_line": 83669,
+      "record_set": "commune_total",
+      "geography_id": "84043",
+      "value": 8350,
+      "sha256": "6a599224179e689a13a21f1232e8a0f415b223e6b212417908c13611b421842a"
+    },
+    {
+      "artifact_line": 83670,
+      "record_set": "commune_total",
+      "geography_id": "84050",
+      "value": 5530,
+      "sha256": "64668a7090403822b973e52fef3c26674b257e873d0022914f13ae8f191fdae4"
+    },
+    {
+      "artifact_line": 83671,
+      "record_set": "commune_total",
+      "geography_id": "84059",
+      "value": 5691,
+      "sha256": "46987e80cb46a03db67b1244256e7ed58c8123bba44ae209a7dba9933eef6bbe"
+    },
+    {
+      "artifact_line": 83672,
+      "record_set": "commune_total",
+      "geography_id": "84068",
+      "value": 2519,
+      "sha256": "8cdab2a78077c43e511be8de52aa0fe46ea199b2de3cddd85d2b07912c000ea9"
+    },
+    {
+      "artifact_line": 83673,
+      "record_set": "commune_total",
+      "geography_id": "84075",
+      "value": 3207,
+      "sha256": "dad77658dba3ff2fbf9dd73497bf55428fbf31b66f14832cf1be9f2121aa8ab0"
+    },
+    {
+      "artifact_line": 83674,
+      "record_set": "commune_total",
+      "geography_id": "84077",
+      "value": 12033,
+      "sha256": "b801e8b21c91829125216546fb4a1ce95708c4afa53b37a14cc0240d66f53df1"
+    },
+    {
+      "artifact_line": 83675,
+      "record_set": "commune_total",
+      "geography_id": "85007",
+      "value": 5265,
+      "sha256": "84d8cc63f6eeabeb77b16e7d538b75b2f8e763d29513100f39e3094f0c279c7a"
+    },
+    {
+      "artifact_line": 83676,
+      "record_set": "commune_total",
+      "geography_id": "85009",
+      "value": 6035,
+      "sha256": "c094c3fe21e12fc9821cf8f3472f1406eef7734c1644d93953c395d7f45d9372"
+    },
+    {
+      "artifact_line": 83677,
+      "record_set": "commune_total",
+      "geography_id": "85011",
+      "value": 5705,
+      "sha256": "b65bb7b87b217c78f93c31aecbd1d0bad6f0b72e73c5904d5b0caa63e4fec21d"
+    },
+    {
+      "artifact_line": 83678,
+      "record_set": "commune_total",
+      "geography_id": "85024",
+      "value": 2849,
+      "sha256": "61e5bab251fae092e9340c5c879cf28bce8f2ec7a48ea7bed8b275cf1b89a578"
+    },
+    {
+      "artifact_line": 83679,
+      "record_set": "commune_total",
+      "geography_id": "85026",
+      "value": 4708,
+      "sha256": "e52f40da02e82098900bf328d50bc7794d38ca03b17b0e9a3a593aca95f4394d"
+    },
+    {
+      "artifact_line": 83680,
+      "record_set": "commune_total",
+      "geography_id": "85034",
+      "value": 3809,
+      "sha256": "f57ff9780344dce73931a416d497b159a18dac00f9adce56e5539c0b26873e74"
+    },
+    {
+      "artifact_line": 83681,
+      "record_set": "commune_total",
+      "geography_id": "85039",
+      "value": 4593,
+      "sha256": "90f191a9c0e34e4d7f20ba6722f7dec7fde323afa533883d2ae5838f3c2f8f88"
+    },
+    {
+      "artifact_line": 83682,
+      "record_set": "commune_total",
+      "geography_id": "85045",
+      "value": 11466,
+      "sha256": "ebf8fa31709032bbf9aa3bf684ce923e461c370c72257a4dbfea2620967c61c2"
+    },
+    {
+      "artifact_line": 83683,
+      "record_set": "commune_total",
+      "geography_id": "85046",
+      "value": 8668,
+      "sha256": "ebc5436aafc5f70059c1fe7dbe50d7b152f8d8ce67dec969763259606957fcec"
+    },
+    {
+      "artifact_line": 83684,
+      "record_set": "commune_total",
+      "geography_id": "85047",
+      "value": 2111,
+      "sha256": "0646ec07c8a8d7a3f426a711b46b27ab59487c7e0397849e0d958e4e2de75850"
+    },
+    {
+      "artifact_line": 83685,
+      "record_set": "commune_total",
+      "geography_id": "91005",
+      "value": 7109,
+      "sha256": "00860c96719492823bc9055278dc4ac8cc09d581b3f7ed0d0fb316cbdaf9f6d9"
+    },
+    {
+      "artifact_line": 83686,
+      "record_set": "commune_total",
+      "geography_id": "91013",
+      "value": 9496,
+      "sha256": "5d3b36e019540c2e4d37926241c48ced3c0f35a9555566d6cd31e753504833de"
+    },
+    {
+      "artifact_line": 83687,
+      "record_set": "commune_total",
+      "geography_id": "91015",
+      "value": 3467,
+      "sha256": "baef6fd7eeb4352c41e951a9810c3e337b8524dbd41eae6df3dedfa689dd85ca"
+    },
+    {
+      "artifact_line": 83688,
+      "record_set": "commune_total",
+      "geography_id": "91030",
+      "value": 17220,
+      "sha256": "56951f6fd145f9568af85df5c1d72f3a6eafd5fcc8748d845845e5174fca2a80"
+    },
+    {
+      "artifact_line": 83689,
+      "record_set": "commune_total",
+      "geography_id": "91034",
+      "value": 13261,
+      "sha256": "f6e0334ef490484b2de588a0d172a633777533dcb9397b5043318c1ebd75c508"
+    },
+    {
+      "artifact_line": 83690,
+      "record_set": "commune_total",
+      "geography_id": "91054",
+      "value": 4661,
+      "sha256": "d8953c8003a3a9fe0a8760e458075c51e6a6d7fd885aa6fe5c6b642f822108df"
+    },
+    {
+      "artifact_line": 83691,
+      "record_set": "commune_total",
+      "geography_id": "91059",
+      "value": 7438,
+      "sha256": "5e3128bf17a505256654ff715dc95543fb38f870cc4d1a3e190d251dd95ef457"
+    },
+    {
+      "artifact_line": 83692,
+      "record_set": "commune_total",
+      "geography_id": "91064",
+      "value": 5461,
+      "sha256": "892ef4dc406db98127eccb79c909bee1ca11bf86513251bfa1f10ec06a7ebcfc"
+    },
+    {
+      "artifact_line": 83693,
+      "record_set": "commune_total",
+      "geography_id": "91072",
+      "value": 5215,
+      "sha256": "3bc4b19db8ac9d3f9b5b26242bf11172d0a74e2a99bc7c541a0ccaef68db8874"
+    },
+    {
+      "artifact_line": 83694,
+      "record_set": "commune_total",
+      "geography_id": "91103",
+      "value": 3243,
+      "sha256": "0cc99f097e2e3f5ec57e5d76392d79d0f8a56865a238a98e48d8f741f0d986cb"
+    },
+    {
+      "artifact_line": 83695,
+      "record_set": "commune_total",
+      "geography_id": "91114",
+      "value": 12772,
+      "sha256": "19c1917508c6929055a181263f19dae332c7dac978c292b0ba6cf2c257609864"
+    },
+    {
+      "artifact_line": 83696,
+      "record_set": "commune_total",
+      "geography_id": "91120",
+      "value": 6191,
+      "sha256": "b6ce68510b257ec46be6aa59a28e4dc0784bfefce95bddfcda965bd9e0762b0f"
+    },
+    {
+      "artifact_line": 83697,
+      "record_set": "commune_total",
+      "geography_id": "91141",
+      "value": 9210,
+      "sha256": "33d40ae14a260aeafce5761d41c1378ba4d5eeb64e5d06ba0d30d0be7ffa8698"
+    },
+    {
+      "artifact_line": 83698,
+      "record_set": "commune_total",
+      "geography_id": "91142",
+      "value": 6081,
+      "sha256": "f4ea955c6cca7be0e4dee6af564d131c67e19d0e8ce29f956fa9d927c1fb33b3"
+    },
+    {
+      "artifact_line": 83699,
+      "record_set": "commune_total",
+      "geography_id": "91143",
+      "value": 2549,
+      "sha256": "4cc7d99332d5346646f125f8e6112524f9aa81d5c235f0ac4ce968a3419b0998"
+    },
+    {
+      "artifact_line": 83700,
+      "record_set": "commune_total",
+      "geography_id": "92003",
+      "value": 28231,
+      "sha256": "99aa6129c8aafc2b11620ceed72b5343b443a1b07865522e0e9e1d42ad7729a5"
+    },
+    {
+      "artifact_line": 83701,
+      "record_set": "commune_total",
+      "geography_id": "92006",
+      "value": 7343,
+      "sha256": "01a63b13026aee7abe5a727c16318e085ba93e0237162972e86976c3df434fda"
+    },
+    {
+      "artifact_line": 83702,
+      "record_set": "commune_total",
+      "geography_id": "92035",
+      "value": 16954,
+      "sha256": "e658fa3e2051d19e03430c3ae575632b1c5648c9faa9e2e605a9ab7a950ae98c"
+    },
+    {
+      "artifact_line": 83703,
+      "record_set": "commune_total",
+      "geography_id": "92045",
+      "value": 8083,
+      "sha256": "7d8e32d93d9e9296e46b05acf05f2e6a8709d5917f1bc6698d2d8b5446c50b40"
+    },
+    {
+      "artifact_line": 83704,
+      "record_set": "commune_total",
+      "geography_id": "92048",
+      "value": 10436,
+      "sha256": "cf4a31ab6d853679ef584d94e1cb7217525c9ec4cf8f1e8ef90554a82d430bd7"
+    },
+    {
+      "artifact_line": 83705,
+      "record_set": "commune_total",
+      "geography_id": "92054",
+      "value": 7445,
+      "sha256": "f8d7d4ab241bb6947c0fd05d1295ea92e363b021a4dd6a27d98072361738a307"
+    },
+    {
+      "artifact_line": 83706,
+      "record_set": "commune_total",
+      "geography_id": "92087",
+      "value": 13613,
+      "sha256": "62100f5e83ddde6e175dec916bbddc3e9c82d45cdef646b5506fc5e8cce8db60"
+    },
+    {
+      "artifact_line": 83707,
+      "record_set": "commune_total",
+      "geography_id": "92094",
+      "value": 115029,
+      "sha256": "8806ddd7c272d7ddfb1586a63a04eef5716c6b4ca60eb517e187f7419f407285"
+    },
+    {
+      "artifact_line": 83708,
+      "record_set": "commune_total",
+      "geography_id": "92097",
+      "value": 5316,
+      "sha256": "85b425c3a0dd1767fd9fe1b163b31b2dea5e99d7de702d1ce5b748d0bc395a51"
+    },
+    {
+      "artifact_line": 83709,
+      "record_set": "commune_total",
+      "geography_id": "92101",
+      "value": 12322,
+      "sha256": "3fa058d1abf0e3c9a37fcd61c9a09d5248e0d1e8e653cc3b3a3e1ce5247ebe35"
+    },
+    {
+      "artifact_line": 83710,
+      "record_set": "commune_total",
+      "geography_id": "92114",
+      "value": 8384,
+      "sha256": "d557eb074a8ff0fdc11be25eb59738d0483588977bcc3c48e02591abb9aa2c01"
+    },
+    {
+      "artifact_line": 83711,
+      "record_set": "commune_total",
+      "geography_id": "92137",
+      "value": 28638,
+      "sha256": "ae89081634d8d16b72d6cadfb97a437814692b3fdb5c914a2a2129cf5486f610"
+    },
+    {
+      "artifact_line": 83712,
+      "record_set": "commune_total",
+      "geography_id": "92138",
+      "value": 8175,
+      "sha256": "1a3bdcd3bcf05814a9217c421724c00bb65a841fe2205c50b5bdb59687bafac2"
+    },
+    {
+      "artifact_line": 83713,
+      "record_set": "commune_total",
+      "geography_id": "92140",
+      "value": 19225,
+      "sha256": "aa72ef039a0109df6d7edd9a014ed071c16c54527167cdccd19a3ccef9349f74"
+    },
+    {
+      "artifact_line": 83714,
+      "record_set": "commune_total",
+      "geography_id": "92141",
+      "value": 9397,
+      "sha256": "c37953fbf8938a236f9f1f089302e1b003b2b5e73b4f9ce540619697ed050b9b"
+    },
+    {
+      "artifact_line": 83715,
+      "record_set": "commune_total",
+      "geography_id": "92142",
+      "value": 26550,
+      "sha256": "a249c0f9a38e12ee8111324d9a54175661f8d2eb13413e15a876fbaa55b8d258"
+    },
+    {
+      "artifact_line": 83716,
+      "record_set": "commune_total",
+      "geography_id": "93010",
+      "value": 4989,
+      "sha256": "0b10257d0e60988c17e684f3eee68d0ff5ebc57cfe8effee48e87890c61e9171"
+    },
+    {
+      "artifact_line": 83717,
+      "record_set": "commune_total",
+      "geography_id": "93014",
+      "value": 13919,
+      "sha256": "309e6b0dd63a3396eb453b94f116bfb6fba955ad1e856432530fb0062287b5e0"
+    },
+    {
+      "artifact_line": 83718,
+      "record_set": "commune_total",
+      "geography_id": "93018",
+      "value": 2973,
+      "sha256": "ddd09ecad62f5ebbe6eb6c6b4eb31471081bb9bbc6df5b8abd8bc5fd905b1cb3"
+    },
+    {
+      "artifact_line": 83719,
+      "record_set": "commune_total",
+      "geography_id": "93022",
+      "value": 11394,
+      "sha256": "3cb3aedfa9452332146499ddac11abed38eff6b43dc889d776f02fe553672b39"
+    },
+    {
+      "artifact_line": 83720,
+      "record_set": "commune_total",
+      "geography_id": "93056",
+      "value": 9589,
+      "sha256": "9e971c59b5a3fb1e688be5dd426bac3f3a7700a4062570025b75cf536b394c4a"
+    },
+    {
+      "artifact_line": 83721,
+      "record_set": "commune_total",
+      "geography_id": "93088",
+      "value": 18353,
+      "sha256": "ee6bb14ea7aa1a25b49a0e3baf2c40d9f700feedc5b674382635ccc2b65ccec4"
+    },
+    {
+      "artifact_line": 83722,
+      "record_set": "commune_total",
+      "geography_id": "93090",
+      "value": 5616,
+      "sha256": "abee85d83d19628441275ba0379552395afb17e8e0cd8ec311f22acb21c35ff0"
+    }
+  ],
+  "output_sha256": "ddc358e457c7ad0b04112a40475825251da66e5f485b33ceb7958fdb52c979af",
+  "output_bytes": 2632030,
+  "refresh": "Re-extract when be/chronicle_feed.json's pin moves. The feed test, run with BE_CHRONICLE_ARTIFACT, checks that each line is a line of the pinned artifact."
+}

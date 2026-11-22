@@ -540,6 +540,8 @@ class TestBelgianPackage:
             "unit_declarations.json",
             "mass_references.json",
             "transport_inputs.json",
+            "geography_assignment.json",
+            "transport_atomic_geography_support.json",
         }
         assert set(spec.resource_hashes) == set(spec.resources) | {
             "country_package.json"

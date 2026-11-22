@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "21b52ecc9ee04904e6e4c2b5e5836e7df22e98d8be7b0c00ab07b980b3c4c9b1",
+  "fingerprint": "6e13935d4a62d8215feb019242b2c297078b1caf6c8cbad8fc7652125d17a9e2",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -32,8 +32,9 @@
     "axiom_input_closure.json": "99b4438fd885dca88c50e5613d3b1076666a4339429c8d9373e1e9c396e6e3ea",
     "axiom_rules_bindings.json": "352e3ba31151267d39a48e8b4629ade657acdb52eab391bc6437e7b72fb2db9d",
     "chronicle_feed.json": "291d9858510ec80baac4536bf4f821f85966f57f0a72be700889bbfeed0a4f4e",
-    "country_package.json": "0bceb4e53788d18559bc97e77cabdea1895a4e49e8bf1723e3f50c9f2f1628c1",
+    "country_package.json": "650fedc6bf788639ff24811c20e7ae17a2cd4bbde7175649389cc27035286f49",
     "gates.json": "9704a0c86b324d4243365a320438b47a9d7d5a6af7ec2adfa1821ecb8d611f68",
+    "geography_assignment.json": "68cbcca177c1d45f184f36edcb98969f1a36c5da9f903ade119747cba13ae6a9",
     "geography_spine.json": "090b83a4fa511e691b8f1486bc4188e4170cf9d4a1239e7418d33d5020ceca50",
     "holdout_references.json": "d65875740c1be58a3233b25b65371267ea2a8b92e5b61b55f2353f4e63e64881",
     "mass_references.json": "30047d5b7598da3d9941be6cfa49dc0b49164a00d199be44a111649e2b230e93",
@@ -53,6 +54,7 @@
     "spec/spine.yaml": "981be4881954d7696fbabf1bc989f619577b6e5600262f1a9c20915461808d41",
     "spec/vintages.yaml": "1a10d5aedd24cdb2fc9544c7a0d444df0b06d4b089dcb769bf0a7de9218df696",
     "target_references.json": "b2e9b6ccee9f72031c25815e50097f5cddb90226d29ac33d9568a3e5771ebcaf",
+    "transport_atomic_geography_support.json": "2a28f4f86bca4e95e436cf8d03ca83dd3b768db158840beb98cc9c66cc3ff1a5",
     "transport_inputs.json": "079df74f40b30f16dfdd9072be64783c504ae2b98d258144999a55bdbbd3995f",
     "unit_declarations.json": "6728d6c080390713571ea8730d2838450bb061caab72dabb2f62664e8600211e"
   },
@@ -67,6 +69,7 @@
     "axiom_rules_bindings.json",
     "chronicle_feed.json",
     "gates.json",
+    "geography_assignment.json",
     "geography_spine.json",
     "holdout_references.json",
     "mass_references.json",
@@ -80,6 +83,7 @@
     "release_contract.json",
     "source_stages.json",
     "target_references.json",
+    "transport_atomic_geography_support.json",
     "transport_inputs.json",
     "unit_declarations.json"
   ],
