@@ -21,11 +21,13 @@ The two Eurostat files are kept, with their URLs, under
 ``~/reviews/belgium-2026-10-12/transport-port/sources/eurostat-2026-11-22/``;
 Eurostat updates them in place, so a fresh download may not match the pins.
 
-The builder refuses unless the sources agree (``hierarchy_from_sources``):
-Statbel's three regions map one to one onto NUTS 2024 level 1, as 02000 BE2,
-03000 BE3 and 04000 BE1; its provinces map one to one onto level 2, except
-46030, whose 2024 parts lie in BE21 and BE23; the communes whose 2024 parts
-span two NUTS3 areas are exactly 46029, 46030 and 71072; and NUTS3 BE336,
+The builder refuses unless the sources agree (``hierarchy_from_sources``,
+rules 1 to 7): the crosswalk maps exactly Eurostat's 2024 LAUs onto exactly
+Statbel's 2025 communes; Statbel's three regions map one to one onto NUTS 2024
+level 1, as 02000 BE2, 03000 BE3 and 04000 BE1; its provinces map one to one
+onto level 2, leaving out the commune 46030, whose 2024 parts lie in BE21 and
+BE23; the communes whose 2024 parts span two NUTS3 areas are exactly 46029,
+46030 and 71072; the BE335 and BE336 labels equal their pins; and NUTS3 BE336,
 "Bezirk Verviers — Deutschsprachige Gemeinschaft", holds exactly nine
 communes that are unchanged from 2024 to 2025. Those nine take the language
 region ``german``; every other commune takes its Statbel region's language
@@ -270,7 +272,9 @@ def lau_pairs(rows: list[tuple]) -> list[tuple[str, str]]:
         if code is None:
             continue
         if not (isinstance(nuts3, str) and len(nuts3) == 5 and nuts3[:2] == "BE"):
-            raise ValueError(f"Eurostat LAU {code} has NUTS3 {nuts3!r}, not a BE code.")
+            raise ValueError(
+                f"Eurostat LAU {code} has NUTS3 {nuts3!r}, not a five-character BE code."
+            )
         pairs.append((str(code), nuts3))
     return pairs
 
@@ -446,13 +450,12 @@ def stale_files(documents: dict[str, dict], out: Path) -> list[str]:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--sources", type=Path, default=os.environ.get("BE_GEOGRAPHY_SOURCES") or None
-    )
+    parser.add_argument("--sources", default=os.environ.get("BE_GEOGRAPHY_SOURCES"))
     parser.add_argument("--out", type=Path, default=SPEC)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-    if not args.sources:
+    # An empty or blank value names no directory, not the current one.
+    if not (args.sources or "").strip():
         parser.error("--sources or BE_GEOGRAPHY_SOURCES is required")
     precal = json.loads((args.out / PRECAL).read_text(encoding="utf-8"))
     hierarchy = hierarchy_from_sources(read_sources(Path(args.sources)))

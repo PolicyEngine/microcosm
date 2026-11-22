@@ -68,6 +68,7 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.kernel import ArtifactValue, NumericScope
 from test_support.paths import paths_for
 from tools import build_be_geography as builder
+from tools import extract_be_geography_fixture as extractor
 
 _PACKAGE = paths_for("microcosm-build").package
 _BE = _PACKAGE / "src/microcosm/build/be"
@@ -714,6 +715,107 @@ def test_fixture_is_the_recorded_583_artifact_lines():
     assert source["manifest_sha256"] == feed["manifest_sha256"]
 
 
+def _fact_line(record_set: str, geography: str, value: int) -> bytes:
+    fact = {
+        "layout": {"record_set_id": record_set},
+        "geography": {"id": geography},
+        "value": value,
+    }
+    return json.dumps(fact).encode("utf-8") + b"\n"
+
+
+def _fake_artifact(tmp_path: Path, lines: list[bytes]) -> tuple[Path, dict]:
+    artifact = tmp_path / "artifact"
+    artifact.mkdir()
+    facts, manifest = b"".join(lines), b'{"fake": true}\n'
+    (artifact / "consumer_facts.jsonl").write_bytes(facts)
+    (artifact / "manifest.json").write_bytes(manifest)
+    feed = {
+        "source_commit": "c" * 40,
+        "facts_sha256": hashlib.sha256(facts).hexdigest(),
+        "manifest_sha256": hashlib.sha256(manifest).hexdigest(),
+    }
+    return artifact, feed
+
+
+def test_fixture_extractor_copies_the_selected_lines_from_the_pinned_artifact(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        extractor,
+        "RECORD_SETS",
+        {
+            _COMMUNE_RECORD_SET: ("commune_total", 2),
+            _NUTS1_RECORD_SET: ("nuts1_age_sex", 1),
+        },
+    )
+    selected = [
+        _fact_line(_COMMUNE_RECORD_SET, "11001", 7),
+        _fact_line(_NUTS1_RECORD_SET, "BE2", 9),
+        _fact_line(_COMMUNE_RECORD_SET, "21001", 5),
+    ]
+    lines = [
+        _fact_line("fpb.t07", "BE", 1),
+        selected[0],
+        _fact_line(_NUTS1_RECORD_SET + "_other", "BE2", 3),
+        selected[1],
+        selected[2],
+    ]
+    artifact, feed = _fake_artifact(tmp_path, lines)
+    feed_path = tmp_path / "chronicle_feed.json"
+    feed_path.write_text(json.dumps(feed))
+    monkeypatch.setattr(extractor, "FEED", feed_path)
+    out = tmp_path / "out"
+    out.mkdir()
+    arguments = [str(artifact), "--out", str(out)]
+    with pytest.raises(SystemExit, match="Stale fixture"):
+        extractor.main([*arguments, "--check"])
+    assert not list(out.iterdir())
+    extractor.main(arguments)
+    extractor.main([*arguments, "--check"])
+    compressed = (out / extractor.FIXTURE).read_bytes()
+    assert compressed[:8] == b"\x1f\x8b\x08\x00\x00\x00\x00\x00"
+    assert gzip.decompress(compressed) == b"".join(selected)
+    provenance = json.loads((out / extractor.PROVENANCE).read_text())
+    assert provenance["source"]["chronicle_source_commit"] == "c" * 40
+    assert provenance["source"]["facts_sha256"] == feed["facts_sha256"]
+    assert provenance["source"]["manifest_sha256"] == feed["manifest_sha256"]
+    assert provenance["lines"] == [
+        {
+            "artifact_line": number,
+            "record_set": record_set,
+            "geography_id": geography,
+            "value": value,
+            "sha256": hashlib.sha256(lines[number - 1][:-1]).hexdigest(),
+        }
+        for number, record_set, geography, value in (
+            (2, "commune_total", "11001", 7),
+            (4, "nuts1_age_sex", "BE2", 9),
+            (5, "commune_total", "21001", 5),
+        )
+    ]
+    assert provenance["output_sha256"] == hashlib.sha256(b"".join(selected)).hexdigest()
+    # The committed provenance has the same fields and the same fixed text.
+    committed = json.loads(
+        _FIXTURE.with_name(_FIXTURE.name + ".provenance.json").read_text()
+    )
+    assert list(committed) == list(provenance)
+    for key in ("kind", "use", "line_sha256", "refresh"):
+        assert committed[key] == provenance[key], key
+
+
+def test_fixture_extractor_refuses_an_artifact_the_feed_does_not_pin(tmp_path):
+    artifact, feed = _fake_artifact(
+        tmp_path, [_fact_line(_COMMUNE_RECORD_SET, "11001", 7)]
+    )
+    for key in ("facts_sha256", "manifest_sha256"):
+        with pytest.raises(ValueError, match="is not the artifact"):
+            extractor.extract(artifact, {**feed, key: "0" * 64})
+    # The pinned artifact must also hold 565 commune lines and 18 NUTS1 lines.
+    with pytest.raises(ValueError, match="Selected line counts"):
+        extractor.extract(artifact, feed)
+
+
 # --- the builder ------------------------------------------------------------
 
 
@@ -872,6 +974,7 @@ def _relabel(code: str, label: str):
         (_move("44011", "BE236"), "Rule 4: NUTS straddlers"),
         # 46030 still spans two NUTS3 areas, but both now lie in BE23.
         (_move("11056", "BE235"), "Rule 4: NUTS straddlers"),
+        (_add_lau("11099", "BE212", target="11001"), "Rule 4: NUTS straddlers"),
         (_restate("11001", province="40000"), "Rule 4: Statbel provinces"),
         (_restate("63049", province="60001"), "Rule 4: Statbel provinces"),
         (_relabel("BE336", "Bezirk Verviers"), "Rule 5"),
@@ -894,6 +997,7 @@ def _relabel(code: str, label: str):
         "rule4-71072-no-longer-straddles-nuts3",
         "rule4-46029-no-longer-straddles-nuts3",
         "rule4-46030-no-longer-straddles-nuts2",
+        "rule4-11001-starts-to-straddle-nuts3",
         "rule4-province-spans-two-nuts2",
         "rule4-two-provinces-share-a-nuts2",
         "rule5-be336-label",
@@ -918,7 +1022,7 @@ def test_builder_reads_lau_rows_and_refuses_a_cell_that_is_not_a_be_nuts3_code()
     rows = [header, ("BE211", "11001", "Aartselaar"), (None, None, "note")]
     assert builder.lau_pairs(rows) == [("11001", "BE211")]
     for cell in (None, "XX100", "BE21", 21100):
-        with pytest.raises(ValueError, match="not a BE code"):
+        with pytest.raises(ValueError, match="not a five-character BE code"):
             builder.lau_pairs([header, (cell, "11001", "Aartselaar")])
     with pytest.raises(ValueError, match="Unexpected Eurostat LAU header"):
         builder.lau_pairs([("LAU CODE", "NUTS3"), ("11001", "BE211")])
@@ -1016,13 +1120,22 @@ def test_cli_writes_the_committed_bytes_and_needs_sources(tmp_path, monkeypatch)
     for name in _FILES:
         assert (out / name).read_bytes() == (_BE / name).read_bytes(), name
     monkeypatch.delenv("BE_GEOGRAPHY_SOURCES", raising=False)
+    codes = []
     with pytest.raises(SystemExit) as unset:
         builder.main(["--out", str(out), "--check"])
-    # An empty variable is unset too, not the current directory.
-    monkeypatch.setenv("BE_GEOGRAPHY_SOURCES", "")
-    with pytest.raises(SystemExit) as empty:
-        builder.main(["--out", str(out), "--check"])
-    assert unset.value.code == empty.value.code == 2
+    codes.append(unset.value.code)
+    # An empty or blank value, from the variable or the flag, names no directory,
+    # not the current one.
+    for blank in ("", " ", "\t"):
+        monkeypatch.setenv("BE_GEOGRAPHY_SOURCES", blank)
+        with pytest.raises(SystemExit) as error:
+            builder.main(["--out", str(out), "--check"])
+        codes.append(error.value.code)
+        monkeypatch.delenv("BE_GEOGRAPHY_SOURCES")
+        with pytest.raises(SystemExit) as error:
+            builder.main(["--sources", blank, "--out", str(out), "--check"])
+        codes.append(error.value.code)
+    assert codes == [2] * 7
 
 
 # --- activation -------------------------------------------------------------
@@ -1101,6 +1214,8 @@ def test_fixture_lines_are_lines_of_the_pinned_artifact(artifact_path, chain):
             if number in recorded:
                 found[number] = line.rstrip(b"\n")
     assert found == recorded
+    # The in-repo extractor rebuilds the committed fixture and provenance.
+    extractor.main([str(artifact_path), "--check"])
     # With the feed pin on the whole artifact, the support is byte for byte the
     # one the fixture builds.
     pinned = _support_chain(artifact_path, feed_pin=True)

@@ -4099,5 +4099,5 @@
   ],
   "output_sha256": "ddc358e457c7ad0b04112a40475825251da66e5f485b33ceb7958fdb52c979af",
   "output_bytes": 2632030,
-  "refresh": "Re-extract when be/chronicle_feed.json's pin moves. The feed test, run with BE_CHRONICLE_ARTIFACT, checks that each line is a line of the pinned artifact."
+  "refresh": "Re-extract with tools/extract_be_geography_fixture.py whenever be/chronicle_feed.json's pin moves; test_be_geography.py's fixture test fails until then. The feed test, run with BE_CHRONICLE_ARTIFACT, checks that a fresh extraction gives these bytes."
 }
