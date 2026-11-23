@@ -58,12 +58,11 @@ from tools.generate_uk_local_target_references import SUPPORT_FLOOR_DEFERRED_ARE
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed registers'
 #: validity window so the suite never drifts across an approval or expiry
-#: boundary: on the latest approval (2026-11-22: the UK totals' degenerate
-#: exclusions of microcosm#1687 and the sixteen local-line target-fit renewals
-#: of that day) and before the earliest expiry still ahead (2026-12-01,
-#: local-line entries of both target-fit registers). Move it forward when a
-#: register gains a later approval.
-CLOCK = date(2026, 11, 22)
+#: boundary: on the latest approval (2026-11-23: the gate-only sign-off of the
+#: local build on microcosm#1687's national) and before the earliest expiry
+#: still ahead (2026-12-01, local-line entries of the local target-fit
+#: register). Move it forward when a register gains a later approval.
+CLOCK = date(2026, 11, 23)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
