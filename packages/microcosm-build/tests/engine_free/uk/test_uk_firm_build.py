@@ -639,6 +639,8 @@ def test_consumption_build_splits_turnover_only(builds, tmp_path: Path) -> None:
     coicop = [f"{k:02d}" for k in range(1, 13)]
     np.testing.assert_allclose(shares[coicop].sum(axis=1), 1.0, rtol=1e-9)
     assert set(table["firm_sic_division"]) <= set(shares.index)
+    split = record["household_purchases_by_supply_gbp_million"]
+    assert split["domestic_basic"] > split["imports"] > 0
     assert "uk_firm_consumption" not in builds[0]["receipt"]
 
 

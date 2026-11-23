@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime.firm_consumption import (
     uk_firm_division_coicop_shares,
     uk_firm_division_use_shares,
     uk_firm_household_sales_by_coicop,
+    uk_household_purchases_supply_decomposition,
     uk_table3_consumer_trends_comparison,
 )
 from test_support.paths import paths_for
@@ -266,3 +267,25 @@ def test_tool_parses_product_codes():
         "CPA_C27",
         "CPA_C28",
     ]
+
+
+def test_household_purchases_split_by_supply_sums_to_table_2() -> None:
+    """Domestic, imports, margins and taxes add up to each non-trade
+    product's household purchases; imputed rent is left out and trade rows
+    keep their own demand."""
+
+    parts = uk_household_purchases_supply_decomposition(_source())
+    uses = _source().uses
+    assert "CPA_L68A" not in parts.index
+    split = parts[
+        ["domestic_basic", "imports", "distributors_margins", "taxes_less_subsidies"]
+    ].sum(axis=1)
+    trade = parts["trade_own_demand"] > 0
+    np.testing.assert_allclose(
+        split[~trade], parts.loc[~trade, "households"], rtol=1e-9, atol=1e-9
+    )
+    assert not split[trade].any()
+    expected = uses["households"].drop("CPA_L68A").sum()
+    assert parts["households"].sum() == pytest.approx(expected)
+    assert split.sum() + parts["trade_own_demand"].sum() == pytest.approx(expected)
+    assert set(parts.index[trade]) <= {c for c in uses.index if c.startswith("CPA_G4")}

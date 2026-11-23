@@ -741,6 +741,73 @@ def uk_firm_household_sales_by_coicop(
     return frame
 
 
+#: Parts of household purchases in
+#: :func:`uk_household_purchases_supply_decomposition`, in order.
+UK_HOUSEHOLD_PURCHASE_PARTS = (
+    "domestic_basic",
+    "imports",
+    "distributors_margins",
+    "taxes_less_subsidies",
+)
+
+
+def uk_household_purchases_supply_decomposition(
+    source: UKFirmSupplyUseSource,
+) -> pd.DataFrame:
+    """Diagnostic only: Table 2 household purchases split by source of supply.
+
+    Each product's household purchases (Table 2 households, purchasers'
+    prices, national concept) are split in proportion to its Table 1 supply:
+    domestic output at basic prices, imports, distributors' margins and
+    taxes less subsidies, which sum to total supply. This is a
+    supply-proportionality assumption, not a published statistic, and never
+    a target. Products in ``UK_FIRM_SUT_EXCLUDED_PRODUCTS`` (owner-occupiers'
+    imputed rent) are left out; the trade products of divisions 45-47, whose
+    margins column is negative, are not split and their own household
+    purchases are returned as ``trade_own_demand``.
+
+    Only the domestic basic-price output and the margins (which belong to
+    trade output) are UK producers' output sold to households, and part of
+    that output (real estate, finance, insurance, health) is imputed,
+    non-market or unincorporated rather than firm turnover. Imports and
+    product taxes are in Consumer Trends but outside UK firms' output at
+    basic prices, so outside the share-allocated ``firm_household_sales``;
+    gross trade turnover still includes resold imports, and turnover
+    includes excise duties. Returns one row
+    per product with the parts in pounds million, the parts summing to
+    ``households`` on every non-trade row.
+    """
+
+    uses = source.uses.drop(
+        index=[p for p in UK_FIRM_SUT_EXCLUDED_PRODUCTS if p in source.uses.index]
+    )
+    divisions = source.divisions.groupby("product_code")["sic_division"].apply(
+        lambda values: set(int(v) for v in values)
+    )
+    trade = np.asarray(
+        [
+            bool(divisions.get(code, set()))
+            and divisions.get(code, set()) <= set(UK_FIRM_TRADE_DIVISIONS)
+            for code in uses.index
+        ]
+    )
+    households = uses["households"].to_numpy(np.float64)
+    supply = uses["total_supply"].to_numpy(np.float64)
+    out = pd.DataFrame(index=uses.index)
+    out["households"] = households
+    out["trade_own_demand"] = np.where(trade, households, 0.0)
+    for part, column in zip(
+        UK_HOUSEHOLD_PURCHASE_PARTS,
+        ("domestic_output", "imports", "distributors_margins", "taxes_less_subsidies"),
+        strict=True,
+    ):
+        values = uses[column].to_numpy(np.float64)
+        share = np.divide(values, supply, out=np.zeros_like(values), where=supply != 0)
+        out[part] = np.where(trade, 0.0, households * share)
+    out.index.name = "product_code"
+    return out
+
+
 __all__ = [
     "UK_COICOP_DIVISIONS",
     "UK_COICOP_GATE_EXCLUSIONS",
@@ -759,6 +826,7 @@ __all__ = [
     "UK_FIRM_SUT_YEAR",
     "UK_FIRM_TABLE3_GATE_TOLERANCE_GBP_MILLION",
     "UK_FIRM_TRADE_DIVISIONS",
+    "UK_HOUSEHOLD_PURCHASE_PARTS",
     "UKFirmConsumptionSales",
     "UKFirmSupplyUseSource",
     "check_uk_table3_consumer_trends",
@@ -767,5 +835,6 @@ __all__ = [
     "uk_firm_division_coicop_shares",
     "uk_firm_division_use_shares",
     "uk_firm_household_sales_by_coicop",
+    "uk_household_purchases_supply_decomposition",
     "uk_table3_consumer_trends_comparison",
 ]

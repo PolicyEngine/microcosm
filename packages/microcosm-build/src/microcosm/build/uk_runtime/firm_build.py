@@ -55,6 +55,7 @@ from microcosm.build.uk_runtime.firm_consumption import (
     uk_firm_consumption_sales,
     uk_firm_division_coicop_shares,
     uk_firm_household_sales_by_coicop,
+    uk_household_purchases_supply_decomposition,
 )
 from microcosm.build.uk_runtime.firm_employment_allowance import (
     UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
@@ -539,6 +540,17 @@ def build_uk_firm_dataset(
             },
             "table3_consumer_trends": _records(consumption_check.reset_index()),
             "division_coicop_shares_file": UK_FIRM_DIVISION_COICOP_SHARES_FILE,
+            # Diagnostic only: Table 2 household purchases split by source
+            # of supply (pounds million), a supply-proportionality
+            # assumption, never a target.
+            "household_purchases_by_supply_gbp_million": {
+                column: float(value)
+                for column, value in uk_household_purchases_supply_decomposition(
+                    consumption_source
+                )
+                .sum()
+                .items()
+            },
             "household_sales_by_coicop": _records(
                 uk_firm_household_sales_by_coicop(
                     table["firm_sic_division"].to_numpy(),
