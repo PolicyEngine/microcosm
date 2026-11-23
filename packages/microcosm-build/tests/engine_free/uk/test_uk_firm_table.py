@@ -490,6 +490,8 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         for name, status in UK_FIRM_POLICYENGINE_UK_INPUT_STATUS.items()
         if status == "assumed"
     } == {
+        # employment less assumed working proprietors (labour link group).
+        "firm_employees",
         "firm_input_vat",
         "firm_legal_form",
         "firm_is_public_body",
@@ -522,6 +524,10 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         "pay_distribution",
         "profit",
         "rateable_value",
+        "sic_division",
+        "labour_link",
+        "employment_allowance_takeup",
+        "consumption",
     ]
     (
         attributes,
@@ -530,7 +536,29 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         pay_distribution,
         profit,
         rateable_value,
+        sic_division,
+        labour_link,
+        takeup,
+        consumption,
     ) = UK_FIRM_EXPORT_GROUPS
+    assert consumption.requires == ("attributes", "sic_division")
+    assert consumption.microcosm_columns == (
+        "firm_household_sales",
+        "firm_intermediate_sales",
+        "firm_other_final_sales",
+    )
+    assert labour_link.source_columns == ("employees",)
+    assert labour_link.policyengine_uk_columns == ()
+    assert sic_division.microcosm_columns == ("firm_sic_division",)
+    assert labour_link.requires == ("attributes", "paybill", "sic_division")
+    assert takeup.requires == (
+        "attributes",
+        "paybill",
+        "employment_allowance",
+        "sic_division",
+        "labour_link",
+    )
+    assert takeup.microcosm_columns == ("firm_employment_allowance_rule_claims",)
     assert pay_distribution.requires == ("attributes", "paybill")
     assert pay_distribution.policyengine_uk_columns == (
         "firm_employees_below_secondary_threshold",
@@ -574,11 +602,26 @@ def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
         "pay_distribution",
         "profit",
         "rateable_value",
+        "sic_division",
+        "labour_link",
+        "employment_allowance_takeup",
+        "consumption",
     ]
     expected = {(): UK_FIRM_TABLE_COLUMNS}
     for size in range(len(extending) + 1):
         for chosen in itertools.combinations(extending, size):
             if "pay_distribution" in chosen and "paybill" not in chosen:
+                continue
+            if "labour_link" in chosen and not {"paybill", "sic_division"} <= set(
+                chosen
+            ):
+                continue
+            if "consumption" in chosen and "sic_division" not in chosen:
+                continue
+            if "employment_allowance_takeup" in chosen and not {
+                "employment_allowance",
+                "labour_link",
+            } <= set(chosen):
                 continue
             names = ("attributes", *chosen)
             expected[names] = uk_firm_table_columns(names)

@@ -84,6 +84,34 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "threshold (needs --paybill-dir)"
         ),
     )
+    parser.add_argument(
+        "--bpe-dir",
+        type=Path,
+        help=(
+            "directory holding the DBT Business Population Estimates 2025 "
+            "tables; redraws headcount inside the ONS 0-4 band by legal status "
+            "and sets firm_employees to employment less assumed working "
+            "proprietors, with the labour link columns (needs --paybill-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--consumption-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS Supply and Use Tables 2024 extract; "
+            "splits turnover into household, intermediate and other final "
+            "sales by SIC division"
+        ),
+    )
+    parser.add_argument(
+        "--employment-allowance-takeup-dir",
+        type=Path,
+        help=(
+            "directory holding HMRC Employment Allowance take-up 2024-25; "
+            "draws claims at HMRC's take-up by employee size band (needs "
+            "--bpe-dir and --employment-allowance-flags)"
+        ),
+    )
     parser.add_argument("--rules", choices=RULES_CHOICES, required=True)
     parser.add_argument(
         "--axiom-artifact",
@@ -147,6 +175,9 @@ def main(argv: list[str] | None = None) -> int:
         profit_dir=args.profit_dir,
         rateable_value_dir=args.rateable_value_dir,
         pay_distribution_dir=args.pay_distribution_dir,
+        bpe_dir=args.bpe_dir,
+        employment_allowance_takeup_dir=args.employment_allowance_takeup_dir,
+        consumption_dir=args.consumption_dir,
     )
     receipt = built["receipt"]
     print(

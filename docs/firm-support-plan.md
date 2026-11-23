@@ -53,7 +53,31 @@ a saved source, are the Employment Allowance flags, public sector headcounts,
 the pay split below the secondary threshold, taxable profit (HMRC Corporation
 Tax statistics, so CT is in-sample) and rateable value (VOA). The rest
 (capital expenditure, R&D, the other pay-distribution inputs and several
-flags) wait for sources. An engine-free test checks the export against a committed snapshot of
+flags) wait for sources.
+
+Two opt-in groups prepare the firm table for linking to household data
+later; no person-firm link exists yet. The labour link (`--bpe-dir`,
+`uk_runtime/firm_headcount.py`) redraws headcount inside the ONS 0-4 band by
+legal status from DBT Business Population Estimates 2025 Table 3, sets
+`firm_employees` to employment less assumed working proprietors, and adds
+`firm_sic_division`, `ons_employment`, `firm_employee_size_band`,
+`firm_mean_pay` and `firm_is_public_sector`. A labour match should agree on
+jobs by SIC section and public/private, by region and by size band, on
+paybill by section and on the share of pay below the secondary threshold,
+each side calibrated to external totals, not to the other. The concepts
+differ: APS size is by workplace and the firm table's by enterprise; FRS
+and RTI regions are by residence and the firm table's by enterprise
+location; ONS employment counts working proprietors. The consumption link
+(`--consumption-dir`, `uk_runtime/firm_consumption.py`) splits turnover into
+household, intermediate and other final sales by SIC division from the ONS
+Supply and Use Tables 2024, with a division × COICOP share table from the
+household consumption bridge for matching to LCFS spending levelled to
+Consumer Trends. Household spending is at purchasers' prices, so trade
+margins sit with retail and wholesale. The opt-in Employment Allowance
+take-up draw (`--employment-allowance-takeup-dir`) uses HMRC's 2024-25
+claimants by employee size band, which then become in-sample.
+
+An engine-free test checks the export against a committed snapshot of
 policyengine-uk's firm variables. Value-free target candidates for the next
 Ledger sources are declared in `uk_runtime/firm_target_candidates.py`; they are
 not yet in `uk/uk_firms_targets.json` or the solve.

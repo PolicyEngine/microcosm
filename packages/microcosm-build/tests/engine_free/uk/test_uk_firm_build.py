@@ -97,6 +97,7 @@ def _build(
     output_dir: Path,
     paybill_dir: Path | None = None,
     employment_allowance: bool = False,
+    **sources: Path,
 ) -> dict:
     rules = _StandardRateDouble()
     return build_uk_firm_dataset(
@@ -107,6 +108,7 @@ def _build(
         config=_config(rules),
         paybill_dir=paybill_dir,
         employment_allowance=employment_allowance,
+        **sources,
     )
 
 
@@ -553,9 +555,125 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         assert key not in builds[0]["receipt"]
 
 
+def test_labour_link_build_sets_employees_and_draws_allowance_takeup(
+    builds, tmp_path: Path
+) -> None:
+    """BPE redraws only 0-4 band headcounts of statuses 1-3; firm_employees
+    drops the assumed working proprietors; the take-up draw stays within the
+    rule flag."""
+
+    rules = _StandardRateDouble()
+    built = build_uk_firm_dataset(
+        processed_dir=PROCESSED,
+        attributes_dir=ATTRIBUTES,
+        output_dir=tmp_path / "out",
+        rules=rules,
+        config=_config(rules),
+        paybill_dir=PAYBILL,
+        employment_allowance=True,
+        bpe_dir=FIXTURES / "firm_bpe_2025",
+        employment_allowance_takeup_dir=FIXTURES
+        / "firm_employment_allowance_takeup_2024_25",
+    )
+    table = built["table"]
+    receipt = built["receipt"]
+    base = builds[0]["table"]
+    assert tuple(table.columns) == uk_firm_table_columns(
+        [
+            "attributes",
+            "paybill",
+            "employment_allowance",
+            "sic_division",
+            "labour_link",
+            "employment_allowance_takeup",
+        ]
+    )
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    pd.testing.assert_series_equal(table["firm_id"], base["firm_id"])
+    before = base["firm_employees"].to_numpy()
+    after = table["ons_employment"].to_numpy()
+    status = table["ons_legal_status"].to_numpy()
+    changed = before != after
+    assert changed.any()
+    small = (before >= 1) & (before <= 4) & np.isin(status, [1, 2, 3])
+    assert not changed[~small].any()
+    assert ((after[small] >= 1) & (after[small] <= 4)).all()
+    employees = table["firm_employees"].to_numpy()
+    assert (employees <= after).all()
+    assert (employees[status == 1] == after[status == 1]).all()
+    assert (employees[status == 2] == after[status == 2] - 1).all()
+    claims = table["firm_claims_employment_allowance"].to_numpy(bool)
+    rule = table["firm_employment_allowance_rule_claims"].to_numpy(bool)
+    assert not (claims & ~rule).any()
+    assert receipt["uk_firm_headcount"]["status"] == "assumed"
+    assert receipt["uk_firm_employment_allowance_takeup"]["status"] == "assumed"
+    for key in ("uk_firm_headcount", "uk_firm_employment_allowance_takeup"):
+        assert key not in builds[0]["receipt"]
+
+
+def test_consumption_build_splits_turnover_only(builds, tmp_path: Path) -> None:
+    built = _build(
+        tmp_path / "consumption", consumption_dir=FIXTURES / "firm_supply_use_2024"
+    )
+    table = built["table"]
+    base = builds[0]["table"]
+    assert tuple(table.columns) == uk_firm_table_columns(
+        ["attributes", "sic_division", "consumption"]
+    )
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    pd.testing.assert_frame_equal(table[list(base.columns)], base)
+    parts = table[
+        ["firm_household_sales", "firm_intermediate_sales", "firm_other_final_sales"]
+    ].sum(axis=1)
+    np.testing.assert_allclose(parts, table["firm_turnover"], rtol=1e-9)
+    assert (table["firm_household_sales"] > 0).any()
+    record = built["receipt"]["uk_firm_consumption"]
+    assert record["status"] == "assumed"
+    assert all(
+        abs(row["difference"]) <= 0.5 for row in record["table3_consumer_trends"]
+    )
+    shares = pd.read_csv(
+        built["table_path"].parent / record["division_coicop_shares_file"],
+        index_col="sic_division",
+    )
+    coicop = [f"{k:02d}" for k in range(1, 13)]
+    np.testing.assert_allclose(shares[coicop].sum(axis=1), 1.0, rtol=1e-9)
+    assert set(table["firm_sic_division"]) <= set(shares.index)
+    assert "uk_firm_consumption" not in builds[0]["receipt"]
+
+
+def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
+    rules = _StandardRateDouble()
+    with pytest.raises(ValueError, match="bpe_dir needs paybill_dir"):
+        build_uk_firm_dataset(
+            processed_dir=PROCESSED,
+            attributes_dir=ATTRIBUTES,
+            output_dir=tmp_path / "out",
+            rules=rules,
+            config=_config(rules),
+            bpe_dir=FIXTURES / "firm_bpe_2025",
+        )
+    with pytest.raises(ValueError, match="needs bpe_dir and employment_allowance"):
+        build_uk_firm_dataset(
+            processed_dir=PROCESSED,
+            attributes_dir=ATTRIBUTES,
+            output_dir=tmp_path / "out",
+            rules=rules,
+            config=_config(rules),
+            paybill_dir=PAYBILL,
+            bpe_dir=FIXTURES / "firm_bpe_2025",
+            employment_allowance_takeup_dir=FIXTURES
+            / "firm_employment_allowance_takeup_2024_25",
+        )
+    assert not (tmp_path / "out").exists()
+
+
 @pytest.mark.parametrize(
     ("argument", "fixture"),
     [
+        ("bpe_dir", "firm_bpe_2025"),
+        ("consumption_dir", "firm_supply_use_2024"),
+        ("employment_allowance_takeup_dir", "firm_employment_allowance_takeup_2024_25"),
         ("public_sector_dir", "firm_public_sector_2025"),
         ("profit_dir", "firm_ct_2024"),
         ("rateable_value_dir", "firm_rateable_value_2024"),

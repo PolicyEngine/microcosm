@@ -47,6 +47,33 @@ The groups today:
 - ``rateable_value``: the assumed ``firm_rateable_value`` (pounds, from
   ``firm_rateable_value.assign_uk_firm_rateable_value``), zero outside
   England. It extends ``attributes``.
+- ``sic_division``: Microcosm-only ``firm_sic_division``, the generator's
+  SIC 2007 division, a linkage key the labour and consumption groups both
+  extend. It extends ``attributes``.
+- ``labour_link``: switched on by ``employees`` (ONS employment less the
+  assumed working proprietors, ``firm_headcount.uk_firm_employees``), which
+  then fills ``firm_employees``. Its Microcosm-only columns are the linkage
+  keys for a labour match with household data: ``ons_employment`` (the ONS
+  headcount the employees came from), ``firm_employee_size_band`` (DBT
+  Business Population Estimates bands on employees), ``firm_mean_pay``
+  (``firm_paybill`` over ``firm_employees``, today the section mean) and
+  ``firm_is_public_sector`` (ONS statuses 5 and 6, as
+  ``firm_is_public_body``; an assumption: status 4, public corporations,
+  which ONS counts in the public sector, is left out, and status 7,
+  non-profit bodies, is outside it). It extends ``attributes``, ``paybill`` and
+  ``sic_division``.
+- ``employment_allowance_takeup``: ``firm_employment_allowance_rule_claims``
+  keeps the rule flag, and ``firm_claims_employment_allowance`` becomes a
+  draw within it at HMRC's take-up by employee size band
+  (``firm_employment_allowance_takeup.py``). It extends ``attributes``,
+  ``paybill``, ``employment_allowance``, ``sic_division`` and
+  ``labour_link``.
+- ``consumption``: Microcosm-only ``firm_household_sales``,
+  ``firm_intermediate_sales`` and ``firm_other_final_sales`` (pounds),
+  turnover split by the firm's SIC division's shares of total demand in the
+  ONS Supply and Use Tables 2024 (``firm_consumption.py``), the linkage keys
+  for a consumption match with household data. They sum to
+  ``firm_turnover``. It extends ``attributes`` and ``sic_division``.
 
 ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS`` records, for every formula-less
 policyengine-uk firm input, whether the fullest table (every group) sets it.
@@ -65,9 +92,14 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.firm_consumption import UK_FIRM_CONSUMPTION_COLUMNS
 from microcosm.build.uk_runtime.firm_employment_allowance import (
     UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
     uk_firm_employment_allowance_flags,
+)
+from microcosm.build.uk_runtime.firm_headcount import (
+    uk_firm_employee_size_bands,
+    uk_firm_employees,
 )
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_SIC2007_SECTION_DIVISIONS,
@@ -239,7 +271,11 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_weight": "set",
         "firm_turnover": "set",
         "firm_input_costs": "set",
-        "firm_employees": "set",
+        # ONS employment, which counts working proprietors, by default. With
+        # the labour link group (firm_headcount.py) it is assumed: employment
+        # less assumed working proprietors (1 per sole proprietor, up to 2
+        # per partnership).
+        "firm_employees": "assumed",
         "firm_sic_section": "set",
         # GSS code to Region member, one to one.
         "firm_region": "set",
@@ -388,7 +424,10 @@ def _gbp(frame: pd.DataFrame, column: str) -> np.ndarray:
 
 
 def _employees(frame: pd.DataFrame) -> np.ndarray:
-    values = frame["employment"].to_numpy()
+    # ``employees`` (labour link group) excludes working proprietors; without
+    # it ONS employment stands in for employees.
+    column = "employees" if "employees" in frame.columns else "employment"
+    values = frame[column].to_numpy()
     if not np.issubdtype(values.dtype, np.integer):
         as_float = values.astype(np.float64)
         if not np.all(np.isfinite(as_float)) or np.any(as_float != np.round(as_float)):
@@ -488,15 +527,52 @@ def _validate_employment_allowance_columns(df: pd.DataFrame) -> None:
     for column in UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS:
         if not pd.api.types.is_bool_dtype(df[column]):
             raise ValueError(f"UK firm {column} must be boolean.")
+    # The flags are stated on ONS employment. With the labour link group
+    # firm_employees excludes working proprietors and ons_employment keeps
+    # the ONS headcount the flags read.
+    headcount = "ons_employment" if "ons_employment" in df else "firm_employees"
     expected = uk_firm_employment_allowance_flags(
         df["ons_legal_status"].to_numpy(np.int64),
-        df["firm_employees"].to_numpy(np.int64),
+        df[headcount].to_numpy(np.int64),
     )
     for column, values in expected.items():
-        if not np.array_equal(df[column].to_numpy(bool), values):
+        actual = df[column].to_numpy(bool)
+        if (
+            column == "firm_claims_employment_allowance"
+            and UK_FIRM_EA_RULE_CLAIMS_COLUMN in df
+        ):
+            # With the take-up group the claim is drawn within the rule flag,
+            # which the group keeps.
+            actual = df[UK_FIRM_EA_RULE_CLAIMS_COLUMN].to_numpy(bool)
+        if not np.array_equal(actual, values):
             raise ValueError(
                 f"UK firm {column} does not follow ons_legal_status and firm_employees."
             )
+
+
+#: The take-up group's Microcosm-only column: the rule flag before the draw.
+UK_FIRM_EA_RULE_CLAIMS_COLUMN = "firm_employment_allowance_rule_claims"
+
+
+def _employment_allowance_takeup_group_columns(
+    ordered: pd.DataFrame,
+) -> dict[str, np.ndarray]:
+    return {
+        UK_FIRM_EA_RULE_CLAIMS_COLUMN: ordered[UK_FIRM_EA_RULE_CLAIMS_COLUMN].to_numpy(
+            bool
+        )
+    }
+
+
+def _validate_employment_allowance_takeup_columns(df: pd.DataFrame) -> None:
+    rule = df[UK_FIRM_EA_RULE_CLAIMS_COLUMN]
+    if not pd.api.types.is_bool_dtype(rule):
+        raise ValueError(f"UK firm {UK_FIRM_EA_RULE_CLAIMS_COLUMN} must be boolean.")
+    if np.any(df["firm_claims_employment_allowance"].to_numpy(bool) & ~rule.to_numpy()):
+        raise ValueError(
+            "UK firm firm_claims_employment_allowance must be drawn within "
+            f"{UK_FIRM_EA_RULE_CLAIMS_COLUMN}."
+        )
 
 
 def _single_column(column: str) -> Callable[[pd.DataFrame], dict[str, np.ndarray]]:
@@ -570,6 +646,117 @@ def _validate_rateable_value_columns(df: pd.DataFrame) -> None:
     value = _non_negative(df, "firm_rateable_value")
     if np.any(value[~df["firm_in_england"].to_numpy(bool)]):
         raise ValueError("UK firm firm_rateable_value must be zero outside England.")
+
+
+#: Microcosm-only columns of the labour link group, in order.
+UK_FIRM_LABOUR_LINK_COLUMNS = (
+    "ons_employment",
+    "firm_employee_size_band",
+    "firm_mean_pay",
+    "firm_is_public_sector",
+)
+
+
+def _labour_link_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    employees = ordered["employees"].to_numpy(np.int64)
+    paybill = ordered["firm_paybill"].to_numpy(np.float64)
+    return {
+        "ons_employment": ordered["employment"].to_numpy(np.int64),
+        "firm_employee_size_band": uk_firm_employee_size_bands(employees),
+        "firm_mean_pay": _mean_pay(paybill, employees),
+        "firm_is_public_sector": np.isin(
+            ordered["ons_legal_status"].to_numpy(np.int64),
+            list(UK_FIRM_PUBLIC_BODY_ONS_LEGAL_STATUSES),
+        ),
+    }
+
+
+def _mean_pay(paybill: np.ndarray, employees: np.ndarray) -> np.ndarray:
+    out = np.zeros(len(paybill), dtype=np.float64)
+    has = employees > 0
+    out[has] = paybill[has] / employees[has]
+    return out
+
+
+def _sic_division_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {"firm_sic_division": ordered["firm_sic_division"].to_numpy(np.int64)}
+
+
+def _validate_sic_division_columns(df: pd.DataFrame) -> None:
+    division = df["firm_sic_division"].to_numpy()
+    if not np.issubdtype(division.dtype, np.integer):
+        raise ValueError("UK firm firm_sic_division must be integers.")
+    if not np.array_equal(
+        uk_firm_sic_sections(division).astype(str),
+        df["firm_sic_section"].astype(str).to_numpy(),
+    ):
+        raise ValueError("UK firm firm_sic_division must lie in firm_sic_section.")
+
+
+def _validate_labour_link_columns(df: pd.DataFrame) -> None:
+    ons_employment = df["ons_employment"].to_numpy()
+    if not np.issubdtype(ons_employment.dtype, np.integer) or np.any(
+        ons_employment < 0
+    ):
+        raise ValueError("UK firm ons_employment must be non-negative integers.")
+    employees = df["firm_employees"].to_numpy(np.int64)
+    expected = uk_firm_employees(
+        df["ons_legal_status"].to_numpy(np.int64), ons_employment.astype(np.int64)
+    )
+    if not np.array_equal(employees, expected):
+        raise ValueError(
+            "UK firm firm_employees must be ons_employment less the assumed "
+            "working proprietors."
+        )
+    if not np.array_equal(
+        df["firm_employee_size_band"].astype(str).to_numpy(),
+        uk_firm_employee_size_bands(employees),
+    ):
+        raise ValueError(
+            "UK firm firm_employee_size_band does not follow firm_employees."
+        )
+    if not np.allclose(
+        df["firm_mean_pay"].to_numpy(np.float64),
+        _mean_pay(df["firm_paybill"].to_numpy(np.float64), employees),
+        rtol=1e-9,
+        atol=1e-6,
+    ):
+        raise ValueError(
+            "UK firm firm_mean_pay must be firm_paybill over firm_employees."
+        )
+    if not np.array_equal(
+        df["firm_is_public_sector"].to_numpy(bool),
+        np.isin(
+            df["ons_legal_status"].to_numpy(np.int64),
+            list(UK_FIRM_PUBLIC_BODY_ONS_LEGAL_STATUSES),
+        ),
+    ):
+        raise ValueError("UK firm firm_is_public_sector must follow ons_legal_status.")
+
+
+def _consumption_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {
+        column: ordered[column].to_numpy(np.float64)
+        for column in UK_FIRM_CONSUMPTION_COLUMNS
+    }
+
+
+def _validate_consumption_columns(df: pd.DataFrame) -> None:
+    turnover = df["firm_turnover"].to_numpy(np.float64)
+    parts = [df[column].to_numpy(np.float64) for column in UK_FIRM_CONSUMPTION_COLUMNS]
+    tolerance = np.abs(turnover) * 1e-9 + 1e-6
+    for column, values in zip(UK_FIRM_CONSUMPTION_COLUMNS, parts, strict=True):
+        if not np.all(np.isfinite(values)):
+            raise ValueError(f"UK firm {column} must be finite.")
+        if np.any(values * np.sign(turnover) < -tolerance):
+            raise ValueError(f"UK firm {column} must have firm_turnover's sign.")
+        if np.any(np.abs(values) > np.abs(turnover) * (1 + 1e-9) + 1e-6):
+            raise ValueError(f"UK firm {column} must not exceed firm_turnover.")
+    if not np.allclose(sum(parts), turnover, rtol=1e-9, atol=1e-6):
+        raise ValueError(
+            "UK firm household, intermediate and other final sales must sum "
+            "to firm_turnover."
+        )
 
 
 def _validate_paybill_columns(df: pd.DataFrame) -> None:
@@ -661,6 +848,48 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         requires=("attributes",),
         columns=_single_column("firm_rateable_value"),
         validate=_validate_rateable_value_columns,
+    ),
+    UKFirmExportGroup(
+        name="sic_division",
+        source_columns=("firm_sic_division",),
+        policyengine_uk_columns=(),
+        microcosm_columns=("firm_sic_division",),
+        requires=("attributes",),
+        columns=_sic_division_group_columns,
+        validate=_validate_sic_division_columns,
+    ),
+    UKFirmExportGroup(
+        name="labour_link",
+        source_columns=("employees",),
+        policyengine_uk_columns=(),
+        microcosm_columns=UK_FIRM_LABOUR_LINK_COLUMNS,
+        requires=("attributes", "paybill", "sic_division"),
+        columns=_labour_link_group_columns,
+        validate=_validate_labour_link_columns,
+    ),
+    UKFirmExportGroup(
+        name="employment_allowance_takeup",
+        source_columns=(UK_FIRM_EA_RULE_CLAIMS_COLUMN,),
+        policyengine_uk_columns=(),
+        microcosm_columns=(UK_FIRM_EA_RULE_CLAIMS_COLUMN,),
+        requires=(
+            "attributes",
+            "paybill",
+            "employment_allowance",
+            "sic_division",
+            "labour_link",
+        ),
+        columns=_employment_allowance_takeup_group_columns,
+        validate=_validate_employment_allowance_takeup_columns,
+    ),
+    UKFirmExportGroup(
+        name="consumption",
+        source_columns=UK_FIRM_CONSUMPTION_COLUMNS,
+        policyengine_uk_columns=(),
+        microcosm_columns=UK_FIRM_CONSUMPTION_COLUMNS,
+        requires=("attributes", "sic_division"),
+        columns=_consumption_group_columns,
+        validate=_validate_consumption_columns,
     ),
 )
 

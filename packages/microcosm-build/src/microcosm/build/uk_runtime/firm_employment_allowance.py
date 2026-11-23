@@ -40,9 +40,12 @@ they lose the allowance against it, which raises modelled employer NIC.
 The rules read no random numbers, so the generator stream and every other
 column are unchanged. HMRC's tax relief statistics (January 2026: 1,223,000
 claimants and a cost of £3,300 million in 2024-25) are a held-out check in
-``tests/fixtures/uk/firm_employment_allowance_2024_25/``, never a target.
-``uk_firm_employment_allowance_comparison`` sets a policyengine-uk run beside
-them; no build or tool calls it.
+``tests/fixtures/uk/firm_employment_allowance_2024_25/``, never a target of
+these flags. ``uk_firm_employment_allowance_comparison`` sets a
+policyengine-uk run beside them; no build or tool calls it. The opt-in
+take-up draw (``firm_employment_allowance_takeup.py``) reads HMRC's claimant
+counts by size band, so with it the claimant total is in-sample and only the
+cost stays held out.
 """
 
 from __future__ import annotations

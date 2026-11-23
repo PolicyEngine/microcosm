@@ -46,16 +46,42 @@ from microcosm.build.uk_runtime.firm_attributes import (
     read_uk_firm_attribute_source_data,
     uk_firm_attribute_fallback_counts,
 )
+from microcosm.build.uk_runtime.firm_consumption import (
+    UK_FIRM_CONSUMPTION_COLUMNS,
+    UK_FIRM_CONSUMPTION_METHOD,
+    UK_FIRM_CONSUMPTION_STATUS,
+    check_uk_table3_consumer_trends,
+    read_uk_firm_supply_use_source,
+    uk_firm_consumption_sales,
+    uk_firm_division_coicop_shares,
+    uk_firm_household_sales_by_coicop,
+)
 from microcosm.build.uk_runtime.firm_employment_allowance import (
     UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
     UK_FIRM_EMPLOYMENT_ALLOWANCE_METHOD,
     UK_FIRM_EMPLOYMENT_ALLOWANCE_STATUS,
     assign_uk_firm_employment_allowance,
 )
+from microcosm.build.uk_runtime.firm_employment_allowance_takeup import (
+    UK_FIRM_EA_TAKEUP_METHOD,
+    UK_FIRM_EA_TAKEUP_STATUS,
+    assign_uk_firm_employment_allowance_takeup,
+    read_uk_firm_employment_allowance_takeup,
+    uk_firm_employment_allowance_takeup_held_out,
+)
 from microcosm.build.uk_runtime.firm_generation import (
     UKFirmGenerationConfig,
     generate_uk_firm_population,
     read_uk_firm_source_data,
+)
+from microcosm.build.uk_runtime.firm_headcount import (
+    UK_FIRM_HEADCOUNT_METHOD,
+    UK_FIRM_HEADCOUNT_STATUS,
+    read_uk_firm_bpe_source,
+    redraw_uk_firm_small_headcount,
+    uk_firm_bpe_size_band_reconciliation,
+    uk_firm_employees,
+    uk_firm_small_headcount_diagnostics,
 )
 from microcosm.build.uk_runtime.firm_pay_distribution import (
     UK_FIRM_PAY_DISTRIBUTION_METHOD,
@@ -96,6 +122,7 @@ from microcosm.build.uk_runtime.firm_rules import (
     rule_period_for_vintage,
 )
 from microcosm.build.uk_runtime.firm_table import (
+    UK_FIRM_EA_RULE_CLAIMS_COLUMN,
     UK_FIRM_ENGLISH_REGION_CODES,
     to_policyengine_uk_firm_table,
     validate_uk_firm_table,
@@ -110,6 +137,9 @@ UK_FIRM_SECONDARY_THRESHOLD_GBP = 175.0 * 52
 UK_FIRM_BUILD_RECEIPT_SCHEMA_VERSION = 1
 UK_FIRM_TABLE_FILE = "uk_firms.parquet"
 UK_FIRM_RECEIPT_FILE = "uk_firms.receipt.json"
+#: With consumption_dir: the SIC division x COICOP division shares of
+#: household sales, written beside the table for the consumption match.
+UK_FIRM_DIVISION_COICOP_SHARES_FILE = "uk_firm_division_coicop_shares.csv"
 
 #: Configuration fields holding rule objects, which the receipt leaves out.
 _RULE_CONFIG_FIELDS = frozenset({"firm_rules", "vat_rule_evaluator"})
@@ -143,6 +173,9 @@ def build_uk_firm_dataset(
     profit_dir: str | Path | None = None,
     rateable_value_dir: str | Path | None = None,
     pay_distribution_dir: str | Path | None = None,
+    bpe_dir: str | Path | None = None,
+    employment_allowance_takeup_dir: str | Path | None = None,
+    consumption_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build the UK firm table and its receipt into ``output_dir``.
 
@@ -167,7 +200,21 @@ def build_uk_firm_dataset(
     omitted. ``pay_distribution_dir``
     (``tests/fixtures/uk/firm_pay_distribution_2024``), which needs a
     ``paybill_dir``, adds the assumed count and pay of employees at or below
-    the secondary threshold (``UK_FIRM_SECONDARY_THRESHOLD_GBP``). Returns ``table`` (the
+    the secondary threshold (``UK_FIRM_SECONDARY_THRESHOLD_GBP``).
+    ``bpe_dir`` (``tests/fixtures/uk/firm_bpe_2025``), which needs a
+    ``paybill_dir``, redraws headcount inside the ONS 0-4 employment band by
+    legal status from DBT Business Population Estimates 2025 Table 3
+    (``firm_headcount.py``) before the public sector rescale, and switches on
+    the labour link group: ``firm_employees`` becomes employment less the
+    assumed working proprietors, and the paybill and pay split are set on
+    employees. ``employment_allowance_takeup_dir``
+    (``tests/fixtures/uk/firm_employment_allowance_takeup_2024_25``), which
+    needs ``bpe_dir`` and ``employment_allowance``, draws each rule claimant's
+    claim at HMRC's 2024-25 take-up by employee size band
+    (``firm_employment_allowance_takeup.py``). ``consumption_dir``
+    (``tests/fixtures/uk/firm_supply_use_2024``) splits turnover into
+    household, intermediate and other final sales by SIC division from the
+    ONS Supply and Use Tables 2024 (``firm_consumption.py``). Returns ``table`` (the
     validated policyengine-uk firm table), ``receipt`` (the dict written as
     JSON), ``result`` (the ``UKFirmGenerationResult``), ``table_path`` and
     ``receipt_path``.
@@ -187,6 +234,9 @@ def build_uk_firm_dataset(
         ("profit_dir", profit_dir),
         ("rateable_value_dir", rateable_value_dir),
         ("pay_distribution_dir", pay_distribution_dir),
+        ("bpe_dir", bpe_dir),
+        ("employment_allowance_takeup_dir", employment_allowance_takeup_dir),
+        ("consumption_dir", consumption_dir),
     ):
         if directory is not None and config.data_vintage != "2024-25":
             raise ValueError(
@@ -195,6 +245,14 @@ def build_uk_firm_dataset(
             )
     if pay_distribution_dir is not None and paybill_dir is None:
         raise ValueError("pay_distribution_dir needs paybill_dir.")
+    if bpe_dir is not None and paybill_dir is None:
+        raise ValueError("bpe_dir needs paybill_dir.")
+    if employment_allowance_takeup_dir is not None and (
+        bpe_dir is None or not employment_allowance
+    ):
+        raise ValueError(
+            "employment_allowance_takeup_dir needs bpe_dir and employment_allowance."
+        )
     processed = Path(processed_dir)
     attributes = Path(attributes_dir)
     output = Path(output_dir)
@@ -210,15 +268,36 @@ def build_uk_firm_dataset(
     firms = assign_uk_firm_attributes(
         result.firms, attribute_source, seed=result.config.seed
     )
+    bpe_source = None
+    headcount = None
+    if bpe_dir is not None:
+        bpe_source = read_uk_firm_bpe_source(bpe_dir)
+        redrawn = redraw_uk_firm_small_headcount(
+            firms, bpe_source, seed=result.config.seed
+        )
+        headcount = uk_firm_small_headcount_diagnostics(firms, redrawn, bpe_source)
+        firms = redrawn
     public_sector = None
     if public_sector_dir is not None:
         public_sector_source = read_uk_firm_public_sector_source(public_sector_dir)
         public_sector = uk_firm_public_sector_diagnostics(firms, public_sector_source)
         firms = scale_uk_firm_public_sector_employment(firms, public_sector_source)
+    # The rows the paybill and pay split read: with bpe_dir their headcount
+    # is employees (employment less the assumed working proprietors).
+    pay_rows = firms
+    if bpe_source is not None:
+        firms = firms.assign(
+            employees=uk_firm_employees(
+                firms["ons_legal_status"].to_numpy(), firms["employment"].to_numpy()
+            )
+        )
+        pay_rows = firms.assign(employment=firms["employees"])
     paybill_source = None
     if paybill_dir is not None:
         paybill_source = read_uk_firm_paybill_source(paybill_dir)
-        firms = firms.assign(firm_paybill=assign_uk_firm_paybill(firms, paybill_source))
+        firms = firms.assign(
+            firm_paybill=assign_uk_firm_paybill(pay_rows, paybill_source)
+        )
     pay_distribution_source = None
     if pay_distribution_dir is not None:
         pay_distribution_source = read_uk_firm_pay_distribution_source(
@@ -226,7 +305,7 @@ def build_uk_firm_dataset(
         )
         firms = firms.assign(
             **assign_uk_firm_pay_below_secondary_threshold(
-                firms,
+                pay_rows.assign(firm_paybill=firms["firm_paybill"]),
                 pay_distribution_source,
                 threshold_gbp=UK_FIRM_SECONDARY_THRESHOLD_GBP,
             )
@@ -253,6 +332,66 @@ def build_uk_firm_dataset(
             firm_rateable_value=assign_uk_firm_rateable_value(
                 in_england, rateable_value_source
             )
+        )
+    if bpe_source is not None or consumption_dir is not None:
+        firms = firms.assign(
+            firm_sic_division=pd.to_numeric(firms["sic_code"])
+            .to_numpy()
+            .astype(np.int64)
+        )
+    consumption_source = None
+    consumption = None
+    consumption_check = None
+    if consumption_dir is not None:
+        consumption_source = read_uk_firm_supply_use_source(consumption_dir)
+        # Source consistency (Table 3 totals equal Consumer Trends), checked
+        # before anything is written.
+        consumption_check = check_uk_table3_consumer_trends(consumption_source)
+        consumption = uk_firm_consumption_sales(
+            firms["sic_code"].to_numpy(),
+            firms["annual_turnover_k"].to_numpy(np.float64) * 1_000.0,
+            consumption_source,
+        )
+        firms = firms.assign(
+            **{
+                column: consumption.columns[column].to_numpy(np.float64)
+                for column in UK_FIRM_CONSUMPTION_COLUMNS
+            }
+        )
+    takeup_source = None
+    takeup = None
+    if employment_allowance_takeup_dir is not None:
+        takeup_source = read_uk_firm_employment_allowance_takeup(
+            employment_allowance_takeup_dir
+        )
+        rule_table = to_policyengine_uk_firm_table(
+            firms, threshold_k=float(result.config.vat_threshold)
+        )
+        drawn, takeup_diagnostics = assign_uk_firm_employment_allowance_takeup(
+            rule_table, takeup_source, seed=result.config.seed
+        )
+        claims = pd.Series(
+            drawn["firm_claims_employment_allowance"].to_numpy(bool),
+            index=drawn["firm_id"].to_numpy(),
+        )
+        takeup = {
+            **takeup_diagnostics,
+            "held_out": uk_firm_employment_allowance_takeup_held_out(
+                drawn,
+                drawn["firm_claims_employment_allowance"].to_numpy(bool),
+                takeup_source,
+            ),
+        }
+        drawn_claims = claims.reindex(firms["firm_id"].to_numpy())
+        if drawn_claims.isna().any():
+            raise RuntimeError("The take-up draw missed some UK firm ids.")
+        firms = firms.assign(
+            **{
+                UK_FIRM_EA_RULE_CLAIMS_COLUMN: firms[
+                    "firm_claims_employment_allowance"
+                ].to_numpy(bool),
+                "firm_claims_employment_allowance": drawn_claims.to_numpy(bool),
+            }
         )
     table = to_policyengine_uk_firm_table(
         firms, threshold_k=float(result.config.vat_threshold)
@@ -374,6 +513,48 @@ def build_uk_firm_dataset(
             ),
             "bands": _records(uk_firm_profit_diagnostics(firms, profit_source)),
         }
+    if bpe_source is not None:
+        receipt["inputs"]["bpe"] = dict(bpe_source.sha256)
+        receipt["uk_firm_headcount"] = {
+            "status": UK_FIRM_HEADCOUNT_STATUS,
+            "method": UK_FIRM_HEADCOUNT_METHOD,
+            "small_band_redraw": _records(headcount),
+            "weighted_employees": float((weight * table["firm_employees"]).sum()),
+            "weighted_ons_employment": float((weight * table["ons_employment"]).sum()),
+            "bpe_reconciliation": _records(
+                uk_firm_bpe_size_band_reconciliation(
+                    table.assign(employment=table["ons_employment"]), bpe_source
+                )
+            ),
+        }
+    if consumption_source is not None:
+        receipt["inputs"]["consumption"] = dict(consumption_source.sha256)
+        receipt["uk_firm_consumption"] = {
+            "status": UK_FIRM_CONSUMPTION_STATUS,
+            "method": UK_FIRM_CONSUMPTION_METHOD,
+            "fallback_counts": dict(consumption.fallback_counts),
+            "weighted_sales_gbp": {
+                column: float((weight * table[column]).sum())
+                for column in UK_FIRM_CONSUMPTION_COLUMNS
+            },
+            "table3_consumer_trends": _records(consumption_check.reset_index()),
+            "division_coicop_shares_file": UK_FIRM_DIVISION_COICOP_SHARES_FILE,
+            "household_sales_by_coicop": _records(
+                uk_firm_household_sales_by_coicop(
+                    table["firm_sic_division"].to_numpy(),
+                    table["firm_household_sales"].to_numpy(np.float64),
+                    weight,
+                    consumption_source,
+                ).reset_index()
+            ),
+        }
+    if takeup_source is not None:
+        receipt["inputs"]["employment_allowance_takeup"] = dict(takeup_source.sha256)
+        receipt["uk_firm_employment_allowance_takeup"] = {
+            "status": UK_FIRM_EA_TAKEUP_STATUS,
+            "method": UK_FIRM_EA_TAKEUP_METHOD,
+            **takeup,
+        }
     if rateable_value_source is not None:
         receipt["inputs"]["rateable_value"] = {
             rateable_value_source.file: rateable_value_source.sha256
@@ -385,6 +566,10 @@ def build_uk_firm_dataset(
                 (weight * table["firm_rateable_value"]).sum()
             ),
         }
+    if consumption_source is not None:
+        uk_firm_division_coicop_shares(consumption_source).to_csv(
+            output / UK_FIRM_DIVISION_COICOP_SHARES_FILE, float_format="%.12g"
+        )
     receipt = _json_safe(receipt)
     receipt_path = output / UK_FIRM_RECEIPT_FILE
     receipt_path.write_text(

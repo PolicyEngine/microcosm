@@ -225,7 +225,9 @@ def uk_firm_rateable_value_of_top(
 
 
 def _headcount(frame: pd.DataFrame) -> np.ndarray:
-    for column in ("firm_employees", "employment"):
+    # ONS headcount first: with the labour link group firm_employees excludes
+    # working proprietors and ons_employment keeps the headcount.
+    for column in ("ons_employment", "firm_employees", "employment"):
         if column in frame.columns:
             values = frame[column].to_numpy(dtype=np.float64)
             break

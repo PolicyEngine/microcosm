@@ -160,6 +160,9 @@ UK_FIRM_TARGET_CANDIDATES: tuple[UKFirmTargetCandidate, ...] = (
     # DBT business population estimates: all private-sector businesses,
     # unregistered ones included. BPE's legal forms (companies, sole
     # proprietorships, partnerships) are not ONS legal status codes 1-7.
+    # The opt-in headcount redraw (firm_headcount.py, bpe_dir) reads the
+    # registered 0-4 employee rows of BPE 2025 Table 3, so those rows are
+    # in-sample for a build that uses it.
     UKFirmTargetCandidate(
         target_id="dbt.bpe.business_count.legal_form_employment_bands",
         family="dbt_bpe",
