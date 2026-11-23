@@ -317,7 +317,7 @@ def test_manifest_generation_rejects_engine_derived_drift_and_overlap() -> None:
 
 def test_only_the_reviewed_inputs_the_engine_derives_since_the_reference_pass() -> None:
     # The eFRS reference's engine (2.89.0) read the PIP categories as plain
-    # inputs; policyengine-uk 2.177.7 derives them from the points. Only the
+    # inputs; policyengine-uk 2.179.2 derives them from the points. Only the
     # reviewed list admits them past the formula-owned check, and a name on
     # that list that is no engine-derived exclusion is refused
     # (microcosm#1095, P1).

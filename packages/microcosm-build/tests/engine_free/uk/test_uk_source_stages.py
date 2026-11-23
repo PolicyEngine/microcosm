@@ -142,9 +142,12 @@ E8_STAGE_NAMES = [
     # microcosm#1095 (P1): every PIP recipient's points, drawn within the
     # stored awards, which the release then drops for the engine to derive.
     "pip_points",
-    # microcosm#1428: the self-employed's gross receipts run last, on final
+    # microcosm#1428: the self-employed's gross receipts run on final
     # profits; only the engine's trading allowance reads them.
     "trading_allowance_receipts",
+    # microcosm#1095: the UC new-claimant draw runs last, once every writer of
+    # an input the award reads has run.
+    "uc_new_claimant_draw",
 ]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
@@ -347,6 +350,7 @@ class TestUKSourceStagesManifest:
                     "isa_subscriptions": _identity,
                     "pip_points": _identity,
                     "trading_allowance_receipts": _identity,
+                    "uc_new_claimant_draw": _identity,
                     "company_cars": _identity,
                     "spi_employment_shell": _identity,
                     "aps_occupation": _identity,
