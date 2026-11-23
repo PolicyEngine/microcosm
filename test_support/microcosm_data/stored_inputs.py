@@ -154,25 +154,12 @@ def _column_strategies(st):
 
 
 #: Register entries that postdate the files examined for #1026 and rest on a
-#: live producer instead (microcosm-data cannot import the build). The parent
-#: ids (microcosm#884) are bound to
-#: eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS and the four
-#: federal student loan inputs (microcosm#1073) to
-#: scf_education_debt.US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS by
-#: test_us_stored_input_register.py. That test also binds county_fips_2023 to
-#: county_vintage; test_us_county_vintage_ladders.py proves the PUMA and block
-#: assignments write it.
-_PRODUCER_BOUND_ENTRIES = frozenset(
-    {
-        "county_fips_2023",
-        "parent_1_id",
-        "parent_2_id",
-        "federal_student_loan_balance",
-        "federal_parent_plus_loan_balance",
-        "is_income_based_repayment_new_borrower",
-        "federal_student_loan_graduate_share",
-    }
-)
+#: live producer instead (microcosm-data cannot import the build).
+#: test_us_stored_input_register.py binds county_fips_2023 to county_vintage;
+#: test_us_county_vintage_ladders.py proves the PUMA and block assignments
+#: write it. (The parent ids and the four federal student loan inputs left the
+#: register when policyengine-us 2.145.3 defined them as inputs.)
+_PRODUCER_BOUND_ENTRIES = frozenset({"county_fips_2023"})
 
 
 #: The role columns policyengine-core's ``build_from_dataset`` reads to build
@@ -273,20 +260,29 @@ def fake_probe_runtime(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-#: Each examined file's expected verdict: the refused columns, and how many
-#: register entries it stores. The published default, its receipt child and
-#: the ACS local-area release store two retired engine inputs: the #1026 WIC
-#: draw as would_claim_wic, and the Medicare Part B target as
+#: Each examined file's expected verdict: the refused columns, in name order,
+#: and how many register entries it stores. All five files were built on
+#: policyengine-us 2.2.1 or earlier. They store the tax-unit
+#: first_home_mortgage_interest and second_home_mortgage_interest legs, which
+#: policyengine-us 2.145.3 no longer defines (policyengine-us#9605), so each
+#: is refused naming both. The published default, its receipt child and the
+#: ACS local-area release also store two engine inputs retired earlier: the
+#: #1026 WIC draw as would_claim_wic, and the Medicare Part B target as
 #: medicare_part_b_premiums (an input in every policyengine-us version read
 #: from 1.452.0 to 1.670.2, replaced by medicare_part_b_premiums_reported by
-#: 1.690.7). So each is refused naming exactly those two. The Route A
-#: rehearsal export and the Build Q stacked multispine pool pass.
+#: 1.690.7). Each file also stores tax_unit_role_input, which 2.145.3 defines
+#: as an input (policyengine-us#9617), so it is no longer a register entry.
+_RETIRED_MORTGAGE_LEGS = [
+    "first_home_mortgage_interest",
+    "second_home_mortgage_interest",
+]
+_RETIRED_BEFORE_2_2_1 = ["medicare_part_b_premiums", "would_claim_wic"]
 _EXPECTED_VERDICTS = {
-    _PUBLISHED_DEFAULT: (["medicare_part_b_premiums", "would_claim_wic"], 24),
-    _RECEIPT_CHILD: (["medicare_part_b_premiums", "would_claim_wic"], 24),
-    _ACS_LOCAL_RELEASE: (["medicare_part_b_premiums", "would_claim_wic"], 37),
-    _REHEARSAL_EXPORT: ([], 30),
-    _STACKED_POOL: ([], 43),
+    _PUBLISHED_DEFAULT: (sorted(_RETIRED_MORTGAGE_LEGS + _RETIRED_BEFORE_2_2_1), 23),
+    _RECEIPT_CHILD: (sorted(_RETIRED_MORTGAGE_LEGS + _RETIRED_BEFORE_2_2_1), 23),
+    _ACS_LOCAL_RELEASE: (sorted(_RETIRED_MORTGAGE_LEGS + _RETIRED_BEFORE_2_2_1), 36),
+    _REHEARSAL_EXPORT: (_RETIRED_MORTGAGE_LEGS, 29),
+    _STACKED_POOL: (_RETIRED_MORTGAGE_LEGS, 42),
 }
 
 

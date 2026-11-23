@@ -26,10 +26,14 @@ FILE`` or the standing register (the US ``evidence_failure_owners.json``)::
         --evidence-release --evidence-failure-owners owners.json
 
 It runs at the commit the build was built at, or at a descendant of it that
-changes only tests, docs, changelog fragments and the standing register, as
-a UK cut is certified at its sign-off's head. A failed certification leaves
-the build as it was; rerun this command once the cause is fixed. A certified
-build is never certified again, at either tier.
+changes only tests and their helpers (the root ``conftest.py`` included),
+docs (``docs/``, ``LICENSE``, and Markdown or reStructuredText outside the
+packages' sources), changelog fragments and the standing register, as a UK
+cut is certified at its sign-off's head. A failed certification leaves the
+build as it was, apart from the gate failures it found, which it adds to
+``certification_failures.json`` beside the build record, so the build is
+no reference until a certification ships it; rerun this command once the
+cause is fixed. A certified build is never certified again, at either tier.
 """
 
 from __future__ import annotations

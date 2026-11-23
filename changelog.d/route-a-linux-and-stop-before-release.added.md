@@ -1,0 +1,1 @@
+The Route A driver now runs on Linux (portable file-size and free-disk helpers), its README covers tmux and systemd runs, and `STOP_BEFORE_RELEASE=1` stops after the base and the release config so the release's gates can be dry-run first.

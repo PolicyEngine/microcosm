@@ -603,10 +603,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 120
+    assert len(target_names) == 119
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "8b234f9ad808407d2fc6ff889f7f43be371f4df07c21c65f63f85205f31003e9"
+        == "b83603c38ce3b9faec44f071ee3f117ca980883369184362904d67f2ae637c6c"
     )
 
 
@@ -626,10 +626,10 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     source_producers = keys(pool_post_puf_source_producer_target_families())
 
     assert len(early) == 48
-    assert len(late) == 72
+    assert len(late) == 71
     assert early.isdisjoint(late)
     assert early | late == full
-    assert len(puf_producers) == 45
+    assert len(puf_producers) == 44
     assert len(source_producers) == 29
     assert len(puf_producers & source_producers) == 2
     assert puf_producers | source_producers == late
@@ -661,16 +661,16 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 143
+    assert len(surface) == len(by_name) == 145
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 120,
+            "pool_transfer_target_families": 119,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
-            "PRIMARY_QRF_TARGET_ORDER": 66,
-            "load_take_up_contract": 17,
+            "PRIMARY_QRF_TARGET_ORDER": 64,
+            "load_take_up_contract": 21,
         }
     )
     assert by_name["bank_account_assets"] == PoolInputSurfaceEntry(
@@ -778,11 +778,15 @@ def test_ssi_static_dependency_closure_matches_pinned_engine_graph() -> None:
 
     assert closure.engine_version == POOL_SSI_DEPENDENCY_CONTRACT.engine_version
     assert closure.root == "ssi"
-    assert len(closure.input_leaves) == 54
-    assert len(closure.formula_nodes) == 63
-    assert len(closure.edges) == 187
+    # policyengine-us 2.145.3 computes SSI and Medicaid deeming month by month
+    # (policyengine-us 2.144.2), so the closure grew from 54 input leaves, 63
+    # formulas and 187 edges on 2.2.1.
+    assert len(closure.input_leaves) == 689
+    assert len(closure.formula_nodes) == 2372
+    assert len(closure.edges) == 9188
     assert closure.sha256 == POOL_SSI_DEPENDENCY_CONTRACT.sha256
-    assert closure.input_leaves == (
+    # Every leaf of the 2.2.1 closure is still read.
+    assert set(closure.input_leaves) >= {
         "age",
         "alimony_income",
         "bank_account_assets",
@@ -837,7 +841,7 @@ def test_ssi_static_dependency_closure_matches_pinned_engine_graph() -> None:
         "unemployment_compensation",
         "veterans_benefits",
         "workers_compensation",
-    )
+    }
 
 
 def test_remaining_stage_manifest_covers_every_derive_read() -> None:
@@ -914,13 +918,13 @@ def test_remaining_stage_manifest_covers_seed_programs_and_structure() -> None:
     program_names = {program.variable for program in load_take_up_contract().programs}
     programs = [entry for entry in seed if entry.variable in program_names]
 
-    assert len(programs) == len(program_names) == 17
+    assert len(programs) == len(program_names) == 21
     assert {entry.variable for entry in programs} == program_names
     assert Counter(entry.provision for entry in programs) == Counter(
         {
             "administrative_seed_or_preserved_input": 2,
             "transferred_or_preserved_input": 3,
-            "preserved_input_or_disclosed_engine_default": 12,
+            "preserved_input_or_disclosed_engine_default": 16,
         }
     )
     structural = {
@@ -973,15 +977,15 @@ def test_remaining_stage_manifest_provisions_every_ssi_leaf_by_seed() -> None:
         entry for entry in manifest if entry.consumer == "ssi_static_dependency_closure"
     ]
 
-    assert len(leaves) == 54
+    assert len(leaves) == 689
     assert tuple(sorted(entry.variable for entry in leaves)) == closure.input_leaves
     assert Counter(entry.provision for entry in leaves) == Counter(
         {
             "assembled_native_person_input": 1,
-            "materialized_pool_input_surface": 31,
-            "seed_stage_program_contract": 1,
+            "materialized_pool_input_surface": 107,
+            "seed_stage_program_contract": 6,
             "declared_deferred_null_input": 3,
-            "declared_absent_engine_input": 18,
+            "declared_absent_engine_input": 572,
         }
     )
     transferred_complete = sum(
@@ -1001,8 +1005,10 @@ def test_remaining_stage_manifest_provisions_every_ssi_leaf_by_seed() -> None:
     # earned-income exclusion reads meets_ssi_disability_criteria instead of the
     # generic is_disabled flag, so is_disabled - a materialized pool input -
     # left the SSI closure. is_disabled remains an engine input elsewhere.
-    assert (transferred_complete, deferred, transferred_absent) == (32, 3, 19)
-    assert (seeded_complete, deferred, seeded_absent) == (33, 3, 18)
+    # 108/114 since policyengine-us 2.145.3 computes SSI deeming month by
+    # month: the closure reads 689 input leaves, most at their engine default.
+    assert (transferred_complete, deferred, transferred_absent) == (108, 3, 578)
+    assert (seeded_complete, deferred, seeded_absent) == (114, 3, 572)
     assert all(
         entry.fallback is not None
         for entry in leaves
@@ -1024,21 +1030,21 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
         entry for entry in manifest if entry.consumer == "_simulation_projection"
     ]
 
-    assert len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 926
+    assert len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 1334
     assert {(entry.entity, entry.variable) for entry in projection} == {
         (index.variable_metadata(variable).entity, variable)
         for variable in index.variables()
     }
     assert Counter(entry.provision for entry in projection) == Counter(
         {
-            "materialized_pool_input_surface": 123,
-            "seed_stage_program_contract": 17,
+            "materialized_pool_input_surface": 121,
+            "seed_stage_program_contract": 21,
             "declared_deferred_null_input": 3,
-            "assembled_native_engine_input": 5,
+            "assembled_native_engine_input": 7,
             "frame_structural_engine_input": 10,
-            "preserved_stacked_engine_input": 4,
+            "preserved_stacked_engine_input": 5,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 762,
+            "declared_absent_engine_input": 1165,
             "unprovisioned_source_input": 1,
         }
     )
@@ -1068,6 +1074,11 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
             "state_fips",
             "ephemeral_simulation_projection_engine_default_if_present_null",
         ),
+        (
+            "person",
+            "tax_unit_role_input",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
     }
     assert all(entry.fallback is not None for entry in projection)
 
@@ -1075,9 +1086,9 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 1059
+    assert len(manifest) == 2106
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 33, "simulate": 992}
+        {"derive": 34, "seed": 37, "simulate": 2035}
     )
     assert len(
         {
@@ -1090,16 +1101,16 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 1059
+    assert receipt["entry_count"] == 2106
     assert receipt["stage_counts"] == {
         "derive": 34,
-        "seed": 33,
-        "simulate": 992,
+        "seed": 37,
+        "simulate": 2035,
     }
     assert receipt["engine_input_projection_contract"] == {
-        "engine_version": "2.2.1",
-        "input_count": 926,
-        "default_count": 925,
+        "engine_version": "2.145.3",
+        "input_count": 1334,
+        "default_count": 1333,
         "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
         "defaults_sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256,
     }
@@ -1130,7 +1141,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 120
+    assert len(targets) == 119
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -1155,9 +1166,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 120
+    assert len(targets) == 119
     assert len(predictors) == 32
-    assert len(primary_predictor_sets) == 66
+    assert len(primary_predictor_sets) == 64
     primary_targets = tuple(
         (
             *puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -1170,9 +1181,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         for position, target in enumerate(primary_targets)
     )
     assert len(primary_predictor_sets[0][1]) == 8
-    assert len(primary_predictor_sets[-1][1]) == 73
+    assert len(primary_predictor_sets[-1][1]) == 71
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 123
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 122
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
@@ -2070,6 +2081,10 @@ def test_terminal_guard_rejects_stale_weeks_after_real_hours_projection() -> Non
 
 
 def test_formula_owned_source_boundary_matches_installed_source_index() -> None:
+    from microcosm.build.us_runtime.hours_worked import (
+        US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
+    )
+
     candidates = {
         column
         for by_entity in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES.values()
@@ -2086,7 +2101,12 @@ def test_formula_owned_source_boundary_matches_installed_source_index() -> None:
         for column in columns
     }
 
-    assert classified == guarded
+    # policyengine-us 2.145.3 dropped weeks_worked's formula (#9660 Part A1),
+    # so the engine reads it as an input. The pool still leaves it out until a
+    # follow-up enables the WKSWORK carry; the exclusion is reviewed, not a
+    # formula-owned output.
+    assert "weeks_worked" not in classified
+    assert classified == guarded - US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS
 
 
 def test_preclone_hours_signal_gate_rejects_implausible_producer_surface() -> None:

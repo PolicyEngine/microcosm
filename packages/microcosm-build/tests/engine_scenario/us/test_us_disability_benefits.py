@@ -4,10 +4,10 @@
 from test_support.microcosm_build.us_disability_benefits import *
 
 
-def test_policyengine_us_2_2_1_contract_and_positive_annual_behavior() -> None:
+def test_policyengine_us_2_145_3_contract_and_positive_annual_behavior() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"

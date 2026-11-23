@@ -642,7 +642,6 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             if target
             not in {
                 "second_home_mortgage_balance",
-                "second_home_mortgage_interest",
                 "second_home_mortgage_origination_year",
             }
         ),

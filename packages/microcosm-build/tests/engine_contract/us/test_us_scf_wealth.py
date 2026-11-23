@@ -4,10 +4,10 @@
 from test_support.microcosm_build.us_scf_wealth import *
 
 
-def test_policyengine_2_2_1_net_worth_input_contract() -> None:
+def test_policyengine_2_145_3_net_worth_input_contract() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variable = CountryTaxBenefitSystem().variables["net_worth"]
     assert variable.is_input_variable()
     assert variable.entity.key == "household"

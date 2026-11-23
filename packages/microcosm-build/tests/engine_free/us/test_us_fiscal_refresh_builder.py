@@ -8066,6 +8066,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_assert_cd_vintage_support_matches",
         lambda h5_path, crosswalk_metadata, **kwargs: None,
     )
+    # The stub base is not an HDF5 file, and it records no location rule.
+    monkeypatch.setattr(builder, "_read_base_location_attributes", lambda h5_path: {})
     if terminal_mode == "telemetry":
 
         class LiveTelemetry:
@@ -18119,6 +18121,7 @@ def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
     recorder = _RecordingTelemetry()
     register_failures = builder._record_qrf_tail_concentration_gate(
         frame,
+        base_frame=frame,
         exclusions_path=register,
         allow_concentration=allow,
         terminal_gate_failures=failures,
@@ -18126,6 +18129,62 @@ def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
         telemetry=builder._TerminalBatchProgress(recorder, failures),
     )
     return register_failures, recorder
+
+
+def test_qrf_tail_gate_decides_at_base_weights_and_reports_final_weights(
+    tmp_path,
+) -> None:
+    # Ruled 17 Nov 2026: calibration concentrating weight on few carriers is
+    # reported, not failed. The base frame is dispersed (top-100 share 20%);
+    # the export puts 1,000x weight on the first 100 carriers.
+    builder = _load_builder_module()
+    base = _qrf_export_frame(builder, _qrf_dispersed_values())
+    weights = np.ones(base.n("household"))
+    weights[:100] = 1_000.0
+    export = base.with_weights(
+        "household",
+        builder.Weights(weights, builder.WeightKind.CALIBRATED),
+        mass=builder.MassChange(
+            factor=weights.sum() / base.weights_for("household").total,
+            reason="test calibration",
+        ),
+    )
+    failures: list[str] = []
+    recorder = _RecordingTelemetry()
+
+    register_failures = builder._record_qrf_tail_concentration_gate(
+        export,
+        base_frame=base,
+        exclusions_path=None,
+        allow_concentration=False,
+        terminal_gate_failures=failures,
+        release_dir=tmp_path,
+        telemetry=builder._TerminalBatchProgress(recorder, failures),
+    )
+
+    assert register_failures == []
+    assert failures == []
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["schema_version"] == 2
+    assert payload["weight_basis"] == "base"
+    assert payload["tail_concentration"]["passed"] is True
+    assert payload["tail_concentration"]["details"]["top_share"][
+        "non_sch_d_capital_gains"
+    ] == pytest.approx(0.2)
+    report = payload["final_weight_report"]
+    assert report["weight_basis"] == "calibrated"
+    assert report["decides_verdict"] is False
+    assert report["above_threshold"] == ["non_sch_d_capital_gains"]
+    assert report["top_share"]["non_sch_d_capital_gains"] > 0.99
+
+
+def test_qrf_tail_final_weight_report_never_fails_the_run() -> None:
+    builder = _load_builder_module()
+
+    report = builder._qrf_tail_final_weight_report(object(), ["estate_income"])
+
+    assert report["weight_basis"] == "calibrated"
+    assert report["unmeasured"].startswith("AttributeError")
 
 
 def test_qrf_tail_register_mismatch_splits_stale_and_unused_entries() -> None:
@@ -21464,9 +21523,338 @@ def test_a_failed_build_may_start_a_later_build(
         "--no-staging",
         flag,
         str(file),
+        # As the base, beside the export reference the export gate then
+        # judges against (test_a_failed_build_is_a_base_only_beside_a_reference).
+        "--export-input-mass-reference-h5",
+        str(tmp_path / "certified" / "populace_us_2024.h5"),
     ]
 
     assert getattr(builder._parse_args(argv), flag[2:].replace("-", "_")) == file
+
+
+def test_a_failed_build_is_a_base_only_beside_a_reference(
+    tmp_path: Path, capsys
+) -> None:
+    """Without --export-input-mass-reference-h5, the export input-mass gate
+    judges the export against the base frame, so a failed build's H5 is
+    refused there as --base-h5, and starts the build beside a reference
+    (review of #1681)."""
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(
+        builder, tmp_path, terminal_gate_failures=["Input coverage failed: x"]
+    )
+    h5 = path.parent / payload["files"]["dataset"]["path"]
+    argv = [
+        "--ledger-facts",
+        str(tmp_path / "facts.jsonl"),
+        "--out",
+        str(tmp_path / "next"),
+        "--no-staging",
+        "--base-h5",
+        str(h5),
+    ]
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(argv)
+    error = capsys.readouterr().err
+    assert f"--base-h5 {h5} belongs to build populace-us-2024-test-build" in error
+    assert "pass the reference too" in error
+    reference = tmp_path / "certified" / "populace_us_2024.h5"
+    args = builder._parse_args(
+        [*argv, "--export-input-mass-reference-h5", str(reference)]
+    )
+    assert (args.base_h5, args.export_input_mass_reference_h5) == (h5, reference)
+    # A green build's H5 is a base with or without one.
+    payload["terminal_gate_failures"] = []
+    builder._write_us_build_record(path.parent, payload)
+    assert builder._parse_args(argv).base_h5 == h5
+
+
+def test_a_build_that_failed_certification_is_no_reference(tmp_path: Path) -> None:
+    """A build that passed its own release gates and then failed
+    certification's (the smoke, source coverage, a stale count-calibrated
+    take-up column) is held as a failed build, at either tier, until a
+    certification ships it (review of #1681)."""
+    from types import SimpleNamespace
+
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    record = builder._read_us_build_record(path)
+    h5 = path.parent / payload["files"]["dataset"]["path"]
+    register = path.parent / builder.US_CERTIFICATION_FAILURES_FILENAME
+    certified_tier = SimpleNamespace(evidence_release=False, commit="c" * 40)
+    assert builder._failed_build_holding(h5) is None
+
+    written = builder._record_certification_failures(
+        record, certified_tier, ["Reform coverage smoke failed: ssi: $0"]
+    )
+    assert written == register
+    held = builder._failed_build_holding(h5)
+    assert held == (
+        f"build populace-us-2024-test-build ({path.resolve()}), which failed 1 "
+        f"gate(s) of its certification ({register.resolve()})"
+    )
+    for under_out in (path.parent, path.parent / "build"):
+        assert builder._failed_build_holding(under_out) == held
+    # Each certification adds its attempt; the record is left as it was.
+    record_bytes = path.read_bytes()
+    builder._record_certification_failures(
+        record,
+        SimpleNamespace(evidence_release=True, commit="d" * 40),
+        ["Source coverage failed: a", "Source coverage failed: b"],
+    )
+    attempts = json.loads(register.read_text())["attempts"]
+    assert [(a["tier"], a["commit"], len(a["failures"])) for a in attempts] == [
+        ("certified", "c" * 40, 1),
+        ("evidence", "d" * 40, 2),
+    ]
+    assert path.read_bytes() == record_bytes
+    assert "which failed 3 gate(s) of its certification" in (
+        builder._failed_build_holding(h5)
+    )
+    # A part-written certification ships nothing.
+    national = path.parent / "releases" / builder.US_NATIONAL_RELEASE_ID
+    national.mkdir(parents=True)
+    (national / "release_manifest.json").write_text("{}")
+    assert builder._failed_build_holding(h5) is not None
+    # A certification that finished, at either tier, ships the build.
+    _finished_release_manifest(national)
+    assert builder._failed_build_holding(h5) is None
+    for name in ("release_manifest.json", "build_manifest.json"):
+        (national / name).unlink()
+    evidence = path.parent / "releases" / builder.US_EVIDENCE_RELEASE_ID
+    _finished_release_manifest(evidence, evidence=True)
+    assert builder._failed_build_holding(h5) is None
+    (evidence / "release_manifest.json").unlink()
+    # A register that does not read holds the build too.
+    register.write_text("{")
+    assert "which failed 1 gate(s) of its certification" in (
+        builder._failed_build_holding(h5)
+    )
+
+
+def test_a_later_build_in_the_same_out_inherits_no_certification_failures(
+    tmp_path: Path,
+) -> None:
+    """Each attempt names the build and its record's digest. A later build
+    into the same --out writes a new record, so the earlier build's attempts
+    no longer hold it, and its own first attempt drops them; an attempt that
+    names no record still counts (review of #1676)."""
+    from types import SimpleNamespace
+
+    builder = _load_builder_module()
+    path, payload = _build_record_fixture(builder, tmp_path)
+    record = builder._read_us_build_record(path)
+    h5 = path.parent / payload["files"]["dataset"]["path"]
+    register = path.parent / builder.US_CERTIFICATION_FAILURES_FILENAME
+    certified_tier = SimpleNamespace(evidence_release=False, commit="c" * 40)
+    builder._record_certification_failures(
+        record, certified_tier, ["Reform coverage smoke failed: ssi: $0"]
+    )
+    [attempt] = json.loads(register.read_text())["attempts"]
+    assert attempt["build"] == "populace-us-2024-test-build"
+    assert attempt["record_sha256"] == record.payload["record_sha256"]
+    assert builder._failed_build_holding(h5) is not None
+
+    # A later build into the same --out: a new record, so a new digest.
+    payload["built_at"] = "2026-11-20T00:00:00+00:00"
+    builder._write_us_build_record(path.parent, payload)
+    later = builder._read_us_build_record(path)
+    assert later.payload["record_sha256"] != attempt["record_sha256"]
+    assert builder._failed_build_holding(h5) is None
+    builder._record_certification_failures(
+        later, certified_tier, ["Source coverage failed: a"]
+    )
+    attempts = json.loads(register.read_text())["attempts"]
+    assert [entry["record_sha256"] for entry in attempts] == [
+        later.payload["record_sha256"]
+    ]
+    assert "which failed 1 gate(s) of its certification" in (
+        builder._failed_build_holding(h5)
+    )
+    # An attempt that names no record counts against any build, and the
+    # next attempt keeps it, as the readers count it (review of #1676).
+    register.write_text(
+        json.dumps({"attempts": [{"failures": ["Source coverage failed: b"]}]})
+    )
+    assert builder._failed_build_holding(h5) is not None
+    builder._record_certification_failures(
+        later, certified_tier, ["Source coverage failed: c"]
+    )
+    kept = json.loads(register.read_text())["attempts"]
+    assert [entry.get("record_sha256") for entry in kept] == [
+        None,
+        later.payload["record_sha256"],
+    ]
+
+
+def test_a_build_that_stopped_before_its_record_is_no_reference(
+    tmp_path: Path,
+) -> None:
+    """The build marks its --out just before its H5 and clears the mark once
+    its record is written, so an H5 no record pins is no reference; once the
+    record is written, it decides (review of #1681)."""
+    builder = _load_builder_module()
+    out = tmp_path / "out"
+    h5 = out / "artifacts" / "microcosm_us_2024.h5"
+    h5.parent.mkdir(parents=True)
+    h5.write_bytes(b"h5")
+    marker = builder._mark_build_incomplete(out, build="populace-us-2024-x")
+    assert marker == out / builder.US_BUILD_INCOMPLETE_FILENAME
+    payload = json.loads(marker.read_text())
+    assert (payload["kind"], payload["build"]) == (
+        builder.US_BUILD_INCOMPLETE_KIND,
+        "populace-us-2024-x",
+    )
+    held = (
+        f"the build in {out.resolve()}, which stopped before writing its record "
+        f"({marker.resolve()})"
+    )
+    for path in (h5, h5.parent, out):
+        assert builder._failed_build_holding(path) == held
+
+    path, _ = _build_record_fixture(builder, tmp_path / "recorded")
+    builder._mark_build_incomplete(path.parent, build="populace-us-2024-test-build")
+    assert builder._failed_build_holding(path.parent / "artifacts") is None
+
+
+def test_the_build_marks_its_out_incomplete_until_its_record_is_written() -> None:
+    """The mark goes down as the build creates its --out, before any file it
+    writes there (its diagnostics included), and comes off after the record
+    write, so no raise in between leaves files that read as a finished
+    build's. A dry run, which writes no --out, writes none (review of #1681
+    and of #1676)."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    main_fn = _builder_function(builder, "_main")
+    [marked] = _calls_named(main_fn, "_mark_build_incomplete")
+    [record_write] = _calls_named(main_fn, "_write_us_build_record")
+    writes = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "write_dataset"
+    ]
+    assert len(writes) == 1
+    cleared = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "unlink"
+        and "US_BUILD_INCOMPLETE_FILENAME" in ast.unparse(node.func.value)
+    ]
+    assert len(cleared) == 1
+    assert marked.lineno < writes[0].lineno < record_write.lineno < cleared[0].lineno
+    # It sits in the block that creates the build's directories, right after
+    # them, and that block runs for a build only.
+    [creates] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.If)
+        and ast.unparse(node.test) == "dry_run is None"
+        and "release_dir.mkdir" in ast.get_source_segment(source, node)
+    ]
+    statements = [ast.unparse(statement) for statement in creates.body]
+    made = statements.index("release_dir.mkdir(parents=True, exist_ok=True)")
+    assert statements[made + 1] == (
+        "_mark_build_incomplete(release_root, build=release_id)"
+    )
+    # Before the first diagnostics file the build writes.
+    first_writes = [
+        call.lineno
+        for name in (
+            "write_us_ssi_take_up_diagnostics",
+            "_write_release_calibration_diagnostics",
+        )
+        for call in _calls_named(main_fn, name)
+    ]
+    assert first_writes and marked.lineno < min(first_writes)
+
+
+def test_certification_records_each_gate_failure_before_its_tier_decides() -> None:
+    """Every failure certification finds is added to the build's register
+    before the certified tier refuses it or the evidence tier checks its
+    owner, and the certified tier refuses a failed source-coverage gate, as
+    it refuses a failed smoke, before either manifest is written (review of
+    #1681). Read by structure, not line numbers, so a refusal moved out of
+    its tier's branch fails here (review of #1676)."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    certify_fn = _builder_function(builder, "_certify_us_build")
+
+    def refuses(node: ast.AST) -> bool:
+        return isinstance(node, ast.Raise) and "Release gates failed: " in (
+            ast.get_source_segment(source, node) or ""
+        )
+
+    branches = [
+        (block, index, statement)
+        for node in ast.walk(certify_fn)
+        for field in ("body", "orelse")
+        if isinstance(block := getattr(node, field, None), list)
+        for index, statement in enumerate(block)
+        if isinstance(statement, ast.If)
+        and ast.unparse(statement.test) == "not args.evidence_release"
+        and any(refuses(child) for child in statement.body)
+    ]
+    # The smoke, source coverage and a stale count-calibrated take-up column.
+    assert len(branches) == 3
+    assert len([node for node in ast.walk(certify_fn) if refuses(node)]) == 3
+    for block, index, branch in branches:
+        # The certified tier refuses at once: the refusal is the whole branch.
+        assert len(branch.body) == 1 and refuses(branch.body[0])
+        # The register is written by the statement just before the tier decides.
+        recorded = block[index - 1]
+        assert isinstance(recorded, ast.Expr) and isinstance(recorded.value, ast.Call)
+        assert getattr(recorded.value.func, "id", None) == (
+            "_record_certification_failures"
+        )
+        # The evidence tier's owner check follows in the same block.
+        assert any(
+            _calls_named(statement, "_evidence_known_failures")
+            for statement in block[index + 1 :]
+        )
+    coverage = next(
+        branch
+        for _block, _index, branch in branches
+        if "coverage_gate_failures" in ast.get_source_segment(source, branch)
+    )
+    [manifests] = _calls_named(certify_fn, "_build_manifests")
+    assert coverage.lineno < manifests.lineno
+
+
+def test_a_standing_owner_pattern_owns_a_line_only_from_its_start(
+    monkeypatch,
+) -> None:
+    """A standing pattern names one gate's failure prefix and owns a failure
+    line only when the line starts with it, so a pattern that ends a longer
+    prefix owns nothing; a per-run pattern still matches anywhere in the line
+    (review of #1681)."""
+    builder = _load_builder_module()
+    owner = "PolicyEngine/microcosm#1"
+    line = "Health input signal failed: medicaid_enrolled carries no signal"
+    standing = (("input signal failed:", owner),)
+    monkeypatch.setattr(builder, "US_EVIDENCE_FAILURE_OWNERS", standing)
+    assert builder._evidence_owner(line, standing) is None
+    per_run = (("signal failed: medicaid", owner),)
+    assert builder._evidence_owner(line, (*per_run, *standing)) == owner
+    full_prefix = (("Health input signal failed:", owner),)
+    monkeypatch.setattr(builder, "US_EVIDENCE_FAILURE_OWNERS", full_prefix)
+    assert builder._evidence_owner(line, full_prefix) == owner
+    assert builder._evidence_owner(f"Export audit failed: {line}", full_prefix) is None
+    # The packaged register's two patterns still own their gates' lines.
+    monkeypatch.undo()
+    for pattern, expected in builder.US_EVIDENCE_FAILURE_OWNERS:
+        assert (
+            builder._evidence_owner(f"{pattern} x", builder.US_EVIDENCE_FAILURE_OWNERS)
+            == expected
+        )
 
 
 def test_a_record_of_an_earlier_schema_names_the_code_that_built_it(

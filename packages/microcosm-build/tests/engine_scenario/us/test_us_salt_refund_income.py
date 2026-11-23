@@ -4,7 +4,7 @@
 from test_support.microcosm_build.us_salt_refund_income import *
 
 
-def test_policyengine_us_contract_and_state_tax_binding() -> None:
+def test_policyengine_us_contract_and_income_tax_binding() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
     variable = CountryTaxBenefitSystem().variables["salt_refund_income"]
@@ -42,9 +42,22 @@ def test_policyengine_us_contract_and_state_tax_binding() -> None:
         reform=_build_reform(probe),
     )
 
+    assert probe.budget_measure == "income_tax"
+    assert probe.expected_sign == "positive"
+    # policyengine-us 2.145.3 counts the refund in federal gross income, so
+    # neutralizing it lowers AGI and income tax: baseline minus reform is
+    # positive, as the probe declares.
+    assert baseline.calculate("adjusted_gross_income", year)[0] - (
+        neutralized.calculate("adjusted_gross_income", year)[0]
+    ) == pytest.approx(10_000)
+    assert (
+        baseline.calculate("income_tax", year)[0]
+        > neutralized.calculate("income_tax", year)[0]
+    )
+    # South Carolina still subtracts the refund from that AGI, so its tax does
+    # not move: the 2.2.1 probe's state-tax sign no longer holds.
     assert baseline.calculate("sc_subtractions", year)[0] == pytest.approx(10_000)
     assert neutralized.calculate("sc_subtractions", year)[0] == 0
-    assert (
-        baseline.calculate("state_income_tax", year)[0]
-        < neutralized.calculate("state_income_tax", year)[0]
+    assert baseline.calculate("state_income_tax", year)[0] == pytest.approx(
+        neutralized.calculate("state_income_tax", year)[0]
     )

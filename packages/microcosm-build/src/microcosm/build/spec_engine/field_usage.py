@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32618
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9786
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42404
+EXPECTED_AUTHORED_FIELD_COUNT = 32638
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 18204
+EXPECTED_CONFIGURATION_FIELD_COUNT = 50842
 
 
 class FieldUsageError(AssertionError):
@@ -341,8 +341,8 @@ def _path_inventory(rows: Sequence[tuple[str, object]]) -> tuple[int, str]:
 # wildcard broadening a source diff rather than an automatically accepted field.
 _PINS: dict[str, tuple[int, str]] = {
     "battery": (
-        807,
-        "f35844c0d404d5fc7905d8b7ecbee1d273c0bb46a7ed656d86f1b7cb0760fb33",
+        822,
+        "f248b16fb93e7923a9f3dcc91584b2719b9188b7251b78ab89e2061bfa7100d5",
     ),
     "bundle_country": (
         1,
@@ -361,20 +361,20 @@ _PINS: dict[str, tuple[int, str]] = {
         "36564747627fb0058bb99e8e8c4397e41d8ecc472a20c49d4b6d7df1003a80ec",
     ),
     "calibration": (
-        320,
-        "5336f77a10b2f0aa03f6bc221f3c5b8390adccaeed8ee3e7251292606a83a7fd",
+        318,
+        "0cce138fea5e0bcdb2bd5b43c2a38b97228ef9d5eb5aa18e28921a146b6dd5a0",
     ),
     "catalog_columns": (
-        1_593,
-        "bdd9e79157590fade42d28cc2b5d5c8b58e13903af75375a0e3235c94d2a8339",
+        1611,
+        "962869de3839c446df5bae610a522460e24586c8f48a4d21d7f416d5a55ce971",
     ),
     "country_manifest": (
         113,
         "11b70807bf06832e71367643c7d0e09891c1d4923fe574b471d6632562129897",
     ),
     "generated_authorities": (
-        8_614,
-        "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
+        17032,
+        "7dd9018bc1cf7623349ecb3808c48cde4dc04a5d5d2bc1d360d6aa3a93b80505",
     ),
     "geography_assignment": (
         28,
@@ -397,8 +397,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "bdf40812604e7cd35d68093fe14b7cd1371cb8ab8658fd6002b254610b062781",
     ),
     "imputation_family_execution": (
-        1_787,
-        "aa733722f4442ae0ab22c5f1f2ffc1df2accfc5a1791702b242545e40abd26bf",
+        1769,
+        "b995d1967c7d9b11a20f593b891e42bb0cb81661f8addd1ffd613f7773a2e257",
     ),
     "imputation_gap_fill_schedule": (
         5,
@@ -417,8 +417,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
     ),
     "imputation_producer_graph": (
-        24511,
-        "5869ddc4afa6eb0c09f290b709e75467decc6929e7f79c98341878928e6169fc",
+        24486,
+        "3eaf79ed1ef14337fa2b585a532d10dfb68dae9a07d9fc9d91b6456633d0e90e",
     ),
     "imputation_transfer_execution": (
         110,
@@ -481,8 +481,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_926,
-        "8bd6122267288e2df25b2880a43191865707a240892bec484cb830ee72404964",
+        1922,
+        "72a4896a1fd2e61097a5644cb7885e34ecb3563342caf4057134b7caab754b69",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -525,8 +525,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d0de9c71fb388104cbd2fad9889b1eb18dd0b844c7344fd8a75ffda9d3cb9814",
     ),
     "take_up": (
-        328,
-        "d53096196db4c34da260cce2f35af8e7ba67f978448656c602ee5e17529dc4e0",
+        364,
+        "499f61d37fba43fe1dda622ef0206cd10dba2c85975f6a22640509b9e39739b1",
     ),
     "vintage_records": (
         120,

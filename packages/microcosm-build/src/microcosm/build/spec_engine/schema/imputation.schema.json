@@ -3314,11 +3314,15 @@
                  "type": "object",
                  "additionalProperties": false,
                  "properties": {
+                  "long_term_capital_gains_on_collectibles": {
+                   "type": "number"
+                  },
                   "non_sch_d_capital_gains": {
                    "type": "number"
                   }
                  },
                  "required": [
+                  "long_term_capital_gains_on_collectibles",
                   "non_sch_d_capital_gains"
                  ]
                 },

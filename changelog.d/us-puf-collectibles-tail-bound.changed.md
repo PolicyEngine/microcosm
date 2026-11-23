@@ -1,0 +1,1 @@
+Bound `long_term_capital_gains_on_collectibles` at its weighted donor q0.999 in PUF finalization, as `non_sch_d_capital_gains` already is. Tail bounds now also apply to sparse snapped amount outputs, with the bound lowered onto the donor's snap grid. Interim: microcosm#481 stays the root fix.

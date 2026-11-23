@@ -663,12 +663,22 @@ metric_registry:
   metric: monetary_sign_separated
 - entity: person
   family: take_up
+  column: takes_up_ak_permanent_fund_dividend_if_eligible
+  clone_index: 0
+  metric: boolean_incidence
+- entity: person
+  family: take_up
   column: takes_up_basic_health_program_if_eligible
   clone_index: 0
   metric: boolean_incidence
 - entity: person
   family: take_up
   column: takes_up_chip_if_eligible
+  clone_index: 0
+  metric: boolean_incidence
+- entity: person
+  family: take_up
+  column: takes_up_csfp_if_eligible
   clone_index: 0
   metric: boolean_incidence
 - entity: person
@@ -684,6 +694,11 @@ metric_registry:
 - entity: person
   family: take_up
   column: takes_up_medicaid_if_eligible
+  clone_index: 0
+  metric: boolean_incidence
+- entity: person
+  family: take_up
+  column: takes_up_medicare_part_d_if_eligible
   clone_index: 0
   metric: boolean_incidence
 - entity: person
@@ -723,6 +738,11 @@ metric_registry:
   metric: boolean_incidence
 - entity: spm_unit
   family: take_up
+  column: takes_up_school_meals_if_eligible
+  clone_index: 0
+  metric: boolean_incidence
+- entity: spm_unit
+  family: take_up
   column: takes_up_snap_if_eligible
   clone_index: 0
   metric: boolean_incidence
@@ -744,11 +764,6 @@ metric_registry:
 - entity: tax_unit
   family: puf_tax_itemization
   column: first_home_mortgage_balance
-  clone_index: 0
-  metric: monetary_sign_separated
-- entity: tax_unit
-  family: puf_tax_itemization
-  column: first_home_mortgage_interest
   clone_index: 0
   metric: monetary_sign_separated
 - entity: tax_unit

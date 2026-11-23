@@ -31,12 +31,14 @@ uv run ruff check .      # lint
 ```
 
 Each country keeps its own policyengine-core pin (#1086). The extras that
-install policyengine-us pin the core the certified US default was built with,
-and the extras that install policyengine-uk follow policyengine-uk's own core
-floor. So no environment can hold both engines: uv refuses any sync that asks
-for an extra that installs policyengine-us (`microcosm-build[us]`,
-`microcosm-data[us]` or `microcosm-frame[policyengine]`) together with one that
-installs policyengine-uk, such as `uv sync --all-packages --extra us --extra uk`
+install policyengine-us pin the engine and core the next certified US build is
+built with (policyengine-us 2.145.3 on core 3.36.1), and the extras that install
+policyengine-uk follow policyengine-uk's own core floor; today both sides
+resolve core 3.36.1. Still, no environment can hold both engines: uv refuses
+any sync that asks for an extra that installs policyengine-us
+(`microcosm-build[us]`, `microcosm-data[us]` or `microcosm-frame[policyengine]`)
+together with one that installs policyengine-uk, such as
+`uv sync --all-packages --extra us --extra uk`
 or `uv sync --all-packages --all-extras`. To keep both countries set up, point
 `UV_PROJECT_ENVIRONMENT` at a separate directory outside the checkout for each.
 
@@ -448,13 +450,14 @@ base premium is defined for every eligible person. Part D is
 `income_adjusted_part_d_premium_surcharge`, which policyengine-us charges every
 Medicare enrollee above the thresholds until PolicyEngine/policyengine-us#10115
 gates it on Part D enrollment. IRMAA rests on income from two years before
-the period. The locked policyengine-us 2.2.1 reads that year's inputs, and a
-single-year release H5 has none, so a 2024 release on that engine reports
-`status: no_payers` (the batched scorer gives exactly that on the certified
-`populace-us-2024-spm-20260915` file) until the engine includes
-PolicyEngine/policyengine-us#10106. A Part with no weighted payer never reports
-a Trustees comparison. It is held out the same way: no calibration row, no
-release refusal.
+the period. policyengine-us 2.2.1 read that year's inputs, and a single-year
+release H5 has none, so a 2024 release on that engine reported
+`status: no_payers` (the batched scorer gave exactly that on the certified
+`populace-us-2024-spm-20260915` file). The locked policyengine-us 2.145.3
+includes PolicyEngine/policyengine-us#10106, which falls back to the earliest
+input year, so the holdout now reports payers. A Part with no weighted payer
+never reports a Trustees comparison. It is held out the same way: no
+calibration row, no release refusal.
 It also writes `us_population_structure_holdout.json` from the written H5
 alone (no engine): marital status of people 65+ by sex (ACS 2024 B12002),
 people 65+ living alone (ACS 2024 B09021), people receiving Social Security in
@@ -476,7 +479,9 @@ A US national build stops before its post-export checks; certify it with
 has no tier: certification chooses it, and `--evidence-release` with an owner
 for every failure certifies a build whose release gates failed. It may run at
 a later commit than the build's only when that commit changes nothing but
-tests, docs, changelog fragments and the standing evidence owners register
+tests and their helpers (the root `conftest.py` included), docs (`docs/`,
+`LICENSE`, and Markdown or reStructuredText outside the packages' sources),
+changelog fragments and the standing evidence owners register
 (`us_runtime/data/evidence_failure_owners.json`). To check
 the post-export stages on a written export without certifying it,
 subsample it and probe it as

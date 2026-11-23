@@ -195,6 +195,17 @@ HDF_WRITE_EXCLUSIONS = (
         reason="Copies Microcosm-owned root attributes only.",
     ),
     HdfWriteExclusion(
+        exclusion_id="us_release_location_root_attrs",
+        writer=HdfWriteSite(
+            "tools/build_us_fiscal_refresh_release.py",
+            "_write_release_location_attributes",
+        ),
+        reason=(
+            "Copies the base's household-location rule root attributes onto "
+            "the release H5 only (microcosm#1047, microcosm#1647)."
+        ),
+    ),
+    HdfWriteExclusion(
         exclusion_id="acs_transfer_raw_draw_bank",
         writer=HdfWriteSite(
             "packages/microcosm-build/src/microcosm/build/us_runtime/"

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "us_evidence_failure_owners",
-  "description": "The standing owners of US national release-gate failures that an evidence-tier certification may ship as known failures (microcosm#506). Certification checks each recorded failure against its --evidence-failure-owners file first, then against these patterns: a failure line containing a pattern is owned by the pattern's issue, the first match winning. A failure no pattern matches refuses the evidence certification. Only owner-adjudicated families belong here; any other failure needs a per-run file. A build may be certified at a later commit whose only change outside tests, docs and changelog fragments is this file (microcosm#1585 item 11).",
+  "description": "The standing owners of US national release-gate failures that an evidence-tier certification may ship as known failures (microcosm#506). Certification checks each recorded failure against its --evidence-failure-owners file first, then against these patterns: a failure line that starts with a pattern, a gate's failure prefix, is owned by the pattern's issue, the first match winning. A failure no pattern matches refuses the evidence certification. Only owner-adjudicated families belong here; any other failure needs a per-run file. A build may be certified at a later commit whose only change outside tests and their helpers (the root conftest.py included), docs (LICENSE, and Markdown or reStructuredText outside the packages' sources, included) and changelog fragments is this file (microcosm#1585 item 11).",
   "owners": [
     {
       "pattern": "SOI Table 1.4 national dollar fit failed:",

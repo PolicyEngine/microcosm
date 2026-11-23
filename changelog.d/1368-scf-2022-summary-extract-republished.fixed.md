@@ -1,0 +1,1 @@
+The US build reads the SCF 2022 summary extract the Federal Reserve republished on 2026-10-09 (in 2025 dollars) and converts its dollar columns back to 2022 dollars with the Fed's CPI-U-RS ratio (4789/4376), so a fresh build no longer stops at the SCF wealth stage on the pinned original, which the Fed no longer serves. The original 2022-dollar file is still read as it is.

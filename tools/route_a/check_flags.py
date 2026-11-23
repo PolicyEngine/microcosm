@@ -4,7 +4,9 @@
 every flag none of its ``add_argument`` calls declares. ``--in-function NAME``
 first narrows the source to the function ``NAME``, for a tool with two parsers:
 the release tool's certification parser is ``_certify_parser``, and its build
-parser declares flags of the same names (microcosm#1585 item 11).
+parser declares flags of the same names (microcosm#1585 item 11). A source
+without ``NAME`` exits 1 even when no flag is given, so a commit that cannot
+certify is refused at the certified tier too (review of #1681).
 """
 
 from __future__ import annotations
@@ -44,6 +46,15 @@ def declared_flags(source: str, *, function: str | None = None) -> set[str]:
     }
 
 
+def defines_function(source: str, function: str) -> bool:
+    """Whether ``source`` defines a function named ``function``."""
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == function
+        for node in ast.walk(ast.parse(source))
+    )
+
+
 def missing_flags(
     source: str, flags: Iterable[str], *, function: str | None = None
 ) -> list[str]:
@@ -62,7 +73,11 @@ def main() -> int:
             print("usage: check_flags.py [--in-function NAME] FLAG...", file=sys.stderr)
             return 2
         function, flags = flags[1], flags[2:]
-    missing = missing_flags(sys.stdin.read(), flags, function=function)
+    source = sys.stdin.read()
+    if function is not None and not defines_function(source, function):
+        print(f"the source defines no function {function}", file=sys.stderr)
+        return 1
+    missing = missing_flags(source, flags, function=function)
     if missing:
         parser = function if function else "release parser"
         print(f"{parser} does not declare: " + " ".join(missing), file=sys.stderr)

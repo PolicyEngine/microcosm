@@ -65,6 +65,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from importlib.resources import files
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from microcosm.build.gates import GateResult, input_column_coverage_gate
@@ -138,6 +139,7 @@ __all__ = [
     "US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
     "REFERENCE_ECPS_LAYER_RENAMES",
+    "REFERENCE_ECPS_RETIRED_LAYERS",
     "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
     "ListParameterEdit",
     "ReformCoverageProbe",
@@ -169,10 +171,24 @@ US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION = 2
 
 # The SHA-pinned incumbent predates the verified PolicyEngine-US 1.777.0 WIC
 # input rename. Preserve its historical evidence bytes while projecting the
-# retired name onto the live 2.2.1 input leaf for the current release gate.
+# retired name onto the live input leaf for the current release gate.
 REFERENCE_ECPS_LAYER_RENAMES = {
     "would_claim_wic": "takes_up_wic_if_eligible",
 }
+
+# Reference layers whose engine input the pinned engine removed, each with the
+# live layer that carries its amount. They are neither coverage requirements
+# nor graded parity layers (a rename would merge them into a layer the
+# reference already carries). policyengine-us removed the tax-unit
+# first/second home mortgage interest legs (policyengine-us#9605); 2.2.1 read
+# them only where no person-level home_mortgage_interest was reported, and the
+# person-level layer carries the whole amount (ported from microcosm#1365).
+REFERENCE_ECPS_RETIRED_LAYERS = MappingProxyType(
+    {
+        "first_home_mortgage_interest": "home_mortgage_interest",
+        "second_home_mortgage_interest": "home_mortgage_interest",
+    }
+)
 
 # The frozen reference artifact predates the retired pipeline's export of the
 # pure FLSA overtime-premium input, OBBBA's distinct qualifying passenger-
@@ -1233,7 +1249,13 @@ def _ecps_populated_layers() -> frozenset[str]:
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
             "non-empty JSON object."
         )
-    historical = {str(name) for name, share in shares.items() if float(share) > 0.0}
+    # A layer whose engine input the pinned engine retired is not a
+    # requirement; its live successor is graded in its place.
+    historical = {
+        str(name)
+        for name, share in shares.items()
+        if float(share) > 0.0 and str(name) not in REFERENCE_ECPS_RETIRED_LAYERS
+    }
     projected = {REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical}
     if len(projected) != len(historical):
         raise ValueError(

@@ -17,7 +17,7 @@ import importlib.util
 import re
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -105,17 +105,38 @@ class _FakeEngineLedger:
         self.reform_systems: list[object] = []
 
 
+def _rebinding_copy(original):
+    """A shallow copy as policyengine-core 3.36's ``clone`` makes it: a bound
+    method of the original kept on the instance is bound to the copy (3.32's
+    ``clone`` copies it as is, as ``copy.copy`` does)."""
+
+    duplicate = copy.copy(original)
+    for key, value in list(vars(duplicate).items()):
+        if isinstance(value, MethodType) and value.__self__ is original:
+            setattr(duplicate, key, MethodType(value.__func__, duplicate))
+    return duplicate
+
+
 class _FakeHolders:
-    """policyengine-core's holder view: the periods each variable is known for."""
+    """policyengine-core's holder view: the periods each variable is known for.
+
+    ``clone_branches``: False makes each branch a fresh holder view; True
+    copies the parent as core 3.32's ``clone`` does; ``"rebind"`` copies it as
+    core 3.36's does (:func:`_rebinding_copy`)."""
 
     def __init__(self, known: dict[str, tuple[str, ...]] | None = None) -> None:
         self.known = {name: list(periods) for name, periods in (known or {}).items()}
         self.branches: dict[str, _FakeHolders] = {}
-        self.clone_branches = False
+        self.clone_branches: bool | str = False
 
     def get_branch(self, name: str):
         if name not in self.branches:
-            branch = copy.copy(self) if self.clone_branches else _FakeHolders()
+            if self.clone_branches == "rebind":
+                branch = _rebinding_copy(self)
+            elif self.clone_branches:
+                branch = copy.copy(self)
+            else:
+                branch = _FakeHolders()
             branch.branches = {}
             branch.known = {}
             self.branches[name] = branch
@@ -140,7 +161,7 @@ def _install_fake_engine(
     aggregate_household: int | None = None,
     aggregate_reform_only: bool = False,
     aggregate_in_baseline: bool = False,
-    clone_branches: bool = False,
+    clone_branches: bool | str = False,
     stored_inputs: dict[str, tuple[str, ...]] | None = None,
 ):
     """``aggregate_reads`` maps a variable to the population aggregates its
@@ -497,35 +518,9 @@ def _materialize(builder, monkeypatch, frame, batch_size):
     return target_frame, registry, compilation, ledger
 
 
-
-
-
-
-
-
-
-
-
-
 _AGGREGATE_PROBE_TARGETS = (
     _variable("aggregate_probe_total", base_variable="aggregate_probe"),
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _second_batch_drops_a_column(real):
@@ -548,10 +543,6 @@ def _one_value_short(real):
         return result
 
     return columns
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -600,10 +591,6 @@ def _real_engine_frame() -> Frame:
     )
 
 
-
-
-
-
 def _medicaid_frame() -> Frame:
     """Four California parents with children; the first parent's earnings
     exceed the other three parents' earnings."""
@@ -640,8 +627,6 @@ def _medicaid_frame() -> Frame:
         US_SCHEMA,
         {"household": Weights(np.asarray([1.0, 2.0, 3.0, 4.0]), WeightKind.DESIGN)},
     )
-
-
 
 
 _POPULATION_AGGREGATE_MARKER = re.compile(
@@ -751,7 +736,9 @@ def _engine_population_aggregate_sources(
 # A period offset whose amount is not negative (a later month or year), and a
 # holder lookup, which can read any stored period.
 _FORWARD_PERIOD_READ = re.compile(r"\.offset\(\s*(?!-)[\w.]+")
-_HOLDER_LOOKUP = re.compile(r"\b(?:get_known_periods|get_holder|get_array)\(|\b_holders\b")
+_HOLDER_LOOKUP = re.compile(
+    r"\b(?:get_known_periods|get_holder|get_array)\(|\b_holders\b"
+)
 
 
 def _engine_forward_read_sources(
@@ -797,7 +784,9 @@ def _engine_forward_read_sources(
         grew = False
         for name, bodies in helpers.items():
             if name not in reaching and any(
-                re.search(rf"\b{other}\(", body) for body in bodies for other in reaching
+                re.search(rf"\b{other}\(", body)
+                for body in bodies
+                for other in reaching
             ):
                 reaching.add(name)
                 grew = True
@@ -816,24 +805,32 @@ def _engine_forward_read_sources(
                 continue
             found[node.name] = evidence
             if source_digests is not None:
-                sources = [body] + [text for helper in called for text in helpers[helper]]
+                sources = [body] + [
+                    text for helper in called for text in helpers[helper]
+                ]
                 source_digests[node.name] = hashlib.sha256(
                     "\n".join(sorted(sources)).encode()
                 ).hexdigest()
     return found
 
 
-# These inspected 2.2.1 formulas compare a record's status or geography with
-# parameter lists, literal lists or enum members, rather than another record.
+# These inspected formulas (read on policyengine-us 2.2.1 and again on 2.145.3)
+# compare a record's status or geography with parameter lists, literal lists or
+# enum members, rather than another record.
 _CONSTANT_MEMBERSHIP_FORMULAS = {
     "additional_senior_deduction_eligible_person",
     "ak_ccap_rate_region",
+    "ak_permanent_fund_dividend_eligible",
     "al_ccsp_region",
     "american_worker_tax_rebate_eligible",
     "ar_sra_zone",
     "ca_ala_general_assistance_immigration_status_eligible",
     "ca_calworks_child_care_immigration_status_eligible_person",
     "ca_cc_general_assistance_immigration_status_eligible",
+    "ca_liheap_covered_liquid_heating",
+    "ca_liheap_energy_burden_group",
+    "ca_liheap_utility_eligible",
+    "ca_liheap_utility_heating",
     "ca_marin_general_relief_immigration_status_eligible_person",
     "ca_oc_general_relief_immigration_status_eligible",
     "ca_riv_general_relief_immigration_status_eligible",
@@ -851,6 +848,7 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "dc_tanf_immigration_status_eligible_person",
     "ga_caps_zone",
     "id_iccp_county_cluster",
+    "id_liheap_heating_area",
     "il_aabd_area",
     "il_aabd_immigration_status_eligible_person",
     "il_ccap_county_group",
@@ -858,6 +856,7 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "il_hfs_immigration_status_eligible",
     "il_tanf_county_group",
     "il_tanf_immigration_status_eligible_person",
+    "in_eap",
     "in_ny_mctd_zone_2",
     "in_nyc",
     "is_aca_ptc_immigration_status_eligible",
@@ -865,10 +864,11 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "is_basic_health_program_immigration_status_eligible",
     "is_ca_medicaid_immigration_status_eligible",
     "is_ccdf_immigration_eligible_child",
-    "is_chip_fcep_eligible_person",
+    "is_chip_immigration_status_eligible",
     "is_citizen_or_legal_immigrant",
-    "is_in_snap_abawd_waived_area",
-    "is_medicaid_immigration_status_eligible",
+    "is_federal_medicaid_immigration_status_eligible",
+    "is_medicaid_lawfully_residing_option_eligible",
+    "is_medicare_eligible",
     "is_snap_gross_test_full_income_count_alien",
     "is_snap_immigration_status_eligible",
     "is_snap_prorated_income_member",
@@ -878,38 +878,60 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "ks_dcf_csfp_county_eligible",
     "ks_tanf_county_group",
     "ky_ccap_rate_region",
+    "local_sales_tax",
+    "local_sales_tax_table",
     "ma_ccfa_immigration_status_eligible",
     "ma_ccfa_region",
     "ma_dese_csfp_county_eligible",
     "md_ccs_region",
+    "md_meap",
     "me_ccap_region",
+    "me_heap_points",
     "meets_ctc_child_identification_requirements",
     "meets_ctc_identification_requirements",
+    "meets_snap_qualified_alien_waiting_period",
     "mo_ccs_region",
+    "mo_ssp_immigration_status_eligible",
     "ms_ccpp_facility_location",
     "mt_tanf_immigration_status_eligible_person",
     "ne_child_care_subsidy_location",
     "nh_ccap_immigration_status_eligible_person",
+    "nh_fap_heating_cost",
+    "nh_ssp_eligible",
+    "nj_liheap_region",
+    "nv_liheap_immigration_eligible",
     "ny_ccap_county_group",
+    "ny_ssp",
     "oh_ccap_county_rate_category",
     "or_healthier_oregon_immigration_status_eligible",
-    "overtime_income_deduction_ssn_requirement_met",
+    "or_liheap_region",
+    "overtime_income_deduction_eligible_person",
     "pa_ccw_region",
     "pa_ccw_stepparent_county_group",
+    "pa_liheap_matrix_amount",
     "pa_tanf_county_group",
     "sc_ccap_geography",
+    "sc_liheap",
+    "sd_cca_hourly_rate",
     "sd_cca_region",
+    "sd_liheap_region",
+    "snap_allotment_before_eligibility",
     "state_group",
     "state_itemized_deductions",
     "state_standard_deduction",
     "taxsim_state_agi",
-    "tip_income_deduction_ssn_requirement_met",
+    "tip_income_deduction_eligible_person",
     "tn_ccap_county_tier",
     "trump_dividend_eligible",
     "tx_ccs_workforce_board_region",
+    "ut_heat",
+    "ut_heat_eligible_person",
+    "va_ag_maximum_care_rate",
     "va_ccsp_income_eligible",
     "va_ccsp_locality_group",
     "va_ccsp_ready_region",
+    "va_eap_climate_zone",
+    "va_eap_eligible",
     "va_medicaid_lifc_locality_group",
     "va_tanf",
     "va_tanf_grant_standard",
@@ -919,7 +941,772 @@ _CONSTANT_MEMBERSHIP_FORMULAS = {
     "wa_tanf_immigration_status_eligible",
     "wa_wccc_center_region",
     "wa_wccc_region",
-    "wic_income_limit",
+    "wi_cts_area_i",
+    "wi_cts_child_eligible",
+}
+
+# policyengine-us 2.145.3 (US engine refresh, 17 Nov 2026). Each class below
+# was read in the installed sources; none reads another household's records.
+
+#: The fpg() guideline helper checks each record's state group against the
+#: guideline table's areas (np.isin on parameter keys).
+_FPG_GUIDELINE_FORMULAS = frozenset(
+    {
+        "ak_hap_income_factor",
+        "ar_liheap_income_limit",
+        "az_liheap_income_limit",
+        "ca_liheap_income_eligible",
+        "ca_liheap_income_group",
+        "ca_riv_liheap_eligible",
+        "co_ccap_fpg",
+        "co_leap_eligible",
+        "co_leap_income_contribution_rate",
+        "co_leap_income_limit",
+        "ct_ceap_benefit_level",
+        "ct_ceap_income_eligible",
+        "dc_liheap_eligible",
+        "de_liheap_income_eligible",
+        "fl_liheap",
+        "fl_liheap_eligible",
+        "fl_liheap_income_limit",
+        "fl_medicaid_parent_income_limit",
+        "ga_liheap_income_eligible",
+        "hi_liheap_income_limit",
+        "ia_liheap_fpg",
+        "id_liheap_income_limit",
+        "il_fpp_income_level",
+        "il_ihwap_income_eligible",
+        "in_eap_eligible",
+        "ks_liheap_income_limit",
+        "ks_tanf_gross_income_eligible",
+        "ky_liheap_fpg",
+        "la_liheap_income_eligible",
+        "ma_liheap_fpg",
+        "md_meap_fpg",
+        "md_poverty_line_credit_income_level",
+        "me_heap_income_limit",
+        "me_heap_income_multiplier",
+        "medicaid_income_level",
+        "medicaid_medically_needy_income_limit",
+        "medicaid_optional_senior_or_disabled_income_limit",
+        "mn_eap_income_limit",
+        "mo_chip_premium",
+        "mo_liheap_eligible",
+        "mo_mhf_parent_income_limit",
+        "ms_liheap_eligible",
+        "ms_medicaid_parent_income_limit",
+        "mt_liheap_income_limit",
+        "nc_lieap_income_limit",
+        "nd_liheap_share",
+        "ne_liheap_fpg",
+        "ne_liheap_payment_fpg_ratio",
+        "nh_fap",
+        "nh_fap_eligible",
+        "nj_liheap_eligible",
+        "nm_liheap",
+        "nm_liheap_income_limit",
+        "nv_liheap",
+        "nv_liheap_income_limit",
+        "ny_heap_fpg",
+        "oh_liheap_eligible",
+        "oh_liheap_income_limit",
+        "ok_liheap_income_limit",
+        "or_erdc_income_eligible",
+        "or_liheap_eligible",
+        "or_liheap_income_limit",
+        "pa_liheap_income_limit",
+        "ri_liheap_eligible",
+        "ri_liheap_income_band",
+        "sc_ccap_copay",
+        "sc_liheap_eligible",
+        "sd_liheap_income_limit",
+        "sd_liheap_income_threshold",
+        "spm_unit_fpg",
+        "tax_unit_fpg",
+        "tax_unit_medicaid_income_level",
+        "tn_liheap",
+        "tn_liheap_eligible",
+        "tn_liheap_income_limit",
+        "tn_medicaid_parent_income_limit",
+        "tx_medicaid_parent_income_limit",
+        "ut_heat_fpg",
+        "ut_medicaid_parent_income_limit",
+        "va_medicaid_lifc_income_limit",
+        "vt_liheap_fpg",
+        "vt_liheap_income_limit",
+        "wa_liheap_income_limit",
+        "wi_wheap",
+        "wi_wheap_eligible",
+        "wv_lieap_income_limit",
+        "wy_lieap_fpg",
+        "wy_medicaid_parent_income_limit",
+    }
+)
+
+#: Formulas that reach fpg() or a constant list through a program helper
+#: (Medicaid income levels, LIHEAP and SNAP income standards, the SNAP waiver
+#: areas, Alaska HAP places), with their evidence.
+_GUIDELINE_HELPER_FORMULAS: dict[str, frozenset[str]] = {
+    "aca_fpg": frozenset({"fpg()", "np.isin("}),
+    "ak_hap": frozenset({"ak_hap_award()"}),
+    "ak_hap_base_benefit": frozenset({"ak_hap_award()"}),
+    "al_liheap_cooling_income_limit": frozenset({"al_liheap_income_limit_for_lag()"}),
+    "al_liheap_income_limit": frozenset({"al_liheap_income_limit_for_lag()"}),
+    "ca_cchip_eligible": frozenset({"medicaid_income_eligible()", "np.isin("}),
+    "hi_liheap_points": frozenset({"fpg()", "np.isin("}),
+    "is_adult_for_medicaid_fc": frozenset({"medicaid_income_eligible()"}),
+    "is_chip_eligible_child": frozenset({"medicaid_income_eligible()"}),
+    "is_chip_eligible_standard_pregnant_person": frozenset(
+        {"medicaid_income_eligible()"}
+    ),
+    "is_chip_fcep_eligible_person": frozenset(
+        {"medicaid_income_eligible()", "np.isin("}
+    ),
+    "is_in_snap_abawd_waived_area": frozenset({"in_listed_abawd_waiver_area()"}),
+    "is_infant_for_medicaid_fc": frozenset({"medicaid_income_eligible()"}),
+    "is_older_child_for_medicaid_fc": frozenset({"medicaid_income_eligible()"}),
+    "is_parent_for_medicaid_fc": frozenset({"medicaid_income_eligible()"}),
+    "is_pregnant_for_medicaid_fc": frozenset({"medicaid_income_eligible()"}),
+    "is_young_adult_for_medicaid_fc": frozenset({"medicaid_income_eligible()"}),
+    "is_young_child_for_medicaid_fc": frozenset({"medicaid_income_eligible()"}),
+    "ky_liheap_cooling_eligible": frozenset({"ky_liheap_meets_income_limit()"}),
+    "ky_liheap_income_eligible": frozenset({"ky_liheap_meets_income_limit()"}),
+    "meets_snap_gross_income_test": frozenset({"snap_monthly_income_standard()"}),
+    "meets_snap_net_income_test": frozenset({"snap_monthly_income_standard()"}),
+    "meets_tanf_non_cash_net_income_test": frozenset(
+        {"snap_monthly_income_standard()"}
+    ),
+    "mt_liheap_multiplier": frozenset({"fpg()", "np.isin("}),
+    "oh_liheap": frozenset({"fpg()", "np.isin("}),
+    "oh_owf_fpg": frozenset({"fpg()", "np.isin("}),
+    "ri_medicaid_state_funded_postpartum_eligible": frozenset(
+        {"medicaid_income_eligible()"}
+    ),
+    "snap_fpg": frozenset(
+        {"_snap_fpg_context()", "fpg()", "np.isin(", "snap_monthly_fpg_amounts()"}
+    ),
+    "va_eap_cooling_income_limit": frozenset({"va_eap_annual_income_limit()"}),
+    "va_eap_income_limit": frozenset({"va_eap_annual_income_limit()"}),
+    "wic_income_limit": frozenset({"fpg()", "np.isin("}),
+}
+
+#: Social Security helpers (policyengine_us.tools.social_security*): each
+#: record's own arithmetic. np.unique groups records by eligibility year, and
+#: a COLA override is checked against the constants -1, 0 and 1. A worker link
+#: needs a *_worker_id input, which no Microcosm frame stores; an id outside
+#: the batch raises rather than reading another household.
+_SOCIAL_SECURITY_HELPER_FORMULAS: dict[str, frozenset[str]] = {
+    "social_security_dependents_cola_means_test_withheld": frozenset(
+        {"component_withholding()"}
+    ),
+    "social_security_dependents_inferred_aime": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_inferred_aime_lower_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_inferred_aime_upper_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_joint_cola_factor": frozenset(
+        {"reported_joint_cola_factor()"}
+    ),
+    "social_security_dependents_pia_ratio_claiming_adjustment": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_eligibility_year": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_factor": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_measurement_uncertainty": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_missing_claim_age": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_own_record_retired_worker": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_pre_1983": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_proxy": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_unmodeled": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_cola_means_test_withheld": frozenset(
+        {"component_withholding()"}
+    ),
+    "social_security_disability_inferred_aime": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_inferred_aime_lower_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_inferred_aime_upper_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_joint_cola_factor": frozenset(
+        {"reported_joint_cola_factor()"}
+    ),
+    "social_security_disability_pia_ratio_claiming_adjustment": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_eligibility_year": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_factor": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_measurement_uncertainty": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_missing_claim_age": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_own_record_retired_worker": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_pre_1983": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_proxy": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_unmodeled": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_cola_means_test_withheld": frozenset(
+        {"component_withholding()"}
+    ),
+    "social_security_retirement_inferred_aime": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_inferred_aime_lower_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_inferred_aime_upper_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_joint_cola_factor": frozenset(
+        {"reported_joint_cola_factor()"}
+    ),
+    "social_security_retirement_pia_ratio_claiming_adjustment": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_eligibility_year": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_factor": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_measurement_uncertainty": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_missing_claim_age": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_own_record_retired_worker": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_pre_1983": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_proxy": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_unmodeled": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_cola_means_test_withheld": frozenset(
+        {"component_withholding()"}
+    ),
+    "social_security_survivors_inferred_aime": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_inferred_aime_lower_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_inferred_aime_upper_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_joint_cola_factor": frozenset(
+        {"reported_joint_cola_factor()"}
+    ),
+    "social_security_survivors_pia_ratio_claiming_adjustment": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_eligibility_year": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_factor": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_measurement_uncertainty": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_missing_claim_age": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_own_record_retired_worker": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_pre_1983": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_proxy": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_unmodeled": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "ss_calculated_aime_lower": frozenset({"calculator_output()"}),
+    "ss_calculated_aime_upper": frozenset({"calculator_output()"}),
+    "ss_calculated_annual_entitlement": frozenset({"calculator_output()"}),
+    "ss_calculated_annual_payment": frozenset({"calculator_output()"}),
+    "ss_calculated_benefit": frozenset({"calculator_output()"}),
+    "ss_calculated_deferred_earnings_test_payment": frozenset({"calculator_output()"}),
+    "ss_calculated_earnings_test_reduction": frozenset({"calculator_output()"}),
+    "ss_calculated_eligibility_pia": frozenset({"calculator_output()"}),
+    "ss_calculated_history_aime": frozenset({"calculator_output()"}),
+    "ss_calculated_history_aime_plus": frozenset({"calculator_output()"}),
+    "ss_calculated_history_conventional_pia": frozenset({"calculator_output()"}),
+    "ss_calculated_history_ledger": frozenset({"calculator_output()"}),
+    "ss_calculated_history_mini_pia": frozenset({"calculator_output()"}),
+    "ss_calculated_payment": frozenset({"calculator_output()"}),
+    "ss_calculated_pia_lower": frozenset({"calculator_output()"}),
+    "ss_calculated_pia_upper": frozenset({"calculator_output()"}),
+    "ss_calculated_retirement": frozenset({"calculator_output()"}),
+    "ss_calculated_survivors": frozenset({"calculator_output()"}),
+}
+
+#: Parent links (policyengine-us _parent_links.py) resolve parent_1_id and
+#: parent_2_id among the person's household (or tax unit) members only, so
+#: np.bincount counts co-residents; SSI deeming pools and Wisconsin CTS units
+#: are keyed by co-resident rows.
+_PARENT_LINK_FORMULAS: dict[str, frozenset[str]] = {
+    "ca_capi_countable_income": frozenset({"ssi_parental_deemed_income()"}),
+    "co_state_supplement_deemed_income": frozenset({"unlinked_parent()"}),
+    "ia_ssa_income_deemed_from_parents": frozenset(
+        {"_ssi_parental_resource_pool()", "np.bincount("}
+    ),
+    "ia_ssa_resources_deemed_from_parents": frozenset(
+        {"_ssi_parental_resource_pool()", "np.bincount("}
+    ),
+    "is_optional_senior_or_disabled_asset_eligible": frozenset(
+        {"_ssi_parental_resource_pool()", "unlinked_parent()"}
+    ),
+    "is_parent": frozenset({"linked_child_count()"}),
+    "is_ssi_ineligible_parent": frozenset({"is_parent_of_any()"}),
+    "medicaid_optional_senior_or_disabled_unearned_income_deemed_from_ineligible_parent_monthly": frozenset(
+        {"is_parent_of_any()", "ssi_parental_child_allocation_total()"}
+    ),
+    "medicaid_parental_medical_expense_share": frozenset({"is_parent_of_any()"}),
+    "medicaid_tax_dependent_exception_living_with_both_parents": frozenset(
+        {"unlinked_parent()"}
+    ),
+    "mo_tanf_is_parent_of_dependent_child": frozenset({"np.bincount("}),
+    "nh_ssp_resources_deemed_from_parents": frozenset(
+        {"_ssi_parental_resource_pool()"}
+    ),
+    "nh_ssp_unearned_income_deemed_from_ineligible_parent": frozenset(
+        {"ssi_parental_deemed_income()"}
+    ),
+    "ok_ssp_unearned_income_deemed_from_ineligible_parent": frozenset(
+        {"ssi_parental_deemed_income()"}
+    ),
+    "ssi_resources_deemed_from_ineligible_parent": frozenset(
+        {"_ssi_parental_resource_pool()", "np.bincount("}
+    ),
+    "ssi_spousal_deeming_child_allocations": frozenset({"unlinked_parent()"}),
+    "ssi_unearned_income_deemed_from_ineligible_parent_monthly": frozenset(
+        {"ssi_parental_deemed_income()"}
+    ),
+    "wi_cts": frozenset({"cts_filing_unit()", "cts_financial_test()"}),
+    "wi_cts_buening_member": frozenset({"cts_filing_unit()"}),
+    "wi_cts_caretaker_children": frozenset({"np.bincount("}),
+    "wi_cts_sfu_member": frozenset({"cts_filing_unit()"}),
+    "wi_works_custodial_parent": frozenset({"np.bincount("}),
+}
+
+#: Population-weighted sales-tax rates by locality: group sums over the
+#: packaged rate schedule, not over records.
+_PACKAGE_DATA_FORMULAS: dict[str, frozenset[str]] = {
+    "combined_sales_tax_rate": frozenset({"locality_sales_tax_rates()"}),
+    "local_sales_tax_rate": frozenset({"state_general_sales_tax_rates()"}),
+}
+
+#: Same-period reads: whether the period asked holds a supplied input
+#: (has_input_for_period; annual_input for the year holding the month asked),
+#: branch bookkeeping that drops calculated arrays and sets overrides at the
+#: period asked, and reads of supplied inputs at that period.
+_SAME_PERIOD_READ_FORMULAS: dict[str, frozenset[str]] = {
+    "aca_ptc_coverage_family_premium": frozenset(
+        {"benchmark_premium()", "has_input_for_period()"}
+    ),
+    "aca_ptc_slcsp": frozenset({"benchmark_premium()"}),
+    "aca_ptc_slcsp_family_tier_category": frozenset({"family_tier_category()"}),
+    "aca_ptc_slcsp_family_tier_multiplier": frozenset({"family_tier_multiplier()"}),
+    "al_federal_income_tax_deduction": frozenset({"get_branch_for_period()"}),
+    "ca_capi_countable_income": frozenset({"annual_input()"}),
+    "ca_wdp_income_eligible": frozenset({"ca_wdp_annual_spousal_deeming_applies()"}),
+    "ca_wdp_ssi_ssp_income_eligible": frozenset(
+        {"ca_wdp_annual_spousal_deeming_applies()"}
+    ),
+    "capital_gains_behavioral_response": frozenset(
+        {"get_behavioral_response_measurements()"}
+    ),
+    "co_adult_financial_medicaid_enrolled": frozenset({"get_override_branch()"}),
+    "combined_sales_tax_rate": frozenset({"sales_tax_location()"}),
+    "de_income_tax_if_claiming_non_refundable_eitc": frozenset(
+        {"get_override_branch()"}
+    ),
+    "de_income_tax_if_claiming_refundable_eitc": frozenset({"get_override_branch()"}),
+    "dependent_traditional_ira_deduction": frozenset(
+        {"traditional_ira_contributions_without_spousal_rule()"}
+    ),
+    "federal_marginal_tax_rate": frozenset({"compute_component_mtr()"}),
+    "fica_marginal_tax_rate": frozenset({"compute_component_mtr()"}),
+    "hi_income_tax_if_claiming_claim_of_right_credit": frozenset(
+        {"get_override_branch()"}
+    ),
+    "hi_income_tax_if_claiming_claim_of_right_deduction": frozenset(
+        {"get_override_branch()"}
+    ),
+    "id_health_insurance_premiums_medical_deduction": frozenset(
+        {"has_input_for_period()"}
+    ),
+    "id_income_tax_if_receiving_aged_or_disabled_credit": frozenset(
+        {"get_override_branch()"}
+    ),
+    "id_income_tax_if_receiving_aged_or_disabled_deduction": frozenset(
+        {"get_override_branch()"}
+    ),
+    "id_itemized_deductions": frozenset({"has_input_for_period()"}),
+    "income_elasticity_lsr": frozenset({"calculate_income_lsr_effect()"}),
+    "income_tax_if_claiming_claim_of_right_credit": frozenset(
+        {"get_override_branch()"}
+    ),
+    "income_tax_if_claiming_claim_of_right_deduction": frozenset(
+        {"get_override_branch()"}
+    ),
+    "income_tax_with_pre_1993_social_security": frozenset(
+        {"income_tax_with_social_security_override()"}
+    ),
+    "income_tax_without_social_security": frozenset(
+        {"income_tax_with_social_security_override()"}
+    ),
+    "ira_contribution_limit": frozenset({"supplied_ira_contributions()"}),
+    "ira_contribution_scale": frozenset({"supplied_ira_contributions()"}),
+    "is_aca_filer": frozenset({"has_input_for_period()"}),
+    "is_aca_marketplace_enrollee": frozenset({"has_input_for_period()"}),
+    "is_ssi_ineligible_parent": frozenset(
+        {
+            "_ssi_parent_supplement_level()",
+            "ssi_budget_spousal_deeming_applies()",
+            "ssi_income_deemed_from_ineligible_spouse_without_ism()",
+        }
+    ),
+    "is_ssi_spousal_deeming_applies_monthly": frozenset({"annual_input()"}),
+    "is_tax_unit_head": frozenset({"head_or_spouse_candidates()"}),
+    "is_tax_unit_spouse": frozenset({"head_or_spouse_candidates()"}),
+    "itemized_medical_expenses_applied_exclusion": frozenset(
+        {"has_input_for_period()"}
+    ),
+    "itemized_medical_expenses_long_term_care_premiums": frozenset(
+        {"has_input_for_period()"}
+    ),
+    "labor_supply_behavioral_response": frozenset(
+        {
+            "calculate_income_lsr_effect()",
+            "calculate_substitution_lsr_effect()",
+            "get_behavioral_response_measurements()",
+        }
+    ),
+    "local_sales_tax_table": frozenset({"sales_tax_location()"}),
+    "marginal_tax_rate": frozenset({"marginal_earnings_change()"}),
+    "marginal_tax_rate_including_health_benefits": frozenset(
+        {"marginal_earnings_change()"}
+    ),
+    "marginal_tax_rate_on_capital_gains": frozenset(
+        {"create_perturbed_branch()", "has_input()"}
+    ),
+    "medicaid_enrolled_for_ssi_state_supplement": frozenset(
+        {"get_array(", "get_override_branch()"}
+    ),
+    "medicaid_medically_needy_uses_couple_standard": frozenset(
+        {"uses_couple_standard()"}
+    ),
+    "medicaid_optional_senior_or_disabled_countable_income_monthly": frozenset(
+        {"annual_input()"}
+    ),
+    "medicaid_optional_senior_or_disabled_income_deemed_from_ineligible_spouse_monthly": frozenset(
+        {"annual_input()"}
+    ),
+    "medicaid_optional_senior_or_disabled_unearned_income_deemed_from_ineligible_parent_monthly": frozenset(
+        {"annual_input()"}
+    ),
+    "medicaid_optional_senior_or_disabled_uses_couple_standard": frozenset(
+        {"uses_couple_standard()"}
+    ),
+    "mo_tanf_if_non_parent_caretaker_excluded": frozenset({"get_override_branch()"}),
+    "mo_tanf_if_non_parent_caretaker_included": frozenset({"get_override_branch()"}),
+    "mt_medical_expense_deduction_joint": frozenset({"has_input_for_period()"}),
+    "nd_renters_refund_income": frozenset({"has_input_for_period()"}),
+    "nh_ssp_unearned_income_deemed_from_ineligible_parent": frozenset(
+        {"annual_input()"}
+    ),
+    "nj_medical_expense_deduction": frozenset({"has_input_for_period()"}),
+    "nm_medical_expense_credit": frozenset({"has_input_for_period()"}),
+    "nm_medical_expense_exemption": frozenset({"has_input_for_period()"}),
+    "ny_ctc_pre_2024": frozenset(
+        {"get_branch_for_period()", "get_ny_recomputed_branch()"}
+    ),
+    "ny_ctc_pre_2024_eligible": frozenset({"get_branch_for_period()"}),
+    "ny_eitc": frozenset({"get_branch_for_period()", "get_ny_recomputed_branch()"}),
+    "nyc_eitc": frozenset({"get_ny_recomputed_branch()"}),
+    "ok_ssp_unearned_income_deemed_from_ineligible_parent": frozenset(
+        {"annual_input()"}
+    ),
+    "owners_draw_active_income": frozenset({"_draw()"}),
+    "owners_draw_credited_earnings": frozenset({"_draw()"}),
+    "owners_draw_gross": frozenset({"_draw()"}),
+    "owners_draw_hi_tax": frozenset({"_draw()"}),
+    "owners_draw_net_earnings": frozenset({"_draw()"}),
+    "owners_draw_net_earnings_factor": frozenset({"_draw()"}),
+    "owners_draw_niit_exclusion": frozenset({"_draw()"}),
+    "owners_draw_oasdi_base": frozenset({"_draw()"}),
+    "owners_draw_oasdi_room": frozenset({"_draw()"}),
+    "owners_draw_oasdi_tax": frozenset({"_draw()"}),
+    "owners_draw_planned_gross": frozenset({"_draw()"}),
+    "relative_capital_gains_mtr_change": frozenset(
+        {"get_behavioral_response_measurements()"}
+    ),
+    "relative_income_change": frozenset({"get_behavioral_response_measurements()"}),
+    "relative_wage_change": frozenset({"get_behavioral_response_measurements()"}),
+    "slcsp_age_curve_amount_person_uncapped": frozenset({"has_input_for_period()"}),
+    "slcsp_family_tier_category": frozenset({"family_tier_category()"}),
+    "slcsp_family_tier_multiplier": frozenset({"family_tier_multiplier()"}),
+    "ssi_countable_income_monthly": frozenset({"annual_input()"}),
+    "ssi_earned_income_deemed_from_ineligible_spouse_monthly": frozenset(
+        {"annual_input()"}
+    ),
+    "ssi_in_kind_support_and_maintenance_monthly": frozenset({"annual_input()"}),
+    "ssi_income_deemed_from_ineligible_spouse_monthly": frozenset({"annual_input()"}),
+    "ssi_ineligible_child_allocation_monthly": frozenset({"annual_input()"}),
+    "ssi_ineligible_parent_allocation": frozenset({"_ssi_parent_supplement_level()"}),
+    "ssi_pmv_amount_monthly": frozenset({"annual_input()"}),
+    "ssi_unearned_income_deemed_from_ineligible_parent_monthly": frozenset(
+        {"annual_input()"}
+    ),
+    "ssi_unearned_income_deemed_from_ineligible_spouse_monthly": frozenset(
+        {"annual_input()"}
+    ),
+    "state_marginal_tax_rate": frozenset({"compute_component_mtr()"}),
+    "substitution_elasticity_lsr": frozenset({"calculate_substitution_lsr_effect()"}),
+    "tax_liability_if_itemizing": frozenset({"get_itemization_branch()"}),
+    "tax_liability_if_not_itemizing": frozenset({"get_itemization_branch()"}),
+    "tax_unit_itemizes": frozenset({"get_itemization_branch()"}),
+    "va_income_tax_if_claiming_non_refundable_eitc": frozenset(
+        {"get_override_branch()"}
+    ),
+    "va_income_tax_if_claiming_refundable_eitc": frozenset({"get_override_branch()"}),
+}
+
+#: Social Security reported and calculator helpers: same-period input checks.
+#: The calculator may also check a supplied ss_calculator_* record for the
+#: next payment year; no Microcosm frame stores one.
+_SOCIAL_SECURITY_PERIOD_FORMULAS: dict[str, frozenset[str]] = {
+    "social_security_dependents_cola_means_test_withheld": frozenset(
+        {"component_withholding()"}
+    ),
+    "social_security_dependents_inferred_aime": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_inferred_aime_lower_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_inferred_aime_upper_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_joint_cola_factor": frozenset(
+        {"reported_joint_cola_factor()"}
+    ),
+    "social_security_dependents_pia_ratio_claiming_adjustment": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_eligibility_year": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_factor": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_measurement_uncertainty": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_missing_claim_age": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_own_record_retired_worker": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_pre_1983": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_proxy": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_dependents_pia_ratio_unmodeled": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_cola_means_test_withheld": frozenset(
+        {"component_withholding()"}
+    ),
+    "social_security_disability_inferred_aime": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_inferred_aime_lower_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_inferred_aime_upper_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_joint_cola_factor": frozenset(
+        {"reported_joint_cola_factor()"}
+    ),
+    "social_security_disability_pia_ratio_claiming_adjustment": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_eligibility_year": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_factor": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_measurement_uncertainty": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_missing_claim_age": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_own_record_retired_worker": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_pre_1983": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_proxy": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_disability_pia_ratio_unmodeled": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_cola_means_test_withheld": frozenset(
+        {"component_withholding()"}
+    ),
+    "social_security_retirement_inferred_aime": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_inferred_aime_lower_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_inferred_aime_upper_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_joint_cola_factor": frozenset(
+        {"reported_joint_cola_factor()"}
+    ),
+    "social_security_retirement_pia_ratio_claiming_adjustment": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_eligibility_year": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_factor": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_measurement_uncertainty": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_missing_claim_age": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_own_record_retired_worker": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_pre_1983": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_proxy": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_retirement_pia_ratio_unmodeled": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_cola_means_test_withheld": frozenset(
+        {"component_withholding()"}
+    ),
+    "social_security_survivors_inferred_aime": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_inferred_aime_lower_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_inferred_aime_upper_bound": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_joint_cola_factor": frozenset(
+        {"reported_joint_cola_factor()"}
+    ),
+    "social_security_survivors_pia_ratio_claiming_adjustment": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_eligibility_year": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_factor": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_measurement_uncertainty": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_missing_claim_age": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_own_record_retired_worker": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_pre_1983": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_proxy": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "social_security_survivors_pia_ratio_unmodeled": frozenset(
+        {"reported_pia_ratio_output()"}
+    ),
+    "ss_calculated_aime_lower": frozenset({"calculator_output()"}),
+    "ss_calculated_aime_upper": frozenset({"calculator_output()"}),
+    "ss_calculated_annual_entitlement": frozenset({"calculator_output()"}),
+    "ss_calculated_annual_payment": frozenset({"calculator_output()"}),
+    "ss_calculated_benefit": frozenset({"calculator_output()"}),
+    "ss_calculated_deferred_earnings_test_payment": frozenset({"calculator_output()"}),
+    "ss_calculated_earnings_test_reduction": frozenset({"calculator_output()"}),
+    "ss_calculated_eligibility_pia": frozenset({"calculator_output()"}),
+    "ss_calculated_history_aime": frozenset({"calculator_output()"}),
+    "ss_calculated_history_aime_plus": frozenset({"calculator_output()"}),
+    "ss_calculated_history_conventional_pia": frozenset({"calculator_output()"}),
+    "ss_calculated_history_ledger": frozenset({"calculator_output()"}),
+    "ss_calculated_history_mini_pia": frozenset({"calculator_output()"}),
+    "ss_calculated_payment": frozenset({"calculator_output()"}),
+    "ss_calculated_pia_lower": frozenset({"calculator_output()"}),
+    "ss_calculated_pia_upper": frozenset({"calculator_output()"}),
+    "ss_calculated_retirement": frozenset({"calculator_output()"}),
+    "ss_calculated_survivors": frozenset({"calculator_output()"}),
 }
 
 __all__ = [name for name in globals() if not name.startswith("__")]

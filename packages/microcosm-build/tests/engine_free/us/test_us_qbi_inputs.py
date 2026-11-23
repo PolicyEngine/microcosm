@@ -453,12 +453,16 @@ def test_asec_channel_policy_is_explicit_and_reconciliation_is_idempotent() -> N
 
     assert not asec["business_is_sstb"].any()
     assert not asec["sstb_self_employment_income_would_be_qualified"].any()
+    # The ASEC channel keeps PolicyEngine-US's qualification defaults:
+    # policyengine-us 2.145.3 defaults estate income to non-qualified.
     for column in US_QBI_BOOLEAN_OUTPUT_COLUMNS:
         if column not in {
             "business_is_sstb",
             "sstb_self_employment_income_would_be_qualified",
         }:
-            assert asec[column].all()
+            expected = US_QBI_ASEC_QUALIFICATION_DEFAULTS[column]
+            assert (asec[column] == expected).all(), column
+    assert not asec["estate_income_would_be_qualified"].any()
     pd.testing.assert_frame_equal(first.table("person"), second.table("person"))
 
 

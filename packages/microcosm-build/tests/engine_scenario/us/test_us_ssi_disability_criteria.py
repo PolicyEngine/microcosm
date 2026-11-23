@@ -4,10 +4,10 @@
 from test_support.microcosm_build.us_ssi_disability_criteria import *
 
 
-def test_policyengine_us_2_2_1_ssi_is_positive_then_zero_when_neutralized() -> None:
+def test_policyengine_us_2_145_3_ssi_is_positive_then_zero_when_neutralized() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "2.2.1"
+    assert version("policyengine-us") == "2.145.3"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"

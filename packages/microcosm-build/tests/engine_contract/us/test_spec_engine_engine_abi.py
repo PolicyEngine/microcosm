@@ -21,10 +21,10 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
     )
     assert payload["engine"] == {
         "package": "policyengine-us",
-        "version": "2.2.1",
+        "version": "2.145.3",
     }
-    assert len(payload["programs"]) == 17
-    assert len({row["variable"] for row in payload["programs"].values()}) == 17
+    assert len(payload["programs"]) == 21
+    assert len({row["variable"] for row in payload["programs"].values()}) == 21
     assert all(
         set(row)
         == {
@@ -38,15 +38,15 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
         for row in payload["programs"].values()
     )
     remaining = payload["remaining_stage_input_manifest"]
-    assert len(remaining["rows"]) == 1059
-    assert remaining["receipt"]["entry_count"] == 1059
+    assert len(remaining["rows"]) == 2106
+    assert remaining["receipt"]["entry_count"] == 2106
     assert remaining["receipt"]["stage_counts"] == {
         "derive": 34,
-        "seed": 33,
-        "simulate": 992,
+        "seed": 37,
+        "simulate": 2035,
     }
     assert remaining["receipt"]["manifest_sha256"] == (
-        "d4fb9de9c0b8081474a24d0abde84ebf05eb346483fc20e3852e29abc769a501"
+        "3bd50a8db708f3c08aecf14277a549d82c85fd9c88fc60b441ab8750de531879"
     )
     assert (
         remaining["receipt"]["ssi_dependency_contract"]["engine_version_ref"]

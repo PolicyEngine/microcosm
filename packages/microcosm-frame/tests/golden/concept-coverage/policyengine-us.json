@@ -237,6 +237,10 @@
    },
    {
     "entity": "person",
+    "name": "takes_up_ak_permanent_fund_dividend_if_eligible"
+   },
+   {
+    "entity": "person",
     "name": "takes_up_basic_health_program_if_eligible"
    },
    {
@@ -250,6 +254,10 @@
    {
     "entity": "tax_unit",
     "name": "takes_up_co_premium_assistance_if_eligible"
+   },
+   {
+    "entity": "person",
+    "name": "takes_up_csfp_if_eligible"
    },
    {
     "entity": "tax_unit",
@@ -280,8 +288,16 @@
     "name": "takes_up_medicare_if_eligible"
    },
    {
+    "entity": "person",
+    "name": "takes_up_medicare_part_d_if_eligible"
+   },
+   {
     "entity": "tax_unit",
     "name": "takes_up_nm_premium_assistance_if_eligible"
+   },
+   {
+    "entity": "spm_unit",
+    "name": "takes_up_school_meals_if_eligible"
    },
    {
     "entity": "spm_unit",
@@ -321,7 +337,7 @@
    }
   ]
  },
- "covered_count": 55,
+ "covered_count": 59,
  "covered_inputs": [
   {
    "entity": "person",
@@ -445,6 +461,10 @@
   },
   {
    "entity": "person",
+   "name": "takes_up_ak_permanent_fund_dividend_if_eligible"
+  },
+  {
+   "entity": "person",
    "name": "takes_up_basic_health_program_if_eligible"
   },
   {
@@ -458,6 +478,10 @@
   {
    "entity": "tax_unit",
    "name": "takes_up_co_premium_assistance_if_eligible"
+  },
+  {
+   "entity": "person",
+   "name": "takes_up_csfp_if_eligible"
   },
   {
    "entity": "tax_unit",
@@ -488,8 +512,16 @@
    "name": "takes_up_medicare_if_eligible"
   },
   {
+   "entity": "person",
+   "name": "takes_up_medicare_part_d_if_eligible"
+  },
+  {
    "entity": "tax_unit",
    "name": "takes_up_nm_premium_assistance_if_eligible"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "takes_up_school_meals_if_eligible"
   },
   {
    "entity": "spm_unit",
@@ -545,8 +577,8 @@
   }
  ],
  "engine": "policyengine-us",
- "engine_version": "2.2.1",
- "input_count": 926,
+ "engine_version": "2.145.3",
+ "input_count": 1334,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {
@@ -632,6 +664,10 @@
    "name": "ak_ccap_provider_type"
   },
   {
+   "entity": "spm_unit",
+   "name": "ak_hap_dwelling_type"
+  },
+  {
    "entity": "person",
    "name": "ak_resides_in_assisted_living_home"
   },
@@ -662,6 +698,18 @@
   {
    "entity": "tax_unit",
    "name": "al_non_refundable_credits"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "al_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "al_other_federal_payment_credits"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "al_other_subtractions"
   },
   {
    "entity": "person",
@@ -732,8 +780,20 @@
    "name": "amt_non_agi_income"
   },
   {
+   "entity": "person",
+   "name": "ar_claim_of_right_repayment_excluded_from_income"
+  },
+  {
    "entity": "spm_unit",
    "name": "ar_months_since_tea_exit"
+  },
+  {
+   "entity": "person",
+   "name": "ar_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "ar_other_subtractions"
   },
   {
    "entity": "person",
@@ -768,10 +828,6 @@
    "name": "az_530a_distribution"
   },
   {
-   "entity": "tax_unit",
-   "name": "az_additions"
-  },
-  {
    "entity": "spm_unit",
    "name": "az_ccap_enrolled"
   },
@@ -790,6 +846,18 @@
   {
    "entity": "tax_unit",
    "name": "az_charitable_contributions_to_qualifying_foster_care_organizations"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "az_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "az_other_state_unemployment_compensation"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "az_other_subtractions"
   },
   {
    "entity": "person",
@@ -857,6 +925,22 @@
   },
   {
    "entity": "spm_unit",
+   "name": "ca_liheap_approved_wood_delivery_cost"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ca_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ca_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "ca_out_of_state_municipal_bond_interest"
+  },
+  {
+   "entity": "spm_unit",
    "name": "ca_riv_share_eligible_for_emergency_payment"
   },
   {
@@ -917,11 +1001,31 @@
   },
   {
    "entity": "person",
+   "name": "charitable_capital_gain_donations_50_pct_orgs"
+  },
+  {
+   "entity": "person",
+   "name": "charitable_capital_gain_donations_non_50_pct_orgs"
+  },
+  {
+   "entity": "person",
    "name": "charitable_cash_donations"
   },
   {
    "entity": "person",
+   "name": "charitable_cash_donations_50_pct_orgs"
+  },
+  {
+   "entity": "person",
+   "name": "charitable_cash_donations_non_50_pct_orgs"
+  },
+  {
+   "entity": "person",
    "name": "charitable_non_cash_donations"
+  },
+  {
+   "entity": "person",
+   "name": "charitable_non_cash_donations_50_pct_orgs"
   },
   {
    "entity": "person",
@@ -950,6 +1054,14 @@
   {
    "entity": "person",
    "name": "childcare_provider_type_group"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "claim_of_right_prior_year_tax_decrease"
+  },
+  {
+   "entity": "person",
+   "name": "claim_of_right_repayment"
   },
   {
    "entity": "person",
@@ -984,8 +1096,20 @@
    "name": "co_greenwood_village_employee_occupational_privilege_tax_months"
   },
   {
+   "entity": "spm_unit",
+   "name": "co_leap_dwelling_type"
+  },
+  {
    "entity": "tax_unit",
    "name": "co_non_refundable_credits"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "co_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "co_other_subtractions"
   },
   {
    "entity": "tax_unit",
@@ -1006,6 +1130,10 @@
   {
    "entity": "tax_unit",
    "name": "cohabitating_spouses"
+  },
+  {
+   "entity": "person",
+   "name": "collectibles_gain_or_loss"
   },
   {
    "entity": "household",
@@ -1046,6 +1174,14 @@
   {
    "entity": "person",
    "name": "ct_c4k_provider_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ct_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ct_other_subtractions"
   },
   {
    "entity": "tax_unit",
@@ -1101,7 +1237,23 @@
   },
   {
    "entity": "person",
-   "name": "de_additions"
+   "name": "dc_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "dc_other_subtractions"
+  },
+  {
+   "entity": "marital_unit",
+   "name": "de_medicaid_ltss_post_six_month_budget_election"
+  },
+  {
+   "entity": "person",
+   "name": "de_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "de_other_subtractions"
   },
   {
    "entity": "spm_unit",
@@ -1125,7 +1277,19 @@
   },
   {
    "entity": "person",
+   "name": "deceased_spousal_unused_exclusion_amount"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "dependent_care_assistance_qualified_expenses"
+  },
+  {
+   "entity": "person",
    "name": "dependent_care_employer_benefits"
+  },
+  {
+   "entity": "person",
+   "name": "dependent_claimant_filing_exception"
   },
   {
    "entity": "person",
@@ -1138,6 +1302,10 @@
   {
    "entity": "person",
    "name": "disability_benefits"
+  },
+  {
+   "entity": "person",
+   "name": "disability_benefits_before_minimum_retirement_age"
   },
   {
    "entity": "person",
@@ -1292,6 +1460,18 @@
    "name": "educator_expense"
   },
   {
+   "entity": "person",
+   "name": "eitc_child_lived_with_taxpayer_more_than_half_year"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "eitc_legal_separation_and_apart_at_year_end"
+  },
+  {
+   "entity": "person",
+   "name": "eitc_passive_income_also_in_earned_income"
+  },
+  {
    "entity": "tax_unit",
    "name": "electric_heat_pump_clothes_dryer_expenditures"
   },
@@ -1330,6 +1510,10 @@
   {
    "entity": "person",
    "name": "employer_sponsored_insurance_premiums"
+  },
+  {
+   "entity": "person",
+   "name": "employer_state_payroll_premium_deduction_share"
   },
   {
    "entity": "person",
@@ -1445,7 +1629,15 @@
   },
   {
    "entity": "person",
+   "name": "estate_income_net_investment_income_adjustment"
+  },
+  {
+   "entity": "person",
    "name": "estate_income_would_be_qualified"
+  },
+  {
+   "entity": "person",
+   "name": "estate_royalty_income"
   },
   {
    "entity": "tax_unit",
@@ -1481,6 +1673,30 @@
   },
   {
    "entity": "person",
+   "name": "federal_ffel_loan_balance"
+  },
+  {
+   "entity": "person",
+   "name": "federal_parent_plus_loan_balance"
+  },
+  {
+   "entity": "person",
+   "name": "federal_parent_plus_loan_is_consolidated"
+  },
+  {
+   "entity": "person",
+   "name": "federal_student_loan_balance"
+  },
+  {
+   "entity": "person",
+   "name": "federal_student_loan_graduate_share"
+  },
+  {
+   "entity": "person",
+   "name": "federal_student_loan_interest_rate"
+  },
+  {
+   "entity": "person",
    "name": "financial_assistance"
   },
   {
@@ -1489,11 +1705,11 @@
   },
   {
    "entity": "tax_unit",
-   "name": "first_home_mortgage_interest"
+   "name": "first_home_mortgage_origination_year"
   },
   {
    "entity": "tax_unit",
-   "name": "first_home_mortgage_origination_year"
+   "name": "first_home_non_acquisition_debt"
   },
   {
    "entity": "person",
@@ -1513,7 +1729,23 @@
   },
   {
    "entity": "tax_unit",
-   "name": "foreign_earned_income_exclusion"
+   "name": "foreign_earned_income_exclusion_allocable_deductions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "foreign_earned_income_exclusion_amount"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "foreign_earned_income_exclusion_disallowed_deductions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "foreign_housing_deduction"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "foreign_housing_exclusion"
   },
   {
    "entity": "tax_unit",
@@ -1566,6 +1798,18 @@
   {
    "entity": "tax_unit",
    "name": "ga_itemized_deductions_adjustment"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ga_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ga_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "ga_rla_hourly_component_overtime"
   },
   {
    "entity": "person",
@@ -1638,6 +1882,10 @@
   {
    "entity": "person",
    "name": "has_esi"
+  },
+  {
+   "entity": "person",
+   "name": "has_federal_student_loan_made_on_or_after_2026_07_01"
   },
   {
    "entity": "person",
@@ -1717,6 +1965,10 @@
   },
   {
    "entity": "person",
+   "name": "health_savings_account_ald_person"
+  },
+  {
+   "entity": "person",
    "name": "health_savings_account_payroll_contributions"
   },
   {
@@ -1752,8 +2004,24 @@
    "name": "hi_ccap_provider_category"
   },
   {
+   "entity": "tax_unit",
+   "name": "hi_claim_of_right_prior_year_tax_decrease"
+  },
+  {
+   "entity": "person",
+   "name": "hi_claim_of_right_repayment_excluded_from_income"
+  },
+  {
    "entity": "person",
    "name": "hi_oss_care_facility_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "hi_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "hi_other_subtractions"
   },
   {
    "entity": "tax_unit",
@@ -1766,6 +2034,10 @@
   {
    "entity": "person",
    "name": "home_is_on_agricultural_land"
+  },
+  {
+   "entity": "person",
+   "name": "home_mortgage_points"
   },
   {
    "entity": "spm_unit",
@@ -1861,11 +2133,59 @@
   },
   {
    "entity": "person",
-   "name": "id_aabd_living_arrangement"
+   "name": "ia_dependent_claimant_filing_status"
   },
   {
-   "entity": "tax_unit",
-   "name": "id_additions"
+   "entity": "person",
+   "name": "ia_dependent_claimant_net_income"
+  },
+  {
+   "entity": "person",
+   "name": "ia_dependent_claimant_spouse_net_income"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ia_liheap_dwelling_type"
+  },
+  {
+   "entity": "person",
+   "name": "ia_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "ia_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "ia_ssa_category"
+  },
+  {
+   "entity": "person",
+   "name": "ia_ssa_dependent_countable_income"
+  },
+  {
+   "entity": "person",
+   "name": "ia_ssa_ihhrc_monthly_cost"
+  },
+  {
+   "entity": "person",
+   "name": "ia_ssa_rcf_daily_rate"
+  },
+  {
+   "entity": "person",
+   "name": "ia_ssa_rcf_received_ssi_before_entry"
+  },
+  {
+   "entity": "person",
+   "name": "ia_ssa_rcf_shares_room_with_spouse"
+  },
+  {
+   "entity": "person",
+   "name": "ia_ssa_smme_coverage_eligible"
+  },
+  {
+   "entity": "person",
+   "name": "id_aabd_living_arrangement"
   },
   {
    "entity": "spm_unit",
@@ -1874,6 +2194,14 @@
   {
    "entity": "person",
    "name": "id_iccp_provider_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "id_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "id_other_subtractions"
   },
   {
    "entity": "spm_unit",
@@ -1909,19 +2237,19 @@
   },
   {
    "entity": "tax_unit",
+   "name": "il_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "il_other_subtractions"
+  },
+  {
+   "entity": "tax_unit",
    "name": "il_pass_through_entity_tax_credit"
   },
   {
    "entity": "tax_unit",
    "name": "il_pass_through_withholding"
-  },
-  {
-   "entity": "tax_unit",
-   "name": "il_schedule_m_additions"
-  },
-  {
-   "entity": "tax_unit",
-   "name": "il_schedule_m_subtractions"
   },
   {
    "entity": "person",
@@ -1948,12 +2276,24 @@
    "name": "in_ccdf_ptq_level"
   },
   {
+   "entity": "person",
+   "name": "in_claim_of_right_repayment_excluded_from_income"
+  },
+  {
    "entity": "household",
    "name": "in_denver"
   },
   {
+   "entity": "spm_unit",
+   "name": "in_eap_dwelling_type"
+  },
+  {
    "entity": "tax_unit",
    "name": "in_healthcare_sharing_deduction"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "in_homestead_referendum_property_tax"
   },
   {
    "entity": "tax_unit",
@@ -1969,11 +2309,11 @@
   },
   {
    "entity": "tax_unit",
-   "name": "in_other_add_backs"
+   "name": "in_other_additions"
   },
   {
    "entity": "tax_unit",
-   "name": "in_other_deductions"
+   "name": "in_other_subtractions"
   },
   {
    "entity": "person",
@@ -2113,6 +2453,10 @@
   },
   {
    "entity": "person",
+   "name": "is_homeless_child"
+  },
+  {
+   "entity": "person",
    "name": "is_hospitalized_for_medicaid_ce"
   },
   {
@@ -2162,6 +2506,10 @@
   {
    "entity": "person",
    "name": "is_incarcerated"
+  },
+  {
+   "entity": "person",
+   "name": "is_income_based_repayment_new_borrower"
   },
   {
    "entity": "person",
@@ -2249,6 +2597,10 @@
   },
   {
    "entity": "person",
+   "name": "is_separated_under_decree"
+  },
+  {
+   "entity": "person",
    "name": "is_severely_disabled"
   },
   {
@@ -2266,6 +2618,10 @@
   {
    "entity": "person",
    "name": "is_snap_employment_training_student"
+  },
+  {
+   "entity": "person",
+   "name": "is_snap_lpr_in_waiting_period_exempt_category"
   },
   {
    "entity": "person",
@@ -2305,6 +2661,10 @@
   },
   {
    "entity": "person",
+   "name": "is_under_court_supervision"
+  },
+  {
+   "entity": "person",
    "name": "is_union_member_or_covered"
   },
   {
@@ -2332,20 +2692,36 @@
    "name": "keogh_distributions"
   },
   {
-   "entity": "tax_unit",
-   "name": "ks_additions"
-  },
-  {
    "entity": "person",
    "name": "ks_ccap_provider_type"
   },
   {
-   "entity": "person",
-   "name": "ky_additions"
+   "entity": "spm_unit",
+   "name": "ks_liheap_dwelling_type"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ks_liheap_utility_rate_tier"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ks_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ks_other_subtractions"
   },
   {
    "entity": "person",
    "name": "ky_ccap_provider_type"
+  },
+  {
+   "entity": "person",
+   "name": "ky_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "ky_other_subtractions"
   },
   {
    "entity": "tax_unit",
@@ -2384,6 +2760,14 @@
    "name": "la_general_relief_recipient"
   },
   {
+   "entity": "tax_unit",
+   "name": "la_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "la_other_subtractions"
+  },
+  {
    "entity": "person",
    "name": "la_quality_rating_of_child_care_facility"
   },
@@ -2398,6 +2782,10 @@
   {
    "entity": "person",
    "name": "life_insurance_benefits"
+  },
+  {
+   "entity": "person",
+   "name": "lives_with_claiming_taxpayer"
   },
   {
    "entity": "household",
@@ -2425,6 +2813,10 @@
   },
   {
    "entity": "person",
+   "name": "long_term_capital_loss_carryover"
+  },
+  {
+   "entity": "person",
    "name": "long_term_health_insurance_premiums"
   },
   {
@@ -2444,6 +2836,10 @@
    "name": "ma_ccfa_schedule_type"
   },
   {
+   "entity": "person",
+   "name": "ma_claim_of_right_repayment_excluded_from_income"
+  },
+  {
    "entity": "spm_unit",
    "name": "ma_eaedc_living_arrangement"
   },
@@ -2456,12 +2852,28 @@
    "name": "major_industry_recode"
   },
   {
+   "entity": "tax_unit",
+   "name": "md_capital_gains_surtax_excepted_gain"
+  },
+  {
    "entity": "spm_unit",
    "name": "md_ccs_enrolled"
   },
   {
    "entity": "person",
    "name": "md_ccs_provider_type"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "md_meap_dwelling_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "md_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "md_other_subtractions"
   },
   {
    "entity": "person",
@@ -2473,19 +2885,23 @@
   },
   {
    "entity": "tax_unit",
-   "name": "md_total_additions"
-  },
-  {
-   "entity": "tax_unit",
-   "name": "me_additions"
-  },
-  {
-   "entity": "tax_unit",
    "name": "me_affordability_payment_subtraction_reported"
   },
   {
    "entity": "person",
    "name": "me_ccap_provider_type"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "me_heap_dwelling_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "me_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "me_other_subtractions"
   },
   {
    "entity": "tax_unit",
@@ -2518,6 +2934,162 @@
   {
    "entity": "person",
    "name": "medicaid_community_engagement_work_program_hours"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_community_spouse_shelter_expenses"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_cost_of_care"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_couple_countable_resources_at_first_institutionalization"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_earned_income_deposited_to_qit"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_has_community_spouse"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_home_encumbrances"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_home_equity_hardship_waiver"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_home_market_value"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_home_occupied_by_blind_or_disabled_child"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_home_occupied_by_child_under_21"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_home_occupied_by_spouse"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_home_ownership_share"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_individual_countable_resources"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_is_initial_eligibility_determination"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_medically_needy_expenses"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_needs_based_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_needs_based_income_deposited_to_qit"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_non_delaware_assistance_unit_size"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_non_delaware_community_spouse_countable_resources"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_qit_covered_earned_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_qit_covered_earned_income_deposited"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_qit_covered_unearned_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_qit_covered_unearned_income_deposited"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_qit_opening_month"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_qit_opening_year"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_qit_subsequent_full_deposits_verified"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_received_disability_payments_before_age_65"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_reported_dividend_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_reported_gross_earned_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_reported_gross_unearned_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_reported_interest_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_setting"
+  },
+  {
+   "entity": "marital_unit",
+   "name": "medicaid_ltss_spouses_months_in_same_institutional_facility"
+  },
+  {
+   "entity": "marital_unit",
+   "name": "medicaid_ltss_spouses_requesting_or_receiving_hcbs_at_same_address"
+  },
+  {
+   "entity": "marital_unit",
+   "name": "medicaid_ltss_spouses_requesting_or_receiving_institutional_services_in_same_facility"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_ssi_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_state_needs_based_public_assistance_income"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_unearned_income_deposited_to_qit"
+  },
+  {
+   "entity": "person",
+   "name": "medicaid_ltss_waiver"
   },
   {
    "entity": "person",
@@ -2564,6 +3136,14 @@
    "name": "mi_non_refundable_credits"
   },
   {
+   "entity": "tax_unit",
+   "name": "mi_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "mi_other_subtractions"
+  },
+  {
    "entity": "person",
    "name": "mi_ssp_living_arrangement"
   },
@@ -2604,12 +3184,32 @@
    "name": "mn_ccap_registration_fee"
   },
   {
+   "entity": "spm_unit",
+   "name": "mn_eap_housing_type"
+  },
+  {
+   "entity": "person",
+   "name": "mn_k12_education_subtraction_qualifying_expenses_person"
+  },
+  {
+   "entity": "person",
+   "name": "mn_msa_guardian_is_county_staff"
+  },
+  {
    "entity": "person",
    "name": "mn_msa_has_guardian"
   },
   {
    "entity": "person",
+   "name": "mn_msa_hcbs_waiver_eligible"
+  },
+  {
+   "entity": "person",
    "name": "mn_msa_housing_assistance_eligible"
+  },
+  {
+   "entity": "person",
+   "name": "mn_msa_housing_support_plan_approved"
   },
   {
    "entity": "person",
@@ -2618,6 +3218,22 @@
   {
    "entity": "person",
    "name": "mn_msa_uses_representative_payee"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "mn_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "mn_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "mn_paid_leave_employer_average_quarterly_wage"
+  },
+  {
+   "entity": "person",
+   "name": "mn_personal_property_taxes"
   },
   {
    "entity": "tax_unit",
@@ -2641,6 +3257,18 @@
   },
   {
    "entity": "person",
+   "name": "mo_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "mo_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "mo_sab_reported_earnings_taxes"
+  },
+  {
+   "entity": "person",
    "name": "mo_snc_facility_base_charge"
   },
   {
@@ -2657,11 +3285,27 @@
   },
   {
    "entity": "person",
+   "name": "mo_tanf_is_non_parent_caretaker"
+  },
+  {
+   "entity": "person",
+   "name": "mo_tanf_non_parent_caretaker_opts_out"
+  },
+  {
+   "entity": "person",
    "name": "months_receiving_social_security_disability"
   },
   {
    "entity": "spm_unit",
    "name": "months_since_calworks_exit"
+  },
+  {
+   "entity": "marital_unit",
+   "name": "mortgage_and_real_estate_taxes_paid_from_joint_account"
+  },
+  {
+   "entity": "person",
+   "name": "mortgage_insurance_premiums"
   },
   {
    "entity": "person",
@@ -2670,6 +3314,14 @@
   {
    "entity": "tax_unit",
    "name": "ms_charitable_contributions_to_qualifying_foster_care_organizations"
+  },
+  {
+   "entity": "person",
+   "name": "ms_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "ms_other_subtractions"
   },
   {
    "entity": "tax_unit",
@@ -2688,8 +3340,120 @@
    "name": "mt_ccap_provider_type"
   },
   {
+   "entity": "person",
+   "name": "mt_claim_of_right_repayment_income_class"
+  },
+  {
+   "entity": "person",
+   "name": "mt_elderly_homeowner_or_renter_credit_mt_residency_months"
+  },
+  {
+   "entity": "person",
+   "name": "mt_elderly_homeowner_or_renter_credit_other_federal_refundable_credits"
+  },
+  {
+   "entity": "person",
+   "name": "mt_elderly_homeowner_or_renter_credit_property_tax_rebate_received"
+  },
+  {
+   "entity": "person",
+   "name": "mt_elderly_homeowner_or_renter_credit_received"
+  },
+  {
+   "entity": "person",
+   "name": "mt_elderly_homeowner_or_renter_credit_state_refundable_credits"
+  },
+  {
+   "entity": "person",
+   "name": "mt_elderly_homeowner_or_renter_credit_unbilled_occupancy_months"
+  },
+  {
    "entity": "tax_unit",
-   "name": "nc_additions"
+   "name": "mt_federal_itemized_personal_property_taxes"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "mt_liheap_dwelling_type"
+  },
+  {
+   "entity": "person",
+   "name": "mt_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "mt_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "mt_ssp_payment_category"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "nc_claim_of_right_prior_year_tax_increase"
+  },
+  {
+   "entity": "person",
+   "name": "nc_claim_of_right_repayment_excluded_from_income"
+  },
+  {
+   "entity": "person",
+   "name": "nc_lieap_bank_account_exclusions"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "nc_lieap_has_paid_excess_heating_costs"
+  },
+  {
+   "entity": "person",
+   "name": "nc_lieap_is_daas_disabled"
+  },
+  {
+   "entity": "person",
+   "name": "nc_lieap_nonbank_resources"
+  },
+  {
+   "entity": "person",
+   "name": "nc_military_retirement_survivor_eligible"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "nc_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "nc_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "nc_sa_care_setting"
+  },
+  {
+   "entity": "person",
+   "name": "nc_sa_facility_rate"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "nd_ccap_arsen_enrolled"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "nd_ccap_crossroads_enrolled"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "nd_ccap_has_disqualified_alien_caretaker"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "nd_ccap_has_ineligible_kinship_caretaker"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "nd_ccap_has_ineligible_non_legally_responsible_caretaker"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "nd_ccap_has_tanf_eligible_child"
   },
   {
    "entity": "person",
@@ -2698,6 +3462,22 @@
   {
    "entity": "person",
    "name": "nd_ccap_provider_type"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "nd_ccap_tanf_diversion_enrolled"
+  },
+  {
+   "entity": "person",
+   "name": "nd_ccap_workforce_benefit_eligible_parent"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "nd_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "nd_other_subtractions"
   },
   {
    "entity": "tax_unit",
@@ -2710,10 +3490,6 @@
   {
    "entity": "person",
    "name": "ne_aabd_alternate_living_arrangement"
-  },
-  {
-   "entity": "tax_unit",
-   "name": "ne_additions"
   },
   {
    "entity": "spm_unit",
@@ -2732,12 +3508,28 @@
    "name": "ne_child_care_subsidy_quality_tier"
   },
   {
+   "entity": "spm_unit",
+   "name": "ne_liheap_dwelling_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ne_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ne_other_subtractions"
+  },
+  {
    "entity": "person",
    "name": "ne_school_readiness_credit_child_care_worker_rating"
   },
   {
    "entity": "person",
    "name": "ne_school_readiness_credit_eligible_worker"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "net_premium_tax_credit"
   },
   {
    "entity": "household",
@@ -2772,8 +3564,28 @@
    "name": "nh_ccap_provider_type"
   },
   {
+   "entity": "spm_unit",
+   "name": "nh_fap_dwelling_type"
+  },
+  {
    "entity": "tax_unit",
    "name": "nh_refundable_credits"
+  },
+  {
+   "entity": "person",
+   "name": "nh_ssp_essential_person_countable_income"
+  },
+  {
+   "entity": "person",
+   "name": "nh_ssp_essential_person_resources"
+  },
+  {
+   "entity": "person",
+   "name": "nh_ssp_grant_reduction_applies"
+  },
+  {
+   "entity": "person",
+   "name": "nh_ssp_has_essential_person"
   },
   {
    "entity": "spm_unit",
@@ -2788,12 +3600,28 @@
    "name": "nj_ccap_provider_type"
   },
   {
+   "entity": "person",
+   "name": "nj_claim_of_right_repayment_category"
+  },
+  {
    "entity": "tax_unit",
    "name": "nj_non_refundable_credits"
   },
   {
+   "entity": "person",
+   "name": "nj_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "nj_other_subtractions"
+  },
+  {
    "entity": "tax_unit",
    "name": "nj_senior_freeze"
+  },
+  {
+   "entity": "person",
+   "name": "nj_ssp_care_setting"
   },
   {
    "entity": "person",
@@ -2824,10 +3652,6 @@
    "name": "nj_unemployment_insurance_working_less_than_full_time"
   },
   {
-   "entity": "tax_unit",
-   "name": "nm_additions"
-  },
-  {
    "entity": "spm_unit",
    "name": "nm_ccap_enrolled"
   },
@@ -2846,6 +3670,14 @@
   {
    "entity": "tax_unit",
    "name": "nm_non_refundable_credits"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "nm_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "nm_other_subtractions"
   },
   {
    "entity": "person",
@@ -2868,8 +3700,44 @@
    "name": "nv_ccdp_provider_type"
   },
   {
-   "entity": "tax_unit",
-   "name": "ny_additions"
+   "entity": "person",
+   "name": "nv_oss_care_setting"
+  },
+  {
+   "entity": "person",
+   "name": "ny_ccap_accredited_provider"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ny_ccap_child_only_unit"
+  },
+  {
+   "entity": "person",
+   "name": "ny_ccap_enhanced_health"
+  },
+  {
+   "entity": "person",
+   "name": "ny_ccap_enhanced_training"
+  },
+  {
+   "entity": "person",
+   "name": "ny_ccap_nontraditional_hours"
+  },
+  {
+   "entity": "person",
+   "name": "ny_ccap_receives_preventive_services"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ny_ccap_required_activity"
+  },
+  {
+   "entity": "person",
+   "name": "ny_ccap_special_needs_care"
+  },
+  {
+   "entity": "person",
+   "name": "ny_ccap_title_xx_preventive_services_approved"
   },
   {
    "entity": "household",
@@ -2884,12 +3752,40 @@
    "name": "ny_drive_clean_vehicle_electric_range"
   },
   {
+   "entity": "spm_unit",
+   "name": "ny_heap_dwelling_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ny_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ny_other_subtractions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ny_pass_through_entity_tax_credit_claimed"
+  },
+  {
    "entity": "tax_unit",
    "name": "ny_qualified_geothermal_energy_system_expenditures"
   },
   {
    "entity": "tax_unit",
    "name": "ny_qualified_solar_energy_systems_equipment_expenditures"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ny_safety_net_assistance"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ny_safety_net_assistance_received"
+  },
+  {
+   "entity": "person",
+   "name": "ny_ssp_care_setting"
   },
   {
    "entity": "person",
@@ -2914,6 +3810,10 @@
   {
    "entity": "person",
    "name": "ny_ui_weekly_hours_worked"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ny_veteran_assistance_received"
   },
   {
    "entity": "person",
@@ -2965,6 +3865,10 @@
   },
   {
    "entity": "person",
+   "name": "oh_claim_of_right_repayment_not_deductible"
+  },
+  {
+   "entity": "person",
    "name": "oh_educator_expense_deduction_person"
   },
   {
@@ -2981,7 +3885,19 @@
   },
   {
    "entity": "person",
-   "name": "oh_other_add_backs"
+   "name": "oh_other_additions"
+  },
+  {
+   "entity": "person",
+   "name": "oh_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "oh_qualifying_capital_gain"
+  },
+  {
+   "entity": "person",
+   "name": "oh_qualifying_capital_gain_deductible_payroll"
   },
   {
    "entity": "tax_unit",
@@ -2989,15 +3905,11 @@
   },
   {
    "entity": "person",
-   "name": "oh_section_179_expense_add_back"
+   "name": "oh_rss_certified"
   },
   {
    "entity": "person",
-   "name": "oh_uniformed_services_retirement_income_deduction"
-  },
-  {
-   "entity": "tax_unit",
-   "name": "ok_additions"
+   "name": "oh_section_179_expense_add_back"
   },
   {
    "entity": "tax_unit",
@@ -3010,6 +3922,22 @@
   {
    "entity": "person",
    "name": "ok_ccs_star_level"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ok_liheap_dwelling_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ok_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ok_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "ok_ssp_is_excluded"
   },
   {
    "entity": "person",
@@ -3032,10 +3960,6 @@
    "name": "ok_ui_high_quarter_total_wages"
   },
   {
-   "entity": "tax_unit",
-   "name": "or_additions"
-  },
-  {
    "entity": "person",
    "name": "or_erdc_provider_area"
   },
@@ -3048,8 +3972,36 @@
    "name": "or_federal_pension_subtraction"
   },
   {
+   "entity": "spm_unit",
+   "name": "or_liheap_dwelling_type"
+  },
+  {
    "entity": "tax_unit",
-   "name": "or_tax_before_credits_in_prior_year"
+   "name": "or_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "or_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "or_ssp_approved_initial_room_board"
+  },
+  {
+   "entity": "person",
+   "name": "or_ssp_care_liability"
+  },
+  {
+   "entity": "person",
+   "name": "or_ssp_category"
+  },
+  {
+   "entity": "person",
+   "name": "or_ssp_inaccessible_income"
+  },
+  {
+   "entity": "person",
+   "name": "or_ssp_spousal_diversion_difference"
   },
   {
    "entity": "person",
@@ -3096,6 +4048,14 @@
    "name": "pa_ccw_provider_type"
   },
   {
+   "entity": "tax_unit",
+   "name": "pa_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "pa_other_subtractions"
+  },
+  {
    "entity": "person",
    "name": "pa_philadelphia_wage_tax_reduced_rate_eligible"
   },
@@ -3106,6 +4066,10 @@
   {
    "entity": "person",
    "name": "pa_philadelphia_wage_tax_taxable_wages"
+  },
+  {
+   "entity": "person",
+   "name": "pa_ssp_care_home"
   },
   {
    "entity": "person",
@@ -3124,6 +4088,14 @@
    "name": "pa_uc_highest_quarter_wages"
   },
   {
+   "entity": "person",
+   "name": "parent_1_id"
+  },
+  {
+   "entity": "person",
+   "name": "parent_2_id"
+  },
+  {
    "entity": "household",
    "name": "parent_has_less_than_high_school_education"
   },
@@ -3138,6 +4110,10 @@
   {
    "entity": "person",
    "name": "partnership_self_employment_net_earnings"
+  },
+  {
+   "entity": "person",
+   "name": "passive_estate_income"
   },
   {
    "entity": "person",
@@ -3194,6 +4170,18 @@
   {
    "entity": "household",
    "name": "place_fips"
+  },
+  {
+   "entity": "person",
+   "name": "pr_personal_property_casualty_loss"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "pr_personal_property_casualty_loss_carryover"
+  },
+  {
+   "entity": "person",
+   "name": "pr_principal_residence_casualty_loss"
   },
   {
    "entity": "person",
@@ -3274,6 +4262,10 @@
   {
    "entity": "household",
    "name": "qualified_passenger_vehicle_loan_interest"
+  },
+  {
+   "entity": "person",
+   "name": "qualified_passenger_vehicle_loan_interest_person"
   },
   {
    "entity": "person",
@@ -3377,7 +4369,27 @@
   },
   {
    "entity": "tax_unit",
+   "name": "ri_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ri_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "ri_pregnancy_coverage"
+  },
+  {
+   "entity": "person",
+   "name": "ri_pregnancy_end_date"
+  },
+  {
+   "entity": "tax_unit",
    "name": "ri_section_179_expense_add_back"
+  },
+  {
+   "entity": "person",
+   "name": "ri_ssp_certified_residential_care"
   },
   {
    "entity": "person",
@@ -3393,15 +4405,47 @@
   },
   {
    "entity": "person",
+   "name": "s770_active_fica_income"
+  },
+  {
+   "entity": "person",
+   "name": "s770_draw_gross"
+  },
+  {
+   "entity": "person",
+   "name": "s770_draw_hi_in_effect"
+  },
+  {
+   "entity": "person",
+   "name": "s770_draw_oasdi_base"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "s770_nii_fica_seca_income"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "s770_niit_nol_deduction"
+  },
+  {
+   "entity": "person",
+   "name": "s770_passive_se_income"
+  },
+  {
+   "entity": "person",
    "name": "s_corp_income"
+  },
+  {
+   "entity": "person",
+   "name": "s_corp_shareholder_medicare_wages"
   },
   {
    "entity": "person",
    "name": "salt_refund_income"
   },
   {
-   "entity": "tax_unit",
-   "name": "salt_refund_last_year"
+   "entity": "person",
+   "name": "savers_credit_relevant_able_distributions"
   },
   {
    "entity": "person",
@@ -3420,6 +4464,14 @@
    "name": "sc_ccap_second_child_discount_rate"
   },
   {
+   "entity": "tax_unit",
+   "name": "sc_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "sc_other_subtractions"
+  },
+  {
    "entity": "person",
    "name": "sc_tuition_credit"
   },
@@ -3436,6 +4488,30 @@
    "name": "sd_cca_provider_type"
   },
   {
+   "entity": "person",
+   "name": "sd_cca_special_needs_rate_approved"
+  },
+  {
+   "entity": "person",
+   "name": "sd_cca_specialized_infant_toddler_rate_eligible"
+  },
+  {
+   "entity": "person",
+   "name": "sd_ssp_approved_care_cost"
+  },
+  {
+   "entity": "person",
+   "name": "sd_ssp_care_certified"
+  },
+  {
+   "entity": "person",
+   "name": "sd_ssp_care_income_deductions"
+  },
+  {
+   "entity": "person",
+   "name": "sd_ssp_care_setting"
+  },
+  {
    "entity": "spm_unit",
    "name": "sd_tanf_is_shared_living"
   },
@@ -3445,11 +4521,31 @@
   },
   {
    "entity": "tax_unit",
-   "name": "second_home_mortgage_interest"
+   "name": "second_home_mortgage_origination_year"
   },
   {
    "entity": "tax_unit",
-   "name": "second_home_mortgage_origination_year"
+   "name": "second_home_non_acquisition_debt"
+  },
+  {
+   "entity": "person",
+   "name": "second_residence_mortgage_insurance_premiums"
+  },
+  {
+   "entity": "person",
+   "name": "second_residence_mortgage_interest"
+  },
+  {
+   "entity": "person",
+   "name": "second_residence_mortgage_points"
+  },
+  {
+   "entity": "person",
+   "name": "second_residence_value"
+  },
+  {
+   "entity": "person",
+   "name": "section_1202_gain"
   },
   {
    "entity": "tax_unit",
@@ -3458,6 +4554,10 @@
   {
    "entity": "tax_unit",
    "name": "selected_marketplace_plan_category"
+  },
+  {
+   "entity": "person",
+   "name": "self_employed_health_insurance_plan_business"
   },
   {
    "entity": "person",
@@ -3492,8 +4592,20 @@
    "name": "small_wind_energy_property_expenditures"
   },
   {
+   "entity": "person",
+   "name": "snap_alien_qualifying_quarters"
+  },
+  {
    "entity": "spm_unit",
    "name": "snap_self_employment_income_expense"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_birth_day"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_birth_month"
   },
   {
    "entity": "person",
@@ -3501,11 +4613,199 @@
   },
   {
    "entity": "person",
+   "name": "social_security_dependents_cola_override"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_cola_withheld"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_entitlement_month"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_entitlement_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_first_cola_month"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_first_cola_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_fund"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_reported"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_source"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_worker_benefit_ratio"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_worker_eligibility_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_worker_id"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_dependents_worker_ratio_identified"
+  },
+  {
+   "entity": "person",
    "name": "social_security_disability"
   },
   {
    "entity": "person",
+   "name": "social_security_disability_cola_override"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_cola_withheld"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_entitlement_month"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_entitlement_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_first_cola_month"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_first_cola_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_reported"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_source"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_worker_eligibility_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_disability_worker_id"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_claim_age_months"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_cola_override"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_cola_withheld"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_entitlement_month"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_entitlement_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_first_cola_month"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_first_cola_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_reported"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_source"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_worker_eligibility_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_retirement_worker_id"
+  },
+  {
+   "entity": "person",
    "name": "social_security_survivors"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_cola_override"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_cola_withheld"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_entitlement_month"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_entitlement_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_first_cola_month"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_first_cola_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_reported"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_source"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_worker_benefit_ratio"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_worker_eligibility_year"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_worker_id"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_survivors_worker_ratio_identified"
+  },
+  {
+   "entity": "person",
+   "name": "social_security_worker_computation_year"
   },
   {
    "entity": "tax_unit",
@@ -3557,6 +4857,166 @@
   },
   {
    "entity": "person",
+   "name": "ss_calculator_annual_earnings"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_authoritative_year"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_basis_provenance"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_birth_date"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_claiming_factor"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_cola_override"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_composite_ratio"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_death_date"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_death_year"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_donut_variant"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_earnings_history"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_earnings_test_no_trigger"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_earnings_test_settlement_month"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_eligibility_year"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_entitlement_month"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_immediate_earnings_test_payment"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_insured"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_monthly_amount"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_no_dual_entitlement"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_no_earnings_test_at_valuation"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_no_prior_withholding_adjustment"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_no_special_monthly_test"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_nonbinding_family_maximum"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_nonbinding_rib_lim"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_ordinary_non_windex"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_pre_fra_earnings"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_prior_disability_eligibility"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_ratio_description"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_same_year_death_before_62"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_source"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_source_basis"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_supplied_aime"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_supplied_pia"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_valuation_month"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_withhold_cola"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_worker_birth_date"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_worker_birth_year"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_worker_id"
+  },
+  {
+   "entity": "person",
+   "name": "ss_calculator_year_only_not_january_1"
+  },
+  {
+   "entity": "person",
+   "name": "ssi_food_from_others_only_on_or_after_food_exclusion"
+  },
+  {
+   "entity": "person",
    "name": "ssi_lives_in_another_persons_household"
   },
   {
@@ -3585,11 +5045,27 @@
   },
   {
    "entity": "person",
+   "name": "ssi_receives_public_income_maintenance"
+  },
+  {
+   "entity": "person",
    "name": "ssi_receives_shelter_from_others_in_household"
   },
   {
    "entity": "person",
    "name": "ssi_reported"
+  },
+  {
+   "entity": "person",
+   "name": "ssi_resource_deeming_child_is_ineligible"
+  },
+  {
+   "entity": "person",
+   "name": "ssi_resource_deeming_excluded_military_resources"
+  },
+  {
+   "entity": "person",
+   "name": "ssi_resource_deeming_waiver"
   },
   {
    "entity": "person",
@@ -3645,6 +5121,10 @@
   },
   {
    "entity": "person",
+   "name": "tax_exempt_disability_benefits"
+  },
+  {
+   "entity": "person",
    "name": "tax_exempt_ira_distributions"
   },
   {
@@ -3657,6 +5137,10 @@
   },
   {
    "entity": "person",
+   "name": "tax_exempt_strike_benefits"
+  },
+  {
+   "entity": "person",
    "name": "tax_preparation_fees"
   },
   {
@@ -3666,6 +5150,10 @@
   {
    "entity": "tax_unit",
    "name": "tax_unit_income_ami_ratio"
+  },
+  {
+   "entity": "person",
+   "name": "tax_unit_role_input"
   },
   {
    "entity": "tax_unit",
@@ -3784,6 +5272,10 @@
    "name": "tx_ccs_provider_type"
   },
   {
+   "entity": "person",
+   "name": "tx_medicaid_ltss_countable_interest_and_dividends"
+  },
+  {
    "entity": "spm_unit",
    "name": "tx_ottanf_crisis_criteria"
   },
@@ -3806,6 +5298,10 @@
   {
    "entity": "tax_unit",
    "name": "unrecaptured_section_1250_gain"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "unrecaptured_section_1250_gain_before_losses"
   },
   {
    "entity": "person",
@@ -3836,12 +5332,20 @@
    "name": "used_clean_vehicle_sale_price"
   },
   {
-   "entity": "tax_unit",
-   "name": "ut_additions"
-  },
-  {
    "entity": "person",
    "name": "ut_ccap_provider_type"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "ut_heat_dwelling_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ut_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "ut_other_subtractions"
   },
   {
    "entity": "person",
@@ -3868,20 +5372,20 @@
    "name": "ut_ui_weeks_unemployed"
   },
   {
-   "entity": "tax_unit",
-   "name": "utilities_included_in_rent"
+   "entity": "person",
+   "name": "va_529_plan_carryforward"
   },
   {
-   "entity": "tax_unit",
-   "name": "va_additions"
+   "entity": "person",
+   "name": "va_ag_certified"
+  },
+  {
+   "entity": "person",
+   "name": "va_ag_facility_rate"
   },
   {
    "entity": "spm_unit",
    "name": "va_ccsp_enrolled"
-  },
-  {
-   "entity": "person",
-   "name": "va_ccsp_is_full_day"
   },
   {
    "entity": "person",
@@ -3892,12 +5396,56 @@
    "name": "va_educator_expenses"
   },
   {
+   "entity": "tax_unit",
+   "name": "va_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "va_other_subtractions"
+  },
+  {
    "entity": "person",
    "name": "veterans_benefits"
   },
   {
+   "entity": "tax_unit",
+   "name": "vt_2017_other_subtractions"
+  },
+  {
+   "entity": "person",
+   "name": "vt_aabd_care_setting"
+  },
+  {
+   "entity": "person",
+   "name": "vt_aabd_ep_additional_countable_income"
+  },
+  {
+   "entity": "person",
+   "name": "vt_aabd_ep_level"
+  },
+  {
+   "entity": "person",
+   "name": "vt_aabd_ep_nonspouse_essential_person"
+  },
+  {
+   "entity": "person",
+   "name": "vt_aabd_ep_passes_state_resource_test"
+  },
+  {
    "entity": "person",
    "name": "vt_ccfap_provider_type"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "vt_liheap_dwelling_type"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "vt_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "vt_other_subtractions"
   },
   {
    "entity": "household",
@@ -3910,6 +5458,26 @@
   {
    "entity": "person",
    "name": "wa_eceap_slot_type"
+  },
+  {
+   "entity": "person",
+   "name": "wa_medicaid_ltss_couple_countable_resources_at_most_recent_institutionalization"
+  },
+  {
+   "entity": "person",
+   "name": "wa_medicaid_ltss_jointly_owned_countable_resources"
+  },
+  {
+   "entity": "person",
+   "name": "wa_medicaid_ltss_most_recent_institutionalization_start_month"
+  },
+  {
+   "entity": "person",
+   "name": "wa_medicaid_ltss_most_recent_institutionalization_start_year"
+  },
+  {
+   "entity": "person",
+   "name": "wa_medicaid_ltss_solely_owned_countable_resources"
   },
   {
    "entity": "person",
@@ -3926,6 +5494,10 @@
   {
    "entity": "tax_unit",
    "name": "wa_pte_cotenant_disposable_income"
+  },
+  {
+   "entity": "person",
+   "name": "wa_pte_va_service_connected_rating"
   },
   {
    "entity": "spm_unit",
@@ -3965,7 +5537,79 @@
   },
   {
    "entity": "person",
+   "name": "weeks_worked"
+  },
+  {
+   "entity": "person",
+   "name": "wi_cts_additional_flat_disregard"
+  },
+  {
+   "entity": "person",
+   "name": "wi_cts_additional_fraction_disregard"
+  },
+  {
+   "entity": "person",
+   "name": "wi_cts_child_excluded"
+  },
+  {
+   "entity": "person",
+   "name": "wi_cts_graduates_before_19"
+  },
+  {
+   "entity": "family",
+   "name": "wi_cts_large_group_net_income_limit"
+  },
+  {
+   "entity": "family",
+   "name": "wi_cts_nonfinancially_ineligible"
+  },
+  {
+   "entity": "person",
+   "name": "wi_cts_other_countable_resources"
+  },
+  {
+   "entity": "person",
+   "name": "wi_cts_other_qualifying_immigration_status"
+  },
+  {
+   "entity": "person",
+   "name": "wi_cts_part_time_student"
+  },
+  {
+   "entity": "person",
+   "name": "wi_cts_received_recently"
+  },
+  {
+   "entity": "household",
+   "name": "wi_cts_tribal_area_i"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "wi_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "wi_other_subtractions"
+  },
+  {
+   "entity": "person",
    "name": "wi_shares_provider_type"
+  },
+  {
+   "entity": "person",
+   "name": "wi_ssi_e_certified"
+  },
+  {
+   "entity": "person",
+   "name": "wi_ssi_e_for_home_care"
+  },
+  {
+   "entity": "person",
+   "name": "wi_ssp_institutional_continuation"
+  },
+  {
+   "entity": "spm_unit",
+   "name": "wi_wheap_dwelling_type"
   },
   {
    "entity": "person",
@@ -3984,10 +5628,6 @@
    "name": "workers_compensation"
   },
   {
-   "entity": "tax_unit",
-   "name": "wv_additions"
-  },
-  {
    "entity": "person",
    "name": "wv_ccap_non_traditional_hours"
   },
@@ -3998,6 +5638,14 @@
   {
    "entity": "person",
    "name": "wv_ccap_quality_tier"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "wv_other_additions"
+  },
+  {
+   "entity": "tax_unit",
+   "name": "wv_other_subtractions"
   },
   {
    "entity": "spm_unit",

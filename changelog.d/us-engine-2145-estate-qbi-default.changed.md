@@ -1,0 +1,1 @@
+The base ASEC channel now keeps policyengine-us's own default for `estate_income_would_be_qualified` (2.145.3 defaults it to False; 2.2.1 defaulted it to True) instead of forcing it True; the other five qualification flags keep their default of True.

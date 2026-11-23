@@ -103,16 +103,20 @@ EXPECTED_PROGRAM_IDS = (
     "chip",
     "basic_health_program",
     "medicare",
+    "medicare_part_d",
     "ssi",
     "dc_ptc",
     "head_start",
     "early_head_start",
     "housing_assistance",
     "wic",
+    "csfp",
+    "school_meals",
     "aca",
     "ca_premium_subsidy",
     "co_premium_assistance",
     "nm_premium_assistance",
+    "ak_permanent_fund_dividend",
 )
 
 EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
@@ -135,6 +139,7 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         "rate_unsourced",
     ),
     "medicare": ("measured", ("measured_map",), "out_of_scope"),
+    "medicare_part_d": ("engine", ("engine_default",), "rate_unsourced"),
     "ssi": (
         "modeled",
         ("probability_seed", "delivery_gate"),
@@ -149,6 +154,8 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         "out_of_scope",
     ),
     "wic": ("modeled", ("probability_seed",), "out_of_scope"),
+    "csfp": ("engine", ("engine_default",), "rate_unsourced"),
+    "school_meals": ("engine", ("engine_default",), "rate_unsourced"),
     "aca": (
         "modeled",
         (
@@ -169,6 +176,11 @@ EXPECTED_TAKE_UP_MECHANISMS: Mapping[str, tuple[str, tuple[str, ...], str]] = {
         "rate_unsourced",
     ),
     "nm_premium_assistance": (
+        "engine",
+        ("engine_default",),
+        "rate_unsourced",
+    ),
+    "ak_permanent_fund_dividend": (
         "engine",
         ("engine_default",),
         "rate_unsourced",
@@ -348,17 +360,17 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "bf681aedc859fd6398ef72da68f584069b7d25b3085c549bf99f82e8324c4eef",
+    "authority": "51082a05e7ff8d2c901a9c0de54fdee7378f241cb377a9c0ddeeb12b1fc2db69",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a",
+    "full_checkpoint": "90345ce0983f346297801be3e840e6f5cc384bf5615e8609fef8ba5ba98ed0e1",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
+    "graph_nodes": "379cd14352d2ce812f1c828a48a60823090c20d5437a4ce34d4a28ced2b8cf7c",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
-    "late_families": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
-    "late_resource_semantics": "4464b646c45dff39a500e07bf60a8505d45725712fc27dcfc6de1e839fd6b0c3",
-    "late_schedule": "f1fb754e6ade602be394837bc0d7d091f2fba4b4b83fb00f59a0258fe56eb5da",
+    "late_families": "69134b2aece677e1e71d98f423f2c92e5a82380aa7ebf4d415ffba9142d0e31e",
+    "late_resource_semantics": "c4218cf5d569caa6ef83b53f2b1563ab2cd52ed159e72da27db5921b18a87cad",
+    "late_schedule": "c9225891a5ce3522460d805ea047b96082f3befb704e4b8e886d27a4b73ea889",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
-    "primary_tuples": "6655e37f15befe053f8de2583c216f97098e4c2bde526f315299c2858c97f055",
+    "primary_tuples": "dbb5314f85727d4734a37b5e2de9d775a3044e362a18d831521460e1d261ac98",
     # #1258: puf_support's source bytes carry the S-corp leaf from the
     # source-year rows (no zero alias); the primary chain order is unchanged.
     # #1239: puf_support's source bytes and the primary chain order gain the
@@ -402,13 +414,14 @@ EXPECTED_HASHES = {
     # microcosm#1641 moves both again: it rewords docstrings and a comment in
     # solve and the delivery gate's docstring in ssi_take_up, which now names
     # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
-    # The in-place QRF leaf array in microcosm.fit.qrf moves both again: the
-    # forests' leaf arrays are byte-identical, and no draw changes.
-    "seed_map": "afbe93ebeb8d48294581d860aed690c168eb4c2c92461353676a794cefd22584",
-    "seed_protocol": "05fb40521ffef194cec9c2fe4dfedbbfd02e64ddddfd69f1a591961b61804176",
-    "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
-    "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
-    "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
+    # The in-place QRF leaf array in microcosm.fit.qrf (#1682) moves both again
+    # on top of the engine refresh (#1676): the forests' leaf arrays are
+    # byte-identical, and no draw changes.
+    "seed_map": "9be0442207d685d3b99508c4ec4e447d1c83cd4d41d2457480bf306ea0491e37",
+    "seed_protocol": "a6f203aca42c6749ee435b9f2f0b24aa86fc4104492f30b956bae2b79e698c4e",
+    "source_manifest": "777ba41a83bf75ee00937f694a08208e93dcd7c91c9d096d316affd67d424267",
+    "take_up": "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c",
+    "tail": "f7f8282d48dbf1e01016cd551f5a0de289911140048d20812c920ace0d092936",
 }
 
 INVENTORY_REPORT_SCHEMA_VERSION = 1
@@ -467,18 +480,18 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "itemization_batches": 5,
     "itemization_targets": 39,
     "late_groups": 19,
-    "late_targets": 72,
+    "late_targets": 71,
     "ownership_rows": 18,
-    "primary_effective_predictor_tuples": 66,
+    "primary_effective_predictor_tuples": 64,
     "primary_families": 1,
-    "primary_targets": 66,
+    "primary_targets": 64,
     "producer_authored_outputs": 92,
-    "producer_compiled_outputs": 230,
-    "producer_inputs": 2_747,
+    "producer_compiled_outputs": 227,
+    "producer_inputs": 2744,
     "producer_nodes": 38,
     "producer_virtual_resources": 75,
     "release_rungs": 5,
-    "resolved_references": 337,
+    "resolved_references": 343,
     "seed_owner_bindings": 112,
     "seed_owner_rows": 54,
     "seed_sites": 53,
@@ -488,11 +501,11 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 10,
-    "tail_control_fields": 942,
-    "take_up_pipeline_steps": 28,
-    "take_up_programs": 17,
+    "tail_control_fields": 938,
+    "take_up_pipeline_steps": 32,
+    "take_up_programs": 21,
     "typed_artifacts": 84,
-    "typed_columns": 177,
+    "typed_columns": 179,
     "typed_entities": 8,
     "typed_scopes": 7,
 }
@@ -873,7 +886,7 @@ def build_inventory_coverage(
         "primary_predictor_tuples_exact",
         clauses={
             "primary family is not unique": len(primary) == 1,
-            "effective tuple count differs": len(primary_tuples) == 66,
+            "effective tuple count differs": len(primary_tuples) == 64,
             "effective tuple digest differs": sha256_json(primary_tuples)
             == EXPECTED_HASHES["primary_tuples"],
             "legacy target order differs": _mapping(
@@ -884,7 +897,7 @@ def build_inventory_coverage(
         homes=("/imputation/families", "/imputation/predictor_blocks/puf_tax_detail"),
         consumers=("compiler_ir.node_slices", "legacy_adapter.imputation.primary_qrf"),
         observed={"tuples": len(primary_tuples), "sha256": sha256_json(primary_tuples)},
-        expected={"tuples": 66, "sha256": EXPECTED_HASHES["primary_tuples"]},
+        expected={"tuples": 64, "sha256": EXPECTED_HASHES["primary_tuples"]},
     )
     qrf_params = _mapping(
         _mapping(
@@ -927,7 +940,7 @@ def build_inventory_coverage(
         "late_split_ledger_exact",
         clauses={
             "late group count differs": len(late) == 19,
-            "late target count differs": late_targets == 72,
+            "late target count differs": late_targets == 71,
             "late family digest differs": sha256_json(late)
             == EXPECTED_HASHES["late_families"],
             "legacy late schedule differs": _json_equal(
@@ -943,7 +956,7 @@ def build_inventory_coverage(
         },
         expected={
             "groups": 19,
-            "targets": 72,
+            "targets": 71,
             "sha256": EXPECTED_HASHES["late_families"],
         },
     )
@@ -1057,7 +1070,7 @@ def build_inventory_coverage(
         "producer_inputs_exact",
         clauses={
             "producer input rows differ": inputs_exact,
-            "input row count differs": input_count == 2747,
+            "input row count differs": input_count == 2744,
         },
         homes=("/imputation/producer_graph/nodes/*/inputs",),
         consumers=(
@@ -1065,7 +1078,7 @@ def build_inventory_coverage(
             "compiler_ir.node_slices",
         ),
         observed={"rows": input_count},
-        expected={"rows": 2747, "relation": "source rows preserved exactly"},
+        expected={"rows": 2744, "relation": "source rows preserved exactly"},
     )
     outputs_exact = set(expected_outputs) == set(compiled_by_id) and all(
         _json_equal(
@@ -1083,7 +1096,7 @@ def build_inventory_coverage(
             "compiled outputs differ from typed closure": outputs_exact,
             "authored output count differs": authored_output_count == 92,
             "compiled output count differs": compiled.producer_graph.compiled_output_count
-            == 230,
+            == 227,
         },
         homes=(
             "/imputation/producer_graph/nodes/*/outputs",
@@ -1300,7 +1313,7 @@ def build_inventory_coverage(
         "take_up_program_order_exact",
         clauses={
             "program order differs": program_ids == EXPECTED_PROGRAM_IDS,
-            "legacy program count differs": len(legacy_programs) == 17,
+            "legacy program count differs": len(legacy_programs) == 21,
             "legacy variable order differs": [
                 _mapping(value, "legacy program")["variable"]
                 for value in legacy_programs
@@ -1323,7 +1336,7 @@ def build_inventory_coverage(
             "pipeline step count differs": sum(
                 len(value) for value in step_map.values()
             )
-            == 28,
+            == 32,
             "legacy contract differs from typed projection": _json_equal(
                 actual_take_up, expected_take_up
             ),
@@ -1335,7 +1348,7 @@ def build_inventory_coverage(
             "by_program": {key: list(value) for key, value in step_map.items()},
         },
         expected={
-            "steps": 28,
+            "steps": 32,
             "by_program": {
                 key: list(value[1])
                 for key, value in EXPECTED_TAKE_UP_MECHANISMS.items()
@@ -1456,7 +1469,7 @@ def build_inventory_coverage(
     add(
         "capital_gains_tail_contract_exact",
         clauses={
-            "tail terminal field count differs": tail_count == 942,
+            "tail terminal field count differs": tail_count == 938,
             "resolved calibration tails differ": _json_equal(
                 legacy.get("calibration_tail_contracts"),
                 expected_legacy["calibration_tail_contracts"],
@@ -1484,7 +1497,7 @@ def build_inventory_coverage(
             "legacy_adapter.stacked_checkpoint_static_components",
         ),
         observed={"terminal_fields": tail_count, "sha256": sha256_json(tail_bundle)},
-        expected={"terminal_fields": 942, "sha256": EXPECTED_HASHES["tail"]},
+        expected={"terminal_fields": 938, "sha256": EXPECTED_HASHES["tail"]},
     )
 
     add(
