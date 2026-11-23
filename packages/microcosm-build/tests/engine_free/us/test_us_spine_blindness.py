@@ -421,6 +421,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "sipp_financial_assets.py",
         "sipp_tips.py",
         "sipp_vehicles.py",
+        # Reviewed held-out SNAP caseload composition diagnostic; no population
+        # treatment.
+        "snap_caseload_composition_holdout.py",
         "snap_discretionary_exemption.py",
         "snap_state_take_up.py",
         "snap_take_up.py",

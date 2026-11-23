@@ -42,7 +42,7 @@ county SOI targets out of the local-area solve, then score those blocks against
 a pro-rata baseline; the scores are marked report-only and refuse nothing.
 `us_runtime/support_mix.py` uses them to split targets and to order ACS
 households for the support-mix bake-off. The national builder imports neither
-helper. Its three
+helper. Its four
 `*_holdout.json` reports compare one build with outside benchmarks and never
 refuse a release. So a US national release says it beats the incumbent on the
 frozen register, and says it beats it on held-out cells only once a national

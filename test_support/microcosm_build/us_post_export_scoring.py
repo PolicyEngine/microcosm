@@ -227,7 +227,21 @@ _PERSON_VARIABLES = frozenset(
         "income_adjusted_part_d_premium_surcharge",
     }
 )
-_SPM_UNIT_VARIABLES = frozenset({"snap", "housing_assistance", "spm_unit_benefits"})
+_SPM_UNIT_VARIABLES = frozenset(
+    {
+        "snap",
+        "housing_assistance",
+        "spm_unit_benefits",
+        "is_snap_eligible",
+        "meets_snap_gross_income_test",
+        "meets_snap_net_income_test",
+        "meets_snap_asset_test",
+        "snap_assets",
+        "takes_up_snap_if_eligible",
+        "receives_snap",
+        "snap_unit_size",
+    }
+)
 
 
 def _native_entity(variable: str) -> str:
@@ -292,6 +306,56 @@ def _medicare_holdout_fixture_values(person: pd.DataFrame, variable: str):
     return np.where(enrolled, 156.0 * tier, 0.0)
 
 
+_SNAP_HOLDOUT_FIXTURE_VARIABLES = frozenset(
+    {
+        "is_snap_eligible",
+        "meets_snap_gross_income_test",
+        "meets_snap_net_income_test",
+        "meets_snap_asset_test",
+        "snap_assets",
+        "takes_up_snap_if_eligible",
+        "receives_snap",
+        "snap_unit_size",
+        "spm_unit_state_fips",
+    }
+)
+
+
+def _snap_holdout_fixture_values(frame: Frame, variable: str):
+    """Fixture SNAP semantics spread over several households and states.
+
+    Not the law: each rule keys on the household number ``h`` of the unit
+    (``spm_unit_id // 100``), so every composition group and several states
+    hold weight. The unit is eligible unless ``h`` is a multiple of four,
+    fails the gross income test when ``h`` is a multiple of three and the net
+    test when ``h`` is five, passes the resource test when ``h`` is odd,
+    carries the take-up flag unless ``h`` is seven and reports receipt when
+    ``h`` is at most two. Size and state come from the frame. The annual
+    ``snap`` keeps the fake engine's generic positive value.
+    """
+    unit_ids = frame.table("spm_unit")["spm_unit_id"].to_numpy()
+    household = unit_ids // 100
+    if variable == "is_snap_eligible":
+        return household % 4 != 0
+    if variable == "meets_snap_gross_income_test":
+        return household % 3 != 0
+    if variable == "meets_snap_net_income_test":
+        return household != 5
+    if variable == "meets_snap_asset_test":
+        return household % 2 == 1
+    if variable == "snap_assets":
+        return 1_000.0 * household
+    if variable == "takes_up_snap_if_eligible":
+        return household != 7
+    if variable == "receives_snap":
+        return household <= 2
+    if variable == "snap_unit_size":
+        sizes = frame.table("person").groupby("person_spm_unit_id").size()
+        return sizes.reindex(unit_ids).to_numpy()
+    state_fips = frame.table("household")["state_fips"].to_numpy()
+    return state_fips[_household_positions(frame, "spm_unit")].astype(np.float64)
+
+
 def _native_values(frame: Frame, variable: str, period: int, delta: float):
     person = frame.table("person")
     state_fips = frame.table("household")["state_fips"].to_numpy()
@@ -310,6 +374,8 @@ def _native_values(frame: Frame, variable: str, period: int, delta: float):
         return person["person_id"].to_numpy() % 3 == 0
     if variable in _MEDICARE_HOLDOUT_FIXTURE_VARIABLES:
         return _medicare_holdout_fixture_values(person, variable)
+    if variable in _SNAP_HOLDOUT_FIXTURE_VARIABLES:
+        return _snap_holdout_fixture_values(frame, variable)
     entity = _native_entity(variable)
     ids = frame.table(entity)[f"{entity}_id"].to_numpy()
     base = zlib.crc32(f"{variable}@{period}".encode()) % 89
