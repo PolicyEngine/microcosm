@@ -5,11 +5,9 @@ weights: the solver's initialiser refuses a nonzero target with no support. A
 row that some households carry stays bound however few they are: a cell that
 rests on fewer than ten records is no reason to leave a row out, and only a
 measured distortion of the calibration is (María's rule of 2026-10-21, which
-replaced the floor of ten she signed on 2026-10-16). What the licence asks of
-such a row is that its model figures stay in the build: the diagnostics, the
-gate evidence and every written surface withhold the figures of a row that
-fewer than ten distinct source households carry
-(:func:`microcosm.build.uk_runtime.diagnostics.uk_withheld_rows`).
+replaced the floor of ten she signed on 2026-10-16). Such a row's model
+figures ship with every other row's: the outputs go only to the licensed
+private repository (her ruling of 2026-10-26).
 
 The floor is declared once, in the ``support_floor`` block of
 ``uk/calibration_measure_exclusions.json`` (schema 4), and signed there; its
@@ -19,7 +17,7 @@ ceilings: a ceiling on the dropped share sums published values, so a scope
 never mixes units. A scope's ``unit`` is the one its targets' contract
 measurements give (:func:`uk_support_floor_target_unit`). On a built frame, a
 row in a scope whose matrix row reaches no source household
-(``household_source_id``) with a positive prior weight is dropped, not pooled;
+(``source_household_id``) with a positive prior weight is dropped, not pooled;
 each target's dropped published total is reported. The run refuses outside the
 block's approval window, when a scope's ``unit`` is not its targets' unit
 (:func:`assert_uk_support_floor_units`), when a scope's dropped rows pass
@@ -53,8 +51,11 @@ UK_SUPPORT_FLOOR_KEY = "support_floor"
 UK_SUPPORT_FLOOR_VALUE = 1
 UK_SUPPORT_FLOOR_KIND = "support_floor"
 UK_SUPPORT_FLOOR_METRIC = "distinct_source_households_with_positive_prior_weight"
-#: The spine household each row was built from; every clone shares it.
-UK_SUPPORT_LINEAGE_COLUMN = "household_source_id"
+#: The survey household each row was built from, its true source: every copy
+#: and clone shares it. The receipts' column (``receipt_counts.
+#: SOURCE_HOUSEHOLD_COLUMN``), named here because the target kernels hash this
+#: module and not that one; a test holds the two equal (microcosm#931).
+UK_SUPPORT_LINEAGE_COLUMN = "source_household_id"
 _FIELDS = (
     "metric",
     "floor",
@@ -92,6 +93,12 @@ _RECORD_FIELDS = (
     "approved_on",
     "expires_on",
 )
+#: The fields a recorded drop must share with the declared floor: its
+#: signature, not its reason or adjudication text. A re-worded record keeps
+#: its signature, so a run that dropped a row under it can still be
+#: certified at a later head (the re-review of microcosm#1420, 3); a moved
+#: signature, a new approver or a new window, refuses.
+_SIGNATURE_FIELDS = ("tracking", "approved_by", "approved_on", "expires_on")
 
 
 @dataclass(frozen=True)
@@ -182,7 +189,7 @@ def uk_support_floor_from_payload(block: Mapping[str, Any]) -> UKSupportFloor:
         raise ValueError(
             f"UK support floor must be {UK_SUPPORT_FLOOR_VALUE}: a row that any source "
             "household carries stays bound however few they are (María's rule of "
-            "2026-10-21), and the figures of a thin row are withheld, not the row."
+            "2026-10-21)."
         )
     scopes = _scopes_from_payload(block["scopes"])
     for field in _TEXT_FIELDS:
@@ -348,15 +355,26 @@ def load_uk_support_floor_declaration(
 
 
 def uk_household_source_ids(frame: Any) -> np.ndarray:
-    """The source household of each household column, or refuse."""
+    """The true source household of each household column, or refuse.
+
+    A frame without the column, or with a null in it, is refused: a null
+    drops out of the distinct count, so a row would read less support than it
+    has.
+    """
 
     household = frame.table("household")
     if UK_SUPPORT_LINEAGE_COLUMN not in household:
         raise ValueError(
-            f"The UK support floor counts source households, and the frame has "
-            f"no household.{UK_SUPPORT_LINEAGE_COLUMN} column."
+            f"The UK support floor counts true source households, and the frame "
+            f"has no household.{UK_SUPPORT_LINEAGE_COLUMN} column."
         )
-    return household[UK_SUPPORT_LINEAGE_COLUMN].to_numpy()
+    sources = household[UK_SUPPORT_LINEAGE_COLUMN]
+    if sources.isna().any():
+        raise ValueError(
+            f"The UK support floor counts true source households, and "
+            f"household.{UK_SUPPORT_LINEAGE_COLUMN} is null on some rows."
+        )
+    return sources.to_numpy()
 
 
 def uk_row_support(
@@ -573,7 +591,7 @@ def narrow_uk_registry_by_support_floor(
         elif any(
             record.get(field) != value
             for field, value in floor.record(floor.approved_on).items()
-            if field in _RECORD_FIELDS
+            if field in _SIGNATURE_FIELDS
         ):
             failures.append(f"{name}: not under the declared signature")
     if failures:

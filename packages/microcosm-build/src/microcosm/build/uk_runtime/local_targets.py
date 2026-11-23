@@ -60,14 +60,24 @@ LA_EXTRA_METRICS = (
     "tenure/social_rent",
     "rent/private_rent",
 )
-#: DESNZ sub-national domestic energy by local authority (microcosm#1207):
-#: electricity and gas kWh, and the gas-connected households. DESNZ publishes
-#: no constituency cut, so the family is local-authority only.
-LA_ENERGY_METRICS = (
+#: DESNZ sub-national domestic energy (microcosm#1207): electricity and gas
+#: kWh, and the gas-connected households. Local authorities bind DESNZ's own
+#: rows; DESNZ publishes no constituency cut, so constituencies bind its
+#: authority totals split by its small-area figures (microcosm#1095).
+ENERGY_METRICS = (
     "energy/electricity_kwh",
     "energy/gas_kwh",
     "energy/gas_connected_households",
 )
+#: HMRC SPI pension income by area (Tables 3.14 and 3.15; microcosm#1418):
+#: each area's taxpayers' private and State Pension income and the taxpayers
+#: with either, both grains.
+PENSION_INCOME_METRICS = ("hmrc/pension_income/amount", "hmrc/pension_income/count")
+#: England's dwellings with the single adult council tax discount by billing
+#: authority (MHCLG Council Taxbase line 8; microcosm#1095), the cells of the
+#: national single adult row. The return is England's and by billing
+#: authority, so the family is local-authority only.
+LA_COUNCIL_TAX_DISCOUNT_METRICS = ("council_tax/single_adult_discount",)
 COUNTRY_TO_REGION = {
     "England": "SOUTH_EAST",
     "Scotland": "SCOTLAND",
@@ -163,10 +173,17 @@ def metric_names(
     # microcosm#1240: owner-occupied homes above value thresholds, both grains,
     # appended after every earlier family under the same append-only rule.
     names.extend(uk_high_value_home_metric_names())
-    # microcosm#1207: DESNZ sub-national domestic energy, local authorities
-    # only, appended after every earlier family under the same rule.
+    # microcosm#1207: DESNZ sub-national domestic energy, appended after every
+    # earlier family under the same rule; the constituency grain joined with
+    # the split of the authorities' totals (microcosm#1095).
+    names.extend(ENERGY_METRICS)
+    # microcosm#1095: England's single adult council tax discount by billing
+    # authority, local authorities only, appended under the same rule.
     if area_type == "la":
-        names.extend(LA_ENERGY_METRICS)
+        names.extend(LA_COUNCIL_TAX_DISCOUNT_METRICS)
+    # microcosm#1418: SPI pension income by area, both grains, appended after
+    # every earlier family under the same rule.
+    names.extend(PENSION_INCOME_METRICS)
     return tuple(names)
 
 

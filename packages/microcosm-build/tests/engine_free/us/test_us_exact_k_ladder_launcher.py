@@ -283,25 +283,46 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
         release_builder=fake_builder,
     )
 
+    from microcosm.data.build_folder_manifests import publication_commands
+
     assert captured[captured.index("--exact-k") + 1] == "N"
     assert captured[captured.index("--seed") + 1] == "17"
     assert "--no-staging" in captured
     assert captured[captured.index("--pool-manifest-sha256") + 1] == _sha256(manifest)
-    assert result["automatic_publish"] is False
-    assert result["release_dir"] == str(
-        tmp_path / "out" / "releases" / "populace-us-2024-k8-fixture"
+    assert captured[captured.index("--release-id") + 1] == "populace-us-2024-k8-fixture"
+    # An exact-k run is a build of the national release (microcosm#1570): the
+    # build keeps its ID and the release directory is named after the release.
+    release_dir = tmp_path / "out" / "releases" / "microcosm-us-2024-national"
+    artifact_root = tmp_path / "out" / "artifacts"
+    assert result["release"] == "microcosm-us-2024-national"
+    assert result["build"] == "populace-us-2024-k8-fixture"
+    # A build has no tier: its own files are in build/, and certification
+    # places it in the national release, since an exact-k build is never
+    # evidence (microcosm#1585 item 11).
+    assert result["build_dir"] == str(tmp_path / "out" / "build")
+    assert result["release_dir"] == str(release_dir)
+    assert result["artifact_root"] == str(artifact_root)
+    # The build is not certified: the receipt carries the command that
+    # certifies it (microcosm#1585 item 11, PR 4a).
+    assert result["certified"] is False
+    assert result["certify_command"].endswith(
+        f"tools/certify_us_national_build.py {tmp_path / 'out'}"
     )
-    assert result["artifact_root"] == str(tmp_path / "out" / "artifacts")
-    assert result["pointer_update"] is False
-    assert result["pointer_updates"]["production"]["pointer_update"] is False
-    assert result["pointer_updates"]["staging"]["pointer_update"] is False
-    assert result["publish_argv"][-3:] == [
-        "--create-tag",
-        "--no-latest",
-        "--tag-only",
-    ]
-    assert "--artifact-root" in result["publish_argv"]
-    assert "--repo-id policyengine/populace-us" in result["publish_command"]
+    # The launcher neither publishes the build nor makes it current: it prints
+    # the commands that do, and says what promoting does.
+    assert result["automatic_publish"] is False
+    assert result["makes_current"] is False
+    commands = publication_commands(
+        release_dir, repo_id="policyengine/populace-us", artifact_root=artifact_root
+    )
+    assert result["publish_command"] == commands["publish_command"]
+    assert result["promote_command"] == commands["promote_command"]
+    assert "US default" in result["promotion"]
+    assert "microcosm-us-2024-national" in result["promotion"]
+    for command in (result["publish_command"], result["promote_command"]):
+        assert "publish_release.sh" not in command
+        assert "--tag-only" not in command
+    assert "publish_argv" not in result
     assert json.loads((tmp_path / "out" / "package_result.json").read_text()) == (
         result
     )

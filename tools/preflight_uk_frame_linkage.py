@@ -59,12 +59,13 @@ from microcosm.frame import EntitySchema, Frame, Weights  # noqa: E402
 GROUP_ENTITIES = ("benunit", "household")
 UK_SCHEMA = EntitySchema(group_entities=GROUP_ENTITIES)
 _TABLES = ("person", *GROUP_ENTITIES)
-DEFAULT_SDC_MINIMUM_COUNT = 10
 # CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are
 # never reportable. Keep this as the single authority for every entry point;
 # callers may raise the threshold (including to a study-specific 30), but
-# cannot lower it.
+# cannot lower it. The default is that floor, to which María's ruling of
+# 2026-10-29 moved every UK output (receipt_counts.UK_DISCLOSURE_FLOOR).
 MINIMUM_SDC_COUNT = 3
+DEFAULT_SDC_MINIMUM_COUNT = MINIMUM_SDC_COUNT
 
 
 def _validated_sdc_minimum(minimum: int) -> int:

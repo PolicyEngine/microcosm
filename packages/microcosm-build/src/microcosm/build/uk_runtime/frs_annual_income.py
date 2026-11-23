@@ -111,7 +111,7 @@ leaver):
 
 The receipt is build output and follows UKDS disclosure control
 (:mod:`receipt_counts`): every cell gives its support as a band of distinct
-source households, and a weighted figure only where ten or more carry it.
+source households, and a weighted figure only where three or more carry it.
 """
 
 from __future__ import annotations
@@ -141,8 +141,11 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_carriers,
     extreme_count,
+    record_source_households,
     small_cell_share,
     support_band,
 )
@@ -225,6 +228,10 @@ EARNINGS_INDEX_TO = "2024-01-01"
 MAXIMUM_UPRATING_MONTHS = 24
 #: The ratio check: the job-level DV-to-usual pay ratio must lie in this range.
 PAY_CONCEPT_RATIO_BOUNDS = (0.95, 1.10)
+#: The households the ratio needs before its bounds are judged: on fewer, a
+#: ratio past them is noise, so it is held to them and its gate reads it
+#: unmeasured. A statistical floor, not the disclosure floor.
+PAY_CONCEPT_RATIO_MINIMUM_SUPPORT = 10
 
 _ADULT_COLUMNS = (
     "sernum",
@@ -406,6 +413,9 @@ def add_frs_annual_income_spells(
         job=tables["job"],
         interview=interview,
         earnings_growth=load_earnings_growth(),
+        person_sources=record_source_households(
+            frame, "person", stage=FRS_ANNUAL_INCOME_STAGE_NAME, before_copies=True
+        ),
     )
     output = person.copy()
     for column in FRS_ANNUAL_INCOME_OUTPUT_COLUMNS:
@@ -449,6 +459,7 @@ def derive_frs_annual_income_spells(
     job: pd.DataFrame,
     interview: pd.Series,
     earnings_growth: float,
+    person_sources: np.ndarray,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Person-aligned descriptors and their aggregate receipt.
 
@@ -456,7 +467,11 @@ def derive_frs_annual_income_spells(
     (``person_id`` = sernum * 1000 + person). ``adult`` and ``job`` are the
     pinned tabs after :func:`normalize_ids`; ``interview`` is the interview date
     by ``household_id``. ``person_weights`` are the household weights each
-    person row carries.
+    person row carries, and ``person_sources`` each person's true source
+    household, which the receipt counts support by
+    (``receipt_counts.record_source_households``). A caller without the
+    frame's lineage passes ``own_source_households`` itself, so no table is
+    counted by its rows unawares (microcosm#931).
     """
 
     person_ids = person["person_id"].to_numpy()
@@ -464,6 +479,9 @@ def derive_frs_annual_income_spells(
     weights = np.asarray(person_weights, dtype=float)
     if weights.shape != (rows,):
         raise ValueError("person weights must align with the person table.")
+    household_sources = np.asarray(person_sources)
+    if household_sources.shape != (rows,):
+        raise ValueError("person sources must align with the person table.")
     raw = adult.drop_duplicates("person_id").set_index("person_id")
     if len(raw) != len(adult):
         raise ValueError("FRS adult.tab carries a person twice.")
@@ -617,7 +635,9 @@ def derive_frs_annual_income_spells(
         )
         / WINDOW_MONTHS
     )
-    ratio, ratio_support = pay_concept_ratio(person_ids, weights, job, working)
+    ratio, ratio_support = pay_concept_ratio(
+        person_ids, weights, job, working, household_sources=household_sources
+    )
     usual = _numeric(main, "ugross")
     observed = employee_leaver & np.isfinite(usual) & (usual > 0)
     weekly_rate = np.zeros(rows)
@@ -746,6 +766,7 @@ def derive_frs_annual_income_spells(
     receipt = _receipt(
         person,
         weights=weights,
+        household_sources=household_sources,
         descriptors=descriptors,
         current=current,
         se_current=se_current,
@@ -767,16 +788,21 @@ def pay_concept_ratio(
     weights: np.ndarray,
     job: pd.DataFrame,
     working: np.ndarray,
+    *,
+    household_sources: np.ndarray,
 ) -> tuple[float, int]:
     """Weighted UGRSPAY / UGROSS on current employee main jobs reporting both.
 
     UGRSPAY is the DV pay the spine's ``employment_income`` sums; UGROSS is the
     usual gross pay the survey asks of a current job whose last pay was not
     usual and of a recent leaver's last job. Measured job by job on one job per
-    person, so a second job's pay never enters it.
+    person, so a second job's pay never enters it. Its support is counted in
+    the true source households of the jobs' holders (``household_sources``,
+    one per person).
     """
 
     weight_by_person = pd.Series(weights, index=person_ids)
+    source_by_person = pd.Series(household_sources, index=person_ids)
     working_by_person = pd.Series(np.asarray(working, dtype=bool), index=person_ids)
     jobs = job.loc[
         (_numeric(job, "jobtype") == 1)
@@ -794,15 +820,27 @@ def pay_concept_ratio(
     )
     usual = _numeric(jobs, "ugross")
     dv = _numeric(jobs, "ugrspay")
-    support = distinct_carriers(jobs["household_id"].to_numpy(), job_weights)
+    support = distinct_carriers(
+        source_by_person.reindex(jobs["person_id"].to_numpy()).to_numpy(), job_weights
+    )
     denominator = float(np.nansum(job_weights * usual))
-    if support < 10 or denominator <= 0:
+    # Fewer than three reporting households only flags: the receipt prints the
+    # ratio "<3" and the gate reads it unmeasured, since a small-cell rule
+    # never stops a build (María's ruling of 2026-10-26).
+    if support == 0 or denominator <= 0:
         raise ValueError(
             f"{FRS_ANNUAL_INCOME_STAGE_NAME} cannot measure the usual-to-DV pay "
-            "ratio: fewer than ten households report both."
+            "ratio: no household reports both."
         )
     ratio = float(np.nansum(job_weights * dv)) / denominator
     lower, upper = PAY_CONCEPT_RATIO_BOUNDS
+    if support < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT:
+        # The bounds are a plausibility check on the two pay concepts. On one
+        # to nine households a ratio past them is noise, so it is held to
+        # them rather than stopping the build (Vahid's second review of
+        # #1396), and the gate reads a ratio whose support band is under ten
+        # as unmeasured, whether or not the receipt prints it.
+        return min(max(ratio, lower), upper), support
     if not lower <= ratio <= upper:
         raise ValueError(
             f"{FRS_ANNUAL_INCOME_STAGE_NAME}: the DV-to-usual pay ratio {ratio:.4f} "
@@ -882,6 +920,7 @@ def _receipt(
     person: pd.DataFrame,
     *,
     weights: np.ndarray,
+    household_sources: np.ndarray,
     descriptors: pd.DataFrame,
     current: np.ndarray,
     se_current: np.ndarray,
@@ -895,10 +934,8 @@ def _receipt(
     earnings_growth: float,
     employment_share: np.ndarray,
 ) -> dict[str, object]:
-    households = person["person_household_id"].to_numpy()
-
     def carriers(mask: np.ndarray) -> int:
-        return distinct_carriers(households[mask], weights[mask])
+        return distinct_carriers(household_sources[mask], weights[mask])
 
     def weighted(values: np.ndarray, mask: np.ndarray) -> float | str:
         return small_cell_share(float((weights * values)[mask].sum()), carriers(mask))
@@ -919,36 +956,50 @@ def _receipt(
     }
     # Structural checks the stage gate reads: each is zero by construction,
     # and a count of rows that break one is banded as the other stages band
-    # theirs (zero exact), so a failing build never records 1 to 9.
+    # theirs (zero exact), so a failing build never records a small count.
     full_year = source == SOURCE_FULL_YEAR
     return {
         "window_months": WINDOW_MONTHS,
         "weights": "household weights at the stage, carried by each person",
-        "pay_concept_ratio": ratio,
+        "pay_concept_ratio": (
+            ratio if ratio_support >= UK_DISCLOSURE_FLOOR else UK_WITHHELD
+        ),
         "pay_concept_ratio_support": support_band(ratio_support),
+        # Whether the stage moved the ratio onto its bounds (pay_concept_ratio
+        # holds one past them on fewer than ten households, and holds it to a
+        # bound exactly); withheld beside a withheld ratio.
+        "pay_concept_ratio_held": (
+            UK_WITHHELD
+            if ratio_support < UK_DISCLOSURE_FLOOR
+            else bool(
+                ratio_support < PAY_CONCEPT_RATIO_MINIMUM_SUPPORT
+                and ratio in PAY_CONCEPT_RATIO_BOUNDS
+            )
+        ),
         "earnings_growth": float(earnings_growth),
         "spell_sources": sources,
         "donor_cells": dict(donor_cells),
         "annual_employee_earners": weighted(np.ones(len(pay)), annual_earner),
         "current_employee_earners": weighted(np.ones(len(pay)), pay),
         "annual_over_current_earners": (
-            "<10"
-            if carriers(annual_earner) < 10 or carriers(pay) < 10
+            UK_WITHHELD
+            if carriers(annual_earner) < UK_DISCLOSURE_FLOOR
+            or carriers(pay) < UK_DISCLOSURE_FLOOR
             else float(weights[annual_earner].sum()) / float(weights[pay].sum())
         ),
         "annual_over_current_employment_income": (
             float((weights * annual).sum()) / float((weights * current).sum())
-            if carriers(pay) >= 10
-            else "<10"
+            if carriers(pay) >= UK_DISCLOSURE_FLOOR
+            else UK_WITHHELD
         ),
         "annual_over_current_self_employment_income": (
             float((weights * se_annual).sum()) / float((weights * se_current).sum())
-            if carriers(se_current > 0) >= 10
-            else "<10"
+            if carriers(se_current > 0) >= UK_DISCLOSURE_FLOOR
+            else UK_WITHHELD
         ),
         "other_spells_pay_observed_share": (
-            "<10"
-            if carriers(outside) < 10
+            UK_WITHHELD
+            if carriers(outside) < UK_DISCLOSURE_FLOOR
             else float(weights[outside & observed].sum())
             / float(weights[outside].sum())
         ),

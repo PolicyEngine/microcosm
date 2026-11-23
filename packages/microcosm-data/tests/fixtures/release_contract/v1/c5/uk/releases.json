@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "default": "microcosm-uk-2024-25-national",
+  "releases": {
+    "microcosm-uk-2024-25-national": {
+      "role": "national",
+      "current": "uk-frs-calibration-attempt-20260101T000000Z-00000000",
+      "builds": {
+        "uk-frs-calibration-attempt-20260101T000000Z-00000000": {
+          "published_at": "2026-01-01T00:00:00+00:00",
+          "withdrawn": false
+        }
+      }
+    }
+  }
+}

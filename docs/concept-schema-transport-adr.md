@@ -2,7 +2,7 @@
 
 **Status:** accepted for the concept schema, the per-engine mappings and their
 coverage reports. `microcosm.frame.transport` adds a reader for local
-populace-US donor files pinned by size and SHA-256, source-ID seeds, a
+Microcosm US donor files pinned by size and SHA-256, source-ID seeds, a
 currency bridge and weighted quantile mapping. The reader selects the donor's
 `is_household_head` as the reference person and repairs two-person parent
 cycles under the age rule below, following the NZ hub's 2026-10-07 defaults
@@ -19,14 +19,17 @@ schema version 2 adds `liquid_financial_assets`, the first stock concept, for
 New Zealand's Accommodation Supplement cash-asset test. Only the Axiom New
 Zealand mapping binds it, as a `Family` binding that `encode_groups` executes
 on built benefit units; the other three mappings list it as unmapped with a
-reason. A scale, sum, scaled sum, share or fraction now computes from annual
-flows only (invariant 11), so none of them can rescale the stock, add it to a
-year's income, or split it.
+reason. A scale, sum, scaled sum, signed part, share or fraction now computes
+from annual flows only (invariant 11), so none of them can rescale the stock,
+add it to a year's income, or split it.
 **Amended 2026-10-10:** schema version 3 adds original
 `household.source_household_id` lineage for donor support diagnostics. The
 reader scopes explicit raw household identifiers by source year and carries
 the same key across support clones and their benefit units. Rules mappings
 leave this provenance concept unmapped.
+**Amended 2026-11-11:** a product multiplies one usual rate by one annual flow
+counted in weeks, and every annual flow has period `year` (invariant 11 states
+both).
 
 ## Context
 
@@ -75,7 +78,8 @@ Each concept declares:
   person id, source id or unit interval.
 - **Period semantics.** The kernel's `year`, `month` or `point`, plus what the
   value measures over it: an annual flow, a state at the reference date, a usual
-  rate over the weeks worked, or persistent state.
+  rate over the weeks worked, or persistent state. An annual flow's period is
+  `year`.
 - **Currency and price level.** Every amount is nominal, in whole units of the
   frame's single declared currency (`ConceptFrameDeclaration.currency`, ISO
   4217), at the prices of its own period. Each amount names the index family
@@ -152,7 +156,9 @@ binds engine inputs to concepts. Each binding states:
   positivity test, sum, a sum then a fixed scale, product, allocation to the
   reference person, a predicate, a relationship role, a co-resident child
   count, a take-up threshold, or a test of a built unit's composition. A scale,
-  sum, scaled sum, share or fraction computes from annual flows only;
+  sum, scaled sum, signed part, share or fraction computes from annual flows
+  only, and a product multiplies one usual rate by one annual flow counted in
+  weeks;
 - the relation, in the same vocabulary;
 - the evidence, quoting the engine's own definition or how builds populate the
   input.
@@ -318,9 +324,10 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     another exception, whatever is corrupted; a missing, unexpected or
     wrongly typed field is named. So do unit rules, state bindings and input
     closures.
-11. **Arithmetic reads annual flows.** A scale, sum, scaled sum, share or
-    fraction binding computes only from concepts whose declared temporal basis
-    is `annual_flow`: every concept in its `concepts`. A stock such as
+11. **Arithmetic reads annual flows, and a product multiplies a usual rate by
+    weeks.** A scale, sum, scaled sum, signed part, share or fraction binding
+    computes only from concepts whose declared temporal basis is
+    `annual_flow`: every concept in its `concepts`. A stock such as
     `liquid_financial_assets` has no weekly value and cannot be added to a
     year's income. The rule also refuses a scale of a usual rate or a
     persistent draw. The household reference person that a binding allocated
@@ -333,12 +340,41 @@ These hold for every input and are tested (Hypothesis properties unless noted):
     were an annual flow. Two checks are exhaustive rather than sampled.
     Redeclaring any operand of a committed arithmetic binding under another
     basis refuses that binding, while redeclaring its placement pointer
-    leaves it valid. Redeclaring anything any other committed binding reads
-    leaves that binding valid. Every committed mapping validates. Other
-    transforms are outside the rule. The New Zealand binding reads the stock
-    through an identity whose group rule sums it over a family's members, and
-    policyengine-uk's hours input is a product of usual weekly hours and
-    weeks worked.
+    leaves it valid. Redeclaring anything any other committed binding (other
+    than a product) reads, under any basis, leaves that binding valid. Every
+    committed mapping validates.
+
+    A product has a rule of its own. It reads exactly two concepts, in either
+    order: one usual rate held as a float, and one annual flow counted in weeks
+    (unit `weeks`, an int or a float). A usual rate holds over the reference
+    year's weeks of activity, so only a number of weeks multiplies it to a
+    year's total. The one committed product is policyengine-uk's hours input,
+    usual weekly hours times weeks worked. The rule refuses a product of any
+    number of concepts but two, and one that reads a concept of any other basis
+    (a stock or a persistent draw, for example), two usual rates, two annual
+    flows, a usual rate that is not a float, or an annual flow that is not a
+    number of weeks, such as a year's income. The rule leaves the usual rate's
+    unit unchecked. A refusal of two concepts names only operands at fault. A Hypothesis property
+    swaps either operand of the committed product for any other concept and redeclares
+    its basis, and, for a numeric quantity that is neither an amount nor a
+    pointer, its dtype and unit. In either order, the binding validates exactly
+    when this rule says it should. Each way to break the rule is also refused by
+    name. Three checks are exhaustive: of all ordered pairs of committed
+    concepts, only usual weekly hours and weeks worked multiply; redeclaring
+    either operand of the committed product under any other basis refuses it;
+    and in policyengine-uk's JSON form, putting any other person concept in
+    either operand's place is refused.
+
+    Every annual flow has period `year`. A concept declared an annual flow
+    with another period is refused at construction. The tie runs one way:
+    other bases take any period, and usual weekly hours, a usual rate, has
+    period `year`. Every committed annual flow already had period `year`, so
+    the schema digest does not move. The test is exhaustive over every
+    committed concept, basis and period.
+
+    Other transforms are outside both rules. The New Zealand binding reads
+    the stock through an identity whose group rule sums it over a family's
+    members.
 12. **Units.** Benefit units partition persons: every person is in exactly
     one unit, every unit has a head and at most one partner, partners share a
     unit and the partner role goes to the head's partner alone, every
@@ -381,14 +417,51 @@ These hold for every input and are tested (Hypothesis properties unless noted):
   nonmissing ages in completed years, from 0 through 130.
   `DonorBank.dropped_parent_cycle_edges` exposes the number of dropped edges.
   Longer cycles and other inconsistent relationships still fail validation.
+- A graph selects a donor-decoding profile through CREATE's optional
+  `donor_profile` parameter. The value is a canonical JSON document with the
+  fields `format` (`microcosm.donor-profile/1`), `profile`, `version`,
+  `donor_sha256` and `choices`. `parse_donor_profile` refuses an unknown or
+  missing field and any choice outside the closed sets in
+  `DONOR_PROFILE_CHOICES`, and a profile has no defaults: the document states
+  every choice. The one profile, `populace-us-cps-asec` version 1, stages
+  household `tenure` from `tenure_type`, `H_TENURE` and the SPM units'
+  tenure and housing assistance, person `legal_marital_status` from
+  `A_MARITL`, and person `enrolled_full_time` from `A_ENRLW` and `A_FTPT`.
+  The reader refuses a document whose `donor_sha256` names other bytes
+  before it opens the file. It checks the raw codes, in their own integer or
+  float storage, and the SPM joins before decoding. It checks each rent and
+  mortgage cost against its own concept's contract, then reconciles the
+  costs with the staged tenure, and then validates the whole frame. CREATE's
+  receipt records the document's digest, its choices and the staging counts
+  under `donor_profile`. A graph that sets no profile reads what it read
+  before (the person and household tables and the `_time_period` series)
+  and never the `spm_unit` table, and its CREATE frame and receipt keep the
+  bytes captured at the commit before this change. No graph selects a
+  profile when the parameter lands. The parameter still moves seven kernel
+  refs once, because it edits the reader's module and CREATE's module:
+  `transport.create@1` and `@2`, `transport.currency@1`,
+  `transport.quantile_map@1` and `@2`, `transport.support_bounds@1` and
+  `transport.boundary@1`. The node records of these kernels and of every node
+  downstream of them re-key. A stored CREATE inventory stops matching,
+  because its store key includes CREATE's implementation hash. The battery
+  refuses support-bounds evidence that records the old implementation hash
+  when that evidence is supplied to it. An ordinary graph run does not
+  supply it: the producer's node key includes the new hash, so the executor
+  misses its cache and runs the producer again. `gates.battery@1` does not
+  move, and no committed digest moves. A choice value the closed sets do not
+  offer needs a further edit to the reader's module, which moves every one
+  of these refs again except `transport.boundary@1`, whose hash reads
+  CREATE's module but not the reader's.
 - The consuming builder supplies the destination frame declaration after
   transport. New Zealand's group bindings now execute on benefit units built
-  from the concept pointers. Belgium's group bindings (46 of its 105 module
-  bindings), and the take-up and housing bindings on US and UK group entities,
-  still wait for a step that builds those engines' units from the pointers, so
-  they stay deferred. Transport also still needs a country pack with
-  geography, targets and an engine adapter. The schema was the one piece that
-  belongs in the core from the start.
+  from the concept pointers. Belgium's 39 `person_role` bindings on `Child`
+  need no units: `encode` runs them on the person table
+  (`ConceptMapping.is_executable`). Belgium's 11 other group bindings (of
+  its 109 module bindings), and the take-up and housing bindings on US and UK
+  group entities, still wait for a step that builds those engines' units from
+  the pointers, so they stay deferred. Transport also still needs a country
+  pack with geography, targets and an engine adapter. The schema was the one
+  piece that belongs in the core from the start.
 - Open questions this does not settle: whether take-up propensities persist or
   are chosen at simulation time (#360), and how the Belgian population-input
   boundary treats `takes_up_*` names (#824). The Axiom concept-coverage

@@ -1,12 +1,14 @@
 """Engine lockstep for the Carer's Allowance take-up stage (microcosm#1319).
 
 The stage opens the claim flag to carers whose care hours meet the engine's
-condition, who report no allowance, and whom the engine's earnings test holds
-gainfully employed at the survey year; in Scotland the flag is Carer Support
-Payment's. These tests fail if policyengine-uk moves the hours condition or
-the earnings limit, adds a condition the stage does not read, or stops
-applying Carer Support Payment's own earnings limit, on which drawing Scotland
-rests.
+condition, whom cares_for_severely_disabled_person, the input the engine reads,
+holds caring for a severely disabled person (microcosm#1418; A3,
+microcosm#1095), who report no allowance, and whom the engine's earnings test
+holds gainfully employed at the survey year; in Scotland the flag is Carer
+Support Payment's. These tests fail if policyengine-uk moves the hours
+condition or the earnings limit, adds a condition the stage does not read, or
+stops applying Carer Support Payment's own earnings limit, on which drawing
+Scotland rests.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from importlib import metadata
 import numpy as np
 import pandas as pd
 
+from microcosm.build.stochastic_assignment import weight_balanced_uniforms
 from microcosm.build.uk_runtime import carers_allowance_take_up as ca
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
@@ -59,6 +62,7 @@ def test_the_policy_is_the_engines_hours_condition_and_limit() -> None:
     assert ca.uk_carers_allowance_policy(2024) == ca.UKCarersAllowancePolicy(
         min_hours=35.0,
         earnings_limit=151.0,
+        weekly_rate=81.90,
         instant="2024-04-30",
         source=(
             f"policyengine-uk {metadata.version('policyengine-uk')} "
@@ -146,39 +150,62 @@ class _CertainContract:
 
 
 def _frame():
-    """Four 35-hour carers: over the limit in Wales and in Scotland, under it
-    in Wales, and a reporter."""
+    """Five 35-hour carers, each living with an 85-year-old in a benefit unit
+    of their own: over the limit in Wales and in Scotland, under it in Wales,
+    a reporter, and one over the limit in Wales whose household member draws
+    no qualifying benefit, so the carer link is false for them alone. The
+    other four members draw the higher rate of Attendance Allowance."""
 
-    weekly_pay = np.asarray([165.0, 165.0, 120.0, 100.0])
-    reported = np.asarray([0.0, 0.0, 0.0, 81.9 * 52])
-    person = pd.DataFrame(
+    weekly_pay = np.asarray([165.0, 165.0, 120.0, 100.0, 165.0])
+    reported = np.asarray([0.0, 0.0, 0.0, 81.9 * 52, 0.0])
+    carers = pd.DataFrame(
         {
-            "person_id": [11, 21, 31, 41],
-            "person_benunit_id": [1, 2, 3, 4],
-            "person_household_id": [1, 2, 3, 4],
-            "age": [40.0, 40.0, 40.0, 40.0],
+            "person_id": [11, 21, 31, 41, 51],
+            "person_benunit_id": [1, 2, 3, 4, 5],
+            "person_household_id": [1, 2, 3, 4, 5],
+            "age": [40.0] * 5,
             "employment_income": weekly_pay * 52,
-            "care_hours": [35.0, 35.0, 35.0, 35.0],
+            "care_hours": [35.0] * 5,
+            ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS: [35.0] * 5,
+            ca.CARERS_ALLOWANCE_CARER_LINK: [True] * 4 + [False],
             "carers_allowance_reported": reported,
             "would_claim_carers_allowance": reported > 0,
+            "aa_category": ["NONE"] * 5,
+            **{name: [0.0] * 5 for name in ca.CARERS_ALLOWANCE_MEANS_TESTED_REPORTED},
         }
     )
-    benunit = pd.DataFrame({"benunit_id": [1, 2, 3, 4]})
+    members = pd.DataFrame(
+        {
+            "person_id": [12, 22, 32, 42, 52],
+            "person_benunit_id": [6, 7, 8, 9, 10],
+            "person_household_id": [1, 2, 3, 4, 5],
+            "age": [85.0] * 5,
+            "employment_income": [0.0] * 5,
+            "care_hours": [0.0] * 5,
+            ca.CARERS_ALLOWANCE_IN_HOUSEHOLD_HOURS: [0.0] * 5,
+            ca.CARERS_ALLOWANCE_CARER_LINK: [False] * 5,
+            "carers_allowance_reported": [0.0] * 5,
+            "would_claim_carers_allowance": [False] * 5,
+            "aa_category": ["HIGHER"] * 4 + ["NONE"],
+            **{name: [0.0] * 5 for name in ca.CARERS_ALLOWANCE_MEANS_TESTED_REPORTED},
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": list(range(1, 11))})
     household = pd.DataFrame(
         {
-            "household_id": [1, 2, 3, 4],
-            "region": ["WALES", "SCOTLAND", "WALES", "WALES"],
-            "council_tax": [0.0] * 4,
-            "tenure_type": ["OWNED_OUTRIGHT"] * 4,
-            "rent": [0.0] * 4,
-            "household_source_id": [1, 2, 3, 4],
+            "household_id": [1, 2, 3, 4, 5],
+            "region": ["WALES", "SCOTLAND", "WALES", "WALES", "WALES"],
+            "council_tax": [0.0] * 5,
+            "tenure_type": ["OWNED_OUTRIGHT"] * 5,
+            "rent": [0.0] * 5,
+            "source_household_id": [1, 2, 3, 4, 5],
         }
     )
     return uk_national_frame(
-        person=person,
+        person=pd.concat([carers, members], ignore_index=True),
         benunit=benunit,
         household=household,
-        household_weights=np.ones(4),
+        household_weights=np.ones(5),
         weight_kind=WeightKind.DESIGN,
         time_period="2024",
     )
@@ -190,8 +217,10 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
         _frame(), engine=engine, contract=_CertainContract()
     )
     flag = result.frame.table("person")["would_claim_carers_allowance"].tolist()
-    # Scotland is drawn as Wales is (María's ruling of 2026-10-23).
-    assert flag == [True, True, False, True]
+    # Scotland is drawn as Wales is (María's ruling of 2026-10-23); the carer
+    # whose household member draws no qualifying benefit is not, and nor is
+    # any member (microcosm#1418).
+    assert flag == [True, True, False, True, False] + [False] * 5
     assert result.evidence()["weekly_earnings_limit"] == 151.0
     # Projected from the survey year as the released file is, the Welsh carer
     # over the 2024-25 limit and under 2025-26's is entitled and would claim;
@@ -213,3 +242,52 @@ def test_the_stage_reaches_the_carers_the_2025_rise_entitles() -> None:
     assert support[1] > 0
     assert after[1] == 0
     assert after[2] == 0
+
+
+def test_the_balanced_draw_is_policyengine_uks_stratified_uniform() -> None:
+    """Without a start, the helper places records as policyengine-uk's
+    stratified_uniform does (which the engine uses to place birthdays); the
+    stage adds a start per stratum (the independent review of microcosm#1420,
+    finding 4)."""
+
+    from policyengine_uk.utils.stochastic import stratified_uniform
+
+    rng = np.random.default_rng(7)
+    n = 2_000
+    strata = rng.integers(0, 16, n)
+    draws = rng.random(n)
+    weights = rng.uniform(0.0, 8.0, n)
+    weights[strata == 3] = 0.0
+    np.testing.assert_array_equal(
+        weight_balanced_uniforms(strata, draws, weights),
+        stratified_uniform(strata, draws, weights),
+    )
+
+
+def test_the_engine_pays_a_carer_only_where_the_carer_link_holds() -> None:
+    """A3 (microcosm#1095): policyengine-uk reads cares_for_severely_disabled_person
+    wherever care_hours reach the minimum, for Carer's Allowance, Carer Support
+    Payment and is_carer_for_benefits, which gives the Universal Credit carer
+    element. A carer at the hours who reports no allowance is paid, and counts
+    as a carer for Universal Credit, only where frs_disability writes the link
+    true."""
+    people = {
+        name: {
+            "age": 40,
+            "care_hours": 35.0,
+            "would_claim_carers_allowance": True,
+            "cares_for_severely_disabled_person": linked,
+        }
+        for name, linked in (("linked", True), ("unlinked", False))
+    }
+    wales = _simulation(people, 2025)
+    allowance = np.asarray(wales.calculate("carers_allowance_pre_overlap", 2025))
+    assert (allowance > 0).tolist() == [True, False]
+    carer = np.asarray(wales.calculate("is_carer_for_benefits", 2025))
+    assert carer.tolist() == [True, False]
+    element = np.asarray(wales.calculate("uc_carer_element", 2025))
+    assert (element > 0).tolist() == [True, False]
+
+    scotland = _simulation(people, 2025, region="SCOTLAND")
+    support = np.asarray(scotland.calculate("carer_support_payment_pre_overlap", 2025))
+    assert (support > 0).tolist() == [True, False]

@@ -570,6 +570,7 @@ def test_a_small_cell_deferral_the_runs_ladder_does_not_carry_is_left_out(
     assert receipt["small_cell_deferrals"] == {
         "rows_added": 1,
         "areas_outside_the_ladder": ["E06999999"],
+        "grown_by_bound_index": {},
     }
     # Under the committed crosswalk an area that cannot be placed is a defect.
     with pytest.raises(ValueError, match="E06999999.*local-area crosswalk"):
@@ -603,7 +604,66 @@ def test_the_uc_bridge_bound_counts_a_small_cell_deferral():
     assert receipt["small_cell_deferrals"] == {
         "rows_added": 1,
         "areas_outside_the_ladder": [],
+        "grown_by_bound_index": {},
     }
+
+
+def test_a_small_cell_deferral_grows_by_its_targets_bound_index():
+    # microcosm#1420: a deferral keeps its published value, so where the bound
+    # cells are uprated (here x1.1, as the pension income cells are by ITL
+    # Table 2.5) it takes its share at their index. Scotland's other authority
+    # is published at 40: grown to 44 it fills the tier to the constituencies'
+    # 110, and the bound authority keeps its 66. At 40 it would have pulled 66
+    # up to about 68.5.
+    def grown(name: str, level: str, area: str, published: float) -> TargetSpec:
+        spec = _uc(name, level, area, published * 1.1)
+        spec.metadata["ledger_value_before_alignment"] = repr(published)
+        spec.metadata["uprating_factor"] = "1.1"
+        return spec
+
+    registry = TargetRegistry(
+        [
+            _uc("dwp.uc.households", "country", "K03000001", 220.0),
+            grown(
+                "dwp.uc.households_by_area@S14000001",
+                "constituency",
+                "S14000001",
+                100.0,
+            ),
+            grown(
+                "dwp.uc.households_by_area@W07000081",
+                "constituency",
+                "W07000081",
+                100.0,
+            ),
+            grown(
+                "dwp.uc.households_by_area@S12000033",
+                "local_authority",
+                "S12000033",
+                60.0,
+            ),
+            grown(
+                "dwp.uc.households_by_area@W06000001",
+                "local_authority",
+                "W06000001",
+                100.0,
+            ),
+        ],
+        country="uk",
+    )
+    surface, receipt = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=("dwp.uc.households",),
+        period=2025,
+        deferred_cells=[
+            _off("local_authority", "S12000034", 40.0, target_id=_UC_AREA_TARGET)
+        ],
+    )
+    values = dict(zip(surface["area_code"], surface["value"], strict=True))
+    assert values["S12000033"] == pytest.approx(66.0)
+    assert values["W06000001"] == pytest.approx(110.0)
+    growth = receipt["small_cell_deferrals"]["grown_by_bound_index"]
+    assert growth == {f"{_UC_AREA_TARGET}@la": pytest.approx(1.1)}
 
 
 def test_the_uc_bridge_bound_refuses_authorities_short_with_a_small_cell_deferral():
@@ -611,3 +671,83 @@ def test_the_uc_bridge_bound_refuses_authorities_short_with_a_small_cell_deferra
     deferrals = [_off("local_authority", "S12000034", 10.0, target_id=_UC_AREA_TARGET)]
     with pytest.raises(ValueError, match=r"the la rows of leg .* by 1\.17"):
         _uc_surface(deferred_cells=deferrals, gb=200.0)
+
+
+def _membership_candidate(area: str, status: str, **fields) -> dict:
+    return {"geography_id": area, "status": status, "signed_reason_id": "r", **fields}
+
+
+def test_a_declared_value_replaces_the_compiled_one_and_fills_an_absent_cell():
+    # An area without the network measured holds none of it (microcosm#1095):
+    # its declared zero stands in for the census base a deferral compiled and
+    # for the fact a publisher does not carry.
+    membership = {
+        "targets": {
+            _TARGET: {
+                "geography_levels": {
+                    "local_authority": {
+                        "candidates": [
+                            _membership_candidate(
+                                "A-x",
+                                "signed_deferred",
+                                deferred_value=10.0,
+                                declared_value=0.0,
+                            ),
+                            _membership_candidate(
+                                "A-y", "no_fact_for_area", declared_value=0.0
+                            ),
+                            _membership_candidate("A-z", "no_fact_for_area"),
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    cells = uk_signed_cells_off_the_surface(membership)
+    assert [(cell["geography_id"], cell["value"]) for cell in cells] == [
+        ("A-x", 0.0),
+        ("A-y", 0.0),
+        ("A-z", None),
+    ]
+
+
+def test_tiers_short_of_one_area_reconcile_at_its_declared_zero():
+    # Both tiers lack the same area in leg S (a seat that is the two councils
+    # without the network): undeclared, nothing implies it; declared zero,
+    # the leg's cells keep their own share.
+    bound = [*_both_tiers("A", 100.0, 100.0), *_both_tiers("S", 50.0, 50.0)]
+    controlled = {(_TARGET, "la", "S")}
+    with pytest.raises(ValueError, match="cannot be implied"):
+        uk_off_surface_frame_rows(
+            bound,
+            [_off("local_authority", "S-x", None), _off("constituency", "S-x", None)],
+            leg_of_area=_leg_of_area,
+            controlled_legs=controlled,
+        )
+    rows, receipt = uk_off_surface_frame_rows(
+        bound,
+        [_off("local_authority", "S-x", 0.0), _off("constituency", "S-x", 0.0)],
+        leg_of_area=_leg_of_area,
+        controlled_legs=controlled,
+    )
+    assert [row["value"] for row in rows] == [0.0, 0.0]
+    assert receipt["implied_absent"] == []
+
+
+def test_the_surface_hands_its_placed_deferrals_to_the_fanout_bridges(monkeypatch):
+    # The re-review of microcosm#1420, D: the fan-out sum bridges count the
+    # small-cell deferrals the surface placed, at their published values.
+    # Without this wiring the pension bridge's source factor would read the
+    # deferred cells as missing.
+    from microcosm.build.uk_runtime import ledger_targets
+
+    seen = []
+
+    def spy(registry, controls, *, off_surface_rows=(), deferred_cells=()):
+        seen.append(list(deferred_cells))
+        return []
+
+    monkeypatch.setattr(ledger_targets, "_assert_uk_fanout_sum_agreement", spy)
+    deferrals = [_off("local_authority", "S12000034", 40.0, target_id=_UC_AREA_TARGET)]
+    _uc_surface(deferred_cells=deferrals, gb=200.0)
+    assert seen == [deferrals]

@@ -1,0 +1,1 @@
+A `calendar_year_window_scaled_by_ratio` numerator can declare `complement`: its cells come off the denominator, so the share is the rest of the published universe, for example chargeable dwellings less second homes and empty dwellings (microcosm#1095 D14f). The compiled metadata records the rule and the formula.

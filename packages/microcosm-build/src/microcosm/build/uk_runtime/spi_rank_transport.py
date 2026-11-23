@@ -32,7 +32,7 @@ a twin's own value took a median 0.23 (pay) to 0.74 (dividends) of its
 conditional's mass, so its located quantile was mostly the random placement
 inside that atom and the draw kept under half of the twin's rank within a
 cell. The rows are therefore split into folds by a stable hash of their
-predictor cell (gender, region, whole-year age and the four bridge
+predictor cell (gender, region, SPI age band and the four bridge
 predictors), each fold's recipients are located by a forest fitted on the
 other folds, and because a copy shares its twin's cell, the forest that
 locates it never saw the twin. Keying the folds on the cell rather than the
@@ -57,6 +57,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
 )
+from microcosm.build.uk_runtime.receipt_counts import rounded_count
 from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
     SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN,
@@ -85,21 +86,24 @@ SPI_TRANSPORT_DRAW = "twin_conditional_quantiles"
 SPI_TRANSPORT_SALT = "spi_stage1"
 #: The identity a recipient's uniforms are keyed on: the FRS person it copies.
 SPI_TRANSPORT_KEY_COLUMN = "person_source_id"
-#: Taxable savings interest on the twin: the FRS gross interest less the
-#: tax-free part, the concept the tape's INCBBS leaf holds.
+#: Taxable savings interest on the twin: the FRS interest outside ISAs
+#: (microcosm#1360), the concept the tape's INCBBS leaf holds.
 TAXABLE_SAVINGS_INTEREST_ANALOGUE = "taxable_savings_interest"
-#: Per-group uniformity is reported only over at least this many rows.
+#: Per-group uniformity is reported only over at least this many rows: a
+#: statistical floor, as a uniformity distance over fewer says nothing, not the
+#: disclosure floor (receipt_counts.UK_DISCLOSURE_FLOOR).
 SPI_TRANSPORT_GROUP_MINIMUM_ROWS = 10
 #: The reference forest is cross-fitted in this many folds keyed on the
 #: predictor cell; a frame with fewer distinct cells uses one fold per cell.
 SPI_TRANSPORT_FOLDS = 5
 #: The fold draw's salt; the fold of a cell is ``floor(uniform * folds)``.
 SPI_TRANSPORT_FOLD_SALT = "spi_stage1:reference_fold"
-#: The columns whose values name a predictor cell, age at the whole year.
+#: The columns whose values name a predictor cell: the stage-1 predictors,
+#: age as its SPI band (uk-data#628).
 SPI_TRANSPORT_CELL_COLUMNS = (
     "gender",
     "region",
-    "age",
+    "spi_age_band",
     "main_source",
     "has_pay",
     "has_trade",
@@ -116,7 +120,12 @@ SPI_STAGE1_ANALOGUE_COLUMNS: Mapping[str, str | None] = {
     "dividend_income": "dividend_income",
     "private_pension_income": "private_pension_income",
     "property_income": "property_income",
-    "other_investment_income": None,
+    # The twin's own other income locates the draw (microcosm#1428): its gilt
+    # interest, so a copy's OTHERINV draw ranks with its twin's holdings
+    # instead of an identity uniform that ignores them. The twin's purchased
+    # annuity and trust payments stay in private_pension_income, whose
+    # analogue they join.
+    "other_investment_income": "other_investment_income",
     "gift_aid": None,
     "charitable_investment_gifts": None,
     SPI_HMRC_PAY_COLUMN: FRS_HMRC_PAY_COLUMN,
@@ -186,7 +195,7 @@ def analogue_source_columns() -> tuple[str, ...]:
         for column in SPI_STAGE1_ANALOGUE_COLUMNS.values()
         if column and column != TAXABLE_SAVINGS_INTEREST_ANALOGUE
     }
-    columns |= {"savings_interest_income", "tax_free_savings_income"}
+    columns |= {"savings_interest_income"}
     return tuple(sorted(columns))
 
 
@@ -197,8 +206,8 @@ def observed_analogues(
     """The twin's observed values of every analogue target, named by target.
 
     Rows are FRS persons (the twins, or the SPI copies before the draw, which
-    still carry the twin's values). Taxable savings interest is derived as the
-    gross FRS interest less the tax-free part, floored at zero.
+    still carry the twin's values). Taxable savings interest is the FRS
+    interest outside ISAs, floored at zero.
     """
 
     missing = sorted(set(analogue_source_columns()) - set(person.columns))
@@ -206,9 +215,6 @@ def observed_analogues(
         raise ValueError(f"SPI transport analogues are missing column(s): {missing}.")
     taxable_interest = np.maximum(
         pd.to_numeric(person["savings_interest_income"], errors="coerce").to_numpy(
-            dtype=np.float64, na_value=np.nan
-        )
-        - pd.to_numeric(person["tax_free_savings_income"], errors="coerce").to_numpy(
             dtype=np.float64, na_value=np.nan
         ),
         0.0,
@@ -239,7 +245,7 @@ def cell_fold_ids(
     """Assign every row to a fold by a stable hash of its predictor cell.
 
     ``predictors`` holds the raw (unencoded) stage-1 predictors; a cell is the
-    tuple of :data:`SPI_TRANSPORT_CELL_COLUMNS` with age at the whole year.
+    tuple of :data:`SPI_TRANSPORT_CELL_COLUMNS`.
     The fold is ``floor(uniform * used)`` of the cell's identity-keyed
     uniform, so two frames whose rows share a cell share its fold. ``used``
     is ``folds`` capped at the number of distinct cells in ``predictors``, or
@@ -252,9 +258,6 @@ def cell_fold_ids(
     if missing:
         raise ValueError(f"fold cells need predictor column(s) {missing}.")
     cells = predictors[list(SPI_TRANSPORT_CELL_COLUMNS)].copy()
-    cells["age"] = np.floor(
-        pd.to_numeric(cells["age"], errors="coerce").to_numpy(dtype=np.float64)
-    )
     keys = cells.astype(str).agg("|".join, axis=1).to_numpy()
     if used is None:
         used = min(folds, len(set(keys.tolist())))
@@ -620,11 +623,10 @@ def _uniformity(
     return {
         "rows": int(len(sign)),
         "sign": _kolmogorov(sign),
-        # A count under the group floor is not reported (CD171 5.2.1), as the
-        # by-group receipt withholds a small group.
-        "positive_rows": (
-            positive_rows if positive_rows >= SPI_TRANSPORT_GROUP_MINIMUM_ROWS else None
-        ),
+        # The count is rounded as every receipt count is (receipt_counts): one
+        # or two rows read "<3" (CD171 5.2.1). The distances need ten rows, a
+        # statistical floor, as the by-group receipt's do.
+        "positive_rows": rounded_count(positive_rows),
         "quantile": _kolmogorov(quantile[rows]) if rows.any() else None,
     }
 

@@ -1,0 +1,83 @@
+{
+  "settings": {
+    "method": "adam",
+    "mass": "free",
+    "max_weight_ratio": 10.0,
+    "epochs": 1024,
+    "learning_rate": 0.02,
+    "seed": 0
+  },
+  "result": {
+    "fit": {
+      "n_targets": 504,
+      "n_zero_valued_targets": 26,
+      "capped_mape": 0.6501257251453464,
+      "uncapped_mape": 21166819.46435176,
+      "median_abs_rel_error": 0.7036655674902923,
+      "share_within_10pct": 0.2876984126984127,
+      "share_within_25pct": 0.3551587301587302,
+      "worst_five": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_total",
+          "relative_error": 10666676983.536255
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.30k_to_35k.eitc_returns",
+          "relative_error": 1399642.875
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 77.21406791159356
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 18.74459513981709
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.50k_plus.eitc_returns",
+          "relative_error": 1.3045940275834988
+        }
+      ],
+      "worst_five_nonzero_targets": [
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_total",
+          "relative_error": 77.21406791159356
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.1k_to_2k.eitc_returns",
+          "relative_error": 18.74459513981709
+        },
+        {
+          "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.50k_plus.eitc_returns",
+          "relative_error": 1.3045940275834988
+        },
+        {
+          "target": "census_pep.cy2024.national_resident_population_age.45_to_49.population",
+          "relative_error": 1.2257703981811368
+        },
+        {
+          "target": "cbo.revenue_projection.ty2024.income_by_source.net_capital_gain.projected_amount",
+          "relative_error": -1.1533668682625544
+        }
+      ]
+    },
+    "weights": {
+      "n": 100,
+      "total": 189193988.60839844,
+      "max_over_mean": 6.5136488165633795,
+      "min_over_mean": 0.004665527444007631,
+      "top10_share": 0.4716903515614055,
+      "kish_ess": 32.0246732862653,
+      "n_above_5x_own_median": 15,
+      "n_above_10x_own_median": 5,
+      "equal_share": 1232343.8385038802,
+      "n_above_5x_equal_share": 8,
+      "n_above_10x_equal_share": 0
+    },
+    "skipped_on_subset": []
+  },
+  "runtime": {
+    "seconds": 2.03,
+    "peak_rss_gb": 3.51
+  }
+}

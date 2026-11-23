@@ -24,6 +24,7 @@ from typing import Protocol
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.gates import GateResult
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.build.us_runtime.acs_income_universe import (
@@ -50,6 +51,7 @@ from microcosm.build.us_runtime.eligibility_inputs import (
 from microcosm.build.us_runtime.energy_subsidy import (
     with_us_energy_subsidy_input,
 )
+from microcosm.build.us_runtime.gate_shadow import shadow_gate
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
     us_hours_worked_signal_gate,
@@ -367,11 +369,11 @@ is asserted.
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("assembled_native_engine_input", 5),
-    ("declared_absent_engine_input", 763),
+    ("declared_absent_engine_input", 762),
     ("declared_deferred_null_input", 3),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
-    ("materialized_pool_input_surface", 122),
+    ("materialized_pool_input_surface", 123),
     ("preserved_stacked_engine_input", 4),
     ("seed_stage_program_contract", 17),
     ("unprovisioned_source_input", 1),
@@ -383,7 +385,7 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "0a84565a659a6404cb17715dda36f094a87431c713c7a37bf65a936b16937325"
+    "d4fb9de9c0b8081474a24d0abde84ebf05eb346483fc20e3852e29abc769a501"
 )
 """Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 
@@ -1292,6 +1294,7 @@ def pool_remaining_stage_input_manifest(
         )
     for variable in (
         "partnership_income",
+        "s_corp_income",
         "estate_income",
         "non_qualified_dividend_income",
     ):
@@ -1304,15 +1307,6 @@ def pool_remaining_stage_input_manifest(
             provision=surface_provision(variable),
             available_by="transferred",
         )
-    register(
-        "derive",
-        "with_us_qbi_input_reconciliation",
-        "person",
-        "s_corp_income",
-        execution_scope="whole_pool",
-        provision="primary_puf_exact_zero_universe",
-        available_by="transferred",
-    )
     for variable, provision in (
         ("age", "assembled_native_person_input"),
         ("SEMP", "assembled_raw_acs_source_authority"),
@@ -1837,7 +1831,13 @@ def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
         seed=POOL_RANDOM_SEED,
         time_period=POOL_TIME_PERIOD,
     )
-    gate = us_hours_worked_signal_gate(produced)
+    # The pool builder's stacked path observes this gate for its shadow
+    # battery (microcosm#1585 item 11); with no shadow armed it is the call.
+    gate = shadow_gate(
+        "us_pool_hours_worked",
+        lambda: us_hours_worked_signal_gate(produced),
+        lambda: EvidenceContext(frame=produced),
+    )
     if not gate.passed:
         raise ValueError(
             "Pool pre-clone hours-worked signal gate failed:\n  "
@@ -3122,6 +3122,11 @@ def seed_multispine_pool_inputs(
             defaulted_rows = 0
             seeded_rows = 0
         else:
+            # TODO(microcosm#1019): takes_up_snap_if_eligible lands here, so
+            # its missing (ACS-row) cells get the engine default, universal
+            # take-up. The legacy local lane seeds them in acs_local_take_up;
+            # this module must stay spine-blind, so the fix here needs a
+            # spine-blind receipt-anchored SNAP seed and a contract change.
             if program.variable not in defaults:
                 raise ValueError(
                     "PolicyEngine exposes no input default for take-up variable "

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -28,11 +29,22 @@ from microcosm.build.uk_runtime.pension_coherence import (
     cap_net_pay_contributions,
     coherence_receipt,
 )
+from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    own_source_households,
+    rounded_count,
+    support_band,
+)
 from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
 __all__ = [
+    "FRS_CARE_HELPER_BIT",
+    "FRS_CARE_LINE_HOURS",
+    "FRS_CARE_RECIPIENTS_COLUMN",
     "FRS_SPINE_TABLES",
+    "FRS_UC_CARER_ELEMENT_COLUMN",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
     "TIME_PERIOD",
@@ -40,7 +52,11 @@ __all__ = [
     "WEEKS_IN_YEAR",
     "UKFRSSpineStageTransform",
     "artifact_by_table",
+    "benefits_by_recipient",
     "build_uk_frs_spine_frame",
+    "frs_care_recipients",
+    "frs_claimant_or_partner",
+    "frs_lcwra_proxy",
     "map_codes",
     "normalize_ids",
     "number",
@@ -57,6 +73,7 @@ FRS_SPINE_TABLES = (
     "adult",
     "benefits",
     "benunit",
+    "care",
     "child",
     "chldcare",
     "extchild",
@@ -174,6 +191,110 @@ BENEFIT_CODES = {
     "pip_dl": (96, 117),
 }
 
+#: The disability benefits that move to the household member they are received
+#: for (A3a of the November event-data plan's PR3, microcosm#1095). The FRS
+#: records a benefit received for someone else on the receiving adult's
+#: BENEFITS row, with WHOREC1 to WHOREC5 naming the person it is for: 1 to 14 a
+#: household member's person number, 97 someone outside the household, negative
+#: values missing (FRS 2024-25 BENEFITS dictionary, UKDS SN 9563). Every Child
+#: Disability Payment row sits on an adult's row and names the child, while DLA
+#: for children sits on the child's own row, so without the move a Scottish
+#: child's payment counted as a parent's.
+BENEFIT_RECIPIENT_FAMILIES = (
+    "attendance_allowance",
+    "dla_sc",
+    "dla_m",
+    "pip_dl",
+    "pip_m",
+)
+BENEFIT_RECIPIENT_CODES = tuple(
+    sorted(code for name in BENEFIT_RECIPIENT_FAMILIES for code in BENEFIT_CODES[name])
+)
+BENEFIT_RECIPIENT_COLUMNS = tuple(f"whorec{number}" for number in range(1, 6))
+#: FRS person numbers within a household, and WHOREC's code for someone outside.
+FRS_PERSON_NUMBER_RANGE = (1, 14)
+FRS_NOT_A_HOUSEHOLD_MEMBER = 97
+BENEFIT_RECIPIENT_RULE = (
+    "a disability benefit row (Attendance Allowance, DLA and Child Disability "
+    "Payment, PIP and Adult Disability Payment) moves to the household members "
+    "its WHOREC1 to WHOREC5 name where they name anyone other than the row's "
+    "own person; a row naming two or more splits its amount evenly between "
+    "them (María's ruling of 2026-11-10); a row naming nobody, only its own "
+    "person, someone outside the household (97) or a person number the "
+    "household doesn't hold stays where it is; other benefits never move"
+)
+
+
+def benefits_by_recipient(
+    benefits: pd.DataFrame, person_ids: Collection[int]
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The BENEFITS rows with each disability benefit on the person it is for.
+
+    ``benefits`` is the normalized table (``household_id`` and ``person_id``
+    built as :func:`normalize_ids` builds them); ``person_ids`` are the frame's
+    people. :data:`BENEFIT_RECIPIENT_RULE` says which rows move. The evidence
+    counts the rows that moved in the receipts' rounded counts and support
+    bands, never exactly.
+    """
+
+    frame = benefits.reset_index(drop=True)
+    columns = [column for column in BENEFIT_RECIPIENT_COLUMNS if column in frame]
+    code = _number(frame, "benefit").astype("int64").to_numpy()
+    candidates = np.flatnonzero(np.isin(code, BENEFIT_RECIPIENT_CODES))
+    moved: list[int] = []
+    split: list[int] = []
+    naming_outside = 0
+    naming_unheld = 0
+    pieces: list[pd.DataFrame] = []
+    if columns and len(candidates):
+        held = {int(person_id) for person_id in person_ids}
+        named = (
+            frame.loc[candidates, columns]
+            .apply(pd.to_numeric, errors="coerce")
+            .to_numpy(dtype=float)
+        )
+        household = _number(frame, "household_id").astype("int64").to_numpy()
+        own = _number(frame, "person_id").astype("int64").to_numpy()
+        amount = _number(frame, "benamt").to_numpy()
+        low, high = FRS_PERSON_NUMBER_RANGE
+        for position, row in enumerate(candidates):
+            numbers = named[position][np.isfinite(named[position])]
+            naming_outside += int((numbers == FRS_NOT_A_HOUSEHOLD_MEMBER).any())
+            members = numbers[(numbers >= low) & (numbers <= high)].astype(np.int64)
+            ids = list(dict.fromkeys((household[row] * 1000 + members).tolist()))
+            recipients = [person_id for person_id in ids if person_id in held]
+            naming_unheld += int(len(recipients) < len(ids))
+            if not recipients or recipients == [int(own[row])]:
+                continue
+            piece = frame.loc[[row] * len(recipients)].copy()
+            piece["person_id"] = np.asarray(recipients, dtype=np.int64)
+            piece["benamt"] = amount[row] / len(recipients)
+            pieces.append(piece)
+            (moved if len(recipients) == 1 else split).append(int(row))
+    changed = sorted(moved + split)
+    result = frame
+    if pieces:
+        result = pd.concat([frame.drop(index=changed), *pieces], ignore_index=True)
+    households = (
+        _number(frame, "household_id").to_numpy()[changed] if changed else np.array([])
+    )
+    evidence: dict[str, object] = {
+        "rule": BENEFIT_RECIPIENT_RULE,
+        "codes": list(BENEFIT_RECIPIENT_CODES),
+        # Record counts are rounded, never exact (UKDS CD137 cl. 8).
+        "rows_moved": rounded_count(len(moved)),
+        "rows_split": rounded_count(len(split)),
+        "households": support_band(len(set(households.tolist()))),
+        "by_code": {
+            str(benefit): rounded_count(int((code[changed] == benefit).sum()))
+            for benefit in BENEFIT_RECIPIENT_CODES
+        },
+        "rows_naming_someone_outside": rounded_count(naming_outside),
+        "rows_naming_a_person_number_not_held": rounded_count(naming_unheld),
+    }
+    return result, evidence
+
+
 # FRS adult HOURTOT: total hours of care provided per week, a banded derived
 # variable (FRS derived-variable specification). Each code maps to the lower
 # edge of its band in weekly hours; the engine's care_hours input is weekly
@@ -193,6 +314,126 @@ FRS_CARE_HOURS_BY_BAND = {
     9: 20.0,  # varies, 20-34 hours
     10: 35.0,  # varies, 35 hours or more
 }
+#: FRS adult bands, coded as HOURTOT is, for the care a person gives inside
+#: the household: HOURAB to adults and HOURCB to children of their own benefit
+#: unit, HOURAH to adults and HOURCH to children of another benefit unit in the
+#: household. HOURRE, HOURFR, HOUROT and HOURCL are the bands for relatives,
+#: friends, others and a voluntary organisation's clients outside it.
+FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS = ("hourab", "hourah", "hourcb", "hourch")
+#: The weekly hours of a person's largest in-household care band (lower band
+#: edge), which carers_allowance_take_up reads to find carers of a severely
+#: disabled household member (microcosm#1418). It is no engine input and
+#: leaves at the release boundary.
+FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN = "frs_care_hours_in_household"
+#: The FRS care tab holds one row per household and person helped. NEEDPER is
+#: the person helped: 1 to 14 a household member's person number, 15 to 22
+#: someone outside the household (a parent, another parent, a child, a spouse,
+#: another relative, a friend or neighbour, a voluntary organisation's client,
+#: or another). WHOLOO01 to WHOLOO14 (1 yes) mark which household members help
+#: them, and HOUR01 to HOUR14 give each helper's weekly band, coded as HOURTOT
+#: is (FRS 2024-25 CARE dictionary, UKDS SN 9563).
+FRS_CARE_HELPER_NUMBERS = tuple(range(1, 15))
+FRS_CARE_OUTSIDE_NEEDPER = tuple(range(15, 23))
+#: Each person's care recipients at Carer's Allowance's line as a bitmask: bit
+#: n for household member n whom the person gives at least
+#: FRS_CARE_LINE_HOURS a week, bit FRS_CARE_OUTSIDE_BIT for anyone outside the
+#: household given that, and bit FRS_CARE_HELPER_BIT for every person the care
+#: tab lists as helping someone; 0 for a person who helps nobody in the care
+#: tab. The line is per person cared for: the Social Security (Invalid Care
+#: Allowance) Regulations 1976 reg. 4(1) need 35 hours a week caring for that
+#: severely disabled person, and reg. 4(1A) counts care for two or more people
+#: only where one of them gets 35 hours, considered without reference to any
+#: other (Vahid's review of microcosm#1583, Should 1; María's decision of
+#: 2026-11-12). UC Regs 2013 reg. 30(1)(a) reads the same conditions into the
+#: carer element, and SSI 2023/302 reg. 5(2) into Carer Support Payment.
+#: frs_disability reads it to write cares_for_severely_disabled_person (A3 of
+#: the November event-data plan's PR3, microcosm#1095). It is no engine input
+#: and leaves at the release.
+FRS_CARE_RECIPIENTS_COLUMN = "frs_care_recipients"
+FRS_CARE_HELPER_BIT = 0
+FRS_CARE_OUTSIDE_BIT = 15
+#: Carer's Allowance's 35 hours a week, the lower edge of HOURTOT's code 5
+#: (35-49 hours): the bands that reach it are codes 5, 6, 7 and 10, so the
+#: line is exact at the care tab's bands. frs_disability refuses an engine
+#: minimum other than this one, which would need the bands read again.
+FRS_CARE_LINE_HOURS = 35.0
+#: DWP's limited capability for work status on a benefit unit's linked
+#: Universal Credit claim: BENEFITS.UCLCW on the UC row, "Limited Capability
+#: for Work Status (Admin UC)", coded 0 None, 1 LCFW Group and 2 LCFWRA Group
+#: in SN 9563's UKDA data dictionary and value labels, and blank where the
+#: claim has no linked record, as UCSTART is. The FRS keeps one UC row per
+#: claim, couples included, so the status is the claim's: it rides on the UC
+#: row's person, and every other person carries NOT_LINKED. The
+#: uc_limited_capability stage reads it (microcosm#1095, Y1); it is no engine
+#: input and leaves at the release boundary.
+FRS_UC_LCW_STATUS_COLUMN = "frs_uc_lcw_status"
+FRS_UC_LCW_STATUS_CODES = {0: "NONE", 1: "LCW", 2: "LCWRA"}
+FRS_UC_LCW_NOT_LINKED = "NOT_LINKED"
+#: Whether a long-standing illness or disability limits a person's day-to-day
+#: activities: ADULT.CONDIT, "Whether condition limits day to day activities",
+#: coded 1 "Yes, activities reduced a lot", 2 "Yes, activities reduced a
+#: little" and 3 "Not at all" in SN 9563's variable listing, and asked exactly
+#: where ADULT.HEALTH1, "Whether has a long standing illness", is 1. An adult
+#: whose HEALTH1 is 2 carries NO_CONDITION, and a child, whom the child tab
+#: asks neither, NOT_ASKED. The uc_limited_capability stage reads it for the
+#: cells of its imputation (PolicyEngine/microcosm#1663); it is no engine
+#: input and leaves at the release boundary.
+FRS_CONDITION_LIMITS_COLUMN = "frs_condition_limits_activities"
+FRS_CONDITION_LIMITS_CODES = {1: "A_LOT", 2: "A_LITTLE", 3: "NOT_AT_ALL"}
+FRS_CONDITION_NONE = "NO_CONDITION"
+FRS_CONDITION_NOT_ASKED = "NOT_ASKED"
+
+#: How recent a benefit unit's linked Universal Credit claim is: the completed
+#: calendar months from DWP's claim start (BENEFITS.UCSTART on the claim's UC
+#: row) to the interview (HOUSEHOL.INTDATE), as the start-up period counts
+#: them, or -1 where the unit has no linked claim start (no UC row, or UCSTART
+#: blank). The uc_new_claimant_draw stage orders the new-claimant health
+#: element draw by it (microcosm#1095); it is no engine input and leaves at
+#: the release boundary.
+FRS_UC_CLAIM_MONTHS_COLUMN = "frs_uc_claim_months"
+FRS_UC_CLAIM_MONTHS_NOT_LINKED = -1.0
+#: DWP's carer element on a benefit unit's linked Universal Credit claim:
+#: BENEFITS.UCCAREEL on the UC row, "Weekly Carer Element Amount (Admin UC)"
+#: in SN 9563's UKDA data dictionary, which gives it no value labels. The
+#: 2024-25 end user licence file codes it 0 or 1 on every linked claim, read
+#: here as whether the claim's award holds a carer element (NONE or CARER)
+#: on a claim with a linked record, UCSTART present; any other claim is
+#: NOT_LINKED, whatever the column holds.
+#: Like the limited capability status it is the claim's, on the UC row's
+#: person, every other person carrying NOT_LINKED. frs_disability reads it
+#: only to check the carer link against DWP's record (A3 (f) of the November
+#: event-data plan's PR3, microcosm#1095, María's choices of 2026-11-10); it
+#: is no engine input and leaves at the release boundary.
+FRS_UC_CARER_ELEMENT_COLUMN = "frs_uc_carer_element"
+FRS_UC_CARER_ELEMENT_CODES = {0: "NONE", 1: "CARER"}
+#: B3 of the November event-data plan's PR3 (microcosm#1095; María's ruling of
+#: 2026-11-11): DWP pays the Universal Credit carer element only for caring at
+#: least 35 hours a week for a severely disabled person, so a linked claim whose
+#: award DWP records with the element has a carer in its benefit unit whatever
+#: the survey's care answers say. Where no claimant or partner of that unit
+#: reports 35 or more care hours or Carer's Allowance, the claimant or partner
+#: who reports more care hours takes the lower edge of the first band at that
+#: line (HOURTOT code 5, 35-49 hours), the UC row's person on a tie (Vahid's
+#: review of microcosm#1583, Should 2; María's decision of 2026-11-12). On a
+#: claim DWP also records with the LCWRA element, a carer with LCWRA gets only
+#: that element (UC Regs 2013 reg. 29(4)), so DWP's record says the carer isn't
+#: the claimant who holds it: a claimant or partner whom Y1's proxy
+#: (is_disabled_for_benefits, which uc_limited_capability keeps on such a claim)
+#: flags is passed over while another isn't. frs_disability then holds the
+#: unit's carers at the line caring for a severely disabled person. Claims with
+#: no linked record keep the survey's answers.
+FRS_DWP_CARER_CARE_HOURS = 35.0
+FRS_DWP_CARER_RULE = (
+    "on a linked Universal Credit claim whose award DWP records with a carer "
+    "element (frs_uc_carer_element CARER), where no claimant or partner of the "
+    "benefit unit reports 35 or more care hours (HOURTOT) or Carer's Allowance, "
+    "the claimant or partner who reports more care hours takes 35 care hours, "
+    "the lower edge of HOURTOT's first band at the line, the UC row's person on "
+    "a tie; on a claim DWP records with LCWRA (frs_uc_lcw_status), one whom the "
+    "LCWRA proxy (is_disabled_for_benefits: any reported disability benefit or "
+    "ESA) flags is passed over while another isn't; other claims and people "
+    "keep the survey's answers"
+)
 
 # FRS adult RENTPROF (question RentProf): whether the rent from other property
 # in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
@@ -208,6 +449,33 @@ OWNER_MANAGER_COLUMNS = (
     "owned_company_carries_on_property_business",
     "owned_company_income_share",
 )
+
+#: FRS PENSION.PENTYPE codes of an annuity not bought with pension funds (4)
+#: and a trust or covenant (5), the ADULT ANYPEN4 and ANYPEN5 sources. Their
+#: payments stay in private_pension_income, where policyengine-uk's means
+#: tests, household income and tax read them: trust and covenant payments
+#: are generally non-savings income (ITA 2007 s. 18), and the FRS records the
+#: whole annuity payment, of which only the income element is savings income
+#: (ITTOIA 2005 s. 717). SPI Table 3.7 counts both as other income (note 6),
+#: so the part they make of private_pension_income is stored apart, in
+#: ANNUITY_AND_TRUST_INCOME_COLUMN, a calibration-only descriptor that the
+#: Table 3.7 other-income measure adds (microcosm#1428 review, finding 1).
+FRS_ANNUITY_AND_TRUST_PENSION_TYPES = (4, 5)
+#: The descriptor: each person's annual annuity and trust payments, already
+#: inside private_pension_income. No engine input reads it.
+ANNUITY_AND_TRUST_INCOME_COLUMN = "annuity_and_trust_income"
+#: Each person's company car from the FRS job tab, the four carriers the
+#: company_cars stage reads to set policyengine-uk's company car inputs
+#: (PolicyEngine/uk-autumn-budget-dashboard-2026#316); see
+#: frs_company_car_carriers. They are no engine inputs and leave at the
+#: release boundary.
+FRS_COMPANY_CAR_CARRIER_COLUMNS = (
+    "frs_company_car_price_band",
+    "frs_company_car_fuel_code",
+    "frs_company_car_private_fuel",
+    "frs_company_car_contribution",
+)
+
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -218,6 +486,8 @@ OUTPUT_COLUMNS = (
     "marital_status",
     "hours_worked",
     "care_hours",
+    FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
+    FRS_CARE_RECIPIENTS_COLUMN,
     "is_household_head",
     "is_benunit_head",
     "is_parent",
@@ -226,6 +496,9 @@ OUTPUT_COLUMNS = (
     "is_claimant_or_partner",
     "is_hbai_dependent_child",
     "uc_is_in_startup_period",
+    FRS_UC_LCW_STATUS_COLUMN,
+    FRS_CONDITION_LIMITS_COLUMN,
+    FRS_UC_CARER_ELEMENT_COLUMN,
     "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
     "rent_paid_as_lodger",
@@ -235,9 +508,11 @@ OUTPUT_COLUMNS = (
     "loss_relief",
     "ni_class_4_losses_brought_forward",
     "private_pension_income",
-    "tax_free_savings_income",
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
+    "individual_savings_account_interest_income",
     "savings_interest_income",
     "dividend_income",
+    "other_investment_income",
     *OWNER_MANAGER_COLUMNS,
     "property_income",
     "reports_rent_from_other_property",
@@ -266,6 +541,7 @@ OUTPUT_COLUMNS = (
     "salary_sacrifice_reported",
     "salary_sacrifice_asked",
     "frs_bonus_amount",
+    *FRS_COMPANY_CAR_CARRIER_COLUMNS,
     "child_benefit_reported",
     "income_support_reported",
     "housing_benefit_reported",
@@ -297,6 +573,7 @@ OUTPUT_COLUMNS = (
     "widowed_parents_allowance_reported",
     "benunit_id",
     "frs_benunit_capital",
+    FRS_UC_CLAIM_MONTHS_COLUMN,
     "is_married",
     "dependent_children",
     "liable_for_share_of_household_rent",
@@ -330,6 +607,9 @@ class UKFRSSpineStageTransform:
         self._sentinel_mapped_rows: int | None = None
         self._access_fund: dict[str, object] | None = None
         self._net_pay: dict[str, object] | None = None
+        self._benefit_recipients: dict[str, object] | None = None
+        self._care_recipients: dict[str, object] | None = None
+        self._dwp_carer_hours: dict[str, object] | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         evidence: dict[str, object] = {}
@@ -340,6 +620,9 @@ class UKFRSSpineStageTransform:
         self._sentinel_mapped_rows = int((capital == UC_CAPITAL_UNAVAILABLE).sum())
         self._access_fund = dict(evidence["access_fund"])
         self._net_pay = dict(evidence["net_pay_contributions"])
+        self._benefit_recipients = dict(evidence["benefit_recipients"])
+        self._care_recipients = dict(evidence["care_recipients"])
+        self._dwp_carer_hours = dict(evidence["dwp_carer_hours"])
         return result
 
     @staticmethod
@@ -354,6 +637,9 @@ class UKFRSSpineStageTransform:
             self._sentinel_mapped_rows is None
             or self._access_fund is None
             or self._net_pay is None
+            or self._benefit_recipients is None
+            or self._care_recipients is None
+            or self._dwp_carer_hours is None
         ):
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {
@@ -365,6 +651,9 @@ class UKFRSSpineStageTransform:
                 },
                 "access_fund": dict(self._access_fund),
                 "net_pay_contributions": dict(self._net_pay),
+                "benefit_recipients": dict(self._benefit_recipients),
+                "care_recipients": dict(self._care_recipients),
+                "dwp_carer_hours": dict(self._dwp_carer_hours),
             }
         }
 
@@ -568,6 +857,11 @@ def _assemble_frame(
     pe_person["marital_status"] = _map_codes(person, "marital", MARITAL_MAP, "SINGLE")
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
     pe_person["care_hours"] = frs_care_hours(person)
+    pe_person[FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN] = frs_in_household_care_hours(person)
+    care_recipients, care_evidence = frs_care_recipients(frs["care"], person)
+    pe_person[FRS_CARE_RECIPIENTS_COLUMN] = care_recipients.to_numpy(dtype=np.int64)
+    if evidence is not None:
+        evidence["care_recipients"] = care_evidence
     pe_person["is_household_head"] = _number(person, "hrpid") == 1
     pe_person["is_benunit_head"] = _number(person, "uperson") == 1
     dependent_children = _dependent_children(benunit_raw, frs["child"])
@@ -584,7 +878,29 @@ def _assemble_frame(
     # (uk-data#523).
     pe_person["is_blind"] = _number(person, "spcreg1") == FRS_REGISTERED_YES
 
-    pe_person["employment_income"] = _positive(person, "inearns") * WEEKS_IN_YEAR
+    # A dependent child's pay is CHILD.CHEARNS, DWP's derived income from
+    # employment on the child tab (a spare-time job's pay plus any employment
+    # training amount), as ADULT.INEARNS is an adult's; HBAI's BUEARNS sums
+    # the two (FRS 2024-25 derived variables). Without it every dependent aged
+    # 16 to 19 in full-time non-advanced education read as unpaid, and PAYE
+    # RTI's young employees could never count them (Vahid's review of
+    # PolicyEngine/microcosm#1663, María's call of 2026-11-18).
+    # policyengine-uk counts a child's pay only where the household's income
+    # does: UC and the legacy means tests read the claimant's and partner's
+    # alone, and the employer's secondary rate is nil under 21.
+    if "chearns" not in frs["child"].columns:
+        raise KeyError(
+            "FRS child.tab has no CHEARNS: a dependent child's pay would read as none."
+        )
+    is_adult_record = pe_person["person_id"].isin(adult_ids).to_numpy()
+    pe_person["employment_income"] = (
+        np.where(
+            is_adult_record,
+            _positive(person, "inearns"),
+            _positive(person, "chearns"),
+        )
+        * WEEKS_IN_YEAR
+    )
     # SEINCAM2 is the self-employment income the respondent gives, a loss as a
     # negative amount. policyengine-uk takes profits in self_employment_income,
     # never below zero, and the year's losses in trading_loss as a positive
@@ -597,14 +913,24 @@ def _assemble_frame(
     # tape's into both inputs (microcosm#1095).
     pe_person["loss_relief"] = 0.0
     pe_person["ni_class_4_losses_brought_forward"] = 0.0
-    _add_private_pension(pe_person, person, frs["pension"])
+    pe_person[ANNUITY_AND_TRUST_INCOME_COLUMN] = _add_private_pension(
+        pe_person, person, frs["pension"]
+    )
     _add_accounts(pe_person, person, frs["accounts"])
     owner_managers = frs_owner_manager_inputs(person, frs["job"])
     for column in OWNER_MANAGER_COLUMNS:
         pe_person[column] = owner_managers[column].to_numpy()
     pe_person[FRS_BONUS_CARRIER_COLUMN] = frs_annual_bonuses(person, frs["job"])
+    company_cars = frs_company_car_carriers(person, frs["job"])
+    for column in FRS_COMPANY_CAR_CARRIER_COLUMNS:
+        pe_person[column] = company_cars[column].to_numpy()
     _add_person_income(pe_person, person, household, frs["oddjob"], evidence=evidence)
-    _add_benefits(pe_person, person, frs["benefits"])
+    recipient_benefits, recipient_evidence = benefits_by_recipient(
+        frs["benefits"], person["person_id"]
+    )
+    if evidence is not None:
+        evidence["benefit_recipients"] = recipient_evidence
+    _add_benefits(pe_person, person, recipient_benefits)
     # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
     # on reported receipt so that care_hours qualifies carers for the UC carer
     # element without paying the allowance to every carer (#882).
@@ -618,7 +944,40 @@ def _assemble_frame(
     # Preserve the FRS claimant/partner roles as a country-model input. Age
     # does not promote a dependent child to a partner, and legal marriage
     # alone does not establish that a partner lives in this benefit unit.
+    # Adult-table membership is checked first and directly: the dependant-count
+    # rule below reads DEPCHLDB, so it lets a unit with no adult record through
+    # wherever DEPCHLDB is 0 beside child records.
+    adult_record = frs_claimant_or_partner(
+        pe_person["person_id"], pe_person["person_benunit_id"], list(adult_ids)
+    )
     pe_person["is_uc_claimant"] = frs_uc_claimant_mask(pe_person, pe_benunit)
+    # policyengine-uk derives is_uc_claimant from is_claimant_or_partner
+    # (2.107.0 on), so the two supplied roles must name the same people. The
+    # refusal counts the two ways they part, never naming a record: a
+    # DEPCHLDB other than the unit's child records, or a child record at
+    # UPERSON 1, which is_benunit_head reads as a second head.
+    disagree = int((pe_person["is_uc_claimant"].to_numpy() != adult_record).sum())
+    if disagree:
+        child_records = (
+            pd.Series(~adult_record).groupby(pe_person["person_benunit_id"]).sum()
+        )
+        miscounted = int(
+            (
+                child_records.reindex(pe_benunit["benunit_id"]).fillna(0).to_numpy()
+                != pe_benunit["dependent_children"].to_numpy()
+            ).sum()
+        )
+        child_heads = int(
+            (pe_person["is_benunit_head"].to_numpy() & ~adult_record).sum()
+        )
+        raise ValueError(
+            "FRS adult-table membership and the UC claimant rule (head, adult "
+            "with dependants, or member of a unit without them) disagree for "
+            f"{disagree} person(s): is_claimant_or_partner and is_uc_claimant "
+            f"must be the same roles. {miscounted} benefit unit(s) have a "
+            "DEPCHLDB other than their child-record count, and "
+            f"{child_heads} child record(s) are at UPERSON 1."
+        )
     pe_benunit["liable_for_share_of_household_rent"] = (
         frs_liable_for_share_of_household_rent(
             benunit_raw, person, household, frs["benefits"]
@@ -631,10 +990,8 @@ def _assemble_frame(
     # adult table or the child table: the adult table holds each benefit
     # unit's head and any partner (uk-data#524), the child table its HBAI
     # dependent children (uk-data#486). Supplying both stops the engine
-    # inferring them from ages.
-    # The claimant mask above already refuses a benefit unit without one or
-    # two adult records, so membership is a well-formed role.
-    adult_record = pe_person["person_id"].isin(adult_ids).to_numpy()
+    # inferring them from ages. ``adult_record`` above refused any benefit
+    # unit without one or two adult records.
     pe_person["is_claimant_or_partner"] = adult_record
     pe_person["is_hbai_dependent_child"] = ~adult_record
     pe_person["uc_is_in_startup_period"] = frs_uc_start_up_period(
@@ -645,6 +1002,23 @@ def _assemble_frame(
         job=frs["job"],
         benefits=frs["benefits"],
     )
+    pe_benunit[FRS_UC_CLAIM_MONTHS_COLUMN] = frs_uc_claim_months(
+        frs["benefits"], pe_benunit, household
+    )
+    pe_person[FRS_UC_LCW_STATUS_COLUMN] = frs_uc_lcw_status(frs["benefits"], pe_person)
+    pe_person[FRS_CONDITION_LIMITS_COLUMN] = frs_condition_limits_activities(
+        person, adult_record
+    )
+    pe_person[FRS_UC_CARER_ELEMENT_COLUMN] = frs_uc_carer_element(
+        frs["benefits"], pe_person
+    )
+    # Every column the LCWRA proxy reads is here after _add_benefits: strict,
+    # so a renamed one is refused rather than read as no benefit.
+    pe_person["care_hours"], dwp_carer_evidence = frs_dwp_carer_care_hours(
+        pe_person, strict=True
+    )
+    if evidence is not None:
+        evidence["dwp_carer_hours"] = dwp_carer_evidence
     pe_person["uc_is_in_gainful_self_employment"] = uc_gainful_self_employment(
         _number(person, "empstati").isin(FRS_SELF_EMPLOYED_EMPSTATI).to_numpy(),
         pe_person["self_employment_income"],
@@ -667,30 +1041,78 @@ def _assemble_frame(
 
 def _add_private_pension(
     pe_person: pd.DataFrame, person: pd.DataFrame, pension: pd.DataFrame
-) -> None:
-    pension_payment = _sum_to_entity(
-        _number(pension, "penpay") * (_number(pension, "penpay") > 0),
-        pension.get("person_id", pd.Series(dtype="float64")),
-        person["person_id"],
-    )
-    pension_tax_paid = _sum_to_entity(
-        _number(pension, "ptamt")
-        * ((_number(pension, "ptinc") == 2) & (_number(pension, "ptamt") > 0)),
-        pension.get("person_id", pd.Series(dtype="float64")),
-        person["person_id"],
-    )
-    pension_deductions_removed = _sum_to_entity(
-        _number(pension, "poamt")
+) -> pd.Series:
+    """Write private pension income; return its annuity and trust part.
+
+    Each row's gross weekly amount is the payment, any tax paid at source and
+    any deductions taken out. Every row is private pension income; the rows
+    of FRS_ANNUITY_AND_TRUST_PENSION_TYPES are also returned, annual, by
+    person, as the descriptor of that part.
+    """
+
+    penpay = _number(pension, "penpay")
+    ptamt = _number(pension, "ptamt")
+    poamt = _number(pension, "poamt")
+    gross = (
+        penpay * (penpay > 0)
+        + ptamt * ((_number(pension, "ptinc") == 2) & (ptamt > 0))
+        + poamt
         * (
             ((_number(pension, "poinc") == 2) | (_number(pension, "penoth") == 1))
-            & (_number(pension, "poamt") > 0)
-        ),
-        pension.get("person_id", pd.Series(dtype="float64")),
-        person["person_id"],
+            & (poamt > 0)
+        )
     )
+    if len(pension) and "pentype" not in pension.columns:
+        raise ValueError(
+            "FRS PENSION tab needs PENTYPE to tell annuity and trust payments "
+            "from pensions."
+        )
+    annuity_or_trust = _number(pension, "pentype").isin(
+        FRS_ANNUITY_AND_TRUST_PENSION_TYPES
+    )
+    person_ids = pension.get("person_id", pd.Series(dtype="float64"))
     pe_person["private_pension_income"] = (
-        pension_payment + pension_tax_paid + pension_deductions_removed
-    ) * WEEKS_IN_YEAR
+        _sum_to_entity(gross, person_ids, person["person_id"]) * WEEKS_IN_YEAR
+    )
+    return (
+        _sum_to_entity(gross * annuity_or_trust, person_ids, person["person_id"])
+        * WEEKS_IN_YEAR
+    )
+
+
+#: FRS ACCOUNTS.ACCOUNT codes (FRS 2024-25 variable listing, SN 9563) by the
+#: input their weekly interest (ACCINT) lands in (microcosm#1418). ISA (21)
+#: interest is tax-free and stored apart from non-ISA interest, in
+#: individual_savings_account_interest_income (microcosm#1360).
+FRS_ISA_ACCOUNT = 21
+#: ISA interest under the producer's additive ISA income contract
+#: (microcosm#1360); policyengine-uk's tax_free_savings_income adds it.
+ISA_INTEREST_COLUMN = "individual_savings_account_interest_income"
+#: Deposit interest, savings_interest_income: current (1), NS&I Direct Saver
+#: (2), NS&I investment (3), savings and investment (5), National Savings
+#: capital (10), Pensioners Guaranteed (13), income (16) and deposit (17)
+#: bonds, First Option (18), fixed-rate, guaranteed income and guaranteed
+#: growth (25) and guaranteed equity (26) bonds, basic (27) and credit union
+#: (28) accounts. SPI has counted all interest paid gross or net, NS&I's
+#: taxable products included, as interest from banks and building societies
+#: since 2016-17 (Table 3.7 note 4), so the NS&I products sit here, not in
+#: other income (microcosm#1428; PR A routed them to other income). On FRS
+#: 2024-25 codes 16, 25 and 26 record no interest, and 10, 13, 17 and 18 do
+#: not occur.
+FRS_DEPOSIT_INTEREST_ACCOUNTS = (1, 2, 3, 5, 10, 13, 16, 17, 18, 25, 26, 27, 28)
+#: Other interest, other_investment_income, which policyengine-uk taxes as
+#: savings income beside deposit interest (taxable_savings_interest_income):
+#: gilts (6, booked as dividends before microcosm#1418), the interest on
+#: securities SPI counts as other income (Table 3.7 note 6). The tax-free
+#: products stay out: National Savings certificates (11, 12), SAYE (14),
+#: Premium Bonds (15), the Yearly Plan (19) and friendly society investments
+#: (31). Of the codes no list maps, only a share club (24) records interest on
+#: FRS 2024-25: the club's returns are on shares, so they are out of scope as
+#: interest; profit sharing (22), company share option plans (23), an
+#: endowment policy not linked (29) and informal assets (32) record none.
+FRS_OTHER_INTEREST_ACCOUNTS = (6,)
+#: Dividends: unit and investment trusts (7) and stocks, shares and bonds (8).
+FRS_DIVIDEND_ACCOUNTS = (7, 8)
 
 
 def _add_accounts(
@@ -702,31 +1124,34 @@ def _add_accounts(
     invtax = _number(accounts, "invtax")
     person_id = accounts.get("person_id", pd.Series(dtype="float64"))
     inverted_basic_rate = 1.25
-    tax_free = (
-        _sum_to_entity(accint * (account == 21), person_id, person["person_id"])
-        * WEEKS_IN_YEAR
-    )
-    taxable = (
-        _sum_to_entity(
-            (accint * np.where(acctax == 1, inverted_basic_rate, 1))
-            * account.isin((1, 3, 5, 27, 28)),
-            person_id,
-            person["person_id"],
+
+    def annual(codes: tuple[int, ...], after_tax: object) -> pd.Series:
+        # Interest reported after tax (ACCTAX or INVTAX 1) is grossed up at
+        # the basic rate.
+        return (
+            _sum_to_entity(
+                (accint * np.where(after_tax, inverted_basic_rate, 1))
+                * account.isin(codes),
+                person_id,
+                person["person_id"],
+            )
+            * WEEKS_IN_YEAR
         )
-        * WEEKS_IN_YEAR
+
+    tax_free = annual((FRS_ISA_ACCOUNT,), False)
+    taxable = annual(FRS_DEPOSIT_INTEREST_ACCOUNTS, acctax == 1)
+    # A savings product answers ACCTAX and a gilt INVTAX.
+    other = annual(FRS_OTHER_INTEREST_ACCOUNTS, (acctax == 1) | (invtax == 1))
+    dividends = annual(FRS_DIVIDEND_ACCOUNTS, invtax == 1)
+    isa_interest = np.maximum(0, tax_free)
+    pe_person[ISA_INTEREST_COLUMN] = isa_interest
+    # Non-ISA interest is gross interest less the ISA part, as policyengine-uk
+    # normalises the legacy gross layout, so base-year amounts match it exactly.
+    pe_person["savings_interest_income"] = (
+        np.maximum(0, taxable + tax_free) - isa_interest
     )
-    dividends = (
-        _sum_to_entity(
-            (accint * np.where(invtax == 1, inverted_basic_rate, 1))
-            * (((account == 6) & (invtax == 1)) | account.isin((7, 8))),
-            person_id,
-            person["person_id"],
-        )
-        * WEEKS_IN_YEAR
-    )
-    pe_person["tax_free_savings_income"] = np.maximum(0, tax_free)
-    pe_person["savings_interest_income"] = np.maximum(0, taxable + tax_free)
     pe_person["dividend_income"] = np.maximum(0, dividends)
+    pe_person["other_investment_income"] = np.maximum(0, other)
 
 
 #: FRS job-table answers that make a person like a sole owner or partner of a
@@ -839,6 +1264,139 @@ def frs_owner_manager_inputs(person: pd.DataFrame, job: pd.DataFrame) -> pd.Data
     )
 
 
+#: The JOB tab's company car answers (FRS 2024-25, SN 9563). EXPBEN01 and
+#: EXPBEN03 (1 yes) record a company car and fuel for private use from the
+#: present employer in the last 12 months. CARVAL is the respondent's estimate
+#: of the car's list price when new, in bands; FUELTYP its fuel; CARCON (1
+#: yes) whether the employee contributed to its purchase cost, and CARAMT the
+#: contribution, one total to date: a lump sum, or the salary deductions so
+#: far. JOBTYPE orders a person's jobs, the main job (1) first.
+FRS_COMPANY_CAR_JOB_COLUMNS = (
+    "expben01",
+    "expben03",
+    "carval",
+    "fueltyp",
+    "carcon",
+    "caramt",
+    "jobtype",
+)
+#: CARVAL's list price bands: 1 up to GBP 10,000, 2 GBP 10,001 to 13,000, 3 to
+#: 16,000, 4 to 19,000, 5 to 22,000, 6 to 25,000, 7 to 30,000, 8 to 40,000
+#: and 9 GBP 40,001 and over, each as (above, up to) in GBP of the price when
+#: new; the top band is open. Its code 10, "Don't know", is also the carrier's
+#: code for a car whose band is unanswered.
+FRS_COMPANY_CAR_PRICE_BAND_BOUNDS: Mapping[int, tuple[float, float | None]] = (
+    MappingProxyType(
+        {
+            1: (0.0, 10_000.0),
+            2: (10_000.0, 13_000.0),
+            3: (13_000.0, 16_000.0),
+            4: (16_000.0, 19_000.0),
+            5: (19_000.0, 22_000.0),
+            6: (22_000.0, 25_000.0),
+            7: (25_000.0, 30_000.0),
+            8: (30_000.0, 40_000.0),
+            9: (40_000.0, None),
+        }
+    )
+)
+FRS_COMPANY_CAR_PRICE_BANDS = tuple(FRS_COMPANY_CAR_PRICE_BAND_BOUNDS)
+FRS_COMPANY_CAR_PRICE_BAND_OPEN = FRS_COMPANY_CAR_PRICE_BANDS[-1]
+FRS_COMPANY_CAR_PRICE_BAND_UNKNOWN = 10
+#: FUELTYP's fuels: 1 petrol, 2 diesel, 3 hybrid (petrol and electricity), 4
+#: electric and 5 other. Its code 6, "Don't know", is also the carrier's code
+#: for a car whose fuel is unanswered.
+FRS_COMPANY_CAR_FUEL_PETROL = 1
+FRS_COMPANY_CAR_FUEL_DIESEL = 2
+FRS_COMPANY_CAR_FUEL_HYBRID = 3
+FRS_COMPANY_CAR_FUEL_ELECTRIC = 4
+FRS_COMPANY_CAR_FUEL_OTHER = 5
+FRS_COMPANY_CAR_FUEL_CODES = (
+    FRS_COMPANY_CAR_FUEL_PETROL,
+    FRS_COMPANY_CAR_FUEL_DIESEL,
+    FRS_COMPANY_CAR_FUEL_HYBRID,
+    FRS_COMPANY_CAR_FUEL_ELECTRIC,
+    FRS_COMPANY_CAR_FUEL_OTHER,
+)
+FRS_COMPANY_CAR_FUEL_UNKNOWN = 6
+
+
+def frs_company_car_carriers(person: pd.DataFrame, job: pd.DataFrame) -> pd.DataFrame:
+    """Each person's company car, from the job tab, as four carriers.
+
+    EXPBEN, one of the FRS's Employee Pay Details questions, asked of each
+    current employee job, records whether the present employer provided a
+    company car (EXPBEN01) and fuel for private use (EXPBEN03) in the last 12
+    months. A person's company car is the one on their car job with the
+    lowest JOBTYPE, the main job (1) first, so a person has at most one, as in
+    the engine. Its carriers are its list price band (CARVAL 1 to 9, or 10
+    where the band is "Don't know" or unanswered), its fuel (FUELTYP 1 to 5,
+    or 6 likewise), whether the job provides fuel for private use, and what
+    the person contributed to its purchase cost (CARAMT where CARCON is 1, a
+    negative or missing amount as 0). CARAMT is one total to date, so it is
+    not annualised. A person without a company car carries 0, 0, false and 0.
+
+    The survey asks CARVAL and CARCON of a company van (EXPBEN02) too, and
+    they are taken as the car's; FUELTYP is asked of a car only. The carriers
+    are no engine inputs and leave at the release boundary: the company_cars
+    stage reads them, and SPI-channel rows inherit their FRS twin's carriers,
+    as they do every root column. A tab without these columns refuses, rather
+    than set nobody's car.
+    """
+
+    missing = [column for column in FRS_COMPANY_CAR_JOB_COLUMNS if column not in job]
+    if missing:
+        raise KeyError(
+            f"The FRS job tab has no {missing} column(s), so company cars cannot "
+            "be set."
+        )
+    car_jobs = pd.DataFrame(
+        {
+            "person_id": np.asarray(job["person_id"]),
+            "jobtype": _number(job, "jobtype").to_numpy(),
+            "carval": _number(job, "carval").to_numpy(),
+            "fueltyp": _number(job, "fueltyp").to_numpy(),
+            "private_fuel": (_number(job, "expben03") == 1).to_numpy(dtype=float),
+            "contribution": np.where(
+                _number(job, "carcon") == 1, np.maximum(_number(job, "caramt"), 0), 0.0
+            ),
+        }
+    ).loc[(_number(job, "expben01") == 1).to_numpy()]
+    # After a stable sort on JOBTYPE, each person's first car job is the one
+    # with the lowest JOBTYPE, the tab's order breaking any tie.
+    car = (
+        car_jobs.sort_values("jobtype", kind="stable")
+        .drop_duplicates("person_id")
+        .set_index("person_id")
+        .reindex(person["person_id"])
+    )
+    # A person without a company car reindexes to NaN, and carries 0 codes.
+    holder = car["jobtype"].notna().to_numpy()
+    carval = car["carval"].to_numpy()
+    fueltyp = car["fueltyp"].to_numpy()
+    price_band = np.select(
+        [~holder, np.isin(carval, FRS_COMPANY_CAR_PRICE_BANDS)],
+        [0, carval],
+        default=FRS_COMPANY_CAR_PRICE_BAND_UNKNOWN,
+    ).astype("int64")
+    fuel_code = np.select(
+        [~holder, np.isin(fueltyp, FRS_COMPANY_CAR_FUEL_CODES)],
+        [0, fueltyp],
+        default=FRS_COMPANY_CAR_FUEL_UNKNOWN,
+    ).astype("int64")
+    private_fuel = car["private_fuel"].fillna(0).to_numpy() > 0
+    contribution = car["contribution"].fillna(0).to_numpy(dtype="float64")
+    return pd.DataFrame(
+        {
+            "frs_company_car_price_band": price_band,
+            "frs_company_car_fuel_code": fuel_code,
+            "frs_company_car_private_fuel": private_fuel,
+            "frs_company_car_contribution": contribution,
+        },
+        index=person.index,
+    )
+
+
 def _add_person_income(
     pe_person: pd.DataFrame,
     person: pd.DataFrame,
@@ -920,6 +1478,12 @@ def _add_person_income(
     # SPPADJ, "SPP amount": the weekly statutory paternity pay an adult gets
     # for their main job (FRS 2024-25 adult table, beside SSPADJ and SMPADJ).
     # A tab without it refuses, rather than set nobody's (uk-data#575).
+    # Annualised at 52 weeks, as the other statutory payments are, although
+    # SPP lasts at most two weeks: the adults paid at interview stand for
+    # everyone paid during the year, so the yearly total is right on average,
+    # while each recipient's year carries 52 weeks of it. No bound row reads it
+    # directly; it reaches Class 1 NI, the means tests and HBAI income
+    # (María's ruling of 2026-10-25, microcosm#1095; for her signature).
     if "sppadj" not in person.columns:
         raise KeyError(
             "The FRS adult tab has no SPPADJ column, so statutory paternity pay "
@@ -1017,6 +1581,17 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
     all (above). Routing SUBRENT to policyengine-uk's ``sublet_income`` and the
     lodgers' payments to the householder needs the engine to apply the relief
     first.
+
+    From policyengine-uk 2.173.3 (PolicyEngine/policyengine-uk#1995) Income
+    Support, Housing Benefit, Pension Credit and Council Tax Reduction treat
+    rent from other property as capital: they no longer count
+    ``property_income``, and they count ``sublet_income`` less the £20 weekly
+    sub-tenant disregard. Income tax, HBAI income and household net income do
+    not read ``sublet_income``. So SUBRENT stays here, where income tax and
+    HBAI income count it, and the means tests do not count it until it moves
+    to ``sublet_income``. uk-data#508 sets the order:
+    first a release with PolicyEngine/policyengine-uk#2002 (the householder's
+    rent-a-room relief), then the move with a lock bump (microcosm#1095).
     """
 
     is_head = (_number(person, "hrpid") == 1).to_numpy(dtype=float)
@@ -1134,7 +1709,10 @@ def _add_benefits(
     # Any other amount, above the allowance's rate and at no rate (a lump sum,
     # a part month or a misreport), stays the payment, which is neither taxed
     # nor means-tested (Vahid's review of #1383, item 12); an allowance with an
-    # inherited additional pension above its rate reads as the payment too.
+    # inherited additional pension above its rate reads as the payment too,
+    # which the FRS 2024-25 leaves rare: fewer than ten code-6 amounts sit
+    # above the allowance's rate at no rate of the payment (his third review,
+    # item 34).
     code_6 = benefit == 6
     wpa = code_6 & ~bsp_rate_match(amount) & wpa_rate_match(amount)
     bsp = code_6 & ~wpa
@@ -1298,12 +1876,16 @@ def _add_household_columns(
     household: pd.DataFrame,
     frs: Mapping[str, pd.DataFrame],
 ) -> None:
-    pe_household["region"] = _map_codes(household, "gvtregno", REGION_MAP, "UNKNOWN")
-    pe_household["tenure_type"] = _map_codes(
-        household, "ptentyp2", TENURE_MAP, "RENT_PRIVATELY"
+    pe_household["region"] = _map_dictionary_codes(
+        household, "gvtregno", REGION_MAP, blank="UNKNOWN"
     )
-    pe_household["accommodation_type"] = _map_codes(
-        household, "typeacc", ACCOMMODATION_MAP, "HOUSE_DETACHED"
+    pe_household["tenure_type"] = _map_dictionary_codes(
+        household, "ptentyp2", TENURE_MAP, blank="RENT_PRIVATELY"
+    )
+    # Some FRS 2024-25 households leave TYPEACC blank; they keep the
+    # detached-house default, as uk-data#636 maps them.
+    pe_household["accommodation_type"] = _map_dictionary_codes(
+        household, "typeacc", ACCOMMODATION_MAP, blank="HOUSE_DETACHED"
     )
     pe_household["num_bedrooms"] = _number(household, "bedroom6")
     pe_household["council_tax_reported"] = _positive(household, "ctannual")
@@ -1403,7 +1985,7 @@ def frs_council_tax_band(household: pd.DataFrame) -> pd.Series:
     band = _map_codes(
         household, "ctband", COUNCIL_TAX_BAND_MAP, UK_COUNCIL_TAX_PLACEHOLDER_BAND
     )
-    region = _map_codes(household, "gvtregno", REGION_MAP, "UNKNOWN")
+    region = _map_dictionary_codes(household, "gvtregno", REGION_MAP, blank="UNKNOWN")
     return band.mask(region == "NORTHERN_IRELAND", UK_COUNCIL_TAX_PLACEHOLDER_BAND)
 
 
@@ -1417,6 +1999,34 @@ def _map_codes(
     return values.map(mapping).fillna(default).astype(object)
 
 
+def _map_dictionary_codes(
+    frame: pd.DataFrame,
+    column: str,
+    mapping: Mapping[int, str],
+    *,
+    blank: str,
+) -> pd.Series:
+    """Map an FRS code through its data-dictionary table.
+
+    A blank or non-numeric value takes ``blank``, as in ``_map_codes``. A
+    numeric code outside the table is a vintage defect and refuses the build,
+    naming the FRS variable, where ``_map_codes`` would give it the default
+    (uk-data#636).
+    """
+
+    codes = _raw_number(frame, column)
+    unknown = sorted(set(codes.dropna()) - set(mapping))
+    if unknown:
+        listed = ", ".join(f"{code:g}" for code in unknown)
+        raise ValueError(
+            f"FRS {column.upper()} carries code(s) {listed} outside the data "
+            "dictionary."
+        )
+    return codes.map(
+        lambda code: blank if pd.isna(code) else mapping[int(code)]
+    ).astype(object)
+
+
 def frs_care_hours(person: pd.DataFrame) -> pd.Series:
     """Weekly care hours from the banded FRS HOURTOT code (lower band edge).
 
@@ -1424,15 +2034,192 @@ def frs_care_hours(person: pd.DataFrame) -> pd.Series:
     an unknown code is a vintage defect and refuses the build.
     """
 
-    codes = _raw_number(person, "hourtot").fillna(0)
-    if not np.array_equal(codes.to_numpy(), np.floor(codes.to_numpy())):
-        raise ValueError(
-            "FRS hourtot codes must be integral to build person.care_hours."
+    return _frs_care_band_hours(person, "hourtot", "person.care_hours")
+
+
+def frs_in_household_care_hours(person: pd.DataFrame) -> pd.Series:
+    """Weekly hours of the largest in-household care band (lower band edges).
+
+    The four bands record care to adults and children of the carer's own and
+    of another benefit unit of the household; the largest says whether the
+    care inside the household alone reaches an hours line. Codes map as
+    ``frs_care_hours`` maps HOURTOT.
+    """
+
+    bands = [
+        _frs_care_band_hours(person, column, FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN)
+        for column in FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMNS
+    ]
+    return pd.concat(bands, axis=1).max(axis=1).astype("float64")
+
+
+def frs_care_recipients(
+    care: pd.DataFrame, person: pd.DataFrame
+) -> tuple[pd.Series, dict[str, object]]:
+    """Each person's care recipients at the line, as :data:`FRS_CARE_RECIPIENTS_COLUMN`.
+
+    ``care`` is the normalized care tab (``household_id`` from SERNUM) and
+    ``person`` the spine's people. A helper's band for each person they help
+    maps to weekly hours as HOURTOT does; the recipients the helper gives at
+    least :data:`FRS_CARE_LINE_HOURS` are theirs at the line, and every helper
+    the tab lists carries :data:`FRS_CARE_HELPER_BIT`. A household member
+    helping themself, which the tab shouldn't hold, is left out. The evidence
+    counts carers by where their recipients at the line live, and the carers
+    the tab lists who give nobody the line, in the receipts' rounded counts
+    and support bands, never exactly.
+    """
+
+    people = person["person_id"].astype("int64")
+    result = pd.Series(np.zeros(len(person), dtype=np.int64), index=person.index)
+    links: list[pd.DataFrame] = []
+    if not care.empty and "needper" in care.columns:
+        household = _number(care, "household_id").astype("int64")
+        needper = _number(care, "needper").astype("int64")
+        for number in FRS_CARE_HELPER_NUMBERS:
+            helps = (_number(care, f"wholoo{number:02d}") == 1) & (needper != number)
+            if not helps.any():
+                continue
+            hours = _frs_care_band_hours(
+                care.loc[helps], f"hour{number:02d}", FRS_CARE_RECIPIENTS_COLUMN
+            )
+            links.append(
+                pd.DataFrame(
+                    {
+                        "person_id": household[helps] * 1000 + number,
+                        "household_id": household[helps],
+                        "needper": needper[helps],
+                        "hours": hours.to_numpy(),
+                    }
+                )
+            )
+    held = set(people.tolist())
+    evidence: dict[str, object] = {
+        "rule": (
+            "a helper's care recipients at the line are the people given at "
+            f"least {FRS_CARE_LINE_HOURS:g} hours a week by their weekly band "
+            "(CARE.HOUR01 to HOUR14, coded as HOURTOT), household members by "
+            "person number and anyone outside the household as one bit; every "
+            "helper the tab lists carries bit "
+            f"{FRS_CARE_HELPER_BIT}"
+        ),
+    }
+    if not links:
+        evidence.update(
+            {
+                "carers": 0,
+                "household_only": 0,
+                "outside_only": 0,
+                "both": 0,
+                "nobody_at_the_line": 0,
+                "helpers_not_held": 0,
+                "recipients_not_held": 0,
+            }
         )
+        return result, evidence
+    frame = pd.concat(links, ignore_index=True)
+    frame = frame.loc[
+        frame["needper"].isin(FRS_CARE_HELPER_NUMBERS)
+        | frame["needper"].isin(FRS_CARE_OUTSIDE_NEEDPER)
+    ]
+    at_line = frame.loc[frame["hours"] >= FRS_CARE_LINE_HOURS]
+    inside = at_line["needper"].isin(FRS_CARE_HELPER_NUMBERS)
+    at_line = at_line.assign(
+        bit=np.where(inside, at_line["needper"], FRS_CARE_OUTSIDE_BIT)
+    )
+    line_masks = at_line.groupby("person_id")["bit"].agg(
+        lambda column: int(sum(1 << int(bit) for bit in set(column)))
+    )
+    helpers = pd.Index(frame["person_id"].unique())
+    # No recipient bit is the helper bit, so adding the two is their union.
+    masks = (
+        pd.Series(1 << FRS_CARE_HELPER_BIT, index=helpers, dtype="int64")
+        .add(line_masks, fill_value=0)
+        .astype("int64")
+    )
+    result = people.map(masks).fillna(0).astype("int64")
+    result.index = person.index
+    by_carer = frame.groupby("person_id").agg(household_id=("household_id", "first"))
+    line_routes = at_line.groupby("person_id").agg(
+        inside=("needper", lambda column: column.isin(FRS_CARE_HELPER_NUMBERS).any()),
+        outside=(
+            "needper",
+            lambda column: column.isin(FRS_CARE_OUTSIDE_NEEDPER).any(),
+        ),
+    )
+    by_carer = by_carer.join(line_routes).fillna({"inside": False, "outside": False})
+    by_carer = by_carer.astype({"inside": bool, "outside": bool})
+    held_carers = by_carer.loc[by_carer.index.isin(list(held))]
+    # The survey holds no copies yet, so each carer's own household, from the
+    # care tab, is their true source (microcosm#931).
+    sources = own_source_households(
+        held_carers.rename(columns={"household_id": "person_household_id"})
+    )
+    recipients = at_line.loc[at_line["needper"].isin(FRS_CARE_HELPER_NUMBERS)]
+    recipient_ids = recipients["household_id"] * 1000 + recipients["needper"]
+    evidence.update(
+        {
+            # Record counts are rounded, never exact (UKDS CD137 cl. 8).
+            "carers": rounded_count(len(held_carers)),
+            "carer_households": support_band(len(set(sources.tolist()))),
+            "household_only": rounded_count(
+                int((held_carers["inside"] & ~held_carers["outside"]).sum())
+            ),
+            "outside_only": rounded_count(
+                int((~held_carers["inside"] & held_carers["outside"]).sum())
+            ),
+            "both": rounded_count(
+                int((held_carers["inside"] & held_carers["outside"]).sum())
+            ),
+            "nobody_at_the_line": rounded_count(
+                int((~held_carers["inside"] & ~held_carers["outside"]).sum())
+            ),
+            "helpers_not_held": rounded_count(
+                int((~by_carer.index.isin(list(held))).sum())
+            ),
+            "recipients_not_held": rounded_count(
+                int((~recipient_ids.isin(list(held))).sum())
+            ),
+        }
+    )
+    return result, evidence
+
+
+def _frs_care_band_hours(person: pd.DataFrame, column: str, label: str) -> pd.Series:
+    codes = _raw_number(person, column).fillna(0)
+    if not np.array_equal(codes.to_numpy(), np.floor(codes.to_numpy())):
+        raise ValueError(f"FRS {column} codes must be integral to build {label}.")
     unknown = sorted(set(codes.astype(int)) - set(FRS_CARE_HOURS_BY_BAND))
     if unknown:
-        raise ValueError(f"FRS hourtot carries unknown band code(s) {unknown}.")
+        raise ValueError(f"FRS {column} carries unknown band code(s) {unknown}.")
     return codes.astype(int).map(FRS_CARE_HOURS_BY_BAND).astype("float64")
+
+
+def frs_claimant_or_partner(
+    person_ids: Any, person_benunit_ids: Any, adult_person_ids: Any
+) -> np.ndarray:
+    """Each FRS benefit unit's single adult or couple, in person-row order.
+
+    An FRS benefit unit is one adult or a couple plus any dependent children.
+    The adult table holds the head (UPERSON 1) and any partner (UPERSON 2);
+    the child table holds the dependent children. Any other adult in the
+    household, such as a grown-up son or daughter, forms and heads their own
+    benefit unit. Adult-table membership is therefore policyengine-uk's
+    ``is_claimant_or_partner``, which the model otherwise infers from ages.
+    UPERSON alone is not enough: a dependent child can be UPERSON 2 under a
+    single head. A benefit unit with no adult record, or with three or more,
+    is refused. Mirrors policyengine-uk-data's
+    ``derive_is_claimant_or_partner_from_frs_microdata`` (uk-data#524).
+    """
+
+    in_adult_table = np.isin(np.asarray(person_ids), np.asarray(adult_person_ids))
+    counts = pd.Series(in_adult_table).groupby(np.asarray(person_benunit_ids)).sum()
+    bad = int((~counts.between(1, 2)).sum())
+    if bad:
+        raise ValueError(
+            "Every FRS benefit unit needs one or two adult-table records; "
+            f"{bad} benefit unit(s) do not."
+        )
+    return in_adult_table
 
 
 def _esa_includes_support_component(
@@ -1794,6 +2581,351 @@ def frs_uc_start_up_period(
         unlinked & (draws < linked_share)
     )
     return self_employed & (claim_in_window[person_benunit] | (trade_years < 1))
+
+
+def frs_uc_claim_months(
+    benefits: pd.DataFrame, pe_benunit: pd.DataFrame, household: pd.DataFrame
+) -> np.ndarray:
+    """How recent each benefit unit's linked UC claim is (``FRS_UC_CLAIM_MONTHS_COLUMN``).
+
+    The completed calendar months from DWP's claim start (BENEFITS.UCSTART,
+    kept as ``ucstart_raw``) on the unit's UC row to its interview (INTDATE),
+    as :func:`frs_uc_start_up_period` counts them, and
+    ``FRS_UC_CLAIM_MONTHS_NOT_LINKED`` where the unit has no UC row or its
+    UCSTART is blank. A second UC row on one benefit unit, a UC row whose unit
+    isn't on the spine, and a claim that starts after the interview are
+    refused rather than guessed (microcosm#1095).
+    """
+
+    if "ucstart_raw" not in benefits.columns:
+        raise KeyError(
+            "The UC claim recency carrier needs the FRS column benefits.ucstart."
+        )
+    uc_rows = benefits.loc[
+        _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
+    ]
+    if uc_rows["benunit_id"].duplicated().any():
+        raise ValueError(
+            "A benefit unit has two FRS UC rows; UCSTART is read as one claim's start."
+        )
+    interview = frs_interview_dates(household)
+    months = completed_months(
+        interview.reindex(uc_rows["household_id"].to_numpy()),
+        parse_frs_uc_claim_start(uc_rows["ucstart_raw"]),
+    )
+    if (months < 0).any():
+        raise ValueError(
+            f"{int((months < 0).sum())} FRS UC claim(s) start after the interview."
+        )
+    benunit_ids = pe_benunit["benunit_id"].to_numpy()
+    absent = ~np.isin(uc_rows["benunit_id"].to_numpy(), benunit_ids)
+    if absent.any():
+        raise ValueError(
+            f"{int(absent.sum())} FRS UC row(s) name a benefit unit the spine does not hold."
+        )
+    by_unit = (
+        pd.Series(months, index=uc_rows["benunit_id"].to_numpy())
+        .reindex(benunit_ids)
+        .to_numpy(dtype=np.float64)
+    )
+    return np.where(np.isnan(by_unit), FRS_UC_CLAIM_MONTHS_NOT_LINKED, by_unit)
+
+
+def frs_uc_lcw_status(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.ndarray:
+    """Each person's carrier of DWP's limited capability status on a linked UC claim.
+
+    BENEFITS.UCLCW (``FRS_UC_LCW_STATUS_COLUMN``'s codes) comes from DWP's
+    administrative record of the claim, on the claim's single UC row, and is
+    blank exactly where UCSTART is: the claim has no linked record. The UC
+    row's person carries NONE, LCW or LCWRA, or NOT_LINKED for a blank, and
+    every other person NOT_LINKED. A second UC row on one benefit unit, a code
+    outside the dictionary's, or a UC row whose person isn't on the spine is
+    refused rather than guessed (microcosm#1095, Y1).
+    """
+
+    return _frs_uc_admin_claim_status(
+        benefits,
+        pe_person,
+        column="uclcw",
+        codes=FRS_UC_LCW_STATUS_CODES,
+        carrier="UC limited capability",
+        known="the data dictionary's",
+    )
+
+
+def frs_condition_limits_activities(
+    person: pd.DataFrame, adult_record: object
+) -> np.ndarray:
+    """Each person's :data:`FRS_CONDITION_LIMITS_COLUMN` from ADULT.HEALTH1 and CONDIT.
+
+    ``person`` is the spine's adult and child rows, blanks read as 0, and
+    ``adult_record`` marks the adult tab's rows. An adult with a long-standing
+    illness (HEALTH1 1) carries CONDIT's label, an adult without one (HEALTH1
+    2) NO_CONDITION, and a child NOT_ASKED. An adult's HEALTH1 outside 1 and
+    2, a CONDIT outside the listing's codes where HEALTH1 is 1, or a CONDIT
+    where HEALTH1 isn't, is refused rather than guessed (PolicyEngine/
+    microcosm#1663). The refusals count the rows, never naming one.
+    """
+
+    missing = [column for column in ("health1", "condit") if column not in person]
+    if missing:
+        raise KeyError(
+            "The FRS adult tab has no "
+            f"{' or '.join(column.upper() for column in missing)} column, which "
+            "the uc_limited_capability stage's imputation cells read."
+        )
+    adult = np.asarray(adult_record, dtype=bool)
+    if adult.shape != (len(person),):
+        raise ValueError("The adult record flags must align to the spine's people.")
+    health = pd.to_numeric(person["health1"], errors="coerce").fillna(0).to_numpy()
+    condit = pd.to_numeric(person["condit"], errors="coerce").fillna(0).to_numpy()
+    bad_health = int((adult & ~np.isin(health, (1, 2))).sum())
+    if bad_health:
+        raise ValueError(
+            f"{bad_health} adult row(s) carry a HEALTH1 outside 1 (yes) and 2 (no)."
+        )
+    ill = adult & (health == 1)
+    bad_condit = int((ill & ~np.isin(condit, tuple(FRS_CONDITION_LIMITS_CODES))).sum())
+    if bad_condit:
+        raise ValueError(
+            f"{bad_condit} adult row(s) with a long-standing illness carry a "
+            "CONDIT outside the variable listing's codes 1 to 3."
+        )
+    asked_otherwise = int((~ill & (condit != 0)).sum())
+    if asked_otherwise:
+        raise ValueError(
+            f"{asked_otherwise} row(s) carry a CONDIT without a long-standing "
+            "illness (HEALTH1 1), which the questionnaire asks it after."
+        )
+    out = np.full(len(person), FRS_CONDITION_NOT_ASKED, dtype=object)
+    out[adult & ~ill] = FRS_CONDITION_NONE
+    for code, label in FRS_CONDITION_LIMITS_CODES.items():
+        out[ill & (condit == code)] = label
+    return out
+
+
+def frs_uc_carer_element(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.ndarray:
+    """Each person's carrier of DWP's carer element on a linked UC claim.
+
+    BENEFITS.UCCAREEL (``FRS_UC_CARER_ELEMENT_COLUMN``) comes from DWP's
+    administrative record of the claim, on the claim's single UC row, coded 0
+    or 1, and is read only where the claim has a linked record (UCSTART,
+    kept as ``ucstart_raw``, present). The UC row's person carries NONE or
+    CARER, or NOT_LINKED for a claim without one, and every other person
+    NOT_LINKED. A second UC row on one benefit unit, another code on a linked
+    claim, or a UC row whose person isn't on the spine is refused rather than
+    guessed (microcosm#1095, A3 (f)).
+    """
+
+    return _frs_uc_admin_claim_status(
+        benefits,
+        pe_person,
+        column="uccareel",
+        codes=FRS_UC_CARER_ELEMENT_CODES,
+        carrier="UC carer element",
+        known="the 0 and 1 the carrier reads",
+        linked_by_start=True,
+    )
+
+
+def frs_dwp_carer_care_hours(
+    pe_person: pd.DataFrame, *, strict: bool = False
+) -> tuple[np.ndarray, dict[str, object]]:
+    """``care_hours`` with DWP's UC carer element applied (:data:`FRS_DWP_CARER_RULE`).
+
+    ``pe_person`` carries ``care_hours``, ``carers_allowance_reported``,
+    ``is_claimant_or_partner``, the person's benefit unit and household,
+    :data:`FRS_UC_CARER_ELEMENT_COLUMN`, :data:`FRS_UC_LCW_STATUS_COLUMN` and
+    the reported benefits the LCWRA proxy reads (:func:`frs_lcwra_proxy`,
+    which ``strict`` makes refuse a missing one). The
+    evidence gives the claims and the people raised in rounded counts and
+    support bands, withheld where one or two households carry them, split by
+    whether the survey recorded no care or care below the line, with the
+    raises that went to the partner of the UC row's person and the LCWRA
+    claims where the proxy moved the raise or flags every claimant.
+    """
+
+    hours = pe_person["care_hours"].to_numpy(dtype=np.float64).copy()
+    benunits = pe_person["person_benunit_id"].to_numpy()
+    # Each person's own household is their true source: the spine has no
+    # copies yet (microcosm#931).
+    households = own_source_households(pe_person)
+    adult = pe_person["is_claimant_or_partner"].to_numpy(dtype=bool)
+    reported = (
+        pd.to_numeric(pe_person["carers_allowance_reported"], errors="coerce")
+        .fillna(0.0)
+        .to_numpy()
+        > 0
+    )
+    carer_row = pe_person[FRS_UC_CARER_ELEMENT_COLUMN].astype(str).to_numpy() == "CARER"
+    lcwra_claim = carer_row & (
+        pe_person[FRS_UC_LCW_STATUS_COLUMN].astype(str).to_numpy() == "LCWRA"
+    )
+    proxy = frs_lcwra_proxy(pe_person, strict=strict)
+    at_line = adult & ((hours >= FRS_DWP_CARER_CARE_HOURS) | reported)
+    covered = np.isin(benunits, benunits[at_line])
+    claimants: dict[object, list[int]] = {}
+    for row in np.flatnonzero(adult):
+        claimants.setdefault(benunits[row], []).append(int(row))
+
+    def more_care(rows: list[int], uc_row: int) -> int:
+        # The one who reports more care hours; the UC row's person, then the
+        # first in row order, on a tie.
+        return max(rows, key=lambda row: (hours[row], row == uc_row))
+
+    raised = np.zeros(len(hours), dtype=bool)
+    proxy_moved = np.zeros(len(hours), dtype=bool)
+    proxy_flags_every_claimant = np.zeros(len(hours), dtype=bool)
+    for uc_row in np.flatnonzero(carer_row & ~covered):
+        uc_row = int(uc_row)
+        rows = claimants.get(benunits[uc_row]) or [uc_row]
+        chosen = more_care(rows, uc_row)
+        if lcwra_claim[uc_row]:
+            unflagged = [row for row in rows if not proxy[row]]
+            if not unflagged:
+                proxy_flags_every_claimant[uc_row] = True
+            elif proxy[chosen]:
+                chosen = more_care(unflagged, uc_row)
+                proxy_moved[uc_row] = True
+        raised[chosen] = True
+    before = hours[raised]
+    hours[raised] = FRS_DWP_CARER_CARE_HOURS
+
+    def counted(selected: np.ndarray) -> object:
+        held = len(set(households[selected].tolist()))
+        if 0 < held < UK_DISCLOSURE_FLOOR:
+            return UK_WITHHELD
+        return rounded_count(int(selected.sum()))
+
+    def cell(selected: np.ndarray) -> dict[str, object]:
+        return {
+            "people": counted(selected),
+            "support": support_band(len(set(households[selected].tolist()))),
+        }
+
+    no_care = np.zeros(len(hours), dtype=bool)
+    below = np.zeros(len(hours), dtype=bool)
+    no_care[np.flatnonzero(raised)[before == 0]] = True
+    below[np.flatnonzero(raised)[before > 0]] = True
+    evidence: dict[str, object] = {
+        "carrier": FRS_UC_CARER_ELEMENT_COLUMN,
+        "hours": FRS_DWP_CARER_CARE_HOURS,
+        "rule": FRS_DWP_CARER_RULE,
+        "carer_element_claims": cell(carer_row),
+        "raised": cell(raised),
+        "raised_from_no_care": cell(no_care),
+        "raised_from_below_the_line": cell(below),
+        "raised_the_partner_of_the_uc_rows_person": cell(raised & ~carer_row),
+        "lcwra_claims": cell(lcwra_claim & ~covered),
+        "lcwra_claims_the_proxy_moved": cell(proxy_moved),
+        "lcwra_claims_the_proxy_flags_every_claimant": cell(proxy_flags_every_claimant),
+    }
+    return hours, evidence
+
+
+def frs_lcwra_proxy(pe_person: pd.DataFrame, *, strict: bool = False) -> np.ndarray:
+    """policyengine-uk's ``uc_limited_capability_for_WRA`` proxy, on the spine's stored inputs.
+
+    The engine's formula: ``is_disabled_for_benefits``, which frs_disability
+    sets from any reported disability benefit or ESA, unless the person's own
+    ESA award lacks the support component (``esa_includes_support_component``
+    false; it is false only for a person with such an award). Y1
+    (uc_limited_capability) keeps this proxy for the claimants it flags on a
+    claim DWP records with LCWRA.
+
+    A reported column the frame lacks counts as no benefit, and a missing
+    ``esa_includes_support_component`` as an award with it, which suits a test's
+    partial frame. With ``strict`` (the spine's call, which has every column
+    once ``_add_benefits`` has run) a missing column is refused instead, as the
+    build refuses a missing VAR3, so a renamed column cannot quietly stop the
+    proxy's skip (microcosm#1583's review).
+    """
+
+    # frs_disability imports this module, so its columns are read here.
+    from microcosm.build.uk_runtime.frs_disability import (
+        UK_DISABILITY_FLAG_REPORTED_COLUMNS,
+    )
+
+    if strict:
+        missing = [
+            column
+            for column in (
+                *UK_DISABILITY_FLAG_REPORTED_COLUMNS,
+                "esa_includes_support_component",
+            )
+            if column not in pe_person
+        ]
+        if missing:
+            raise ValueError(
+                f"The LCWRA proxy needs the reported benefit columns {missing}, "
+                "which the spine's person table does not carry."
+            )
+    total = np.zeros(len(pe_person), dtype=np.float64)
+    for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS:
+        if column in pe_person:
+            total += (
+                pd.to_numeric(pe_person[column], errors="coerce").fillna(0.0).to_numpy()
+            )
+    support = (
+        pe_person["esa_includes_support_component"].to_numpy(dtype=bool)
+        if "esa_includes_support_component" in pe_person
+        else np.ones(len(pe_person), dtype=bool)
+    )
+    return (total > 0) & support
+
+
+def _frs_uc_admin_claim_status(
+    benefits: pd.DataFrame,
+    pe_person: pd.DataFrame,
+    *,
+    column: str,
+    codes: Mapping[int, str],
+    carrier: str,
+    known: str,
+    linked_by_start: bool = False,
+) -> np.ndarray:
+    """One admin UC column of the claim's single UC row, as a person carrier.
+
+    With ``linked_by_start`` the column is read only on a claim whose UCSTART
+    (``ucstart_raw``) is present, the linked claims, and every other claim is
+    NOT_LINKED.
+    """
+
+    if column not in benefits.columns:
+        raise KeyError(f"The {carrier} carrier needs the FRS column benefits.{column}.")
+    if linked_by_start and "ucstart_raw" not in benefits.columns:
+        raise KeyError(f"The {carrier} carrier needs the FRS column benefits.ucstart.")
+    uc_rows = benefits.loc[
+        _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
+    ]
+    if uc_rows["benunit_id"].duplicated().any():
+        raise ValueError(
+            f"A benefit unit has two FRS UC rows; {column.upper()} is read as "
+            "one claim's status."
+        )
+    values = _raw_number(uc_rows, column)
+    if linked_by_start:
+        start = pd.Series(uc_rows["ucstart_raw"], dtype="string").str.strip()
+        values = values.where((start.notna() & (start != "")).to_numpy())
+    unknown = values.notna() & ~values.isin(list(codes))
+    if unknown.any():
+        raise ValueError(
+            f"FRS {column.upper()} codes outside {known}: "
+            f"{sorted(values[unknown].unique().tolist())}."
+        )
+    status = pd.Series(
+        values.map(codes).fillna(FRS_UC_LCW_NOT_LINKED).to_numpy(),
+        index=uc_rows["person_id"].to_numpy(),
+    )
+    person_ids = pe_person["person_id"].to_numpy()
+    absent = ~np.isin(status.index.to_numpy(), person_ids)
+    if absent.any():
+        raise ValueError(
+            f"{int(absent.sum())} FRS UC row(s) name a person the spine does not hold."
+        )
+    return status.reindex(person_ids, fill_value=FRS_UC_LCW_NOT_LINKED).to_numpy(
+        dtype=object
+    )
 
 
 def uc_gainful_self_employment(

@@ -6,6 +6,24 @@ loads and maps the ACS spine, transfers model input leaves from the dense
 donor, assigns the PUMA-anchored state/CD/county geography ladder, audits every
 fit's resolved typed weight kind, and writes the combined base. Calibration is
 deliberately downstream.
+
+``--location-rule block_v1`` (microcosm#696; default ``legacy``) replaces the
+PUMA-ladder assignment with one 2020 census block per household from
+``--block-ladder``: ACS rows draw within their observed PUMA, donor rows keep the
+block their ``block_v1`` base drew within their CPS source geography (a base
+located under any other rule is refused before the ACS fetch), and every
+geography derives from the block. The block-location gate is then a hard
+failure, and the rule, seed and both ladders' sha256 are recorded in the
+summary (``household_location``, ``orchestration``, ``geography_ladder``) and
+the staging H5's root attributes. The legacy default is unchanged.
+
+Telemetry: after parsing its arguments the builder starts the emitter
+(``microcosm.build.program_telemetry``, pipeline ``us_acs_multispine_staging``),
+records a stage change at each main phase (``load_donor``,
+``fetch_acs_sources``, ``build_multispine``, ``local_inputs``,
+``audit_inputs``, ``export``) and then completion, or failure with the error.
+With ``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
+emitter that cannot be used stops the builder before it reads any input.
 """
 
 from __future__ import annotations
@@ -15,6 +33,7 @@ import gc
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -24,10 +43,12 @@ import pandas as pd
 
 from microcosm.build import (
     FitWeightRecord,
+    GateResult,
     default_valued_columns_gate,
     weights_audit_gate,
 )
-from microcosm.build.gates import GateResult
+from microcosm.build.program_telemetry import program_telemetry
+from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 from microcosm.build.us_runtime import acs_sources
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
 from microcosm.build.us_runtime.acs_local_hours import (
@@ -35,6 +56,35 @@ from microcosm.build.us_runtime.acs_local_hours import (
     acs_local_hours_signal_gate,
     acs_local_transfer_target_families,
     prepare_acs_local_hours_donor,
+)
+from microcosm.build.us_runtime.acs_local_immigration import (
+    ACS_LOCAL_IMMIGRATION_ISSUE,
+    acs_local_immigration_signal_gate,
+    require_acs_local_immigration_donor,
+    with_acs_local_immigration_inputs,
+)
+from microcosm.build.us_runtime.acs_local_income import (
+    ACS_LOCAL_INCOME_TRANSFER_ISSUE,
+    acs_local_income_transfer_signal_gate,
+    require_acs_local_income_donor,
+)
+from microcosm.build.us_runtime.acs_local_receipt_anchors import (
+    ACS_LOCAL_RECEIPT_ANCHOR_ISSUE,
+    acs_local_receipt_anchor_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_ssi_disability import (
+    ACS_LOCAL_SSI_DISABILITY_ISSUE,
+    acs_local_ssi_disability_signal_gate,
+    load_acs_local_ssi_disability_donor,
+    require_acs_local_ssi_disability_donor,
+    with_acs_local_ssi_disability_criteria,
+)
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    ACS_DISABILITY_ITEMS,
+    ACS_LOCAL_DISABILITY_COLUMNS,
+    ACS_LOCAL_WORK_DISABILITY_ISSUE,
+    ACS_NATIVE_PROVENANCE,
+    acs_local_work_disability_signal_gate,
 )
 from microcosm.build.us_runtime.acs_multispine import (
     AcsMultispineResult,
@@ -55,7 +105,26 @@ from microcosm.build.us_runtime.acs_transfer import (
     default_acs_transfer_target_families,
     resolve_acs_donor_channel,
 )
-from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.base_pool import (
+    ACS_POOL_DONOR_LOCATION_REFUSAL,
+    ACS_POOL_LOCATION_CLONES_REFUSAL,
+    DONOR_BLOCK_PRESERVED,
+    spine_column,
+)
+from microcosm.build.us_runtime.block_location import (
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+    US_LOCATION_RULE_BLOCK_V1,
+    US_LOCATION_RULE_CHOICES,
+    US_LOCATION_RULE_LEGACY,
+    UsLocationLadder,
+    load_us_location_ladder,
+    location_geography_columns,
+    us_block_location_gate,
+)
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
     refuse_denied_frame,
@@ -65,6 +134,8 @@ from microcosm.build.us_runtime.org_wages import (
     require_us_occupation_and_work_experience_inputs,
 )
 from microcosm.build.us_runtime.puma_ladder import (
+    PUMA_LADDER_ARTIFACT_SHA256_ATTR,
+    PUMA_LADDER_VINTAGES_ATTR,
     UsPumaLadder,
     load_us_puma_ladder,
 )
@@ -73,6 +144,10 @@ from microcosm.build.us_runtime.spm_independence_role import (
 )
 from microcosm.build.us_runtime.spm_measurement_gate import engine_scopes_spm_universe
 from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
+from microcosm.build.us_runtime.ssi_disability_criteria import (
+    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
+    fetch_sipp_2023_ssi_disability_donor,
+)
 from microcosm.frame import (
     Frame,
     WeightKind,
@@ -95,6 +170,23 @@ _STAGING_EXPORT_FIXED_OVERHEAD_BYTES = 512 * 1024**2
 _PACKAGED_MANIFEST_REFERENCE = (
     "package:microcosm.build.us_runtime/acs_2024_1yr_sources.json"
 )
+#: The raw ACS items a native disability receipt must name (microcosm#1021).
+_NATIVE_DISABILITY_SOURCES: dict[str, tuple[str, ...]] = {
+    "is_disabled": ACS_DISABILITY_ITEMS,
+    "is_blind": ("DEYE",),
+}
+
+
+#: H5 root attributes that record a build's household location rule. The
+#: base-H5 line writes the first three under ``block_v1``, and the stacked pool
+#: writes all five; this line writes them (plus the PUMA ladder's
+#: ``PUMA_LADDER_ARTIFACT_SHA256_ATTR`` / ``PUMA_LADDER_VINTAGES_ATTR``) on its
+#: staging H5 only under ``block_v1`` (a legacy staging H5 is unchanged).
+LOCATION_RULE_ATTR = POPULACE_LOCATION_RULE_ATTR
+LOCATION_SEED_ATTR = POPULACE_LOCATION_SEED_ATTR
+LOCATION_CLONES_ATTR = POPULACE_LOCATION_CLONES_ATTR
+LOCATION_BLOCK_LADDER_SHA256_ATTR = POPULACE_BLOCK_LADDER_SHA256_ATTR
+LOCATION_BLOCK_LADDER_VINTAGES_ATTR = POPULACE_BLOCK_LADDER_VINTAGES_ATTR
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -157,6 +249,46 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Deterministic PUMA/CD/county assignment seed (default: 0).",
     )
     parser.add_argument(
+        "--location-rule",
+        choices=US_LOCATION_RULE_CHOICES,
+        default=US_LOCATION_RULE_LEGACY,
+        help=(
+            "Household location rule (default: legacy, the PUMA-ladder draw "
+            "seeded by --geography-seed). block_v1 (microcosm#696) gives every "
+            "household one 2020 census block drawn by population within its "
+            "finest source geography (ACS: observed PUMA; an ASEC-by-PUF donor "
+            "keeps the block its base drew) and derives every other geography "
+            "from the block. Requires --block-ladder and a --base-h5 built "
+            "with --location-rule block_v1, in which every donor carries a "
+            "block; any other base is refused."
+        ),
+    )
+    parser.add_argument(
+        "--location-seed",
+        default=0,
+        type=_nonnegative_int,
+        help="block_v1 location seed (default: 0; legacy refuses non-zero).",
+    )
+    parser.add_argument(
+        "--location-clones",
+        default=1,
+        type=_positive_int,
+        help=(
+            "block_v1 location clones per household (default: 1; values above "
+            "1 are refused on this line for now, see the error for why)."
+        ),
+    )
+    parser.add_argument(
+        "--block-ladder",
+        type=Path,
+        help=(
+            "Block-ladder NPZ carrying the per-block 2020 PUMA (required by, "
+            "and only accepted with, --location-rule block_v1). The PUMA "
+            "ladder is still loaded for its coverage summary and downstream "
+            "population targets."
+        ),
+    )
+    parser.add_argument(
         "--n-estimators",
         default=DEFAULT_N_ESTIMATORS,
         type=_positive_int,
@@ -176,6 +308,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--sipp-donor",
+        type=Path,
+        help=(
+            "Local copy of the sha-pinned full SIPP 2023 public-use file "
+            "(pu2023.csv) for the ACS rows' SSI disability criteria "
+            f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}). Defaults to the canonical "
+            "cache, downloading the pinned 3.73 GB file on first use."
+        ),
+    )
+    parser.add_argument(
         "--donor-release-manifest",
         type=Path,
         help=(
@@ -192,7 +334,17 @@ def _donor_release_identity(
     manifest_path: Path | None,
     base_sha256: str,
 ) -> dict[str, object] | None:
-    """Verify the donor H5 against its release manifest and pin its identity."""
+    """Verify the donor H5 against its release manifest and pin its identity.
+
+    The identity names the donor build so that
+    :func:`microcosm.data.build_folder_manifests.referenced_build` can find
+    its files (microcosm#1570). A donor whose manifest is in the build-folder
+    layout (``release`` and ``build`` as strings, no ``revision`` on its
+    artifacts) is named by ``repo_id``, ``release`` and ``build``; a donor
+    that keeps only its tag (a ``build`` object) by its ID, as
+    ``release_id``, and its ``revision``. A manifest with parts of both
+    layouts is refused.
+    """
 
     if manifest_path is None:
         return None
@@ -225,7 +377,39 @@ def _donor_release_identity(
             f"{entry.get('sha256')!r} for {name!r}. Refusing to transfer "
             "from an unverified donor."
         )
-    build = manifest.get("build") if isinstance(manifest.get("build"), dict) else {}
+    release, build = manifest.get("release"), manifest.get("build")
+    if "release" in manifest or isinstance(build, str):
+        if not (
+            isinstance(release, str) and release and isinstance(build, str) and build
+        ):
+            raise SystemExit(
+                f"Donor release manifest {manifest_path} is in neither layout: a "
+                "build-folder manifest names its release and its build as "
+                f"strings, a tagged one has a build object (release={release!r}, "
+                f"build={build!r})."
+            )
+        pinned = sorted(
+            key
+            for key, artifact in artifacts.items()
+            if isinstance(artifact, dict) and "revision" in artifact
+        )
+        if pinned:
+            raise SystemExit(
+                f"Donor release manifest {manifest_path} names release {release!r} "
+                f"and build {build!r}, but it pins revision on artifacts {pinned}; "
+                "a build folder has no tag."
+            )
+        return {
+            "manifest_path": str(manifest_path.resolve()),
+            "artifact": name,
+            "repo_id": entry.get("repo_id"),
+            "release": release,
+            "build": build,
+            "sha256": entry.get("sha256"),
+            "dataset_role": manifest.get("dataset_role"),
+            "is_default": manifest.get("is_default"),
+        }
+    build = build if isinstance(build, dict) else {}
     return {
         "manifest_path": str(manifest_path.resolve()),
         "artifact": name,
@@ -238,10 +422,97 @@ def _donor_release_identity(
     }
 
 
+#: The telemetry pipeline this builder reports under.
+TELEMETRY_PIPELINE = "us_acs_multispine_staging"
+
+
+def _validate_location_arguments(args: argparse.Namespace) -> None:
+    """Refuse location flags the selected rule would silently ignore."""
+
+    if args.location_rule == US_LOCATION_RULE_LEGACY:
+        if args.location_seed != 0 or args.location_clones != 1:
+            raise SystemExit(
+                "--location-seed and --location-clones apply only to "
+                "--location-rule block_v1; the legacy rule is seeded by "
+                f"--geography-seed (got --location-seed {args.location_seed}, "
+                f"--location-clones {args.location_clones})."
+            )
+        if args.block_ladder is not None:
+            raise SystemExit(
+                "--block-ladder is only used by --location-rule block_v1; the "
+                "legacy rule assigns geography from --puma-ladder."
+            )
+        return
+    if args.block_ladder is None:
+        raise SystemExit("--location-rule block_v1 requires --block-ladder.")
+    if args.location_clones > 1:
+        raise SystemExit(ACS_POOL_LOCATION_CLONES_REFUSAL)
+    if args.geography_seed != 0:
+        raise SystemExit(
+            "--geography-seed seeds only the legacy PUMA-ladder draw; under "
+            "--location-rule block_v1 use --location-seed (refusing "
+            f"--geography-seed {args.geography_seed} rather than ignoring it)."
+        )
+
+
+def _base_location_rule(path: Path) -> dict[str, object]:
+    """The donor base's recorded location rule, from its H5 root attributes.
+
+    A base H5 without :data:`LOCATION_RULE_ATTR` predates the attribute, so
+    its rule is recorded as ``legacy``.
+    """
+
+    with pd.HDFStore(path, mode="r") as store:
+        attributes = store.get_node("/")._v_attrs
+        names = set(attributes._v_attrnames)
+        recorded = {
+            key: _attribute_text(attributes[key])
+            for key in (LOCATION_RULE_ATTR, LOCATION_SEED_ATTR, LOCATION_CLONES_ATTR)
+            if key in names
+        }
+    return {
+        "location_rule": recorded.get(LOCATION_RULE_ATTR, US_LOCATION_RULE_LEGACY),
+        "recorded": LOCATION_RULE_ATTR in recorded,
+        "attributes": recorded,
+    }
+
+
+def _attribute_text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    if isinstance(value, np.ndarray) and value.shape == ():
+        return _attribute_text(value.item())
+    return str(value)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
+        return _build(args, telemetry)
+
+
+def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
+    telemetry.transition_stage("load_donor")
     summary_path = args.summary or args.out_h5.with_suffix(".summary.json")
     _validate_artifact_paths(args, summary_path=summary_path)
+    _validate_location_arguments(args)
+    block_location = args.location_rule != US_LOCATION_RULE_LEGACY
+    block_ladder: UsLocationLadder | None = None
+    base_location: dict[str, object] | None = None
+    if block_location:
+        block_ladder = load_us_location_ladder(args.block_ladder)
+        if block_ladder.puma is None:
+            raise SystemExit(
+                f"--block-ladder {args.block_ladder} carries no per-block 'puma' "
+                "array; block_v1 ACS rows draw within their observed PUMA."
+            )
+        base_location = _base_location_rule(args.base_h5)
+        if base_location["location_rule"] != US_LOCATION_RULE_BLOCK_V1:
+            raise SystemExit(
+                f"--base-h5 {args.base_h5} records location rule "
+                f"{base_location['location_rule']!r}. "
+                f"{ACS_POOL_DONOR_LOCATION_REFUSAL}"
+            )
 
     manifest = acs_sources.load_acs_source_manifest(args.source_manifest)
     manifest_file = _manifest_file(args.source_manifest)
@@ -251,6 +522,9 @@ def main(argv: list[str] | None = None) -> int:
     base = _load_base_frame(args.base_h5)
     _require_benefit_participation_inputs(base)
     _require_donor_spm_independence_role(base)
+    _require_immigration_donor(base, period=args.period)
+    _require_income_donor(base)
+    _require_ssi_disability_donor(base)
     _require_donor_work_experience(base)
     transfer_plan = declared_acs_transfer_target_families()
     _require_dense_donor_coverage(
@@ -258,11 +532,21 @@ def main(argv: list[str] | None = None) -> int:
         donor_channel=args.donor_channel,
         target_families=transfer_plan,
     )
+    # microcosm#1022: resolve and verify the pinned SIPP donor before the ACS
+    # fetch and transfer, so an unavailable donor fails in minutes, not hours.
+    ssi_disability_donor, ssi_disability_identity = _load_ssi_disability_donor(
+        args.sipp_donor, period=args.period
+    )
     base_rows = _row_counts(base)
     base_mass = float(base.weights_for("household").total)
     puma_ladder_sha256 = _sha256(args.puma_ladder)
     puma_ladder = load_us_puma_ladder(args.puma_ladder)
+    ladder_agreement: dict[str, object] | None = None
+    if block_location:
+        assert block_ladder is not None
+        ladder_agreement = _block_puma_ladder_agreement(block_ladder, puma_ladder)
 
+    telemetry.transition_stage("fetch_acs_sources")
     source = acs_sources.fetch_acs_pums_sources(
         args.inputs_dir,
         manifest=manifest,
@@ -271,6 +555,19 @@ def main(argv: list[str] | None = None) -> int:
         source = replace(source, max_households=args.max_households)
     drop_group_quarters_children = _drop_acs_group_quarters_children()
 
+    # The legacy call is unchanged; block_v1 adds its options only when set.
+    location_options: dict[str, object] = {}
+    if block_location:
+        location_options = {
+            "location_rule": args.location_rule,
+            "block_ladder": block_ladder,
+            "location_seed": args.location_seed,
+            "location_clones": args.location_clones,
+            "donor_location_rule": base_location["location_rule"]
+            if base_location is not None
+            else None,
+        }
+    telemetry.transition_stage("build_multispine")
     result = build_optional_acs_multispine(
         base,
         source,
@@ -281,6 +578,11 @@ def main(argv: list[str] | None = None) -> int:
             donor, seed=args.seed, period=args.period
         ),
         hours_under15_policy=args.hours_under15_policy,
+        work_disability_inputs=True,
+        income_transfer=True,
+        native_receipt_anchors=True,
+        # microcosm#1387: ACS SEMP already includes own-partnership income.
+        semp_covers_partnership_income=True,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
@@ -288,9 +590,17 @@ def main(argv: list[str] | None = None) -> int:
         puma_ladder=puma_ladder,
         geography_seed=args.geography_seed,
         drop_group_quarters_children=drop_group_quarters_children,
+        **location_options,
     )
     _require_puma_ladder_assignment(result)
+    location_gate = None
+    if block_location:
+        assert block_ladder is not None
+        location_gate = _require_block_location(result, block_ladder)
     _require_benefit_participation_transfer(result)
+    # microcosm#1022: the ACS rows' receives_snap is native household FS,
+    # written after the transfer and before pooling; gate the pooled frame.
+    receipt_anchors = _require_local_receipt_anchors(result)
     self_employment_gate = _require_acs_self_employment_identity(result.frame)
     _require_pooled_spm_independence_role(result)
     transfer_coverage = _require_default_transfer_coverage(
@@ -305,6 +615,36 @@ def main(argv: list[str] | None = None) -> int:
     # writer scratch at once.
     del base
     gc.collect()
+    telemetry.transition_stage("local_inputs")
+    # microcosm#1020: label the ACS rows' immigration status and fill every
+    # person's years_since_us_entry BEFORE the input-null audit. Left missing,
+    # they enter the reviewed-null register, whose fill is the engine default:
+    # every ACS person a citizen with a valid SSN, every clock 5 years.
+    result, immigration = _with_local_immigration(
+        result, seed=args.seed, period=args.period
+    )
+    gc.collect()
+    # microcosm#1021: the ACS rows' is_disabled/is_blind/weeks_worked were
+    # mapped natively before the transfer; gate them on the pooled frame.
+    work_disability = _require_local_work_disability(result)
+    gc.collect()
+    # microcosm#1022: the ACS rows' SNAP-relevant income leaves came from the
+    # separate ASEC-channel pass; gate them before the input-null audit.
+    income = _require_local_income_transfer(result)
+    gc.collect()
+    # microcosm#1022: run the donor's SIPP SSI disability-criteria model on
+    # the ACS rows (it reads the income pass's disability_benefits) and gate
+    # it before the input-null audit; left missing, the reviewed-null fill
+    # would fail every ACS person under 65 who is not blind.
+    result, ssi_disability = _with_local_ssi_disability(
+        result,
+        sipp_donor=ssi_disability_donor,
+        donor_identity=ssi_disability_identity,
+        seed=args.seed,
+    )
+    del ssi_disability_donor
+    gc.collect()
+    telemetry.transition_stage("audit_inputs")
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
     hours_gate = acs_local_hours_signal_gate(
@@ -315,9 +655,27 @@ def main(argv: list[str] | None = None) -> int:
             "Local staging hours gate failed: " + "; ".join(hours_gate.failures)
         )
 
+    telemetry.transition_stage("export")
     args.out_h5.parent.mkdir(parents=True, exist_ok=True)
     staging_export_peak_bytes = _preflight_staging_export(result.frame)
-    _write_dataset(result.frame, args.out_h5, period=args.period)
+    if block_location:
+        assert block_ladder is not None
+        _write_dataset(
+            result.frame,
+            args.out_h5,
+            period=args.period,
+            root_attributes=location_root_attributes(
+                location_rule=args.location_rule,
+                location_seed=args.location_seed,
+                location_clones=args.location_clones,
+                block_ladder_sha256=str(block_ladder.sha256),
+                block_ladder_vintages=block_ladder.layer_vintages,
+                puma_ladder_sha256=puma_ladder_sha256,
+                puma_ladder_vintages=puma_ladder.layer_vintages,
+            ),
+        )
+    else:
+        _write_dataset(result.frame, args.out_h5, period=args.period)
 
     summary = _build_summary(
         args=args,
@@ -337,6 +695,17 @@ def main(argv: list[str] | None = None) -> int:
         puma_ladder=puma_ladder,
         puma_ladder_sha256=puma_ladder_sha256,
     )
+    if block_location:
+        assert block_ladder is not None and location_gate is not None
+        summary["household_location"] = _household_location_summary(
+            args,
+            result,
+            block_ladder=block_ladder,
+            puma_ladder_sha256=puma_ladder_sha256,
+            base_location=base_location,
+            ladder_agreement=ladder_agreement,
+            gate=location_gate,
+        )
     summary["local_hours_source"] = result.provenance.get("local_hours_source")
     summary["acs_self_employment_identity_gate"] = {
         "name": self_employment_gate.name,
@@ -350,6 +719,11 @@ def main(argv: list[str] | None = None) -> int:
         "failures": list(hours_gate.failures),
         "details": dict(hours_gate.details),
     }
+    summary.update(receipt_anchors)
+    summary.update(immigration)
+    summary.update(work_disability)
+    summary.update(income)
+    summary.update(ssi_disability)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
     summary_path.write_text(rendered, encoding="utf-8")
@@ -396,6 +770,249 @@ def _require_benefit_participation_inputs(base: Frame) -> None:
             "Dense ASEC-by-PUF donor has no takes_up_* benefit-participation "
             "inputs. This tool must run after the benefit input-family stages."
         )
+
+
+def _require_immigration_donor(base: Frame, *, period: int) -> None:
+    """Refuse, before any fetch or fit, a donor the immigration stage can't use."""
+
+    try:
+        require_acs_local_immigration_donor(base, time_period=period)
+    except ValueError as exc:
+        raise SystemExit(
+            f"Dense ASEC-by-PUF donor cannot seed the ACS local immigration "
+            f"stage ({ACS_LOCAL_IMMIGRATION_ISSUE}): {exc}"
+        ) from exc
+
+
+def _with_local_immigration(
+    result: AcsMultispineResult,
+    *,
+    seed: int,
+    period: int,
+) -> tuple[AcsMultispineResult, dict[str, object]]:
+    """Run and gate the ACS local immigration stage; return the summary entries.
+
+    The stage fills only missing ACS-row labels and every missing
+    ``years_since_us_entry``; its gate must pass before the staging H5 is
+    written, and the release tool refuses a staging summary without both
+    entries (``acs_local_immigration`` and ``acs_local_immigration_gate``).
+    """
+
+    try:
+        frame, receipt = with_acs_local_immigration_inputs(
+            result.frame, seed=seed, time_period=period
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            f"ACS local immigration stage failed ({ACS_LOCAL_IMMIGRATION_ISSUE}): {exc}"
+        ) from exc
+    gate = acs_local_immigration_signal_gate(frame)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging immigration gate failed: " + "; ".join(gate.failures)
+        )
+    return replace(result, frame=frame), {
+        "acs_local_immigration": receipt,
+        "acs_local_immigration_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_local_work_disability(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS local work/disability inputs; return the summary entries.
+
+    ``build_optional_acs_multispine(work_disability_inputs=True)`` maps them
+    natively before the transfer and records the receipt in its provenance.
+    The gate must pass before the staging H5 is written, and the release tool
+    refuses a staging summary without both entries
+    (``acs_local_work_disability`` and ``acs_local_work_disability_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_work_disability")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no native work/disability receipt "
+            f"({ACS_LOCAL_WORK_DISABILITY_ISSUE}); the ACS rows' is_disabled "
+            "and is_blind would be ASEC-imputed and weeks_worked absent."
+        )
+    gate = acs_local_work_disability_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging work/disability gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_work_disability": receipt,
+        "acs_local_work_disability_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_local_receipt_anchors(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS rows' native SNAP receipt anchor; return the summary entries.
+
+    ``build_optional_acs_multispine(native_receipt_anchors=True)`` replaces the
+    transferred ``receives_snap`` with household ``FS`` on every ACS SPM unit
+    and records the receipt in its provenance. The gate must pass before the
+    staging H5 is written, and the release tool refuses a staging summary
+    without both entries (``acs_local_receipt_anchors`` and
+    ``acs_local_receipt_anchors_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_receipt_anchors")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no receipt-anchor receipt "
+            f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}); the ACS rows' receives_snap "
+            "would be the QRF transfer, not the measured household FS."
+        )
+    gate = acs_local_receipt_anchor_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging receipt-anchor gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_receipt_anchors": receipt,
+        "acs_local_receipt_anchors_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_income_donor(base: Frame) -> None:
+    """Refuse, before any fetch or fit, a donor the income pass can't use."""
+
+    try:
+        require_acs_local_income_donor(base)
+    except ValueError as exc:
+        raise SystemExit(
+            "Dense ASEC-by-PUF donor cannot seed the ACS local income transfer "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}): {exc}"
+        ) from exc
+
+
+def _require_local_income_transfer(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS local income transfer; return the summary entries.
+
+    ``build_optional_acs_multispine(income_transfer=True)`` runs the separate
+    ASEC-channel pass and records its receipt in its provenance. The gate must
+    pass before the staging H5 is written, and the release tool refuses a
+    staging summary without both entries (``acs_local_income_transfer`` and
+    ``acs_local_income_transfer_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_income_transfer")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no local income transfer receipt "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}); the ACS rows' child support, "
+            "workers' compensation, disability benefits and retirement "
+            "distributions would be default-filled zeros."
+        )
+    gate = acs_local_income_transfer_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging income transfer gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_income_transfer": receipt,
+        "acs_local_income_transfer_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_ssi_disability_donor(base: Frame) -> None:
+    """Refuse, before any fetch or fit, a donor without the SSI criteria."""
+
+    try:
+        require_acs_local_ssi_disability_donor(base)
+    except ValueError as exc:
+        raise SystemExit(
+            "Dense ASEC-by-PUF donor cannot anchor the ACS local SSI "
+            f"disability-criteria stage ({ACS_LOCAL_SSI_DISABILITY_ISSUE}): {exc}"
+        ) from exc
+
+
+def _load_ssi_disability_donor(
+    path: Path | None, *, period: int
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The verified SIPP training frame and the identity its receipt pins.
+
+    ``path`` is ``--sipp-donor``; without it the pinned file is resolved
+    through the canonical cache the fiscal lane's SIPP stages share,
+    downloading it on first use. Either way the byte length and sha-256 are
+    verified before the training frame is built.
+    """
+
+    try:
+        resolved = path if path is not None else fetch_sipp_2023_ssi_disability_donor()
+        return load_acs_local_ssi_disability_donor(resolved, time_period=period)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(
+            "The pinned full SIPP 2023 donor for the ACS local SSI disability "
+            f"criteria ({ACS_LOCAL_SSI_DISABILITY_ISSUE}) is unavailable: {exc} "
+            "Pass --sipp-donor with a local pu2023.csv (sha256 "
+            f"{SIPP_2023_SSI_DISABILITY_DONOR_SHA256}) or allow the pinned "
+            "download."
+        ) from exc
+
+
+def _with_local_ssi_disability(
+    result: AcsMultispineResult,
+    *,
+    sipp_donor: pd.DataFrame,
+    donor_identity: dict[str, object],
+    seed: int,
+) -> tuple[AcsMultispineResult, dict[str, object]]:
+    """Run and gate the ACS local SSI disability stage; return the summary entries.
+
+    The stage fills only missing ACS-row ``meets_ssi_disability_criteria``;
+    its gate must pass before the staging H5 is written, and the release tool
+    refuses a staging summary without both entries
+    (``acs_local_ssi_disability`` and ``acs_local_ssi_disability_gate``).
+    """
+
+    try:
+        frame, receipt = with_acs_local_ssi_disability_criteria(
+            result.frame,
+            sipp_donor=sipp_donor,
+            donor_identity=donor_identity,
+            seed=seed,
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            "ACS local SSI disability-criteria stage failed "
+            f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}): {exc}"
+        ) from exc
+    gate = acs_local_ssi_disability_signal_gate(frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging SSI disability-criteria gate failed: "
+            + "; ".join(gate.failures)
+        )
+    return replace(result, frame=frame), {
+        "acs_local_ssi_disability": receipt,
+        "acs_local_ssi_disability_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
 
 
 def _require_donor_spm_independence_role(base: Frame) -> None:
@@ -624,7 +1241,7 @@ def _require_benefit_participation_transfer(result: AcsMultispineResult) -> None
 
 
 def _require_acs_self_employment_identity(frame: Frame) -> GateResult:
-    """Refuse staging whose ACS self-employment leaves add to SEMP (#1380)."""
+    """Refuse staging whose ACS self-employment double-counts SEMP (#1380, #1387)."""
 
     person = frame.table("person")
     tag = spine_column("person")
@@ -685,6 +1302,182 @@ def _require_puma_ladder_assignment(result: AcsMultispineResult) -> None:
             "PUMA geography assignment still reports resolved input(s) as "
             f"deferred: {still_deferred}."
         )
+
+
+def _require_block_location(
+    result: AcsMultispineResult, block_ladder: UsLocationLadder
+) -> GateResult:
+    """Hard-gate a ``block_v1`` pool: every geography is its block's lookup."""
+
+    household = result.frame.table("household")
+    columns = location_geography_columns(block_ladder)
+    missing = [column for column in columns if column not in household]
+    if missing:
+        raise SystemExit(f"Block location omitted household column(s): {missing}.")
+    nulls = {
+        column: int(household[column].isna().sum())
+        for column in columns
+        if household[column].isna().any()
+    }
+    if nulls:
+        raise SystemExit(f"Block location left null household values: {nulls}.")
+    if not isinstance(result.provenance.get("household_location"), dict):
+        raise SystemExit(
+            "ACS multispine did not record the block_v1 household location."
+        )
+    gate = us_block_location_gate(household, block_ladder)
+    if not gate.passed:
+        raise SystemExit("Block location gate failed: " + "; ".join(gate.failures))
+    return gate
+
+
+def _block_puma_ladder_agreement(
+    block_ladder: UsLocationLadder, puma_ladder: UsPumaLadder
+) -> dict[str, object]:
+    """Refuse a block/PUMA ladder pair that is not the same 2020 geography.
+
+    Under ``block_v1`` each household's PUMA and congressional district come
+    from the block ladder, while the local release still takes its state and
+    CD population targets from the PUMA ladder
+    (``tools/build_us_acs_local_release.py:ladder_population``). The pair
+    must therefore carry the same PUMAs, the same districts and the same CD
+    vintage; that is checked here, before the transfer runs. The largest
+    per-state and per-district population differences are recorded, not
+    refused.
+    """
+
+    assert block_ladder.puma is not None  # checked when the ladder is loaded
+    plan = block_ladder.primary_congressional_district_plan
+    puma_cd_vintage = puma_ladder.layer_vintages["congressional_district"]
+    if plan != puma_cd_vintage:
+        raise SystemExit(
+            f"--block-ladder assigns {plan!r} congressional districts but "
+            f"--puma-ladder's population targets use {puma_cd_vintage!r}."
+        )
+    population = np.asarray(block_ladder.population, dtype=np.float64)
+    block_state = block_ladder.block_geoid // 10**13
+    block_cd = np.asarray(
+        block_ladder.congressional_district_plans[plan], dtype=np.int64
+    )
+    puma_state = np.asarray(puma_ladder.puma, dtype=np.int64) // 100_000
+    comparisons = {
+        "pumas": (
+            pd.Series(population).groupby(block_ladder.puma).sum(),
+            pd.Series(np.asarray(puma_ladder.puma_population, dtype=np.float64))
+            .groupby(np.asarray(puma_ladder.puma, dtype=np.int64))
+            .sum(),
+        ),
+        "states": (
+            pd.Series(population).groupby(block_state).sum(),
+            pd.Series(np.asarray(puma_ladder.puma_population, dtype=np.float64))
+            .groupby(puma_state)
+            .sum(),
+        ),
+        "congressional_districts": (
+            pd.Series(population).groupby(block_cd).sum(),
+            pd.Series(np.asarray(puma_ladder.cd_overlap_population, dtype=np.float64))
+            .groupby(np.asarray(puma_ladder.cd_overlap_cd, dtype=np.int64))
+            .sum(),
+        ),
+    }
+    record: dict[str, object] = {"congressional_district_plan": plan}
+    mismatched: list[str] = []
+    for name, (block_totals, puma_totals) in comparisons.items():
+        only_block = sorted(set(block_totals.index) - set(puma_totals.index))
+        only_puma = sorted(set(puma_totals.index) - set(block_totals.index))
+        shared = block_totals.index.intersection(puma_totals.index)
+        difference = (block_totals[shared] - puma_totals[shared]).abs()
+        record[name] = {
+            "block_ladder": int(len(block_totals)),
+            "puma_ladder": int(len(puma_totals)),
+            "only_in_block_ladder": [int(value) for value in only_block[:10]],
+            "only_in_puma_ladder": [int(value) for value in only_puma[:10]],
+            "max_abs_population_difference": (
+                float(difference.max()) if len(difference) else 0.0
+            ),
+        }
+        if only_block or only_puma:
+            mismatched.append(
+                f"{name}: {len(only_block)} only in --block-ladder "
+                f"(e.g. {only_block[:3]}), {len(only_puma)} only in "
+                f"--puma-ladder (e.g. {only_puma[:3]})"
+            )
+    if mismatched:
+        raise SystemExit(
+            "--block-ladder and --puma-ladder are not the same 2020 geography: "
+            + "; ".join(mismatched)
+            + "."
+        )
+    return record
+
+
+def location_root_attributes(
+    *,
+    location_rule: str,
+    location_seed: int,
+    location_clones: int,
+    block_ladder_sha256: str,
+    block_ladder_vintages: Mapping[str, str],
+    puma_ladder_sha256: str,
+    puma_ladder_vintages: Mapping[str, str],
+) -> dict[str, str]:
+    """H5 root attributes recording a ``block_v1`` location step.
+
+    The block ladder located every household; the PUMA ladder is still pinned
+    because the local release draws its state and CD population targets from
+    it. ``tools/build_us_acs_local_release.py`` writes the same attributes on
+    the calibrated artifact from the staging summary.
+    """
+
+    return {
+        LOCATION_RULE_ATTR: location_rule,
+        LOCATION_SEED_ATTR: str(int(location_seed)),
+        LOCATION_CLONES_ATTR: str(int(location_clones)),
+        LOCATION_BLOCK_LADDER_SHA256_ATTR: str(block_ladder_sha256),
+        LOCATION_BLOCK_LADDER_VINTAGES_ATTR: json.dumps(
+            dict(block_ladder_vintages), sort_keys=True
+        ),
+        PUMA_LADDER_ARTIFACT_SHA256_ATTR: str(puma_ladder_sha256),
+        PUMA_LADDER_VINTAGES_ATTR: json.dumps(
+            dict(puma_ladder_vintages), sort_keys=True
+        ),
+    }
+
+
+def _household_location_summary(
+    args: argparse.Namespace,
+    result: AcsMultispineResult,
+    *,
+    block_ladder: UsLocationLadder,
+    puma_ladder_sha256: str,
+    base_location: dict[str, object] | None,
+    ladder_agreement: dict[str, object] | None,
+    gate: GateResult,
+) -> dict[str, object]:
+    """The staging summary's ``household_location`` block (``block_v1`` only)."""
+
+    record = result.provenance["household_location"]
+    assert isinstance(record, dict)
+    return {
+        **record,
+        "block_ladder_path": str(args.block_ladder.resolve()),
+        "puma_ladder": {
+            "path": str(args.puma_ladder.resolve()),
+            "sha256": puma_ladder_sha256,
+            "role": (
+                "coverage summary and downstream state/CD population targets; "
+                "not used to assign geography under block_v1"
+            ),
+        },
+        "donor_base_location": base_location,
+        "ladder_agreement": ladder_agreement,
+        "gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
 
 
 def _require_default_transfer_coverage(
@@ -752,6 +1545,29 @@ def _require_default_transfer_coverage(
         and native_hours["missing_rows"] == modeled_rows
     ):
         native_complete[native_hours_column] = native_hours
+    # microcosm#1021: the local lane maps is_disabled/is_blind natively on
+    # every ACS row (the six difficulty items, plus SSIP for is_disabled), so
+    # the null-only transfer has nothing to fit. Accept only an exact,
+    # complete native receipt; a partial or non-native one still needs a fit.
+    native_modeled_rows = {native_hours_column: modeled_rows}
+    for column in ACS_LOCAL_DISABILITY_COLUMNS:
+        native_flag = (
+            native_inputs.get(column) if isinstance(native_inputs, dict) else None
+        )
+        if (
+            column in expected
+            and isinstance(native_flag, dict)
+            and native_flag.get("entity") == "person"
+            and native_flag.get("provenance") == ACS_NATIVE_PROVENANCE
+            and isinstance(native_flag.get("source_columns"), list)
+            and set(_NATIVE_DISABILITY_SOURCES[column]).issubset(
+                native_flag["source_columns"]
+            )
+            and type(native_flag.get("missing_rows")) is int
+            and native_flag["missing_rows"] == 0
+        ):
+            native_complete[column] = native_flag
+            native_modeled_rows[column] = 0
     missing = sorted(set(expected) - set(entries) - set(native_complete))
     if missing:
         raise SystemExit(
@@ -781,11 +1597,15 @@ def _require_default_transfer_coverage(
             raw_unmodeled = entries[column].get("unmodeled_recipient_rows", 0)
         else:
             receipt = native_complete[column]
+            native_modeled = native_modeled_rows[column]
             if type(receipt.get("observed_rows")) is not int or receipt[
                 "observed_rows"
-            ] + modeled_rows != int(acs_mask.sum()):
-                raise SystemExit("ACS native hours receipt has incorrect row coverage.")
-            raw_unmodeled = receipt["missing_rows"] - modeled_rows
+            ] + native_modeled != int(acs_mask.sum()):
+                label = "hours" if column == native_hours_column else column
+                raise SystemExit(
+                    f"ACS native {label} receipt has incorrect row coverage."
+                )
+            raw_unmodeled = receipt["missing_rows"] - native_modeled
         if type(raw_unmodeled) is not int or raw_unmodeled < 0:
             raise SystemExit(
                 f"ACS imputation provenance for {column!r} has invalid "
@@ -937,65 +1757,69 @@ def _reviewed_limitations(
             "engine_input_nulls_excluding_group_quarters_housing": (other_native_nulls),
             "calibration_blocker": False,
         },
-        {
-            "id": "sub_puma_geographic_precision",
-            "status": "reviewed_probabilistic_assignment",
-            "observed_geography": {
-                "acs_2024_1yr": ["state_fips", "puma"],
-                "asec_puf": (
-                    [
-                        "state_fips",
-                        "tract_geoid",
-                        "congressional_district_geoid",
-                        "county_fips",
-                    ]
-                    if geography.get("donor_geography") == "preserved_assigned"
-                    else ["state_fips"]
+        (
+            _block_v1_sub_puma_limitation(geography)
+            if geography.get("location_rule") == US_LOCATION_RULE_BLOCK_V1
+            else {
+                "id": "sub_puma_geographic_precision",
+                "status": "reviewed_probabilistic_assignment",
+                "observed_geography": {
+                    "acs_2024_1yr": ["state_fips", "puma"],
+                    "asec_puf": (
+                        [
+                            "state_fips",
+                            "tract_geoid",
+                            "congressional_district_geoid",
+                            "county_fips",
+                        ]
+                        if geography.get("donor_geography") == "preserved_assigned"
+                        else ["state_fips"]
+                    ),
+                },
+                "assigned_geography": [
+                    "puma",
+                    "congressional_district_geoid",
+                    "county_fips",
+                ],
+                "donor_geography": geography.get("donor_geography"),
+                "unavailable_exact_geography": list(
+                    geography.get(
+                        "unresolved_sub_puma_inputs",
+                        ["block_geoid", "tract_geoid"],
+                    )
                 ),
-            },
-            "assigned_geography": [
-                "puma",
-                "congressional_district_geoid",
-                "county_fips",
-            ],
-            "donor_geography": geography.get("donor_geography"),
-            "unavailable_exact_geography": list(
-                geography.get(
-                    "unresolved_sub_puma_inputs",
-                    ["block_geoid", "tract_geoid"],
-                )
-            ),
-            "unavailable_exact_geography_scope": (
-                "acs_2024_1yr"
-                if geography.get("donor_geography") == "preserved_assigned"
-                else "acs_2024_1yr,asec_puf"
-            ),
-            "reason": (
-                "ACS PUMS identifies residence only through state and 2020 "
-                "PUMA; exact block, tract, county, and congressional district "
-                "cannot be recovered for a source microrecord."
-            ),
-            "treatment": (
-                (
-                    "Retain each ACS record's observed PUMA and assign its "
-                    "119th-CD/county from official population-weighted PUMA "
-                    "overlaps using the recorded seed. Donor records keep "
-                    "their certified block-ladder district/county, with PUMA "
-                    "derived exactly from the assigned 2020 tract. Do not "
-                    "synthesize ACS block or tract."
-                )
-                if geography.get("donor_geography") == "preserved_assigned"
-                else (
-                    "Retain each ACS record's observed PUMA, draw ASEC PUMA "
-                    "within native state, and assign 119th-CD/county from "
-                    "official population-weighted PUMA overlaps using the "
-                    "recorded seed. Do not synthesize block or tract."
-                )
-            ),
-            "assignment_seed": geography.get("seed"),
-            "layer_vintages": geography.get("layer_vintages", {}),
-            "calibration_blocker": False,
-        },
+                "unavailable_exact_geography_scope": (
+                    "acs_2024_1yr"
+                    if geography.get("donor_geography") == "preserved_assigned"
+                    else "acs_2024_1yr,asec_puf"
+                ),
+                "reason": (
+                    "ACS PUMS identifies residence only through state and 2020 "
+                    "PUMA; exact block, tract, county, and congressional district "
+                    "cannot be recovered for a source microrecord."
+                ),
+                "treatment": (
+                    (
+                        "Retain each ACS record's observed PUMA and assign its "
+                        "119th-CD/county from official population-weighted PUMA "
+                        "overlaps using the recorded seed. Donor records keep "
+                        "their certified block-ladder district/county, with PUMA "
+                        "derived exactly from the assigned 2020 tract. Do not "
+                        "synthesize ACS block or tract."
+                    )
+                    if geography.get("donor_geography") == "preserved_assigned"
+                    else (
+                        "Retain each ACS record's observed PUMA, draw ASEC PUMA "
+                        "within native state, and assign 119th-CD/county from "
+                        "official population-weighted PUMA overlaps using the "
+                        "recorded seed. Do not synthesize block or tract."
+                    )
+                ),
+                "assignment_seed": geography.get("seed"),
+                "layer_vintages": geography.get("layer_vintages", {}),
+                "calibration_blocker": False,
+            }
+        ),
     ]
     spm_role = result.provenance.get("spm_independence_role")
     if isinstance(spm_role, dict):
@@ -1087,6 +1911,64 @@ def _spm_role_limitation(receipt: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _block_v1_sub_puma_limitation(geography: dict[str, object]) -> dict[str, object]:
+    """The ``sub_puma_geographic_precision`` limitation under ``block_v1``.
+
+    Every household carries one 2020 block and every geography derived from
+    it; what stays unknowable is which block inside the source geography a
+    record's respondent actually lives in.
+    """
+
+    donor_geography = geography.get("donor_geography")
+    columns = list(geography.get("resolved_model_inputs", []))
+    if donor_geography != DONOR_BLOCK_PRESERVED:
+        raise ValueError(
+            "A block_v1 pool keeps every donor's block, so its donor geography "
+            f"must be {DONOR_BLOCK_PRESERVED!r}, not {donor_geography!r}."
+        )
+    donor_observed = ["state_fips", "block_geoid"]
+    donor_reason = (
+        "An ASEC-by-PUF donor's block is the one its block_v1 base-H5 build "
+        "drew within the donor's CPS source geography: its identified county, "
+        "else its state outside the counties that year's file identifies "
+        "(donor_base_location in the staging summary's household_location "
+        "records that build's rule). This stage keeps it rather than "
+        "redrawing it, and refuses a base located under any other rule."
+    )
+    return {
+        "id": "sub_puma_geographic_precision",
+        "status": "reviewed_probabilistic_assignment",
+        "location_rule": US_LOCATION_RULE_BLOCK_V1,
+        "assignment_rule": geography.get("assignment_rule"),
+        "observed_geography": {
+            "acs_2024_1yr": ["state_fips", "puma"],
+            "asec_puf": donor_observed,
+        },
+        "assigned_geography": columns,
+        "donor_geography": donor_geography,
+        "unavailable_exact_geography": [],
+        "unavailable_exact_geography_scope": None,
+        "reason": (
+            "ACS PUMS identifies residence only through state and 2020 PUMA, "
+            "so the block an ACS household occupies cannot be recovered for "
+            "a source microrecord; it is drawn. " + donor_reason
+        ),
+        "treatment": (
+            "Give each ACS household one 2020 census block drawn with "
+            "probability proportional to 2020 block population within its "
+            "observed PUMA, keep the block each donor's block_v1 base drew "
+            "within its CPS source geography, and derive block, tract, "
+            "county, place, SLDU/SLDL, CBSA, PUMA and congressional district "
+            "from the block through the block ladder. ACS rows therefore now "
+            "carry block/tract/place/SLD/CBSA, and no household's geographies "
+            "contradict each other."
+        ),
+        "assignment_seed": geography.get("seed"),
+        "layer_vintages": geography.get("block_layer_vintages", {}),
+        "calibration_blocker": False,
+    }
+
+
 def _acs_group_quarters_counts(frame: Frame) -> dict[str, int]:
     household = frame.table("household")
     person = frame.table("person")
@@ -1140,6 +2022,49 @@ def _build_summary(
 ) -> dict[str, object]:
     output_rows = _row_counts(result.frame)
     output_mass = float(result.frame.weights_for("household").total)
+    block_location = args.location_rule != US_LOCATION_RULE_LEGACY
+    geography_ladder: dict[str, object] = {
+        "path": str(args.puma_ladder.resolve()),
+        "sha256": puma_ladder_sha256,
+        "pumas": len(puma_ladder),
+        "layer_vintages": puma_ladder.layer_vintages,
+        "seed": args.geography_seed,
+        "assignment": result.provenance["geography_ladder"],
+    }
+    orchestration: dict[str, object] = {
+        "chunksize": args.chunksize,
+        "acs_share": args.acs_share,
+        "max_households": args.max_households,
+        "seed": args.seed,
+        "geography_seed": args.geography_seed,
+        "n_estimators": args.n_estimators,
+        "max_targets_per_fit": args.max_targets_per_fit,
+        "donor_channel": args.donor_channel,
+        "provenance": result.provenance,
+    }
+    if block_location:
+        # The PUMA ladder no longer assigns geography; its sha stays pinned
+        # (population targets) and the block ladder's is recorded beside it.
+        household_location = result.provenance["household_location"]
+        assert isinstance(household_location, dict)
+        geography_ladder.update(
+            {
+                "seed": args.location_seed,
+                "location_rule": args.location_rule,
+                "block_ladder": {
+                    "path": str(args.block_ladder.resolve()),
+                    **dict(household_location["block_ladder"]),
+                },
+            }
+        )
+        orchestration.update(
+            {
+                "location_rule": args.location_rule,
+                "location_seed": args.location_seed,
+                "location_clones": args.location_clones,
+                "block_ladder_sha256": household_location["block_ladder"]["sha256"],
+            }
+        )
     return {
         "version": 1,
         "stage": "acs_2024_1yr_multispine_base",
@@ -1167,25 +2092,8 @@ def _build_summary(
             manifest_path=args.source_manifest,
             manifest_sha256=manifest_sha256,
         ),
-        "geography_ladder": {
-            "path": str(args.puma_ladder.resolve()),
-            "sha256": puma_ladder_sha256,
-            "pumas": len(puma_ladder),
-            "layer_vintages": puma_ladder.layer_vintages,
-            "seed": args.geography_seed,
-            "assignment": result.provenance["geography_ladder"],
-        },
-        "orchestration": {
-            "chunksize": args.chunksize,
-            "acs_share": args.acs_share,
-            "max_households": args.max_households,
-            "seed": args.seed,
-            "geography_seed": args.geography_seed,
-            "n_estimators": args.n_estimators,
-            "max_targets_per_fit": args.max_targets_per_fit,
-            "donor_channel": args.donor_channel,
-            "provenance": result.provenance,
-        },
+        "geography_ladder": geography_ladder,
+        "orchestration": orchestration,
         "weights_audit": weights_audit,
         "transfer_coverage": transfer_coverage,
         "reviewed_engine_input_nulls": input_null_audit,
@@ -1270,6 +2178,9 @@ def _validate_artifact_paths(
     ladder = args.puma_ladder.resolve()
     if ladder == output:
         raise SystemExit("--puma-ladder must differ from --out-h5.")
+    block_ladder = getattr(args, "block_ladder", None)
+    if block_ladder is not None and block_ladder.resolve() in {output, summary}:
+        raise SystemExit("--block-ladder must differ from --out-h5 and --summary.")
 
 
 def _spine_totals(frame: Frame) -> dict[str, dict[str, Any]]:
@@ -1339,8 +2250,13 @@ def _write_dataset(
     *,
     period: int,
     artifact_kind: str = "nullable_precalibration_staging_h5",
+    root_attributes: dict[str, str] | None = None,
 ) -> None:
-    """Write a microcosm US H5 with one-table-at-a-time verification."""
+    """Write a microcosm US H5 with one-table-at-a-time verification.
+
+    ``root_attributes`` (text values) are set on the HDF5 root node and read
+    back; the default writes none, so a legacy file is unchanged.
+    """
 
     output = Path(path)
     output.unlink(missing_ok=True)
@@ -1381,8 +2297,19 @@ def _write_dataset(
                 ),
                 format="table",
             )
+            if root_attributes:
+                node_attributes = store.get_node("/")._v_attrs
+                for key, value in root_attributes.items():
+                    node_attributes[key] = str(value)
 
         with pd.HDFStore(output, mode="r") as store:
+            if root_attributes:
+                stored_attributes = store.get_node("/")._v_attrs
+                for key, value in root_attributes.items():
+                    if _attribute_text(stored_attributes[key]) != str(value):
+                        raise RuntimeError(
+                            f"Staging H5 root attribute {key!r} did not round-trip."
+                        )
             for entity in frame.entities:
                 expected = frame.table(entity)
                 if not len(expected):

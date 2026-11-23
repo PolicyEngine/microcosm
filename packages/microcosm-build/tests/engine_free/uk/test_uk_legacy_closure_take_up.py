@@ -105,7 +105,9 @@ def test_probabilities_hit_the_rate_at_the_weighted_share_already_claiming() -> 
     np.testing.assert_allclose(probability[4:], 0.6)
     assert receipt["child_tax_credit"]["rate_source"] == "combination"
     assert receipt["jsa_income"]["rate_source"] == "all_households"
-    assert {entry["support"] for entry in receipt.values()} == {"<10"}
+    # Four sources carry the tax credit cohort and two the JSA one.
+    assert receipt["child_tax_credit"]["support"] == "3-9"
+    assert receipt["jsa_income"]["support"] == "<3"
 
 
 def test_probabilities_clip_where_the_claimants_exceed_the_rate() -> None:
@@ -125,7 +127,8 @@ def test_a_cohort_counts_only_its_sources_of_positive_weight() -> None:
     """The fourth review of #1305: one carrier rule across the receipts.
 
     Twenty-four sources, five of them weighted: the cohort rests on five, so
-    its support and its flag read "<10", not "10-29".
+    its support reads "3-9", not "10-29", and its flag, with one side of p on
+    two weighted sources, reads "<3".
     """
 
     n = 24
@@ -140,8 +143,8 @@ def test_a_cohort_counts_only_its_sources_of_positive_weight() -> None:
         great_britain=np.ones(n, dtype=bool),
         source_ids=np.arange(n),
     )
-    assert receipt["esa_income"]["support"] == "<10"
-    assert receipt["esa_income"]["rate_unreachable"] == "<10"
+    assert receipt["esa_income"]["support"] == "3-9"
+    assert receipt["esa_income"]["rate_unreachable"] == "<3"
 
 
 _REPORTED = (
@@ -197,7 +200,7 @@ def _frame(
         }
     )
     if lineage:
-        household["household_source_id"] = (
+        household["source_household_id"] = (
             ids if source_ids is None else np.asarray(source_ids, dtype="int64")
         )
     return uk_national_frame(
@@ -232,8 +235,8 @@ def test_units_outside_the_draw_keep_the_engine_default() -> None:
         "child_tax_credit": {
             "rate": 0.6,
             "rate_source": "combination",
-            "rate_unreachable": "<10",
-            "support": "<10",
+            "rate_unreachable": "<3",
+            "support": "<3",
         }
     }
 
@@ -273,7 +276,7 @@ def test_only_the_claimant_and_partner_place_a_unit_in_the_draw() -> None:
             {
                 "household_id": np.asarray([1, 2], dtype="int64"),
                 "region": pd.array(["NORTH_WEST", "NORTH_WEST"], dtype="string"),
-                "household_source_id": np.asarray([1, 2], dtype="int64"),
+                "source_household_id": np.asarray([1, 2], dtype="int64"),
             }
         ),
         time_period="2024",
@@ -397,9 +400,12 @@ def test_the_packaged_stage_carries_the_reviewed_operations_in_order() -> None:
     order = list(stages)
     position = order.index(lc.LEGACY_CLOSURE_STAGE_NAME)
     # After the last writers of would_claim_uc (uc_take_up, microcosm#1334) and
-    # the UC receipts, before the Pension Credit redraw and any CGT clone.
+    # the UC receipts, before the Pension Credit redraw and any CGT clone. Y1's
+    # uc_limited_capability (microcosm#1095) sits between the capital check and
+    # the take-up redraw.
     assert order.index("uc_take_up") == position - 1
-    assert order.index("uc_capital_coherence") == position - 2
+    assert order.index("uc_limited_capability") == position - 2
+    assert order.index("uc_capital_coherence") == position - 3
     assert position < order.index("pension_credit_take_up")
     assert position < order.index("cgt_support_split")
 
@@ -421,9 +427,9 @@ def test_p_is_measured_over_great_britain_and_applied_in_northern_ireland() -> N
     np.testing.assert_allclose(probability, (0.8 - 0.25) / (1 - 0.25))
 
 
-def test_an_unreachable_rate_is_flagged_only_on_ten_or_more_sources_a_side() -> None:
+def test_an_unreachable_rate_is_flagged_only_on_three_or_more_sources_a_side() -> None:
     # Twenty of thirty units claim anyway: p (two thirds) exceeds DWP's rate,
-    # so none is drawn, and both sides of p rest on ten or more sources.
+    # so none is drawn, and both sides of p rest on three or more sources.
     kwargs = dict(
         combination=np.array(["esa_income"] * 30, dtype=object),
         drawn=np.ones(30, dtype=bool),
@@ -438,19 +444,19 @@ def test_an_unreachable_rate_is_flagged_only_on_ten_or_more_sources_a_side() -> 
     np.testing.assert_array_equal(probability, 0.0)
     assert receipt["esa_income"]["rate_unreachable"] is True
     assert receipt["esa_income"]["support"] == "30+"
-    # Thirty support copies of three households: the cell rests on fewer
-    # than ten sources, so neither the flag nor the support is given.
+    # Thirty support copies of two households: the cell rests on fewer
+    # than three sources, so neither the flag nor the support is given.
     _, receipt = lc.legacy_closure_claim_probabilities(
-        **kwargs, source_ids=np.arange(30) % 3
+        **kwargs, source_ids=np.arange(30) % 2
     )
-    assert receipt["esa_income"]["rate_unreachable"] == "<10"
-    assert receipt["esa_income"]["support"] == "<10"
+    assert receipt["esa_income"]["rate_unreachable"] == "<3"
+    assert receipt["esa_income"]["support"] == "<3"
     # Thirty sources, one of them claiming anyway: the flag would say on which
     # side of the rate that one unit's weight share lies, so it is withheld.
     _, receipt = lc.legacy_closure_claim_probabilities(
         **dict(kwargs, claims_anyway=np.arange(30) < 1), source_ids=np.arange(30)
     )
-    assert receipt["esa_income"]["rate_unreachable"] == "<10"
+    assert receipt["esa_income"]["rate_unreachable"] == "<3"
 
 
 def test_a_combination_without_great_britain_units_has_no_flag() -> None:
@@ -463,7 +469,7 @@ def test_a_combination_without_great_britain_units_has_no_flag() -> None:
         great_britain=np.zeros(12, dtype=bool),
         source_ids=np.arange(12),
     )
-    # Northern Ireland only: there is no p, so no flag, not "<10".
+    # Northern Ireland only: there is no p, so no flag, not "<3".
     assert receipt["esa_income"]["rate_unreachable"] is None
 
 
@@ -481,9 +487,9 @@ def test_the_share_claiming_hides_a_small_side() -> None:
         frame, rates={"child_tax_credit": 0.01, "all": 0.8}
     ).evidence()
     assert evidence["great_britain_drawn_benunit_weight"] == pytest.approx(40.0)
-    assert evidence["great_britain_weighted_share_claiming_at_closure"] == "<10"
+    assert evidence["great_britain_weighted_share_claiming_at_closure"] == "<3"
     # The flag is withheld too: one side of p rests on two sources.
-    assert evidence["combinations"]["child_tax_credit"]["rate_unreachable"] == "<10"
+    assert evidence["combinations"]["child_tax_credit"]["rate_unreachable"] == "<3"
 
 
 def test_the_receipt_aggregates_cover_great_britain_only() -> None:
@@ -530,34 +536,34 @@ def _graph_evidence(frame) -> dict:
     return transform.checkpoint_metadata()["evidence"]
 
 
-def _copies_of_three_households():
-    # Twelve support copies of three source households, eleven claiming
-    # anyway: p exceeds DWP's rate on twelve rows but on three sources.
+def _copies_of_two_households():
+    # Twelve support copies of two source households, eleven claiming
+    # anyway: p exceeds DWP's rate on twelve rows but on two sources.
     n = 12
     return _frame(
         {"esa_income_reported": np.full(n, 100.0)},
         would_claim_uc=np.arange(n) < 11,
         weights=np.ones(n),
-        source_ids=np.arange(n) % 3,
+        source_ids=np.arange(n) % 2,
     )
 
 
 def test_the_stage_bands_support_copies_on_their_sources() -> None:
-    # UKDS disclosure control: neither the flag nor a band above "<10" for a
-    # cell three source households carry, however many rows copy them.
+    # UKDS disclosure control: neither the flag nor a band above "<3" for a
+    # cell two source households carry, however many rows copy them.
     combinations = lc.assign_uc_claim_at_legacy_closure(
-        _copies_of_three_households(), rates=_RATES
+        _copies_of_two_households(), rates=_RATES
     ).evidence()["combinations"]
-    assert combinations["esa_income"]["rate_unreachable"] == "<10"
-    assert combinations["esa_income"]["support"] == "<10"
+    assert combinations["esa_income"]["rate_unreachable"] == "<3"
+    assert combinations["esa_income"]["support"] == "<3"
 
 
 def test_the_graph_node_bands_support_copies_on_their_sources() -> None:
     # The same cell through the executor's input projection: the node declares
-    # household_source_id, so a graph build counts sources too.
-    combinations = _graph_evidence(_copies_of_three_households())["combinations"]
-    assert combinations["esa_income"]["rate_unreachable"] == "<10"
-    assert combinations["esa_income"]["support"] == "<10"
+    # source_household_id, so a graph build counts sources too.
+    combinations = _graph_evidence(_copies_of_two_households())["combinations"]
+    assert combinations["esa_income"]["rate_unreachable"] == "<3"
+    assert combinations["esa_income"]["support"] == "<3"
 
 
 def test_the_stage_refuses_a_frame_without_lineage() -> None:
@@ -567,7 +573,7 @@ def test_the_stage_refuses_a_frame_without_lineage() -> None:
         weights=np.ones(3),
         lineage=False,
     )
-    with pytest.raises(ValueError, match="household_source_id"):
+    with pytest.raises(ValueError, match="source_household_id"):
         lc.assign_uc_claim_at_legacy_closure(frame, rates=_RATES)
 
 
@@ -612,7 +618,7 @@ def test_the_stage_refuses_a_null_lineage() -> None:
         would_claim_uc=np.zeros(3, dtype=bool),
         weights=np.ones(3),
     )
-    frame.table("household")["household_source_id"] = pd.array(
+    frame.table("household")["source_household_id"] = pd.array(
         [1, None, 3], dtype="Int64"
     )
     # A null would drop out of a distinct count or count as one source.

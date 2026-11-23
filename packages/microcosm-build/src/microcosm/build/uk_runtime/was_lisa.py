@@ -44,6 +44,14 @@ never exceeds its ``gross_financial_wealth``: a household over it has its
 persons' balances scaled down pro rata, with a receipt. WAS records holdings,
 not annual contributions; nothing here derives a contribution or a bonus from a
 balance.
+
+When the stage declares ``anchor_lifetime_isa_ownership`` (microcosm#1415), the
+ownership logit is shifted on the ages that can hold a LISA in the build year until
+the weighted holders who survive the financial-wealth cap, at the ages that may pay
+in, equal HMRC's Table 9.4 Lifetime ISA accounts subscribed to that year. A person
+pays into one LISA a year and every payer holds one, so that count is the fewest
+holders consistent with HMRC. The same keyed uniforms decide ownership, so the
+anchor only adds holders; one it cannot reach is named in the receipt.
 """
 
 from __future__ import annotations
@@ -60,6 +68,13 @@ from microcosm.build.gates import EXPLICIT_KIND, FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.hmrc_isa_statistics import (
+    HMRC_ISA_BUILD_TAX_YEAR,
+    HMRCISAStatistics,
+    check_isa_statistics_declaration,
+    lifetime_isa_paying_ages,
+    load_hmrc_isa_statistics,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
@@ -85,10 +100,12 @@ __all__ = [
     "UK_WAS_LISA_OUTPUT_COLUMNS",
     "UK_WAS_LISA_STAGE_NAME",
     "BalanceModelSpec",
+    "OwnershipAnchorSpec",
     "OwnershipModelSpec",
     "UKWASLISAStageTransform",
     "WASLISAColumns",
     "WASLISAError",
+    "anchor_lifetime_isa_ownership",
     "cap_lifetime_isa_to_financial_wealth",
     "clean_was_lisa_donor",
     "fit_ownership_model",
@@ -114,8 +131,10 @@ UK_WAS_PERSON_TAB_ROLE = "was_person_tab"
 
 CLEAN_WAS_LISA_DONOR_KIND = "clean_was_lisa_donor"
 IMPUTE_LIFETIME_ISA_OWNERSHIP_KIND = "impute_lifetime_isa_ownership"
+ANCHOR_LIFETIME_ISA_OWNERSHIP_KIND = "anchor_lifetime_isa_ownership"
 IMPUTE_LIFETIME_ISA_BALANCE_KIND = "impute_lifetime_isa_balance"
 CAP_LIFETIME_ISA_TO_FINANCIAL_WEALTH_KIND = "cap_lifetime_isa_to_financial_wealth"
+VERIFY_VENDORED_FACT_RESOURCE_KIND = "verify_vendored_fact_resource"
 
 OWNERSHIP_COLUMN = "has_lifetime_isa"
 BALANCE_COLUMN = "lifetime_isa_balance"
@@ -192,10 +211,17 @@ def _artifact(stage: SourceStageSpec, role: str) -> Mapping[str, Any]:
 
 
 def _operation(stage: SourceStageSpec, kind: str) -> Mapping[str, Any]:
+    declared = _declared_operation(stage, kind)
+    if declared is None:
+        raise WASLISAError(f"{stage.stage} declares no {kind!r} operation.")
+    return declared
+
+
+def _declared_operation(stage: SourceStageSpec, kind: str) -> Mapping[str, Any] | None:
     for operation in stage.operations:
         if operation.kind == kind:
             return dict(operation.parameters)
-    raise WASLISAError(f"{stage.stage} declares no {kind!r} operation.")
+    return None
 
 
 def _mapping(value: object, label: str) -> Mapping[str, Any]:
@@ -1034,6 +1060,168 @@ def impute_lifetime_isa_ownership(
     )
 
 
+@dataclass(frozen=True)
+class OwnershipAnchorSpec:
+    """The declared anchor of ownership to HMRC's count (``anchor_lifetime_isa_ownership``).
+
+    WAS round 8 (2020-22) implies about half the Lifetime ISA holders HMRC's 2024-25
+    subscriptions need (microcosm#1415): every payer holds an account and a person
+    can pay into one Lifetime ISA a year, so Table 9.4's accounts subscribed to are
+    payers. Without a published holder count the anchor makes the weighted holders
+    after the financial-wealth cap equal that payer count, the fewest holders
+    consistent with HMRC. ``ages`` are the ages at which holders may be added and
+    ``counted_ages`` those whose holders are counted against the payers. Both are
+    the ages that can hold and pay into a LISA in the tax year
+    (``lifetime_isa_paying_ages``: opened at 18 to 39 since April 2017, so 18 to 47
+    in 2024-25): an older holder the base model draws cannot be one of HMRC's
+    payers (review of microcosm#1421).
+    """
+
+    target: str
+    tax_year: int
+    minimum_age: int
+    maximum_age: int
+    counted_minimum_age: int
+    counted_maximum_age: int
+
+    @classmethod
+    def from_parameters(cls, parameters: Mapping[str, Any]) -> OwnershipAnchorSpec:
+        if parameters.get("output") != OWNERSHIP_COLUMN:
+            raise WASLISAError(
+                f"anchor_lifetime_isa_ownership must rewrite {OWNERSHIP_COLUMN!r}."
+            )
+        target = str(parameters.get("target"))
+        if target != "table_9_4_lifetime_isa_accounts_subscribed":
+            raise WASLISAError(
+                "the ownership anchor is Table 9.4's Lifetime ISA accounts subscribed to."
+            )
+        tax_year = int(parameters["tax_year"])
+        if tax_year != HMRC_ISA_BUILD_TAX_YEAR:
+            raise WASLISAError(
+                f"the ownership anchor counts Table 9.4's {HMRC_ISA_BUILD_TAX_YEAR} "
+                f"payers, not {tax_year}'s."
+            )
+        ages = _mapping(parameters.get("ages"), "ages")
+        minimum, maximum = int(ages["minimum"]), int(ages["maximum"])
+        counted = _mapping(parameters.get("counted_ages"), "counted_ages")
+        counted_minimum, counted_maximum = (
+            int(counted["minimum"]),
+            int(counted["maximum"]),
+        )
+        if not 0 < minimum <= maximum:
+            raise WASLISAError("the anchor's ages must be a non-empty range.")
+        if not counted_minimum <= minimum <= maximum <= counted_maximum:
+            raise WASLISAError(
+                "the anchor adds holders only at ages whose holders it counts."
+            )
+        paying = lifetime_isa_paying_ages(tax_year)
+        if (counted_minimum, counted_maximum) != paying:
+            raise WASLISAError(
+                f"the anchor counts holders aged {paying[0]} to {paying[1]}, the ages "
+                f"that can pay into a Lifetime ISA in {tax_year}, not "
+                f"{counted_minimum} to {counted_maximum}."
+            )
+        return cls(
+            target=target,
+            tax_year=tax_year,
+            minimum_age=minimum,
+            maximum_age=maximum,
+            counted_minimum_age=counted_minimum,
+            counted_maximum_age=counted_maximum,
+        )
+
+    def counted(self, ages: np.ndarray) -> np.ndarray:
+        """Persons whose holding counts against the payers."""
+
+        ages = np.asarray(ages, dtype=float)
+        return (ages >= self.counted_minimum_age) & (ages <= self.counted_maximum_age)
+
+
+def anchor_lifetime_isa_ownership(
+    ownership: OwnershipImputation,
+    recipient: pd.DataFrame,
+    *,
+    spec: OwnershipModelSpec,
+    anchor: OwnershipAnchorSpec,
+    target_holders: float,
+    person_weights: np.ndarray,
+    survives_cap: np.ndarray,
+) -> OwnershipImputation:
+    """Shift the ownership logit on the anchor ages up to the target holder count.
+
+    The same person-keyed uniforms decide ownership, so the shift, never negative,
+    only adds holders. Holders are counted at the anchor's counted ages as the
+    financial-wealth cap leaves them (``survives_cap``: the household's gross
+    financial wealth is positive), on the spine's weights; the shift is solved by
+    bisection to within one person's weight of the target. Holders already at or
+    above the target are left as drawn; a target above what the largest shift
+    reaches is named ``target_above_reach``.
+    """
+
+    ages = recipient["age"].to_numpy(dtype=float)
+    adult = ages >= spec.minimum_age
+    in_ages = adult & (ages >= anchor.minimum_age) & (ages <= anchor.maximum_age)
+    uniforms = stable_identity_uniforms(
+        recipient["person_id"].to_numpy(), seed=spec.seed, salt=spec.salt
+    )
+    probability = np.clip(ownership.probability, 1e-12, 1.0 - 1e-12)
+    logit = np.log(probability / (1.0 - probability))
+    weights = np.asarray(person_weights, dtype=float)
+    counted = np.asarray(survives_cap, dtype=bool) & anchor.counted(ages)
+
+    def draw(shift: float) -> tuple[np.ndarray, np.ndarray, float]:
+        shifted = np.where(
+            in_ages, 1.0 / (1.0 + np.exp(-(logit + shift))), ownership.probability
+        )
+        shifted = np.where(adult, shifted, 0.0)
+        holds = adult & (uniforms < shifted)
+        return holds, shifted, float(weights[holds & counted].sum())
+
+    _, _, before = draw(0.0)
+    maximum_shift = 30.0
+    saturated = None
+    if before >= target_holders:
+        shift = 0.0
+    elif draw(maximum_shift)[2] < target_holders:
+        shift = maximum_shift
+        saturated = "target_above_reach"
+    else:
+        low, high = 0.0, maximum_shift
+        for _ in range(200):
+            mid = (low + high) / 2.0
+            if draw(mid)[2] < target_holders:
+                low = mid
+            else:
+                high = mid
+        shift = high
+    holds, shifted, after = draw(shift)
+    if shift == 0.0:
+        holds, shifted = ownership.holds, ownership.probability
+    added = holds & ~ownership.holds
+    receipt = {
+        **ownership.receipt,
+        "anchor": {
+            "target": anchor.target,
+            "tax_year": anchor.tax_year,
+            "ages": [anchor.minimum_age, anchor.maximum_age],
+            "counted_ages": [anchor.counted_minimum_age, anchor.counted_maximum_age],
+            "target_holders": float(target_holders),
+            "holders_before": before,
+            "holders_after": after,
+            "logit_shift": shift,
+            "saturated": saturated,
+            "holders_added_weight": float(weights[added].sum()),
+            "removed_holders": int((ownership.holds & ~holds).sum()),
+        },
+    }
+    return OwnershipImputation(
+        holds=holds,
+        probability=shifted,
+        receipt=receipt,
+        fit_weight_records=ownership.fit_weight_records,
+    )
+
+
 # --------------------------------------------------------------------------
 # Balance: holders-only QRF at the owner's keyed quantile
 # --------------------------------------------------------------------------
@@ -1270,9 +1458,11 @@ class UKWASLISAResult:
     realised: Mapping[str, Any]
     financial_wealth_coherence: Mapping[str, Any]
     population: Mapping[str, Any]
+    #: Weighted holders at the anchor's counted ages after the cap (anchored only).
+    anchored_holders_after_cap: float | None = None
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_WAS_LISA_STAGE_NAME,
             "support_clip": self.support_clip.evidence(),
             "donor": dict(self.donor),
@@ -1282,6 +1472,9 @@ class UKWASLISAResult:
             "financial_wealth_coherence": dict(self.financial_wealth_coherence),
             "population": dict(self.population),
         }
+        if self.anchored_holders_after_cap is not None:
+            evidence["anchored_holders_after_cap"] = self.anchored_holders_after_cap
+        return evidence
 
 
 # --------------------------------------------------------------------------
@@ -1301,6 +1494,9 @@ class UKWASLISAStageTransform:
     #: case-insensitive either way.
     donor_household: pd.DataFrame | None = None
     donor_person: pd.DataFrame | None = None
+    #: Supplied ISA facts (tests and the synthetic fixture); else the vendored
+    #: resource, read only when the stage declares the ownership anchor.
+    statistics: HMRCISAStatistics | None = None
     last_result: UKWASLISAResult | None = field(default=None, init=False)
     last_fit_weight_records: tuple[FitWeightRecord, ...] | None = field(
         default=None, init=False, repr=False
@@ -1355,6 +1551,22 @@ class UKWASLISAStageTransform:
                 f"{BALANCE_COLUMN!r} at {FINANCIAL_WEALTH_COLUMN!r} "
                 f"({CAP_METHOD}) and re-derive {OWNERSHIP_COLUMN!r}."
             )
+        anchor_parameters = _declared_operation(
+            self.stage, ANCHOR_LIFETIME_ISA_OWNERSHIP_KIND
+        )
+        anchor = (
+            None
+            if anchor_parameters is None
+            else OwnershipAnchorSpec.from_parameters(anchor_parameters)
+        )
+        statistics = None
+        if anchor is not None:
+            check_isa_statistics_declaration(
+                _operation(self.stage, VERIFY_VENDORED_FACT_RESOURCE_KIND),
+                stage=UK_WAS_LISA_STAGE_NAME,
+                period=int(uk_time_period(frame)),
+            )
+            statistics = self.statistics or load_hmrc_isa_statistics()
         donor = clean_was_lisa_donor(
             self._table(
                 self.donor_person,
@@ -1373,6 +1585,37 @@ class UKWASLISAStageTransform:
         ownership = impute_lifetime_isa_ownership(
             donor.person, recipient, spec=ownership_spec
         )
+        household_table = frame.table("household")
+        household_weights = np.asarray(
+            frame.weights_for("household").values, dtype=float
+        )
+        household_ids = household_table["household_id"].to_numpy()
+        person_household_ids = recipient["person_household_id"].to_numpy()
+        person_weights = (
+            pd.Series(household_weights, index=household_ids)
+            .reindex(person_household_ids)
+            .to_numpy(dtype=float)
+        )
+        financial_wealth = (
+            pd.to_numeric(household_table[FINANCIAL_WEALTH_COLUMN], errors="coerce")
+            .fillna(0.0)
+            .to_numpy(dtype=float)
+        )
+        if anchor is not None and statistics is not None:
+            ownership = anchor_lifetime_isa_ownership(
+                ownership,
+                recipient,
+                spec=ownership_spec,
+                anchor=anchor,
+                target_holders=statistics.accounts_subscribed[
+                    ("lifetime", anchor.tax_year)
+                ],
+                person_weights=person_weights,
+                survives_cap=pd.Series(financial_wealth > 0.0, index=household_ids)
+                .reindex(person_household_ids)
+                .fillna(False)
+                .to_numpy(dtype=bool),
+            )
         balance = impute_lifetime_isa_balance(
             donor.person, recipient, holds=ownership.holds, spec=balance_spec
         )
@@ -1382,20 +1625,11 @@ class UKWASLISAStageTransform:
             columns=UK_WAS_LISA_SUPPORT_CLIP_COLUMNS,
             stage=UK_WAS_LISA_STAGE_NAME,
         )
-        household_table = frame.table("household")
-        household_weights = np.asarray(
-            frame.weights_for("household").values, dtype=float
-        )
-        household_ids = household_table["household_id"].to_numpy()
         capped, coherence = cap_lifetime_isa_to_financial_wealth(
-            person_household_ids=recipient["person_household_id"].to_numpy(),
+            person_household_ids=person_household_ids,
             balances=clip.clipped[BALANCE_COLUMN].to_numpy(dtype=float),
             household_ids=household_ids,
-            household_financial_wealth=pd.to_numeric(
-                household_table[FINANCIAL_WEALTH_COLUMN], errors="coerce"
-            )
-            .fillna(0.0)
-            .to_numpy(dtype=float),
+            household_financial_wealth=financial_wealth,
             household_weights=household_weights,
         )
         holds = capped > 0.0
@@ -1408,10 +1642,6 @@ class UKWASLISAStageTransform:
             recipient["person_household_id"].to_numpy(), capped, household_ids
         )
         # Evidence.
-        weight_by_household = pd.Series(household_weights, index=household_ids)
-        person_weights = weight_by_household.reindex(
-            recipient["person_household_id"].to_numpy()
-        ).to_numpy(dtype=float)
         adult = recipient["age"].to_numpy(dtype=float) >= ownership_spec.minimum_age
         channel = None
         if "household_support_channel" in household_table:
@@ -1497,6 +1727,15 @@ class UKWASLISAStageTransform:
             realised=realised,
             financial_wealth_coherence=coherence,
             population=population,
+            anchored_holders_after_cap=(
+                None
+                if anchor is None
+                else float(
+                    person_weights[
+                        holds & anchor.counted(recipient["age"].to_numpy(dtype=float))
+                    ].sum()
+                )
+            ),
         )
         return result
 

@@ -32,6 +32,7 @@ US_CALIBRATION_PROVIDER_LABELS: Mapping[str, str] = MappingProxyType(
         "cms_medicaid": "CMS · Medicaid / CHIP",
         "cms_medicare": "CMS · Medicare",
         "cms_nhe": "CMS · National Health Expenditure Accounts",
+        "ed_fsa": "ED · Federal Student Aid",
         "federal_reserve": "Federal Reserve",
         "federal_reserve_z1": "Federal Reserve · Financial Accounts (Z.1)",
         "hhs_acf_liheap": "HHS · LIHEAP",

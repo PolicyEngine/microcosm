@@ -1,5 +1,14 @@
 # Route A rerun on 18 October 2026 (d1386)
 
+> **7 November 2026 (d2603).** Max moved Route A to main's default ASEC pool,
+> income years 2023-2025, from the first certified build after November 2026.
+> `docs/us-modal-stage-route-a-rerun-base-plan.json` now holds that build's
+> template (registration `us-puf-support-base-income-2023-2025`), and
+> `tools/route_a/route_a.sh` pools those years. This record describes the
+> 18 October rerun, which pooled 2022-2024. To repeat it, use the template and
+> driver as they stood at `9b7a4544b` (`git show 9b7a4544b:<path>`); main
+> keeps the `us-puf-support-base-rerun` registration they name.
+
 Prepared on 15 October against `origin/main`
 `412f916536b66577e4e0b42c707285085df7c302`. Nothing in this preparation
 launched a build or called Modal. The 18 October start did not happen; Max
@@ -29,7 +38,7 @@ editing the template. All eleven inputs use the runbook's
 | Block ladder | d713 CT-fixed `6840b990acdfa2003d7723da5595e3cfff7205a4fa3d8d6206ed835c85c3f233`, 18,991,218 bytes; replaces `7ba39b95…` |
 | ASEC H5s, income years 2024/2023/2022 | Same pins as the historical plan, in that order |
 | ASEC education, income years 2022/2023/2024 | Same three archive pins; the first also seeds the unemployment-weeks cache |
-| ASEC 2025 | Main added it to general defaults; Route A explicitly supplies 2024/2023/2022, so no fourth source is added |
+| ASEC 2025 | Main added it to general defaults. This rerun's driver named 2024/2023/2022, so the pin left the rerun's pool alone. The pull request that pinned 2025 called Route A "not affected"; that held only for drivers that name 2022-2024. Since d2603 Route A pools 2025/2024/2023 (see the note at the top) |
 | Processed PUF, TY2015 raw PUF, ACS 2022 | Same pins as the historical plan |
 | Base feed | Retains `consumer_facts_us_c5e5bf8.jsonl`, SHA `b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801` |
 | Release feed | Main repinned under #940 to `consumer_facts_us_51aa40f.jsonl`, SHA `965a29ac9458edb58a05184917ee4a19772fd3dc7b4588db6eb6da5803641aac`, 169,038,757 bytes, 40,178 rows; the machine file was verified |
@@ -450,7 +459,14 @@ LINEAGE=$FETCH/compare-lineage.json
 RUN=$RUN_ROOT/run-${C:0:12}
 (
   set -euo pipefail
-  test ! -e "$RUN/base-out" && test ! -e "$RUN/base-sup"
+  # An explicit if: under `set -e`, `test A && test B` does not stop the block
+  # when the first test fails. -L refuses a dangling link, which -e reports
+  # as absent. The tests name each path, so the guard assigns no variable.
+  if [ -e "$RUN/base-sup" ] || [ -L "$RUN/base-sup" ] ||
+    [ -e "$RUN/base-out" ] || [ -L "$RUN/base-out" ]; then
+    echo "refusing: $RUN already has base-sup or base-out; never overwrite a base" >&2
+    exit 1
+  fi
   python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
     --state-root "$FETCH/state" --prefix base-out --strict
   python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \
@@ -458,8 +474,9 @@ RUN=$RUN_ROOT/run-${C:0:12}
   mkdir -p "$RUN/base-out"
   # APFS clone: the run copy shares the fetched blocks, so it costs no extra
   # disk. That holds only when both paths are on the same APFS volume, as here;
-  # across volumes cp -c silently makes a full copy.
-  cp -pc "$FETCH/state/base-out/"* "$RUN/base-out/"
+  # across volumes cp -c silently makes a full copy. -R brings the base's
+  # gate_battery_shadow/ directory, whose files the receipt lists.
+  cp -pRc "$FETCH/state/base-out/"* "$RUN/base-out/"
   python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
     --state-root "$RUN" --prefix base-out --strict
   H5=$RUN/base-out/base_populace_us_2024_puf_support.h5
@@ -511,8 +528,10 @@ CLASS=$LOCAL/lineage-class-check-stage001.json
 
 The fetched file must hash to the receipt's digest for it, the same digest
 `compare-lineage` printed for Modal. The scratch copy is removed on any exit.
-Exit 0 means the difference is inside the class. Then run the rest of the step 5 block by hand from `mkdir -p
-"$RUN/base-out"`, and copy `$CLASS` and the check script into `$RUN/base-sup/`.
+Exit 0 means the difference is inside the class. Then run the rest of the step 5
+block in one `( set -euo pipefail; ... )` subshell, so a refusal stops it: the
+`if` that refuses an occupied path first, then everything from `mkdir -p
+"$RUN/base-out"`. Copy `$CLASS` and the check script into `$RUN/base-sup/`.
 Add a `lineage_exception` entry (ruling, check file, verdict) to `RESULT.json`
 and name the exception in `ACCEPTED`. Exit 1 stops for Max.
 

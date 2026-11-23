@@ -2,21 +2,28 @@
 
 Stage receipts are build output and can reach a release manifest, so a count
 of survey records follows UKDS EUL disclosure control (CD137 clause 8,
-CD171 section 5.2.1): nothing from fewer than ten records, and no exact count
+CD171 section 5.2.1): nothing from one or two records, and no exact count
 that, beside a published sample size or another receipt, narrows a small
 group by difference. A count a gate must read exactly, such as the zero a
 check requires, stays a count of zero. A share follows the same rule: an
 unweighted share is floored to two decimals, since an exact one gives back
-its count, and a weighted share carried by one to nine records is "<10".
+its count, and a weighted share carried by one or two records is "<3".
 
-Ten is CD171's working minimum, and no study the build reads sets a higher
-one. The UK Data Service catalogue entries were read for conditions beyond
-the End User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has none
-(checked 2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies
-(checked 2026-10-14). The SPI 2022-23 Public Use Tape (SN 9422, checked
-2026-10-16) adds two: no attempt may be made to attribute a record to a named
-individual, and material that includes analyses of the tape goes to HMRC at
-least ten working days before it is distributed or published. The build
+Three is CD171's absolute floor. The build used ten, CD171's working minimum
+against secondary disclosure across outputs, until María's ruling of
+2026-10-29 moved every output to three (``UK_DISCLOSURE_FLOOR``; recorded at
+https://github.com/PolicyEngine/microcosm/issues/1095#issuecomment-6541929216).
+Every count from three to nine reads "3-9", so a count just above the floor
+never narrows a small group by difference. No study the build reads sets a
+higher floor. The UK Data Service catalogue entries were read for conditions
+beyond the End User Licence (microcosm#1278): the FRS 2024-25 (SN 9563) has
+none (checked 2026-10-16), and neither have the LCFS, ETB, WAS and NTS studies
+(checked 2026-10-14) or the APS, April 2024 - March 2025 (SN 9408, checked
+2026-11-04), whose access and copyright terms read as the FRS's. The SPI
+2022-23 Public Use Tape (SN 9422, checked 2026-10-16) adds two: no attempt may
+be made to attribute a record to a named individual, and material that
+includes analyses of the tape goes to HMRC at least ten working days before it
+is distributed or published. The move to three changes neither. The build
 marks the outputs that rest on the tape
 (:mod:`microcosm.build.uk_runtime.spi_dependency`).
 """
@@ -24,37 +31,90 @@ marks the outputs that rest on the tape
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
-#: The lineage a stage receipt counts distinct support by: support copies
-#: repeat their source household, so a cell is counted in sources, not rows.
-SOURCE_HOUSEHOLD_COLUMN = "household_source_id"
+from microcosm.build.source_lineage import record_sources
+from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
+from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
+from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
+
+#: The lineage a stage receipt counts distinct support by: every copy and
+#: clone keeps the survey household it was made from, its true source, so a
+#: cell is counted in survey households, not rows (microcosm#931). The support
+#: channel's immediate parent, ``household_source_id``, is lineage the
+#: executor reads and never a count's key: a copy made from a clone names the
+#: clone there.
+SOURCE_HOUSEHOLD_COLUMN = SOURCE_HOUSEHOLD_ID_COLUMN
+#: CD171's absolute floor in distinct source households: a figure resting on
+#: fewer is withheld, with any figure that gives it back by difference
+#: (María's ruling of 2026-10-29 moved every output from ten to it).
+UK_DISCLOSURE_FLOOR = 3
+#: How a withheld figure reads.
+UK_WITHHELD = f"<{UK_DISCLOSURE_FLOOR}"
+#: The band a banded count prints from the floor up to ten.
+UK_BELOW_TEN_BAND = f"{UK_DISCLOSURE_FLOOR}-9"
 
 
 def source_household_ids(household: Any, *, stage: str) -> np.ndarray:
-    """Every household row's source household, for a receipt's support counts.
+    """Every household row's true source household, for a receipt's counts.
 
-    A table without the column is refused, and so is one with a null in it: a
-    null drops out of a distinct count or counts as one source, so a cell
-    would read fewer sources than it rests on.
+    The household table's rows by :func:`record_source_households`' rule.
     """
 
-    if SOURCE_HOUSEHOLD_COLUMN not in household.columns:
-        raise ValueError(
-            f"{stage} counts support by {SOURCE_HOUSEHOLD_COLUMN!r}, which the "
-            "frame does not carry."
+    return record_source_households({"household": household}, "household", stage=stage)
+
+
+def record_source_households(
+    tables: Mapping[str, pd.DataFrame] | Any,
+    entity: str,
+    *,
+    stage: str,
+    before_copies: bool = False,
+) -> np.ndarray:
+    """Every ``entity`` row's true source household: the key a floor counts.
+
+    ``tables`` is a frame or its tables by entity. A household reads its own
+    ``source_household_id``, a person its household's, and a benefit unit the
+    household its members share, through the shared reader
+    (``microcosm.build.source_lineage.record_sources``) on the UK's copy
+    lineage. A frame without the column is refused, and so is a null source:
+    it drops out of a distinct count, so a cell would read fewer sources than
+    it rests on. A stage that runs before the SPI support channel, the first
+    copying step, says so with ``before_copies``: no row is a copy yet, so
+    each household is its own source and its id serves, unless the frame
+    already carries copy lineage.
+    """
+
+    if not isinstance(tables, Mapping):
+        tables = {name: tables.table(name) for name in UK_NATIONAL_SCHEMA.entities}
+    try:
+        return record_sources(
+            tables,
+            UK_NATIONAL_SCHEMA,
+            entity,
+            UK_COPY_LINEAGE,
+            before_copies=before_copies,
         )
-    ids = household[SOURCE_HOUSEHOLD_COLUMN]
-    if ids.isna().any():
+    except ValueError as error:
         raise ValueError(
-            f"{stage} counts support by {SOURCE_HOUSEHOLD_COLUMN!r}, which is null "
-            "on some rows: every row needs its source household."
-        )
-    return ids.to_numpy()
+            f"{stage} counts support by true source households: {error}"
+        ) from error
+
+
+def own_source_households(person: pd.DataFrame) -> np.ndarray:
+    """Each person's own household as its true source: the rule before copies.
+
+    For a caller that holds a person table without the frame's lineage, as
+    every household is its own source before the SPI support channel copies
+    any; a frame with copies counts through :func:`record_source_households`.
+    """
+
+    return person[UK_NATIONAL_SCHEMA.membership_column("household")].to_numpy()
 
 
 def distinct_count(
@@ -76,10 +136,13 @@ def distinct_count(
 def rounded_count(count: int) -> int | str:
     """A count of donor records, rounded.
 
-    Zero exact, one to nine "<10", then to the nearest ten below a thousand
-    and to the nearest hundred from a thousand, so that a count near a
-    survey's published sample size does not give back by difference how many
-    records a step left out. Halves round up.
+    Zero exact, one or two "<3", three to nine "3-9", then to the nearest ten
+    below a thousand and to the nearest hundred from a thousand, so that a
+    count near a survey's published sample size does not give back by
+    difference how many records a step left out. Halves round up. The band
+    keeps a count just above the floor from narrowing a small group by
+    difference, as an exact one would beside another receipt (the review of
+    microcosm#1422).
     """
 
     value = int(count)
@@ -87,8 +150,10 @@ def rounded_count(count: int) -> int | str:
         raise ValueError(f"a record count cannot be negative: {value}.")
     if value == 0:
         return 0
+    if value < UK_DISCLOSURE_FLOOR:
+        return UK_WITHHELD
     if value < 10:
-        return "<10"
+        return UK_BELOW_TEN_BAND
     if value < 1000:
         return (value + 5) // 10 * 10
     return (value + 50) // 100 * 100
@@ -97,10 +162,10 @@ def rounded_count(count: int) -> int | str:
 def extreme_count(count: int) -> int | str:
     """A count of records picked out by an extreme value, in bands.
 
-    Zero exact, then "<10", "10-49" and "50-99", and from a hundred up the
-    count to the nearest hundred: how many donors had a negative spend, a rate
-    above its bound or VAT above their spending says something about the tail
-    a nearby count would not.
+    Zero exact, then "<3", "3-9", "10-49" and "50-99", and from a hundred up
+    the count to the nearest hundred: how many donors had a negative spend, a
+    rate above its bound or VAT above their spending says something about the
+    tail a nearby count would not.
     """
 
     value = int(count)
@@ -108,8 +173,10 @@ def extreme_count(count: int) -> int | str:
         raise ValueError(f"a record count cannot be negative: {value}.")
     if value == 0:
         return 0
+    if value < UK_DISCLOSURE_FLOOR:
+        return UK_WITHHELD
     if value < 10:
-        return "<10"
+        return UK_BELOW_TEN_BAND
     if value < 50:
         return "10-49"
     if value < 100:
@@ -120,9 +187,9 @@ def extreme_count(count: int) -> int | str:
 def support_band(count: int) -> int | str:
     """A cell's survey support as a band, never as a count.
 
-    Zero exact, as the other counts here, then "<10", "10-29" and "30+": the
-    band a stage receipt gives beside the cell's weighted figures, counted on
-    distinct source households.
+    Zero exact, as the other counts here, then "<3", "3-9", "10-29" and "30+":
+    the band a stage receipt gives beside the cell's weighted figures, counted
+    on distinct source households.
     """
 
     value = int(count)
@@ -130,8 +197,10 @@ def support_band(count: int) -> int | str:
         raise ValueError(f"a record count cannot be negative: {value}.")
     if value == 0:
         return 0
+    if value < UK_DISCLOSURE_FLOOR:
+        return UK_WITHHELD
     if value < 10:
-        return "<10"
+        return UK_BELOW_TEN_BAND
     if value < 30:
         return "10-29"
     return "30+"
@@ -152,13 +221,13 @@ def floored_share(share: float) -> float:
 
 
 def small_cell_share(share: float, count: int) -> float | str:
-    """A weighted share of records, or "<10" when one to nine records carry it."""
+    """A weighted share of records, or "<3" when one or two records carry it."""
 
     value = int(count)
     if value < 0:
         raise ValueError(f"a record count cannot be negative: {value}.")
-    if 0 < value < 10:
-        return "<10"
+    if 0 < value < UK_DISCLOSURE_FLOOR:
+        return UK_WITHHELD
     return float(share)
 
 

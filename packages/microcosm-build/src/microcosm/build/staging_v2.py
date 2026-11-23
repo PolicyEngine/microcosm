@@ -17,13 +17,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 from jsonschema import Draft202012Validator, FormatChecker
 
 from microcosm.build.staging_storage import (
-    BestEffortUploadSession,
-    HuggingFaceDatasetStorage,
+    RunFileEmitter,
+    RunFileHandOver,
+    warn_hand_over_failure,
 )
 
 #: The delivery summary's contract version. Its shape has not changed since version 2,
@@ -802,11 +803,23 @@ class StagingContentPolicy:
 
 
 class StagingRunBundleWriterV2:
-    """Record, validate, persist, and optionally upload a staging run bundle.
+    """Record, validate and persist a staging run bundle, and hand it over.
 
     Writes version 3 documents (``STAGING_DOCUMENT_VERSION``); the delivery summary
     keeps contract version 2.
+
+    In ``local_and_remote`` mode the run's files go to ``emitter_client``, the
+    build's local emitter, which commits them to ``repo_id`` with the build's
+    own Hugging Face credential and reads them back on request. The delivery
+    summary in each document carries the emitter's counts as of that
+    document's hand-over: the files it attempted to commit (plus any it did
+    not accept) and the files it committed. A document never counts the
+    commit that carries it.
     """
+
+    #: How long read-back waits for the emitter to commit the run's pending
+    #: files; it spaces two commits to one repository at least 10 seconds apart.
+    READ_BACK_WAIT_SECONDS = 120.0
 
     def __init__(
         self,
@@ -823,11 +836,10 @@ class StagingRunBundleWriterV2:
         delivery_mode: DeliveryMode = "local_and_remote",
         repo_id: str | None = None,
         upload_interval_seconds: float = 30.0,
-        api: Any = None,
+        emitter_client: RunFileEmitter | None = None,
         clock: Callable[[], str] = _utc_now,
         monotonic: Callable[[], float] = time.monotonic,
         content_policy: StagingContentPolicy | None = None,
-        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.run_id = _safe_identifier(run_id, label="run_id")
         self.candidate_id = _safe_identifier(candidate_id, label="candidate_id")
@@ -864,15 +876,18 @@ class StagingRunBundleWriterV2:
         self.upload_interval_seconds = max(0.0, float(upload_interval_seconds))
         self._clock = clock
         self._monotonic = monotonic
-        self._sleep = sleep
         self._content_policy = content_policy or StagingContentPolicy()
-        self._transport = (
-            HuggingFaceDatasetStorage(self.repo_id, api=api)
+        self.emitter_client = emitter_client
+        self._hand_over = (
+            RunFileHandOver(
+                emitter_client,
+                repository=self.repo_id,
+                run_id=self.run_id,
+                prefix=DEFAULT_STAGING_PREFIX,
+                commit_interval_seconds=self.upload_interval_seconds,
+            )
             if self.delivery_mode == "local_and_remote" and self.repo_id
             else None
-        )
-        self._upload_session = (
-            BestEffortUploadSession(self._transport) if self._transport else None
         )
         self.started_at = self._clock()
         self.updated_at = self.started_at
@@ -887,8 +902,6 @@ class StagingRunBundleWriterV2:
         self._events: list[dict[str, Any]] = []
         self._calibration_events: list[dict[str, Any]] = []
         self._last_upload_at = 0.0
-        self._consecutive_upload_failures = 0
-        self._remote_disabled = False
         self._delivery = {
             "contract_version": STAGING_CONTRACT_VERSION,
             "enabled": True,
@@ -1165,44 +1178,47 @@ class StagingRunBundleWriterV2:
         self._terminal_upload()
 
     def verify_remote(self) -> None:
+        """Have the emitter compare the Hub's copy of the run with what it committed.
+
+        The emitter first commits the run's pending files, waiting up to
+        ``READ_BACK_WAIT_SECONDS``. Any answer but ``passed`` (a differing or
+        missing file, files still pending, no emitter) fails the read-back.
+        """
         if self.status == "running":
             raise StagingContractError(
                 "Authenticated remote read-back requires a completed, blocked or "
                 "failed staging run."
             )
-        if self._transport is None:
+        if self._hand_over is None:
             raise StagingReadBackError("Remote read-back requires remote staging mode.")
         self._maybe_upload(force=True)
-        expected = {
-            remote_path: local_path.read_bytes()
-            for local_path, remote_path in self._upload_paths()
-        }
-        try:
-            for path, expected_bytes in expected.items():
-                remote_bytes = self._transport.download(path)
-                self._content_policy.validate_remote_file(path, remote_bytes)
-                if remote_bytes != expected_bytes:
-                    raise StagingReadBackError(
-                        f"Remote file {path} does not match local pre-read-back state."
-                    )
-        except Exception as exc:
-            self._delivery["read_back"] = "failed"
-            self._delivery["last_error_code"] = "READ_BACK_FAILED"
-            self._persist_bundle()
-            if isinstance(exc, StagingReadBackError):
-                raise
-            raise StagingReadBackError(
-                "Authenticated staging read-back failed."
-            ) from exc
+        if self._hand_over.last_accepted is not True:
+            # The emitter compares the Hub with what it committed; without the
+            # current files that can be an older state of the run.
+            self._fail_read_back(
+                "Authenticated staging read-back failed: the run's current "
+                "files were not handed over to the local emitter."
+            )
+        result = self._hand_over.read_back(wait_seconds=self.READ_BACK_WAIT_SECONDS)
+        self._hand_over.receipt()
+        self._record_delivery()
+        if result["status"] != "passed" or self._hand_over.files_committed < 1:
+            self._fail_read_back(_read_back_failure(result))
         self._delivery["read_back"] = "passed"
         self._delivery["last_error_code"] = None
         self._persist_bundle()
         # Make the verified state visible to authenticated consumers. This is
         # best effort because read-back has already established that the core
         # run files are present and valid: a failed refresh cannot change the
-        # verified local state (``_upload_path``), and the remote copy may then
-        # still show the delivery as it was before read-back.
+        # verified local state (``_record_delivery``), and the remote copy may
+        # then still show the delivery as it was before read-back.
         self._maybe_upload(force=True)
+
+    def _fail_read_back(self, message: str) -> NoReturn:
+        self._delivery["read_back"] = "failed"
+        self._delivery["last_error_code"] = "READ_BACK_FAILED"
+        self._persist_bundle()
+        raise StagingReadBackError(message)
 
     def _require_running(self, action: str) -> None:
         if self.status != "running":
@@ -1340,114 +1356,118 @@ class StagingRunBundleWriterV2:
             )
         return paths
 
-    def _upload_path(
-        self,
-        local_path: Path,
-        remote_path: str,
-        *,
-        count_delivery: bool,
-    ) -> bool:
-        if self._upload_session is None:
-            return False
-        data = local_path.read_bytes()
-        self._content_policy.validate_remote_file(remote_path, data)
-        result = self._upload_session.upload(
-            local_path,
-            remote_path,
-            count=count_delivery,
-        )
-        self._delivery["upload_attempts"] = self._upload_session.attempts
-        self._delivery["upload_successes"] = self._upload_session.successes
-        self._consecutive_upload_failures = self._upload_session.consecutive_failures
-        self._remote_disabled = not self._upload_session.enabled
+    def _record_delivery(self) -> None:
+        """Copy the emitter's counts, and the last hand-over's outcome, locally."""
+        hand_over = self._hand_over
+        if hand_over is None:
+            return
+        attempts = hand_over.files_attempted
+        self._delivery["upload_attempts"] = attempts
+        self._delivery["upload_successes"] = min(hand_over.files_committed, attempts)
         # Once read-back has given its verdict, the verdict owns the error
         # code: the delivery contract ties a passed read-back to no error and
-        # a failed one to READ_BACK_FAILED, so a later refresh upload, failed
-        # or not, cannot rewrite it (microcosm#1301). A failed refresh stays
-        # visible as an attempt without a success.
-        owns_error = self._delivery["read_back"] == "not_requested"
-        if not result.succeeded:
-            if owns_error:
-                self._delivery["last_error_code"] = "UPLOAD_FAILED"
+        # a failed one to READ_BACK_FAILED, so a later refresh, delivered or
+        # not, cannot rewrite it (microcosm#1301). A refresh the emitter did
+        # not accept stays visible as an attempt without a success.
+        if self._delivery["read_back"] != "not_requested":
+            return
+        failed = hand_over.last_accepted is False or (
+            hand_over.last_error_code is not None
+        )
+        self._delivery["last_error_code"] = "UPLOAD_FAILED" if failed else None
+
+    def _hand_over_files(self, files: list[tuple[str, Path]], *, flush: bool) -> bool:
+        assert self._hand_over is not None
+        result = self._hand_over.hand_over(files, flush=flush)
+        if not result.accepted:
+            warn_hand_over_failure(self._hand_over.repository, result)
+        if result.became_paused:
             print(
-                f"warning: staging upload failed for {remote_path}",
+                "warning: pausing staging hand-overs after three in a row "
+                "failed; local telemetry continues.",
                 file=sys.stderr,
             )
-            if result.became_disabled:
-                print(
-                    "warning: pausing remote staging writes after three "
-                    "consecutive failures; local telemetry continues.",
-                    file=sys.stderr,
-                )
-        else:
-            if owns_error:
-                self._delivery["last_error_code"] = None
-            return True
-        return False
-
-    def _reconcile_remote_delivery_metadata(self) -> None:
-        """Refresh counter-bearing metadata without counting these two writes."""
-
-        for filename in ("run_manifest.json", "progress.json"):
-            if self._remote_disabled:
-                break
-            self._persist_bundle()
-            self._upload_path(
-                self.run_dir / filename,
-                f"{self.repo_run_prefix}/{filename}",
-                count_delivery=False,
-            )
-        self._persist_bundle()
-
-    #: Delays before each terminal upload attempt. Mid-run, three consecutive
-    #: failures pause remote writes for the rest of the run so a rate-limited
-    #: Hub is not hammered; the terminal state is different: a run whose remote
-    #: copy stays "running" forever is the last-mile gap the v20 national run
-    #: met (its final state was delivered by hand), so completion and failure
-    #: re-open the session for a bounded, backed-off final flush.
-    _TERMINAL_UPLOAD_DELAYS: tuple[float, ...] = (0.0, 15.0, 60.0)
+        return result.accepted
 
     def _terminal_upload(self) -> None:
-        """Deliver the terminal state even after failures paused remote writes."""
+        """Hand over the final state even after failures paused hand-overs.
 
-        if self._transport is None or self._upload_session is None:
+        Mid-run, three hand-overs in a row that the emitter does not accept
+        pause them for the rest of the run, so a missing or stalled emitter
+        cannot slow the build. The final state is different: a run whose
+        remote copy stays "running" forever is the last-mile gap the v20
+        national run met (its final state was delivered by hand), so
+        completion, failure and a refusal by the validation checks hand it
+        over once more. The emitter retries its commits itself.
+        """
+
+        if self._hand_over is None:
             return
-        for delay in self._TERMINAL_UPLOAD_DELAYS:
-            if delay > 0.0:
-                self._sleep(delay)
-            self._upload_session.reopen()
-            self._remote_disabled = False
-            self._consecutive_upload_failures = 0
-            self._maybe_upload(force=True)
-            if (
-                not self._remote_disabled
-                and self._delivery["last_error_code"] != "UPLOAD_FAILED"
-            ):
-                return
-        print(
-            "warning: the staging run's terminal state did not reach "
-            f"{self.repo_id} after {len(self._TERMINAL_UPLOAD_DELAYS)} attempts; "
-            "the local bundle is complete.",
-            file=sys.stderr,
-        )
+        self._hand_over.reopen()
+        self._maybe_upload(force=True)
+        if self._hand_over.last_accepted is False:
+            print(
+                "warning: the staging run's final state was not handed over to "
+                f"the local emitter for {self.repo_id}; the local bundle is "
+                "complete.",
+                file=sys.stderr,
+            )
 
     def _maybe_upload(self, *, force: bool = False) -> None:
-        if self._transport is None or self._remote_disabled:
+        hand_over = self._hand_over
+        if hand_over is None or not hand_over.enabled:
             return
         now = self._monotonic()
         if not force and now - self._last_upload_at < self.upload_interval_seconds:
             return
         self._last_upload_at = now
-        for local_path, remote_path in self._upload_paths():
-            self._upload_path(
-                local_path,
-                remote_path,
-                count_delivery=True,
-            )
-            if self._remote_disabled:
-                break
+        # The documents carry the emitter's counts as of this hand-over.
+        hand_over.receipt()
+        self._record_delivery()
         self._persist_bundle()
-        self._reconcile_remote_delivery_metadata()
+        prefix = f"{self.repo_run_prefix}/"
+        files = []
+        for local_path, remote_path in self._upload_paths():
+            self._content_policy.validate_remote_file(
+                remote_path, local_path.read_bytes()
+            )
+            files.append((remote_path.removeprefix(prefix), local_path))
+        handed_over = dict(self._delivery)
+        self._hand_over_files(files, flush=force)
+        self._record_delivery()
+        if self._delivery == handed_over:
+            return
+        self._persist_bundle()
+        if not hand_over.last_accepted or not hand_over.enabled:
+            return
+        # The hand-over changed what the documents report (the emitter
+        # committed, or an earlier failure cleared): hand the two documents
+        # that carry the delivery over again, so the remote copy matches.
+        self._hand_over_files(
+            [
+                ("run_manifest.json", self.run_dir / "run_manifest.json"),
+                ("progress.json", self.run_dir / "progress.json"),
+            ],
+            flush=force,
+        )
+        if hand_over.last_accepted is False:
+            self._record_delivery()
+            self._persist_bundle()
+
+
+def _read_back_failure(result: Mapping[str, Any]) -> str:
+    """Describe a failed read-back from the emitter's answer, without secrets."""
+    status = result.get("status")
+    mismatched = [str(path) for path in result.get("mismatched_paths") or []]
+    if mismatched:
+        detail = "the Hub's copies differ from the committed bytes: " + ", ".join(
+            mismatched
+        )
+    elif result.get("error_code"):
+        detail = f"the emitter reported {status} ({result['error_code']})"
+    else:
+        detail = f"the emitter reported {status}"
+    return f"Authenticated staging read-back failed: {detail}."
 
 
 def validate_staging_bundle(

@@ -148,6 +148,7 @@ import re
 import subprocess
 import unicodedata
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from fractions import Fraction
 from functools import cache
 from pathlib import PurePosixPath
 from types import SimpleNamespace
@@ -155,10 +156,14 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.chronicle_epoch import (
+    is_accepted_consumer_artifact_schema_version,
+)
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.ledger_artifact import chronicle_feed_identity
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
@@ -166,7 +171,9 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.spec_engine import load_yaml12
 from microcosm.frame import concepts as frame_concepts
+from microcosm.frame.concept_mapping import MAPPING_FORMAT
 from microcosm.frame.input_closure import INPUT_CLOSURE_FORMAT
+from microcosm.frame.transport import DONOR_PROFILE_FORMAT
 from test_support.paths import paths_for
 
 _BUILD = paths_for("microcosm-build")
@@ -305,8 +312,9 @@ def rulespec_commit_mentions(value: object) -> set[str]:
       "rulespec" in any case);
     - the value, at any depth, of a key that contains "commit" in any case,
       unless the key's mapping is a foreign record (its repository
-      attribution lacks "rulespec") and neither the key nor an enclosing
-      key contains "rulespec".
+      attribution lacks "rulespec") or the key is one of the seven fields
+      of a complete Chronicle identity below ``feed_identity``, and neither
+      the key nor an enclosing key contains "rulespec".
 
     A foreign record cancels the context it sits in, except that its commit
     keys still count below a rulespec key. Integers count where hex strings
@@ -316,7 +324,13 @@ def rulespec_commit_mentions(value: object) -> set[str]:
 
     found: set[str] = set()
 
-    def visit(node: object, *, rulespec_context: bool, commit_value: bool) -> None:
+    def visit(
+        node: object,
+        *,
+        rulespec_context: bool,
+        commit_value: bool,
+        feed_identity_record: bool = False,
+    ) -> None:
         if isinstance(node, Mapping):
             repositories = [
                 repository
@@ -327,6 +341,14 @@ def rulespec_commit_mentions(value: object) -> set[str]:
             rulespec_record = any(
                 "rulespec" in repository.lower() for repository in repositories
             )
+            artifact_identity_fields: set[str] = set()
+            if feed_identity_record and is_accepted_consumer_artifact_schema_version(
+                node.get("artifact_schema_version")
+            ):
+                try:
+                    artifact_identity_fields = set(chronicle_feed_identity(node))
+                except ValueError:
+                    pass
             foreign = named and not rulespec_record
             if rulespec_record:
                 commit_value = True
@@ -334,16 +356,23 @@ def rulespec_commit_mentions(value: object) -> set[str]:
                 commit_value = False
             for key, child in node.items():
                 name = str(key).lower()
-                commit_key = "commit" in name and (rulespec_context or not foreign)
+                identity_field = key in artifact_identity_fields
+                field_commit_value = commit_value and (
+                    rulespec_context or not identity_field
+                )
+                commit_key = "commit" in name and (
+                    rulespec_context or (not foreign and not identity_field)
+                )
                 visit(
                     str(key),
                     rulespec_context=rulespec_context,
-                    commit_value=commit_value,
+                    commit_value=field_commit_value,
                 )
                 visit(
                     child,
                     rulespec_context=rulespec_context or "rulespec" in name,
-                    commit_value=commit_value or commit_key or "rulespec" in name,
+                    commit_value=field_commit_value or commit_key or "rulespec" in name,
+                    feed_identity_record=name == "feed_identity",
                 )
         elif isinstance(node, list):
             for child in node:
@@ -957,17 +986,60 @@ def resolve_dotted_symbol(dotted: str) -> object:
     raise ModuleNotFoundError(dotted, name=dotted)
 
 
+@cache
+def _transport_artifact_types() -> frozenset[tuple[str, int]]:
+    """Each ``(name, schema_version)`` an artifact type in the transport declares."""
+
+    from microcosm.build.transport import (
+        artifact_types,
+        evidence_contract,
+        income_evidence_kernels,
+        takeup_kernels,
+    )
+    from microcosm.graph import ArtifactType
+
+    return frozenset(
+        (value.name, value.schema_version)
+        for module in (
+            artifact_types,
+            evidence_contract,
+            income_evidence_kernels,
+            takeup_kernels,
+        )
+        for value in vars(module).values()
+        if isinstance(value, ArtifactType)
+    )
+
+
+def _serialized_identifier(key: object, child: object) -> bool:
+    """A format ID, or a declared artifact type in the form compose reads.
+
+    ``compose._artifact_type`` reads a node's output type as a mapping of
+    exactly ``name`` and ``schema_version``. Its hyphenated name isn't a
+    Python symbol, so a declared type under ``type`` cites nothing.
+    """
+
+    if key == "format":
+        return child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT, DONOR_PROFILE_FORMAT}
+    return (
+        key == "type"
+        and isinstance(child, Mapping)
+        and set(child) == {"name", "schema_version"}
+        and isinstance(child["name"], str)
+        and type(child["schema_version"]) is int
+        and (child["name"], child["schema_version"]) in _transport_artifact_types()
+    )
+
+
 def dotted_symbol_citations(value: object) -> set[str]:
-    """Find Python symbols, distinguishing the existing serialized format ID."""
+    """Find Python symbols, distinguishing serialized format and type IDs."""
 
     if isinstance(value, Mapping):
         return {
             dotted
             for key, child in value.items()
             for nested in (
-                [str(key)]
-                if key == "format" and child == INPUT_CLOSURE_FORMAT
-                else [str(key), child]
+                [str(key)] if _serialized_identifier(key, child) else [str(key), child]
             )
             for dotted in dotted_symbol_citations(nested)
         }
@@ -1000,6 +1072,13 @@ def resolve_json_pointer(file: str, pointer: str) -> object:
         for candidate in _repository_files()
         if candidate == relative or candidate.endswith("/" + relative)
     }
+    if len(candidates) > 1:
+        # Another country's package may hold a resource of the same name
+        # (Belgium's axiom_input_closure.json). A name in an NZ document
+        # cites NZ's own file when NZ's package has one at that path.
+        own = (NZ_ROOT / relative).resolve()
+        if own in candidates:
+            candidates = {own}
     if len(candidates) != 1:
         raise ValueError(f"JSON citation needs one checkout file: {file}: {candidates}")
     (path,) = candidates
@@ -1114,7 +1193,7 @@ def _as_ratio_numerator(
 
     operands = (
         {"role": "base"},
-        {"role": "numerator", **numerator},
+        {"role": "numerator", "period_type": "", "period_value": "", **numerator},
         {"role": "denominator", "source_name": "unrelated_source"},
     )
     return dataclasses.replace(
@@ -1193,7 +1272,13 @@ class TestReferenceSets:
         assert document["country"] == "nz"
         assert document["reference_set"] == reference_set
         expected_operations = (
-            ["identity", "rolled_forward_by_ratio"]
+            [
+                "identity",
+                "rolled_forward_by_ratio",
+                "allocated_residual_by_ratio",
+                "linear_combination",
+                "sum",
+            ]
             if reference_set == "calibration"
             else ["identity"]
         )
@@ -1210,7 +1295,8 @@ class TestReferenceSets:
         # reads comes through its own selector or identifiers.
         for reference in _references(reference_set):
             assert reference.value_operation in expected_operations
-            if reference.value_operation == "identity":
+            # R2C-17: a summed count row sums its pinned members, no operands.
+            if reference.value_operation in {"identity", "sum"}:
                 assert reference.value_operands == ()
             else:
                 assert {operand["role"] for operand in reference.value_operands} == {
@@ -1236,7 +1322,8 @@ class TestReferenceSets:
                 compile_ledger_target_references([], [reference], country="nz")
         assert (
             sum(row.metadata["activation_status"] == "active" for row in references)
-            == {"calibration": 98, "precal": 67, "holdout": 0}[reference_set]
+            # G8-r2c E activates the 235 P1 wage rows and G8-x0 adds 133 rent rows.
+            == {"calibration": 77, "precal": 448, "holdout": 2}[reference_set]
         )
 
     def test_pre_calibration_rows_are_not_weight_calibration_targets(self) -> None:
@@ -1260,13 +1347,14 @@ class TestReferenceSets:
             "stats_nz_census_households_by_size_region",
             "stats_nz_census_families_by_type_region",
             "stats_nz_census_households_by_tenure_region",
-            "ird_taxable_income_people_by_band",
-            "ird_taxable_income_total_by_band",
+            "ird_taxable_income_standin_people_by_band",
+            "ird_taxable_income_standin_total_by_band",
             "msd_main_benefit_recipients_by_program_age",
             "msd_nz_super_recipients",
             "msd_veterans_pension_recipients",
         }
-        assert len(references) == 773
+        # R2C-4: 24 coarse stand-in rows replace the 474 native IRD rows.
+        assert len(references) == 323
         assert {reference.metadata["target_role"] for reference in references} == {
             "calibration"
         }
@@ -1277,7 +1365,7 @@ class TestReferenceSets:
     def test_holdout_set_is_validation_only(self) -> None:
         references = _references("holdout")
         assert {reference.name for reference in references} == {
-            "msd_accommodation_supplement_recipients_by_region",
+            "msd_accommodation_supplement_recipients_national",
             "msd_annual_report_accommodation_assistance_expenditure",
             "treasury_an24_01_accommodation_supplement_fiscal_total",
             "ird_wff_recipient_families",
@@ -1346,7 +1434,33 @@ class TestReferenceSets:
         )
         assert HELD_OUT_FAMILIES.isdisjoint(reference.family for reference in upstream)
 
-    @settings(max_examples=300, deadline=None)
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "msd_accommodation_supplement_recipients_national",
+            "msd_annual_report_accommodation_assistance_expenditure",
+        ],
+    )
+    def test_source_only_ratio_plant_reaches_a_differently_pinned_holdout(
+        self, name: str
+    ) -> None:
+        held = next(row for row in _references("holdout") if row.name == name)
+        donor = _references("calibration")[0]
+        planted = _as_ratio_numerator(
+            donor, {"source_name": held.ledger_selector["source_name"]}
+        )
+        assert any(
+            ": hold-out ledger selector " in leak
+            for leak in holdout_leaks([planted], [], [held])
+        )
+
+    # A stalled shared host once made one draw take 36.9 s (load1 ~300), which
+    # Hypothesis reports as too_slow; the strategy itself is cheap.
+    @settings(
+        max_examples=300,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
     @given(
         data=st.data(),
         kind=st.sampled_from(HOLDOUT_LEAK_KINDS),
@@ -1405,10 +1519,7 @@ class TestReferenceSets:
                 == "msd_main_benefit_recipients_by_program_age"
             ):
                 assert row["filter"]
-                assert (
-                    row["metadata"]["activation_status"]
-                    == "requires_stratified_receipt_assignment"
-                )
+                assert row["metadata"]["activation_status"] == "active"
             assert row["ledger_selector"]["period_value"] == "2026-06"
             assert row["period"] == "2026-06"
 
@@ -1452,6 +1563,52 @@ _RULESPEC_REPOSITORIES = (
 
 
 class TestRulespecPin:
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "canonical",
+            "unattributed",
+            "incomplete",
+            "explicit_commit",
+            "extra_commit",
+            "rulespec_extra_revision",
+            "prose",
+            "rulespec_context",
+            "wrong_schema",
+        ],
+    )
+    def test_chronicle_identity_scope_preserves_rulespec_mentions(self, case) -> None:
+        identity = _load("reference_aging.json")["feed_identity"]
+        commit = identity["source_commit"]
+        payload = {"feed_identity": identity}
+        expected = set()
+        if case == "unattributed":
+            payload = {"other": identity}
+            expected = {commit}
+        elif case == "incomplete":
+            identity.pop("manifest_sha256")
+            expected = {commit}
+        elif case == "explicit_commit":
+            identity["rulespec_nz_commit"] = "c0ffee1"
+            expected = {"c0ffee1"}
+        elif case == "extra_commit":
+            identity["commit"] = "deadbee"
+            expected = {"deadbee"}
+        elif case == "rulespec_extra_revision":
+            identity["revision"] = "deadbee"
+            payload = {"rulespec": payload}
+            expected = {commit, "deadbee"}
+        elif case == "prose":
+            identity["notes"] = "RuleSpec-nz deadbee"
+            expected = {"deadbee"}
+        elif case == "rulespec_context":
+            payload = {"rulespec": payload}
+            expected = {commit}
+        elif case == "wrong_schema":
+            identity["artifact_schema_version"] = "unknown"
+            expected = {commit}
+        assert rulespec_commit_mentions(payload) == expected
+
     def test_every_rulespec_commit_named_anywhere_was_reviewed_on_main(self) -> None:
         pin = _load("axiom_rules_bindings.json")["rulespec"]
         mentions = rulespec_commit_mentions(_package_payloads())
@@ -1543,7 +1700,8 @@ class TestRulespecPin:
         surface["notes"] = surface["notes"].replace(
             "git diff 6fe181fc 8dc2507", "git diff 6fe181fc c0ffee1"
         )
-        payloads["currency_bridge.json"]["source"]["rules"] = {
+        # The IRS rate's source record lives in money_normalization.json (w2a).
+        payloads["money_normalization.json"]["rate"]["citation"]["rules"] = {
             "repository": "TheAxiomFoundation/rulespec-nz.git",
             "revision": "facade9876543",
         }
@@ -1764,7 +1922,9 @@ class TestRulesBindings:
         # Differential: the export gate's formula-owned list and the bindings.
         contract = _load("export_contract.json")
         bound = {v for binding in _bindings().values() for v in binding["variables"]}
-        assert set(contract["formula_owned_excluded"]) == bound
+        # H25: the gated entitlement payment is a formula output too.
+        entitled = "accommodation_supplement_entitled_weekly_payment"
+        assert set(contract["formula_owned_excluded"]) == bound | {entitled}
         assert contract["closed"] is True
         assert set(contract["forbidden"]) == {"person_weight", "family_weight"}
         assert (
@@ -1777,21 +1937,44 @@ class TestRulesBindings:
         bindings = _bindings()
         surface = _input_surface()
         assert set(bridge["rate_bindings"]) <= set(bindings)
-        evaluations = []
-        for output in bridge["outputs"]:
-            evaluations += output.get("terms", [])
-            for branch in output.get("branches", []):
-                evaluations += branch["evaluations"]
+        reg17, reg18 = bridge["outputs"]
+        s5 = bridge["superannuitant_units"]["s5_base_rate"]
+        # Each declaration's overrides apply to its primary binding; component
+        # overrides apply to their own binding.
+        override_sets = [
+            (reg17["primary_binding"], reg17["input_overrides"]),
+            (reg18["gross_rate"]["binding"], reg18["gross_rate"]["input_overrides"]),
+            (reg18["solve"]["binding"], reg18["solve"]["input_overrides"]),
+            *(
+                (component["binding"], component["input_overrides"])
+                for declaration in (reg17, s5)
+                for component in declaration["components"]
+            ),
+        ]
+        evaluations = [
+            *reg17["terms"],
+            reg18["gross_rate"],
+            *(term for term in reg18["solve"]["terms"] if "variable" in term),
+            *s5["terms"],
+        ]
         assert evaluations
+        allowed = set(bridge["rate_bindings"]) | {"nz_super"}
         for evaluation in evaluations:
             binding = bindings[evaluation["binding"]]
-            assert evaluation["binding"] in bridge["rate_bindings"]
+            assert evaluation["binding"] in allowed
             assert evaluation["variable"] in binding["variables"]
             assert evaluation["engine_entity"] == binding["engine_entity"]
-            inputs = set(surface[binding["rulespec_path"]]["canonical_inputs"])
-            overrides = [row["variable"] for row in evaluation["input_overrides"]]
+        for name, rows in override_sets:
+            inputs = set(surface[bindings[name]["rulespec_path"]]["canonical_inputs"])
+            overrides = [row["variable"] for row in rows]
             assert len(set(overrides)) == len(overrides)
             assert set(overrides) <= inputs
+        solve_input = reg18["solve"]["solve_input"]["column"]
+        assert solve_input in set(
+            surface[bindings["main_benefits_rates"]["rulespec_path"]][
+                "canonical_inputs"
+            ]
+        )
 
     def test_bridge_targets_are_the_two_as_inputs_the_module_leaves_open(self) -> None:
         bridge = _load("as_rate_bridge.json")
@@ -1813,12 +1996,28 @@ class TestRulesBindings:
 
     def test_bridge_reads_only_unit_attributes_the_unit_rule_declares(self) -> None:
         declared = set(_load("benefit_unit_rule.json")["unit_attributes"]["columns"])
-        bridge_text = json.dumps(_load("as_rate_bridge.json"))
+        bridge = _load("as_rate_bridge.json")
+        bridge_text = json.dumps(bridge)
         used = {
             f"family.{name}" for name in re.findall(r"family\.([a-z_]+)", bridge_text)
         }
+        # The bridge's own mask node derives these columns from unit attributes.
+        derived = {
+            f"family.{column['name']}"
+            for bindings in (
+                bridge["mask_bindings"],
+                bridge["superannuitant_units"]["s5_mask_bindings"],
+            )
+            for column in bindings["columns"]
+        } | {f"family.{bridge['outputs'][1]['gross_rate']['column']}"}
         assert used
-        assert used <= declared
+        assert used - derived <= declared
+        for bindings in (
+            bridge["mask_bindings"],
+            bridge["superannuitant_units"]["s5_mask_bindings"],
+        ):
+            for column in bindings["required_inputs"]["family"]:
+                assert f"family.{column}" in declared or column == "receipt_group"
 
     def test_reg17_family_tax_credit_term_uses_the_statutory_divisor(self) -> None:
         (base_rate,) = [
@@ -1826,8 +2025,12 @@ class TestRulesBindings:
             for output in _load("as_rate_bridge.json")["outputs"]
             if output["id"] == "reg17_base_rate"
         ]
-        (ftc,) = [term for term in base_rate["terms"] if "divisor" in term]
-        assert ftc["divisor"] == 52
+        (ftc,) = [
+            term
+            for term in base_rate["terms"]
+            if term["variable"] == "family_tax_credit_prescribed_amount"
+        ]
+        assert Fraction(ftc["coefficient"]) == Fraction(1, 52)
 
 
 # ---------------------------------------------------------------------------
@@ -2194,16 +2397,24 @@ class TestScenarios:
             "S1",
             "S2",
             "S3",
-            "S4",
             "S5",
             "V1",
             "V2",
             "V3",
+            "V4",
+            "VHF",
+            # G8-r2c G: the stand-in's stress, exposure and tail variants.
+            "VSI",
+            "VEX",
+            "VPT",
         ]
         branch_points = {
             tier: row["branch_point"] for tier, row in document["tiers"].items()
         }
-        assert branch_points == {"entitlement": "nz.as", "calibration": "nz.open"}
+        assert branch_points == {
+            "entitlement": "nz.as.bridge",
+            "calibration": "nz.open",
+        }
         assert [s["id"] for s in document["scenarios"] if not s["knobs"]] == ["S0"]
 
     def test_input_overrides_name_real_accommodation_supplement_inputs(self) -> None:
@@ -3038,6 +3249,32 @@ class TestSourceCitations:
         with pytest.raises(IndexError):
             resolve_json_pointer("records.json", "/values/2")
 
+    @pytest.mark.parametrize(
+        ("owners", "expected"),
+        [
+            (("nz", "be"), "nz"),
+            (("be", "uk"), None),
+            (("nz/extra", "be"), None),
+            (("be",), "be"),
+        ],
+        ids=["nz-and-foreign", "two-foreign", "nz-only-in-a-subfolder", "foreign-only"],
+    )
+    def test_a_name_other_packages_share_cites_nz_own_file(
+        self, citation_checkout, monkeypatch, tmp_path, owners, expected
+    ) -> None:
+        # Belgium's package also holds an axiom_input_closure.json. A bare name
+        # that several packages share cites NZ's own file when NZ's package has
+        # one at that path, and otherwise still needs exactly one file.
+        build = "packages/microcosm-build/src/microcosm/build"
+        monkeypatch.setattr(__name__ + ".NZ_ROOT", tmp_path / build / "nz")
+        for owner in owners:
+            citation_checkout(f"{build}/{owner}/closure.json", {"owner": owner})
+        if expected is None:
+            with pytest.raises(ValueError, match="needs one checkout file"):
+                resolve_json_pointer("closure.json", "/owner")
+        else:
+            assert resolve_json_pointer("closure.json", "/owner") == expected
+
     def test_keyed_selector_is_independent_of_record_position(
         self, citation_checkout
     ) -> None:
@@ -3075,24 +3312,30 @@ class TestSourceCitations:
                 (_BUILD.repository / file).read_text(encoding="utf-8")
             )
             array, field = "bindings", "canonical_input"
-            expected_key = "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income"
+            expected_keys = [
+                "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_relevant_weekly_income"
+            ]
             evidence = reporting["disclosures"][1]["evidence"]
         else:
             file, array, field = "axiom_input_closure.json", "entries", "input"
             original = _load(file)
             if disclosure == "sharing_home":
-                expected_key = (
-                    "nz_super_shares_residence_with_person_at_least_adult_age"
-                )
+                expected_keys = [
+                    "nz_super_shares_residence_with_person_at_least_adult_age",
+                    "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors",
+                ]
                 evidence = reporting["disclosures"][0]["evidence"]
             else:
-                expected_key = "accommodation_supplement_non_beneficiary"
+                expected_keys = ["accommodation_supplement_non_beneficiary"]
                 evidence = reporting["as_non_beneficiary_audit"]["evidence"]
-        (expected,) = [row for row in original[array] if row[field] == expected_key]
+        expected = []
+        for key in expected_keys:
+            (row,) = [row for row in original[array] if row[field] == key]
+            expected.append(row)
         original[array].insert(0, {field: "dummy_record"})
         citation_checkout(file, original)
-        (citation,) = json_pointer_citations(evidence)
-        assert resolve_json_pointer(*citation) == expected
+        citations = json_pointer_citations(evidence)
+        assert [resolve_json_pointer(*citation) for citation in citations] == expected
 
     def test_local_file_pins_cannot_hide_absolute_or_parent_path_aliases(self) -> None:
         relative = "packages/microcosm-frame/src/microcosm/frame/concepts.py"
@@ -3126,6 +3369,44 @@ class TestSourceCitations:
             INPUT_CLOSURE_FORMAT
         }
 
+    def test_the_donor_profile_format_identifier_is_not_a_python_symbol(self) -> None:
+        # donor_profile.json's format tag; outside a format key the scan reads
+        # its dotted prefix as a module that does not exist.
+        assert dotted_symbol_citations({"format": DONOR_PROFILE_FORMAT}) == set()
+        assert dotted_symbol_citations({"note": DONOR_PROFILE_FORMAT}) == {
+            "microcosm.donor"
+        }
+
+    def test_a_declared_artifact_type_is_not_a_python_symbol(self) -> None:
+        from microcosm.build.transport.income_evidence_kernels import (
+            OMISSION_REGISTER_TYPE,
+        )
+
+        declared = {
+            "name": OMISSION_REGISTER_TYPE.name,
+            "schema_version": OMISSION_REGISTER_TYPE.schema_version,
+        }
+        assert dotted_symbol_citations({"type": declared}) == set()
+        # Only that exact form, under "type", for a declared type: the regex
+        # reads the hyphenated name up to its first hyphen.
+        cited = {"microcosm.transport.omission"}
+        assert dotted_symbol_citations({"note": declared["name"]}) == cited
+        assert dotted_symbol_citations({"type": {**declared, "schema_version": 2}}) == (
+            cited
+        )
+        assert dotted_symbol_citations({"type": {**declared, "extra": 1}}) == cited
+        assert (
+            dotted_symbol_citations(
+                {
+                    "type": {
+                        "name": "microcosm.transport.omission-x",
+                        "schema_version": 1,
+                    }
+                }
+            )
+            == cited
+        )
+
     def test_nested_dotted_attributes_resolve_after_the_module_prefix(self) -> None:
         assert (
             resolve_dotted_symbol("microcosm.frame.concepts.TransportRule.CARRY")
@@ -3140,7 +3421,9 @@ class TestSourceCitations:
         assert selected["item"] == "A1"
 
     def test_create_and_donor_reader_citations_still_describe_unit_inputs(self) -> None:
+        from microcosm.build.transport import population_kernels, unit_declarations
         from microcosm.build.transport.population_kernels import TransportCreateKernel
+        from microcosm.frame import unit_construction
         from microcosm.frame.transport import read_populace_us_donor
         from microcosm.graph.decl import StructuralDelta
 
@@ -3158,14 +3441,48 @@ class TestSourceCitations:
         )
         assert TransportCreateKernel.capabilities.structural is StructuralDelta.CREATE
         # Differential source evidence: CREATE reads the verified concept donor,
-        # then builds family units using the declared benefit-unit rule.
+        # then delegates its unchanged NZ rule through the canonical parser and
+        # the registered benefit-unit membership constructor.
         create_source = inspect.getsource(TransportCreateKernel)
-        assert create_source.index("read_populace_us_donor(") < create_source.index(
-            "build_benefit_units("
+        assert (
+            create_source.index("read_populace_us_donor(")
+            < create_source.index("create_unit_declaration(")
+            < create_source.index("build_declared_units(")
         )
         assert "tables, dropped = split_for_transport(donor.tables)" in create_source
-        assert "BenefitUnitRule.from_spec(" in create_source
-        assert 'tables["person"], tables["household"], rule' in create_source
+        assert 'tables["person"], tables["household"], declaration' in create_source
+        assert (
+            population_kernels.create_unit_declaration
+            is unit_declarations.create_unit_declaration
+        )
+        assert TransportCreateKernel.ref == unit_declarations.CREATE_V1_REF
+        parser_source = inspect.getsource(unit_declarations.create_unit_declaration)
+        assert "if kernel == CREATE_V1_REF:" in parser_source
+        assert "rule = BenefitUnitRule.from_spec(document)" in parser_source
+        assert "return MultiUnitRule.from_benefit_unit(rule)" in parser_source
+        declaration = unit_declarations.create_unit_declaration(
+            TransportCreateKernel.ref, rule
+        )
+        (unit,) = declaration.units
+        assert unit.kind == "benefit_unit"
+        assert (
+            unit.rule.to_dict()
+            == unit_construction.BenefitUnitRule.from_spec(rule).to_dict()
+        )
+        rule_type, constructor = unit_construction._UNIT_KINDS[unit.kind]
+        assert rule_type is unit_construction.BenefitUnitRule
+        constructor_source = inspect.getsource(constructor)
+        assert "_heads(rows, _dependents(rows, rule), rule)" in constructor_source
+        framework_source = inspect.getsource(unit_construction.build_declared_units)
+        assert "_UNIT_KINDS[item.kind][1](rows, person, item.rule)" in framework_source
+        assert (
+            "_build_partition(person, household, item.rule, rows, head)"
+            in framework_source
+        )
+        legacy_source = inspect.getsource(unit_construction.build_benefit_units)
+        assert "_dependents(rows, rule)" in legacy_source
+        assert "_heads(rows, dependent, rule)" in legacy_source
+        assert "_build_partition(person, household, rule, rows, head)" in legacy_source
         donor_source = inspect.getsource(read_populace_us_donor)
         assert "tables = POLICYENGINE_US_CONCEPT_MAPPING.decode(raw)" in donor_source
         assert 'tables["person"][name] = values' in donor_source
@@ -3217,18 +3534,32 @@ class TestSourceCitations:
         ]
         assert f"`{rule['donor_variable']}`" in row
 
-    def test_reporting_disclosure_cites_the_sharing_home_default_record(self) -> None:
+    def test_reporting_disclosure_cites_the_sharing_home_binding_record(self) -> None:
         disclosure = _load("reporting_classifiers.json")["disclosures"][0]
-        (citation,) = json_pointer_citations(disclosure["evidence"])
-        record = resolve_json_pointer(*citation)
+        record, exempt = (
+            resolve_json_pointer(*citation)
+            for citation in json_pointer_citations(disclosure["evidence"])
+        )
         assert (
             record["input"]
             == "nz_super_shares_residence_with_person_at_least_adult_age"
         )
-        assert record["class"] == "defaulted"
-        assert record["value"] is False
-        assert "overstates NZS for singles who share a home" in record["reason"]
-        assert "overstated for single people who share a home" in disclosure["note"]
+        # H2 (R2C-20): household composition now encodes the input.
+        assert record["class"] == "encoded"
+        assert record["encoded_by"] == "concept_binding"
+        assert "value" not in record
+        # The exempt-adults default the note names is the second citation.
+        assert (
+            exempt["input"]
+            == "nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors"
+        )
+        assert exempt["class"] == "defaulted"
+        assert exempt["value"] is False
+        assert "default understates NZS for that group" in exempt["reason"]
+        assert (
+            "understates NZ Super for single people whose only co-resident adults"
+            in disclosure["note"]
+        )
 
     def test_reporting_non_beneficiary_audit_cites_its_exact_state_binding(
         self,
@@ -3252,7 +3583,7 @@ class TestSourceCitations:
         ]
         assert "person.receives_veterans_pension" not in binding["columns"]
         assert (
-            "must be extended"
+            "The hub must extend both together"
             in document["as_non_beneficiary_audit"]["veterans_pension"]
         )
 
@@ -3834,13 +4165,24 @@ class TestDeclaredResources:
         }
 
     def test_currency_bridge_is_one_declared_multiplication(self) -> None:
+        # The executable rate lives once, as cited decimal text, in
+        # money_normalization.json; the MC4 record points to it.
         bridge = _load("currency_bridge.json")
         assert (bridge["from_currency"], bridge["to_currency"]) == ("USD", "NZD")
         assert bridge["operation"] == "multiply"
-        assert bridge["rounding"] == {"decimal_places": 2}
-        assert isinstance(bridge["rate"], float) and bridge["rate"] > 0
-        assert bridge["source"]["url"].startswith("https://www.irs.gov/")
-        assert bridge["source"]["column"] == str(bridge["rate_year"])
+        assert bridge["rate"] == {
+            "resource": "money_normalization.json",
+            "path": ["rate"],
+        }
+        money = _load("money_normalization.json")
+        rate = money[bridge["rate"]["path"][0]]
+        assert money["quote"] == "to_per_from"
+        assert money["rounding"] == {"digits": 2, "mode": "half_even"}
+        assert rate["form"] == "decimal_text"
+        assert isinstance(rate["text"], str) and float(rate["text"]) > 0
+        assert rate["citation"]["url"].startswith("https://www.irs.gov/")
+        assert rate["citation"]["column"] == str(bridge["rate_year"])
+        assert "awaiting D1" not in bridge["status"]
 
     def test_benefit_unit_rule_declares_the_settled_dependent_child_age(self) -> None:
         rule = _load("benefit_unit_rule.json")
@@ -3884,6 +4226,50 @@ class TestDeclaredResources:
         assert artifact["size_bytes"] == 462915783
         assert {"donor_country_code", "support_stratum"} <= set(donor.outputs)
         assert "US donor support records" in donor.survey
+
+    def test_donor_profile_is_the_d3058_selection_for_the_pinned_donor(self) -> None:
+        from microcosm.frame.transport import parse_donor_profile
+        from microcosm.graph.canonical import canonical_json
+
+        document = _load("donor_profile.json")
+        # Composition hands CREATE the canonical text of the whole document
+        # (transport/compose.py's whole-resource json selection), and the
+        # shared parser accepts only that spelling.
+        text = canonical_json(document).decode("utf-8")
+        profile = parse_donor_profile(text)
+        assert profile.canonical_text == text
+        assert document["format"] == DONOR_PROFILE_FORMAT
+        assert (profile.name, profile.version) == ("populace-us-cps-asec", 1)
+        # d3058, rules 2 to 5, for one engineering measurement run: assisted
+        # renters stand in for public-authority tenants (the donor has no
+        # landlord signal), blank study answers read as not full time on this
+        # pinned donor only, and tenure wins over contradicting housing costs.
+        assert dict(profile.choices) == {
+            "assisted_renter_tenure": "rented_public_authority",
+            "blank_full_time_study": "read_false",
+            "housing_cost_contradicting_tenure": "tenure_wins",
+        }
+        stages = load_country_spec("nz").sources.stage_map()
+        (artifact,) = stages["load_populace_us_support_pool"].artifacts
+        assert profile.donor_sha256 == artifact["sha256"]
+        assert profile.donor_sha256 == _load("transport_inputs.json")["donor"]["sha256"]
+        # Whole-document selection trims documents with target_references,
+        # and the reference-closure scan reads "reference"/"target" keys.
+        assert not {"target_references", "reference", "target"} & set(
+            _nested_keys(document)
+        )
+
+    def test_donor_stage_reads_the_spm_unit_table_the_profile_stages(self) -> None:
+        from microcosm.frame.transport import _PROFILE_COLUMNS
+
+        stages = load_country_spec("nz").sources.stage_map()
+        (operation,) = stages["load_populace_us_support_pool"].operations
+        assert operation.kind == "read_tables"
+        assert operation.parameters["tables"] == ["person", "household", "spm_unit"]
+        # Placement ruling term 3: the stage declares every donor table the
+        # profile reader opens. CREATE sees only this file's digest
+        # (donor_pin_sha256), so nothing at run time checks the declaration.
+        assert set(_PROFILE_COLUMNS) <= set(operation.parameters["tables"])
 
 
 class TestReportingClassifiers:
@@ -3953,7 +4339,12 @@ class TestReportingClassifiers:
         }
         assert all(row["annualisation_factor"] == 1 for row in market)
         benefits = [row for row in classifier["components"] if row["kind"] == "benefit"]
-        assert all(row["annualisation_factor"] == 52 for row in benefits)
+        # Main benefits read the gross-up's annual gross; NZ Super stays weekly.
+        assert all(
+            row["annualisation_factor"]
+            == (52 if row["receipt_column"] == "receives_nz_super" else 1)
+            for row in benefits
+        )
         assert all(row["tax_basis"] == "before_tax" for row in classifier["components"])
         super_income = next(
             row for row in benefits if row["receipt_column"] == "receives_nz_super"
@@ -3962,7 +4353,7 @@ class TestReportingClassifiers:
         assert super_income["column"] in _bindings()["nz_super"]["variables"]
         assert all("entitled" not in row["receipt_column"] for row in benefits)
 
-    def test_unavailable_before_tax_paid_amounts_refuse_activation(self) -> None:
+    def test_before_tax_paid_amounts_resolve_without_blocked_inputs(self) -> None:
         from microcosm.frame.reporting import validate_income_classifier
 
         document = _load("reporting_classifiers.json")
@@ -3972,15 +4363,21 @@ class TestReportingClassifiers:
             for row in classifier["components"]
             if row["column"] is None
         }
-        assert missing == {
-            "receives_jobseeker_support",
-            "receives_sole_parent_support",
-            "receives_supported_living_payment",
-            "receives_veterans_pension",
+        assert missing == set()
+        assert document["blocked_inputs"] == []
+        validate_income_classifier(classifier)
+        assert {
+            row["column"]
+            for row in classifier["components"]
+            if row["kind"] == "benefit" and row["receipt_column"] != "receives_nz_super"
+        } == {
+            f"{program}_annual_gross"
+            for program in (
+                "jobseeker_support",
+                "sole_parent_support",
+                "supported_living_payment",
+            )
         }
-        assert missing == {row["receipt_column"] for row in document["blocked_inputs"]}
-        with pytest.raises(ValueError, match="(?:column|before.tax)"):
-            validate_income_classifier(classifier)
         paid = _bindings()["main_benefits_rates"]["variables"]
         assert {
             "jobseeker_support_net_weekly_payment",
@@ -4036,7 +4433,7 @@ class TestReportingClassifiers:
         assert selected == classifier["predicates"]["superannuitant"]
         assert selected == {
             "entity": "person",
-            "columns": ["receives_nz_super", "receives_veterans_pension"],
+            "columns": ["receives_nz_super"],
             "reduction": "any",
         }
         assert classifier["priority"] == ["superannuitant", "beneficiary"]
@@ -4047,7 +4444,7 @@ class TestReportingClassifiers:
             "receives_supported_living_payment",
         ]
 
-    def test_unsupported_veterans_receipt_is_explicit_and_required(self) -> None:
+    def test_unsupported_veterans_receipt_is_explicit_and_excluded(self) -> None:
         document = _load("reporting_classifiers.json")
         declared = _load("axiom_input_closure.json")["receipt_flags"]["columns"]
         (unsupported,) = document["unsupported_receipt_inputs"]
@@ -4055,9 +4452,9 @@ class TestReportingClassifiers:
         assert f"person.{unsupported['column']}" not in declared
         assert (
             unsupported["column"]
-            in document["receipt_group"]["predicates"]["superannuitant"]["columns"]
+            not in document["receipt_group"]["predicates"]["superannuitant"]["columns"]
         )
-        assert "missing flag never implies false" in unsupported["required_behavior"]
+        assert "unsupported" in unsupported["required_behavior"].lower()
         assert document["mixed_unit_audit"]["per_scenario"] is True
 
     def test_as_non_beneficiary_binding_agrees_for_supported_receipt_flags(
@@ -4081,13 +4478,8 @@ class TestReportingClassifiers:
         assert binding["group_rule"] == "any_member"
         assert binding["negate"] is True
         assert "person.receives_nz_super" in binding["columns"]
-        assert expected - set(binding["columns"]) == {
-            "person.receives_veterans_pension"
-        }
-        assert (
-            "must be extended"
-            in document["as_non_beneficiary_audit"]["veterans_pension"]
-        )
+        assert expected == set(binding["columns"])
+        assert "unsupported" in document["as_non_beneficiary_audit"]["veterans_pension"]
 
     def test_baseline_cells_are_declared_for_every_scenario_and_variant(self) -> None:
         document = _load("reporting_classifiers.json")
@@ -4149,17 +4541,31 @@ class TestReportingClassifiers:
         assert units["family_id"].tolist() == [102, 201, 202]
         assert units["family_source_household_id"].tolist() == ["same_source"] * 3
 
-    def test_s0_through_s4_structural_zero_cells_are_listed_on_support_entry(
+    def test_every_scenario_but_s5_lists_the_superannuitant_structural_zero(
         self,
     ) -> None:
         document = _load("reporting_classifiers.json")
         zeros = document["structural_zero_cells"]
+        # H26: MC11 excludes superannuitants everywhere but S5.
         assert zeros == [
             {
-                "scenario": f"S{index}",
+                "scenario": scenario,
                 "cell": "beneficiary_superannuitant_other/superannuitant",
             }
-            for index in range(5)
+            for scenario in (
+                "S0",
+                "S1",
+                "S2",
+                "S3",
+                "V1",
+                "V2",
+                "V3",
+                "V4",
+                "VHF",
+                "VSI",
+                "VEX",
+                "VPT",
+            )
         ]
         support = next(
             row
@@ -4169,6 +4575,6 @@ class TestReportingClassifiers:
         for row in zeros:
             assert f"{row['scenario']}/{row['cell']}" in support["notes"]
         assert (
-            "actual structural-zero diagnostics are derived from reported amounts"
+            "reported amounts determine actual structural-zero diagnostics"
             in (support["notes"])
         )

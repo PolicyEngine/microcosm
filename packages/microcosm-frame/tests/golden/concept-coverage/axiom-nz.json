@@ -7,13 +7,6 @@
     "name": "accommodation_supplement_owner_weekly_required_payments"
    }
   ],
-  "fact:household.mortgage_principal": [
-   {
-    "entity": "Family",
-    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
-    "name": "accommodation_supplement_owner_weekly_required_payments"
-   }
-  ],
   "fact:household.reference_person_id": [
    {
     "entity": "Family",
@@ -165,6 +158,11 @@
     "entity": "Person",
     "module": "nz/statutes/new_zealand_superannuation/core.yaml",
     "name": "nz_super_person_age"
+   },
+   {
+    "entity": "Person",
+    "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+    "name": "nz_super_shares_residence_with_person_at_least_adult_age"
    },
    {
     "entity": "Person",
@@ -932,7 +930,7 @@
    }
   ]
  },
- "covered_count": 89,
+ "covered_count": 90,
  "covered_inputs": [
   {
    "entity": "Person",
@@ -1178,6 +1176,11 @@
    "entity": "Person",
    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
    "name": "nz_super_receives_or_becomes_entitled"
+  },
+  {
+   "entity": "Person",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "name": "nz_super_shares_residence_with_person_at_least_adult_age"
   },
   {
    "entity": "Person",
@@ -3508,11 +3511,6 @@
   },
   {
    "entity": "Person",
-   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
-   "name": "nz_super_shares_residence_with_person_at_least_adult_age"
-  },
-  {
-   "entity": "Person",
    "module": "nz/statutes/new_zealand_superannuation/special_rates.yaml",
    "name": "nz_super_spouse_or_partner_also_hospitalised_more_than_unaffected_weeks"
   },
@@ -4284,6 +4282,7 @@
  ],
  "unknown_inputs": [],
  "unmapped_concepts": {
+  "fact:household.mortgage_principal": "The only input that would take it, accommodation_supplement_owner_weekly_required_payments (Family) in statutes/social_security/accommodation_supplement/core.yaml, reads mortgage interest alone for now: the pinned PolicyEngine-US donor carries no mortgage principal (its mapping reads principal only inside the non-invertible mortgage_payments sum), so money_normalization.json routes household.mortgage_principal pending and no transport node reads it. This is an interim flexibility under ruling d3058 for a first measurement run. Once a donor carries principal, or the build derives it from the donor's mortgage balance, interest, origination year and an assumed term, the candidate is to restore scaled_sum over mortgage_interest and mortgage_principal with factor 1/52 (approximate).",
   "fact:household.property_tax": "The only rates input, rr_rates_payable_before_rebate (Person) in statutes/rates_rebates/rates_rebate.yaml, cannot be bound at 6fe181f, because the dense engine could not compile that module and nz.json lists it only under cli_walk_inputs, which the adapter's surface loader does not read; once the module compiles, allocate_to_reference_person of property_tax is the candidate (approximate, because the ratepayer need not be the reference person).",
   "fact:household.source_household_id": "Original donor household lineage is build provenance and weight diagnostic support, not a rulespec-nz legal input.",
   "fact:person.educational_attainment": "rulespec-nz at 6fe181f has no input for completed education: no rule or input name mentions a qualification, degree, diploma or attainment level; the education inputs are current enrollment or school attendance (this mapping binds some of them to education_enrollment and enrolled_full_time); and young_person_is_study_ready is what youth_young_parent_payment/core.yaml calls an agency-adjudicated composite input (s 50).",

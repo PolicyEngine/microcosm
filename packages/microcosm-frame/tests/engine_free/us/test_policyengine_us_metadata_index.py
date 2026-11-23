@@ -1,6 +1,10 @@
+import keyword
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from microcosm.frame.adapters import policyengine_us as module
 
@@ -162,6 +166,114 @@ class dynamic_metadata(Variable):
 
     with pytest.raises(RuntimeError, match="dynamic.*value_type"):
         module._index_policyengine_us_variable_sources(tmp_path)
+
+
+def test_source_index_reads_static_units(tmp_path: Path) -> None:
+    _write_variable_source(
+        tmp_path,
+        """
+class dollars(Variable):
+    value_type = float
+    entity = Person
+    definition_period = YEAR
+    unit = USD
+
+class share(Variable):
+    value_type = float
+    entity = Person
+    definition_period = YEAR
+    unit = PERCENT
+
+class hours(Variable):
+    value_type = float
+    entity = Person
+    definition_period = YEAR
+    unit = "hour"
+
+class unitless(Variable):
+    value_type = int
+    entity = Person
+    definition_period = YEAR
+
+class explicit_none(Variable):
+    value_type = int
+    entity = Person
+    definition_period = YEAR
+    unit = None
+""",
+    )
+
+    indexed = module._index_policyengine_us_variable_sources(tmp_path)
+
+    assert {name: definition.unit for name, definition in indexed.items()} == {
+        "dollars": "currency-USD",
+        "share": "/1",
+        "hours": "hour",
+        "unitless": None,
+        "explicit_none": None,
+    }
+
+
+@pytest.mark.parametrize("unit", ["choose_unit()", "GBP", "1", "Unit.USD"])
+def test_source_index_rejects_unsupported_unit_metadata(
+    tmp_path: Path, unit: str
+) -> None:
+    _write_variable_source(
+        tmp_path,
+        f"""
+class unsupported_unit(Variable):
+    value_type = float
+    entity = Person
+    definition_period = YEAR
+    unit = {unit}
+""",
+    )
+
+    with pytest.raises(RuntimeError, match="unsupported unit metadata"):
+        module._index_policyengine_us_variable_sources(tmp_path)
+
+
+def _indexed_unit(unit_source: str) -> str | None:
+    """Index one variable class whose ``unit`` assignment is ``unit_source``."""
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        _write_variable_source(
+            root,
+            f"""
+class sampled_unit(Variable):
+    value_type = float
+    entity = Person
+    definition_period = YEAR
+    unit = {unit_source}
+""",
+        )
+        return module._index_policyengine_us_variable_sources(root)["sampled_unit"].unit
+
+
+@settings(
+    max_examples=50,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+@given(unit=st.text())
+def test_source_index_reads_any_string_unit_verbatim(unit: str) -> None:
+    assert _indexed_unit(repr(unit)) == unit
+
+
+@settings(
+    max_examples=50,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+@given(
+    name=st.from_regex(r"[A-Za-z_][A-Za-z0-9_]{0,15}", fullmatch=True).filter(
+        lambda name: not keyword.iskeyword(name) and name not in {"USD", "PERCENT"}
+    )
+)
+def test_source_index_refuses_any_other_unit_name(name: str) -> None:
+    with pytest.raises(RuntimeError, match="unsupported unit metadata"):
+        _indexed_unit(name)
 
 
 def test_generated_snapshot_covers_the_pinned_default_system() -> None:

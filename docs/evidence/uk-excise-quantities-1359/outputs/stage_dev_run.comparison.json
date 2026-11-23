@@ -1,0 +1,111 @@
+{
+ "differing_columns": {
+  "communication_consumption": {
+   "base_weighted_total": 24840636328.75895,
+   "head_weighted_total": 24803521172.601994
+  },
+  "diesel_spending": {
+   "base_weighted_total": 10919430829.919106,
+   "head_weighted_total": 10457880276.270939
+  },
+  "education_consumption": {
+   "base_weighted_total": 15900314839.150047,
+   "head_weighted_total": 15876557691.370522
+  },
+  "health_consumption": {
+   "base_weighted_total": 21599671689.87272,
+   "head_weighted_total": 21567398958.325157
+  },
+  "household_furnishings_consumption": {
+   "base_weighted_total": 73854994938.5559,
+   "head_weighted_total": 73744645926.80603
+  },
+  "miscellaneous_consumption": {
+   "base_weighted_total": 90503958600.04283,
+   "head_weighted_total": 90368733861.36032
+  },
+  "petrol_spending": {
+   "base_weighted_total": 25936800863.379646,
+   "head_weighted_total": 24840485040.255028
+  },
+  "recreation_consumption": {
+   "base_weighted_total": 148919519664.83423,
+   "head_weighted_total": 148697014445.80408
+  },
+  "transport_consumption": {
+   "base_weighted_total": 175692353853.51312,
+   "head_weighted_total": 175429846522.27753
+  }
+ },
+ "fit_weight_records": [
+  25,
+  28
+ ],
+ "gates": {
+  "base": {
+   "uk_stage_lcfs_consumption_basis": true,
+   "uk_stage_lcfs_consumption_bus_pricing": true,
+   "uk_stage_lcfs_consumption_energy_rake": true,
+   "uk_stage_lcfs_consumption_recomposed_totals": true,
+   "uk_stage_lcfs_consumption_road_fuel_incidence": true,
+   "uk_stage_lcfs_consumption_road_fuel_level": true,
+   "uk_stage_lcfs_consumption_support": true
+  },
+  "head": {
+   "uk_stage_lcfs_consumption_basis": true,
+   "uk_stage_lcfs_consumption_bus_pricing": true,
+   "uk_stage_lcfs_consumption_energy_rake": true,
+   "uk_stage_lcfs_consumption_excise_quantities": true,
+   "uk_stage_lcfs_consumption_recomposed_totals": true,
+   "uk_stage_lcfs_consumption_road_fuel_incidence": true,
+   "uk_stage_lcfs_consumption_road_fuel_level": true,
+   "uk_stage_lcfs_consumption_support": true
+  }
+ },
+ "head_only_columns": [
+  "beer_litres",
+  "cider_litres",
+  "wine_litres",
+  "spirits_litres",
+  "other_fermented_litres",
+  "beer_draught_share",
+  "cider_draught_share",
+  "cigarettes_per_week",
+  "hand_rolling_tobacco_grams_per_week",
+  "cigars_grams_per_week",
+  "other_tobacco_grams_per_week",
+  "remote_gaming_net_losses",
+  "pool_betting_net_receipts",
+  "bingo_net_receipts",
+  "national_lottery_ticket_spending",
+  "land_based_casino_net_losses",
+  "machine_games_lower_rate_net_takings",
+  "machine_games_standard_rate_net_takings",
+  "machine_games_higher_rate_net_takings",
+  "land_based_fixed_odds_betting_net_losses",
+  "remote_uk_horseracing_betting_net_losses",
+  "remote_other_betting_net_losses",
+  "betting_exchange_commission",
+  "horse_and_dog_pool_betting_net_losses"
+ ],
+ "households": [
+  78440,
+  78440
+ ],
+ "identical_columns": [
+  "food_and_non_alcoholic_beverages_consumption",
+  "alcohol_and_tobacco_consumption",
+  "clothing_and_footwear_consumption",
+  "housing_water_and_electricity_consumption",
+  "restaurants_and_hotels_consumption",
+  "bus_fare_spending",
+  "domestic_energy_consumption",
+  "electricity_consumption",
+  "gas_consumption",
+  "liquid_fuel_consumption",
+  "solid_fuel_consumption",
+  "has_fuel_consumption",
+  "uses_energy_prepayment_meter"
+ ],
+ "shared_columns": 22
+}

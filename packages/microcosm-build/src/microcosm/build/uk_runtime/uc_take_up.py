@@ -51,6 +51,54 @@ age population, keeps its stored flag, the single-rate draw. The uniform is
 the ``would_claim_uc`` identity stream ``frs_take_up`` and
 ``spi_benefit_coherence`` use, so a unit whose pool's rate falls below the
 early draw's keeps its claim only if it had one.
+
+The age fit (María's calls of 2026-11-09, microcosm#1095). Y2 took full-time
+students off Universal Credit, and the pools then refilled the single
+caseload from every other entitled single, so claimants and partners aged
+16 to 24 read well above DWP's count. Within every pool, the drawn units
+with a claimant or partner aged 16 to 24 claim at one odds ratio against
+the pool's other drawn units, the two rates together realizing the pool's
+count. The ratio is solved over Great Britain so that those young claimants
+and partners, in entitled units that claim, come as near DWP's People on
+Universal Credit aged 16 to 24 (February, May, August and November 2025),
+the facts the dwp.uc.people_aged_16_to_24 diagnostic reads, as the redraw
+allows. A shortfall passed from one pool to another fills only the receiving
+pool's drawn units with no young claimant or partner, so a family type whose
+shortfall only young units could fill falls short of DWP's count by it, and
+the receipt records what stays unplaced. Fixed claims (a reporter, a moved
+unit, a unit kept on its legacy benefits) and a pool whose own count needs
+more claims than its other drawn units can give keep young units claiming
+whatever the ratio, so the young count can stay above DWP's; the ratio then
+holds at the end of its range and the receipt says so.
+
+The LCWRA fit (María's choices of 2026-11-11, B3 of the November event-data
+plan's PR3, microcosm#1095). At the spine's design weights the units paid the
+limited capability for work and work-related activity element fell about a
+quarter short of DWP's count, and Y1 showed the gap is take-up, not the
+flags. The same materialization gives each unit ``uc_LCWRA_element``; the
+drawn units whose award would include it claim at a second odds ratio, so a
+drawn unit's claim odds are its pool's base odds times each ratio that applies
+and the four groups' rates together still realize the pool's count. The two
+ratios are solved in turn over Great Britain, each with the other held, so
+that the young claimants and partners and the LCWRA households of the entitled
+units that claim come as near DWP's two counts as the redraw allows: DWP's paid
+Universal Credit households with the LCWRA element, January to December 2025,
+the facts the bound dwp.uc.households_lcwra_element row reads. A passed
+shortfall then fills only units with neither a young member nor the element,
+so it moves neither count.
+
+The young LCWRA fit (PolicyEngine/microcosm#1663, on María's go of
+2026-11-18). The LCWRA fit's ratio holds the element's households at every
+age, and nothing holds young people with it: on build fcfac709 the redraw
+filled DWP's young count with units whose element came from a disability
+benefit, and young people with the element ran about a third above the
+Resolution Foundation's count (PolicyEngine/uk-milburn-review-dashboard#1).
+Given DWP's count of young people with the element, the drawn units in which
+a claimant or partner aged 16 to 24 would hold it claim at a third odds ratio
+in place of the LCWRA fit's, and the three ratios are solved in turn. The
+stage passes no such count until Chronicle carries the fact
+(PolicyEngine/chronicle#442); without one the redraw is the two fits' alone,
+unchanged.
 """
 
 from __future__ import annotations
@@ -90,11 +138,13 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     extreme_count,
+    record_source_households,
     rounded_count,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.uc_capital_coherence import (
@@ -116,9 +166,16 @@ from microcosm.frame.rules import assert_rules_engine_country
 __all__ = [
     "UC_AWARD_BAND_LABELS",
     "UC_FAMILY_TYPES",
+    "UC_TAKE_UP_AGE_RECORD_SETS",
+    "UC_TAKE_UP_AGE_RESOURCE",
+    "UC_TAKE_UP_LCWRA_RECORD_SETS",
+    "UC_TAKE_UP_LCWRA_RESOURCE",
+    "UC_TAKE_UP_YOUNG_LCWRA_RECORD_SETS",
+    "UC_TAKE_UP_YOUNG_LCWRA_RESOURCE",
     "UC_TAKE_UP_ENTITLEMENT_VARIABLES",
     "UC_TAKE_UP_MINIMUM_POOL_SOURCES",
     "UC_TAKE_UP_OPERATION_KIND",
+    "UC_TAKE_UP_POOLING",
     "UC_TAKE_UP_RECORD_SETS",
     "UC_TAKE_UP_RESOURCE",
     "UC_TAKE_UP_STAGE_NAME",
@@ -126,11 +183,17 @@ __all__ = [
     "UKUCTakeUpStageTransform",
     "assign_award_band_take_up",
     "load_uc_award_band_targets",
+    "load_uc_lcwra_households_target",
+    "load_uc_young_lcwra_people_target",
+    "load_uc_young_people_target",
     "redraw_uc_take_up",
     "uc_award_band_targets_from_rows",
+    "uc_lcwra_households_target_from_rows",
     "uc_award_bands",
     "uc_family_types",
     "uc_take_up_operation_parameters",
+    "uc_young_lcwra_people_target_from_rows",
+    "uc_young_people_target_from_rows",
     "working_age_housing_benefit_receipt",
 ]
 
@@ -153,6 +216,8 @@ UC_TAKE_UP_ENTITLEMENT_VARIABLES = (
     "universal_credit",
     "legacy_benefits_closed",
     "is_child_or_qualifying_young_person_for_universal_credit",
+    # The LCWRA fit's units (B3 of the November event-data plan's PR3).
+    "uc_LCWRA_element",
 )
 #: Entitlement is read at the release's calibration year on the frame the
 #: engine projects there from its survey year, as Pension Credit's is.
@@ -187,14 +252,217 @@ UC_AWARD_BAND_LABELS: tuple[str, ...] = (
     f"£{100 * _BOUND_BANDS}.01 or over",
 )
 UC_TAKE_UP_MINIMUM_POOL_SOURCES = 30
+UC_TAKE_UP_POOLING = (
+    "adjacent bands within a family type, lowest first, until the drawn units "
+    "rest on minimum_pool_sources distinct source_household_id values; a short "
+    "last pool joins the one before it. Then, lowest first, a pool that cannot "
+    "meet DWP's count (its undrawn entitled units' expected claims exceed the "
+    "count, or the count exceeds them plus the weight of every drawn unit) is "
+    "held at the nearer of those ends and passes its gap to the other pools, "
+    "nearest first, the one with more room first at equal distance and the "
+    "lower on a tie, each taking what its room allows; a gap no pool can take "
+    "leaves the family type unreachable. With the fits, a passed "
+    "shortfall's room is the pool's undrawn claims plus the weight of its "
+    "drawn units with neither a young claimant or partner nor the LCWRA "
+    "element, less its count (age_fit, lcwra_fit)"
+)
 UC_TAKE_UP_RESIDUAL_RATE = (
     "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the "
-    "pool's bands, D the weight of the pool's drawn units and F the expected "
+    "pool's bands after any gaps passed to or from it, D the weight of the pool's drawn units and F the expected "
     "claims of its other entitled units, over Great Britain at the stage's "
     "household weights; realized by the drawn units claiming in the order of "
     "their uniform until their weight is nearest T - F, and applied at that "
     "uniform to Northern Ireland's drawn units too"
 )
+#: The age fit (María's calls of 2026-11-09, Y4 of the November event-data
+#: plan, microcosm#1095). After Y2 took full-time students off Universal
+#: Credit, the award-band pools refilled the single caseload from every other
+#: entitled single, and claimants and partners aged 16 to 24 read well above
+#: DWP's count. The fit gives the drawn units with a young claimant or partner
+#: one odds ratio against the pool's others, solved for DWP's count of people
+#: on Universal Credit aged 16 to 24, and a shortfall passed between pools
+#: fills only units with no young claimant or partner.
+UC_TAKE_UP_AGE_RESOURCE = "dwp_uc_people_by_age_facts.json"
+UC_TAKE_UP_AGE_MONTHS: tuple[str, ...] = ("2025-02", "2025-05", "2025-08", "2025-11")
+UC_TAKE_UP_AGE_RECORD_SETS: tuple[str, ...] = tuple(
+    "dwp.statx.uc_people.country_age_conditionality_regime.month"
+    + month.replace("-", "_")
+    + ".total"
+    for month in UC_TAKE_UP_AGE_MONTHS
+)
+_AGE_CONCEPT = "dwp.people_on_universal_credit"
+_AGE_MEASURE = "people"
+_AGE_GEOGRAPHY = "K03000001"
+_AGE_DIMENSION = "age_bands_and_single_year"
+_AGE_REGIME_DIMENSION = "conditionality_regime"
+UC_TAKE_UP_YOUNG_AGES: tuple[int, ...] = tuple(range(16, 25))
+UC_TAKE_UP_YOUNG_ROLE = "is_claimant_or_partner"
+UC_TAKE_UP_YOUNG_PEOPLE = (
+    "claimants and partners (is_claimant_or_partner) aged 16 to 24, at the "
+    "stored age, which policyengine-uk carries unchanged to the entitlement "
+    "year; a unit counts each of them"
+)
+UC_TAKE_UP_AGE_TARGET = (
+    "DWP Stat-Xplore People on Universal Credit in Great Britain aged 16 to 24, "
+    "every conditionality regime: the single years summed in February, May, "
+    "August and November 2025 and averaged, as the dwp.uc.people_aged_16_to_24 "
+    "diagnostic reads them"
+)
+UC_TAKE_UP_AGE_FIT = (
+    "one odds ratio theta for the drawn units with a young claimant or partner: "
+    "in every pool they claim at theta times the odds of the pool's other drawn "
+    "units, the two rates together realizing the pool's count, each realized in "
+    "the order of the uniform as a pool's rate is; theta is solved so that the "
+    "young claimants and partners of Great Britain's entitled units that claim, "
+    "at the stage's household weights, are nearest DWP's count, held at the "
+    "nearer end of exp(-12) to exp(12) where no theta reaches it, solved in "
+    "turn with the LCWRA fit's ratio (lcwra_fit); a shortfall passed to "
+    "another pool fills only that pool's drawn units with neither a young "
+    "claimant or partner nor the LCWRA element, and what no pool can take "
+    "that way stays unplaced, leaving the family type short of DWP's count by "
+    "it (María's call of 2026-11-09; the joint fit, her choices of 2026-11-11)"
+)
+#: The odds ratio's search interval, on its log.
+_LOG_ODDS_BOUNDS = (-12.0, 12.0)
+_ODDS_ITERATIONS = 60
+#: The LCWRA fit (B3 of the November event-data plan's PR3, microcosm#1095;
+#: María's choices of 2026-11-11). Y1 showed the LCWRA element's shortfall at
+#: the spine's design weights is take-up, not the flags: the drawn units whose
+#: award would include the element claim at a second odds ratio, beside the
+#: age fit's, solved for DWP's paid LCWRA households.
+UC_TAKE_UP_LCWRA_RESOURCE = "dwp_uc_lcwra_households_facts.json"
+UC_TAKE_UP_LCWRA_MONTHS: tuple[str, ...] = tuple(
+    f"2025-{month:02d}" for month in range(1, 13)
+)
+UC_TAKE_UP_LCWRA_RECORD_SETS: tuple[str, ...] = tuple(
+    "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month"
+    + month.replace("-", "_")
+    for month in UC_TAKE_UP_LCWRA_MONTHS
+)
+_LCWRA_CONCEPTS = frozenset({"dwp.uc_households", "dwp.uc_benefit_units"})
+_LCWRA_MEASURE = "benefit_units"
+_LCWRA_GEOGRAPHY = "K03000001"
+_LCWRA_DIMENSION = "limited_capability_for_work_entitlement"
+_LCWRA_PAYMENT_DIMENSION = "payment_indicator"
+UC_TAKE_UP_LCWRA_UNITS = (
+    "benefit units whose award, were they to claim, would include the limited "
+    "capability for work and work-related activity element (uc_LCWRA_element "
+    "above zero at the entitlement year, on the temporary claiming copy)"
+)
+UC_TAKE_UP_LCWRA_TARGET = (
+    "DWP Stat-Xplore Households on Universal Credit in Great Britain with the "
+    "LCWRA element (entitlement group 'LCWRA', both rates), paid (Payment "
+    "Indicator Yes), the mean of January to December 2025, as the "
+    "dwp.uc.households_lcwra_element row reads them"
+)
+UC_TAKE_UP_LCWRA_FIT = (
+    "a second odds ratio for the drawn units whose award would include the "
+    "LCWRA element: a drawn unit's claim odds are its pool's base odds times "
+    "each ratio that applies, so a young unit with the element takes both, and "
+    "the four groups' rates together realize the pool's count, each in the "
+    "order of the uniform; the two ratios are solved in turn over Great "
+    "Britain, at the stage's household weights, until the young claimants and "
+    "partners and the LCWRA households of the entitled units that claim are "
+    "nearest DWP's two counts, each held at the nearer end of exp(-12) to "
+    "exp(12) where none reaches it (María's choices of 2026-11-11, B3 of the "
+    "November event-data plan's PR3)"
+)
+#: The young LCWRA fit (PolicyEngine/microcosm#1663, part 2 of the UC health
+#: fix; María's go of 2026-11-18). The LCWRA fit's one ratio holds the element's
+#: households at every age, so nothing holds young people with it: on build
+#: fcfac709 the redraw filled DWP's young count with units whose element came
+#: from a disability benefit, and young people with the element ran about a
+#: third above the Resolution Foundation's count. With a young count, the drawn
+#: units in which a young claimant or partner would hold the element claim at a
+#: third ratio, in place of the LCWRA fit's, solved in turn with the other two.
+#: The stage passes no young count until Chronicle carries the fact
+#: (PolicyEngine/chronicle#442), and without one the redraw is unchanged.
+UC_TAKE_UP_LCWRA_FLAG = "uc_limited_capability_for_WRA"
+#: The young LCWRA fit's count (part 3 of PolicyEngine/microcosm#1663): DWP's
+#: Young people and work interim report, analytical annex Table 28, people
+#: aged 16 to 24 in England and Wales with the UC health element (LCWRA), by
+#: financial year (PolicyEngine/chronicle#443). The calibration year's count is
+#: the calendar-2025 window, three twelfths of 2024-25 (outturn) and nine of
+#: 2025-26 (DWP's projection), María's rule of 2026-09-22 for fiscal-year facts,
+#: as the bound dwp.uc.people_aged_16_to_24_lcwra_element row compiles it.
+UC_TAKE_UP_YOUNG_LCWRA_RESOURCE = "dwp_uc_young_lcwra_people_facts.json"
+UC_TAKE_UP_YOUNG_LCWRA_RECORD_SETS: tuple[str, ...] = (
+    "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
+    "dwp.young_people_work_interim_2026.table_28.caseload.fy2025",
+)
+#: Each opening year's share of calendar 2025.
+UC_TAKE_UP_YOUNG_LCWRA_WINDOW: tuple[tuple[int, float], ...] = (
+    (2024, 3 / 12),
+    (2025, 9 / 12),
+)
+_YOUNG_LCWRA_CONCEPT = "dwp.benefit_caseload_count"
+_YOUNG_LCWRA_GEOGRAPHY = "K04000001"
+_YOUNG_LCWRA_BENEFIT_DIMENSION = "health_and_disability_benefit"
+_YOUNG_LCWRA_BENEFIT = "uc_health_lcwra"
+_YOUNG_LCWRA_AGE_DIMENSION = "age_band"
+_YOUNG_LCWRA_AGE_BAND = "16_to_24"
+#: The count's geography: England and Wales's households' regions.
+UC_TAKE_UP_YOUNG_LCWRA_REGIONS = frozenset(
+    {
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "LONDON",
+        "SOUTH_EAST",
+        "SOUTH_WEST",
+        "WALES",
+    }
+)
+UC_TAKE_UP_YOUNG_LCWRA_PEOPLE = (
+    "claimants and partners aged 16 to 24 (is_claimant_or_partner, at the "
+    "stored survey-year age) whom uc_limited_capability gives the LCWRA flag "
+    "(uc_limited_capability_for_WRA), in units whose award, were they to "
+    "claim, would include the element"
+)
+UC_TAKE_UP_YOUNG_LCWRA_FIT = (
+    "a third odds ratio, for the drawn units with young people who would hold "
+    "the LCWRA element, in place of the LCWRA fit's ratio for them: their claim "
+    "odds are the pool's base odds times the age fit's ratio and this one, and "
+    "the five groups' rates together realize the pool's count, each in the "
+    "order of the uniform; the three ratios are solved in turn over Great "
+    "Britain, at the stage's household weights, until the young claimants and "
+    "partners, the LCWRA households and the young people holding the element "
+    "of the entitled units that claim are nearest DWP's three counts, each "
+    "held at the nearer end of exp(-12) to exp(12) where none reaches it"
+)
+#: The joint solve's rounds: each solves one ratio with the others held, and
+#: the solve stops once no ratio's log moves more than the tolerance.
+_JOINT_ROUNDS = 8
+_JOINT_TOLERANCE = 1e-4
+
+
+def young_people_holding_the_element(
+    person: pd.DataFrame,
+    benunit_ids: np.ndarray,
+    young: np.ndarray,
+    lcwra_units: np.ndarray,
+) -> np.ndarray:
+    """Each benefit unit's young people holding the LCWRA element, for its fit.
+
+    The unit's claimants and partners aged 16 to 24 (``young``) who hold
+    ``uc_limited_capability_for_WRA``, counted only where the unit's award
+    would include the element (``lcwra_units``), in ``benunit_ids``' order.
+    """
+
+    flagged = person[UC_TAKE_UP_LCWRA_FLAG].fillna(False).to_numpy(dtype=bool)
+    per_unit = (
+        pd.Series((np.asarray(young, dtype=bool) & flagged).astype(np.float64))
+        .groupby(person["person_benunit_id"].to_numpy())
+        .sum()
+        .reindex(benunit_ids)
+        .fillna(0.0)
+        .to_numpy()
+    )
+    # Only a unit whose award would include the element pays it.
+    return np.where(np.asarray(lcwra_units, dtype=bool), per_unit, 0.0)
 
 
 def uc_award_bands(award: np.ndarray) -> np.ndarray:
@@ -303,6 +571,237 @@ def load_uc_award_band_targets() -> dict[tuple[str, int], float]:
     return uc_award_band_targets_from_rows(vendored_rows(UC_TAKE_UP_RESOURCE))
 
 
+def uc_young_people_target_from_rows(rows: Sequence[Mapping[str, Any]]) -> float:
+    """DWP's people on Universal Credit aged 16 to 24 in Great Britain.
+
+    Every conditionality regime's single years of age, summed in each of
+    February, May, August and November 2025 and averaged: the value the
+    ``dwp.uc.people_aged_16_to_24`` diagnostic compiles from the same facts.
+    The age bands above 24 are not cells.
+    """
+
+    counts: dict[str, dict[int, float]] = {}
+    for row in rows:
+        if row.get("concept") != _AGE_CONCEPT or row.get("measure_id") != _AGE_MEASURE:
+            continue
+        if (row.get("geography") or {}).get("id") != _AGE_GEOGRAPHY:
+            continue
+        dimensions = row.get("dimensions") or {}
+        if str(dimensions.get(_AGE_REGIME_DIMENSION)) != "all":
+            continue
+        age = dimensions.get(_AGE_DIMENSION)
+        if isinstance(age, bool) or not isinstance(age, int):
+            continue
+        if age not in UC_TAKE_UP_YOUNG_AGES:
+            continue
+        month = str((row.get("period") or {}).get("value"))
+        if month not in UC_TAKE_UP_AGE_MONTHS:
+            raise ValueError(
+                f"UC people by age facts carry an unexpected month {month}."
+            )
+        cell = counts.setdefault(month, {})
+        if age in cell:
+            raise ValueError(f"UC people by age facts repeat age {age} in {month}.")
+        cell[age] = float(row["value"])
+    if set(counts) != set(UC_TAKE_UP_AGE_MONTHS) or any(
+        set(cell) != set(UC_TAKE_UP_YOUNG_AGES) for cell in counts.values()
+    ):
+        raise ValueError(
+            "UC people by age facts must give Great Britain's every-regime count "
+            "at each single age 16 to 24 in "
+            f"{', '.join(UC_TAKE_UP_AGE_MONTHS)}."
+        )
+    return float(
+        np.mean([sum(counts[month].values()) for month in UC_TAKE_UP_AGE_MONTHS])
+    )
+
+
+def load_uc_young_people_target() -> float:
+    """The age fit's count from the committed vendored resource."""
+
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    return uc_young_people_target_from_rows(vendored_rows(UC_TAKE_UP_AGE_RESOURCE))
+
+
+def uc_lcwra_households_target_from_rows(rows: Sequence[Mapping[str, Any]]) -> float:
+    """DWP's paid Universal Credit households with the LCWRA element in Great Britain.
+
+    The entitlement group 'LCWRA' (both rates) with Payment Indicator Yes, in
+    each month of 2025, averaged: the value the
+    ``dwp.uc.households_lcwra_element`` row compiles from the same facts.
+    """
+
+    counts: dict[str, float] = {}
+    for row in rows:
+        if row.get("concept") not in _LCWRA_CONCEPTS:
+            continue
+        if row.get("measure_id") != _LCWRA_MEASURE:
+            continue
+        if (row.get("geography") or {}).get("id") != _LCWRA_GEOGRAPHY:
+            continue
+        dimensions = row.get("dimensions") or {}
+        if str(dimensions.get(_LCWRA_DIMENSION)) != "LCWRA":
+            continue
+        if str(dimensions.get(_LCWRA_PAYMENT_DIMENSION)) != "Yes":
+            continue
+        month = str((row.get("period") or {}).get("value"))
+        if month not in UC_TAKE_UP_LCWRA_MONTHS:
+            raise ValueError(
+                f"UC LCWRA household facts carry an unexpected month {month}."
+            )
+        if month in counts:
+            raise ValueError(f"UC LCWRA household facts repeat {month}.")
+        counts[month] = float(row["value"])
+    if set(counts) != set(UC_TAKE_UP_LCWRA_MONTHS):
+        raise ValueError(
+            "UC LCWRA household facts must give Great Britain's paid count in "
+            f"each month of 2025; found {sorted(counts)}."
+        )
+    return float(np.mean([counts[month] for month in UC_TAKE_UP_LCWRA_MONTHS]))
+
+
+def load_uc_lcwra_households_target() -> float:
+    """The LCWRA fit's count from the committed vendored resource."""
+
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    return uc_lcwra_households_target_from_rows(
+        vendored_rows(UC_TAKE_UP_LCWRA_RESOURCE)
+    )
+
+
+def uc_young_lcwra_people_target_from_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> float:
+    """DWP's people aged 16 to 24 with the UC health element, England and Wales.
+
+    Table 28's UC health caseload in each financial year of the window, weighed
+    by its share of calendar 2025 (``UC_TAKE_UP_YOUNG_LCWRA_WINDOW``): the value
+    the ``dwp.uc.people_aged_16_to_24_lcwra_element`` row compiles from the same
+    facts.
+    """
+
+    counts: dict[int, float] = {}
+    for row in rows:
+        if row.get("concept") != _YOUNG_LCWRA_CONCEPT:
+            continue
+        dimensions = row.get("dimensions") or {}
+        if str(dimensions.get(_YOUNG_LCWRA_BENEFIT_DIMENSION)) != _YOUNG_LCWRA_BENEFIT:
+            continue
+        if str(dimensions.get(_YOUNG_LCWRA_AGE_DIMENSION)) != _YOUNG_LCWRA_AGE_BAND:
+            continue
+        if (row.get("geography") or {}).get("id") != _YOUNG_LCWRA_GEOGRAPHY:
+            raise ValueError(
+                "Young LCWRA facts must be England and Wales's; found "
+                f"{(row.get('geography') or {}).get('id')!r}."
+            )
+        period = row.get("period") or {}
+        if period.get("type") != "fiscal_year":
+            raise ValueError(
+                f"Young LCWRA facts must be fiscal years; found {period.get('type')!r}."
+            )
+        year = int(period.get("value"))
+        if year in counts:
+            raise ValueError(f"Young LCWRA facts repeat the year opening in {year}.")
+        counts[year] = float(row["value"])
+    window = dict(UC_TAKE_UP_YOUNG_LCWRA_WINDOW)
+    if set(counts) != set(window):
+        raise ValueError(
+            "Young LCWRA facts must give England and Wales's UC health caseload "
+            f"in the years opening {sorted(window)}; found {sorted(counts)}."
+        )
+    return float(sum(counts[year] * share for year, share in window.items()))
+
+
+def vendored_young_lcwra_rows() -> list[Mapping[str, Any]]:
+    """The committed vendored Table 28 rows the young LCWRA fit reads."""
+
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    return list(vendored_rows(UC_TAKE_UP_YOUNG_LCWRA_RESOURCE))
+
+
+def load_uc_young_lcwra_people_target() -> float:
+    """The young LCWRA fit's count from the committed vendored resource."""
+
+    return uc_young_lcwra_people_target_from_rows(vendored_young_lcwra_rows())
+
+
+def _odds_scaled(rate: float, theta: float) -> float:
+    """The rate whose odds are ``theta`` times ``rate``'s."""
+
+    if rate <= 0.0:
+        return 0.0
+    if rate >= 1.0:
+        return 1.0
+    return theta * rate / (1.0 - rate + theta * rate)
+
+
+def _split_rates(
+    need: float, young: float, other: float, theta: float
+) -> tuple[float, float]:
+    """The young and other drawn units' rates that realize ``need`` together.
+
+    ``young`` and ``other`` are the two groups' drawn weights. The young rate's
+    odds are ``theta`` times the other's, so the weight claiming,
+    ``young * r_y + other * r_o``, rises with ``r_o``; bisection finds the pair
+    that meets ``need``, which lies strictly between nothing and every unit.
+    """
+
+    if need <= 0.0:
+        return 0.0, 0.0
+    if need >= young + other:
+        return 1.0, 1.0
+    if young <= 0.0:
+        return 0.0, need / other
+    if other <= 0.0:
+        return need / young, 0.0
+    low, high = 0.0, 1.0
+    for _ in range(100):
+        middle = 0.5 * (low + high)
+        if young * _odds_scaled(middle, theta) + other * middle < need:
+            low = middle
+        else:
+            high = middle
+    other_rate = 0.5 * (low + high)
+    return _odds_scaled(other_rate, theta), other_rate
+
+
+def _group_rates(
+    need: float, group_weights: Sequence[float], multipliers: Sequence[float]
+) -> list[float]:
+    """Each group's rate, its odds the base odds times its multiplier, realizing ``need``.
+
+    ``group_weights`` are the groups' drawn weights. The weight claiming rises
+    with the base rate, so bisection finds the base rate that meets ``need``,
+    which lies strictly between nothing and every unit. One group with
+    multiplier 1 and another with ``theta`` is ``_split_rates``.
+    """
+
+    total = float(sum(group_weights))
+    if need <= 0.0:
+        return [0.0 for _ in group_weights]
+    if need >= total:
+        return [1.0 for _ in group_weights]
+
+    def claimed(base: float) -> float:
+        return sum(
+            weight * _odds_scaled(base, multiplier)
+            for weight, multiplier in zip(group_weights, multipliers, strict=True)
+        )
+
+    low, high = 0.0, 1.0
+    for _ in range(100):
+        middle = 0.5 * (low + high)
+        if claimed(middle) < need:
+            low = middle
+        else:
+            high = middle
+    base = 0.5 * (low + high)
+    return [_odds_scaled(base, multiplier) for multiplier in multipliers]
+
+
 def _pools(
     *,
     band: np.ndarray,
@@ -330,6 +829,86 @@ def _pools(
         else:
             pools.append(current)
     return pools
+
+
+def _pass_unmet_gaps(
+    sums: Sequence[tuple[float, float, float]],
+    *,
+    older: Sequence[float] | None = None,
+) -> tuple[list[float], list[float]]:
+    """Each pool's count after the unmet pools pass their gaps on.
+
+    ``sums`` gives each pool's DWP count ``T``, the expected claims ``F`` of
+    its undrawn entitled units and the weight ``D`` of its drawn units, lowest
+    band first. A pool realizes between ``F`` and ``F + D`` claims; one whose
+    count lies outside is held at the nearer end, and its gap is the claims it
+    cannot add (a shortfall) or give up (an excess). A shortfall and an excess
+    offset each other in the family type's total, so they cancel first, nearest
+    pools first. What remains goes to the other pools, nearest first, the one
+    with more room first at equal distance and the lower on a tie, each taking
+    what its room allows (``F + D - T`` for a shortfall, ``T - F`` for an
+    excess). Joining an unmet pool to its neighbour applied one rate to both,
+    so the drawn units of an overshooting band started claiming and those of
+    a short band stopped; held at its clip, each band realizes as near its own
+    count as it can, and the family type's total is unchanged wherever its
+    entitled units allow (microcosm#1428 review, finding 7). With ``older``,
+    the weight of each pool's drawn units with no young claimant or partner
+    (the age fit, María's call of 2026-11-09), a shortfall passed to another
+    pool fills only those units: its room is ``F + older - count``, and what
+    no pool can take that way stays unplaced. An excess passes as before.
+    Returns each pool's count and the part of its gap no pool could take.
+    """
+
+    targets = [float(target) for target, _, _ in sums]
+    lows = [float(undrawn) for _, undrawn, _ in sums]
+    highs = [float(undrawn) + float(drawn) for _, undrawn, drawn in sums]
+    counts = [
+        min(max(t, lo), hi) for t, lo, hi in zip(targets, lows, highs, strict=True)
+    ]
+    gaps = [t - count for t, count in zip(targets, counts, strict=True)]
+    for index, target in enumerate(targets):
+        if abs(gaps[index]) <= 1e-9 * max(1.0, abs(target)):
+            gaps[index] = 0.0
+
+    def nearest(index: int) -> list[int]:
+        return sorted(
+            (other for other in range(len(sums)) if other != index),
+            key=lambda other: (abs(other - index), other),
+        )
+
+    for index in range(len(sums)):
+        for other in nearest(index):
+            if gaps[index] == 0.0:
+                break
+            if gaps[index] * gaps[other] < 0.0:
+                offset = min(abs(gaps[index]), abs(gaps[other]))
+                gaps[index] -= np.sign(gaps[index]) * offset
+                gaps[other] -= np.sign(gaps[other]) * offset
+    for index, gap in enumerate(gaps):
+        if gap == 0.0:
+            continue
+        short = gap > 0.0
+
+        def room(other: int, *, short: bool = short) -> float:
+            if not short:
+                return max(counts[other] - lows[other], 0.0)
+            ceiling = (
+                highs[other] if older is None else lows[other] + float(older[other])
+            )
+            return max(ceiling - counts[other], 0.0)
+
+        remaining = abs(gap)
+        for other in sorted(
+            nearest(index),
+            key=lambda other: (abs(other - index), -room(other), other),
+        ):
+            take = min(remaining, room(other))
+            counts[other] += take if short else -take
+            remaining -= take
+            if remaining <= 0.0:
+                break
+        gaps[index] = remaining if short else -remaining
+    return counts, gaps
 
 
 def _realized_rate(
@@ -379,8 +958,38 @@ def assign_award_band_take_up(
     targets: Mapping[tuple[str, int], float],
     minimum_pool_sources: int = UC_TAKE_UP_MINIMUM_POOL_SOURCES,
     legacy_kept: np.ndarray | None = None,
+    young_people: np.ndarray | None = None,
+    young_target: float | None = None,
+    lcwra_units: np.ndarray | None = None,
+    lcwra_target: float | None = None,
+    young_lcwra_people: np.ndarray | None = None,
+    young_lcwra_target: float | None = None,
+    young_lcwra_scope: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Reporters claim; drawn units claim at their pool's residual rate.
+
+    With ``lcwra_units`` (the units whose award would include the LCWRA
+    element) and ``lcwra_target`` (DWP's paid LCWRA households), the LCWRA fit
+    adds a second odds ratio, solved in turn with the age fit's
+    (``UC_TAKE_UP_LCWRA_FIT``), and a passed shortfall fills only units with
+    neither a young member nor the element.
+
+    With ``young_lcwra_people`` (each unit's young claimants and partners who
+    would hold the LCWRA element, ``UC_TAKE_UP_YOUNG_LCWRA_PEOPLE``) and
+    ``young_lcwra_target`` (DWP's count of them), which need both other fits,
+    the young LCWRA fit (``UC_TAKE_UP_YOUNG_LCWRA_FIT``) gives the drawn units
+    with such people a third ratio in place of the LCWRA fit's. Without them
+    the redraw is the two fits' alone. ``young_lcwra_scope`` marks the units in
+    the count's geography (DWP's count is England and Wales's): the ratio is
+    solved on their young people with the element alone and applies to every
+    such unit in Great Britain. Without it the count is Great Britain's.
+
+    With ``young_people`` (each unit's claimants and partners aged 16 to 24)
+    and ``young_target`` (DWP's count of them), the age fit splits each pool's
+    rate: its drawn units with a young member claim at an odds ratio ``theta``
+    against its other drawn units, the two rates realizing the pool's count
+    together, and ``theta`` is solved for DWP's count over Great Britain
+    (``UC_TAKE_UP_AGE_FIT``). Without them every pool draws at one rate.
 
     The drawn units are the entitled, non-reporting units of the age
     population that the engine does not move off their legacy benefits and
@@ -429,6 +1038,57 @@ def assign_award_band_take_up(
             raise ValueError(f"UC take-up {name} must align to the benefit units.")
     if not ((moved_claim >= 0.0) & (moved_claim <= 1.0)).all():
         raise ValueError("Expected claims at the legacy closure must lie in [0, 1].")
+    if (young_people is None) != (young_target is None):
+        raise ValueError("The age fit needs both young_people and young_target.")
+    if young_people is not None:
+        young_people = np.asarray(young_people, dtype=np.float64)
+        if young_people.shape != shape:
+            raise ValueError("UC take-up young_people must align to the benefit units.")
+        if not (np.isfinite(young_people).all() and (young_people >= 0.0).all()):
+            raise ValueError("UC take-up young_people must be finite counts.")
+        if not (np.isfinite(young_target) and young_target > 0.0):
+            raise ValueError("The age fit's count must be positive and finite.")
+    if (lcwra_units is None) != (lcwra_target is None):
+        raise ValueError("The LCWRA fit needs both lcwra_units and lcwra_target.")
+    if lcwra_units is not None:
+        lcwra_units = np.asarray(lcwra_units, dtype=bool)
+        if lcwra_units.shape != shape:
+            raise ValueError("UC take-up lcwra_units must align to the benefit units.")
+        if not (np.isfinite(lcwra_target) and lcwra_target > 0.0):
+            raise ValueError("The LCWRA fit's count must be positive and finite.")
+    if (young_lcwra_people is None) != (young_lcwra_target is None):
+        raise ValueError(
+            "The young LCWRA fit needs both young_lcwra_people and young_lcwra_target."
+        )
+    if young_lcwra_people is not None:
+        if young_people is None or lcwra_units is None:
+            raise ValueError(
+                "The young LCWRA fit runs only beside the age and LCWRA fits."
+            )
+        young_lcwra_people = np.asarray(young_lcwra_people, dtype=np.float64)
+        if young_lcwra_people.shape != shape:
+            raise ValueError(
+                "UC take-up young_lcwra_people must align to the benefit units."
+            )
+        if not (
+            np.isfinite(young_lcwra_people).all() and (young_lcwra_people >= 0.0).all()
+        ):
+            raise ValueError("UC take-up young_lcwra_people must be finite counts.")
+        if ((young_lcwra_people > 0.0) & ~(lcwra_units & (young_people > 0.0))).any():
+            raise ValueError(
+                "Young people hold the LCWRA element only in young units whose "
+                "award would include it."
+            )
+        if not (np.isfinite(young_lcwra_target) and young_lcwra_target > 0.0):
+            raise ValueError("The young LCWRA fit's count must be positive and finite.")
+    if young_lcwra_scope is not None:
+        if young_lcwra_people is None:
+            raise ValueError("young_lcwra_scope needs the young LCWRA fit.")
+        young_lcwra_scope = np.asarray(young_lcwra_scope)
+        if young_lcwra_scope.shape != shape or young_lcwra_scope.dtype != bool:
+            raise ValueError(
+                "UC take-up young_lcwra_scope must be one flag per benefit unit."
+            )
     unknown = sorted(set(family) - {name for name, _ in UC_FAMILY_TYPES})
     if unknown:
         raise ValueError(f"UC take-up family types are unknown: {unknown}.")
@@ -452,39 +1112,80 @@ def assign_award_band_take_up(
     def sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, weights)
 
+    def balance(
+        name: str, in_family: np.ndarray, bands: list[int]
+    ) -> tuple[float, float, float]:
+        solve = in_family & np.isin(band, bands) & gb
+        return (
+            float(sum(targets[(name, index)] for index in bands)),
+            float((weights * fixed)[solve & ~drawable].sum()),
+            float(weights[solve & drawable].sum()),
+        )
+
+    young_unit = (
+        np.zeros(shape, dtype=bool) if young_people is None else young_people > 0.0
+    )
+    lcwra_unit = np.zeros(shape, dtype=bool) if lcwra_units is None else lcwra_units
+    young_lcwra_unit = (
+        np.zeros(shape, dtype=bool)
+        if young_lcwra_people is None
+        else young_lcwra_people > 0.0
+    )
+    either_fit = young_people is not None or lcwra_units is not None
     pools: list[dict[str, object]] = []
+    # Each pool's drawn units (with Northern Ireland's), its Great Britain
+    # drawn units, the claims they must realize and their weight.
+    needs: list[tuple[np.ndarray, np.ndarray, float, float]] = []
+    # With the age fit, the shortfall each family type leaves unplaced.
+    unplaced_shortfall: dict[str, float] = {}
     for name, _ in UC_FAMILY_TYPES:
         in_family = family == name
-        for bands in _pools(
+        family_pools = _pools(
             band=band,
             in_family=in_family,
             drawable_gb=drawable & gb,
             source_ids=source_ids,
             weights=weights,
             minimum_sources=minimum_pool_sources,
+        )
+        sums = [balance(name, in_family, bands) for bands in family_pools]
+        # With the fits, a passed shortfall fills only a pool's drawn units
+        # with neither a young claimant or partner nor the LCWRA element
+        # (María's call of 2026-11-09; her choices of 2026-11-11).
+        older = (
+            None
+            if not either_fit
+            else [
+                float(
+                    weights[
+                        in_family
+                        & np.isin(band, bands)
+                        & gb
+                        & drawable
+                        & ~young_unit
+                        & ~lcwra_unit
+                    ].sum()
+                )
+                for bands in family_pools
+            ]
+        )
+        counts, unplaced = _pass_unmet_gaps(sums, older=older)
+        unplaced_shortfall[name] = float(sum(gap for gap in unplaced if gap > 0.0))
+        feasible = not any(unplaced)
+        for bands, (target, undrawn, drawn), count in zip(
+            family_pools, sums, counts, strict=True
         ):
             in_pool = in_family & np.isin(band, bands)
             solve = in_pool & gb
-            target = float(sum(targets[(name, index)] for index in bands))
-            undrawn = float((weights * fixed)[solve & ~drawable].sum())
-            drawn = float(weights[solve & drawable].sum())
+            needs.append((in_pool & drawable, solve & drawable, count - undrawn, drawn))
             # Where the undrawn claims reach DWP's count, or the count exceeds
-            # every entitled unit, the clipped rate cannot meet it.
-            if drawn > 0.0:
-                residual = (target - undrawn) / drawn
-                rates[in_pool & drawable] = _realized_rate(
-                    residual,
-                    need=target - undrawn,
-                    draws=draws[solve & drawable],
-                    weights=weights[solve & drawable],
-                )
-            else:
-                residual = 0.0 if undrawn >= target else 1.0
+            # every entitled unit, the pool cannot meet it alone: it is held
+            # at its clip and its gap passed on.
             unreachable = (
                 "undrawn_claims_reach_target"
-                if residual <= 0.0
+                if target <= undrawn
                 else "target_exceeds_entitled"
-                if residual >= 1.0
+                if target >= undrawn + drawn
                 else None
             )
             pools.append(
@@ -494,9 +1195,240 @@ def assign_award_band_take_up(
                     "mask": solve,
                     "target": target,
                     "unreachable": unreachable,
+                    "feasible_family": feasible,
                 }
             )
-    would_claim = np.where(drawable, draws < rates, previous | reporter)
+
+    def realize(
+        theta: float | None,
+        lcwra_theta: float | None = None,
+        young_lcwra_theta: float | None = None,
+    ) -> np.ndarray:
+        """Each unit's claim at the fits' odds ratios, or at one rate."""
+
+        rates[:] = 0.0
+        for unit, solve_drawn, need, drawn in needs:
+            if drawn <= 0.0:
+                continue
+            if lcwra_theta is not None:
+                young_ratio = 1.0 if theta is None else theta
+                if young_lcwra_theta is None:
+                    groups = (
+                        (young_unit & lcwra_unit, young_ratio * lcwra_theta),
+                        (young_unit & ~lcwra_unit, young_ratio),
+                        (~young_unit & lcwra_unit, lcwra_theta),
+                        (~young_unit & ~lcwra_unit, 1.0),
+                    )
+                else:
+                    # The young LCWRA fit's units take its ratio in place of
+                    # the LCWRA fit's; a young unit whose element an older
+                    # member would hold keeps the LCWRA fit's.
+                    groups = (
+                        (young_lcwra_unit, young_ratio * young_lcwra_theta),
+                        (
+                            young_unit & lcwra_unit & ~young_lcwra_unit,
+                            young_ratio * lcwra_theta,
+                        ),
+                        (young_unit & ~lcwra_unit, young_ratio),
+                        (~young_unit & lcwra_unit, lcwra_theta),
+                        (~young_unit & ~lcwra_unit, 1.0),
+                    )
+                group_rates = _group_rates(
+                    need,
+                    [
+                        float(weights[solve_drawn & member].sum())
+                        for member, _ in groups
+                    ],
+                    [ratio for _, ratio in groups],
+                )
+                for rate, (member, _) in zip(group_rates, groups, strict=True):
+                    group_solve = solve_drawn & member
+                    group = unit & member
+                    if group_solve.any():
+                        rates[group] = _realized_rate(
+                            rate,
+                            need=rate * float(weights[group_solve].sum()),
+                            draws=draws[group_solve],
+                            weights=weights[group_solve],
+                        )
+                    else:
+                        rates[group] = rate
+                continue
+            if theta is None:
+                rates[unit] = _realized_rate(
+                    need / drawn,
+                    need=need,
+                    draws=draws[solve_drawn],
+                    weights=weights[solve_drawn],
+                )
+                continue
+            young_solve = solve_drawn & young_unit
+            other_solve = solve_drawn & ~young_unit
+            young_rate, other_rate = _split_rates(
+                need,
+                float(weights[young_solve].sum()),
+                float(weights[other_solve].sum()),
+                theta,
+            )
+            for rate, group_solve, group in (
+                (young_rate, young_solve, unit & young_unit),
+                (other_rate, other_solve, unit & ~young_unit),
+            ):
+                if group_solve.any():
+                    rates[group] = _realized_rate(
+                        rate,
+                        need=rate * float(weights[group_solve].sum()),
+                        draws=draws[group_solve],
+                        weights=weights[group_solve],
+                    )
+                else:
+                    # Only Northern Ireland's units: drawn at the group's rate.
+                    rates[group] = rate
+        return np.where(drawable, draws < rates, previous | reporter)
+
+    entitled_gb = entitled & gb
+    young_weight = weights * (young_people if young_people is not None else 0.0)
+
+    def young_claims(claims: np.ndarray) -> float:
+        expected = np.where(drawable, claims.astype(np.float64), fixed)
+        return float((young_weight * expected)[entitled_gb].sum())
+
+    def lcwra_claims(claims: np.ndarray) -> float:
+        expected = np.where(drawable, claims.astype(np.float64), fixed)
+        return float((weights * expected)[entitled_gb & lcwra_unit].sum())
+
+    young_lcwra_weight = weights * (
+        young_lcwra_people if young_lcwra_people is not None else 0.0
+    )
+    if young_lcwra_scope is not None:
+        # Only the count's geography's young people with the element count
+        # towards DWP's count; the ratio still applies to every such unit.
+        young_lcwra_weight = np.where(young_lcwra_scope, young_lcwra_weight, 0.0)
+
+    def young_lcwra_claims(claims: np.ndarray) -> float:
+        expected = np.where(drawable, claims.astype(np.float64), fixed)
+        return float((young_lcwra_weight * expected)[entitled_gb].sum())
+
+    def solve_ratio(claims_at, target: float, what: str) -> tuple[float, str | None]:
+        """The log odds ratio whose claims are nearest ``target``."""
+
+        low, high = _LOG_ODDS_BOUNDS
+        if target <= claims_at(float(np.exp(low))):
+            return low, f"target_below_least_{what}_claims"
+        if target >= claims_at(float(np.exp(high))):
+            return high, f"target_above_most_{what}_claims"
+        for _ in range(_ODDS_ITERATIONS):
+            middle = 0.5 * (low + high)
+            if claims_at(float(np.exp(middle))) < target:
+                low = middle
+            else:
+                high = middle
+        low_gap = abs(claims_at(float(np.exp(low))) - target)
+        high_gap = abs(claims_at(float(np.exp(high))) - target)
+        return (low if low_gap <= high_gap else high), None
+
+    theta: float | None = None
+    age_status: str | None = None
+    lcwra_theta: float | None = None
+    lcwra_status: str | None = None
+    young_lcwra_theta: float | None = None
+    young_lcwra_status: str | None = None
+    # How many rounds the joint solve took; whether it stopped on the
+    # tolerance rather than the round cap; and whether its last round left
+    # every unit's claim as the round before did (the first round, as the
+    # starting ratios did), which a capped stop can still reach where a
+    # ratio's log moves inside a stretch of equal claims (Vahid's review of
+    # PolicyEngine/microcosm#1663: a capped stop read as a fit).
+    joint_rounds = 0
+    joint_converged = False
+    joint_claims_settled = False
+    if lcwra_units is not None:
+        # The ratios in turn, each with the others held, until no log moves
+        # more than the tolerance (María's choices of 2026-11-11; the young
+        # LCWRA fit's third ratio since PolicyEngine/microcosm#1663).
+        log_young = 0.0 if young_people is not None else None
+        log_lcwra = 0.0
+        log_young_lcwra = 0.0 if young_lcwra_people is not None else None
+
+        def held_ratio(log: float | None) -> float | None:
+            return None if log is None else float(np.exp(log))
+
+        # The claims at the starting ratios, so a solve that settles in its
+        # first round shows whether that round changed any unit's claim
+        # (Vahid's final review of PolicyEngine/microcosm#1663).
+        previous_claims = realize(
+            held_ratio(log_young), float(np.exp(log_lcwra)), held_ratio(log_young_lcwra)
+        )
+        for _ in range(_JOINT_ROUNDS):
+            joint_rounds += 1
+            before_round = (log_young, log_lcwra, log_young_lcwra)
+            if young_people is not None:
+                held_lcwra = float(np.exp(log_lcwra))
+                held_young_lcwra = held_ratio(log_young_lcwra)
+                log_young, age_status = solve_ratio(
+                    lambda ratio, held=held_lcwra, third=held_young_lcwra: young_claims(
+                        realize(ratio, held, third)
+                    ),
+                    float(young_target),
+                    "young",
+                )
+            held_young = held_ratio(log_young)
+            held_young_lcwra = held_ratio(log_young_lcwra)
+            log_lcwra, lcwra_status = solve_ratio(
+                lambda ratio, held=held_young, third=held_young_lcwra: lcwra_claims(
+                    realize(held, ratio, third)
+                ),
+                float(lcwra_target),
+                "lcwra",
+            )
+            if young_lcwra_people is not None:
+                held_young = held_ratio(log_young)
+                held_lcwra = float(np.exp(log_lcwra))
+                log_young_lcwra, young_lcwra_status = solve_ratio(
+                    lambda ratio, young=held_young, held=held_lcwra: young_lcwra_claims(
+                        realize(young, held, ratio)
+                    ),
+                    float(young_lcwra_target),
+                    "young_lcwra",
+                )
+            round_claims = realize(
+                held_ratio(log_young),
+                float(np.exp(log_lcwra)),
+                held_ratio(log_young_lcwra),
+            )
+            joint_claims_settled = bool(np.array_equal(round_claims, previous_claims))
+            previous_claims = round_claims
+            if all(
+                now is None or abs(now - then) <= _JOINT_TOLERANCE
+                for now, then in zip(
+                    (log_young, log_lcwra, log_young_lcwra), before_round, strict=True
+                )
+            ):
+                joint_converged = True
+                break
+        theta = held_ratio(log_young)
+        lcwra_theta = float(np.exp(log_lcwra))
+        young_lcwra_theta = held_ratio(log_young_lcwra)
+    elif young_people is not None:
+        low, high = _LOG_ODDS_BOUNDS
+        if young_target <= young_claims(realize(float(np.exp(low)))):
+            log_theta, age_status = low, "target_below_least_young_claims"
+        elif young_target >= young_claims(realize(float(np.exp(high)))):
+            log_theta, age_status = high, "target_above_most_young_claims"
+        else:
+            # Young claims rise with theta in every pool, so bisection on its
+            # log brackets DWP's count; the nearer end of the bracket is kept.
+            for _ in range(_ODDS_ITERATIONS):
+                middle = 0.5 * (low + high)
+                if young_claims(realize(float(np.exp(middle)))) < young_target:
+                    low = middle
+                else:
+                    high = middle
+            low_gap = abs(young_claims(realize(float(np.exp(low)))) - young_target)
+            high_gap = abs(young_claims(realize(float(np.exp(high)))) - young_target)
+            log_theta = low if low_gap <= high_gap else high
+        theta = float(np.exp(log_theta))
+    would_claim = realize(theta, lcwra_theta, young_lcwra_theta)
     expected_before = np.where(drawable, previous.astype(np.float64), fixed)
     expected_after = np.where(drawable, would_claim.astype(np.float64), fixed)
 
@@ -519,14 +1451,19 @@ def assign_award_band_take_up(
                     "support": support_band(supported),
                     "drawn_support": support_band(sources(solve & drawable)),
                     # One bit on which side of DWP's count the pool's undrawn
-                    # claims lie, given only where ten or more sources carry
-                    # the pool (UKDS disclosure control).
+                    # claims lie, given only where three or more sources
+                    # carry the pool (UKDS disclosure control).
                     "target_unreachable": (
-                        pool["unreachable"] if supported >= 10 else "<10"
+                        pool["unreachable"]
+                        if supported >= UK_DISCLOSURE_FLOOR
+                        else UK_WITHHELD
                     ),
                 }
             )
-            if pool["unreachable"] is None:
+            # A family type whose gaps every pool could take realizes its
+            # count over all its pools; one whose count exceeds what its
+            # entitled units can realize has no reachable pool.
+            if pool["feasible_family"]:
                 reachable |= solve
                 reachable_target += float(pool["target"])
         supported = sources(basis)
@@ -571,6 +1508,107 @@ def assign_award_band_take_up(
         "set_true": rounded_count(int((changed & would_claim).sum())),
         "set_false": rounded_count(int((changed & ~would_claim).sum())),
     }
+    if young_people is not None:
+        carried = sources(entitled_gb & young_unit)
+        drawn_young = sources(drawable & gb & young_unit)
+        before = float((young_weight * expected_before)[entitled_gb].sum())
+        receipt["age_fit"] = {
+            "rule": UC_TAKE_UP_AGE_FIT,
+            "young_people": UC_TAKE_UP_YOUNG_PEOPLE,
+            "target": UC_TAKE_UP_AGE_TARGET,
+            "dwp_young_people": float(young_target),
+            "young_people_before": small_cell_share(before, carried),
+            "young_people_after": small_cell_share(young_claims(would_claim), carried),
+            "support": support_band(carried),
+            "drawn_support": support_band(drawn_young),
+            # A ratio solved over the drawn young units' weights, given only
+            # where three or more sources carry them (UKDS disclosure control).
+            "odds_ratio": (
+                round(float(theta), 6)
+                if drawn_young >= UK_DISCLOSURE_FLOOR
+                else UK_WITHHELD
+            ),
+            "target_unreachable": age_status,
+            # The shortfall no pool could take with older units, by family
+            # type, at the stage's household weights.
+            "unplaced_shortfall": {
+                name: small_cell_share(
+                    unplaced_shortfall[name],
+                    sources((family == name) & entitled & gb),
+                )
+                for name, _ in UC_FAMILY_TYPES
+            },
+        }
+    if lcwra_units is not None:
+        carried = sources(entitled_gb & lcwra_unit)
+        drawn_lcwra = sources(drawable & gb & lcwra_unit)
+        before = float((weights * expected_before)[entitled_gb & lcwra_unit].sum())
+        receipt["lcwra_fit"] = {
+            "rule": UC_TAKE_UP_LCWRA_FIT,
+            "units": UC_TAKE_UP_LCWRA_UNITS,
+            "target": UC_TAKE_UP_LCWRA_TARGET,
+            "dwp_lcwra_households": float(lcwra_target),
+            "lcwra_households_before": small_cell_share(before, carried),
+            "lcwra_households_after": small_cell_share(
+                lcwra_claims(would_claim), carried
+            ),
+            "support": support_band(carried),
+            "drawn_support": support_band(drawn_lcwra),
+            # A ratio solved over the drawn LCWRA units' weights, given only
+            # where three or more sources carry them (UKDS disclosure control).
+            "odds_ratio": (
+                round(float(lcwra_theta), 6)
+                if drawn_lcwra >= UK_DISCLOSURE_FLOOR
+                else UK_WITHHELD
+            ),
+            "target_unreachable": lcwra_status,
+            "joint_solve": {
+                "rounds": joint_rounds,
+                "round_cap": _JOINT_ROUNDS,
+                "converged": joint_converged,
+                "claims_settled": joint_claims_settled,
+            },
+        }
+        if young_lcwra_people is not None:
+            # Support is counted on the units the count reads: with a scope,
+            # only its geography's (Vahid's final review of
+            # PolicyEngine/microcosm#1663).
+            counted = (
+                young_lcwra_unit
+                if young_lcwra_scope is None
+                else young_lcwra_unit & young_lcwra_scope
+            )
+            carried = sources(entitled_gb & counted)
+            drawn_young_lcwra = sources(drawable & gb & counted)
+            before = float((young_lcwra_weight * expected_before)[entitled_gb].sum())
+            receipt["young_lcwra_fit"] = {
+                "rule": UC_TAKE_UP_YOUNG_LCWRA_FIT,
+                "young_lcwra_people": UC_TAKE_UP_YOUNG_LCWRA_PEOPLE,
+                "dwp_young_lcwra_people": float(young_lcwra_target),
+                "young_lcwra_people_before": small_cell_share(before, carried),
+                "young_lcwra_people_after": small_cell_share(
+                    young_lcwra_claims(would_claim), carried
+                ),
+                "support": support_band(carried),
+                "drawn_support": support_band(drawn_young_lcwra),
+                # A ratio solved over the drawn young LCWRA units' weights,
+                # given only where three or more sources carry them (UKDS
+                # disclosure control).
+                "odds_ratio": (
+                    round(float(young_lcwra_theta), 6)
+                    if drawn_young_lcwra >= UK_DISCLOSURE_FLOOR
+                    else UK_WITHHELD
+                ),
+                "target_unreachable": young_lcwra_status,
+            }
+        if young_people is None:
+            receipt["lcwra_fit"]["unplaced_shortfall"] = {
+                name: small_cell_share(
+                    unplaced_shortfall[name],
+                    sources((family == name) & entitled & gb),
+                )
+                for name, _ in UC_FAMILY_TYPES
+            }
     return would_claim.astype(bool), receipt
 
 
@@ -602,8 +1640,24 @@ def redraw_uc_take_up(
     closure_rates: Mapping[str, float],
     deduction_resource: Mapping[str, Any] | None = None,
     minimum_pool_sources: int = UC_TAKE_UP_MINIMUM_POOL_SOURCES,
+    young_target: float | None = None,
+    lcwra_target: float | None = None,
+    young_lcwra_target: float | None = None,
 ) -> UKUCTakeUpResult:
-    """Redraw ``would_claim_uc`` by award band and family type."""
+    """Redraw ``would_claim_uc`` by award band and family type.
+
+    With ``young_target``, DWP's people on Universal Credit aged 16 to 24, the
+    age fit runs on each unit's claimants and partners of those ages
+    (``UC_TAKE_UP_YOUNG_PEOPLE``). With ``lcwra_target``, DWP's paid Universal
+    Credit households with the LCWRA element, the LCWRA fit runs on the units
+    whose award would include it (``UC_TAKE_UP_LCWRA_UNITS``). The stage always
+    passes both. With ``young_lcwra_target``, DWP's count of young people with
+    the element, which needs both others, the young LCWRA fit runs on each
+    unit's ``UC_TAKE_UP_YOUNG_LCWRA_PEOPLE``, its ratio solved on England and
+    Wales's units, whose count DWP's is, and applied to every such unit in
+    Great Britain. The stage passes it since part 3 of
+    PolicyEngine/microcosm#1663, from DWP's Table 28 (PolicyEngine/chronicle#443).
+    """
 
     validate_uk_national_frame(frame)
     assert_rules_engine_country(engine, "uk")
@@ -628,6 +1682,11 @@ def redraw_uc_take_up(
         missing = sorted(set(columns) - set(table.columns))
         if missing:
             raise ValueError(f"UC take-up {label} columns missing: {missing}.")
+    if young_target is not None and UC_TAKE_UP_YOUNG_ROLE not in person.columns:
+        raise ValueError(
+            f"UC take-up's age fit reads person.{UC_TAKE_UP_YOUNG_ROLE}, which "
+            "the frame does not carry."
+        )
     period = uk_time_period(frame)
     declared = resolve_uk_year_rule(UC_TAKE_UP_DATASET_YEAR_RULE)
     if int(period) != declared:
@@ -715,12 +1774,15 @@ def redraw_uc_take_up(
     if regions.isna().any():
         raise ValueError("Every benefit unit's household must carry a region.")
     great_britain = regions.astype(str).ne(_OUTSIDE_SOLVE_REGION).to_numpy(dtype=bool)
-    source_ids = unit_households.map(
-        pd.Series(
-            source_household_ids(household, stage="The UC take-up stage"),
-            index=household["household_id"].to_numpy(),
-        )
-    ).to_numpy()
+    # DWP's young LCWRA count is England and Wales's (Table 28).
+    england_and_wales = (
+        regions.astype(str).isin(UC_TAKE_UP_YOUNG_LCWRA_REGIONS).to_numpy(dtype=bool)
+    )
+    source_ids = record_source_households(
+        {"person": person, "benunit": benunit, "household": household},
+        "benunit",
+        stage="The UC take-up stage",
+    )
     # A unit the engine moves off its legacy benefits claims at the closure
     # with the probability ``uc_legacy_closure_take_up`` gives it; this stage
     # leaves its flag alone, so the closure's share already claiming, and so
@@ -744,6 +1806,51 @@ def redraw_uc_take_up(
         seed=UC_TAKE_UP_SEED,
         salt=UK_UC_TAKE_UP_OUTPUT,
     )
+    young_people = None
+    if young_target is not None:
+        # The ages the diagnostic reads: policyengine-uk carries the stored age
+        # unchanged into every projected year, so the survey-year age is the
+        # entitlement year's.
+        age = pd.to_numeric(person[UK_UC_AGE_ELIGIBLE_SOURCE], errors="coerce")
+        role = person[UC_TAKE_UP_YOUNG_ROLE].fillna(False).to_numpy(dtype=bool)
+        young = (
+            role
+            & (age >= min(UC_TAKE_UP_YOUNG_AGES)).to_numpy()
+            & (age <= max(UC_TAKE_UP_YOUNG_AGES)).to_numpy()
+        )
+        young_people = (
+            pd.Series(young.astype(np.float64))
+            .groupby(person["person_benunit_id"].to_numpy())
+            .sum()
+            .reindex(benunit["benunit_id"].to_numpy())
+            .fillna(0.0)
+            .to_numpy()
+        )
+    lcwra_units = None
+    if lcwra_target is not None:
+        # The element the award would include were the unit to claim, from the
+        # same materialization on the temporary claiming copy.
+        lcwra_units = (
+            _aligned(
+                materialized["uc_LCWRA_element"], count, "uc_LCWRA_element"
+            ).astype(float)
+            > 0.0
+        )
+    young_lcwra_people = None
+    if young_lcwra_target is not None:
+        if young_people is None or lcwra_units is None:
+            raise ValueError(
+                "UC take-up's young LCWRA fit needs the age fit's and the LCWRA "
+                "fit's counts too."
+            )
+        if UC_TAKE_UP_LCWRA_FLAG not in person.columns:
+            raise ValueError(
+                f"UC take-up's young LCWRA fit reads person.{UC_TAKE_UP_LCWRA_FLAG}, "
+                "which uc_limited_capability stores before it."
+            )
+        young_lcwra_people = young_people_holding_the_element(
+            person, benunit["benunit_id"].to_numpy(), young, lcwra_units
+        )
     would_claim, receipt = assign_award_band_take_up(
         award=award,
         family=family,
@@ -759,7 +1866,21 @@ def redraw_uc_take_up(
         targets=targets,
         minimum_pool_sources=minimum_pool_sources,
         legacy_kept=(combination != "") & ~moved & ~reporter,
+        young_people=young_people,
+        young_target=young_target,
+        lcwra_units=lcwra_units,
+        lcwra_target=lcwra_target,
+        young_lcwra_people=young_lcwra_people,
+        young_lcwra_target=young_lcwra_target,
+        young_lcwra_scope=(
+            england_and_wales if young_lcwra_people is not None else None
+        ),
     )
+    if "young_lcwra_fit" in receipt:
+        receipt["young_lcwra_fit"]["count_geography"] = (
+            f"England and Wales ({_YOUNG_LCWRA_GEOGRAPHY}); the ratio applies in "
+            "Great Britain"
+        )
     kept_off = esa_kept & stored & great_britain
     esa_kept_receipt = {
         "scope": "great_britain",
@@ -827,7 +1948,7 @@ def working_age_housing_benefit_receipt(
     engine does not move, and how many of them keep the award before and after
     the redraw, so the stage's effect on working-age Housing Benefit can be set
     beside DWP's 2025 caseload (Vahid's review of #1344, item 7). Weighted
-    figures only where ten or more source households carry them.
+    figures only where three or more source households carry them.
     """
 
     column = "housing_benefit_reported"
@@ -892,6 +2013,51 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
             },
         ),
         (
+            "verify_vendored_fact_resource",
+            {
+                "artifact_role": "uc_people_by_age_facts",
+                "resource": UC_TAKE_UP_AGE_RESOURCE,
+                "feed_pin": "chronicle_feed.json",
+                "record_sets": list(UC_TAKE_UP_AGE_RECORD_SETS),
+                "source_vintage": "February, May, August and November 2025",
+                "mapped_build_period": 2025,
+                "period_mapping": "mean_of_four_quarterly_monthly_counts_in_2025",
+                "require_before_source_read": True,
+                "runtime_sha256_required": True,
+                "fail_on_mismatch": True,
+            },
+        ),
+        (
+            "verify_vendored_fact_resource",
+            {
+                "artifact_role": "uc_lcwra_households_facts",
+                "resource": UC_TAKE_UP_LCWRA_RESOURCE,
+                "feed_pin": "chronicle_feed.json",
+                "record_sets": list(UC_TAKE_UP_LCWRA_RECORD_SETS),
+                "source_vintage": "January to December 2025",
+                "mapped_build_period": 2025,
+                "period_mapping": "calendar_year_average_of_monthly_counts",
+                "require_before_source_read": True,
+                "runtime_sha256_required": True,
+                "fail_on_mismatch": True,
+            },
+        ),
+        (
+            "verify_vendored_fact_resource",
+            {
+                "artifact_role": "uc_young_lcwra_people_facts",
+                "resource": UC_TAKE_UP_YOUNG_LCWRA_RESOURCE,
+                "feed_pin": "chronicle_feed.json",
+                "record_sets": list(UC_TAKE_UP_YOUNG_LCWRA_RECORD_SETS),
+                "source_vintage": "financial years 2024-25 and 2025-26",
+                "mapped_build_period": 2025,
+                "period_mapping": "calendar_year_window_of_fiscal_years",
+                "require_before_source_read": True,
+                "runtime_sha256_required": True,
+                "fail_on_mismatch": True,
+            },
+        ),
+        (
             "materialize_rules_engine_predictors",
             {
                 "predictors": list(UC_TAKE_UP_ENTITLEMENT_VARIABLES),
@@ -946,12 +2112,7 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
                     "DWP Stat-Xplore Households on Universal Credit by family type "
                     "and monthly award band, mean of April to December 2025"
                 ),
-                "pooling": (
-                    "adjacent bands within a family type, lowest first, until the "
-                    "drawn units rest on minimum_pool_sources distinct "
-                    "household_source_id values; a short last pool joins the one "
-                    "before it"
-                ),
+                "pooling": UC_TAKE_UP_POOLING,
                 "minimum_pool_sources": UC_TAKE_UP_MINIMUM_POOL_SOURCES,
                 "drawn_units": (
                     "entitled, non-reporting units of the population that the "
@@ -974,6 +2135,12 @@ def uc_take_up_operation_parameters() -> tuple[tuple[str, dict[str, object]], ..
                     "keeps its stored flag, except a unit keeping income-related "
                     "ESA, which claims none"
                 ),
+                "young_people": UC_TAKE_UP_YOUNG_PEOPLE,
+                "age_targets": UC_TAKE_UP_AGE_TARGET,
+                "age_fit": UC_TAKE_UP_AGE_FIT,
+                "lcwra_units": UC_TAKE_UP_LCWRA_UNITS,
+                "lcwra_targets": UC_TAKE_UP_LCWRA_TARGET,
+                "lcwra_fit": UC_TAKE_UP_LCWRA_FIT,
             },
         ),
     )
@@ -1009,6 +2176,15 @@ class UKUCTakeUpStageTransform:
     targets: Mapping[tuple[str, int], float] | None = field(default=None, repr=False)
     closure_rates: Mapping[str, float] | None = field(default=None, repr=False)
     deduction_resource: Mapping[str, Any] | None = field(default=None, repr=False)
+    #: DWP's people on Universal Credit aged 16 to 24; read from the vendored
+    #: facts when not given.
+    young_target: float | None = field(default=None, repr=False)
+    #: DWP's paid Universal Credit households with the LCWRA element; read
+    #: from the vendored facts when not given.
+    lcwra_target: float | None = field(default=None, repr=False)
+    #: DWP's people aged 16 to 24 with the UC health element in England and
+    #: Wales; read from the vendored facts when not given.
+    young_lcwra_target: float | None = field(default=None, repr=False)
     last_result: UKUCTakeUpResult | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
@@ -1034,6 +2210,21 @@ class UKUCTakeUpStageTransform:
                 else load_move_to_uc_claim_rates()
             ),
             deduction_resource=self.deduction_resource,
+            young_target=(
+                self.young_target
+                if self.young_target is not None
+                else load_uc_young_people_target()
+            ),
+            lcwra_target=(
+                self.lcwra_target
+                if self.lcwra_target is not None
+                else load_uc_lcwra_households_target()
+            ),
+            young_lcwra_target=(
+                self.young_lcwra_target
+                if self.young_lcwra_target is not None
+                else load_uc_young_lcwra_people_target()
+            ),
         )
         object.__setattr__(self, "last_result", result)
         return result.frame

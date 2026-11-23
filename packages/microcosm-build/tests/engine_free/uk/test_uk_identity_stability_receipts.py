@@ -177,8 +177,8 @@ class TestE6Receipt:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         class _FakeModel:
-            def __init__(self, *, n_estimators, seed):
-                del n_estimators, seed
+            def __init__(self, *, n_estimators, seed, gate_calibration):
+                del n_estimators, seed, gate_calibration
 
             def start_chain(self, donor, predictors, targets, *, weights):
                 del donor, predictors, weights

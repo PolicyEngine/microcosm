@@ -935,8 +935,8 @@ def test_delivery_gate_fences_override_enforcement_with_their_adjudication() -> 
         **{"18_64": 80.0, "65_plus": 90.0},  # both far outside the envelope
     )
     fences = {
-        "18_64": "Fenced for the dense diagnostic arm (microcosm#566/#567).",
-        "65_plus": "Fenced for the dense diagnostic arm (microcosm#566/#567).",
+        "18_64": "Fenced for the --dense-default-dataset arm (microcosm#566/#567).",
+        "65_plus": "Fenced for the --dense-default-dataset arm (microcosm#566/#567).",
     }
     gate = us_ssi_take_up_delivery_gate(
         delivered, targets=_TARGETS, enforcement_fences=fences
@@ -959,7 +959,7 @@ def test_delivery_gate_fences_override_enforcement_with_their_adjudication() -> 
 
 def test_delivery_gate_partial_fence_keeps_the_other_band_enforced() -> None:
     _, _, _, diagnostics = _assigned()
-    fences = {"65_plus": "Fenced for the dense diagnostic arm (microcosm#566)."}
+    fences = {"65_plus": "Fenced for the --dense-default-dataset arm (microcosm#566)."}
     # The un-fenced band still hard-fails on a miss...
     missed = _delivered(diagnostics, **{"18_64": 80.0, "65_plus": 90.0})
     gate = us_ssi_take_up_delivery_gate(

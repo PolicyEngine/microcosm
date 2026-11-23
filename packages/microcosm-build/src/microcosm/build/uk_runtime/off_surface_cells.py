@@ -78,8 +78,10 @@ def uk_signed_cells_off_the_surface(
 
     A cell deferred under a small-cell rule (``rule_ids``) is left out: the
     rule's cells join the frame through ``uk_small_cell_deferred_cells``.
-    ``value`` is the published value of a deferred cell, and ``None`` where
-    the publisher carries no fact for the area. ``area_has_bound_cells`` says
+    ``value`` is the published value of a deferred cell, the declared value
+    of a cell whose deferral declares one (an area without the network
+    measured, microcosm#1095), and ``None`` where the publisher carries no
+    fact for the area. ``area_has_bound_cells`` says
     whether the membership binds any cell, of any target, for the area at
     that level (``uk_membership_bound_areas``).
     """
@@ -95,6 +97,10 @@ def uk_signed_cells_off_the_surface(
                 if candidate.get("status") == "active" or reason_id in rule_ids:
                     continue
                 value = candidate.get("deferred_value")
+                if candidate.get("declared_value") is not None:
+                    # A declared value (an area without the network measured:
+                    # zero) replaces the compiled one (microcosm#1095).
+                    value = candidate["declared_value"]
                 cells.append(
                     {
                         "target_id": str(target_id),

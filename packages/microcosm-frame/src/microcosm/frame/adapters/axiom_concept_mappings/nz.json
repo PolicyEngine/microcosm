@@ -412,6 +412,21 @@
    }
   },
   {
+   "canonical_input": "nz:statutes/new_zealand_superannuation/core#input.nz_super_shares_residence_with_person_at_least_adult_age",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "nz_super_shares_residence_with_person_at_least_adult_age",
+   "module": "nz/statutes/new_zealand_superannuation/core.yaml",
+   "note": "nz/statutes/new_zealand_superannuation/core.yaml rule nz_super_living_alone (New Zealand Superannuation and Retirement Income Act 2001 s 4A): 'nz_super_single and nz_super_principal_residence_is_qualifying_accommodation and (not nz_super_shares_residence_with_person_at_least_adult_age or nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors)'. The binding returns true when at least one other person with the same frame household id is aged min_age or over. min_age 18 copies parameter nz_super_living_alone_adult_age in the same module (18 from 2026-04-01, source s 4A(3) and (4)) by hand: no RuleSpec formula reads that parameter, so nothing checks min_age against it, and a change to the parameter needs a matching edit here. Differences: the frame's household stands in for the statute's residence, so the binding counts every other person aged 18 or over who carries the person's household id, and misses an adult who shares the residence under another household id; it counts a partner, but nz_super_living_alone requires nz_super_single and nz_super_ordinary_weekly_rate_before_tax branches on nz_super_single first, so the rate never reads a partnered person's value; it counts adult dependent children and temporary visitors, whom nz_super_all_shared_adults_are_exempt_dependent_children_or_temporary_visitors carves out, and the input closure defaults that input to false; ages are completed years at the survey reference date, so a co-resident who turns 18 between that date and the assessment reads differently; a person with no household id reads false.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_adult",
+    "min_age": 18
+   }
+  },
+  {
    "canonical_input": "nz:statutes/new_zealand_superannuation/core#input.nz_super_single",
    "concepts": [
     "fact:person.partner_person_id"
@@ -628,18 +643,17 @@
   {
    "canonical_input": "nz:statutes/social_security/accommodation_supplement/core#input.accommodation_supplement_owner_weekly_required_payments",
    "concepts": [
-    "fact:household.mortgage_interest",
-    "fact:household.mortgage_principal"
+    "fact:household.mortgage_interest"
    ],
    "engine_entity": "Family",
    "engine_input": "accommodation_supplement_owner_weekly_required_payments",
    "group_rule": "allocate_to_reference_unit",
    "module": "nz/statutes/social_security/accommodation_supplement/core.yaml",
-   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs), whose first branch returns it when accommodation_supplement_owns_premises_and_not_joint_owner_with_resident holds; the result feeds the Schedule 4 Part 7 weekly formula, so the value is weekly although the rule declares period Year. Read as the household's annual mortgage interest plus mortgage principal repaid, summed and scaled by 1/52 (one scaled_sum, since a binding takes one transform), on the family that contains the household reference person and zero on the household's other families. Differences: the module does not define the owner's payments; rates (property tax), insurance and other home payments are not added, which understates owners' costs (method card MC8); the concept is what the household repaid in the year, not what the mortgage requires; and a second family in an owner-occupied household gets zero.",
+   "note": "Consumed in nz/statutes/social_security/accommodation_supplement/core.yaml by accommodation_supplement_weekly_accommodation_costs (source: Social Security Act 2018 s 65AAA definition of accommodation costs), whose first branch returns it when accommodation_supplement_owns_premises_and_not_joint_owner_with_resident holds; the result feeds the Schedule 4 Part 7 weekly formula, so the value is weekly although the rule declares period Year. Read as the household's annual mortgage interest scaled by 1/52, on the family that contains the household reference person and zero on the household's other families. Differences: the module does not define the owner's payments; mortgage principal repaid is left out for now, because the pinned PolicyEngine-US donor carries none and money normalization routes it pending (an interim flexibility under ruling d3058 so a first measurement run can go ahead; fact:household.mortgage_principal is listed as unmapped); rates (property tax), insurance and other home payments are not added either; both omissions understate owners' costs (method card MC8); the concept is the interest the household paid in the year, not what the mortgage requires; and a second family in an owner-occupied household gets zero.",
    "relation": "approximate",
    "transform": {
     "factor": 0.019230769230769232,
-    "kind": "scaled_sum"
+    "kind": "scale"
    }
   },
   {
@@ -1495,6 +1509,7 @@
  "input_declaration": "usage_inferred",
  "structural_inputs": [],
  "unmapped": {
+  "fact:household.mortgage_principal": "The only input that would take it, accommodation_supplement_owner_weekly_required_payments (Family) in statutes/social_security/accommodation_supplement/core.yaml, reads mortgage interest alone for now: the pinned PolicyEngine-US donor carries no mortgage principal (its mapping reads principal only inside the non-invertible mortgage_payments sum), so money_normalization.json routes household.mortgage_principal pending and no transport node reads it. This is an interim flexibility under ruling d3058 for a first measurement run. Once a donor carries principal, or the build derives it from the donor's mortgage balance, interest, origination year and an assumed term, the candidate is to restore scaled_sum over mortgage_interest and mortgage_principal with factor 1/52 (approximate).",
   "fact:household.property_tax": "The only rates input, rr_rates_payable_before_rebate (Person) in statutes/rates_rebates/rates_rebate.yaml, cannot be bound at 6fe181f, because the dense engine could not compile that module and nz.json lists it only under cli_walk_inputs, which the adapter's surface loader does not read; once the module compiles, allocate_to_reference_person of property_tax is the candidate (approximate, because the ratepayer need not be the reference person).",
   "fact:household.source_household_id": "Original donor household lineage is build provenance and weight diagnostic support, not a rulespec-nz legal input.",
   "fact:person.educational_attainment": "rulespec-nz at 6fe181f has no input for completed education: no rule or input name mentions a qualification, degree, diploma or attainment level; the education inputs are current enrollment or school attendance (this mapping binds some of them to education_enrollment and enrolled_full_time); and young_person_is_study_ready is what youth_young_parent_payment/core.yaml calls an agency-adjudicated composite input (s 50).",

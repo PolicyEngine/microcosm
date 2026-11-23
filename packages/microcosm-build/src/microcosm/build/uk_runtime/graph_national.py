@@ -101,12 +101,7 @@ from .calibration_run import (
 )
 from .cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
 from .content_identity import uk_frame_content_identity
-from .diagnostics import (
-    uk_published_row_losses,
-    uk_refuse_named_withheld_rows,
-    uk_target_geography_levels,
-    uk_withheld_rows,
-)
+from .diagnostics import uk_target_geography_levels
 from .full_targets import CHRONICLE_SOURCE_CODEC, load_uk_national_target_inputs
 from .graph_build import SPINE_PROVENANCE_TYPE
 from .graph_calibration import (
@@ -477,6 +472,10 @@ class _NationalKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.artifacts as calibrate_artifacts
+        import microcosm.calibrate.matrix as calibrate_matrix
+
+        from . import receipt_counts, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -494,6 +493,20 @@ class _NationalKernel(KernelBase):
             national_calibration,
             national_doctrine,
             support_floor_rules,
+            # The constraint matrices and their encoding, as the dense kernels
+            # hash them (microcosm#1492). Not calibrate.solve: neither the
+            # national target nor the problem path calls it. Its one caller
+            # here, national_calibration_manifest, runs in
+            # uk.full.national-gates@1, which reads the solve's result, whose
+            # key moves with calibrate.solve through calibrate.adam@1.
+            calibrate_matrix,
+            calibrate_artifacts,
+            # full_targets takes its exclusion clock from here; hashed
+            # directly, as the dense target kernels do. Its input-mass gate
+            # counts source households with receipt_counts (microcosm#1095),
+            # hashed beside it so every import it makes is hashed.
+            weighted_integrity,
+            receipt_counts,
             *uk_target_compile_modules(),
         )
         return hashlib.sha256(
@@ -993,7 +1006,7 @@ class UKNationalGateKernel(_NationalKernel):
 
     def implementation_hash(self) -> str:
         from .. import gate_battery
-        from . import battery_bindings, diagnostics, weighted_integrity
+        from . import battery_bindings, diagnostics, receipt_counts, weighted_integrity
 
         return hashlib.sha256(
             canonical_json(
@@ -1005,6 +1018,8 @@ class UKNationalGateKernel(_NationalKernel):
                         battery_bindings,
                         calibration_run,
                         weighted_integrity,
+                        # The input-mass gate's source-household counts.
+                        receipt_counts,
                         diagnostics,
                         support_floor_rules,
                     ),
@@ -1040,41 +1055,12 @@ class UKNationalGateKernel(_NationalKernel):
         manifest_block = national_calibration_manifest(
             result, frame, problem=problem, doctrine=doctrine
         )
-        # María's rule of 2026-10-21 binds a row however few source households
-        # carry it. Under ten, its model figures stay in the build, as a BRMA
-        # row's do (her rulings of 2026-10-17 to 2026-10-19): blank in the
-        # evidence rows, outside the fit gate's verdict, and the manifest's
-        # losses restated over the published rows.
-        withheld = frozenset(
-            uk_withheld_rows(
-                result.problem,
-                result.weights,
-                frame,
-                [{"name": row.name} for row in result.diagnostics],
-            )
-        )
-        if withheld:
-            initial_loss, final_loss = uk_published_row_losses(result, withheld)
-            manifest_block = {
-                **manifest_block,
-                "loss": final_loss,
-                "solve": {
-                    **dict(manifest_block["solve"]),
-                    "initial_loss": initial_loss,
-                    "final_loss": final_loss,
-                },
-                "totals_basis": "published_rows",
-                "model_figures_withheld": len(withheld),
-            }
         diagnostics_rows = [
             {
                 "name": row.name,
-                "estimate": None if row.name in withheld else row.final_estimate,
+                "estimate": row.final_estimate,
                 "target": row.target,
-                "relative_error": None if row.name in withheld else row.relative_error,
-                **(
-                    {"model_figures_withheld": row.name in withheld} if withheld else {}
-                ),
+                "relative_error": row.relative_error,
             }
             for row in result.diagnostics
         ]
@@ -1088,9 +1074,7 @@ class UKNationalGateKernel(_NationalKernel):
                 target_relative_errors={
                     str(row["name"]): float(row["relative_error"])
                     for row in diagnostics_rows
-                    if str(row["name"]) not in withheld
                 },
-                withheld_targets=withheld,
             ),
             "aggregate_admin": admin_totals,
             UK_CGT_PROJECTION_ARTIFACT_KEY: projection,
@@ -1107,9 +1091,6 @@ class UKNationalGateKernel(_NationalKernel):
         )
         blocking = report.blocking_outcomes(release_candidate=False)
         report_payload = gate_phase_report_payload(report, gates=gates)
-        # The gates decide on the published rows and count the withheld ones;
-        # a report that names one stops the build before it leaves.
-        uk_refuse_named_withheld_rows(report_payload, names=withheld, keys=frozenset())
         payload = {
             "schema_version": 1,
             "kind": "uk_national_gate_report",

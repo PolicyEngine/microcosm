@@ -62,6 +62,7 @@ from microcosm.build.run_outcome import (
 from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.graph import (
     ArtifactInput,
+    CompiledGraph,
     ContentStore,
     Graph,
     KernelRegistry,
@@ -90,7 +91,15 @@ from ..staging_cli import (
     validate_staged_dataset_arguments,
     validate_staging_arguments,
 )
-from ..staging_dataset import SHA256SUMS_FILENAME, refresh_sha256sums_entry
+from ..staging_dataset import (
+    AT_BUILD_RECORD_KEY,
+    HANDOVER_RECORD_KEY,
+    SHA256SUMS_FILENAME,
+    StagedBundleHandOver,
+    at_build_record,
+    handover_record,
+    refresh_sha256sums_entry,
+)
 from . import country_adapter, national_role
 from .atomic_area_support import (
     IDENTITY_COLUMN,
@@ -154,6 +163,7 @@ from .graph_population import (
     GEOGRAPHY_ASSIGNMENTS,
     PRIVATE_RENT_LOCALISATION_MODES,
     PROPERTY_LOCALISATION_MODES,
+    RFDR_LOCALISATION_MODES,
 )
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import (
@@ -180,6 +190,7 @@ from .local_doctrine import UK_LOCAL_L0_SEARCH_FLOOR, UK_LOCAL_ROW_METADATA_RULE
 from .national_doctrine import uk_doctrine_with_overrides
 from .national_frame import (
     load_uk_national_frame,
+    require_uk_producer_isa_income_contract,
     uk_release_export_frame,
     write_uk_national_frame,
 )
@@ -191,11 +202,15 @@ from .private_rent_localisation import QUANTILES_SOURCE as RENT_QUANTILES_SOURCE
 from .property_localisation import (
     BAND_MIX_SOURCE,
     QUANTILES_SOURCE,
+    SCOTLAND_BAND_MIX_RESOURCE,
+    SCOTLAND_BAND_MIX_SOURCE,
     SUPPORT_STRATUM_LOWER,
 )
 from .property_localisation import (
     METHOD_VERSION as PROPERTY_LOCALISATION_METHOD,
 )
+from .rfdr_area_layer import METHOD_VERSION as RFDR_AREA_LAYER_METHOD
+from .rfdr_area_layer import RFDR_AREA_LAYER_SOURCE
 from .rowwise_cli import (
     MANIFEST_FILENAME,
     REPOSITORY,
@@ -241,7 +256,7 @@ from .rowwise_staging import (
     thinned_epochs,
 )
 from .size_checkpoint import uk_size_checkpoint_identity
-from .solve_scope import UK_GATE_ONLY_RESOURCES
+from .solve_scope import UK_GATE_ONLY_RESOURCES, UK_POST_SOLVE_RESOURCES
 from .staging import UK_STAGED_DATASET_REPOSITORY, UK_STAGING_REPOSITORY
 from .weight_year import uk_dataset_year_frame
 
@@ -276,8 +291,12 @@ _SUPPORT_ARGUMENTS = dict(
 )
 
 
-def _run_graph_with_progress(compiled, *, execution=None, **kwargs):
+def _run_graph_with_progress(compiled, *, retain_populations, execution=None, **kwargs):
     """Run a graph and emit one lightweight update per completed node.
+
+    ``retain_populations`` names the versions the caller reads from the
+    returned manifest, often none. The run frees every other version once
+    nothing reads it, so each phase says what it keeps.
 
     ``execution`` (node id to cache hit) collects how this attempt reached each
     node. The first run to reach a node decides: a later run in the same
@@ -302,6 +321,7 @@ def _run_graph_with_progress(compiled, *, execution=None, **kwargs):
 
     manifest = run_graph(
         compiled,
+        retain_populations=retain_populations,
         _population_observer=observe,
         _population_observer_detach=False,
         **kwargs,
@@ -494,7 +514,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Dense role: price_paid (default) reads each owner clone's home value "
             "off its assigned constituency's uprated Land Registry sale distribution "
-            "and its council-tax band off its LSOA's VOA mix (microcosm#1240); none "
+            "and its council-tax band off its LSOA's VOA mix (microcosm#1240), or a "
+            "Scottish owner clone's off its council area's CTAXBASE mix "
+            "(microcosm#1095 B12); none "
             "keeps the spine's values and bands on every clone, for measurement "
             "builds only."
         ),
@@ -536,6 +558,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--brma-area-layer-sha256", type=sha256_argument)
     parser.add_argument(
+        "--rfdr-localisation",
+        choices=RFDR_LOCALISATION_MODES,
+        default=None,
+        help=(
+            "Dense role: area (the default with the atomic assignment) sets each "
+            "placed household's Rural Fuel Duty Relief flag off its assigned output "
+            "area (microcosm#1418); none (the default with the legacy assignment) "
+            "leaves the engine's default, for measurement builds only."
+        ),
+    )
+    parser.add_argument(
+        "--rfdr-area-layer",
+        type=Path,
+        default=None,
+        help=(
+            "Resource bytes for the graph source 'uk_rfdr_area_layer' (default: the "
+            "committed UK package resource)."
+        ),
+    )
+    parser.add_argument("--rfdr-area-layer-sha256", type=sha256_argument)
+    parser.add_argument(
         "--private-rent-localisation",
         choices=PRIVATE_RENT_LOCALISATION_MODES,
         default=None,
@@ -566,6 +609,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--measure-exclusions", type=Path)
     parser.add_argument("--register-json", type=Path)
     parser.add_argument("--input-mass-reference", type=Path)
+    parser.add_argument(
+        "--reference-surface",
+        type=Path,
+        help=(
+            "Dense role: the export surface and carried inputs of the dense "
+            "line's current build (reference_surface.json from "
+            "tools/resolve_uk_reference.py), which the export-surface and "
+            "input-coverage gates compare with (microcosm#1095)."
+        ),
+    )
     parser.add_argument(
         "--native-scorecard",
         type=Path,
@@ -788,18 +841,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="National role only: allow a Ledger artifact whose feed commit is not the committed Chronicle pin.",
     )
     parser.add_argument(
-        "--incumbent-h5",
+        "--reference-h5",
         type=Path,
-        help="National role only: the incumbent dataset the finished candidate is evaluated against.",
+        help=(
+            "National role only: the current national build the finished "
+            "candidate is compared with (microcosm#1095)."
+        ),
     )
     parser.add_argument(
-        "--incumbent-sha256",
-        help="National role only: the incumbent's SHA-256, verified before it is read.",
-    )
-    parser.add_argument(
-        "--incumbent-label",
-        default="enhanced_frs_2024_25",
-        help="National role only: the incumbent's label in the score receipt.",
+        "--reference-record",
+        type=Path,
+        help=(
+            "National role only: the cut's record of that build "
+            "(tools/resolve_uk_reference.py), checked against the file."
+        ),
     )
     parser.add_argument(
         "--logbook-prev-row-digest",
@@ -856,16 +911,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--publish-orrery",
         dest="publish_orrery",
         action="store_true",
-        help="Publish the saved graph, including when dataset staging is local-only.",
+        help=(
+            "Accepted for older launchers; it only prints a warning. Builds no "
+            "longer upload the graph to the runs application: the staged "
+            "dataset bundle hands the graph's inputs to the emitter for the "
+            "collector, which builds the Orrery graph files."
+        ),
     )
     graph_publication.add_argument(
         "--no-publish-orrery",
         dest="publish_orrery",
         action="store_false",
-        help="Export graph files locally without submitting a publication job.",
+        help=("Accepted for older launchers; builds upload no graph either way."),
     )
     parser.set_defaults(publish_orrery=None)
     args = parser.parse_args(argv)
+    if args.publish_orrery is True:
+        print(
+            "warning: --publish-orrery no longer uploads the graph to the runs "
+            "application. The staged dataset bundle hands the graph's inputs to "
+            "the emitter, which submits them to the collector with or without "
+            "the flag; the collector builds the Orrery graph files and keeps a "
+            "licensed build's private. With local-only or no "
+            "staging nothing is handed over.",
+            file=sys.stderr,
+            flush=True,
+        )
     validate_staging_arguments(parser, args)
     validate_staged_dataset_arguments(parser, args)
     if args.input_h5 is None and any(
@@ -902,15 +973,18 @@ def _input_record(path: Path, pin: dict, *, pinned: bool) -> dict:
     }
 
 
-#: Graph source name to command-line label of the two property-localisation
-#: resources (microcosm#1240). Both default to the committed package files.
+#: Graph source name to command-line label of the property-localisation
+#: resources (microcosm#1240; the Scottish band mix, microcosm#1095 B12). Each
+#: defaults to the committed package file.
 _PROPERTY_RESOURCE_ARGUMENTS = {
     QUANTILES_SOURCE: "price-paid-quantiles",
     BAND_MIX_SOURCE: "voa-band-mix",
+    SCOTLAND_BAND_MIX_SOURCE: "scotgov-band-mix",
 }
 _PROPERTY_RESOURCE_FILES = {
     QUANTILES_SOURCE: "high_value_home_value_knots.json",
     BAND_MIX_SOURCE: "voa_council_tax_band_mix_lsoa.json",
+    SCOTLAND_BAND_MIX_SOURCE: SCOTLAND_BAND_MIX_RESOURCE,
 }
 
 
@@ -994,6 +1068,55 @@ def _prepare_brma_localisation(
         "mode": mode,
         "method": BRMA_AREA_LAYER_METHOD,
         "resource_pins": {BRMA_AREA_LAYER_SOURCE: pin},
+    }
+
+
+def _prepare_rfdr_localisation(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> dict:
+    """Pin the Rural Fuel Duty Relief area layer and record its binding.
+
+    As with the BRMA layer, the layer enters ``pins`` under its graph source
+    name and a release candidate must build on the committed bytes
+    (microcosm#1418). ``none`` binds nothing here.
+    """
+    mode = getattr(args, "rfdr_localisation", None)
+    if mode is None:
+        # Unset, the mode follows the geography assignment, as the build config
+        # resolves it (the independent review of microcosm#1420).
+        mode = (
+            "area"
+            if getattr(args, "geography_assignment", "atomic") == "atomic"
+            else "none"
+        )
+        args.rfdr_localisation = mode
+    if mode == "none":
+        if getattr(args, "rfdr_area_layer", None) or getattr(
+            args, "rfdr_area_layer_sha256", None
+        ):
+            raise ValueError(
+                "--rfdr-area-layer and --rfdr-area-layer-sha256 need "
+                "--rfdr-localisation area: without it nothing reads the layer."
+            )
+        return {"mode": "none"}
+    committed_path = Path(
+        str(files("microcosm.build.uk").joinpath("rfdr_area_layer.json"))
+    )
+    path = getattr(args, "rfdr_area_layer", None) or committed_path
+    pin = _pin(path, getattr(args, "rfdr_area_layer_sha256", None))
+    if getattr(args, "release_candidate", False):
+        committed = _pin(committed_path)
+        if pin != committed:
+            raise ValueError(
+                "--release-candidate requires the committed RFDR area layer: "
+                f"sha256 {pin['sha256']} is not the package's {committed['sha256']}."
+            )
+    pins[RFDR_AREA_LAYER_SOURCE] = pin
+    sources[RFDR_AREA_LAYER_SOURCE] = path
+    return {
+        "mode": mode,
+        "method": RFDR_AREA_LAYER_METHOD,
+        "resource_pins": {RFDR_AREA_LAYER_SOURCE: pin},
     }
 
 
@@ -1135,48 +1258,23 @@ def _stderr_progress(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
-def _may_withhold_rows(args: argparse.Namespace) -> bool:
-    """Whether the request can bind a row whose model figures stay in the build.
-
-    Every request can: María's rule of 2026-10-21 binds a national row however
-    few source households carry it (the UC payment and benefit-cap bands), as
-    the dense role's area BRMAs have been bound since microcosm#1262, and a
-    thin row's figures stay in the build either way. So no role's staged
-    epochs keep their loss (the fourth review of #1305 kept it for the
-    national role while that role bound no thin row).
-    """
-
-    del args
-    return True
-
-
 def _solve_observer(args: argparse.Namespace, telemetry):
     """Readable stderr lines plus the thinned staging rows of every solve.
 
     The dense solve, the informed size search and the refit share this one
     observer; the size events carry the ``phase`` the stderr line names and
-    the staging row records. An epoch's loss covers every row, so a request
-    that can bind a thin row forwards its epochs without it: the staging rows
-    and the emitter carry null, and only the local stderr line keeps it
-    (the third review of #1305).
+    the staging row records.
     """
     from .solve_progress import uk_solve_progress_callback
 
-    withhold_loss = _may_withhold_rows(args)
     sinks = [uk_solve_progress_callback(_stderr_progress)]
     sinks.append(
-        thinned_epochs(
-            emit_calibration_progress,
-            every=staging_epoch_every(args),
-            withhold_loss=withhold_loss,
-        )
+        thinned_epochs(emit_calibration_progress, every=staging_epoch_every(args))
     )
     if telemetry is not None:
         sinks.append(
             thinned_epochs(
-                telemetry.calibration_progress,
-                every=staging_epoch_every(args),
-                withhold_loss=withhold_loss,
+                telemetry.calibration_progress, every=staging_epoch_every(args)
             )
         )
 
@@ -1238,6 +1336,7 @@ def prepare_full_build(
             args.input_h5, pins["dataset"], pinned=args.input_sha256 is not None
         )
         frame, _ = load_uk_national_frame(args.input_h5)
+        require_uk_producer_isa_income_contract(frame, label="--input-h5")
         sidecar_path = args.input_sidecar or args.input_h5.with_suffix(".build.json")
         gates_path = args.input_spine_gates or args.input_h5.with_suffix(
             ".spine_gates.json"
@@ -1306,6 +1405,7 @@ def prepare_full_build(
     property_binding = _prepare_property_localisation(args, pins, sources)
     brma_binding = _prepare_brma_localisation(args, pins, sources)
     private_rent_binding = _prepare_private_rent_localisation(args, pins, sources)
+    rfdr_binding = _prepare_rfdr_localisation(args, pins, sources)
     stage(
         telemetry,
         "input_pinning",
@@ -1336,6 +1436,7 @@ def prepare_full_build(
         property_localisation=args.property_localisation,
         brma_localisation=args.brma_localisation,
         private_rent_localisation=args.private_rent_localisation,
+        rfdr_localisation=args.rfdr_localisation,
         calibration=UKGraphCalibrationConfig(
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -1384,14 +1485,18 @@ def prepare_full_build(
         if path is not None:
             sources[name] = path
             optional.append(name)
-    if args.input_mass_reference is not None:
-        sources["uk_input_mass_reference"] = args.input_mass_reference
+    for name, path in (
+        ("uk_input_mass_reference", args.input_mass_reference),
+        # The reference build's surface (microcosm#1095): the export-surface
+        # and input-coverage gates read it, and are evidence_absent without.
+        ("uk_reference_surface", getattr(args, "reference_surface", None)),
+    ):
+        if path is None:
+            continue
+        sources[name] = path
         spine = replace(
             spine,
-            sources=(
-                *spine.sources,
-                SourceRef("uk_input_mass_reference", "raw-bytes-v1"),
-            ),
+            sources=(*spine.sources, SourceRef(name, "raw-bytes-v1")),
         )
     checkpoint_identity = (
         None
@@ -1466,6 +1571,7 @@ def prepare_full_build(
         "property_localisation": property_binding,
         "brma_localisation": brma_binding,
         "private_rent_localisation": private_rent_binding,
+        "rfdr_localisation": rfdr_binding,
     }
     graph = add_uk_export_preparation(
         graph,
@@ -1569,7 +1675,8 @@ def _solve_reuse_failure(miss: StoreMiss) -> SolveReuseError:
         "commit; --review-date, --release-candidate, the size, seed, epoch "
         "and --selection-initial-lambda arguments and --engine-blocks; every "
         "packaged UK resource but the gate-only registers "
-        f"({', '.join(sorted(UK_GATE_ONLY_RESOURCES))}); the virtual "
+        f"({', '.join(sorted(UK_GATE_ONLY_RESOURCES))}) and the stock "
+        f"cells' land side ({', '.join(sorted(UK_POST_SOLVE_RESOURCES))}); the virtual "
         "environment and platform; and --graph-store."
     )
 
@@ -1730,6 +1837,7 @@ def _argument_sources(args: argparse.Namespace) -> dict[str, Path]:
             ("measure_exclusions", args.measure_exclusions),
             ("register_json", args.register_json),
             ("input_mass_reference", args.input_mass_reference),
+            ("reference_surface", getattr(args, "reference_surface", None)),
             ("native_scorecard", args.native_scorecard),
             ("matched_size_scorecard", args.matched_size_scorecard),
             ("resume_size_checkpoint", args.resume_size_checkpoint),
@@ -1805,12 +1913,16 @@ def _run_with_graph_publication[Prepared](
             prepared, args, telemetry=telemetry, attempt=attempt, record=record
         )
     except BaseException as failure:
-        # An interrupt still preserves local evidence and its durable queue
-        # entry, but does not wait for an upload or start Hugging Face staging.
+        # An interrupt still preserves local evidence, but does not start
+        # Hugging Face staging.
         interrupted = not isinstance(failure, Exception)
         try:
             _publish_failure_evidence(
-                args, record, telemetry=telemetry, interrupted=interrupted
+                args,
+                record,
+                telemetry=telemetry,
+                interrupted=interrupted,
+                build_id=getattr((attempt or {}).get("state"), "build_id", None),
             )
         except Exception as error:
             print(
@@ -1829,8 +1941,12 @@ def _publish_failure_evidence(
     *,
     telemetry: StagingRunBundleWriterV2 | None,
     interrupted: bool,
+    build_id: str | None = None,
 ) -> None:
     """Publish a failed build's graph evidence beside its attempt evidence.
+
+    ``build_id`` is the attempt's build ID, which the staged evidence bundle
+    names for the collector.
 
     A failed build leaves the output directory, including any earlier
     successful bundle and its completion marker, unchanged. The graph files go
@@ -1844,7 +1960,6 @@ def _publish_failure_evidence(
         EVIDENCE_MANIFEST_NAME,
         FAILURE_BUNDLE_DIRECTORY,
         FAILURE_MARKER_NAME,
-        GRAPH_PUBLICATION_WAIT_SECONDS,
         finalize_graph,
         stage_graph_evidence,
     )
@@ -1854,7 +1969,6 @@ def _publish_failure_evidence(
         args,
         manifest=record.get("manifest"),
         published_root=output,
-        wait_seconds=0 if interrupted else GRAPH_PUBLICATION_WAIT_SECONDS,
     )
     names = [*graph.files, EVIDENCE_MANIFEST_NAME]
     staged = {name: args.out / name for name in names if (args.out / name).is_file()}
@@ -1887,6 +2001,7 @@ def _publish_failure_evidence(
                 if telemetry is not None
                 else Path(args.attempt_evidence).name
             ),
+            build_id=build_id,
         )
     except Exception as error:
         print(
@@ -1997,6 +2112,43 @@ def _refresh_completion(output: Path, roles: Mapping[str, Path]) -> None:
     materialize_bytes(canonical_json(completion), marker)
 
 
+def _kept_for_emitter(staged: StagedBundleHandOver, path: Path) -> bool:
+    """Whether ``path`` must keep its bytes because the emitter reads it later.
+
+    The emitter copies a bundle's small files when the bundle is handed over
+    and uploads every other file from disk; a changed one would make it refuse
+    the upload (``PRESERVED_BYTES_CHANGED``). Such a file keeps its handed-over
+    bytes; the staging records it would have gained are in the staging run's
+    ``staged_dataset`` artifact and in the manifest printed at the end.
+    """
+    if staged.may_rewrite(path.name):
+        return False
+    print(
+        f"warning: {path.name} stays as handed over: the emitter uploads it "
+        "from disk, so the build leaves it unchanged; its staging records are "
+        "in the staging run's artifacts and in the manifest printed below.",
+        file=sys.stderr,
+    )
+    return True
+
+
+def _record_staged_dataset(
+    manifest: dict, staged: StagedBundleHandOver, delivery: Mapping
+) -> None:
+    """The manifest's staging records: the delivery, and the emitter's hand-over.
+
+    The hand-over block lets a later re-stage ask for that hand-over's
+    outcome instead of handing over a second bundle; the at-build block keeps
+    what the staging run and Logbook row recorded, which re-stages leave.
+    """
+    manifest["staging_delivery"] = delivery
+    manifest["staged_dataset"] = staged.delivery
+    manifest[AT_BUILD_RECORD_KEY] = at_build_record(staged.delivery)
+    record = handover_record(staged)
+    if record is not None:
+        manifest[HANDOVER_RECORD_KEY] = record
+
+
 def _close_attempt(
     args: argparse.Namespace,
     attempt: dict,
@@ -2016,25 +2168,32 @@ def _close_attempt(
     if manifest is not None:
         append_phase(state, "published")
         args._gate_report = {"gates": record.get("gate_rows", {})}
-        staged_dataset = stage_dataset(
+        staged = stage_dataset(
             args,
             manifest=manifest,
             output_paths={"manifest": output / MANIFEST_FILENAME},
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
+            build_id=state.build_id,
         )
+        staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
         try:
             _close_staging(args, telemetry, classified, record)
         finally:
-            manifest["staging_delivery"] = staging_delivery(telemetry)
-            manifest["staged_dataset"] = staged_dataset
-            replace_manifest(output / MANIFEST_FILENAME, manifest)
-            if (output / SHA256SUMS_FILENAME).is_file():
-                refresh_sha256sums_entry(output, MANIFEST_FILENAME)
-            _refresh_completion(
-                output, {"rowwise_candidate_manifest": output / MANIFEST_FILENAME}
-            )
+            _record_staged_dataset(manifest, staged, staging_delivery(telemetry))
+            manifest_path = output / MANIFEST_FILENAME
+            sums_path = output / SHA256SUMS_FILENAME
+            # Only files the emitter copied, or that are not in the bundle,
+            # may change now.
+            if not _kept_for_emitter(staged, manifest_path):
+                replace_manifest(manifest_path, manifest)
+                if sums_path.is_file() and not _kept_for_emitter(staged, sums_path):
+                    refresh_sha256sums_entry(output, MANIFEST_FILENAME)
+                if not _kept_for_emitter(staged, output / "build.json"):
+                    _refresh_completion(
+                        output, {"rowwise_candidate_manifest": manifest_path}
+                    )
         state.artifact_location = local_artifact_reference(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
@@ -2045,6 +2204,7 @@ def _close_attempt(
             args,
             output,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
+            build_id=state.build_id,
         )
         _close_staging(args, telemetry, classified, record)
     spool_path = record_candidate_attempt(
@@ -2161,6 +2321,35 @@ def _close_staging(
         )
 
 
+#: The size search, and the pool version it reads. The size checkpoint is
+#: materialized from both, so the numerical phase keeps that pool for it.
+_SIZE_SEARCH = "uk.full.size_search"
+_SIZE_SEARCH_POOL = "uk.full.pool"
+
+
+def _writes_size_checkpoint(args: argparse.Namespace) -> bool:
+    """Whether the build may write the size checkpoint after the solve."""
+    return (
+        args.dataset_households is not None
+        and not args.no_size_checkpoint
+        and args.resume_size_checkpoint is None
+    )
+
+
+def _size_checkpoint_populations(
+    args: argparse.Namespace, compiled: CompiledGraph
+) -> tuple[str, ...]:
+    """The versions :func:`_materialize_size_checkpoint` may read from this run.
+
+    It may read the pool, and only when the build may write the checkpoint and
+    the graph runs the size search. A full-pool search writes none, and then
+    the pool is kept for nothing.
+    """
+    if _writes_size_checkpoint(args) and _SIZE_SEARCH in compiled.order:
+        return (_SIZE_SEARCH_POOL,)
+    return ()
+
+
 def _materialize_size_checkpoint(
     manifest, store, *, args: argparse.Namespace, pins: dict, source_year: int
 ) -> dict | None:
@@ -2181,14 +2370,12 @@ def _materialize_size_checkpoint(
     from .dataset_size import UKSizeSelection
     from .size_checkpoint import write_uk_size_checkpoint
 
-    if "uk.full.size_search" not in manifest.nodes:
+    if _SIZE_SEARCH not in manifest.nodes:
         return None
-    selection_meta = json.loads(
-        _payload(manifest, store, "uk.full.size_search", "selection")
-    )
+    selection_meta = json.loads(_payload(manifest, store, _SIZE_SEARCH, "selection"))
     if selection_meta.get("method") != "contribution_informed_l0":
         return None
-    pool = manifest.population("uk.full.pool")
+    pool = manifest.population(_SIZE_SEARCH_POOL)
     problem = decode_problem(_payload(manifest, store, "uk.full.problem", "problem"))
     initial = Frame(
         {entity: pool.table(entity) for entity in pool.entities},
@@ -2204,7 +2391,7 @@ def _materialize_size_checkpoint(
         problem=problem,
     )
     search = decode_calibration_result(
-        _payload(manifest, store, "uk.full.size_search", "result"),
+        _payload(manifest, store, _SIZE_SEARCH, "result"),
         frame=initial,
         problem=problem,
     )
@@ -2226,9 +2413,7 @@ def _materialize_size_checkpoint(
         provenance={
             "graph_artifacts": {
                 "dense": manifest.nodes["uk.full.dense"].opaque_artifacts["result"],
-                "search": manifest.nodes["uk.full.size_search"].opaque_artifacts[
-                    "result"
-                ],
+                "search": manifest.nodes[_SIZE_SEARCH].opaque_artifacts["result"],
             }
         },
     )
@@ -2286,6 +2471,7 @@ def _execute_full_build(
         checkpoint = _run_solve_phase(
             compile_graph(_through(graph, endpoint)),
             required=reuse,
+            retain_populations=(),
             sources=sources,
             store=store,
             kernels=kernels,
@@ -2302,6 +2488,7 @@ def _execute_full_build(
     preflight = _run_solve_phase(
         compile_graph(preflight_graph),
         required=reuse,
+        retain_populations=(),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2358,6 +2545,7 @@ def _execute_full_build(
         _run_solve_phase(
             compile_graph(_solve_subgraph(graph)),
             required=True,
+            retain_populations=(),
             sources=sources,
             store=store,
             kernels=kernels,
@@ -2373,8 +2561,10 @@ def _execute_full_build(
         epoch_every=staging_epoch_every(args),
         resumed_from_checkpoint=args.resume_size_checkpoint is not None,
     )
+    numerical = compile_graph(_through(graph, "uk.full.gates.calibrated"))
     manifest = _run_graph_with_progress(
-        compile_graph(_through(graph, "uk.full.gates.calibrated")),
+        numerical,
+        retain_populations=_size_checkpoint_populations(args, numerical),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2417,11 +2607,7 @@ def _execute_full_build(
         n_nonzero=diagnostics.get("n_nonzero"),
         realized_households=diagnostics.get("n_records"),
     )
-    if (
-        args.dataset_households is not None
-        and not args.no_size_checkpoint
-        and args.resume_size_checkpoint is None
-    ):
+    if _writes_size_checkpoint(args):
         receipt = _materialize_size_checkpoint(
             manifest,
             store,
@@ -2431,6 +2617,9 @@ def _execute_full_build(
         )
         if receipt is not None and state is not None:
             append_phase(state, "size_selection_checkpointed")
+    # The numerical manifest can hold the pool, and nothing reads it again.
+    # It goes now, so the pool is not resident through the export run.
+    del manifest
     _, enforcement = decode_full_gate_report(gate_report_bytes)
     gate_document = json.loads(gate_report_bytes)
     # The signed local battery report, written before any refusal so a
@@ -2491,6 +2680,7 @@ def _execute_full_build(
     stage(telemetry, "output_bundle", "started")
     manifest = _run_graph_with_progress(
         compile_graph(graph),
+        retain_populations=(full.population,),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -2573,6 +2763,7 @@ def _execute_full_build(
     )
     final = _run_graph_with_progress(
         compile_graph(graph),
+        retain_populations=(),
         sources={
             **sources,
             "exported_dataset": dataset,
@@ -2767,6 +2958,7 @@ def prepare_national_build(
     pins = {"dataset": _pin(input_h5, args.input_sha256)}
     inputs = {"dataset": _input_record(input_h5, pins["dataset"], pinned=True)}
     frame, _ = load_uk_national_frame(input_h5)
+    require_uk_producer_isa_income_contract(frame, label="--input-h5")
     sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
     gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
     load_bound_spine_checkpoint(
@@ -2999,6 +3191,7 @@ def _execute_national_build(
     stage(telemetry, "input_loading", "started")
     checkpoint = _run_graph_with_progress(
         compile_graph(_through(graph, "uk.full.spine_checkpoint")),
+        retain_populations=("uk.full.spine_checkpoint",),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -3023,10 +3216,14 @@ def _execute_national_build(
             for entity in spine_frame.entities
         },
     )
+    # Nothing reads the loaded checkpoint again: each later run loads its own.
+    # It goes now, so the targets run and the solve do not hold a second spine.
+    del spine_frame, checkpoint
     # 2. The register: compiled inside the graph, frozen beside the outputs.
     stage(telemetry, "target_compilation", "started")
     targets = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_TARGETS_NODE)),
+        retain_populations=(),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -3073,7 +3270,7 @@ def _execute_national_build(
         "chronicle_provenance": dict(registry_document["chronicle_provenance"]),
     }
     record["inputs"] = inputs
-    record["incumbent"] = national_role.incumbent_arguments(args)
+    record["reference"] = national_role.reference_arguments(args)
     # 3. The solve and the seam battery, evaluated in the graph.
     stage(
         telemetry,
@@ -3084,6 +3281,7 @@ def _execute_national_build(
     )
     manifest = _run_graph_with_progress(
         compile_graph(_through(graph, NATIONAL_GATES_NODE)),
+        retain_populations=(national.population,),
         sources=sources,
         store=store,
         kernels=kernels,
@@ -3154,7 +3352,6 @@ def _execute_national_build(
         "measure_resolution": evidence["calibration"].get("measure_resolution"),
         "register": evidence["register"],
         "spine_provenance": spine_provenance,
-        "score_vs_enhanced_frs": None,
     }
     stage(telemetry, "diagnostics", "started")
     diagnostics_outcome = write_uk_calibration_diagnostics(
@@ -3277,6 +3474,7 @@ def _execute_national_build(
     )
     final = _run_graph_with_progress(
         compile_graph(continued),
+        retain_populations=(),
         sources={**sources, "exported_dataset": paths["dataset"]},
         store=store,
         kernels=kernels,
@@ -3406,10 +3604,14 @@ def _close_national_attempt(
 ) -> None:
     """Stage the published bundle, evaluate, close the telemetry, spool the row.
 
-    The seam's order: the manifest and the staged bundle first, the
-    incumbent evaluation after the bundle is on the Hub and before the
-    telemetry completes, then the build record and the manifest rewritten
-    with the delivery summary and the sums refreshed.
+    The seam's order: the manifest and the staged bundle's hand-over first,
+    then the comparison with the reference, which waits for no upload and runs before
+    the telemetry completes, then the build record and the manifest rewritten
+    with the delivery summary and the sums refreshed. The build record is
+    rewritten after the hand-over, so the bundle the emitter holds keeps the
+    earlier build record; a re-stage asks the emitter for that hand-over's
+    outcome (the manifest's ``staged_dataset_handover``) rather than hand
+    over the changed directory again.
     """
     from microcosm.build.staging_v2 import validate_staging_delivery
 
@@ -3422,17 +3624,19 @@ def _close_national_attempt(
     if manifest is not None:
         append_phase(state, "published")
         args._gate_report = record["gate_report"]
-        staged_dataset = stage_dataset(
+        staged = stage_dataset(
             args,
             manifest=manifest,
             output_paths=paths,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
             staging_bundle=telemetry,
+            build_id=state.build_id,
         )
+        staged_dataset = staged.delivery
         append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
-        evaluation = national_role.evaluate_against_incumbent(
+        evaluation = national_role.evaluate_against_reference(
             args,
-            incumbent=record.get("incumbent"),
+            reference=record.get("reference"),
             inputs=record["inputs"],
             output_paths=paths,
             telemetry=telemetry,
@@ -3443,36 +3647,43 @@ def _close_national_attempt(
             _close_staging(args, telemetry, classified, record)
         finally:
             delivery = staging_delivery(telemetry)
-            build_record = json.loads(paths["build_record"].read_text())
-            build_record["staging_delivery"] = validate_staging_delivery(delivery)
-            _write_json(paths["build_record"], build_record)
-            manifest["outputs"]["build_record"] = national_role.artifact_info(
-                paths["build_record"]
-            )
-            manifest["build_record"] = {
-                "path": str(paths["build_record"]),
-                "sha256": manifest["outputs"]["build_record"]["sha256"],
-            }
-            manifest["staging_delivery"] = delivery
-            manifest["staged_dataset"] = staged_dataset
+            _record_staged_dataset(manifest, staged, delivery)
             manifest["evaluation"] = evaluation
             if evaluation.get("status") == "completed":
                 manifest["outputs"]["score_receipt"] = evaluation["receipt"]
-            replace_manifest(paths["manifest"], manifest)
-            if (output / SHA256SUMS_FILENAME).is_file():
-                refresh_sha256sums_entry(output, paths["build_record"].name)
+            # Only files the emitter copied, or that are not in the bundle,
+            # may change now. The manifest records the build record's digest,
+            # so the build record changes only with the manifest.
+            rewritten: dict[str, Path] = {}
+            if not _kept_for_emitter(staged, paths["manifest"]):
+                if not _kept_for_emitter(staged, paths["build_record"]):
+                    build_record = json.loads(paths["build_record"].read_text())
+                    build_record["staging_delivery"] = validate_staging_delivery(
+                        delivery
+                    )
+                    _write_json(paths["build_record"], build_record)
+                    manifest["outputs"]["build_record"] = national_role.artifact_info(
+                        paths["build_record"]
+                    )
+                    manifest["build_record"] = {
+                        "path": str(paths["build_record"]),
+                        "sha256": manifest["outputs"]["build_record"]["sha256"],
+                    }
+                    rewritten["build_record"] = paths["build_record"]
+                replace_manifest(paths["manifest"], manifest)
+                rewritten["rowwise_candidate_manifest"] = paths["manifest"]
+            sums_path = output / SHA256SUMS_FILENAME
+            if sums_path.is_file() and not _kept_for_emitter(staged, sums_path):
+                if "build_record" in rewritten:
+                    refresh_sha256sums_entry(output, paths["build_record"].name)
                 if evaluation.get("status") == "completed":
                     national_role.list_sha256sums_entry(
                         output, paths["score_receipt"].name
                     )
-                refresh_sha256sums_entry(output, MANIFEST_FILENAME)
-            _refresh_completion(
-                output,
-                {
-                    "build_record": paths["build_record"],
-                    "rowwise_candidate_manifest": paths["manifest"],
-                },
-            )
+                if "rowwise_candidate_manifest" in rewritten:
+                    refresh_sha256sums_entry(output, MANIFEST_FILENAME)
+            if rewritten and not _kept_for_emitter(staged, output / "build.json"):
+                _refresh_completion(output, rewritten)
     else:
         from .orrery_publication import stage_graph_evidence
 
@@ -3480,6 +3691,7 @@ def _close_national_attempt(
             args,
             output,
             run_id=state.build_id if telemetry is None else telemetry.run_id,
+            build_id=state.build_id,
         )
         _close_staging(args, telemetry, classified, record)
     spool_path = record_candidate_attempt(
@@ -3604,6 +3816,7 @@ def _national_attempt(
         # These checks must precede input loading. The emitter is already
         # running so a refusal is visible as a failed attempt.
         refuse_occupied_national_output(args)
+        national_role.require_signing_key()
         preflight_staged_dataset(args)
         predecessor = resolve_predecessor(args.logbook_prev_row_digest)
         telemetry = create_staging_run_bundle(args, build_id=state.build_id)

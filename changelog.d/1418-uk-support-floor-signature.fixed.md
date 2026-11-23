@@ -1,0 +1,1 @@
+The UK release certifier now checks a run's support-floor drops against the floor's signature alone: its tracking, approver, approval date and expiry. A floor whose reason or adjudication is re-worded can still certify a run that dropped rows under it, and a new signature still refuses (#1418).

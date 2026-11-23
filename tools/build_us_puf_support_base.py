@@ -4,6 +4,16 @@ This diagnostic builder starts from an existing Microcosm US H5, clones the
 frame into ASEC and PUF-tax-detail support channels, imputes PUF-observed
 inputs onto the PUF channel with Microcosm's weighted QRF, and writes a fresh
 base H5 for the fiscal refresh calibration builder.
+
+Telemetry: after parsing its arguments the builder starts the emitter
+(``microcosm.build.program_telemetry``, pipeline ``us_puf_support_base``) and
+records completion, or failure with the error. With
+``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
+emitter that cannot be used stops the builder before it reads any input. A
+checkpointed ``--stage all`` run records a stage change before each child
+interpreter and fails with the first child that exits nonzero; the children
+start no emitter. The compatibility path records the single stage ``all``,
+and a named ``--stage`` run by hand records that stage.
 """
 
 from __future__ import annotations
@@ -15,7 +25,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -23,8 +33,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from microcosm.build import FitWeightRecord, weights_audit_gate
+from microcosm.build import FitWeightRecord, GateResult, weights_audit_gate
 from microcosm.build.frame_checkpoint import write_frame_checkpoint
+from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.outer_stage_runtime import (
     Stage,
@@ -34,12 +45,18 @@ from microcosm.build.outer_stage_runtime import (
     assert_unchanged_identity,
     frame_identity,
 )
+from microcosm.build.program_telemetry import (
+    child_stage_environment,
+    program_telemetry,
+    telemetry_recorded_by_parent,
+)
 from microcosm.build.source_manifest import (
     SupportSpineSpec,
     load_support_spine_manifest,
 )
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.stage_profile import profile_stage
+from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_MEMBER,
     ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256,
@@ -87,9 +104,11 @@ from microcosm.build.us_runtime import (
     load_asec_raw_stage_checkpoint,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
+    processed_puf_tax_unit_partnership_s_corp_income,
     puf_tax_unit_donor_from_arrays,
     resolve_asec_spm_role_source_paths,
     source_year_puf_adjusted_gross_income,
+    source_year_puf_partnership_s_corp_income,
     support_channel_column,
     transfer_puf_capital_gains_tail,
     translate_congressional_district_facts_to_current_vintage,
@@ -154,6 +173,39 @@ from microcosm.build.us_runtime import (
     write_puf_capital_gains_tail_manifest,
 )
 from microcosm.build.us_runtime.asec_sources import ASEC_SOURCE_ARTIFACTS
+from microcosm.build.us_runtime.battery_bindings import us_gate_registry
+from microcosm.build.us_runtime.block_location import (
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+    US_LOCATION_RULE_BLOCK_V1,
+    US_LOCATION_RULE_CHOICES,
+    US_LOCATION_RULE_LEGACY,
+    UsLocationLadder,
+    load_us_location_ladder,
+    us_block_location_gate,
+    us_block_location_manifest,
+    with_household_us_block_location,
+)
+from microcosm.build.us_runtime.cps_source_geography import (
+    cps_source_geography,
+    household_source_keys,
+    load_cps_household_geography,
+)
+from microcosm.build.us_runtime.gate_scopes import us_scoped_gate_manifest
+from microcosm.build.us_runtime.gate_shadow import (
+    GATE_BATTERY_SHADOW_DIRECTORY,
+    GateBatteryShadow,
+    LegacyVerdict,
+    active_gate_shadow,
+    current_gate_shadow,
+    shadow_file_paths,
+    shadow_gate,
+    shadow_not_run,
+    tool_gate_shadows_enabled,
+)
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
     refuse_denied_frame,
@@ -164,7 +216,10 @@ from microcosm.build.us_runtime.puf_qrf_chain import (
     initialize_primary_puf_qrf_chain,
     run_primary_puf_qrf_chain,
 )
-from microcosm.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
+from microcosm.build.us_runtime.puf_support import (
+    PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+    US_PERSON_REFERENCE_ID_COLUMNS,
+)
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 from microcosm.frame.units import US_SCHEMA
@@ -284,6 +339,60 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
 OUTER_STAGE_PIPELINE = StagePipeline(
     tuple(Stage(name, " -> ".join(boundaries)) for name, boundaries in STAGE_BOUNDARIES)
 )
+# --location-rule block_v1 (microcosm #696) replaces the legacy two-step
+# location (SOI return-count congressional-district draw, then a block within
+# that district) with one household block draw from which every geography,
+# the congressional district included, derives. It is a separate pipeline so
+# the legacy stage list, its descriptions and its sha stay byte-identical.
+HOUSEHOLD_LOCATION_STAGE_NAME = "household_location_assignment"
+_LEGACY_LOCATION_STAGE_NAMES = (
+    "congressional_district_assignment",
+    "block_ladder_assignment",
+)
+
+
+def _block_v1_stage_boundaries() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    boundaries: list[tuple[str, tuple[str, ...]]] = []
+    for stage_name, steps in STAGE_BOUNDARIES:
+        if stage_name == _LEGACY_LOCATION_STAGE_NAMES[0]:
+            boundaries.append(
+                (
+                    HOUSEHOLD_LOCATION_STAGE_NAME,
+                    ("with_household_us_block_location[block_v1]",),
+                )
+            )
+        elif stage_name != _LEGACY_LOCATION_STAGE_NAMES[1]:
+            boundaries.append((stage_name, steps))
+    return tuple(boundaries)
+
+
+BLOCK_V1_STAGE_BOUNDARIES = _block_v1_stage_boundaries()
+BLOCK_V1_PIPELINE_STEPS = tuple(name for name, _ in BLOCK_V1_STAGE_BOUNDARIES)
+BLOCK_V1_OUTER_STAGE_PIPELINE = StagePipeline(
+    tuple(
+        Stage(name, " -> ".join(boundaries))
+        for name, boundaries in BLOCK_V1_STAGE_BOUNDARIES
+    )
+)
+# Every stage name --stage accepts under either rule; a rule's own pipeline
+# refuses the other rule's location stages at run time.
+ALL_STAGE_NAMES = (*STAGE_NAMES, HOUSEHOLD_LOCATION_STAGE_NAME)
+
+
+def _location_rule(args: object) -> str:
+    return str(getattr(args, "location_rule", US_LOCATION_RULE_LEGACY))
+
+
+def _is_block_v1(args: object) -> bool:
+    return _location_rule(args) == US_LOCATION_RULE_BLOCK_V1
+
+
+def _pipeline_steps_for(args: object) -> tuple[str, ...]:
+    return BLOCK_V1_PIPELINE_STEPS if _is_block_v1(args) else PIPELINE_STEPS
+
+
+def _pipeline_for(args: object) -> StagePipeline:
+    return BLOCK_V1_OUTER_STAGE_PIPELINE if _is_block_v1(args) else OUTER_STAGE_PIPELINE
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -366,7 +475,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument(
         "--stage",
-        choices=(*STAGE_NAMES, "all"),
+        choices=(*ALL_STAGE_NAMES, "all"),
         default="all",
         help=(
             "Run one descriptive checkpointed stage, or run all stages as fresh "
@@ -449,7 +558,46 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "build."
         ),
     )
+    parser.add_argument(
+        "--location-rule",
+        choices=US_LOCATION_RULE_CHOICES,
+        default=US_LOCATION_RULE_LEGACY,
+        help=(
+            "Household location rule. 'legacy' (default) draws a "
+            "congressional district from SOI return-count Ledger facts and "
+            "then a block within it. 'block_v1' (microcosm #696) draws one "
+            "2020 census block per household proportional to block "
+            "population within its CPS ASEC source geography (identified "
+            "county, else its state outside the ASEC year's identified "
+            "counties) and derives every other geography, the congressional "
+            "district included, from the block."
+        ),
+    )
+    parser.add_argument(
+        "--location-seed",
+        default=0,
+        type=int,
+        help="Seed of the block_v1 household block draw (block_v1 only).",
+    )
+    parser.add_argument(
+        "--location-clones",
+        default=1,
+        type=int,
+        help=(
+            "Location clones per household (block_v1 only). Only 1 is "
+            "admitted on this line today; see the parse-time refusal."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.location_rule == US_LOCATION_RULE_BLOCK_V1:
+        _validate_block_v1_args(parser, args)
+        return _validate_common_args(parser, args)
+    if args.location_seed != 0 or args.location_clones != 1:
+        parser.error(
+            "--location-seed and --location-clones apply only to "
+            "--location-rule block_v1; the legacy rule draws with "
+            "--congressional-district-seed and --geography-ladder-seed"
+        )
     if (
         args.congressional_district_vintage_crosswalk is not None
         and not args.assign_congressional_districts
@@ -479,6 +627,75 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "(tools/build_us_block_ladder_artifact.py) or opt out "
             "explicitly with --without-block-ladder"
         )
+    return _validate_common_args(parser, args)
+
+
+# Why --location-clones > 1 is refused on this line (read this session): the
+# release that consumes this base refuses duplicate copies of one source unit.
+_LOCATION_CLONES_BLOCKERS = (
+    "support_provenance.py:support_copy_rank_series admits only support clone "
+    "indices 0, 1 and 2 on a historical frame",
+    "sipp_head_start.py:_recipient_predictors (via with_us_sipp_head_start_input) "
+    "refuses repeated (person_source_id, copy rank) pairs",
+    "voluntary_filing.py:_source_receiver_rows refuses repeated "
+    "(tax_unit_source_id, copy rank) pairs",
+    "puf_capital_gains_tail.py:assert_puf_capital_gains_tail_survives_selection "
+    "requires each capital-gains tail donor once among applied tax units",
+)
+
+
+def _validate_block_v1_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
+    if args.location_clones != 1:
+        parser.error(
+            "--location-clones must be 1 on the base-h5 line for now: the "
+            "Route A release (tools/build_us_fiscal_refresh_release.py "
+            "--base-h5) cannot yet admit location clones of one source "
+            "household: " + "; ".join(_LOCATION_CLONES_BLOCKERS)
+        )
+    if args.location_seed < 0:
+        parser.error("--location-seed must be non-negative")
+    if args.block_ladder_artifact is None:
+        parser.error(
+            "--location-rule block_v1 requires --block-ladder-artifact: the "
+            "household block draw samples the ladder's 2020 blocks"
+        )
+    if args.without_block_ladder:
+        parser.error(
+            "--location-rule block_v1 and --without-block-ladder are "
+            "contradictory: every geography derives from the drawn block"
+        )
+    if args.assign_congressional_districts or args.ledger_facts is not None:
+        parser.error(
+            "--location-rule block_v1 replaces the SOI return-count "
+            "congressional-district draw: drop --assign-congressional-"
+            "districts and --ledger-facts (the district derives from the block)"
+        )
+    if args.congressional_district_seed != 0 or args.geography_ladder_seed != 0:
+        parser.error(
+            "--congressional-district-seed and --geography-ladder-seed seed "
+            "the legacy draws; under --location-rule block_v1 pass "
+            "--location-seed"
+        )
+    if args.congressional_district_vintage_crosswalk is None:
+        parser.error(
+            "--location-rule block_v1 requires "
+            "--congressional-district-vintage-crosswalk: the Route A release "
+            "checks the base's crosswalk sha and 119th-Congress target "
+            "attributes before it runs"
+        )
+    if args.base_h5 is not None:
+        parser.error(
+            "--location-rule block_v1 requires --asec-h5 sources: a CPS "
+            "household's candidate blocks come from its ASEC GTCO/GESTFIPS "
+            "row, which a --base-h5 input does not carry"
+        )
+
+
+def _validate_common_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> argparse.Namespace:
     if args.support_spine_spec is not None and args.asec_h5 is None:
         parser.error("--support-spine-spec requires --asec-h5")
     if args.stage != "all" and args.checkpoint_dir is None:
@@ -648,10 +865,29 @@ def _verify_asec_source_digests(args: argparse.Namespace) -> None:
             )
 
 
+#: The telemetry pipeline this builder reports under.
+TELEMETRY_PIPELINE = "us_puf_support_base"
+
+
 def main(argv: list[str] | None = None) -> None:
-    """Dispatch the byte-identical legacy path or checkpoint scaffolding."""
+    """Dispatch the byte-identical legacy path or checkpoint scaffolding.
+
+    A child stage of a checkpointed ``--stage all`` run starts no emitter:
+    its parent records its stage and outcome. Every other run starts one.
+    """
 
     args = _parse_args() if argv is None else _parse_args(argv)
+    if telemetry_recorded_by_parent():
+        _dispatch(args, None)
+        return
+    with program_telemetry(pipeline=TELEMETRY_PIPELINE) as telemetry:
+        _dispatch(args, telemetry)
+
+
+def _dispatch(
+    args: argparse.Namespace, telemetry: LocalTelemetryEmitter | None
+) -> None:
+    """Run the parsed command, recording stage changes on ``telemetry`` if any."""
 
     _verify_asec_source_digests(args)
     stage = getattr(args, "stage", "all")
@@ -667,54 +903,257 @@ def main(argv: list[str] | None = None) -> None:
                 "Named staged builds require an explicit PYTHONHASHSEED; use "
                 "--stage all to default fresh child processes to 0."
             )
+        if telemetry is not None:
+            telemetry.transition_stage(stage)
         _run_configured_stage(args)
         return
     if checkpoint_dir is None:
         # This is intentionally a direct call with no profiler, checkpoint
-        # directory creation, or other side effect.  It is the pre-refactor
-        # pipeline and remains the byte-for-byte compatibility path.
+        # directory creation, or other side effect, except telemetry (the
+        # emitter started in main() and the one stage change below) and the
+        # gate battery's shadow files beside the outputs, none of which
+        # changes an output byte. It is the pre-refactor pipeline and remains
+        # the byte-for-byte compatibility path.
+        if telemetry is not None:
+            telemetry.transition_stage("all")
         boundary_dir = getattr(args, "equivalence_boundary_dir", None)
         observer = (
-            None if boundary_dir is None else _EquivalenceBoundaryObserver(boundary_dir)
+            None
+            if boundary_dir is None
+            else _EquivalenceBoundaryObserver(
+                boundary_dir, pipeline_steps=_pipeline_steps_for(args)
+            )
         )
-        if observer is None:
-            _run_all(args)
-        else:
-            _run_all(args, boundary_observer=observer)
+        with _armed_base_gate_shadow(args):
+            if observer is None:
+                _run_all(args)
+            else:
+                _run_all(args, boundary_observer=observer)
+        if observer is not None:
             observer.assert_complete()
         return
-    _run_staged_all(args)
+    _run_staged_all(args, telemetry)
 
 
-def _run_staged_all(args: argparse.Namespace) -> None:
-    """Run every outer boundary in a fresh interpreter, resuming by prefix."""
+def _run_staged_all(
+    args: argparse.Namespace, telemetry: LocalTelemetryEmitter | None = None
+) -> None:
+    """Run every outer boundary in a fresh interpreter, resuming by prefix.
 
+    Before each child, ``telemetry`` (the parent's, if any) records that
+    child's stage; a child that exits nonzero stops the run, which main()
+    records as that stage's failure. The children start no emitter.
+    """
+
+    pipeline_steps = _pipeline_steps_for(args)
     runtime = StageRuntime(
         args.checkpoint_dir,
-        OUTER_STAGE_PIPELINE,
+        _pipeline_for(args),
         run_config=_stage_run_config(args),
     )
     completed_prefix = runtime.context.completed
-    remaining = PIPELINE_STEPS[len(completed_prefix) :]
-    if not remaining and completed_prefix == PIPELINE_STEPS:
+    remaining = pipeline_steps[len(completed_prefix) :]
+    if not remaining and completed_prefix == pipeline_steps:
         # Re-enter only the fresh final child so it can validate/repair the
         # export and stage_all alias after a crash in the post-context window.
         remaining = ("final_export",)
-    for stage in remaining:
-        completed = subprocess.run(
-            [
-                sys.executable,
-                str(Path(__file__).resolve()),
-                *_stage_cli_args(args, stage),
-            ],
-            check=False,
-            env=_staged_subprocess_environment(),
-        )
-        if completed.returncode != 0:
-            raise SystemExit(
-                f"Checkpointed stage {stage!r} failed with exit code "
-                f"{completed.returncode}."
+    # Each child observes its own stage's gates; this parent finishes the
+    # shadow scope from what they saved, completed stages included.
+    directory = _final_gate_shadow_directory(args)
+    shadow = None if directory is None else _base_gate_shadow(args, directory)
+    # The stages that ran, in an earlier run of this checkpoint or here: each
+    # one should have saved its observations.
+    stages_run = list(completed_prefix)
+    try:
+        for stage in remaining:
+            if stage not in stages_run:
+                stages_run.append(stage)
+            if telemetry is not None:
+                telemetry.transition_stage(stage)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    *_stage_cli_args(args, stage),
+                ],
+                check=False,
+                env=_staged_subprocess_environment(),
             )
+            if completed.returncode != 0:
+                raise SystemExit(
+                    f"Checkpointed stage {stage!r} failed with exit code "
+                    f"{completed.returncode}."
+                )
+    except BaseException as error:
+        if shadow is not None:
+            _load_stage_gate_shadows(shadow, args, stages_run)
+            shadow.stop(error)
+        raise
+    if shadow is not None:
+        _load_stage_gate_shadows(shadow, args, stages_run)
+        shadow.finish()
+
+
+#: This tool's scope of us/gates.json, evaluated in shadow beside today's
+#: gates (microcosm#1585 item 11, PR 2 of 4).
+US_BASE_GATE_SCOPE = "us_base"
+_GEOGRAPHY_LADDER_WAIVER = "--allow-geography-ladder-gate-failures"
+
+
+def _final_gate_shadow_directory(args: argparse.Namespace) -> Path | None:
+    """Where the finished shadow files go: beside the outputs.
+
+    ``None``, and the run goes without a shadow, when the switch is off (the
+    test suite) or for stand-in arguments without ``--out``, which have
+    nowhere to write; the parser requires ``--out`` of every real run.
+    """
+
+    out = getattr(args, "out", None)
+    if out is None or not tool_gate_shadows_enabled():
+        return None
+    return Path(out).resolve() / GATE_BATTERY_SHADOW_DIRECTORY
+
+
+def _stage_gate_shadow_observations(args: argparse.Namespace, stage: str) -> Path:
+    return (
+        args.checkpoint_dir
+        / GATE_BATTERY_SHADOW_DIRECTORY
+        / f"{stage}.observations.json"
+    )
+
+
+def _base_gate_shadow(args: argparse.Namespace, directory: Path) -> GateBatteryShadow:
+    """This build's gate battery in shadow, its files in ``directory``."""
+
+    report_path, comparison_path = shadow_file_paths(directory, US_BASE_GATE_SCOPE)
+    waived = (
+        ("us_base_geography_ladder", "us_base_block_location")
+        if getattr(args, "allow_geography_ladder_gate_failures", False)
+        else ()
+    )
+    target_year = getattr(args, "target_year", PERIOD)
+    return GateBatteryShadow(
+        us_scoped_gate_manifest(US_BASE_GATE_SCOPE),
+        scope=US_BASE_GATE_SCOPE,
+        release_id=f"populace-us-{target_year}-puf-support-base",
+        report_path=report_path,
+        comparison_path=comparison_path,
+        registry=us_gate_registry(US_BASE_GATE_SCOPE, tool=globals()),
+        waivers={entry_id: (_GEOGRAPHY_LADDER_WAIVER,) for entry_id in waived},
+    )
+
+
+@contextmanager
+def _armed_base_gate_shadow(
+    args: argparse.Namespace,
+) -> Iterator[GateBatteryShadow | None]:
+    """The single-process run's shadow, finished when the block exits."""
+
+    directory = _final_gate_shadow_directory(args)
+    if directory is None:
+        yield None
+        return
+    shadow = _base_gate_shadow(args, directory)
+    with shadow, active_gate_shadow(shadow):
+        yield shadow
+
+
+@contextmanager
+def _armed_stage_gate_shadow(args: argparse.Namespace) -> Iterator[Callable[[], None]]:
+    """Arm one checkpointed stage's shadow; yield the call that saves it.
+
+    The stage saves before it marks itself complete, so a resumed build finds
+    the observations of every stage it does not run again. A stage that
+    raises saves what it saw on the way out, so the parent's report says
+    where the build stopped. A save that fails warns and is otherwise left to
+    the parent, which then notes that the stage saved nothing and reports its
+    entries as unobserved. With
+    the switch off the stage runs without a shadow and saves nothing.
+    """
+
+    if not tool_gate_shadows_enabled():
+        yield lambda: None
+        return
+    shadow = _base_gate_shadow(
+        args, args.checkpoint_dir / GATE_BATTERY_SHADOW_DIRECTORY / args.stage
+    )
+    path = _stage_gate_shadow_observations(args, args.stage)
+    saved = False
+
+    def save() -> None:
+        nonlocal saved
+        if saved:
+            return
+        saved = True
+        try:
+            shadow.save_observations(path)
+        except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
+            print(
+                f"warning: could not save gate battery shadow observations to "
+                f"{path}: {type(error).__name__}: {error}",
+                file=sys.stderr,
+            )
+
+    with active_gate_shadow(shadow):
+        try:
+            yield save
+        except BaseException:
+            save()
+            raise
+    save()
+
+
+def _load_stage_gate_shadows(
+    shadow: GateBatteryShadow,
+    args: argparse.Namespace,
+    stages_run: Sequence[str],
+) -> None:
+    """Load what each stage that ran saved.
+
+    A stage that ran but saved nothing (its save failed, or it ran with the
+    shadow off) is noted, so a stopped run never names its entries unreached.
+    """
+
+    for stage in stages_run:
+        path = _stage_gate_shadow_observations(args, stage)
+        if path.is_file():
+            shadow.load_observations(path)
+        else:
+            shadow.note_missing_observations(f"the {stage} stage saved no observations")
+
+
+def _shadow_frame_gate(
+    entry_id: str, evaluate: Callable[[], GateResult], frame: Frame
+) -> GateResult:
+    """Today's frame signal gate, with the battery's entry beside it."""
+
+    return shadow_gate(entry_id, evaluate, lambda: EvidenceContext(frame=frame))
+
+
+def _observe_frame_gate(entry_id: str, result: GateResult, frame: Frame) -> None:
+    """Observe a frame gate verdict today's code reached by itself."""
+
+    shadow = current_gate_shadow(entry_id)
+    if shadow is None:
+        return
+    try:
+        legacy = LegacyVerdict.from_result(result)
+    except TypeError as error:
+        shadow.record_error(entry_id, f"today's verdict is not comparable: {error}")
+        return
+    shadow.check(entry_id, lambda: EvidenceContext(frame=frame), legacy)
+
+
+def _shadow_legacy_location_not_run(args: argparse.Namespace) -> None:
+    """The location entries the legacy location rule never evaluates."""
+
+    shadow_not_run("us_base_block_location", "the legacy location rule draws no block")
+    if getattr(args, "block_ladder_artifact", None) is None:
+        shadow_not_run(
+            "us_base_geography_ladder",
+            "the legacy location rule assigns no geography ladder without "
+            "--block-ladder-artifact",
+        )
 
 
 def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
@@ -770,6 +1209,12 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
     command.extend(("--geography-ladder-seed", str(args.geography_ladder_seed)))
     if args.allow_geography_ladder_gate_failures:
         command.append("--allow-geography-ladder-gate-failures")
+    if _is_block_v1(args):
+        # Emitted only off the legacy rule, so legacy child command lines
+        # stay byte-identical.
+        command.extend(("--location-rule", _location_rule(args)))
+        command.extend(("--location-seed", str(args.location_seed)))
+        command.extend(("--location-clones", str(args.location_clones)))
     if getattr(args, "equivalence_deterministic_h5_metadata", False):
         command.append("--equivalence-deterministic-h5-metadata")
     return command
@@ -783,7 +1228,8 @@ def _append_path_argument(command: list[str], flag: str, value: Path | None) -> 
 def _staged_subprocess_environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment.setdefault("PYTHONHASHSEED", "0")
-    return environment
+    # The child starts no emitter: this process records its telemetry.
+    return child_stage_environment(environment)
 
 
 def _asec_education_source_paths(
@@ -849,7 +1295,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             "PYTHONHASHSEED",
         )
     }
-    return {
+    config: dict[str, object] = {
         "allow_geography_ladder_gate_failures": bool(
             args.allow_geography_ladder_gate_failures
         ),
@@ -907,6 +1353,31 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "thread_environment": thread_environment,
         "without_block_ladder": bool(args.without_block_ladder),
     }
+    if not tool_gate_shadows_enabled():
+        # microcosm#1585 item 11: a stage run with the gate battery's shadow
+        # off saves no observations, and the run that finishes the scope
+        # could then only call its entries unwired. The switch is locked
+        # when off only, so a resume cannot mix the two, and a real build's
+        # config, with the shadow on, is unchanged.
+        config["gate_battery_shadow"] = "off"
+    if _is_block_v1(args):
+        # Off the legacy rule only, so a legacy run config (and every legacy
+        # checkpoint directory that locked one) is unchanged. The ladder's
+        # digest is locked too: a ladder rewritten in place at the same path
+        # would silently move every drawn block.
+        config.update(
+            {
+                "location_rule": _location_rule(args),
+                "location_seed": int(args.location_seed),
+                "location_clones": int(args.location_clones),
+                "block_ladder_artifact_sha256": (
+                    _sha256(args.block_ladder_artifact)
+                    if Path(args.block_ladder_artifact).is_file()
+                    else None
+                ),
+            }
+        )
+    return config
 
 
 def _builder_code_identity() -> dict[str, object]:
@@ -931,13 +1402,19 @@ def _builder_code_identity() -> dict[str, object]:
 class _EquivalenceBoundaryObserver:
     """Write test-only monolith snapshots without changing production stages."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        pipeline_steps: tuple[str, ...] = PIPELINE_STEPS,
+    ) -> None:
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self._next_stage_index = 0
+        self.pipeline_steps = pipeline_steps
 
     def observe_frame(self, stage: str, frame: Frame) -> None:
-        expected = PIPELINE_STEPS[self._next_stage_index]
+        expected = self.pipeline_steps[self._next_stage_index]
         if stage != expected:
             raise AssertionError(
                 f"Monolith boundary order changed: expected {expected!r}, got "
@@ -948,7 +1425,7 @@ class _EquivalenceBoundaryObserver:
             frame,
             metadata={
                 "artifact_kind": "populace_monolith_equivalence_boundary",
-                "pipeline_steps": list(PIPELINE_STEPS),
+                "pipeline_steps": list(self.pipeline_steps),
                 "stage": stage,
                 "stage_index": self._next_stage_index,
             },
@@ -990,10 +1467,10 @@ class _EquivalenceBoundaryObserver:
                 temporary.unlink(missing_ok=True)
 
     def assert_complete(self) -> None:
-        if self._next_stage_index != len(PIPELINE_STEPS):
+        if self._next_stage_index != len(self.pipeline_steps):
             raise AssertionError(
                 "Monolith boundary observer stopped after "
-                f"{self._next_stage_index}/{len(PIPELINE_STEPS)} stages."
+                f"{self._next_stage_index}/{len(self.pipeline_steps)} stages."
             )
 
 
@@ -1051,6 +1528,177 @@ def _write_policyengine_dataset(
         )
 
 
+def _load_block_v1_location_ladder(args: argparse.Namespace) -> UsLocationLadder:
+    """Load the block_v1 ladder; its primary CD plan must be the current one.
+
+    Route A reads the base's ``congressional_district_geoid`` as a
+    current-vintage (119th Congress) district and checks the vintage attrs
+    this builder writes, so a ladder whose primary plan is another vintage
+    is refused before any draw.
+    """
+
+    ladder = load_us_location_ladder(args.block_ladder_artifact)
+    if ladder.primary_congressional_district_plan != (
+        CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+    ):
+        raise SystemExit(
+            "--location-rule block_v1: the block ladder's primary "
+            "congressional-district plan is "
+            f"{ladder.primary_congressional_district_plan!r}, but this base "
+            f"records districts as {CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE!r}."
+        )
+    # Validates the crosswalk artifact (current-vintage targets) even though
+    # block_v1 translates no facts: its digest is the attr Route A checks.
+    load_congressional_district_vintage_crosswalk(
+        args.congressional_district_vintage_crosswalk
+    )
+    return ladder
+
+
+def _block_v1_household_location(
+    args: argparse.Namespace,
+    frame: Frame,
+) -> tuple[Frame, dict[str, object]]:
+    """Draw every household's 2020 block (microcosm #696) and record it.
+
+    Every household on this line is CPS ASEC lineage: PUF-detail and
+    capital-gains tail copies share their native row's
+    ``(source_year, source_household_id)``, so each copy's candidate blocks
+    come from the same ASEC row (identified county when ``GTCO`` is nonzero,
+    else its state outside that ASEC year's identified counties), while each
+    copy gets its own keyed draw. Returns the located frame and the
+    ``household_location`` manifest record.
+    """
+
+    ladder = _load_block_v1_location_ladder(args)
+    asec_paths = _asec_source_paths(args)
+    source_year, source_household_id = household_source_keys(frame)
+    geography = cps_source_geography(
+        ladder,
+        load_cps_household_geography(asec_paths),
+        source_year=source_year,
+        source_household_id=source_household_id,
+        state_fips=frame.table("household")["state_fips"].to_numpy(np.int64),
+    )
+    located, table = with_household_us_block_location(
+        frame,
+        ladder,
+        seed=args.location_seed,
+        clones=args.location_clones,
+        county_fips=geography.county_fips,
+        identification_group=geography.identification_group,
+        identified_counties=geography.identified_counties,
+        cbsa_code=geography.cbsa_code,
+        unidentified_county_share=geography.unidentified_county_share,
+        person_reference_columns=US_PERSON_REFERENCE_ID_COLUMNS,
+    )
+    household = located.table("household")
+    household_weights = located.weights_for("household").values
+    location_gate = shadow_gate(
+        "us_base_block_location",
+        lambda: us_block_location_gate(household, ladder),
+        lambda: EvidenceContext(
+            artifacts={"household": household, "location_ladder": ladder}
+        ),
+    )
+    # The L0/refit release export re-runs the legacy geography-ladder gate
+    # (l0_refit_export.py:export_us_l0_refit_h5) on frames built from this
+    # base, so the block draw must pass it here too.
+    ladder_gate = shadow_gate(
+        "us_base_geography_ladder",
+        lambda: us_geography_ladder_gate(household, household_weights),
+        lambda: EvidenceContext(
+            artifacts={"household": household, "household_weights": household_weights}
+        ),
+    )
+    failures = [
+        *(f"us_block_location: {failure}" for failure in location_gate.failures),
+        *(f"geography_ladder: {failure}" for failure in ladder_gate.failures),
+    ]
+    if failures and not args.allow_geography_ladder_gate_failures:
+        raise SystemExit(
+            "Household location (block_v1) gate failed:\n  " + "\n  ".join(failures)
+        )
+    record = us_block_location_manifest(
+        table,
+        ladder,
+        seed=args.location_seed,
+        clones=args.location_clones,
+        candidate_set_rule=geography.record,
+    )
+    record.update(
+        {
+            "applied": True,
+            "artifact": str(args.block_ladder_artifact.resolve()),
+            "artifact_sha256": ladder.sha256,
+            "asec_h5": {
+                str(year): str(path.resolve())
+                for year, path in sorted(asec_paths.items())
+            },
+            "congressional_district_vintage_crosswalk": str(
+                args.congressional_district_vintage_crosswalk.resolve()
+            ),
+            "congressional_district_vintage_crosswalk_sha256": _sha256(
+                args.congressional_district_vintage_crosswalk
+            ),
+            "congressional_district_vintage_target": (
+                CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+            "coverage": us_geography_ladder_assignment_summary(
+                household,
+                ladder.blocks,
+                weight_values=household_weights,
+            ),
+            "gate": {
+                "passed": location_gate.passed,
+                "failures": list(location_gate.failures),
+                "details": dict(location_gate.details),
+            },
+            "geography_ladder_gate": {
+                "passed": ladder_gate.passed,
+                "failures": list(ladder_gate.failures),
+                "details": dict(ladder_gate.details),
+            },
+        }
+    )
+    return located, record
+
+
+def _write_block_v1_location_attrs(
+    attrs: MutableMapping[str, object],
+    household_location: Mapping[str, object],
+) -> None:
+    """Root attrs of a block_v1 base; legacy bases never carry the location ones.
+
+    The crosswalk digest and ``119th_congress`` target are the attrs Route A
+    checks before it runs. The ladder digest and vintages go under both the
+    legacy ladder names and the ``populace_block_ladder_*`` names every
+    block_v1 line writes. Seed and clones are written as text, as the stacked
+    pool writes them.
+    """
+
+    ladder = household_location["block_ladder"]
+    if not isinstance(ladder, Mapping):
+        raise TypeError("household_location['block_ladder'] must be a mapping.")
+    attrs[CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = str(
+        household_location["congressional_district_vintage_crosswalk_sha256"]
+    )
+    attrs[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = str(
+        household_location["congressional_district_vintage_target"]
+    )
+    attrs[GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR] = str(ladder["sha256"])
+    attrs[GEOGRAPHY_LADDER_VINTAGES_ATTR] = json.dumps(
+        ladder["layer_vintages"], sort_keys=True
+    )
+    attrs[POPULACE_BLOCK_LADDER_SHA256_ATTR] = str(ladder["sha256"])
+    attrs[POPULACE_BLOCK_LADDER_VINTAGES_ATTR] = json.dumps(
+        ladder["layer_vintages"], sort_keys=True
+    )
+    attrs[POPULACE_LOCATION_RULE_ATTR] = str(household_location["location_rule"])
+    attrs[POPULACE_LOCATION_SEED_ATTR] = str(household_location["seed"])
+    attrs[POPULACE_LOCATION_CLONES_ATTR] = str(household_location["clones"])
+
+
 def _run_all(
     args: argparse.Namespace,
     *,
@@ -1095,7 +1743,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    relationship_inputs_gate = us_relationship_inputs_signal_gate(base)
+    relationship_inputs_gate = _shadow_frame_gate(
+        "us_base_relationship_inputs",
+        lambda: us_relationship_inputs_signal_gate(base),
+        base,
+    )
     if not relationship_inputs_gate.passed:
         raise SystemExit(
             "Relationship-input signal gate failed:\n  "
@@ -1107,7 +1759,11 @@ def _run_all(
         time_period=args.target_year,
         asec_spm_role_source_paths=_asec_education_source_paths(args),
     )
-    spm_independence_role_gate = us_spm_independence_role_signal_gate(base)
+    spm_independence_role_gate = _shadow_frame_gate(
+        "us_base_spm_independence_role",
+        lambda: us_spm_independence_role_signal_gate(base),
+        base,
+    )
     if not spm_independence_role_gate.passed:
         raise SystemExit(
             "SPM independence role signal gate failed:\n  "
@@ -1118,7 +1774,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    medicare_take_up_gate = us_medicare_take_up_signal_gate(base)
+    medicare_take_up_gate = _shadow_frame_gate(
+        "us_base_medicare_take_up_pre_clone",
+        lambda: us_medicare_take_up_signal_gate(base),
+        base,
+    )
     if not medicare_take_up_gate.passed:
         raise SystemExit(
             "Medicare take-up input signal gate failed before support cloning:\n  "
@@ -1128,6 +1788,9 @@ def _run_all(
     acs_rent_donor: pd.DataFrame | None = None
     if not housing_inputs_gate.passed:
         if args.acs_h5 is None:
+            _observe_frame_gate(
+                "us_base_housing_inputs_pre_clone", housing_inputs_gate, base
+            )
             raise SystemExit(
                 "Housing-input signal gate is not already green and --acs-h5 "
                 "was not provided; exact pre_subsidy_rent restoration requires "
@@ -1141,6 +1804,7 @@ def _run_all(
             acs_rent_donor=acs_rent_donor,
         )
         housing_inputs_gate = us_housing_inputs_signal_gate(base)
+    _observe_frame_gate("us_base_housing_inputs_pre_clone", housing_inputs_gate, base)
     if not housing_inputs_gate.passed:
         raise SystemExit(
             "Housing-input signal gate failed before support cloning:\n  "
@@ -1151,7 +1815,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    eligibility_inputs_gate = us_eligibility_inputs_signal_gate(base)
+    eligibility_inputs_gate = _shadow_frame_gate(
+        "us_base_eligibility_inputs",
+        lambda: us_eligibility_inputs_signal_gate(base),
+        base,
+    )
     if not eligibility_inputs_gate.passed:
         raise SystemExit(
             "Eligibility-input signal gate failed before support cloning:\n  "
@@ -1162,7 +1830,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    pregnancy_gate = us_pregnancy_signal_gate(base)
+    pregnancy_gate = _shadow_frame_gate(
+        "us_base_pregnancy", lambda: us_pregnancy_signal_gate(base), base
+    )
     if not pregnancy_gate.passed:
         raise SystemExit(
             "Pregnancy signal gate failed before support cloning:\n  "
@@ -1173,7 +1843,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    wic_claim_gate = us_wic_claim_signal_gate(base)
+    wic_claim_gate = _shadow_frame_gate(
+        "us_base_wic_claim_pre_clone", lambda: us_wic_claim_signal_gate(base), base
+    )
     if not wic_claim_gate.passed:
         raise SystemExit(
             "WIC-claim signal gate failed before support cloning:\n  "
@@ -1225,7 +1897,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    esi_premiums_gate = us_esi_premiums_signal_gate(base)
+    esi_premiums_gate = _shadow_frame_gate(
+        "us_base_esi_premiums_pre_clone",
+        lambda: us_esi_premiums_signal_gate(base),
+        base,
+    )
     if not esi_premiums_gate.passed:
         raise SystemExit(
             "ESI premium signal gate failed before support cloning:\n  "
@@ -1294,13 +1970,21 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    wic_claim_gate = us_wic_claim_signal_gate(imputed)
+    wic_claim_gate = _shadow_frame_gate(
+        "us_base_wic_claim_post_clone",
+        lambda: us_wic_claim_signal_gate(imputed),
+        imputed,
+    )
     if not wic_claim_gate.passed:
         raise SystemExit(
             "WIC-claim signal gate failed after support cloning:\n  "
             + "\n  ".join(wic_claim_gate.failures)
         )
-    medicare_take_up_gate = us_medicare_take_up_signal_gate(imputed)
+    medicare_take_up_gate = _shadow_frame_gate(
+        "us_base_medicare_take_up_post_clone",
+        lambda: us_medicare_take_up_signal_gate(imputed),
+        imputed,
+    )
     if not medicare_take_up_gate.passed:
         raise SystemExit(
             "Medicare take-up input signal gate failed after support cloning:\n  "
@@ -1317,38 +2001,58 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    prior_year_income_gate = us_prior_year_income_signal_gate(imputed)
+    prior_year_income_gate = _shadow_frame_gate(
+        "us_base_prior_year_income",
+        lambda: us_prior_year_income_signal_gate(imputed),
+        imputed,
+    )
     if not prior_year_income_gate.passed:
         raise SystemExit(
             "Prior-year-income signal gate failed:\n  "
             + "\n  ".join(prior_year_income_gate.failures)
         )
-    prior_year_income_reconciliation_gate = (
-        us_prior_year_income_source_reconciliation_gate(imputed)
+    prior_year_income_reconciliation_gate = _shadow_frame_gate(
+        "us_base_prior_year_income_source_reconciliation",
+        lambda: us_prior_year_income_source_reconciliation_gate(imputed),
+        imputed,
     )
     if not prior_year_income_reconciliation_gate.passed:
         raise SystemExit(
             "Prior-year-income source reconciliation failed:\n  "
             + "\n  ".join(prior_year_income_reconciliation_gate.failures)
         )
-    housing_inputs_gate = us_housing_inputs_signal_gate(imputed)
+    housing_inputs_gate = _shadow_frame_gate(
+        "us_base_housing_inputs_post_clone",
+        lambda: us_housing_inputs_signal_gate(imputed),
+        imputed,
+    )
     if not housing_inputs_gate.passed:
         raise SystemExit(
             "Housing-input signal gate failed after PUF-support imputation:\n  "
             + "\n  ".join(housing_inputs_gate.failures)
         )
-    qbi_inputs_gate = us_qbi_inputs_signal_gate(imputed)
+    qbi_inputs_gate = _shadow_frame_gate(
+        "us_base_qbi_inputs", lambda: us_qbi_inputs_signal_gate(imputed), imputed
+    )
     if not qbi_inputs_gate.passed:
         raise SystemExit(
             "QBI-input signal gate failed:\n  " + "\n  ".join(qbi_inputs_gate.failures)
         )
-    farm_business_income_gate = us_farm_business_income_signal_gate(imputed)
+    farm_business_income_gate = _shadow_frame_gate(
+        "us_base_farm_business_income",
+        lambda: us_farm_business_income_signal_gate(imputed),
+        imputed,
+    )
     if not farm_business_income_gate.passed:
         raise SystemExit(
             "Farm-business-income signal gate failed:\n  "
             + "\n  ".join(farm_business_income_gate.failures)
         )
-    domestic_production_ald_gate = us_domestic_production_ald_signal_gate(imputed)
+    domestic_production_ald_gate = _shadow_frame_gate(
+        "us_base_domestic_production_ald",
+        lambda: us_domestic_production_ald_signal_gate(imputed),
+        imputed,
+    )
     if not domestic_production_ald_gate.passed:
         raise SystemExit(
             "Domestic-production-ALD signal gate failed:\n  "
@@ -1360,7 +2064,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    child_support_gate = us_child_support_signal_gate(imputed)
+    child_support_gate = _shadow_frame_gate(
+        "us_base_child_support", lambda: us_child_support_signal_gate(imputed), imputed
+    )
     if not child_support_gate.passed:
         raise SystemExit(
             "Child-support signal gate failed:\n  "
@@ -1372,7 +2078,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    disability_benefits_gate = us_disability_benefits_signal_gate(imputed)
+    disability_benefits_gate = _shadow_frame_gate(
+        "us_base_disability_benefits",
+        lambda: us_disability_benefits_signal_gate(imputed),
+        imputed,
+    )
     if not disability_benefits_gate.passed:
         raise SystemExit(
             "Disability-benefits signal gate failed:\n  "
@@ -1386,7 +2096,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    workers_compensation_gate = us_workers_compensation_signal_gate(imputed)
+    workers_compensation_gate = _shadow_frame_gate(
+        "us_base_workers_compensation",
+        lambda: us_workers_compensation_signal_gate(imputed),
+        imputed,
+    )
     if not workers_compensation_gate.passed:
         raise SystemExit(
             "Workers-compensation signal gate failed:\n  "
@@ -1401,31 +2115,51 @@ def _run_all(
         time_period=args.target_year,
         asec_2023_source=weeks_unemployed_source,
     )
-    weeks_unemployed_gate = us_weeks_unemployed_signal_gate(imputed)
+    weeks_unemployed_gate = _shadow_frame_gate(
+        "us_base_weeks_unemployed",
+        lambda: us_weeks_unemployed_signal_gate(imputed),
+        imputed,
+    )
     if not weeks_unemployed_gate.passed:
         raise SystemExit(
             "Weeks-unemployed signal gate failed:\n  "
             + "\n  ".join(weeks_unemployed_gate.failures)
         )
-    educator_expense_gate = us_educator_expense_signal_gate(imputed)
+    educator_expense_gate = _shadow_frame_gate(
+        "us_base_educator_expense",
+        lambda: us_educator_expense_signal_gate(imputed),
+        imputed,
+    )
     if not educator_expense_gate.passed:
         raise SystemExit(
             "Educator-expense signal gate failed:\n  "
             + "\n  ".join(educator_expense_gate.failures)
         )
-    form_4952_election_gate = us_form_4952_election_signal_gate(imputed)
+    form_4952_election_gate = _shadow_frame_gate(
+        "us_base_form_4952_election",
+        lambda: us_form_4952_election_signal_gate(imputed),
+        imputed,
+    )
     if not form_4952_election_gate.passed:
         raise SystemExit(
             "Form 4952 election signal gate failed:\n  "
             + "\n  ".join(form_4952_election_gate.failures)
         )
-    salt_refund_income_gate = us_salt_refund_income_signal_gate(imputed)
+    salt_refund_income_gate = _shadow_frame_gate(
+        "us_base_salt_refund_income",
+        lambda: us_salt_refund_income_signal_gate(imputed),
+        imputed,
+    )
     if not salt_refund_income_gate.passed:
         raise SystemExit(
             "SALT-refund-income signal gate failed:\n  "
             + "\n  ".join(salt_refund_income_gate.failures)
         )
-    capital_gain_details_gate = us_capital_gain_details_signal_gate(imputed)
+    capital_gain_details_gate = _shadow_frame_gate(
+        "us_base_capital_gain_details",
+        lambda: us_capital_gain_details_signal_gate(imputed),
+        imputed,
+    )
     if not capital_gain_details_gate.passed:
         raise SystemExit(
             "Capital-gain details signal gate failed:\n  "
@@ -1437,7 +2171,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    childcare_gate = us_childcare_signal_gate(imputed)
+    childcare_gate = _shadow_frame_gate(
+        "us_base_childcare", lambda: us_childcare_signal_gate(imputed), imputed
+    )
     if not childcare_gate.passed:
         raise SystemExit(
             "Childcare-input signal gate failed:\n  "
@@ -1449,7 +2185,9 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    adult_care_gate = us_adult_care_signal_gate(imputed)
+    adult_care_gate = _shadow_frame_gate(
+        "us_base_adult_care", lambda: us_adult_care_signal_gate(imputed), imputed
+    )
     if not adult_care_gate.passed:
         raise SystemExit(
             "Adult-care input signal gate failed:\n  "
@@ -1461,24 +2199,34 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    energy_subsidy_gate = us_energy_subsidy_signal_gate(imputed)
+    energy_subsidy_gate = _shadow_frame_gate(
+        "us_base_energy_subsidy",
+        lambda: us_energy_subsidy_signal_gate(imputed),
+        imputed,
+    )
     if not energy_subsidy_gate.passed:
         raise SystemExit(
             "Energy-subsidy signal gate failed:\n  "
             + "\n  ".join(energy_subsidy_gate.failures)
         )
-    alimony_gate = us_alimony_signal_gate(imputed)
+    alimony_gate = _shadow_frame_gate(
+        "us_base_alimony", lambda: us_alimony_signal_gate(imputed), imputed
+    )
     if not alimony_gate.passed:
         raise SystemExit(
             "Alimony-input signal gate failed:\n  " + "\n  ".join(alimony_gate.failures)
         )
-    casualty_loss_gate = us_casualty_loss_signal_gate(imputed)
+    casualty_loss_gate = _shadow_frame_gate(
+        "us_base_casualty_loss", lambda: us_casualty_loss_signal_gate(imputed), imputed
+    )
     if not casualty_loss_gate.passed:
         raise SystemExit(
             "Casualty-loss signal gate failed:\n  "
             + "\n  ".join(casualty_loss_gate.failures)
         )
-    misc_itemized_gate = us_misc_itemized_signal_gate(imputed)
+    misc_itemized_gate = _shadow_frame_gate(
+        "us_base_misc_itemized", lambda: us_misc_itemized_signal_gate(imputed), imputed
+    )
     if not misc_itemized_gate.passed:
         raise SystemExit(
             "Miscellaneous-itemized signal gate failed:\n  "
@@ -1490,7 +2238,11 @@ def _run_all(
         seed=args.seed,
         time_period=args.target_year,
     )
-    retirement_contributions_gate = us_retirement_contributions_signal_gate(imputed)
+    retirement_contributions_gate = _shadow_frame_gate(
+        "us_base_retirement_contributions",
+        lambda: us_retirement_contributions_signal_gate(imputed),
+        imputed,
+    )
     if not retirement_contributions_gate.passed:
         raise SystemExit(
             "Retirement-contribution signal gate failed:\n  "
@@ -1508,7 +2260,11 @@ def _run_all(
         # preserve this completed draw even after selecting a narrower support.
         force_puf_imputation=True,
     )
-    retirement_distributions_gate = us_retirement_distributions_signal_gate(imputed)
+    retirement_distributions_gate = _shadow_frame_gate(
+        "us_base_retirement_distributions",
+        lambda: us_retirement_distributions_signal_gate(imputed),
+        imputed,
+    )
     if not retirement_distributions_gate.passed:
         raise SystemExit(
             "Retirement-distribution signal gate failed:\n  "
@@ -1523,7 +2279,11 @@ def _run_all(
         time_period=args.target_year,
         asec_education_source=education_assistance_source,
     )
-    education_inputs_gate = us_education_inputs_signal_gate(imputed)
+    education_inputs_gate = _shadow_frame_gate(
+        "us_base_education_inputs",
+        lambda: us_education_inputs_signal_gate(imputed),
+        imputed,
+    )
     if not education_inputs_gate.passed:
         raise SystemExit(
             "Education-input signal gate failed:\n  "
@@ -1531,96 +2291,137 @@ def _run_all(
         )
     # The ESI premium inputs ride the support clone unchanged; re-prove clone
     # agreement and the cell multiples on the cloned frame.
-    esi_premiums_post_clone_gate = us_esi_premiums_signal_gate(imputed)
+    esi_premiums_post_clone_gate = _shadow_frame_gate(
+        "us_base_esi_premiums_post_clone",
+        lambda: us_esi_premiums_signal_gate(imputed),
+        imputed,
+    )
     if not esi_premiums_post_clone_gate.passed:
         raise SystemExit(
             "ESI premium signal gate failed after support cloning:\n  "
             + "\n  ".join(esi_premiums_post_clone_gate.failures)
         )
     _observe_frame_boundary(boundary_observer, "education_inputs_post_clone", imputed)
-    congressional_district_assignment = {"applied": False}
-    if args.assign_congressional_districts:
-        ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
-        if args.congressional_district_vintage_crosswalk is not None:
-            ledger_facts = translate_congressional_district_facts_to_current_vintage(
-                ledger_facts,
-                load_congressional_district_vintage_crosswalk(
-                    args.congressional_district_vintage_crosswalk
+    household_location: dict[str, object] | None = None
+    if _is_block_v1(args):
+        # block_v1 replaces both legacy location stages with one block draw;
+        # their summary keys stay present and unapplied.
+        imputed, household_location = _block_v1_household_location(args, imputed)
+        congressional_district_assignment = {
+            "applied": False,
+            "replaced_by": "household_location",
+        }
+        geography_ladder_assignment = {
+            "applied": False,
+            "opted_out": False,
+            "replaced_by": "household_location",
+        }
+        _observe_frame_boundary(
+            boundary_observer, HOUSEHOLD_LOCATION_STAGE_NAME, imputed
+        )
+    else:
+        congressional_district_assignment = {"applied": False}
+        if args.assign_congressional_districts:
+            ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
+            if args.congressional_district_vintage_crosswalk is not None:
+                ledger_facts = (
+                    translate_congressional_district_facts_to_current_vintage(
+                        ledger_facts,
+                        load_congressional_district_vintage_crosswalk(
+                            args.congressional_district_vintage_crosswalk
+                        ),
+                    )
+                )
+            distribution = congressional_district_distribution_from_ledger_facts(
+                ledger_facts
+            )
+            imputed = with_household_congressional_districts(
+                imputed,
+                distribution,
+                seed=args.congressional_district_seed,
+            )
+            congressional_district_assignment = (
+                congressional_district_assignment_summary(
+                    imputed.table("household"),
+                    distribution,
+                )
+            )
+            congressional_district_assignment.update(
+                {
+                    "ledger_facts": str(args.ledger_facts.resolve()),
+                    "ledger_facts_sha256": _sha256(args.ledger_facts),
+                    "congressional_district_vintage_crosswalk": (
+                        str(args.congressional_district_vintage_crosswalk.resolve())
+                        if args.congressional_district_vintage_crosswalk is not None
+                        else None
+                    ),
+                    "congressional_district_vintage_crosswalk_sha256": (
+                        _sha256(args.congressional_district_vintage_crosswalk)
+                        if args.congressional_district_vintage_crosswalk is not None
+                        else None
+                    ),
+                    "seed": args.congressional_district_seed,
+                }
+            )
+        _observe_frame_boundary(
+            boundary_observer, "congressional_district_assignment", imputed
+        )
+        geography_ladder_assignment = {
+            "applied": False,
+            "opted_out": bool(args.without_block_ladder),
+        }
+        _shadow_legacy_location_not_run(args)
+        if args.block_ladder_artifact is not None:
+            ladder = load_us_block_ladder(args.block_ladder_artifact)
+            imputed = with_household_us_geography_ladder(
+                imputed,
+                ladder,
+                seed=args.geography_ladder_seed,
+                expected_congressional_district_vintage=(
+                    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
                 ),
             )
-        distribution = congressional_district_distribution_from_ledger_facts(
-            ledger_facts
-        )
-        imputed = with_household_congressional_districts(
-            imputed,
-            distribution,
-            seed=args.congressional_district_seed,
-        )
-        congressional_district_assignment = congressional_district_assignment_summary(
-            imputed.table("household"),
-            distribution,
-        )
-        congressional_district_assignment.update(
-            {
-                "ledger_facts": str(args.ledger_facts.resolve()),
-                "ledger_facts_sha256": _sha256(args.ledger_facts),
-                "congressional_district_vintage_crosswalk": (
-                    str(args.congressional_district_vintage_crosswalk.resolve())
-                    if args.congressional_district_vintage_crosswalk is not None
-                    else None
+            household = imputed.table("household")
+            household_weights = imputed.weights_for("household").values
+            gate = shadow_gate(
+                "us_base_geography_ladder",
+                lambda: us_geography_ladder_gate(household, household_weights),
+                lambda: EvidenceContext(
+                    artifacts={
+                        "household": household,
+                        "household_weights": household_weights,
+                    }
                 ),
-                "congressional_district_vintage_crosswalk_sha256": (
-                    _sha256(args.congressional_district_vintage_crosswalk)
-                    if args.congressional_district_vintage_crosswalk is not None
-                    else None
-                ),
-                "seed": args.congressional_district_seed,
-            }
-        )
-    _observe_frame_boundary(
-        boundary_observer, "congressional_district_assignment", imputed
-    )
-    geography_ladder_assignment = {
-        "applied": False,
-        "opted_out": bool(args.without_block_ladder),
-    }
-    if args.block_ladder_artifact is not None:
-        ladder = load_us_block_ladder(args.block_ladder_artifact)
-        imputed = with_household_us_geography_ladder(
-            imputed,
-            ladder,
-            seed=args.geography_ladder_seed,
-            expected_congressional_district_vintage=(
-                CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
-            ),
-        )
-        household = imputed.table("household")
-        household_weights = imputed.weights_for("household").values
-        gate = us_geography_ladder_gate(household, household_weights)
-        if not gate.passed and not args.allow_geography_ladder_gate_failures:
-            raise SystemExit(
-                "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
             )
-        geography_ladder_assignment = us_geography_ladder_assignment_summary(
-            household,
-            ladder,
-            weight_values=household_weights,
-        )
-        geography_ladder_assignment.update(
-            {
-                "artifact": str(args.block_ladder_artifact.resolve()),
-                "artifact_sha256": _sha256(args.block_ladder_artifact),
-                "seed": args.geography_ladder_seed,
-                "gate": {
-                    "passed": gate.passed,
-                    "failures": list(gate.failures),
-                    "details": dict(gate.details),
-                },
-            }
-        )
-    _observe_frame_boundary(boundary_observer, "block_ladder_assignment", imputed)
+            if not gate.passed and not args.allow_geography_ladder_gate_failures:
+                raise SystemExit(
+                    "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
+                )
+            geography_ladder_assignment = us_geography_ladder_assignment_summary(
+                household,
+                ladder,
+                weight_values=household_weights,
+            )
+            geography_ladder_assignment.update(
+                {
+                    "artifact": str(args.block_ladder_artifact.resolve()),
+                    "artifact_sha256": _sha256(args.block_ladder_artifact),
+                    "seed": args.geography_ladder_seed,
+                    "gate": {
+                        "passed": gate.passed,
+                        "failures": list(gate.failures),
+                        "details": dict(gate.details),
+                    },
+                }
+            )
+        _observe_frame_boundary(boundary_observer, "block_ladder_assignment", imputed)
     _write_policyengine_dataset(args, imputed, output_h5)
-    if (
+    if household_location is not None:
+        import h5py
+
+        with h5py.File(output_h5, "a") as h5:
+            _write_block_v1_location_attrs(h5.attrs, household_location)
+    elif (
         args.congressional_district_vintage_crosswalk is not None
         or args.block_ladder_artifact is not None
     ):
@@ -1862,6 +2663,8 @@ def _run_all(
         "channel_output_totals": _channel_output_totals(imputed),
         "immigration_composition": us_immigration_composition_summary(imputed),
     }
+    if household_location is not None:
+        summary["household_location"] = household_location
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
     _observe_frame_boundary(boundary_observer, "final_export", imputed)
@@ -1874,7 +2677,7 @@ def _run_configured_stage(args: argparse.Namespace) -> None:
     if args.stage in LEGACY_STAGE_ALIASES:
         raise SystemExit(
             f"Stage alias {args.stage!r} was Phase-1-only; use one of the "
-            f"descriptive stages {list(PIPELINE_STEPS)}."
+            f"descriptive stages {list(_pipeline_steps_for(args))}."
         )
     _run_outer_stage(args)
 
@@ -1882,9 +2685,16 @@ def _run_configured_stage(args: argparse.Namespace) -> None:
 def _run_outer_stage(args: argparse.Namespace) -> None:
     """Run one exact pipeline step through the lossless outer-stage runtime."""
 
+    pipeline_steps = _pipeline_steps_for(args)
+    if args.stage not in pipeline_steps:
+        raise SystemExit(
+            f"--stage {args.stage!r} is not a stage of the "
+            f"--location-rule {_location_rule(args)} pipeline "
+            f"{list(pipeline_steps)}."
+        )
     runtime = StageRuntime(
         args.checkpoint_dir,
-        OUTER_STAGE_PIPELINE,
+        _pipeline_for(args),
         run_config=_stage_run_config(args),
     )
     if args.stage in runtime.context.completed:
@@ -1906,7 +2716,10 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             )
         return
 
-    with profile_stage(args.stage, args.checkpoint_dir):
+    with (
+        profile_stage(args.stage, args.checkpoint_dir),
+        _armed_stage_gate_shadow(args) as save_gate_shadow,
+    ):
         if args.stage == "source_construction":
             predecessor = runtime.load_predecessor(args.stage)
             if predecessor is not None:
@@ -1966,6 +2779,12 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             after = before
             metadata = _export_staged_result(args, after, stage_metadata)
             assert_unchanged_identity(before, after, stage=args.stage)
+        elif args.stage == HOUSEHOLD_LOCATION_STAGE_NAME:
+            after, household_location = _block_v1_household_location(args, before)
+            metadata = {"household_location": household_location}
+            # --location-clones is 1 on this line (refused at parse time), so
+            # the draw adds geography columns and changes no row or id.
+            assert_unchanged_identity(before, after, stage=args.stage)
         else:
             after, metadata = _post_qrf_frame_stage(
                 args.stage,
@@ -1974,6 +2793,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
                 stage_metadata,
             )
             assert_unchanged_identity(before, after, stage=args.stage)
+        save_gate_shadow()
         completed = runtime.complete(args.stage, after, metadata=metadata)
         if args.stage == "final_export":
             _link_all_stage_checkpoint(args.checkpoint_dir, completed.path)
@@ -2061,7 +2881,7 @@ def _ensure_asec_raw_stage_checkpoint(
                 "artifact_kind": ASEC_RAW_STAGE_ARTIFACT_KIND,
                 "identity": frame_identity(raw_frame).to_payload(),
                 "operator_status": ASEC_RAW_STAGE_OPERATOR_STATUS,
-                "pipeline_sha256": OUTER_STAGE_PIPELINE.sha256,
+                "pipeline_sha256": _pipeline_for(args).sha256,
                 "raw_source_mappings": raw_source_mappings,
                 "schema_version": ASEC_RAW_STAGE_SCHEMA_VERSION,
                 "source_construction_identity": frame_identity(
@@ -2248,7 +3068,11 @@ def _pre_clone_enrichment_stage(
     )
     signals: dict[str, object] = {
         "relationship_inputs_signal": _checked_gate_payload(
-            us_relationship_inputs_signal_gate(base),
+            _shadow_frame_gate(
+                "us_base_relationship_inputs",
+                lambda: us_relationship_inputs_signal_gate(base),
+                base,
+            ),
             "Relationship-input signal gate failed",
         )
     }
@@ -2259,7 +3083,11 @@ def _pre_clone_enrichment_stage(
         asec_spm_role_source_paths=_asec_education_source_paths(args),
     )
     signals["spm_independence_role_signal"] = _checked_gate_payload(
-        us_spm_independence_role_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_spm_independence_role",
+            lambda: us_spm_independence_role_signal_gate(base),
+            base,
+        ),
         "SPM independence role signal gate failed before support cloning",
     )
     base = with_us_medicare_take_up_input(
@@ -2268,13 +3096,18 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["medicare_take_up_input_signal"] = _checked_gate_payload(
-        us_medicare_take_up_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_medicare_take_up_pre_clone",
+            lambda: us_medicare_take_up_signal_gate(base),
+            base,
+        ),
         "Medicare take-up input signal gate failed before support cloning",
     )
     housing_gate = us_housing_inputs_signal_gate(base)
     acs_rent_donor: pd.DataFrame | None = None
     if not housing_gate.passed:
         if args.acs_h5 is None:
+            _observe_frame_gate("us_base_housing_inputs_pre_clone", housing_gate, base)
             raise SystemExit(
                 "Housing-input signal gate is not already green and --acs-h5 "
                 "was not provided; exact pre_subsidy_rent restoration requires "
@@ -2288,6 +3121,7 @@ def _pre_clone_enrichment_stage(
             acs_rent_donor=acs_rent_donor,
         )
         housing_gate = us_housing_inputs_signal_gate(base)
+    _observe_frame_gate("us_base_housing_inputs_pre_clone", housing_gate, base)
     signals["housing_inputs_signal"] = _checked_gate_payload(
         housing_gate,
         "Housing-input signal gate failed before support cloning",
@@ -2298,7 +3132,11 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["eligibility_inputs_signal"] = _checked_gate_payload(
-        us_eligibility_inputs_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_eligibility_inputs",
+            lambda: us_eligibility_inputs_signal_gate(base),
+            base,
+        ),
         "Eligibility-input signal gate failed before support cloning",
     )
     base = with_us_pregnancy_inputs(
@@ -2307,7 +3145,9 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["pregnancy_signal"] = _checked_gate_payload(
-        us_pregnancy_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_pregnancy", lambda: us_pregnancy_signal_gate(base), base
+        ),
         "Pregnancy signal gate failed before support cloning",
     )
     base = with_us_wic_claim_input(
@@ -2316,7 +3156,9 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["wic_claim_signal"] = _checked_gate_payload(
-        us_wic_claim_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_wic_claim_pre_clone", lambda: us_wic_claim_signal_gate(base), base
+        ),
         "WIC-claim signal gate failed before support cloning",
     )
     base = with_us_child_support_inputs(
@@ -2366,7 +3208,11 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     signals["esi_premiums_signal"] = _checked_gate_payload(
-        us_esi_premiums_signal_gate(base),
+        _shadow_frame_gate(
+            "us_base_esi_premiums_pre_clone",
+            lambda: us_esi_premiums_signal_gate(base),
+            base,
+        ),
         "ESI premium signal gate failed before support cloning",
     )
     base = with_us_immigration_inputs(
@@ -2455,7 +3301,12 @@ def _qrf_finalization_stage(
         args.checkpoint_dir / "primary_qrf",
         tail_bound_diagnostics=tail_bound_diagnostics,
     )
-    report = weights_audit_gate([FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind)])
+    fit_records = [FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind)]
+    report = shadow_gate(
+        "us_base_weights_audit",
+        lambda: weights_audit_gate(fit_records),
+        lambda: EvidenceContext(artifacts={"fit_weight_records": fit_records}),
+    )
     if not report.passed:
         raise SystemExit("Weights audit failed:\n  " + "\n  ".join(report.failures))
     return imputed, {
@@ -2731,11 +3582,19 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["wic_claim_signal"] = _checked_gate_payload(
-            us_wic_claim_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_wic_claim_post_clone",
+                lambda: us_wic_claim_signal_gate(frame),
+                frame,
+            ),
             "WIC-claim signal gate failed after support cloning",
         )
         signals["medicare_take_up_input_signal"] = _checked_gate_payload(
-            us_medicare_take_up_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_medicare_take_up_post_clone",
+                lambda: us_medicare_take_up_signal_gate(frame),
+                frame,
+            ),
             "Medicare take-up input signal gate failed after support cloning",
         )
     elif stage == "housing_assistance":
@@ -2747,27 +3606,49 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["prior_year_income_signal"] = _checked_gate_payload(
-            us_prior_year_income_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_prior_year_income",
+                lambda: us_prior_year_income_signal_gate(frame),
+                frame,
+            ),
             "Prior-year-income signal gate failed",
         )
         signals["prior_year_income_source_reconciliation"] = _checked_gate_payload(
-            us_prior_year_income_source_reconciliation_gate(frame),
+            _shadow_frame_gate(
+                "us_base_prior_year_income_source_reconciliation",
+                lambda: us_prior_year_income_source_reconciliation_gate(frame),
+                frame,
+            ),
             "Prior-year-income source reconciliation failed",
         )
         signals["housing_inputs_signal"] = _checked_gate_payload(
-            us_housing_inputs_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_housing_inputs_post_clone",
+                lambda: us_housing_inputs_signal_gate(frame),
+                frame,
+            ),
             "Housing-input signal gate failed after PUF-support imputation",
         )
         signals["qbi_inputs_signal"] = _checked_gate_payload(
-            us_qbi_inputs_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_qbi_inputs", lambda: us_qbi_inputs_signal_gate(frame), frame
+            ),
             "QBI-input signal gate failed",
         )
         signals["farm_business_income_signal"] = _checked_gate_payload(
-            us_farm_business_income_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_farm_business_income",
+                lambda: us_farm_business_income_signal_gate(frame),
+                frame,
+            ),
             "Farm-business-income signal gate failed",
         )
         signals["domestic_production_ald_signal"] = _checked_gate_payload(
-            us_domestic_production_ald_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_domestic_production_ald",
+                lambda: us_domestic_production_ald_signal_gate(frame),
+                frame,
+            ),
             "Domestic-production-ALD signal gate failed",
         )
     elif stage == "child_support_post_clone":
@@ -2777,7 +3658,12 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["child_support_signal"] = _checked_gate_payload(
-            us_child_support_signal_gate(frame), "Child-support signal gate failed"
+            _shadow_frame_gate(
+                "us_base_child_support",
+                lambda: us_child_support_signal_gate(frame),
+                frame,
+            ),
+            "Child-support signal gate failed",
         )
     elif stage == "disability_benefits_post_clone":
         frame = with_us_disability_benefits(
@@ -2786,7 +3672,11 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["disability_benefits_signal"] = _checked_gate_payload(
-            us_disability_benefits_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_disability_benefits",
+                lambda: us_disability_benefits_signal_gate(frame),
+                frame,
+            ),
             "Disability-benefits signal gate failed",
         )
     elif stage == "workers_compensation_post_clone":
@@ -2796,7 +3686,11 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["workers_compensation_signal"] = _checked_gate_payload(
-            us_workers_compensation_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_workers_compensation",
+                lambda: us_workers_compensation_signal_gate(frame),
+                frame,
+            ),
             "Workers-compensation signal gate failed",
         )
     elif stage == "weeks_unemployed_post_clone":
@@ -2820,23 +3714,43 @@ def _post_qrf_frame_stage(
             asec_2023_source=weeks_source,
         )
         signals["weeks_unemployed_signal"] = _checked_gate_payload(
-            us_weeks_unemployed_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_weeks_unemployed",
+                lambda: us_weeks_unemployed_signal_gate(frame),
+                frame,
+            ),
             "Weeks-unemployed signal gate failed",
         )
         signals["educator_expense_signal"] = _checked_gate_payload(
-            us_educator_expense_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_educator_expense",
+                lambda: us_educator_expense_signal_gate(frame),
+                frame,
+            ),
             "Educator-expense signal gate failed",
         )
         signals["form_4952_election_signal"] = _checked_gate_payload(
-            us_form_4952_election_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_form_4952_election",
+                lambda: us_form_4952_election_signal_gate(frame),
+                frame,
+            ),
             "Form 4952 election signal gate failed",
         )
         signals["salt_refund_income_signal"] = _checked_gate_payload(
-            us_salt_refund_income_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_salt_refund_income",
+                lambda: us_salt_refund_income_signal_gate(frame),
+                frame,
+            ),
             "SALT-refund-income signal gate failed",
         )
         signals["capital_gain_details_signal"] = _checked_gate_payload(
-            us_capital_gain_details_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_capital_gain_details",
+                lambda: us_capital_gain_details_signal_gate(frame),
+                frame,
+            ),
             "Capital-gain details signal gate failed",
         )
     elif stage == "childcare_post_clone":
@@ -2846,7 +3760,10 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["childcare_inputs_signal"] = _checked_gate_payload(
-            us_childcare_signal_gate(frame), "Childcare-input signal gate failed"
+            _shadow_frame_gate(
+                "us_base_childcare", lambda: us_childcare_signal_gate(frame), frame
+            ),
+            "Childcare-input signal gate failed",
         )
     elif stage == "adult_care_post_clone":
         frame = with_us_adult_care_inputs(
@@ -2855,7 +3772,10 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["adult_care_inputs_signal"] = _checked_gate_payload(
-            us_adult_care_signal_gate(frame), "Adult-care input signal gate failed"
+            _shadow_frame_gate(
+                "us_base_adult_care", lambda: us_adult_care_signal_gate(frame), frame
+            ),
+            "Adult-care input signal gate failed",
         )
     elif stage == "energy_subsidy_post_clone":
         frame = with_us_energy_subsidy_input(
@@ -2864,17 +3784,33 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["energy_subsidy_signal"] = _checked_gate_payload(
-            us_energy_subsidy_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_energy_subsidy",
+                lambda: us_energy_subsidy_signal_gate(frame),
+                frame,
+            ),
             "Energy-subsidy signal gate failed",
         )
         signals["alimony_inputs_signal"] = _checked_gate_payload(
-            us_alimony_signal_gate(frame), "Alimony-input signal gate failed"
+            _shadow_frame_gate(
+                "us_base_alimony", lambda: us_alimony_signal_gate(frame), frame
+            ),
+            "Alimony-input signal gate failed",
         )
         signals["casualty_loss_signal"] = _checked_gate_payload(
-            us_casualty_loss_signal_gate(frame), "Casualty-loss signal gate failed"
+            _shadow_frame_gate(
+                "us_base_casualty_loss",
+                lambda: us_casualty_loss_signal_gate(frame),
+                frame,
+            ),
+            "Casualty-loss signal gate failed",
         )
         signals["misc_itemized_signal"] = _checked_gate_payload(
-            us_misc_itemized_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_misc_itemized",
+                lambda: us_misc_itemized_signal_gate(frame),
+                frame,
+            ),
             "Miscellaneous-itemized signal gate failed",
         )
     elif stage == "retirement_contributions_post_clone":
@@ -2884,7 +3820,11 @@ def _post_qrf_frame_stage(
             time_period=args.target_year,
         )
         signals["retirement_contributions_signal"] = _checked_gate_payload(
-            us_retirement_contributions_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_retirement_contributions",
+                lambda: us_retirement_contributions_signal_gate(frame),
+                frame,
+            ),
             "Retirement-contribution signal gate failed",
         )
     elif stage == "retirement_distributions_post_clone":
@@ -2897,7 +3837,11 @@ def _post_qrf_frame_stage(
             force_puf_imputation=True,
         )
         signals["retirement_distributions_signal"] = _checked_gate_payload(
-            us_retirement_distributions_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_retirement_distributions",
+                lambda: us_retirement_distributions_signal_gate(frame),
+                frame,
+            ),
             "Retirement-distribution signal gate failed",
         )
     elif stage == "education_inputs_post_clone":
@@ -2912,11 +3856,19 @@ def _post_qrf_frame_stage(
             asec_education_source=education_assistance_source,
         )
         signals["education_inputs_signal"] = _checked_gate_payload(
-            us_education_inputs_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_education_inputs",
+                lambda: us_education_inputs_signal_gate(frame),
+                frame,
+            ),
             "Education-input signal gate failed",
         )
         signals["esi_premiums_post_clone_signal"] = _checked_gate_payload(
-            us_esi_premiums_signal_gate(frame),
+            _shadow_frame_gate(
+                "us_base_esi_premiums_post_clone",
+                lambda: us_esi_premiums_signal_gate(frame),
+                frame,
+            ),
             "ESI premium signal gate failed after support cloning",
         )
     elif stage == "congressional_district_assignment":
@@ -2966,6 +3918,7 @@ def _post_qrf_frame_stage(
             "applied": False,
             "opted_out": bool(args.without_block_ladder),
         }
+        _shadow_legacy_location_not_run(args)
         if args.block_ladder_artifact is not None:
             ladder = load_us_block_ladder(args.block_ladder_artifact)
             frame = with_household_us_geography_ladder(
@@ -2978,7 +3931,16 @@ def _post_qrf_frame_stage(
             )
             household = frame.table("household")
             household_weights = frame.weights_for("household").values
-            gate = us_geography_ladder_gate(household, household_weights)
+            gate = shadow_gate(
+                "us_base_geography_ladder",
+                lambda: us_geography_ladder_gate(household, household_weights),
+                lambda: EvidenceContext(
+                    artifacts={
+                        "household": household,
+                        "household_weights": household_weights,
+                    }
+                ),
+            )
             if not gate.passed and not args.allow_geography_ladder_gate_failures:
                 raise SystemExit(
                     "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
@@ -3019,11 +3981,33 @@ def _export_staged_result(
     output_h5 = out_dir / _dataset_filename(args.target_year)
     summary_path = out_dir / _summary_filename(args.target_year)
     _write_policyengine_dataset(args, frame, output_h5)
-    congressional = stage_metadata["congressional_district_assignment"][
-        "congressional_district_assignment"
-    ]
-    geography = stage_metadata["block_ladder_assignment"]["geography_ladder_assignment"]
-    if (
+    household_location: dict[str, object] | None = None
+    if _is_block_v1(args):
+        household_location = stage_metadata[HOUSEHOLD_LOCATION_STAGE_NAME][
+            "household_location"
+        ]
+        congressional: dict[str, object] = {
+            "applied": False,
+            "replaced_by": "household_location",
+        }
+        geography: dict[str, object] = {
+            "applied": False,
+            "opted_out": False,
+            "replaced_by": "household_location",
+        }
+    else:
+        congressional = stage_metadata["congressional_district_assignment"][
+            "congressional_district_assignment"
+        ]
+        geography = stage_metadata["block_ladder_assignment"][
+            "geography_ladder_assignment"
+        ]
+    if household_location is not None:
+        import h5py
+
+        with h5py.File(output_h5, "a") as h5:
+            _write_block_v1_location_attrs(h5.attrs, household_location)
+    elif (
         args.congressional_district_vintage_crosswalk is not None
         or args.block_ladder_artifact is not None
     ):
@@ -3131,13 +4115,13 @@ def _export_staged_result(
         "puf_tax_detail_tail_bounds": qrf["puf_tax_detail_tail_bounds"],
         "puf_capital_gains_tail_transfer": capital_gains_tail,
         **{name: signals[name] for name in required_signals},
-        "congressional_district_assignment": stage_metadata[
-            "congressional_district_assignment"
-        ]["congressional_district_assignment"],
+        "congressional_district_assignment": congressional,
         "geography_ladder_assignment": geography,
         "channel_output_totals": _channel_output_totals(frame),
         "immigration_composition": us_immigration_composition_summary(frame),
     }
+    if household_location is not None:
+        summary["household_location"] = household_location
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
     return {
@@ -3226,7 +4210,11 @@ def impute_and_audit_us_puf_support(
         raw_predictions_callback=raw_predictions_callback,
         tail_bound_diagnostics=tail_bound_diagnostics,
     )
-    report = weights_audit_gate(fit_records)
+    report = shadow_gate(
+        "us_base_weights_audit",
+        lambda: weights_audit_gate(fit_records),
+        lambda: EvidenceContext(artifacts={"fit_weight_records": list(fit_records)}),
+    )
     if not report.passed:
         raise SystemExit("Weights audit failed:\n  " + "\n  ".join(report.failures))
     weights_audit = {
@@ -3486,11 +4474,21 @@ def _puf_tax_unit_donor_from_h5(
         processed_tax_unit_ids=arrays["tax_unit_id"],
         processed_tax_unit_weights=arrays["household_weight"],
     )
-    return puf_tax_unit_donor_from_arrays(
+    schedule_e_receipt: dict[str, object] = {}
+    schedule_e = _source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        arrays,
+        receipt=schedule_e_receipt,
+    )
+    donor = puf_tax_unit_donor_from_arrays(
         arrays,
         adjusted_gross_income=adjusted_gross_income,
+        schedule_e_partnership_s_corp=schedule_e,
         donor_build_summary=donor_build_summary,
     )
+    if donor_build_summary is not None:
+        donor_build_summary["schedule_e_line_32"] = schedule_e_receipt
+    return donor
 
 
 def _puf_e01000_reconciliation_basis(
@@ -3539,6 +4537,25 @@ def _source_year_puf_adjusted_gross_income(
         source_puf_csv,
         processed_tax_unit_ids=processed_tax_unit_ids,
         processed_tax_unit_weights=processed_tax_unit_weights,
+    )
+
+
+def _source_year_puf_partnership_s_corp_income(
+    source_puf_csv: Path,
+    arrays: Mapping[str, Sequence[object]],
+    *,
+    receipt: dict[str, object] | None = None,
+) -> dict[str, np.ndarray]:
+    """Load Schedule E line 32 by entity through the same narrow seam."""
+
+    return source_year_puf_partnership_s_corp_income(
+        source_puf_csv,
+        processed_tax_unit_ids=arrays["tax_unit_id"],
+        processed_tax_unit_weights=arrays["household_weight"],
+        processed_nonpassive_partnership_s_corp_income=(
+            processed_puf_tax_unit_partnership_s_corp_income(arrays)
+        ),
+        receipt=receipt,
     )
 
 

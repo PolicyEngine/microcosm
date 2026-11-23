@@ -1,4 +1,5 @@
-"""UK student-loan cohort assignment and SLC liable-stock support top-ups."""
+"""UK student-loan cohort assignment, SLC liable-stock support top-ups and the
+borrowers' share of the household's student-loan balance."""
 
 from __future__ import annotations
 
@@ -85,10 +86,27 @@ TOP_UP_REALIZATION_BOUND = (
     "reported"
 )
 STUDENT_LOANS_MASS_CHANGE_REASON = (
-    "Student-loan plan assignment writes an enum column only; household rows "
-    "and typed household weights pass through and total household mass is "
-    "conserved."
+    "Student-loan plan assignment writes the plan and re-splits each household's "
+    "student-loan balance among its members; household rows and typed household "
+    "weights pass through and total household mass is conserved."
 )
+#: ``was_wealth`` draws the household's student-loan balance from the WAS and
+#: splits it among the members before any plan exists, so it can sit on a
+#: member with no loan while the household's borrower holds none.
+#: policyengine-uk caps a borrower's repayment at a positive balance, so once
+#: the plans are set the balance moves to the members who hold one: by their
+#: repayments where any of them repays, else equally. A household with no
+#: borrower keeps was_wealth's split, and no household's total moves
+#: (microcosm#1095 B9).
+BALANCE_COLUMN = "student_loan_balance"
+BALANCE_RULE = (
+    "each household's student_loan_balance re-split to its members with "
+    "student_loan_plan != NONE, by student_loan_repayments where any of them "
+    "repays, else equally; a household with no such member keeps was_wealth's "
+    "split, and every household's total is unchanged"
+)
+#: Absolute tolerance, in pounds, of the household-total check.
+BALANCE_TOLERANCE_GBP = 1e-6
 
 
 def load_slc_liable_stocks() -> Mapping[str, Any]:
@@ -160,6 +178,7 @@ class UKStudentLoansResult:
     frame: Frame
     calibration_year: int
     plans: Mapping[str, UKStudentLoanPlanReceipt]
+    balance: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -167,6 +186,7 @@ class UKStudentLoansResult:
             "year_rule": YEAR_RULE,
             "calibration_year": self.calibration_year,
             "plans": {name: receipt.evidence() for name, receipt in self.plans.items()},
+            "balance": dict(self.balance),
         }
 
 
@@ -207,7 +227,8 @@ def assign_student_loan_plans(
     stocks: Mapping[str, Any],
     year: int,
 ) -> UKStudentLoansResult:
-    """Assign reported cohorts, then top up PLAN_5 before PLAN_2.
+    """Assign reported cohorts, top up PLAN_5 before PLAN_2, then move each
+    household's student-loan balance to its borrowers (:data:`BALANCE_RULE`).
 
     A reported borrower repays (``student_loan_repayments > 0``) or, in
     England or Wales, reports an outstanding loan and is not in full-time
@@ -235,6 +256,7 @@ def assign_student_loan_plans(
         "current_education",
         "reports_outstanding_student_loan",
         "age_left_full_time_education",
+        BALANCE_COLUMN,
     }
     missing = sorted(required - set(person.columns))
     if missing:
@@ -364,6 +386,15 @@ def assign_student_loan_plans(
     if unknown:
         raise ValueError(f"Student-loan assignment emitted unknown plan(s): {unknown}.")
     person["student_loan_plan"] = plan
+    person[BALANCE_COLUMN], balance_receipt = allocate_balance_to_borrowers(
+        balance=pd.to_numeric(person[BALANCE_COLUMN], errors="coerce").to_numpy(
+            dtype=float
+        ),
+        repayments=repayments,
+        borrower=plan != "NONE",
+        household_ids=person["person_household_id"].to_numpy(),
+        person_weights=person_weights,
+    )
     total = frame.weights_for("household").total
     mass_receipt = MassChangeRecord(
         entity="household",
@@ -386,7 +417,74 @@ def assign_student_loan_plans(
         frame=result_frame,
         calibration_year=year,
         plans=receipts,
+        balance=balance_receipt,
     )
+
+
+def allocate_balance_to_borrowers(
+    *,
+    balance: np.ndarray,
+    repayments: np.ndarray,
+    borrower: np.ndarray,
+    household_ids: np.ndarray,
+    person_weights: np.ndarray,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Move each household's student-loan balance to its borrowers.
+
+    A household with a borrower and a positive balance gives it all to its
+    borrowers, in proportion to their repayments where any of them repays and
+    equally otherwise; every other household keeps its split. Returns the new
+    balances and an aggregate receipt.
+    """
+
+    balance = np.asarray(balance, dtype=float)
+    repayments = np.asarray(repayments, dtype=float)
+    borrower = np.asarray(borrower, dtype=bool)
+    if not np.isfinite(balance).all() or (balance < 0.0).any():
+        raise ValueError("Student-loan balances must be finite and nonnegative.")
+    households = pd.Index(household_ids)
+
+    def by_household(values: np.ndarray, how: str) -> np.ndarray:
+        return pd.Series(values).groupby(households).transform(how).to_numpy()
+
+    total = by_household(balance, "sum")
+    repaying = borrower & (repayments > 0.0)
+    repaid = by_household(np.where(repaying, repayments, 0.0), "sum")
+    borrowers = by_household(borrower.astype(np.int64), "sum")
+    share = np.where(
+        repaid > 0.0,
+        np.where(repaying, repayments / np.where(repaid > 0.0, repaid, 1.0), 0.0),
+        np.where(borrower, 1.0 / np.maximum(borrowers, 1), 0.0),
+    )
+    resplit = (borrowers > 0) & (total > 0.0)
+    allocated = np.where(resplit, total * share, balance)
+    drift = np.abs(by_household(allocated, "sum") - total)
+    if (drift > BALANCE_TOLERANCE_GBP).any():
+        raise ValueError(
+            "Student-loan balance re-split moved a household's total by up to "
+            f"{float(drift.max()):.6f}."
+        )
+    moved = resplit & ~np.isclose(allocated, balance)
+    weights = np.asarray(person_weights, dtype=float)
+    receipt = {
+        "rule": BALANCE_RULE,
+        "households_resplit": int(households[moved].nunique()),
+        "rows_changed": int(moved.sum()),
+        "weighted_balance": float((balance * weights).sum()),
+        "weighted_balance_on_borrowers_before": float(
+            (balance * weights)[borrower].sum()
+        ),
+        "weighted_balance_on_borrowers_after": float(
+            (allocated * weights)[borrower].sum()
+        ),
+        "weighted_borrowers_with_balance_before": float(
+            weights[borrower & (balance > 0.0)].sum()
+        ),
+        "weighted_borrowers_with_balance_after": float(
+            weights[borrower & (allocated > 0.0)].sum()
+        ),
+    }
+    return allocated, receipt
 
 
 #: Household lineage columns the top-up receipt reports the taken rows on,
@@ -649,6 +747,7 @@ def _assert_student_loans_stage_parameters(
                     "reason": STUDENT_LOANS_MASS_CHANGE_REASON,
                 },
             ),
+            ("derive", {"output": BALANCE_COLUMN, "formula": BALANCE_RULE}),
         ),
     )
     if year == 2025:

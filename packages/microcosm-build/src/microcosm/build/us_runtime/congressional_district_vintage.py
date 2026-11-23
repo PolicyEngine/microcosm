@@ -374,6 +374,9 @@ def _state_total_proxy_source_district_fact(
     source_geography_id: str,
     source_prefix: str,
 ) -> dict[str, Any]:
+    # The copy keeps every field it does not rewrite. On a chronicle.consumer_fact.v5
+    # row that includes package_dimension_value_labels (microcosm#1509), still
+    # keyed by the state row's values; no code reads it, so no label changes.
     proxy = copy.deepcopy(dict(fact))
     source_geoid = source_geography_id.removeprefix(source_prefix)
     state_geography_id = str(_mapping_at(fact, "geography").get("id") or "")
@@ -619,6 +622,12 @@ def _translated_fact_shell(
     crosswalk_basis: str,
     key: tuple[str, ...],
 ) -> dict[str, Any]:
+    # The copy keeps every field it does not rewrite. On a chronicle.consumer_fact.v5
+    # row that includes package_dimension_value_labels (microcosm#1509): package
+    # wording for the group-by district stays keyed by the source district's id,
+    # not the target's. No code reads the field (labels come from
+    # dimension_value_labels and layout.groupby_value_label, rewritten below), so
+    # no label changes; as with v4's geography.publisher_name, it is left as is.
     translated = copy.deepcopy(dict(fact))
     target_geoid = target_geography_id.removeprefix(
         CURRENT_CONGRESSIONAL_DISTRICT_PREFIX

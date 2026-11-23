@@ -23,10 +23,8 @@ from microcosm.build.uk_runtime.calibration_run import (
     uk_cgt_projection_artifact,
 )
 from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_ARTIFACT_KEY
-from microcosm.build.uk_runtime.diagnostics import uk_withheld_rows
 from microcosm.build.uk_runtime.graph_evidence import uk_spine_gate_artifacts
 from microcosm.build.uk_runtime.national_frame import uk_release_export_frame
-from microcosm.build.uk_runtime.parity_reference import load_efrs_parity_reference
 from microcosm.build.uk_runtime.support_floor import uk_support_floor_names
 from microcosm.build.uk_runtime.terminal_gates import uk_export_candidate_columns
 from microcosm.calibrate import TargetRegistry
@@ -236,33 +234,6 @@ def build_full_gate_context(
             local_rows.append(row)
         else:
             national_errors[target.row_name] = float(solved_rows[index].relative_error)
-    # A row's model figures leave the build only when ten distinct source
-    # households carry them: María's ruling of 2026-10-17 for BRMA rows
-    # (microcosm#1262), extended to national and regional rows by her rule of
-    # 2026-10-21, which binds a thin row rather than leave it out (local rows
-    # keep the area-support rule). The fit gates decide on the published rows
-    # and count the withheld ones (her ruling of 2026-10-19); the flag tells
-    # the bindings and the writers which rows those are.
-    # The withholding ties a local family to its parents by contract target
-    # (Vahid's review of #1383, item 1).
-    withheld = uk_withheld_rows(
-        problem,
-        solution.weights,
-        frame,
-        [
-            {
-                **row,
-                "metadata": {"contract_target_id": metadata.get("contract_target_id")},
-            }
-            for row, metadata in zip(
-                diagnostics, ordered_problem.target_metadata, strict=True
-            )
-        ],
-        {str(row["name"]): str(row["geography_level"]) for row in diagnostics},
-    )
-    for row in diagnostics:
-        if row["name"] in withheld:
-            row["model_figures_withheld"] = True
     reference_registry = supporting_evidence.get("reference_registry")
     if not isinstance(reference_registry, TargetRegistry):
         raise ValueError(
@@ -282,7 +253,6 @@ def build_full_gate_context(
         for spec in reference_registry.specs
         if (spec.name, spec.period) in selected
     }
-    reference = load_efrs_parity_reference()
     manifest = uk_full_gate_manifest(selection_receipt)
     admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
     artifacts = dict(supporting_evidence)
@@ -309,22 +279,20 @@ def build_full_gate_context(
                 "resolved_reference_count": len(problem.targets),
                 "matrix_target_count": len(problem.names),
             },
+            # The export-surface and input-coverage gates read the reference
+            # build's surface (``reference_surface``, the dense line's
+            # current build, from --reference-surface) beside this; without
+            # it they are evidence_absent (microcosm#1095).
             "parity_evidence": SimpleNamespace(
                 candidate_columns=uk_export_candidate_columns(
                     uk_release_export_frame(frame)
                 ),
-                reference_columns={
-                    f"{entity}.{name}"
-                    for name, entity in reference.input_entities.items()
-                },
                 candidate_targets=set(national_errors),
                 reference_targets=national_reference,
                 target_relative_errors=national_errors,
-                withheld_targets=frozenset(withheld),
             ),
             "local_target_diagnostics": local_rows,
             "target_diagnostics": diagnostics,
-            "model_figures_withheld": tuple(sorted(withheld)),
             "aggregate_admin": admin_totals,
             "aggregate_admin_measurement": admin_receipt,
             "full_gate_scope": uk_full_gate_scope_receipt(selection_receipt),

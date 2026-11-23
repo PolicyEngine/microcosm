@@ -37,6 +37,7 @@ from ..stage_evidence import STAGE_EVIDENCE_TYPE
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
+    "UK_SPINE_ASSEMBLED_FINAL_STAGE",
     "UK_SPINE_STRUCTURAL_STAGES",
     "uk_registry",
     "uk_spine_endpoint",
@@ -56,6 +57,15 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
         "cgt_residential_split",
     }
 )
+
+#: The last stage of the assembled checkpoint: everything through the base
+#: FRS mapping and the stochastic draws. A name, not an index — a position
+#: standing in for a key is correct only while two independently-maintained
+#: orderings happen to agree (the uk-data#468 class). The graph freezes the
+#: checkpoint after it, and the graph's spine gates and the plan path read it,
+#: so an assembled-phase gate's stage is checked against the boundary the
+#: build runs (the third and fourth reviews of microcosm#1422).
+UK_SPINE_ASSEMBLED_FINAL_STAGE = "frs_brma"
 
 # The executor's mass ledger is weighted *person* mass per stratum
 # (``Frame.stratum_mass``: household weights broadcast through membership), so
@@ -109,8 +119,14 @@ _STRUCTURAL_WEIGHT_KIND = {
 # units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
-        # The housing shell rewrites root household cells right after the
-        # open-surface SPI income stage, which would otherwise bind them.
+        # The employment shell rewrites the root person cells
+        # soc2020_major_group, sic_industry_division and employment_sector after
+        # the open-surface SPI income stage and the company cars, which would
+        # otherwise bind them (microcosm#1490).
+        "spi_employment_shell",
+        # The housing shell rewrites root household cells after the
+        # open-surface SPI income stage and the company cars, which would
+        # otherwise bind them.
         "spi_housing_shell",
         "uc_reporter_redraw",
         # The SPI benefit pass rewrites cells the open-surface readers before
@@ -143,6 +159,15 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # its own version right after the root, the root cells are inherited
         # rather than owned there, so the isolation must be declared.
         "frs_education_grant_split",
+        # The company cars carve their benefits out of the tape rows' pay, and
+        # take their UC gainful self-employment again on it, right after the
+        # open-surface SPI income stage, which would otherwise bind the cells
+        # they rewrite (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+        "company_cars",
+        # The student-loan stage moves each household's balance to its
+        # borrowers, rewriting was_wealth's ``student_loan_balance``, which the
+        # open-surface readers before it bind (microcosm#1095 B9).
+        "student_loans",
     }
 )
 # ``age_tail`` needs no isolation entry: it is declared immediately after the
@@ -159,6 +184,12 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
     "was_lisa": ("was", "was_person"),
+    # The ISA subscriptions split household ISA balances by a WAS donor
+    # household's holding pattern (microcosm#1415).
+    "isa_subscriptions": ("was", "was_person"),
+    # The company cars draw list prices from WAS round-8 company cars
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": ("was_person",),
     # The finance-cost model trains on the SPI tape (microcosm#1106).
     "property_components": ("spi",),
     "nts_bus_travel": (
@@ -168,9 +199,17 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
         "nts_stage",
         "nts_ticket",
     ),
-    "lcfs_consumption": ("lcfs_household", "lcfs_person"),
+    # The zero-emission share by income fifth and the household-paid road-fuel
+    # mix read the NTS private cars (microcosm#1095 B3, J2 and K).
+    "lcfs_consumption": (
+        "lcfs_household",
+        "lcfs_person",
+        "nts_household",
+        "nts_vehicle",
+    ),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
+    "aps_occupation": ("aps",),
     "frs_hmrc_spine_leaves": ("frs",),
     "frs_annual_income_spells": ("frs",),
     "spi_income_band_donors": ("spi",),
@@ -186,9 +225,11 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "nts_trip": "Pinned local NTS trip donor table.",
     "nts_stage": "Pinned local NTS stage donor table.",
     "nts_ticket": "Pinned local NTS ticket donor table.",
+    "nts_vehicle": "Pinned local NTS vehicle donor table.",
     "lcfs_household": "Pinned local LCFS household donor table.",
     "lcfs_person": "Pinned local LCFS person donor table.",
     "etb": "Pinned local ETB household donor table.",
+    "aps": "Pinned local APS person donor table.",
     "spi": "Pinned local SPI donor table.",
     "hmrc_income": "Pinned local HMRC income facts workbook.",
 }
@@ -221,6 +262,13 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "afcs_reported",
             "esa_contrib_reported",
             "esa_income_reported",
+            # The carer link's reads (A3).
+            "frs_care_recipients",
+            "care_hours",
+            "carers_allowance_reported",
+            # Its check against DWP's record of the UC carer element (A3 (f)).
+            "frs_uc_carer_element",
+            "is_claimant_or_partner",
         )
     ),
     "frs_education": frozenset(
@@ -253,7 +301,19 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         )
     )
     | frozenset({("benunit", "is_married")}),
-    "frs_person_draws": frozenset({("person", "age")}),
+    # is_apprentice draws employees aged 21 to 24 at a rate set by the
+    # frame's weights (microcosm#1372), outside full-time education (Vahid's
+    # review of microcosm#1535, nit 3), and its receipt reads their pay for
+    # the relief the flags imply (microcosm#1373).
+    "frs_person_draws": frozenset(
+        ("person", column)
+        for column in (
+            "age",
+            "employment_status",
+            "is_in_full_time_education",
+            "employment_income",
+        )
+    ),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
     "was_wealth": None,
@@ -303,7 +363,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "main_residence_value"),
             ("household", "property_wealth"),
             ("household", "household_is_high_value_support_copy"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # Engine-free: each kind's stock, the region that marks where SDLT
@@ -314,7 +374,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "region"),
             ("household", "other_residential_property_value"),
             ("household", "non_residential_property_value"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     # The NTS band model materializes an engine predictor (household gross
@@ -340,16 +400,62 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
+    # Engine-free: the occupation predictors, the drawn-row rule and the channel
+    # split. The rewritten occupation, industry and sector cells arrive as the
+    # rewrite's incumbents (microcosm#1490). The lineage live here lets the fit
+    # fold geographic clones into each survey record, and the receipt count
+    # true sources (microcosm#931).
+    "spi_employment_shell": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "employment_status"),
+            ("person", "employment_income"),
+            ("person", "self_employment_income"),
+            ("person", "savings_interest_income"),
+            ("person", "dividend_income"),
+            ("person", "private_pension_income"),
+            ("person", "person_is_spi_income_recipient"),
+            ("person", "hmrc_spi_pay"),
+            ("household", "region"),
+            ("household", "household_support_channel"),
+            ("household", "household_support_clone_index"),
+            ("household", "source_household_id"),
+        }
+    ),
+    # Engine-free: the sub-major predictors, the major group it nests in, the
+    # draw keys and the channel split (microcosm#1490).
+    "aps_occupation": frozenset(
+        {
+            ("person", "age"),
+            ("person", "gender"),
+            ("person", "employment_status"),
+            ("person", "employment_income"),
+            ("person", "sic_industry_division"),
+            ("person", "soc2020_major_group"),
+            ("person", "person_is_spi_income_recipient"),
+            ("person", "hmrc_spi_pay"),
+            ("person", "person_source_id"),
+            ("household", "region"),
+            ("household", "household_support_channel"),
+            ("household", "source_household_id"),
+        }
+    ),
     # Engine-free: the housing predictors and the channel split. The rewritten
-    # housing and benefit cells arrive as the rewrite's incumbents.
+    # housing and benefit cells arrive as the rewrite's incumbents. The
+    # lineage live here lets the model fold geographic clones into each survey
+    # household (microcosm#931).
     "spi_housing_shell": frozenset(
         {
+            ("household", "source_household_id"),
+            ("household", "household_support_clone_index"),
             ("person", "age"),
             ("person", "is_household_head"),
             ("person", "employment_income"),
             ("person", "self_employment_income"),
             ("person", "private_pension_income"),
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "property_income"),
             ("person", "other_investment_income"),
@@ -363,6 +469,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
+    # One engine materialization of the limited capability proxy, the UC
+    # claimant role and carer status over the whole frame, beside the admin
+    # status carrier (microcosm#1095, Y1): an open surface.
+    "uc_limited_capability": None,
     # One temporary engine materialization of the Universal Credit award over
     # the whole frame, which also hands the stage the source lineage its pools
     # and receipt count by: an open surface (microcosm#1334).
@@ -412,24 +522,40 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "pip_dl_category",
                     "is_disabled_for_benefits",
                     "is_enhanced_disabled_for_benefits",
-                    "is_severely_disabled_for_benefits",
                     "receives_benefits_in_own_right",
                     # The UC draw's population (frs_take_up's rule).
                     "is_uc_claimant",
+                    # The work tests of the contributory awards: the copy's
+                    # earnings and its twin's hours (microcosm#1095 B10).
+                    "employment_income",
+                    "self_employment_income",
+                    "hours_worked",
+                    # The pension payments the receipt reads beside them.
+                    "private_pension_income",
                 )
             ),
+            # The receipt counts support by source household.
+            ("household", "source_household_id"),
             ("benunit", "benunit_support_channel"),
             ("benunit", "would_claim_uc"),
         }
     ),
     "uc_capital_coherence": frozenset(
         {
+            # The lineage live here lets the donor pool fold geographic clones
+            # into each survey benefit unit (microcosm#931).
+            ("household", "source_household_id"),
+            ("household", "household_support_channel"),
+            ("household", "household_support_clone_index"),
+            ("household", "household_is_high_value_support_copy"),
+            ("household", "high_value_support_copy_index"),
             ("person", "is_benunit_head"),
             ("person", "is_parent"),
             ("person", "person_support_channel"),
             ("person", "universal_credit_reported"),
             # The capital cells' financial investment income (microcosm#1095).
             ("person", "savings_interest_income"),
+            ("person", "individual_savings_account_interest_income"),
             ("person", "dividend_income"),
             ("person", "other_investment_income"),
             # The recorded capitals' property: the household reference
@@ -463,7 +589,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "jsa_income_reported"),
             ("person", "universal_credit_reported"),
             ("benunit", "would_claim_uc"),
-            ("household", "household_source_id"),
+            ("household", "source_household_id"),
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
@@ -495,7 +621,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "state_pension_reported",
-                    "tax_free_savings_income",
+                    "individual_savings_account_interest_income",
                     "age",
                 )
             ),
@@ -553,6 +679,7 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                     "private_pension_income",
                     "property_income",
                     "savings_interest_income",
+                    "individual_savings_account_interest_income",
                     "dividend_income",
                     "miscellaneous_income",
                 )
@@ -564,6 +691,65 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One engine materialization of private-school attendance over the whole
     # frame at its weights: an open surface (microcosm#1095).
     "private_school_attendance": None,
+    # Two engine materializations of the company car and car fuel benefits
+    # over the whole frame: one the stage carves out of the tape rows' pay, and
+    # one on its output to check the carve-out. An open surface
+    # (PolicyEngine/uk-autumn-budget-dashboard-2026#316).
+    "company_cars": None,
+    # Subscribers are cells of age, sex, region and the CGT income proxy; the
+    # balance split reads the household ISA totals and the payments the LISA
+    # holding (microcosm#1415).
+    "isa_subscriptions": frozenset(
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "age",
+                    "gender",
+                    "has_lifetime_isa",
+                    "lifetime_isa_balance",
+                    "employment_income",
+                    "self_employment_income",
+                    "state_pension_reported",
+                    "private_pension_income",
+                    "property_income",
+                    "savings_interest_income",
+                    "individual_savings_account_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                    "loss_relief",
+                )
+            ),
+            ("household", "region"),
+            ("household", "cash_isa"),
+            ("household", "stocks_and_shares_isa"),
+        }
+    ),
+    # The points are drawn within each person's stored PIP awards, by their
+    # age group, and the receipt counts support by source household
+    # (microcosm#1095, P1).
+    "pip_points": frozenset(
+        {
+            ("person", "pip_dl_category"),
+            ("person", "pip_m_category"),
+            ("household", "source_household_id"),
+        }
+    ),
+    # The claim statuses are drawn on each person's final self-employment
+    # profit, the full-relief group leaves the SPI rows out, and the receipt
+    # counts support by source household (microcosm#1428, microcosm#1439).
+    "trading_allowance_receipts": frozenset(
+        {
+            ("person", "self_employment_income"),
+            ("household", "source_household_id"),
+            ("household", "household_is_spi_synthetic"),
+        }
+    ),
+    # One engine materialization of the Universal Credit award and its LCWRA
+    # element over the whole frame, beside the claim recency carrier, the
+    # claimants' ages and the source lineage its pools and receipt count by:
+    # an open surface (microcosm#1095).
+    "uc_new_claimant_draw": None,
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.
@@ -573,6 +759,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("person", "age"),
             ("person", "student_loans"),
             ("person", "student_loan_repayments"),
+            # Re-split to the borrowers once the plans are set (microcosm#1095
+            # B9).
+            ("person", "student_loan_balance"),
             ("person", "current_education"),
             ("person", "highest_education"),
             ("person", "reports_outstanding_student_loan"),
@@ -613,7 +802,13 @@ class _Cell:
         return Owned(self.entity, self.column, self.dtype, rewrite=rewrite)
 
 
-_ROOT_PERSON_STRING = {"gender", "marital_status"}
+_ROOT_PERSON_STRING = {
+    "gender",
+    "marital_status",
+    "frs_uc_lcw_status",
+    "frs_condition_limits_activities",
+    "frs_uc_carer_element",
+}
 _ROOT_PERSON_BOOL = {
     "is_household_head",
     "esa_includes_support_component",
@@ -632,11 +827,21 @@ _ROOT_PERSON_BOOL = {
     "owned_company_carries_on_trade",
     "owned_company_carries_on_property_business",
     "would_claim_carers_allowance",
+    "frs_company_car_private_fuel",
 }
-_ROOT_PERSON_INT = {"age"}
+_ROOT_PERSON_INT = {
+    "age",
+    # The company car carriers' FRS codes (frs_spine.frs_company_car_carriers).
+    "frs_company_car_price_band",
+    "frs_company_car_fuel_code",
+    # The care recipients bitmask (frs_spine.frs_care_recipients).
+    "frs_care_recipients",
+}
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
+    # The claim recency carrier (frs_spine.FRS_UC_CLAIM_MONTHS_COLUMN).
+    "frs_uc_claim_months": "float64",
     "is_married": "bool",
     "dependent_children": "int64",
     "liable_for_share_of_household_rent": "bool",
@@ -677,7 +882,8 @@ def _root_cells(stage_outputs: Iterable[str]) -> tuple[_Cell, ...]:
             # integral, and age_tail keeps an integer input integer (its
             # bands are integral), so the legacy runner and this declaration
             # agree without relying on the CREATE-time cast (#845).  Rewrites
-            # cannot change their base's dtype.
+            # cannot change their base's dtype.  frs_spine writes the company
+            # car codes as int64 too.
             cells.append(_Cell("person", column, "int64"))
         elif column in _ROOT_PERSON_FLOAT:
             cells.append(_Cell("person", column, "float64"))
@@ -718,12 +924,14 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "ons_family_role", "string"),
         _Cell("person", "ons_family_index", "int64"),
         _Cell("person", "is_looked_after_by_local_authority", "bool"),
+        _Cell("person", "child_limit_non_parental_caring_exception", "bool"),
         _Cell("household", "ons_household_type", "string"),
     ),
     "frs_employment": (
         _Cell("person", "employment_status", "string"),
         _Cell("person", "employment_sector", "string"),
         _Cell("person", "sic_industry_division", "int64"),
+        _Cell("person", "soc2020_major_group", "string"),
     ),
     "frs_council_tax": (_Cell("household", "council_tax", "float64"),),
     "frs_disability": (
@@ -743,7 +951,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
-                "is_severely_disabled_for_benefits",
+                "cares_for_severely_disabled_person",
             ),
             "bool",
         ),
@@ -768,6 +976,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "receives_benefits_in_own_right", "bool"),
         _Cell("person", "reports_outstanding_student_loan", "bool"),
         _Cell("person", "age_left_full_time_education", "int64"),
+        _Cell("person", "is_in_full_time_education", "bool"),
     ),
     "frs_legacy_proxies": _cells(
         "person",
@@ -806,6 +1015,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "would_claim_scp", "bool"),
         _Cell("person", "attends_private_school_random_draw", "float64"),
         _Cell("person", "tax_free_childcare_spend_routed_share", "float64"),
+        _Cell("person", "is_apprentice", "bool"),
     ),
     "frs_household_draws": _cells(
         "household",
@@ -927,6 +1137,46 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         ),
         _Cell("household", "has_fuel_consumption", "bool"),
         _Cell("household", "uses_energy_prepayment_meter", "bool"),
+        # The annual kWh the stored spend is priced from, for the energy
+        # dashboards; no policyengine-uk input reads them.
+        *_cells("household", ("electricity_kwh", "gas_kwh")),
+        # The excise step's policyengine-uk inputs (microcosm#1359).
+        *_cells(
+            "household",
+            (
+                "beer_litres",
+                "cider_litres",
+                "wine_litres",
+                "spirits_litres",
+                "other_fermented_litres",
+                "beer_draught_share",
+                "cider_draught_share",
+                "cigarettes_per_week",
+                "hand_rolling_tobacco_grams_per_week",
+                "cigars_grams_per_week",
+                "other_tobacco_grams_per_week",
+                "remote_gaming_net_losses",
+                "pool_betting_net_receipts",
+                "bingo_net_receipts",
+                "national_lottery_ticket_spending",
+                "land_based_casino_net_losses",
+                "machine_games_lower_rate_net_takings",
+                "machine_games_standard_rate_net_takings",
+                "machine_games_higher_rate_net_takings",
+                "land_based_fixed_odds_betting_net_losses",
+                "remote_uk_horseracing_betting_net_losses",
+                "remote_other_betting_net_losses",
+                "betting_exchange_commission",
+                "horse_and_dog_pool_betting_net_losses",
+            ),
+        ),
+        # The vehicle excise duty inputs of the households' own cars
+        # (microcosm#1095 B3); the registration date is an ISO date.
+        _Cell("person", "car_fuel_type", "string"),
+        _Cell("person", "car_co2_emissions", "float64"),
+        _Cell("person", "car_engine_size", "float64"),
+        _Cell("person", "car_first_registration_date", "string"),
+        _Cell("person", "car_is_ved_exempt", "bool"),
     ),
     "etb_vat": (_Cell("household", "full_rate_vat_expenditure_rate", "float64"),),
     "etb_services": (
@@ -1006,6 +1256,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "person_is_spi_income_band_carrier", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
+    "spi_employment_shell": (
+        _Cell("person", "soc2020_major_group", "string"),
+        _Cell("person", "sic_industry_division", "int64"),
+        _Cell("person", "employment_sector", "string"),
+    ),
+    "aps_occupation": (_Cell("person", "soc2020_sub_major_group", "string"),),
     "spi_housing_shell": (
         *_cells(
             "household",
@@ -1036,7 +1292,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells(
             "person",
             (
-                "jsa_contrib_reported",
                 "jsa_income_reported",
                 "esa_income_reported",
                 "income_support_reported",
@@ -1049,6 +1304,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "bsp_reported",
                 "war_widows_pension_reported",
                 "widowed_parents_allowance_reported",
+                "jsa_contrib_reported",
+                "esa_contrib_reported",
             ),
         ),
         *_cells(
@@ -1056,7 +1313,6 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             (
                 "is_disabled_for_benefits",
                 "is_enhanced_disabled_for_benefits",
-                "is_severely_disabled_for_benefits",
                 "receives_benefits_in_own_right",
             ),
             "bool",
@@ -1068,6 +1324,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "pension_credit_reported_capital", "float64"),
         _Cell("benunit", "frs_benunit_capital", "float64"),
         _Cell("benunit", "would_claim_uc", "bool"),
+    ),
+    "uc_limited_capability": (
+        _Cell("person", "uc_limited_capability_for_WRA", "bool"),
+        _Cell("person", "uc_limited_capability_for_work", "bool"),
     ),
     "uc_take_up": (_Cell("benunit", "would_claim_uc", "bool"),),
     "uc_legacy_closure_take_up": (
@@ -1135,8 +1395,47 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
             "salary_sacrifice_pre_conversion_pay",
         ),
     ),
-    "student_loans": (_Cell("person", "student_loan_plan", "string"),),
+    "student_loans": (
+        _Cell("person", "student_loan_plan", "string"),
+        _Cell("person", "student_loan_balance", "float64"),
+    ),
     "private_school_attendance": (_Cell("person", "attends_private_school", "bool"),),
+    "isa_subscriptions": _cells(
+        "person",
+        (
+            "cash_isa_balance",
+            "stocks_and_shares_isa_balance",
+            "cash_isa_subscriptions",
+            "stocks_and_shares_isa_subscriptions",
+            "lifetime_isa_payments",
+        ),
+    ),
+    "pip_points": (
+        _Cell("person", "pip_dl_points", "int64"),
+        _Cell("person", "pip_m_points", "int64"),
+    ),
+    "trading_allowance_receipts": (
+        _Cell("person", "trading_allowance_claim_status", "string"),
+        _Cell("person", "trading_allowance_full_relief", "bool"),
+    ),
+    "uc_new_claimant_draw": (
+        _Cell("benunit", "uc_new_claimant_health_element_draw", "float64"),
+    ),
+    "company_cars": (
+        _Cell("person", "company_car_list_price", "float64"),
+        _Cell("person", "company_car_co2_emissions", "float64"),
+        _Cell("person", "company_car_fuel_type", "string"),
+        _Cell("person", "company_car_electric_range", "float64"),
+        _Cell("person", "company_car_capital_contributions", "float64"),
+        _Cell("person", "company_car_private_fuel_provided", "bool"),
+        # A tape row's pay gives up the benefits carved out of it, and its UC
+        # gainful self-employment follows the carved pay. On a tape row without
+        # EPB the benefits move from its PAY into its EPB.
+        _Cell("person", "employment_income", "float64"),
+        _Cell("person", "uc_is_in_gainful_self_employment", "bool"),
+        _Cell("person", "hmrc_spi_pay", "float64"),
+        _Cell("person", "hmrc_spi_employment_benefits", "float64"),
+    ),
     "childcare_copy_take_up": (
         *_cells(
             "benunit",
@@ -1181,7 +1480,7 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "employer_pension_contributions",
     "personal_pension_contributions",
     "pension_contributions_via_salary_sacrifice",
-    "tax_free_savings_income",
+    "individual_savings_account_interest_income",
     "universal_credit_reported",
     "pension_credit_reported",
     "child_benefit_reported",
@@ -1222,6 +1521,10 @@ _HMRC_SPI_FLOAT_COLUMNS = (
     "self_employment_income_other_spells",
     "private_pension_income_annual_share",
     "contributory_benefits_annual_share",
+    # A drawn row's private pension is the tape's, which books annuity and
+    # trust payments as other income, so its annuity and trust descriptor is
+    # zero (microcosm#1428).
+    "annuity_and_trust_income",
 )
 _HMRC_SPI_HIDDEN_STRING = (
     "aa_category",
@@ -1233,7 +1536,6 @@ _HMRC_SPI_HIDDEN_STRING = (
 _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
-    "is_severely_disabled_for_benefits",
     # #882: the carer take-up flag follows the refilled Carer's Allowance
     # receipt on the SPI-redrawn rows; carers_allowance_take_up later opens it
     # to carers over the earnings limit (microcosm#1319).
@@ -1257,6 +1559,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "owned_company_is_main_employment",
     "owned_company_carries_on_trade",
     "owned_company_carries_on_property_business",
+    # The carer link, taken again on the channel's households from the
+    # re-imputed disability benefits (A3, microcosm#1095).
+    "cares_for_severely_disabled_person",
     # The rows stage 1 drew, read by property_components (microcosm#840).
     "person_is_spi_income_recipient",
 )
@@ -1634,8 +1939,8 @@ def uk_spine_graph(
         if cells:
             shape_anchor = cells[-1].coordinate
 
-        if stage_name == "frs_brma":
-            checkpoint = "frs_brma.checkpoint"
+        if stage_name == UK_SPINE_ASSEMBLED_FINAL_STAGE:
+            checkpoint = f"{UK_SPINE_ASSEMBLED_FINAL_STAGE}.checkpoint"
             nodes.append(
                 Node(
                     id=checkpoint,
@@ -1660,14 +1965,20 @@ def uk_registry(
     implementations: Mapping[str, object] | None = None,
     *,
     graph: Graph | None = None,
+    release_stage_results: bool = False,
 ) -> KernelRegistry:
-    """Return kernels for ``graph``, optionally bound to real stage transforms."""
+    """Return kernels for ``graph``, optionally bound to real stage transforms.
+
+    ``release_stage_results`` has each stage drop its retained result once
+    its evidence is captured; the default keeps it.
+    """
 
     from .graph_kernels import build_uk_registry
 
     return build_uk_registry(
         uk_spine_graph() if graph is None else graph,
         {} if implementations is None else implementations,
+        release_stage_results=release_stage_results,
     )
 
 

@@ -89,6 +89,7 @@ from microcosm.calibrate._target_loss_attribution import (  # noqa: E402
     TARGET_LOSS_BASIS_HASH_ALGORITHM,
 )
 from microcosm.calibrate.diagnostics import (  # noqa: E402 - after the compat gate
+    CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION,
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     diagnostics_payload,
     past_cap_census,
@@ -185,6 +186,7 @@ __all__ = [
     "score_predictions",
     "ssa_population_projection",
     "static_aging",
+    "CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION",
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "DiagnosticsWriteFailure",
     "DiagnosticsWriteOutcome",

@@ -4,7 +4,9 @@ From policyengine-uk 2.148.1 (PolicyEngine/policyengine-uk#2571) the engine
 projects stored domestic energy spending from the price period a dataset
 declares in its root ``energy_price_basis`` attribute, and keeps spending
 without one at its stored prices in every later year
-(PolicyEngine/policyengine-uk#2526).
+(PolicyEngine/policyengine-uk#2526). From 2.168.1 each declared column moves
+by its own fuel's retail energy price index (``ENERGY_PRICE_SERIES``), from
+the declared period's index to the projected fiscal year's, not by CPI.
 """
 
 from __future__ import annotations
@@ -81,14 +83,18 @@ def test_the_engine_projects_declared_energy_spending_by_its_price_index(
     """End to end through Microsimulation (Vahid's review of #1383, item 3).
 
     A written file declares calendar-2024 prices, so the engine carries each
-    household's energy spending to a later year by its energy price index,
-    every household and column alike. The same file without the declaration
-    keeps its stored spending in every year.
+    household's energy spending to a later year by its fuel's energy price
+    index, from the calendar-2024 level to the fiscal year's, every household
+    alike. Gas prices fall into 2025, so a ratio can be below one. The same
+    file without the declaration keeps its stored spending in every year.
     """
 
     import h5py
     from policyengine_uk import Microsimulation
-    from policyengine_uk.data.economic_assumptions import ENERGY_PRICE_INDEX
+    from policyengine_uk.data.economic_assumptions import (
+        ENERGY_PRICE_SERIES,
+        ENERGY_PRICES,
+    )
     from policyengine_uk.data.energy_price_basis import ENERGY_PRICE_BASIS_ATTRIBUTE
 
     # The household inputs the engine's yearly uprating reads.
@@ -105,12 +111,16 @@ def test_the_engine_projects_declared_energy_spending_by_its_price_index(
         del handle.attrs[ENERGY_PRICE_BASIS_ATTRIBUTE]
 
     simulation = Microsimulation(dataset=str(declared))
-    index = simulation.tax_benefit_system.parameters.get_child(ENERGY_PRICE_INDEX)
+    parameters = simulation.tax_benefit_system.parameters
     flat = Microsimulation(dataset=str(undeclared))
+    assert set(ENERGY_PRICE_SERIES) == set(UK_ENERGY_PRICE_BASIS_COLUMNS)
     for year in (2025, 2026):
-        ratio = index(f"{year}-01-01") / index("2024-01-01")
-        assert ratio > 1.0
         for column in UK_ENERGY_PRICE_BASIS_COLUMNS:
+            series = ENERGY_PRICE_SERIES[column]
+            source = parameters.get_child(f"{ENERGY_PRICES}.calendar_year.{series}")
+            target = parameters.get_child(f"{ENERGY_PRICES}.fiscal_year.{series}")
+            ratio = target(f"{year}-01-01") / source("2024-01-01")
+            assert ratio > 0.0
             np.testing.assert_allclose(
                 simulation.calculate(column, year).values,
                 stored[column].to_numpy() * ratio,

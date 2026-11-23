@@ -32,7 +32,7 @@ the feed is read. The national release does not use this switch:
 `state` is the SOI contract every earlier ACS local-area release was calibrated
 to. Build O (`populace-us-2024-buildo-acs-local-77e2061-20260724T110908Z`)
 selected it as `full` while `state_admin_specs` compiled with
-`include_congressional_district_targets=False` (populace `77e2061`,
+`include_congressional_district_targets=False` (microcosm `77e2061`,
 `tools/build_us_acs_local_release.py:151-154`). Build P's ACS local release
 (`populace-us-2024-buildp-acs-local-592ae5d6-20260819T020303Z`) calibrated to
 the same 4,459 targets. Commit `b7922b089` (2026-08-21, "compile one target
@@ -545,9 +545,11 @@ record one of the four modes, before any release directory exists.
 - `materialize_rss.json`: the full SOI surface receipt (`soi_surface`: counts,
   every drop reason, rebase factors, crosswalk digest, sigma), the holdout
   receipt with every held unit, and the carrier check.
-- `gate_summary.json`: `cd_holdout` and `weight_origin` (report-only), and
-  the calibrated surface's trained and held-out counts.
-- The release refresh recipe, which names `--cd-holdout-fraction`.
+- `gate_summary.json`: `cd_holdout` and `weight_origin` (report-only),
+  `district_ess_collapse` (report-only unless `--district-ess-gate-blocking`),
+  and the calibrated surface's trained and held-out counts.
+- The release refresh recipe, which names `--cd-holdout-fraction`, and the
+  district ESS gate's flags when they differ from the defaults.
 
 ## Operating notes
 

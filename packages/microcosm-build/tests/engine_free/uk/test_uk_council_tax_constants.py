@@ -38,11 +38,13 @@ def test_the_spine_and_the_local_metrics_use_the_shared_bands() -> None:
     assert frs_spine.COUNCIL_TAX_BAND_MAP == {
         code: band for code, band in enumerate(UK_COUNCIL_TAX_BANDS, start=1)
     }
-    band_metrics = [
+    council_tax_metrics = [
         name
         for name in local_targets.metric_names("la")
         if name.startswith("council_tax/")
     ]
-    assert band_metrics == [
-        f"council_tax/band_{band.lower()}" for band in UK_COUNCIL_TAX_BANDS
+    # The bands, then England's single adult discount (microcosm#1095).
+    assert council_tax_metrics == [
+        *(f"council_tax/band_{band.lower()}" for band in UK_COUNCIL_TAX_BANDS),
+        "council_tax/single_adult_discount",
     ]

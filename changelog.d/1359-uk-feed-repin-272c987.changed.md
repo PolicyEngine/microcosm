@@ -1,0 +1,1 @@
+The UK Chronicle feed is re-pinned to `272c987` (PolicyEngine/chronicle#391), which adds the Gambling Commission's Gambling Survey for Great Britain 2025 participation tables for #1359's gambling top-up. The new vendored `gambling_participation_facts.json` carries the 426 Great Britain participation rows the LCFS stage reads. No compiled target moves on either surface.

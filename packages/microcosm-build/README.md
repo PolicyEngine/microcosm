@@ -5,8 +5,9 @@ The build end of the microcosm stack: typed stage plans over
 names its donor survey and fails loudly — no silent fallbacks), and the
 **dataset acceptance gates** every release must pass before publishing:
 
-- **parity** — every variable layer the incumbent populates, the candidate
-  populates (no all-zero gaps on engine-known inputs);
+- **parity** — every variable layer the reference populates, the candidate
+  populates (no all-zero gaps on engine-known inputs; for UK, the reference
+  is the current build of the cut's own line, microcosm#1095);
 - **support** — every imputed value lies inside its donor's realized range;
 - **aggregate-vs-admin** — weighted aggregates land within declared tolerance
   of administrative anchors from the
@@ -15,8 +16,8 @@ names its donor survey and fails loudly — no silent fallbacks), and the
   short-term capital gains to −$3.9T);
 - **export surface** — every replacement artifact can prove that its
   exported variables match a reference surface, with only documented
-  structural extras or reviewed exclusions (for UK, this is the eFRS
-  compatibility check);
+  structural extras or reviewed exclusions (for UK, the surface of the
+  current build of the cut's own line, microcosm#1095);
 - **target surface** — the calibration target set covers the reference
   target surface and may only be wider, not narrower (for UK, Microcosm must
   calibrate to at least the eFRS target surface);
@@ -112,7 +113,7 @@ Build the row-wise local-geography H5 from a compact Microcosm UK H5 with:
 uv run --project packages/microcosm-build --extra uk python \
   tools/build_uk_rowwise_dataset.py \
   --input-h5 /path/to/populace_uk_2023.h5 \
-  --out /tmp/populace-uk-rowwise \
+  --out /tmp/microcosm-uk-rowwise \
   --n-clones 2 \
   --constituency-codes /path/to/constituencies_2024.csv \
   --la-codes /path/to/local_authorities_2021.csv

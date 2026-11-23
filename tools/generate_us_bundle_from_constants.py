@@ -34,7 +34,8 @@ from microcosm.build.spec_engine import (  # noqa: E402
     scoped_take_up_manifest_program_bindings,
 )
 
-TOMBSTONE_DATE = "2026-11-16"
+# Renewed from 2026-11-16 (microcosm#1585 item 1): no build runs on the bundle yet (F1).
+TOMBSTONE_DATE = "2027-02-16"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 US_PACKAGE_ROOT = (
     REPOSITORY_ROOT
@@ -122,7 +123,7 @@ LEGACY_COMPATIBILITY_PROJECTIONS = {
 # frozen files, is the forward YAML -> legacy-payload path.
 FROZEN_LEGACY_RESOURCE_SHA256 = {
     "source_stages.json": (
-        "dc3b72982675b95d30cfabdeb5f7f4c492e6cd3788009ef3094ab4d48bfd9093"
+        "959214c437bfa59d43e32279b82f29a0987649cd7579ff87567c70f084eae66c"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -136,12 +137,17 @@ FROZEN_LEGACY_RESOURCE_SHA256 = {
 # The three projections above are byte-frozen and equality-attested during the
 # F0 bridge; their existing direct consumers retire with the constants adapter.
 LEGACY_RESOURCE_PATHS = (
+    # The county facts pin (microcosm#922): read only by the ACS-local county
+    # rung through --county-facts, never by a fiscal compile.
+    "chronicle_county_facts.json",
+    "chronicle_county_facts_scope.json",
     "chronicle_feed.json",
     "chronicle_feed_scope.json",
     "ecps_parity_known_gaps.json",
     "ecps_parity_reference.json",
     "federal_eitc_by_state.json",
     "fiscal_target_references.json",
+    "gates.json",
     "obbba_reforms.json",
     "puf_aggregate_record_disaggregation.json",
     "release_input_coverage_manifest.json",

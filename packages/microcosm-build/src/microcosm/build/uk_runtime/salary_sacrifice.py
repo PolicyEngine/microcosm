@@ -30,16 +30,22 @@ from microcosm.build.uk_runtime.cgt_structure import (
     _assert_closed_world_operations,
 )
 from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    gate_outcomes,
+)
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
+    record_source_households,
     small_cell_share,
-    source_household_ids,
     support_band,
 )
 from microcosm.build.uk_runtime.spi_support import support_channel_column
@@ -69,16 +75,26 @@ SALSAC_RATE_CAP = 0.5
 #: rest of the contribution stays an employee contribution (uk-data#518).
 SALSAC_MOVE_PAY_SHARE_CAP = 0.5
 SALSAC_QRF_SEED = 42
+#: The fit's sign gate is cross-fitted, its folds dealt by household
+#: (microcosm#1359): an in-sample gate draws a rare sacrifice too rarely on
+#: the people it was not fitted to.
+SALSAC_QRF_GATE_CALIBRATION = "cross_fitted"
 SALSAC_QRF_ESTIMATORS = 100
 SALSAC_CONVERSION_SEED = 2024
 SALSAC_CONVERSION_SALT = "salary_sacrifice_conversion"
 #: Whom the QRF predicts for. Salary sacrifice is pay given up for a pension
 #: contribution, so a person not asked the question who has no employment
-#: income has none: the prediction covers the people not asked who are paid,
-#: and everyone else not asked is zero (microcosm#1063).
+#: income has none: the prediction covers the adult records not asked who are
+#: paid, and everyone else not asked is zero (microcosm#1063). The FRS asks
+#: the question on adults' job records, so the forest only ever sees adults; a
+#: dependent child (a child-table person, ``is_hbai_dependent_child``) is paid
+#: CHILD.CHEARNS since PolicyEngine/microcosm#1663, and the forest does not
+#: predict for them: a child not asked sacrifices none (Vahid's final review of
+#: PolicyEngine/microcosm#1663, María's reply of 19 November 2026).
 SALSAC_TARGET_POPULATION = (
-    "salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people "
-    "not asked who have no employment income are set to zero"
+    "salary_sacrifice_asked != 1 and employment_income > 0 and not "
+    "is_hbai_dependent_child, frame-wide; people not asked who have no "
+    "employment income, and dependent children not asked, are set to zero"
 )
 #: Whom the QRF trains on. A respondent asked the question who has no pay
 #: cannot show what a paid person sacrifices, and only predictions for paid
@@ -370,7 +386,7 @@ def draw_spi_bonuses(
     groups = [[cell] for cell in range(len(edges) + 1)]
 
     def donor_sources(group: list[int]) -> int:
-        return len(pd.unique(sources[paid_donors & np.isin(raw_cells, group)]))
+        return distinct_count(sources, paid_donors & np.isin(raw_cells, group))
 
     position = len(groups) - 1
     while len(groups) > 1 and position >= 0:
@@ -418,6 +434,8 @@ class UKSalarySacrificeResult:
     prediction_rows: int
     not_asked_without_pay_rows: int
     not_asked_without_pay_mass: float
+    not_asked_dependent_child_rows: int
+    not_asked_dependent_child_mass: float
     limited_to_pay_rows: int
     limited_to_pay_mass: float
     limited_to_pay_amount: float
@@ -436,6 +454,8 @@ class UKSalarySacrificeResult:
     realization_deviation: float
     #: The bonus conversion's receipt (microcosm#1340).
     bonus_receipt: Mapping[str, object] | None = None
+    #: The fit's gate outcome, when the gate is not in-sample.
+    gate_outcomes: Mapping[str, str] | None = None
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -448,6 +468,10 @@ class UKSalarySacrificeResult:
                 # zero, never predicted for.
                 "not_asked_without_pay_rows": self.not_asked_without_pay_rows,
                 "not_asked_without_pay_mass": self.not_asked_without_pay_mass,
+                # Dependent children not asked who have pay (CHILD.CHEARNS):
+                # set to zero, never predicted for.
+                "not_asked_dependent_child_rows": self.not_asked_dependent_child_rows,
+                "not_asked_dependent_child_mass": self.not_asked_dependent_child_mass,
                 # Amounts above the person's pay, reported or predicted,
                 # limited to it: rows, weighted people and unweighted pounds
                 # removed.
@@ -483,6 +507,11 @@ class UKSalarySacrificeResult:
                 {}
                 if self.bonus_receipt is None
                 else {"bonus_sacrifice_receipt": dict(self.bonus_receipt)}
+            ),
+            **(
+                {UK_GATE_OUTCOMES_EVIDENCE: dict(self.gate_outcomes)}
+                if self.gate_outcomes
+                else {}
             ),
         }
 
@@ -540,6 +569,7 @@ def impute_salary_sacrifice(
         "salary_sacrifice_asked",
         SALSAC_OUTPUT,
         "employee_pension_contributions",
+        "is_hbai_dependent_child",
     }
     missing = sorted(required_person - set(person.columns))
     if missing:
@@ -566,6 +596,10 @@ def impute_salary_sacrifice(
     asked = pd.to_numeric(person["salary_sacrifice_asked"], errors="coerce")
     if asked.isna().any():
         raise ValueError("salary_sacrifice_asked contains non-numeric values.")
+    dependent = person["is_hbai_dependent_child"]
+    if not dependent.isin([True, False]).all():
+        raise ValueError("is_hbai_dependent_child must be true or false for everyone.")
+    dependent_child = dependent.astype(bool)
     numeric = person.loc[:, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].apply(
         pd.to_numeric, errors="coerce"
     )
@@ -585,25 +619,48 @@ def impute_salary_sacrifice(
         raise ValueError(
             "Salary-sacrifice QRF has no eligible asked FRS rows with pay."
         )
-    # The prediction population is the people not asked who are paid; a
-    # person not asked with no employment income sacrifices none of it.
+    # The prediction population is the adult records not asked who are paid;
+    # a person not asked with no employment income sacrifices none of it, and
+    # nor does a dependent child not asked, whom the forest never sees.
     not_asked = ~asked.eq(1)
-    predict_mask = not_asked & paid
+    predict_mask = not_asked & paid & ~dependent_child
     without_pay = not_asked & ~paid
-    person.loc[without_pay, SALSAC_OUTPUT] = 0.0
+    child_with_pay = not_asked & paid & dependent_child
+    person.loc[without_pay | child_with_pay, SALSAC_OUTPUT] = 0.0
     household_weights = pd.Series(
         frame.weights_for("household").values,
         index=household["household_id"],
     )
     person_weights = person_households.map(household_weights).to_numpy(dtype=float)
+    # The forest trains on each asked respondent once: their geographic
+    # clones that agree on the predictors and the sacrifice fold into their
+    # first row with their weight, clones that differ stay rows of their own,
+    # and every other copy stays its own row; a frame without geographic
+    # clones keeps every row and weight
+    # (household_lineage.collapse_geographic_clones, microcosm#931).
+    kept, fit_weights = collapse_geographic_clones(
+        {"person": person, "household": household},
+        "person",
+        training_mask.to_numpy(dtype=bool),
+        person_weights,
+        inputs=numeric[[*SALSAC_PREDICTORS, SALSAC_OUTPUT]].reset_index(drop=True),
+    )
+    training_mask = pd.Series(kept, index=training_mask.index)
     training = numeric.loc[training_mask, [*SALSAC_PREDICTORS, SALSAC_OUTPUT]].copy()
-    training["_fit_weight"] = person_weights[training_mask.to_numpy()]
-    model = _qrf_class()(n_estimators=SALSAC_QRF_ESTIMATORS, seed=SALSAC_QRF_SEED)
+    training["_fit_weight"] = fit_weights[kept]
+    model = _qrf_class()(
+        n_estimators=SALSAC_QRF_ESTIMATORS,
+        seed=SALSAC_QRF_SEED,
+        gate_calibration=SALSAC_QRF_GATE_CALIBRATION,
+    )
+    # A person's household mates share its predictors' household parts, so a
+    # cross-fitted gate deals each household to one fold.
     fitted = model.fit(
         training,
         list(SALSAC_PREDICTORS),
         [SALSAC_OUTPUT],
         weights="_fit_weight",
+        groups=person_households.loc[training_mask].to_numpy(),
     )
     if predict_mask.any():
         # Uniforms keyed on each person's own id, never a positional stream:
@@ -710,12 +767,16 @@ def impute_salary_sacrifice(
             f"{bonus_resource['data_year']}, but the frame's period is "
             f"{uk_time_period(frame)!r}."
         )
-    source_ids = person_households.map(
-        pd.Series(
-            source_household_ids(household, stage="The salary-sacrifice stage"),
-            index=household["household_id"].to_numpy(),
-        )
-    ).to_numpy()
+    source_ids = record_source_households(
+        {"person": person, "household": household},
+        "person",
+        stage="The salary-sacrifice stage",
+    )
+    # Donors and drawers are adults, as BONUS_SACRIFICE_SPI_DRAW says. Since
+    # PolicyEngine/microcosm#1663 a dependent child's CHILD.CHEARNS is their
+    # pay, and a paid child would join the donors with no bonus and move the
+    # pay cells' edges.
+    adult_record = ~dependent_child
     spi_draw = draw_spi_bonuses(
         bonus=bonus_source,
         employment_income=employment_income,
@@ -723,9 +784,12 @@ def impute_salary_sacrifice(
         person_ids=person["person_id"].to_numpy(),
         source_ids=source_ids,
         donors=(
-            channels.eq("frs") & ~clones.astype(bool) & ~support_copies.astype(bool)
+            channels.eq("frs")
+            & ~clones.astype(bool)
+            & ~support_copies.astype(bool)
+            & adult_record
         ).to_numpy(),
-        spi=channels.ne("frs").to_numpy(),
+        spi=(channels.ne("frs") & adult_record).to_numpy(),
     )
     bonus = convert_bonuses_to_bonus_sacrifice(
         bonus=spi_draw.bonus,
@@ -746,9 +810,13 @@ def impute_salary_sacrifice(
     # Net-pay contributions come out of pay: the spine caps them at pay
     # (uk_runtime.pension_coherence), and the conversion takes the same amount
     # off both, so a contribution above the pay that remains is a defect. The
-    # caps hold here only while no stage between them and this one lowers
-    # pay: today only hmrc_spi_income_spine and salary_sacrifice write
-    # employment_income, so a new pay rewrite must cap contributions again.
+    # caps hold here only while every stage between them and this one that
+    # lowers pay keeps the contribution: company_cars carves a tape row's car
+    # benefits only out of the pay its contribution leaves, and a new pay
+    # rewrite must do the same or cap contributions again. A pay rewrite also
+    # moves the root's UC gainful self-employment rule, which reads pay:
+    # company_cars takes it again on the carved pay, but this stage's own
+    # conversion does not yet.
     if (employee > np.maximum(employment_income, 0.0) + 1e-6).any():
         raise ValueError(
             "Employee pension contributions must not exceed the pay that remains."
@@ -764,7 +832,7 @@ def impute_salary_sacrifice(
     person["employment_income"] = employment_income
     person[SALSAC_PRE_CONVERSION_PAY_COLUMN] = pre_conversion_pay
     # Weighted aggregates only, banded on distinct source households; a figure
-    # one to nine of them carry is "<10" (UKDS disclosure control).
+    # one or two of them carry is "<3" (UKDS disclosure control).
 
     def bonus_sources(mask: np.ndarray) -> int:
         return distinct_count(source_ids, mask, person_weights)
@@ -818,6 +886,10 @@ def impute_salary_sacrifice(
         prediction_rows=int(predict_mask.sum()),
         not_asked_without_pay_rows=int(without_pay.sum()),
         not_asked_without_pay_mass=float(person_weights[without_pay.to_numpy()].sum()),
+        not_asked_dependent_child_rows=int(child_with_pay.sum()),
+        not_asked_dependent_child_mass=float(
+            person_weights[child_with_pay.to_numpy()].sum()
+        ),
         limited_to_pay_rows=int(limited.sum()),
         limited_to_pay_mass=float(person_weights[limited].sum()),
         limited_to_pay_amount=limited_to_pay_amount,
@@ -839,6 +911,11 @@ def impute_salary_sacrifice(
             else 0.0
         ),
         bonus_receipt=bonus_receipt,
+        gate_outcomes=(
+            gate_outcomes("salary_sacrifice", fitted)
+            if SALSAC_QRF_GATE_CALIBRATION != UK_DEFAULT_GATE_CALIBRATION
+            else None
+        ),
     )
 
 
@@ -883,6 +960,7 @@ def salary_sacrifice_operation_parameters() -> tuple[
                 "weight_mapping": "household_to_person",
                 "seed": SALSAC_QRF_SEED,
                 "n_estimators": SALSAC_QRF_ESTIMATORS,
+                "gate_calibration": SALSAC_QRF_GATE_CALIBRATION,
                 "clamp_minimum": 0,
                 "clamp_maximum": SALSAC_AMOUNT_LIMIT,
                 "preserve_asked_rows": True,

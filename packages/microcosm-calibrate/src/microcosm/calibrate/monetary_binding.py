@@ -71,6 +71,9 @@ _REFERENCE_KEYS = frozenset(
         # declaration that compiled it.
         "value_operands",
         "expected_member_count",
+        # microcosm#1095: a reference can select its facts at a declared
+        # observation period while the target keeps its own (None otherwise).
+        "observation_period",
     }
 )
 _PREPARED_KEYS = frozenset(

@@ -30,6 +30,7 @@ from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     uk_household_weight_kind,
     uk_national_frame,
+    uk_savings_income_projection,
     uk_time_period,
     validate_uk_national_frame,
     write_uk_national_frame,
@@ -42,6 +43,11 @@ from microcosm.build.uk_runtime.spi_support import (
     replace_uk_spi_support_tables,
 )
 from microcosm.frame import CONSERVE_MASS, Frame, MassChangeRecord, WeightKind, Weights
+from microcosm.frame.adapters.policyengine_uk import (
+    UK_DEFAULT_SAVINGS_INCOME_PROJECTION,
+    UK_SAVINGS_INCOME_PROJECTION,
+    UK_SAVINGS_INCOME_PROJECTION_ATTR,
+)
 
 
 def person_frame() -> pd.DataFrame:
@@ -353,6 +359,44 @@ def test_the_writer_declares_the_energy_price_period_where_energy_is_stored(
     again = write_uk_national_frame(reloaded, tmp_path / "again.h5")
     with h5py.File(again, mode="r") as file:
         assert file.attrs[UK_ENERGY_PRICE_BASIS_ATTR] == stored
+
+
+def test_the_writer_declares_the_producers_savings_income_projection(
+    tmp_path: Path,
+) -> None:
+    """policyengine-uk 2.165.2 grows savings income by the rule an H5 declares.
+
+    Every H5 the producer writes declares the OBR rule its savings income was
+    calibrated to (microcosm#1418). A file declaring none loads as GDP per
+    head, the engine's default, and keeps that reading when written again, so
+    a reference file never gains the producer's rule.
+    """
+
+    pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
+    path = write_uk_national_frame(_frame(), tmp_path / "frame.h5")
+    with h5py.File(path, mode="r") as file:
+        stored = file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR]
+    assert stored == UK_SAVINGS_INCOME_PROJECTION
+    reloaded, _provenance = load_uk_national_frame(path)
+    assert uk_savings_income_projection(reloaded) == UK_SAVINGS_INCOME_PROJECTION
+    assert UK_SAVINGS_INCOME_PROJECTION_ATTR not in reloaded.metadata
+
+    with h5py.File(path, mode="r+") as file:
+        del file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR]
+    unmarked, _provenance = load_uk_national_frame(path)
+    assert (
+        uk_savings_income_projection(unmarked) == UK_DEFAULT_SAVINGS_INCOME_PROJECTION
+    )
+    again = write_uk_national_frame(unmarked, tmp_path / "again.h5")
+    with h5py.File(again, mode="r") as file:
+        stored = file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR]
+    assert stored == UK_DEFAULT_SAVINGS_INCOME_PROJECTION
+
+    with h5py.File(again, mode="r+") as file:
+        file.attrs[UK_SAVINGS_INCOME_PROJECTION_ATTR] = "household_interest_income"
+    with pytest.raises(ValueError, match="savings income projection"):
+        load_uk_national_frame(again)
 
 
 def test_the_declared_energy_price_period_is_the_one_the_lcfs_gate_holds() -> None:

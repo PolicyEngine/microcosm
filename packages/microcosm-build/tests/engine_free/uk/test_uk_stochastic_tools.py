@@ -302,6 +302,9 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
             "person_benunit_id": [10, 10, 20, 30],
             "person_household_id": [1, 1, 1, 2],
             "age": [5, 6, 40, 70],
+            "employment_status": ["CHILD", "CHILD", "FT_EMPLOYED", "RETIRED"],
+            # frs_education's flag, which the apprentice draw reads.
+            "is_in_full_time_education": [True, True, False, False],
             "months_since_last_birthday": [0.0] * 4,
             "is_uc_claimant": [False, False, True, True],
             "child_benefit_reported": [0.0, 10.0, 0.0, 0.0],
@@ -361,6 +364,7 @@ def test_brma_cell_distribution_masks_small_counts_and_reports_z() -> None:
             "region": ["LONDON"] * 4,
             "LHA_category": ["A"] * 4,
             "brma": ["CENTRAL", "CENTRAL", "CENTRAL", "OUTER"],
+            "source_household": [1, 2, 3, 4],
         }
     )
     resource = {"cells": {"LONDON": {"A": {"CENTRAL": 1, "OUTER": 1}}}}
@@ -389,6 +393,7 @@ def test_brma_cell_distribution_fails_closed_on_missing_cell() -> None:
             "region": ["LONDON"],
             "LHA_category": ["B"],
             "brma": ["CENTRAL"],
+            "source_household": [1],
         }
     )
     resource = {"cells": {"LONDON": {"A": {"CENTRAL": 1}}}}

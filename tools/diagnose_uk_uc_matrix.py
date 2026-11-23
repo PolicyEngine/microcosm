@@ -30,6 +30,7 @@ from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
+    restamp_reference_period,
 )
 from microcosm.build.target_materialization import (
     materialize_target_bindings,
@@ -386,7 +387,7 @@ def compile_explicit_references(facts, path, year):
     fact_rows = tuple(facts)
     specs = []
     for row in payload["target_references"]:
-        reference = LedgerTargetReference(**{**row, "period": year})
+        reference = restamp_reference_period(LedgerTargetReference(**row), year)
         candidates = _candidate_facts_for_reference(fact_rows, reference)
         registry = compile_ledger_target_references(
             candidates, [reference], country="uk"

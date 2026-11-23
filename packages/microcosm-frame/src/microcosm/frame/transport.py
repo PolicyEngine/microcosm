@@ -4,6 +4,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import blake2b, file_digest
+from hashlib import sha256 as _sha256
 from math import fsum
 from pathlib import Path
 from types import MappingProxyType
@@ -17,9 +18,12 @@ from microcosm.frame.adapters.policyengine_us_concepts import (
 )
 from microcosm.frame.concepts import (
     HOUSEHOLD_ID_COLUMN,
+    MARITAL_STATUS_DOMAIN,
     PERSON_HOUSEHOLD_ID_COLUMN,
     PERSON_ID_COLUMN,
+    RENTED_TENURES,
     SOURCE_HOUSEHOLD_ID_COLUMN,
+    TENURE_DOMAIN,
     ContentBasis,
     Unit,
     concept_for_column,
@@ -29,9 +33,13 @@ from microcosm.frame.materialize import read_frame_table
 from microcosm.frame.scaling import apply_scale
 
 __all__ = [
+    "DONOR_PROFILE_CHOICES",
+    "DONOR_PROFILE_FORMAT",
     "DonorBank",
+    "DonorProfile",
     "currency_bridge",
     "derive_transport_seed",
+    "parse_donor_profile",
     "quantile_map",
     "read_populace_us_donor",
 ]
@@ -472,6 +480,10 @@ class DonorBank:
     The household table carries ``source_household_id`` only when explicit
     source year and raw household lineage are available. Its typed JSON key
     merges clones across support channels and distinguishes source vintages.
+    ``time_period`` is the donor file's recorded model ``_time_period`` year,
+    or ``None`` when absent. It does not authenticate the amounts' money basis.
+    ``donor_profile`` records what a :class:`DonorProfile` staged, or is
+    ``None`` when the caller named no profile.
     """
 
     tables: Mapping[str, pd.DataFrame]
@@ -482,6 +494,8 @@ class DonorBank:
     donor_country: str = "us"
     currency: str = "USD"
     dropped_parent_cycle_edges: int = 0
+    time_period: int | None = None
+    donor_profile: Mapping[str, object] | None = None
 
 
 #: Line numbers and pointers are validated as float64 (pointer columns can hold
@@ -725,6 +739,638 @@ def _donor_extras(person: pd.DataFrame, household: pd.DataFrame) -> dict:
     }
 
 
+# --- Donor-decoding profiles -------------------------------------------------
+#
+# The concept mapping cannot invert the donor's tenure, marital status or
+# enrollment inputs, so the reader decodes none of them. A donor profile,
+# named for a donor family, stages them from the donor's raw survey answers
+# between the authenticated read and validation. A graph selects one through
+# a profile document; without one the reader is unchanged.
+
+#: The profile document's format tag.
+DONOR_PROFILE_FORMAT = "microcosm.donor-profile/1"
+
+#: Every declared profile, by name and version, with each choice field it
+#: declares and that field's closed value set. These are the only values a
+#: profile document may carry; a new value is a new shared release.
+#:
+#: ``populace-us-cps-asec`` version 1 reads a populace-us donor's CPS ASEC
+#: answers:
+#:
+#: - ``assisted_renter_tenure``: the tenure of a renting household any of
+#:   whose SPM units receives housing assistance. The donor has no landlord
+#:   signal, so ``rented_public_authority`` is a recorded stand-in for a
+#:   public landlord; ``rented_private`` treats assisted renters like the rest.
+#: - ``blank_full_time_study``: what a blank ``A_ENRLW`` or ``A_FTPT`` answer
+#:   means. ``refuse`` refuses the donor; ``read_false`` reads the person as
+#:   not studying full time and counts the blanks by source year. The
+#:   document's ``donor_sha256`` ties the choice to the one donor it names.
+#: - ``housing_cost_contradicting_tenure``: rent outside the rented tenures,
+#:   or mortgage interest or principal outside ``owned_with_mortgage``.
+#:   ``tenure_wins`` sets the amount to zero and records the counts and
+#:   amounts; ``refuse`` refuses the donor with the counts.
+DONOR_PROFILE_CHOICES: Mapping[tuple[str, int], Mapping[str, tuple[str, ...]]] = (
+    MappingProxyType(
+        {
+            ("populace-us-cps-asec", 1): MappingProxyType(
+                {
+                    "assisted_renter_tenure": (
+                        "rented_public_authority",
+                        "rented_private",
+                    ),
+                    "blank_full_time_study": ("refuse", "read_false"),
+                    "housing_cost_contradicting_tenure": ("tenure_wins", "refuse"),
+                }
+            ),
+        }
+    )
+)
+
+_DONOR_PROFILE_FIELDS = frozenset(
+    {"format", "profile", "version", "donor_sha256", "choices"}
+)
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(c in "0123456789abcdef" for c in value)
+    )
+
+
+@dataclass(frozen=True)
+class DonorProfile:
+    """A validated donor-decoding profile document.
+
+    Build one with :func:`parse_donor_profile`. ``choices`` maps each choice
+    field the profile declares in :data:`DONOR_PROFILE_CHOICES` to one of its
+    values. ``canonical_text`` is the document's canonical JSON spelling and
+    ``sha256`` its SHA-256.
+    """
+
+    name: str
+    version: int
+    donor_sha256: str
+    choices: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or type(self.version) is not int:
+            raise ValueError("A donor profile names a string profile and int version.")
+        declared = DONOR_PROFILE_CHOICES.get((self.name, self.version))
+        if declared is None:
+            raise ValueError(
+                f"Unknown donor profile {self.name!r} version {self.version!r}; "
+                f"declared: {sorted(DONOR_PROFILE_CHOICES)}."
+            )
+        if not _is_sha256(self.donor_sha256):
+            raise ValueError(
+                "A donor profile's donor_sha256 must be 64 lowercase hexadecimal "
+                "characters."
+            )
+        if not isinstance(self.choices, Mapping):
+            raise ValueError("A donor profile's choices must be an object.")
+        unknown = sorted(set(self.choices) - set(declared))
+        if unknown:
+            raise ValueError(
+                f"Donor profile {self.name!r} version {self.version} declares no "
+                f"choice field(s) {unknown}."
+            )
+        missing = sorted(set(declared) - set(self.choices))
+        if missing:
+            raise ValueError(
+                f"Donor profile {self.name!r} version {self.version} requires "
+                f"choice field(s) {missing}."
+            )
+        for field, value in self.choices.items():
+            if not isinstance(value, str) or value not in declared[field]:
+                raise ValueError(
+                    f"Donor profile choice {field!r} must be one of "
+                    f"{list(declared[field])}, not {value!r}."
+                )
+        object.__setattr__(
+            self, "choices", MappingProxyType(dict(sorted(self.choices.items())))
+        )
+
+    @property
+    def canonical_text(self) -> str:
+        """The document's canonical JSON: sorted keys, no whitespace."""
+        return json.dumps(
+            {
+                "choices": dict(self.choices),
+                "donor_sha256": self.donor_sha256,
+                "format": DONOR_PROFILE_FORMAT,
+                "profile": self.name,
+                "version": self.version,
+            },
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    @property
+    def sha256(self) -> str:
+        """SHA-256 of :attr:`canonical_text`, the text a graph param carries."""
+        return _sha256(self.canonical_text.encode("utf-8")).hexdigest()
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    keys = [key for key, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError("A donor profile document repeats a key.")
+    return dict(pairs)
+
+
+def _refuse_constant(token: str) -> object:
+    raise ValueError(f"A donor profile document cannot hold {token}.")
+
+
+def parse_donor_profile(text: str) -> DonorProfile:
+    """Parse and validate a donor profile document, given as canonical JSON.
+
+    The document is an object with exactly ``format`` (equal to
+    :data:`DONOR_PROFILE_FORMAT`), ``profile``, ``version``, ``donor_sha256``
+    and ``choices``. An unknown format, profile, version, field, choice field
+    or value refuses, as does a missing field. The text must be the
+    document's canonical spelling, the one composition hands CREATE, so one
+    document has one spelling, one node key and one SHA-256.
+    """
+    if not isinstance(text, str):
+        raise TypeError("A donor profile document must be JSON text.")
+    try:
+        document = json.loads(
+            text, object_pairs_hook=_unique_object, parse_constant=_refuse_constant
+        )
+    except json.JSONDecodeError as error:
+        raise ValueError(f"A donor profile document is not JSON: {error}.") from error
+    if not isinstance(document, dict):
+        raise ValueError("A donor profile document must be a JSON object.")
+    unknown = sorted(set(document) - _DONOR_PROFILE_FIELDS)
+    if unknown:
+        raise ValueError(f"A donor profile document has unknown field(s) {unknown}.")
+    missing = sorted(_DONOR_PROFILE_FIELDS - set(document))
+    if missing:
+        raise ValueError(f"A donor profile document lacks field(s) {missing}.")
+    if document["format"] != DONOR_PROFILE_FORMAT:
+        raise ValueError(
+            f"Unknown donor profile format {document['format']!r}; expected "
+            f"{DONOR_PROFILE_FORMAT!r}."
+        )
+    profile = DonorProfile(
+        name=document["profile"],
+        version=document["version"],
+        donor_sha256=document["donor_sha256"],
+        choices=document["choices"],
+    )
+    if text != profile.canonical_text:
+        raise ValueError(
+            "A donor profile document must be canonical JSON (sorted keys, no "
+            "whitespace), so equal documents give equal node keys."
+        )
+    return profile
+
+
+#: The household ``tenure_type`` labels the populace-us exporter writes, each
+#: with the CPS ASEC ``H_TENURE`` answer it carries: 1 owned or being bought
+#: (the exporter labels every owner ``OWNED_WITH_MORTGAGE``), 2 rented, 3
+#: occupied without payment of rent. Any other label refuses.
+_HOUSEHOLD_TENURE_CODES = MappingProxyType(
+    {"OWNED_WITH_MORTGAGE": 1, "RENTED": 2, "NONE": 3}
+)
+_OWNER, _RENTER, _RENT_FREE = 1, 2, 3
+#: The SPM unit tenure labels; the two owner labels give the mortgage status.
+_SPM_TENURES = frozenset({"OWNER_WITH_MORTGAGE", "OWNER_WITHOUT_MORTGAGE", "RENTER"})
+_SPM_OWNER_TENURE = MappingProxyType(
+    {
+        "OWNER_WITH_MORTGAGE": "owned_with_mortgage",
+        "OWNER_WITHOUT_MORTGAGE": "owned_outright",
+    }
+)
+#: CPS ASEC ``A_MARITL`` codes as this profile reads them: 1, 2 and 3 are the
+#: married categories (read as ``married`` without distinguishing them), 4
+#: widowed, 5 divorced, 6 separated and 7 never married. Any other code
+#: refuses. The US build's own recodes read 4 as a surviving spouse and 6 as
+#: separated.
+_A_MARITL = MappingProxyType(
+    {
+        1: "married",
+        2: "married",
+        3: "married",
+        4: "widowed",
+        5: "divorced",
+        6: "separated",
+        7: "never_married",
+    }
+)
+#: CPS ASEC ``A_ENRLW`` (enrolled last week) and ``A_FTPT`` (full or part
+#: time): 0 not in universe, 1 yes or full time, 2 no or part time.
+_ENROLLMENT_CODES = frozenset({0, 1, 2})
+#: The raw columns the profile reads, by donor table.
+_PROFILE_COLUMNS = MappingProxyType(
+    {
+        "person": ("person_spm_unit_id", "A_MARITL", "A_ENRLW", "A_FTPT"),
+        "household": ("tenure_type", "H_TENURE"),
+        "spm_unit": (
+            "spm_unit_id",
+            "spm_unit_tenure_type",
+            "receives_housing_assistance",
+        ),
+    }
+)
+#: The concepts the profile writes, by concept table.
+_PROFILE_CONCEPTS = MappingProxyType(
+    {
+        "person": ("legal_marital_status", "enrolled_full_time"),
+        "household": ("tenure",),
+    }
+)
+#: The housing costs reconciled with tenure, with the tenures that may pay
+#: each one.
+_TENURE_COSTS = (
+    ("rent", RENTED_TENURES),
+    ("mortgage_interest", ("owned_with_mortgage",)),
+    ("mortgage_principal", ("owned_with_mortgage",)),
+)
+
+
+def _profile_codes(
+    values: pd.Series, allowed: frozenset[int], *, missing_ok: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
+    """Whole-number survey codes, checked before any comparison reads them.
+
+    Returns the codes, with -1 where blank, and the blank mask. The column
+    must have real integer or float storage, plain or pandas nullable;
+    boolean, complex and text storage refuse. A blank refuses unless
+    ``missing_ok``. Every other value must equal a code in ``allowed`` when
+    compared in its own storage, so no cast can turn it into a code first.
+    """
+    if values.dtype.kind not in "iuf":
+        raise ValueError(
+            f"Donor {values.name} must hold numeric survey codes in real integer "
+            f"or float storage, found dtype {values.dtype}."
+        )
+    blank = values.isna().to_numpy(dtype=bool)
+    if blank.any() and not missing_ok:
+        raise ValueError(
+            f"Donor {values.name} has {int(blank.sum())} blank values, which this "
+            "donor profile refuses."
+        )
+    codes = np.full(len(values), -1, dtype=np.int64)
+    matched = np.zeros(len(values), dtype=bool)
+    for code in sorted(allowed):
+        equal = (values == code).to_numpy(dtype=bool, na_value=False)
+        codes[equal] = code
+        matched |= equal
+    if np.any(~blank & ~matched):
+        raise ValueError(f"Donor {values.name} holds codes outside {sorted(allowed)}.")
+    return codes, blank
+
+
+def _profile_labels(values: pd.Series, allowed) -> np.ndarray:
+    """Survey labels as an object array; a blank or unknown label refuses."""
+    labels = values.to_numpy(dtype=object, na_value=None)
+    unknown = {
+        repr(value)
+        for value in labels.tolist()
+        if not isinstance(value, str) or value not in allowed
+    }
+    if unknown:
+        raise ValueError(
+            f"Donor {values.name} holds labels outside {sorted(allowed)}: "
+            f"{sorted(unknown)[:5]}."
+        )
+    return labels
+
+
+def _profile_ids(values: pd.Series) -> np.ndarray:
+    """Non-null integer ids as int64, never through floats."""
+    if values.dtype.kind not in "iu" or values.isna().any():
+        raise ValueError(f"Donor {values.name} must hold non-null integer ids.")
+    if (values > np.iinfo(np.int64).max).any():
+        raise ValueError(f"Donor {values.name} must fit int64.")
+    return values.to_numpy(dtype=np.int64)
+
+
+def _source_years(person: pd.DataFrame) -> np.ndarray | None:
+    """Each person's source year as its receipt key, or ``None`` if unrecorded.
+
+    The key is the year's text under the lineage contract that the reader
+    already applies to this column (:func:`_source_id_payloads`): an exact
+    integer's decimal digits, or the nonempty string itself. Counts group on
+    this key, so an integer year and the same year spelled as a string are
+    one year, and every person is counted once.
+    """
+    if "source_year" not in person:
+        return None
+    payloads = _source_id_payloads(person["source_year"])
+    return np.asarray([text for _, text in payloads], dtype=object)
+
+
+def _by_source_year(years: np.ndarray | None, mask: np.ndarray) -> dict[str, int]:
+    """Counts of ``mask`` for each source year key, zeros included."""
+    if years is None:
+        return {"unrecorded": int(mask.sum())}
+    counts = pd.Series(mask.astype(np.int64)).groupby(years, sort=True).sum()
+    return {str(year): int(count) for year, count in counts.items()}
+
+
+def _donor_spm_unit(store: pd.HDFStore, profile: DonorProfile) -> pd.DataFrame:
+    if "/spm_unit" not in store.keys():
+        raise ValueError(
+            f"Donor profile {profile.name!r} needs the donor's spm_unit table."
+        )
+    return read_frame_table(store, "spm_unit")
+
+
+def _stage_donor_profile(
+    profile: DonorProfile,
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+) -> dict:
+    """Stage a profile's concepts from the raw donor tables, keyed by raw id.
+
+    Every raw label, code and id is checked before any comparison reads it,
+    and every SPM join is checked before any household takes a tenure. A
+    household the joins cannot reach refuses; it never falls through to a
+    default tenure.
+    """
+    raw = {"person": person, "household": household, "spm_unit": spm_unit}
+    absent = sorted(
+        f"{table}.{column}"
+        for table, columns in _PROFILE_COLUMNS.items()
+        for column in columns
+        if column not in raw[table]
+    )
+    if absent:
+        raise ValueError(
+            f"Donor profile {profile.name!r} needs donor columns {absent}."
+        )
+    choices = profile.choices
+    # Raw labels, codes and ids first.
+    tenure_type = _profile_labels(household["tenure_type"], _HOUSEHOLD_TENURE_CODES)
+    h_tenure, _ = _profile_codes(
+        household["H_TENURE"], frozenset(_HOUSEHOLD_TENURE_CODES.values())
+    )
+    spm_tenure = _profile_labels(spm_unit["spm_unit_tenure_type"], _SPM_TENURES)
+    assistance = spm_unit["receives_housing_assistance"]
+    if not pd.api.types.is_bool_dtype(assistance.dtype) or assistance.isna().any():
+        raise ValueError(
+            "Donor receives_housing_assistance must be boolean with no nulls."
+        )
+    assisted_unit = assistance.to_numpy(dtype=bool)
+    marital, _ = _profile_codes(person["A_MARITL"], frozenset(_A_MARITL))
+    read_false = choices["blank_full_time_study"] == "read_false"
+    enrolled, enrolled_blank = _profile_codes(
+        person["A_ENRLW"], _ENROLLMENT_CODES, missing_ok=True
+    )
+    full_time, full_time_blank = _profile_codes(
+        person["A_FTPT"], _ENROLLMENT_CODES, missing_ok=True
+    )
+    blank = enrolled_blank | full_time_blank
+    years = _source_years(person)
+    if blank.any() and not read_false:
+        raise ValueError(
+            "Donor A_ENRLW or A_FTPT is blank for persons by source year "
+            f"{_by_source_year(years, blank)}, which this donor profile refuses."
+        )
+    unit_ids = pd.Index(_profile_ids(spm_unit["spm_unit_id"]))
+    member_ids = _profile_ids(person["person_spm_unit_id"])
+    person_ids = _profile_ids(person[PERSON_ID_COLUMN])
+    household_ids = _profile_ids(household[HOUSEHOLD_ID_COLUMN])
+    # The two tenure answers must agree before either decides anything.
+    code_of_label = np.asarray(
+        [_HOUSEHOLD_TENURE_CODES[label] for label in tenure_type.tolist()],
+        dtype=np.int64,
+    )
+    disagree = h_tenure != code_of_label
+    if disagree.any():
+        raise ValueError(
+            f"Donor tenure_type disagrees with H_TENURE in {int(disagree.sum())} "
+            "households."
+        )
+    # Checked SPM joins.
+    if not unit_ids.is_unique:
+        raise ValueError("Donor SPM unit ids must be unique.")
+    unit_of_person = unit_ids.get_indexer(member_ids)
+    if np.any(unit_of_person < 0):
+        raise ValueError(
+            f"{int((unit_of_person < 0).sum())} donor persons belong to no known "
+            "SPM unit."
+        )
+    households = pd.Index(household_ids)
+    household_of_person = households.get_indexer(
+        _profile_ids(person[PERSON_HOUSEHOLD_ID_COLUMN])
+    )
+    if np.any(household_of_person < 0):
+        raise ValueError("Every donor person must belong to a known household.")
+    pairs = pd.DataFrame(
+        {"unit": unit_of_person, "household": household_of_person}
+    ).drop_duplicates()
+    spanning = pairs["unit"].duplicated()
+    if spanning.any():
+        raise ValueError(
+            f"{int(pairs.loc[spanning, 'unit'].nunique())} donor SPM units span "
+            "more than one household."
+        )
+    unit_household = np.full(len(unit_ids), -1, dtype=np.int64)
+    unit_household[pairs["unit"].to_numpy()] = pairs["household"].to_numpy()
+    # A unit with no member reaches no household and stages nothing; it is
+    # counted, not refused.
+    reached = unit_household >= 0
+    by_household = pd.DataFrame(
+        {
+            "household": unit_household[reached],
+            "tenure": spm_tenure[reached],
+            "assisted": assisted_unit[reached],
+        }
+    ).groupby("household")
+    split = by_household["tenure"].nunique() > 1
+    if split.any():
+        raise ValueError(
+            f"{int(split.sum())} donor households have SPM units that disagree "
+            "on tenure."
+        )
+    rows = np.arange(len(households))
+    spm_household = by_household["tenure"].first().reindex(rows)
+    assisted_household = by_household["assisted"].any().reindex(rows)
+    if spm_household.isna().any() or assisted_household.isna().any():
+        raise ValueError(
+            f"{int(spm_household.isna().sum())} donor households have no SPM unit."
+        )
+    spm_household = spm_household.to_numpy(dtype=object)
+    assisted = assisted_household.to_numpy(dtype=bool)
+    owner, renter, rent_free = (
+        h_tenure == code for code in (_OWNER, _RENTER, _RENT_FREE)
+    )
+    unknown_mortgage = owner & (spm_household == "RENTER")
+    if unknown_mortgage.any():
+        raise ValueError(
+            f"{int(unknown_mortgage.sum())} donor owner households have SPM renter "
+            "tenure, so their mortgage status is unknown."
+        )
+    tenure = np.full(len(households), None, dtype=object)
+    tenure[rent_free] = "rent_free"
+    tenure[renter & assisted] = choices["assisted_renter_tenure"]
+    tenure[renter & ~assisted] = "rented_private"
+    for label, value in _SPM_OWNER_TENURE.items():
+        tenure[owner & (spm_household == label)] = value
+    if any(value is None for value in tenure.tolist()):
+        raise ValueError("Donor profile left a household without a tenure.")
+    statuses = np.asarray([_A_MARITL[code] for code in marital.tolist()], dtype=object)
+    return {
+        "profile": profile,
+        "household_ids": household_ids,
+        "person_ids": person_ids,
+        "tenure": tenure,
+        "legal_marital_status": statuses,
+        "enrolled_full_time": (enrolled == 1) & (full_time == 1),
+        "record": {
+            "household_tenure_type": {
+                label: int((code_of_label == code).sum())
+                for label, code in _HOUSEHOLD_TENURE_CODES.items()
+            },
+            "spm_units": {
+                "units": len(unit_ids),
+                "units_without_members": int((~reached).sum()),
+                "assistance_rule": "any_spm_unit_in_household",
+                "households_with_mixed_assistance": int(
+                    (by_household["assisted"].nunique() > 1).sum()
+                ),
+                "assisted_renter_households": int((renter & assisted).sum()),
+                "assisted_other_households": int((~renter & assisted).sum()),
+                "rent_free_households_with_spm_owner_tenure": int(
+                    (rent_free & (spm_household != "RENTER")).sum()
+                ),
+                "renter_households_with_spm_owner_tenure": int(
+                    (renter & (spm_household != "RENTER")).sum()
+                ),
+            },
+            "full_time_study": {
+                "enrolled_full_time": int(((enrolled == 1) & (full_time == 1)).sum()),
+                "blank_a_enrlw_by_source_year": _by_source_year(years, enrolled_blank),
+                "blank_a_ftpt_by_source_year": _by_source_year(years, full_time_blank),
+                "read_false_by_source_year": _by_source_year(years, blank),
+            },
+            "legal_marital_status": {
+                value: int((statuses == value).sum()) for value in MARITAL_STATUS_DOMAIN
+            },
+        },
+    }
+
+
+def _aligned_rows(
+    raw_ids: np.ndarray, decoded_ids: pd.Series, entity: str
+) -> np.ndarray:
+    """Each decoded row's position among the raw rows, refusing any mismatch."""
+    rows = pd.Index(raw_ids).get_indexer(decoded_ids.to_numpy(dtype=np.int64))
+    if len(rows) != len(raw_ids) or np.any(rows < 0):
+        raise ValueError(
+            f"Decoded {entity} rows do not match the donor's {entity} rows."
+        )
+    return rows
+
+
+def _attach_donor_profile(
+    staged: dict, tables: Mapping[str, pd.DataFrame], weights: np.ndarray
+) -> dict:
+    """Write the staged concepts, reconcile housing costs, and return the record.
+
+    ``weights`` are the donor design weights in raw household order. The
+    record's amounts are donor currency; weighted figures use those weights.
+    """
+    profile: DonorProfile = staged["profile"]
+    present = sorted(
+        f"{entity}.{column}"
+        for entity, columns in _PROFILE_CONCEPTS.items()
+        for column in columns
+        if column in tables[entity]
+    )
+    if present:
+        raise ValueError(
+            f"Donor profile {profile.name!r} would overwrite decoded concepts "
+            f"{present}."
+        )
+    household_table = tables["household"]
+    person_table = tables["person"]
+    household_rows = _aligned_rows(
+        staged["household_ids"], household_table[HOUSEHOLD_ID_COLUMN], "household"
+    )
+    person_rows = _aligned_rows(
+        staged["person_ids"], person_table[PERSON_ID_COLUMN], "person"
+    )
+    tenure = staged["tenure"][household_rows]
+    household_weights = np.asarray(weights, dtype=np.float64)[household_rows]
+    refuse = profile.choices["housing_cost_contradicting_tenure"] == "refuse"
+    # Each cost must meet its own concept's contract (dtype, nulls, finite,
+    # bounds) before reconciliation reads or zeroes it, so the record never
+    # counts, and tenure never hides, an amount the reader refuses without a
+    # profile. The tenure rules come after; final validation still runs.
+    costs = [column for column, _ in _TENURE_COSTS if column in household_table]
+    violations = validate_concept_tables(
+        {
+            "person": person_table[[PERSON_ID_COLUMN, PERSON_HOUSEHOLD_ID_COLUMN]],
+            "household": household_table[[HOUSEHOLD_ID_COLUMN, *costs]],
+        }
+    )
+    if violations:
+        details = "; ".join(f"{v.entity}.{v.column}: {v.message}" for v in violations)
+        raise ValueError(f"Invalid donor concepts: {details}")
+    reconciliation: dict[str, dict] = {}
+    contradicted: dict[str, int] = {}
+    reconciled: dict[str, np.ndarray] = {}
+    for column, payers in _TENURE_COSTS:
+        if column not in household_table:
+            reconciliation[column] = {"column": "absent"}
+            continue
+        amounts = household_table[column].to_numpy(dtype=np.float64, copy=True)
+        contradicting = ~np.isin(tenure, payers) & (amounts != 0)
+        count = int(contradicting.sum())
+        reconciliation[column] = {
+            "column": "present",
+            "contradicting_households": count,
+            "contradicting_amount": fsum(amounts[contradicting].tolist()),
+            "contradicting_weighted_amount": fsum(
+                (amounts * household_weights)[contradicting].tolist()
+            ),
+            "total_amount": fsum(amounts.tolist()),
+            "weighted_total_amount": fsum((amounts * household_weights).tolist()),
+            "zeroed": bool(count) and not refuse,
+        }
+        if count:
+            contradicted[column] = count
+            amounts[contradicting] = 0.0
+            reconciled[column] = amounts
+    if contradicted and refuse:
+        raise ValueError(
+            f"Donor housing costs contradict the staged tenure in households "
+            f"{contradicted}, which this donor profile refuses."
+        )
+    for column, amounts in reconciled.items():
+        household_table[column] = amounts
+    # Object arrays of labels, as decode writes its text concepts.
+    household_table["tenure"] = tenure
+    person_table["legal_marital_status"] = staged["legal_marital_status"][person_rows]
+    person_table["enrolled_full_time"] = staged["enrolled_full_time"][person_rows]
+    return {
+        "profile": profile.name,
+        "version": profile.version,
+        "document_sha256": profile.sha256,
+        "donor_sha256": profile.donor_sha256,
+        "choices": dict(profile.choices),
+        "tenure": {
+            value: {
+                "households": int((tenure == value).sum()),
+                "weight": fsum(household_weights[tenure == value].tolist()),
+            }
+            for value in TENURE_DOMAIN
+        },
+        **staged["record"],
+        "reconciliation": reconciliation,
+    }
+
+
 def _drop_two_person_parent_cycles(person: pd.DataFrame) -> int:
     """Repair reciprocal parent edges only after other concepts validate.
 
@@ -785,7 +1431,26 @@ def _drop_two_person_parent_cycles(person: pd.DataFrame) -> int:
     return int(drop.sum())
 
 
-def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> DonorBank:
+def _donor_time_period(store: pd.HDFStore) -> int | None:
+    """The exporter's one-row ``_time_period`` series, or ``None`` when absent."""
+    if "/_time_period" not in store.keys():
+        return None
+    values = store["_time_period"]
+    if not isinstance(values, pd.Series) or len(values) != 1:
+        raise ValueError("Donor _time_period must hold exactly one value.")
+    value = values.iloc[0]
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        raise ValueError("Donor _time_period must be an integer year.")
+    return int(value)
+
+
+def read_populace_us_donor(
+    path: str | Path,
+    *,
+    sha256: str,
+    size: int,
+    profile: DonorProfile | None = None,
+) -> DonorBank:
     """Authenticate a local donor H5, then decode its person/household inputs.
 
     Size and SHA-256 are mandatory and verified before any HDF parsing. The
@@ -824,7 +1489,18 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
 
     Donor-only enrichment is staged before ``decode``; all work after that
     seam reads concept names. The result declares transport content with a
-    US donor and unchanged source-currency amounts and design weights.
+    US donor and unchanged source-currency amounts and design weights. The
+    exporter's ``_time_period`` (a one-row integer series) is returned as
+    ``time_period``; a file without it reads as ``None``.
+
+    ``profile``, a :class:`DonorProfile` from :func:`parse_donor_profile`,
+    must name this donor's ``sha256``; any other refuses before the file is
+    opened. Only then does the reader also read the donor's ``spm_unit``
+    table, stage the profile's concepts from the raw survey answers, and
+    reconcile housing costs with tenure before validation, which it never
+    relaxes. The bank's ``donor_profile`` records the choices and counts.
+    Without a profile, the reader reads and returns exactly what it did
+    before profiles existed.
     """
     path = Path(path)
     if isinstance(size, bool) or not isinstance(size, int) or size < 0:
@@ -835,6 +1511,14 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
         or any(c not in "0123456789abcdef" for c in sha256)
     ):
         raise ValueError("Donor SHA-256 must be 64 lowercase hexadecimal characters.")
+    if profile is not None:
+        if not isinstance(profile, DonorProfile):
+            raise TypeError("A donor profile must be a parsed DonorProfile.")
+        if profile.donor_sha256 != sha256:
+            raise ValueError(
+                f"Donor profile {profile.name!r} version {profile.version} names "
+                "donor bytes other than this donor's SHA-256."
+            )
     with path.open("rb") as source:
         if path.stat().st_size != size:
             raise ValueError("Donor size mismatch.")
@@ -845,15 +1529,27 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
             entity: read_frame_table(store, entity)
             for entity in ("person", "household")
         }
+        time_period = _donor_time_period(store)
+        spm_unit = None if profile is None else _donor_spm_unit(store, profile)
     staged = _donor_extras(raw["person"], raw["household"])
+    profiled = (
+        None
+        if profile is None
+        else _stage_donor_profile(profile, raw["person"], raw["household"], spm_unit)
+    )
     tables = POLICYENGINE_US_CONCEPT_MAPPING.decode(raw)
-    del raw
+    del raw, spm_unit
     for name, values in staged["pointers"].items():
         tables["person"][name] = values
     tables["person"]["liquid_financial_assets"] = staged["liquid_financial_assets"]
     tables["household"]["reference_person_id"] = staged["reference_person_id"]
     if staged["source_household_ids"] is not None:
         tables["household"][SOURCE_HOUSEHOLD_ID_COLUMN] = staged["source_household_ids"]
+    record = (
+        None
+        if profiled is None
+        else _attach_donor_profile(profiled, tables, staged["weights"])
+    )
     violations = validate_concept_tables(tables)
     dropped = 0
     if violations and all(v.code == "parent_cycle" for v in violations):
@@ -869,6 +1565,8 @@ def read_populace_us_donor(path: str | Path, *, sha256: str, size: int) -> Donor
         staged["support_strata"],
         staged["source_person_ids"],
         dropped_parent_cycle_edges=dropped,
+        time_period=time_period,
+        donor_profile=record,
     )
 
 

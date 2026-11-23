@@ -33,7 +33,8 @@ whose own support clone index is positive.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -51,6 +52,8 @@ from microcosm.build.uk_runtime.frs_take_up import (
     derive_childcare_take_up,
     derive_under_two_childcare_usage,
     person_unit_flag,
+    take_up_signal_outputs,
+    uk_take_up_signal_receipt,
 )
 from microcosm.build.uk_runtime.household_lineage import (
     uk_household_clone_paths,
@@ -89,6 +92,7 @@ class UKChildcareCopyTakeUpStageTransform:
 
     contract: UKTakeUpContract
     stage: SourceStageSpec
+    last_receipt: Mapping[str, object] | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         assert_universal_childcare_nesting_declaration(self.stage)
@@ -99,11 +103,34 @@ class UKChildcareCopyTakeUpStageTransform:
                 f"stage {self.stage.stage!r} must declare the rewrites "
                 f"{list(CHILDCARE_COPY_TAKE_UP_REWRITES)}; declared {list(declared)}"
             )
-        return redraw_childcare_copy_take_up(frame, contract=self.contract)
+        result = redraw_childcare_copy_take_up(frame, contract=self.contract)
+        # The flags this stage re-draws, at its weights after the re-draw, for
+        # the stage-time take-up signal gate (María's ruling of 2026-10-29,
+        # microcosm#1095).
+        object.__setattr__(
+            self,
+            "last_receipt",
+            uk_take_up_signal_receipt(
+                result,
+                outputs=take_up_signal_outputs(CHILDCARE_COPY_TAKE_UP_REWRITES),
+                contract=self.contract,
+            ),
+        )
+        return result
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return ()
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        if self.last_receipt is None:
+            raise RuntimeError("checkpoint metadata requires a completed stage run.")
+        return {
+            "evidence": {
+                "stage": CHILDCARE_COPY_TAKE_UP_STAGE_NAME,
+                "take_up_signal": dict(self.last_receipt),
+            }
+        }
 
 
 def copy_benunits(

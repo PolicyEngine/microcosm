@@ -29,18 +29,19 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from datetime import date, datetime
-from importlib.resources import files
 from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.country_spec import country_resource
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
+    EvaluatorBinding,
     EvidenceContext,
     GateBinding,
 )
@@ -62,10 +63,7 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ARTIFACT_KEY,
     UKCGTProjection,
 )
-from microcosm.build.uk_runtime.diagnostics import (
-    uk_support_family_weights,
-    uk_withheld_gate_keys,
-)
+from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.high_value_home_gates import (
@@ -127,6 +125,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     coerce_reviewed_exclusions,
     load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
+    uk_input_mass_carriers,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
 )
@@ -139,73 +138,10 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
-class UKGateBinding:
-    """A :class:`GateBinding` over a UK runtime evaluator.
-
-    Attributes:
-        name: The declared country-neutral gate name the battery expects
-            back.
-        evaluator: Runs the legacy UK gate over ``(context, parameters)``.
-            Declared parameters it does not consume pass through to the
-            gate call, so an unknown parameter raises and fails closed —
-            the same discipline as the battery's ``FunctionBinding``.
-        parameter_keys: The spec parameter keys the evaluator can route —
-            checked against every declared entry before any gate runs
-            (``validate_gate_parameters``), so a typo'd parameter is
-            refused at arm time instead of surfacing as a mid-battery
-            evaluator error. Fail-closed empty by default.
-        artifact_keys: Context artifact keys the gate needs; missing keys
-            resolve to ``evidence_absent`` before evaluation.
-        artifact_selector: Optional parameter-dependent override of
-            ``artifact_keys`` for bindings whose evidence artifact follows a
-            declared parameter.
-        needs_frame: Whether the gate reads the phase frame.
-        frame_predicate: Optional parameter-dependent override of
-            ``needs_frame`` for bindings that serve more than one declared
-            entry (the coverage gate runs frameless at preflight).
-        legacy_name: The UK-flavored name the legacy evaluator mints, when
-            it differs from ``name``; the verdict is re-minted under the
-            declared name. Any other unexpected name passes through so the
-            executor's name check fails it closed.
-        evidence: Optional hook producing the entry's ``evidence_sha256``
-            payload; ``None`` records no evidence hash.
-    """
-
-    name: str
-    evaluator: Callable[[EvidenceContext, Mapping[str, Any]], GateResult]
-    parameter_keys: frozenset[str] = frozenset()
-    artifact_keys: frozenset[str] = frozenset()
-    artifact_selector: Callable[[Mapping[str, Any]], frozenset[str]] | None = None
-    needs_frame: bool = True
-    frame_predicate: Callable[[Mapping[str, Any]], bool] | None = None
-    legacy_name: str | None = None
-    evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
-
-    def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
-        if self.artifact_selector is not None:
-            return self.artifact_selector(parameters)
-        return self.artifact_keys
-
-    def requires_frame(self, parameters: Mapping[str, Any]) -> bool:
-        if self.frame_predicate is not None:
-            return self.frame_predicate(parameters)
-        return self.needs_frame
-
-    def evaluate(
-        self, context: EvidenceContext, parameters: Mapping[str, Any]
-    ) -> GateResult:
-        result = self.evaluator(context, parameters)
-        if self.legacy_name is not None and result.name == self.legacy_name:
-            result = replace(result, name=self.name)
-        return result
-
-    def evidence_payload(
-        self, context: EvidenceContext, parameters: Mapping[str, Any]
-    ) -> object | None:
-        if self.evidence is None:
-            return None
-        return self.evidence(context, parameters)
+#: The shared re-minting binding under the UK name its callers and tests use.
+#: It moved unchanged to the battery module, where the US bindings can share
+#: it (microcosm#1585 item 11).
+UKGateBinding = EvaluatorBinding
 
 
 # ---------------------------------------------------------------------------
@@ -260,9 +196,13 @@ def _evaluate_release_input_coverage(
         build_state = _uk_gate_surface(spine_frame)
     else:
         build_state = spine_frame
+    # The required inputs are the ones the cut's reference build carries
+    # (microcosm#1095); the artifact selector marks the gate evidence_absent
+    # when no reference surface arrived.
     return uk_release_input_coverage_gate(
         _uk_gate_surface(uk_release_export_frame(context.frame)),
         engine,
+        reference_surface=context.artifacts["reference_surface"],
         manifest=manifest,
         build_state_frame=build_state,
     )
@@ -279,7 +219,7 @@ def _coverage_required_artifacts(parameters: Mapping[str, Any]) -> frozenset[str
     # the calibrated frame.
     if parameters.get("check") == "manifest_current":
         return frozenset({"coverage_engine"})
-    return frozenset({"coverage_engine", "spine_frame"})
+    return frozenset({"coverage_engine", "spine_frame", "reference_surface"})
 
 
 def _evaluate_source_coverage(
@@ -849,9 +789,7 @@ def _evaluate_support(
         )
     donor_ranges: dict[str, tuple[float, float]] = {}
     for resource_name in resource_names:
-        resource = json.loads(
-            files("microcosm.build.uk").joinpath(str(resource_name)).read_text()
-        )
+        resource = json.loads(country_resource("uk", str(resource_name)).read_text())
         raw_bounds = resource.get("bounds")
         if not isinstance(raw_bounds, Mapping):
             raise ValueError(f"{resource_name} is missing bounds.")
@@ -1146,18 +1084,31 @@ def _validate_input_mass_exclusion_references(
     *,
     label: str,
 ) -> None:
-    unknown = sorted(set(register) - set(UK_INPUT_MASS_REFERENCE_REGISTRY))
-    if unknown:
+    from microcosm.build.uk_runtime.cut_reference import UK_CUT_REFERENCE_RELEASES
+
+    malformed = sorted(
+        name
+        for name in register
+        if name.count("@") != 1
+        or name.split("@", 1)[0] not in UK_CUT_REFERENCE_RELEASES
+        or not name.split("@", 1)[1]
+    )
+    if malformed:
         raise ValueError(
-            f"{label} names unknown input-mass reference(s) {unknown}; known "
-            f"references are {sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
+            f"{label} names {malformed}; an input-mass exclusion is signed for "
+            "one reference build, named <release>@<build> for a UK line "
+            "(microcosm#1095)."
         )
 
 
 def _resolve_input_mass_exclusions(
     context: EvidenceContext, *, reference: str
 ) -> tuple[Mapping[str, UKReviewedExclusion], str]:
-    """Active-reference input-mass exclusions and their content source."""
+    """The exclusions signed for this reference build, and their source.
+
+    ``reference`` is the build's ``<release>@<build>``; entries signed for
+    any other build are dormant (microcosm#1095).
+    """
 
     committed = uk_default_input_mass_reviewed_exclusions()
     _validate_input_mass_exclusion_references(
@@ -1305,7 +1256,7 @@ def _evaluate_geography_ladder(
 def _local_area_roster(
     resource: str, levels: tuple[str, ...]
 ) -> dict[str, tuple[str, ...]]:
-    payload = json.loads(files("microcosm.build.uk").joinpath(resource).read_text())
+    payload = json.loads(country_resource("uk", resource).read_text())
     declared = payload.get("levels")
     if not isinstance(declared, Mapping):
         raise ValueError(f"{resource} must expose a levels object.")
@@ -1455,34 +1406,11 @@ def _local_target_error_items(evidence: object) -> tuple[tuple[str, float], ...]
 def _evaluate_per_family_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    """Each family's fit over its published rows (microcosm#1262).
-
-    A row whose model figures are withheld stays out of every rollup, so the
-    family shares, sizes and the decision rest on the published rows and the
-    details count the withheld ones by family: a share over every row, set
-    beside the published rows' errors, would give a withheld row's fit back.
-    """
-
-    evidence = context.artifacts["local_target_diagnostics"]
-    items = _local_target_error_items(evidence)
-    withheld = uk_withheld_gate_keys(evidence)
-    published = [(name, error) for name, error in items if name not in withheld]
-    result = per_family_fit_gate(
-        (name for name, _ in published),
-        (error for _, error in published),
+    items = _local_target_error_items(context.artifacts["local_target_diagnostics"])
+    return per_family_fit_gate(
+        (name for name, _ in items),
+        (error for _, error in items),
         **dict(parameters),
-    )
-    if not withheld:
-        return result
-    counts: dict[str, int] = {}
-    for name in withheld:
-        family = name.split("/", 1)[0]
-        counts[family] = counts.get(family, 0) + 1
-    return GateResult(
-        name=result.name,
-        passed=result.passed,
-        failures=result.failures,
-        details={**result.details, "withheld_targets": dict(sorted(counts.items()))},
     )
 
 
@@ -1501,10 +1429,14 @@ def _evaluate_weights_audit(
 def _evaluate_export_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    # The reference side is the export surface of the cut's reference build,
+    # the current build of the line (microcosm#1095).
     parity = context.artifacts["parity_evidence"]
+    reference = context.artifacts["reference_surface"]
     return uk_export_surface_gate(
         parity.candidate_columns,
-        parity.reference_columns,
+        reference.export_columns,
+        reference_name=reference.label,
         **dict(parameters),
     )
 
@@ -1575,12 +1507,8 @@ def _target_surface_evidence(
     )
     crosswalk_resource = str(parameters["crosswalk_resource"])
     membership_resource = str(parameters["membership_resource"])
-    crosswalk_text = (
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
-    membership_text = (
-        files("microcosm.build.uk").joinpath(membership_resource).read_text()
-    )
+    crosswalk_text = country_resource("uk", crosswalk_resource).read_text()
+    membership_text = country_resource("uk", membership_resource).read_text()
     candidate_targets = sorted(_local_default_candidate_surface(registry))
     reference_targets = sorted(_local_default_expected_surface(crosswalk_resource))
     reviewed_exclusions = _local_default_reviewed_exclusions(membership_resource)
@@ -1620,9 +1548,7 @@ def _local_default_candidate_surface(registry: object) -> frozenset[str]:
 
 
 def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
-    crosswalk = json.loads(
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
+    crosswalk = json.loads(country_resource("uk", crosswalk_resource).read_text())
     levels = crosswalk.get("levels")
     if not isinstance(levels, Mapping):
         raise ValueError(f"{crosswalk_resource} must expose levels.")
@@ -1679,9 +1605,7 @@ def _metric_area_scope(
 def _local_default_reviewed_exclusions(
     membership_resource: str,
 ) -> dict[str, str]:
-    membership = json.loads(
-        files("microcosm.build.uk").joinpath(membership_resource).read_text()
-    )
+    membership = json.loads(country_resource("uk", membership_resource).read_text())
     metric_by_target_id = _local_metric_by_target_id()
     reviewed: dict[str, str] = {}
     for deferral in membership.get("signed_deferrals", ()):
@@ -1745,38 +1669,18 @@ def _evaluate_target_fit(
                 f"uk/gates.json names local exclusion register {register!r} but "
                 f"the runtime loads {UK_LOCAL_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
             )
-        evidence = context.artifacts["local_target_diagnostics"]
-        # María's ruling of 2026-10-19 on the third review of #1305: the gate
-        # decides on the published rows. A withheld BRMA row's status against
-        # the bound would be a two-sided bound on an estimate resting on fewer
-        # than ten households, so the gate neither checks it nor reads its
-        # register entry, and counts it only.
-        withheld = uk_withheld_gate_keys(evidence)
-        errors = {
-            key: error
-            for key, error in _local_target_error_items(evidence)
-            if key not in withheld
-        }
+        errors = dict(
+            _local_target_error_items(context.artifacts["local_target_diagnostics"])
+        )
         exclusions, out_of_line = _in_line(
             uk_default_local_target_fit_reviewed_exclusions(), context
         )
-        exclusions = {
-            key: record for key, record in exclusions.items() if key not in withheld
-        }
-        out_of_line = [key for key in out_of_line if key not in withheld]
         result = uk_target_fit_gate(
             errors,
             reviewed_exclusions=exclusions,
             now=_exclusion_clock(context),
             **kwargs,
         )
-        if withheld:
-            result = GateResult(
-                name=result.name,
-                passed=result.passed,
-                failures=result.failures,
-                details={**result.details, "withheld_targets": len(withheld)},
-            )
         return _with_out_of_line(result, context, out_of_line)
     if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
@@ -1786,34 +1690,12 @@ def _evaluate_target_fit(
     exclusions, _source = _resolve_target_fit_exclusions(context)
     exclusions, out_of_line = _in_line(exclusions, context)
     parity = context.artifacts["parity_evidence"]
-    # María's rule of 2026-10-21 binds a national row however few source
-    # households carry it, and keeps the figures of one under ten in the
-    # build; the gate decides on the published rows and counts the withheld
-    # ones, as it does for the local rows (her ruling of 2026-10-19). Every
-    # producer states the set, empty or not, so a missing one fails closed.
-    withheld = frozenset(parity.withheld_targets)
-    errors = {
-        name: error
-        for name, error in parity.target_relative_errors.items()
-        if name not in withheld
-    }
-    exclusions = {
-        name: record for name, record in exclusions.items() if name not in withheld
-    }
-    out_of_line = [name for name in out_of_line if name not in withheld]
     result = uk_target_fit_gate(
-        errors,
+        parity.target_relative_errors,
         reviewed_exclusions=exclusions,
         now=_exclusion_clock(context),
         **kwargs,
     )
-    if withheld:
-        result = GateResult(
-            name=result.name,
-            passed=result.passed,
-            failures=result.failures,
-            details={**result.details, "withheld_targets": len(withheld)},
-        )
     return _with_out_of_line(result, context, out_of_line)
 
 
@@ -1834,6 +1716,12 @@ def _evaluate_input_mass_parity(
     register = kwargs.pop("reviewed_exclusions_resource", None)
     relative_tolerance = kwargs.pop("relative_tolerance", None)
     minimum_reference_total = kwargs.pop("minimum_reference_total", None)
+    maximum_relative_drop = kwargs.pop("maximum_relative_drop", None)
+    if maximum_relative_drop is None:
+        raise ValueError(
+            "uk/gates.json input_mass_parity declares no maximum_relative_drop; "
+            "the drop limit is part of the reviewed policy (microcosm#1095)."
+        )
     coerced_registry = coerce_input_mass_reference_registry(
         declared_registry, label="uk/gates.json input_mass_parity"
     )
@@ -1848,18 +1736,21 @@ def _evaluate_input_mass_parity(
             f"uk/gates.json declares input-mass reference {reference_name!r} "
             f"but known references are {sorted(coerced_registry)}."
         )
+    reference = context.artifacts["input_mass_reference"]
+    descriptor = coerced_registry[reference_name].descriptor_for(reference)
     if register != UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     exclusions, _source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     exclusions, out_of_line = _in_line(exclusions, context)
     policy = UKInputMassParityPolicy(
         relative_tolerance=relative_tolerance,
         minimum_reference_total=minimum_reference_total,
+        maximum_relative_drop=maximum_relative_drop,
         reviewed_exclusions=exclusions,
     )
     # The reference is compared against the surface the release ships: the
@@ -1868,12 +1759,14 @@ def _evaluate_input_mass_parity(
     # carries the spine's WAS property_wealth, which the reference also
     # stores, so comparing it there would call the signed exclusion stale
     # (microcosm#1106).
+    export_frame = uk_release_export_frame(context.frame)
     result = uk_input_mass_parity_gate(
-        uk_input_mass_totals(uk_release_export_frame(context.frame)),
-        context.artifacts["input_mass_reference"],
-        descriptor=coerced_registry[reference_name],
+        uk_input_mass_totals(export_frame),
+        reference,
+        descriptor=descriptor,
         policy=policy,
         now=_exclusion_clock(context),
+        candidate_carriers=uk_input_mass_carriers(export_frame),
         **kwargs,
     )
     return _with_out_of_line(result, context, out_of_line)
@@ -1885,10 +1778,11 @@ def _input_mass_reference_evidence(
     reference_name = str(parameters["reference"])
     reference = context.artifacts["input_mass_reference"]
     exclusions, source = _resolve_input_mass_exclusions(
-        context, reference=reference_name
+        context, reference=reference.label
     )
     return {
         "reference": reference_name,
+        "reference_label": reference.label,
         "reference_evidence_sha256": _input_mass_reference_evidence_sha256(reference),
         "exclusions_policy": source,
         "reviewed_exclusions": _exclusion_payload(exclusions),
@@ -1904,7 +1798,7 @@ def _evaluate_ledger_compile_parity(
     signed_resource = parameters.get("signed_differences_resource")
     if signed_resource is not None:
         signed_differences = json.loads(
-            files("microcosm.build.uk").joinpath(str(signed_resource)).read_text()
+            country_resource("uk", str(signed_resource)).read_text()
         )["differences"]
     target_period = parameters["target_period"]
     registry_artifact = _ledger_compile_parity_registry_artifact(parameters)
@@ -1926,9 +1820,7 @@ def _evaluate_ledger_compile_parity(
 
 
 def _load_ledger_compile_parity_fixture(fixture_resource: str) -> dict[str, Any]:
-    fixture = json.loads(
-        files("microcosm.build.uk").joinpath(fixture_resource).read_text()
-    )
+    fixture = json.loads(country_resource("uk", fixture_resource).read_text())
     if fixture_resource == LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE:
         return align_uk_local_registry_parity_fixture(fixture)
     # The national fixtures spell the incumbent's regional rows their own way;
@@ -1947,7 +1839,7 @@ def _ledger_compile_parity_evidence(
         registry_artifact=registry_artifact,
     )
     fixture_resource = str(parameters["fixture_resource"])
-    fixture_text = files("microcosm.build.uk").joinpath(fixture_resource).read_text()
+    fixture_text = country_resource("uk", fixture_resource).read_text()
     return {
         "registry_artifact": registry_artifact,
         "registry_version": getattr(registry, "version", None),
@@ -2157,6 +2049,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_entitled_units",
                 # microcosm#1334 uc_take_up stage-health check.
                 "maximum_caseload_deviation",
+                "maximum_reachable_pool_deviation",
                 # frs_annual_income_spells stage-health check.
                 "pay_concept_ratio_bounds",
                 "annual_over_current_earners_bounds",
@@ -2164,12 +2057,18 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1095 spi_benefit_coherence stage-health check.
                 "zeroed_columns",
                 "restored_columns",
+                "restored_within_earnings_limit_columns",
                 # microcosm#1063 child_benefit_take_up stage-health check.
                 "maximum_claim_rate_deviation",
                 "maximum_age_claim_rate_deviation",
                 "minimum_age_child_rows",
                 "maximum_opt_out_share_deviation",
                 "minimum_eligible_family_units",
+                # microcosm#1095 take_up_signal stage-health check (María's
+                # ruling of 2026-10-29: the flags at their drawing stages).
+                "maximum_share_deviation",
+                "under_two_usage_maximum_share_deviation",
+                "outputs",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",
@@ -2220,6 +2119,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_connected_share_deviation",
                 "convergence_window_sweeps",
                 "maximum_residual_change_over_window",
+                # #1418: the bounds on an ONS-spend level over Energy Trends',
+                # which catch a wrong input row the recomputation shares, and
+                # the QEP payment method the stage must price at.
+                "ons_level_to_energy_trends_ratio",
+                "qep_payment_method",
                 # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
                 # trip rates recomputed from the vendored rows.
                 "trip_rates_period_value",
@@ -2231,6 +2135,38 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # #1113 road_fuel_level check: the ceiling on the LCFS donor
                 # share of other personal-transport fuels netted off 07.2.2.
                 "maximum_other_fuels_share",
+                # #1359 excise_quantities check: the ceiling on the donor
+                # share whose published total sits beside its diary lines, and
+                # the support band each excise share must rest on.
+                "maximum_parent_residual_share",
+                "required_support_band",
+                # #1359 gambling_participation check: how far a stratum's
+                # topped-up share may sit from its published target, and the
+                # bounds on the scale that anchors the added stakes.
+                "maximum_stratum_shortfall",
+                "amount_scale_bounds",
+                # #1415 isa_subscriptions check: how far a total may sit from
+                # its target, and how far person balances may miss the
+                # household draws they split.
+                "maximum_relative_total_deviation",
+                "maximum_household_sum_error_gbp",
+                # The company_cars check (dashboard #316): how far SPI-channel
+                # pay plus its carved benefits may miss the tape's total.
+                "maximum_pay_identity_error_gbp",
+                # The occupation_redraw check (microcosm#1490): the held-out
+                # log-loss gain over the constant, the calibration slope's
+                # bounds, the occupation-share gaps within pay bands and status
+                # groups, and the blend's allowance over its better learner.
+                "minimum_log_loss_gain",
+                "calibration_slope_bounds",
+                "maximum_pay_band_share_gap",
+                "maximum_status_group_share_gap",
+                "maximum_blend_log_loss_excess",
+                # The sub_major_draw check (microcosm#1490) shares those and adds
+                # the sub-major share gap within regions and the FRS rows' gap
+                # from the APS donors within a major group.
+                "maximum_region_share_gap",
+                "maximum_frame_share_gap",
                 # #1113 road_fuel_incidence check: the ceiling on the chain's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
@@ -2256,6 +2192,13 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "rank_basis",
                 "p_basis",
                 "rate_sources",
+                # The apprentice draw (microcosm#1373).
+                "rate_key",
+                "maximum_relative_realization_deviation",
+                "maximum_implied_relief",
+                # uk-data#629 spi_hourly_pay check: the drawn employees' share
+                # below the minimum wage may exceed the FRS rows' by this much.
+                "maximum_share_above_frs",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
@@ -2384,7 +2327,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="export_surface",
         evaluator=_evaluate_export_surface,
         parameter_keys=frozenset({"allowed_extra_columns", "reviewed_exclusions"}),
-        artifact_keys=frozenset({"parity_evidence"}),
+        artifact_keys=frozenset({"parity_evidence", "reference_surface"}),
         needs_frame=False,
     ),
     "target_surface": UKGateBinding(
@@ -2422,6 +2365,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "reviewed_exclusions_resource",
                 "relative_tolerance",
                 "minimum_reference_total",
+                "maximum_relative_drop",
                 "candidate_name",
             }
         ),

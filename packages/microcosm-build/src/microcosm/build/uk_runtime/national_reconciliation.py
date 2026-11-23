@@ -655,11 +655,20 @@ def uk_fanout_sum_controls(
         cells = [
             spec
             for spec in registry.specs
-            if _contract_target_id(spec) == bridge.higher_target_id
+            if _contract_target_id(spec) in bridge.higher_target_ids
             and _spec_geography(spec)[1] == bridge.geography_id
         ]
         if not cells:
             continue
+        present = {_contract_target_id(spec) for spec in cells}
+        if present != set(bridge.higher_target_ids):
+            # A control summing several fan-outs is the area cells' quantity
+            # only whole: refuse one with a fan-out missing from the register.
+            raise ValueError(
+                f"UK fan-out sum bridge {bridge.bridge_id!r} sums "
+                f"{sorted(bridge.higher_target_ids)}, but the register carries "
+                f"only {sorted(present)} at {bridge.geography_id}."
+            )
         controls[bridge.bridge_id] = {
             "higher_target_id": bridge.higher_target_id,
             "geography_id": bridge.geography_id,

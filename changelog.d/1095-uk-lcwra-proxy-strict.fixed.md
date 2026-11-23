@@ -1,0 +1,1 @@
+The spine's DWP carer rule now refuses a missing reported-benefit column, or a missing `esa_includes_support_component`, when it reads the LCWRA proxy. Before, it read a missing column as no benefit, so a renamed column would quietly stop the proxy's skip. Called on a partial frame, as the unit tests do, the proxy keeps that default.

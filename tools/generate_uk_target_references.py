@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.ledger_artifact import consumer_fact_schema_versions_of
 from microcosm.build.ledger_targets import MONTHLY_WINDOW_OPERATIONS
 from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
@@ -27,10 +28,17 @@ from microcosm.build.uk_runtime.centax_childcare_parents import (
     CENTAX_FACTS_RESOURCE,
     load_uk_centax_childcare_parent_facts,
 )
+from microcosm.build.uk_runtime.chronicle_feed import (
+    require_uk_chronicle_feed_subset_row_contracts,
+)
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
-from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
+from microcosm.build.uk_runtime.ledger_targets import (
+    UK_OBSERVATION_PERIOD_BASE,
+    UK_TARGET_REFERENCE_PERIOD,
+    UK_UPRATING_APPLIERS,
+)
 from microcosm.build.uk_runtime.uc_source_periods import (
     SOURCE_MONTH_FAMILIES,
     uc_source_month_metadata,
@@ -111,15 +119,20 @@ NATIONAL_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 
 def main() -> None:
     args = _parser().parse_args()
+    # Stream the lines: the feed is several GB, and reading it whole held its
+    # text and every line beside the parsed rows.
+    with args.ledger_facts.open(encoding="utf-8") as handle:
+        facts = [json.loads(line) for line in handle if line.strip()]
+    # The rows of a subset of the pinned feed: each row contract must be one
+    # the committed pin lists and chronicle_epoch declares.
+    require_uk_chronicle_feed_subset_row_contracts(
+        consumer_fact_schema_versions_of(facts)
+    )
     contract = _filter_contract_by_geography_levels(
         json.loads(args.contract.read_text()),
         allowed_levels=NATIONAL_GEOGRAPHY_LEVELS,
     )
     _validate_amount_entity_pins(contract)
-    # Stream the lines: the feed is several GB, and reading it whole held its
-    # text and every line beside the parsed rows.
-    with args.ledger_facts.open(encoding="utf-8") as handle:
-        facts = [json.loads(line) for line in handle if line.strip()]
     # microcosm#1301: the high-value homes region rows select the
     # Microcosm-derived facts the local cells bind (microcosm#1240), carried in
     # the committed resource rather than the Chronicle feed. Their fan-out
@@ -154,6 +167,7 @@ def main() -> None:
 
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
+        observation_period_base=UK_OBSERVATION_PERIOD_BASE,
         geography_pins=_geography_pins(contract),
         geography_fanout_by_target_id=_geography_fanout(contract),
         geography_fanout_metadata=_geography_fanout_metadata,
@@ -201,7 +215,7 @@ def _parser() -> argparse.ArgumentParser:
         "--source-fact-feed",
         help="Stable display name recorded in the generated membership report.",
     )
-    parser.add_argument("--period", type=int, default=2025)
+    parser.add_argument("--period", type=int, default=UK_TARGET_REFERENCE_PERIOD)
     parser.add_argument(
         "--derived-facts",
         type=Path,
@@ -536,8 +550,9 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # construction (maintenance_loan_in_england_system,
     # parents_learning_allowance_eligible and adult_dependants_grant_eligible
     # all require country == ENGLAND). slc.repayments.* stays with the
-    # substring rule: its england_* ids name their nation, and devolved_total
-    # needs a per-nation redesign before it can activate.
+    # substring rule: its england_* ids name their nation, and the Welsh,
+    # Scottish and Northern Irish rows declare their nation's geography in
+    # their selectors (microcosm#1095 R4).
     ("slc.support.", "england"),
     ("dfe.", "england"),
     # ORR rail industry finance is Great Britain (K03000001): NI Railways sits
@@ -588,6 +603,18 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
     # substring rule would read "scotland" in its concept (microcosm#1095).
     # The binding scopes the model column to Great Britain.
     "obr.council_tax": "uk",
+    # Table 4.1's Northern Ireland domestic rates row is stamped K02000001 too;
+    # the substring rule would pin it to Northern Ireland, where no fact sits.
+    # domestic_rates is zero outside Northern Ireland, so the UK total is
+    # Northern Ireland's (microcosm#1095).
+    "obr.domestic_rates": "uk",
+    # Table 4.1's England, Scotland and Wales council tax rows are stamped
+    # K02000001 too; the substring rule pinned them to their nations, where
+    # no fact sits. Each binding scopes the model column to its nation, and
+    # the three rows are held as measured diagnostics (microcosm#1095 D14e).
+    "obr.council_tax_england": "uk",
+    "obr.council_tax_scotland": "uk",
+    "obr.council_tax_wales": "uk",
     # OBR table 4.9's DWP lines carry the geography DWP counts them over
     # (PolicyEngine/chronicle#357 item 4, from DWP's benefit expenditure and
     # caseload tables, Spring 2026): Great Britain for these eight, England and
@@ -609,6 +636,18 @@ TARGET_ID_GEOGRAPHY_PINS: Mapping[str, str] = {
 
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
+    # A geography the selector declares wins over every inferred pin
+    # (microcosm#1095 R8): a wrong inference otherwise reads as "no fact".
+    declared = (target.get("ledger_selector") or {}).get("geography_id")
+    if declared is not None:
+        pinned = TARGET_ID_GEOGRAPHY_PINS.get(target_id)
+        if pinned is not None and UK_GEOGRAPHY_IDS[pinned] != str(declared):
+            raise ValueError(
+                f"{target_id}: its selector declares geography_id "
+                f"{declared!r}, but TARGET_ID_GEOGRAPHY_PINS pins "
+                f"{UK_GEOGRAPHY_IDS[pinned]!r}; keep one declaration."
+            )
+        return str(declared)
     if target_id in TARGET_ID_GEOGRAPHY_PINS:
         return UK_GEOGRAPHY_IDS[TARGET_ID_GEOGRAPHY_PINS[target_id]]
     if target_id.startswith("dft."):
@@ -668,9 +707,14 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
         declared = target.get("value_operation")
         if declared is not None:
             operations[target_id] = str(declared)
+        # A UC row averages its monthly Stat-Xplore cells over the calendar
+        # year unless it declares an explicit window: a monthly one, or the
+        # calendar-2025 window of fiscal-year facts (DWP's young people with
+        # the UC health element by financial year, PolicyEngine/microcosm#1663).
         if (
             target.get("family") == "dwp_universal_credit"
             and declared not in MONTHLY_WINDOW_OPERATIONS
+            and declared != "calendar_year_window"
         ):
             operations[target_id] = "calendar_year_average"
     return operations
@@ -984,7 +1028,9 @@ def _add_uk_membership_accounting(
             "active_reference_count": fanout_counts.get("hmrc_spi", 0),
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
-                "dimension pins. The 13 property-income amount rows bind the "
+                "dimension pins, and SPI Table 3.10's by self-employment band, "
+                "its bands outside GBP 1 to GBP 10,000 signed out row by row "
+                "(microcosm#1418). The 13 property-income amount rows bind the "
                 "SPI Table 3.7 net concept unscaled: landlords' profit after "
                 "allowable expenses and before residential finance costs, "
                 "which is what policyengine-uk's property_income means. The "
@@ -1025,6 +1071,22 @@ def _add_uk_membership_accounting(
                 "2025-26 projections, measured on the engine's tax_band. Each "
                 "region or nation row controls its higher rate area cells "
                 "(microcosm#1123)."
+            ),
+        },
+        {
+            "family": "hmrc_itl_age",
+            "status": "active_region_tier_calendar_year_window",
+            "active_reference_count": fanout_counts.get("hmrc_itl_age", 0),
+            "signed_rationale": (
+                "The two HMRC Income Tax liabilities statistics targets for "
+                "Income Tax payers of State Pension age and aged 65 and over "
+                "(Table 2.2, July 2026) fan out over the twelve-area region "
+                "tier (microcosm#905) and bind at the calendar-2025 window of "
+                "HMRC's 2024-25 and 2025-26 projections. Table 2.2 counts "
+                "residents of a nation or region, as the frame does; Table "
+                "2.1's United Kingdom row, which adds taxpayers abroad or of "
+                "unknown region, opens the SPI State Pension rows' uprating "
+                "instead of binding (microcosm#1069)."
             ),
         },
         {

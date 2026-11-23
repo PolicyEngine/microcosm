@@ -449,7 +449,12 @@ def test_the_national_parity_compile_merges_the_derived_facts(monkeypatch):
     monkeypatch.setattr(parity_tool, "compile_uk_target_registry", compile_national)
     national = next(spec for spec in parity_tool.RECEIPTS if spec.surface == "national")
     parity_tool._compile_for_receipt(national, [{"feed": True}])
-    assert seen["facts"] == ({"feed": True}, *uk_derived_fact_rows())
+    # Every derived resource, the high-value home stock's rows first.
+    derived = uk_derived_fact_rows()
+    assert derived[: len(load_uk_high_value_home_stock_facts().rows)] == (
+        load_uk_high_value_home_stock_facts().rows
+    )
+    assert seen["facts"] == ({"feed": True}, *derived)
 
 
 def test_region_ledger_only_rows_carry_the_derived_stock_rationale():

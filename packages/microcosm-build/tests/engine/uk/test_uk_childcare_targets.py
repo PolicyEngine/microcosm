@@ -17,6 +17,15 @@ def test_childcare_target_formula_contracts_match_the_installed_engine() -> None
         system.variables["universal_childcare_entitlement_eligible"].formula
     )
     tax_free_source = inspect.getsource(system.variables["tax_free_childcare"].formula)
+    # From 2.165.1 the top-up is one helper, shared with the comparison that
+    # lets a family keep Tax-Free Childcare over a smaller UC award
+    # (pe-uk#2754), and the helper reads the spend the build routes.
+    from policyengine_uk.variables.gov.hmrc.tax_free_childcare import _top_up
+
+    top_up_source = inspect.getsource(_top_up.tax_free_childcare_top_up)
+    without_uc_source = inspect.getsource(
+        system.variables["tax_free_childcare_without_universal_credit"].formula
+    )
 
     # From 2.128.1 a child on the working parent entitlement keeps the
     # universal hours (pe-uk#2177), so the universal-only row must leave the
@@ -35,7 +44,9 @@ def test_childcare_target_formula_contracts_match_the_installed_engine() -> None
         "variable": "dfe_spring_working_parent",
         "equals": False,
     } in universal_only["bindings"]["policyengine"]["filters"]
-    assert "tax_free_childcare_spend_routed_share" in tax_free_source
+    assert "tax_free_childcare_top_up(" in tax_free_source
+    assert "tax_free_childcare_top_up(" in without_uc_source
+    assert "tax_free_childcare_spend_routed_share" in top_up_source
 
     # The spring-term measures (dfe_spring_term.py) count a family that does
     # not claim the universal or targeted hours on their own when the engine

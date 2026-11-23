@@ -12,6 +12,14 @@ reader's concept schema. Every other ``*_sha256`` parameter here
 (``donor_pin_sha256``, ``unit_rule_sha256``, ``mass_reference_sha256``,
 ``currency_sha256`` and ``bands_sha256``) is checked for format only: it
 moves the node key and authenticates nothing.
+
+An optional ``donor_profile`` carries a donor-decoding profile document
+(``microcosm.frame.transport.parse_donor_profile``). The reader refuses a
+document whose own ``donor_sha256`` differs from this kernel's
+``donor_sha256`` parameter and stages the profile's concepts; the receipt's
+``donor_profile`` key records what it staged.
+Without the parameter, CREATE reads the donor and writes its frame and
+receipt as before.
 """
 
 from __future__ import annotations
@@ -32,7 +40,7 @@ import microcosm.frame.schema as schema_module
 import microcosm.frame.transport as transport_module
 import microcosm.frame.unit_construction as units_module
 import microcosm.frame.weights as weights_module
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.concepts import (
     concept_for_column,
     concept_schema_sha256,
@@ -41,13 +49,13 @@ from microcosm.frame.concepts import (
 from microcosm.frame.transport import (
     currency_bridge,
     derive_transport_seed,
+    parse_donor_profile,
     quantile_map,
     read_populace_us_donor,
 )
 from microcosm.frame.unit_construction import (
-    BenefitUnitRule,
     benefit_unit_diagnostics,
-    build_benefit_units,
+    build_declared_units,
 )
 from microcosm.graph import (
     ROWS_ALL,
@@ -64,7 +72,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from . import graph_inputs, target_kernels
+from . import graph_inputs, target_kernels, unit_declarations
 from .artifact_types import TARGET_SURFACE_TYPE
 from .graph_inputs import (
     canonical_document_param,
@@ -73,17 +81,21 @@ from .graph_inputs import (
     string_param,
 )
 from .target_kernels import compile_target_surface, decode_target_surface
+from .unit_declarations import CREATE_V1_REF, CREATE_V2_REF, create_unit_declaration
 
 __all__ = [
     "TRANSPORT_BOUNDARY",
     "TRANSPORT_CREATE",
+    "TRANSPORT_CREATE_DECLARED",
     "TRANSPORT_CURRENCY",
     "TRANSPORT_QUANTILE_MAP",
     "TransportBoundaryKernel",
     "TransportCreateKernel",
+    "TransportCreateDeclaredKernel",
     "TransportCurrencyKernel",
     "TransportQuantileMapKernel",
     "register_population_kernels",
+    "create_unit_declaration",
 ]
 
 
@@ -114,7 +126,7 @@ def _column_result(
 class TransportCreateKernel(KernelBase):
     """``transport.create@1``: verified support records at destination mass."""
 
-    ref = "transport.create@1"
+    ref = CREATE_V1_REF
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
@@ -138,12 +150,14 @@ class TransportCreateKernel(KernelBase):
             "seed_stream",
         }
     )
+    _optional = frozenset({"facts_sha256", "chronicle_feed_pin", "donor_profile"})
 
     def implementation_hash(self) -> str:
         return source_hash(
             type(self),
             graph_inputs,
             target_kernels,
+            unit_declarations,
             transport_module,
             units_module,
             concepts_module,
@@ -160,10 +174,13 @@ class TransportCreateKernel(KernelBase):
 
     def run(self, context: KernelContext) -> KernelResult:
         require_params(
-            context,
-            self.ref,
-            required=self._required,
-            optional=frozenset({"facts_sha256", "chronicle_feed_pin"}),
+            context, self.ref, required=self._required, optional=self._optional
+        )
+        # Parsed once, before any source is read; the reader stages it.
+        profile = (
+            parse_donor_profile(string_param(context, self.ref, "donor_profile"))
+            if "donor_profile" in context.params
+            else None
         )
         donor_source = string_param(context, self.ref, "donor_source")
         facts_source = string_param(context, self.ref, "facts_source")
@@ -214,6 +231,7 @@ class TransportCreateKernel(KernelBase):
             context.sources[donor_source],
             sha256=sha256_param(context, self.ref, "donor_sha256"),
             size=context.params["donor_size"],
+            profile=profile,
         )
         tables, dropped = split_for_transport(donor.tables)
         # pandas 3's inferred text dtype spells itself "str"; graph columns
@@ -227,17 +245,17 @@ class TransportCreateKernel(KernelBase):
                 item = concept_for_column(entity, column)
                 if item is not None and item.dtype == "str":
                     table[column] = table[column].astype(text)
-        rule = BenefitUnitRule.from_spec(
-            canonical_document_param(context, self.ref, "unit_rule")
+        declaration = create_unit_declaration(
+            self.ref, canonical_document_param(context, self.ref, "unit_rule")
         )
-        if rule.entity != "family":
-            raise ValueError("CREATE's declared schema requires family benefit units.")
-        family, membership = build_benefit_units(
-            tables["person"], tables["household"], rule
+        partitions = build_declared_units(
+            tables["person"], tables["household"], declaration
         )
-        tables["family"] = family
         person, household = tables["person"], tables["household"]
-        person[rule.membership_column] = membership
+        for unit in declaration.units:
+            membership = partitions[unit.rule.entity]
+            tables[unit.rule.entity] = membership.units
+            person[unit.rule.membership_column] = membership.person_unit
         person["take_up_seed"] = derive_transport_seed(
             donor.source_person_ids, string_param(context, self.ref, "seed_stream")
         )
@@ -261,11 +279,9 @@ class TransportCreateKernel(KernelBase):
             dtype=object,
         )
         surface = decode_target_surface(surface_bytes)
-        # The persons, their households and the rule's benefit units: the
-        # entity check above makes this the destination's declared schema.
         frame = Frame(
             tables,
-            EntitySchema(group_entities=("household", rule.entity)),
+            declaration.entity_schema()[0],
             {"household": weights},
             strata,
             metadata={
@@ -273,14 +289,27 @@ class TransportCreateKernel(KernelBase):
                 "donor_country": donor.donor_country,
                 "country": country,
                 "donor_currency": donor.currency,
+                "donor_time_period": donor.time_period,
             },
         )
+        diagnostics = {
+            unit.rule.entity: benefit_unit_diagnostics(
+                person,
+                household,
+                partitions[unit.rule.entity].units,
+                partitions[unit.rule.entity].person_unit,
+                unit.rule,
+            )
+            for unit in declaration.units
+            if unit.kind == "benefit_unit"
+        }
         return KernelResult(
             frame=frame,
             receipt={
                 "content_basis": donor.content_basis.value,
                 "donor_country": donor.donor_country,
                 "country": country,
+                "donor_time_period": donor.time_period,
                 "dropped_columns": {
                     entity: list(names) for entity, names in dropped.items()
                 },
@@ -290,14 +319,27 @@ class TransportCreateKernel(KernelBase):
                 "design_scale": scale,
                 "n_persons": len(person),
                 "n_households": len(household),
-                "n_units": len(family),
-                "unit_construction": benefit_unit_diagnostics(
-                    person, household, family, membership, rule
+                "n_units": sum(
+                    len(partition.units) for partition in partitions.values()
                 ),
+                "unit_construction": next(iter(diagnostics.values()))
+                if len(declaration.units) == 1 and diagnostics
+                else diagnostics,
                 "mass_reference": registry.specs[0].name,
                 "facts": dict(surface.facts),
+                **(
+                    {}
+                    if donor.donor_profile is None
+                    else {"donor_profile": donor.donor_profile}
+                ),
             },
         )
+
+
+class TransportCreateDeclaredKernel(TransportCreateKernel):
+    """Versioned, typed declarations; the legacy CREATE lifts one benefit unit."""
+
+    ref = CREATE_V2_REF
 
 
 class TransportBoundaryKernel(KernelBase):
@@ -584,6 +626,7 @@ class TransportQuantileMapKernel(KernelBase):
 
 
 TRANSPORT_CREATE = TransportCreateKernel()
+TRANSPORT_CREATE_DECLARED = TransportCreateDeclaredKernel()
 TRANSPORT_BOUNDARY = TransportBoundaryKernel()
 TRANSPORT_CURRENCY = TransportCurrencyKernel()
 TRANSPORT_QUANTILE_MAP = TransportQuantileMapKernel()
@@ -593,6 +636,7 @@ def register_population_kernels(registry: KernelRegistry) -> KernelRegistry:
     """Register the population kernels explicitly and idempotently."""
     for kernel in (
         TRANSPORT_CREATE,
+        TRANSPORT_CREATE_DECLARED,
         TRANSPORT_BOUNDARY,
         TRANSPORT_CURRENCY,
         TRANSPORT_QUANTILE_MAP,

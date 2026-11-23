@@ -36,7 +36,7 @@ def test_batched_engines_partition_release_and_order_their_work(
 ) -> None:
     """(b) no construction sees more than the batch size and every pass
     partitions the pool; (c) one engine alive at a time; (d) the SPM selection
-    on every construction; (e) one reform system per reform, 41 for the
+    on every construction; (e) one reform system per reform, 42 for the
     shipped smoke; (f) one baseline pass per plan; (g) ascending periods."""
     frame = _nested_frame()
     household_ids = frame.table("household")["household_id"].tolist()
@@ -75,7 +75,7 @@ def test_batched_engines_partition_release_and_order_their_work(
     validation = consumers["reform_validation"].record()
     demographics = consumers["demographics"].record()
     probes = len(us_release_reform_coverage_probes())
-    assert smoke["reform_systems"] == smoke["reform_passes"] == probes == 42
+    assert smoke["reform_systems"] == smoke["reform_passes"] == probes == 43
     assert validation["reform_systems"] == validation["reform_passes"] > 0
     assert demographics["reform_systems"] == demographics["reform_passes"] == 0
     assert all(engine.reform is None for engine in constructions)
@@ -808,11 +808,14 @@ def test_calibration_diagnostics_carry_the_post_export_plan(
 
 
 def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
-    """(i) Neither _main nor the reform-validation and demographics writers
-    call default_simulate_factory or construct a Microsimulation, and _main
-    feeds the smoke from the batched scorer."""
+    """(i) Neither _main, certification, nor the reform-validation and
+    demographics writers call default_simulate_factory or construct a
+    Microsimulation, and certification feeds the smoke from the batched
+    scorer. Certification (``_certify_us_build``) runs from the build record
+    ``_main`` writes after the H5 (microcosm#1585 item 11, PR 4a)."""
     for name in (
         "_main",
+        "_certify_us_build",
         "_write_reform_validation",
         "_write_demographics",
         "_write_ssi_social_security_holdout",
@@ -824,13 +827,15 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         assert "Microsimulation" not in called, name
         assert "USSingleYearDataset" not in called, name
 
-    source, tree = _function_source(builder, "_main")
+    main_source, main_tree = _function_source(builder, "_main")
+    source, tree = _function_source(builder, "_certify_us_build")
     calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    main_calls = [node for node in ast.walk(main_tree) if isinstance(node, ast.Call)]
 
-    def calls_to(name: str) -> list[ast.Call]:
+    def calls_to(name: str, among=None) -> list[ast.Call]:
         return [
             call
-            for call in calls
+            for call in (calls if among is None else among)
             if name
             in (getattr(call.func, "id", None), getattr(call.func, "attr", None))
         ]
@@ -839,17 +844,24 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     assert [ast.unparse(call) for call in calls_to("_open_post_export_scorer")] == [
         "_open_post_export_scorer(post_export_scoring_plan, dataset_path)"
     ]
-    # It opens the file this run has just written, never a previous run's
-    # bytes at the same path (microcosm#443), and before the smoke scores.
-    (write_call,) = calls_to("write_dataset")
+    # It opens the file the build wrote, which the record pins by digest
+    # (never a previous run's bytes at the same path, microcosm#443), and
+    # before the smoke scores. The record is written after the H5.
+    (write_call,) = calls_to("write_dataset", main_calls)
+    (record_call,) = calls_to("_write_us_build_record", main_calls)
+    assert write_call.lineno < record_call.lineno
+    assert not calls_to("_open_post_export_scorer", main_calls)
     (open_call,) = calls_to("_open_post_export_scorer")
     (smoke_gate_call,) = calls_to("us_reform_coverage_smoke_gate")
-    assert write_call.lineno < open_call.lineno < smoke_gate_call.lineno
-    # The smoke's served baseline is its own recorded plan, and the gate reads
-    # that consumer's seam.
+    assert open_call.lineno < smoke_gate_call.lineno
+    # The smoke's served baseline is its own recorded plan, with that plan's
+    # reform pass count for progress (#1556), and the gate reads that
+    # consumer's seam.
     assert [ast.unparse(call) for call in calls_to("open_consumer")] == [
         "post_export_scorer.open_consumer('reform_coverage_smoke', "
-        "post_export_scoring_plan.baseline_plan('reform_coverage_smoke'))"
+        "post_export_scoring_plan.baseline_plan('reform_coverage_smoke'), "
+        "planned_reform_passes=post_export_scoring_plan.planned_reform_passes("
+        "'reform_coverage_smoke'))"
     ]
     (smoke_call,) = calls_to("us_reform_coverage_smoke_gate")
     simulate = next(kw for kw in smoke_call.keywords if kw.arg == "simulate")
@@ -869,9 +881,16 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         ]
         assert plan_calls == [f"post_export_scoring_plan.baseline_plan({consumer!r})"]
     (validation_call,) = calls_to("_write_reform_validation")
-    assert {kw.arg: ast.unparse(kw.value) for kw in validation_call.keywords}[
-        "simulate_out_of_sample"
-    ] == "not args.skip_out_of_sample_reforms"
+    validation_keywords = {
+        kw.arg: ast.unparse(kw.value) for kw in validation_call.keywords
+    }
+    assert (
+        validation_keywords["simulate_out_of_sample"]
+        == "not args.skip_out_of_sample_reforms"
+    )
+    assert validation_keywords["planned_reform_passes"] == (
+        "post_export_scoring_plan.planned_reform_passes('reform_validation')"
+    )
     # The manifest binds the sha of the bytes the closed scorer scored, and
     # nothing else assigns it.
     sha_assignments = [
@@ -895,7 +914,7 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     assert demographics_call.lineno < sha_assignments[0].lineno < manifest_call.lineno
     diagnostics_call = next(
         node
-        for node in ast.walk(tree)
+        for node in ast.walk(main_tree)
         if isinstance(node, ast.Call)
         and getattr(node.func, "id", None) == "_write_release_calibration_diagnostics"
     )
@@ -934,14 +953,23 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     ] == "post_export_scoring"
     # The plan is recorded (never raised) before the diagnostics, and its own
     # failure joins the terminal batch ahead of the export write.
-    recorded = source.index(
+    recorded = main_source.index(
         "post_export_scoring_plan = _record_post_export_scoring_plan("
     )
-    joined = source.index(
+    joined = main_source.index(
         "terminal_gate_failures.extend(post_export_scoring_plan.terminal_failures())"
     )
-    assert recorded < source.index("_write_release_calibration_diagnostics(") < joined
-    assert joined < source.index("release_engine.write_dataset(")
+    assert (
+        recorded < main_source.index("_write_release_calibration_diagnostics(") < joined
+    )
+    assert joined < main_source.index("release_engine.write_dataset(")
+    # Certification scores the plan the build recorded: it rebuilds it and
+    # refuses one that differs (microcosm#1585 item 11, PR 4a).
+    assert "post_export_scoring_plan=post_export_scoring_plan" in main_source
+    assert (
+        "post_export_scoring_plan = record.post_export_scoring_plan(args, result=result)"
+        in source
+    )
 
 
 def test_main_opens_the_scorer_its_plan_recorded(
@@ -1441,7 +1469,7 @@ def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(
     with pytest.raises(ValueError, match="not opened on this scorer"):
         scorer.finish_consumer(other.open_consumer("fixture", ()))
 
-    _, tree = _function_source(builder, "_main")
+    _, tree = _function_source(builder, "_certify_us_build")
     manifest_call = next(
         node
         for node in ast.walk(tree)
@@ -1540,7 +1568,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
 ) -> None:
     sweep = _load_sweep_module()
     plans, requests, counts = sweep._record_requests(builder)
-    assert counts["smoke_probes"] == len(us_release_reform_coverage_probes()) == 42
+    assert counts["smoke_probes"] == len(us_release_reform_coverage_probes()) == 43
     specs = reform_validation_module.load_default_reform_specs(period=builder.PERIOD)
     assert counts["validation_specs"] == sum(not spec.in_sample for spec in specs) == 52
     assert (
@@ -1549,7 +1577,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
         == 12
     )
     assert counts["baseline_keys"] == {
-        "reform_coverage_smoke": 19,
+        "reform_coverage_smoke": 20,
         "reform_validation": 75,
         "demographics": 1,
     }
@@ -1584,7 +1612,7 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
     assert (
         len(requests)
         == counts["smoke_probes"] + counts["validation_reform_passes"]
-        == 108
+        == 109
     )
 
     frame, log = _nested_frame(), _EngineLog()
@@ -1653,3 +1681,250 @@ def test_guard_sweep_runs_every_chunk_and_propagates_worker_failure(tmp_path) ->
 
     with pytest.raises(subprocess.CalledProcessError):
         sweep._run_workers(args, run=fail)
+
+
+# ---------------------------------------------------------------------------
+# Outer progress: each reform pass's number of its consumer's pass count
+# ---------------------------------------------------------------------------
+
+
+class _ProgressRecorder:
+    """Stands for the build's emitter: records each progress request."""
+
+    def __init__(self) -> None:
+        self.requests: list[dict[str, object]] = []
+
+    def progress(self, stage_id, *, done, total, unit=None, outer=None, **details):
+        self.requests.append(
+            {
+                "stage_id": stage_id,
+                "done": done,
+                "total": total,
+                "unit": unit,
+                "outer": outer,
+                "pass_name": details.get("pass_name"),
+            }
+        )
+
+
+def _counted_run(builder, tmp_path, monkeypatch):
+    """Run the shipped consumers as ``_main`` opens them, with pass counts."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    record_requests = getattr(builder, "_record_post_export_requests", None)
+    assert record_requests is not None
+    consumers: dict[str, object] = {}
+    planned: dict[str, int] = {}
+
+    def simulate_for(name, consumer):
+        plan, passes = record_requests(consumer)
+        planned[name] = passes
+        consumers[name] = scorer.open_consumer(name, plan, planned_reform_passes=passes)
+        return consumers[name].simulate
+
+    _run_consumers(builder, simulate_for)
+    return scorer, consumers, planned, recorder.requests
+
+
+def test_the_dry_run_counts_each_consumers_reform_passes(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    _, consumers, planned, _ = _counted_run(builder, tmp_path, monkeypatch)
+    assert planned["reform_coverage_smoke"] == len(us_release_reform_coverage_probes())
+    assert planned["reform_validation"] > 0
+    assert planned["demographics"] == 0
+    # The count is the passes the consumer then runs: one per key it asks
+    # each reform for.
+    for name, consumer in consumers.items():
+        assert consumer.record()["reform_passes"] == planned[name], name
+
+
+def test_each_reform_pass_reports_its_number_of_its_consumers_passes(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    scorer, _, planned, requests = _counted_run(builder, tmp_path, monkeypatch)
+    outer = [
+        (entry["outer"].done, entry["outer"].total, entry["outer"].unit)
+        for entry in requests
+        if entry["outer"] is not None
+    ]
+    expected = [
+        (number, planned[name], "reform_pass")
+        for name in ("reform_coverage_smoke", "reform_validation")
+        for number in range(1, planned[name] + 1)
+        for _batch in range(scorer.n_batches)
+    ]
+    assert outer == expected
+    # A baseline pass has no outer counter, and every request keeps the
+    # batch counter it had.
+    baseline = [
+        entry for entry in requests if str(entry["pass_name"]).endswith("baseline plan")
+    ]
+    assert baseline
+    assert all(entry["outer"] is None for entry in baseline)
+    assert all(entry["total"] == scorer.n_batches for entry in requests)
+
+
+def test_a_consumer_opened_without_a_pass_count_reports_no_outer_counter(
+    builder, fake_reforms, tmp_path, monkeypatch
+) -> None:
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    _batched_run(builder, _nested_frame(), 3, tmp_path)
+    assert recorder.requests
+    assert all(entry["outer"] is None for entry in recorder.requests)
+
+
+def test_the_scoring_plan_holds_each_consumers_reform_pass_count(
+    builder, fake_reforms
+) -> None:
+    args = SimpleNamespace(
+        skip_reform_coverage_smoke=False,
+        skip_reform_validation=False,
+        skip_out_of_sample_reforms=False,
+        skip_demographics=False,
+    )
+    plan = builder._post_export_scoring_plan(
+        n_households=352_932,
+        maximum_microsim_batch_size=2_000,
+        consumers=builder._post_export_consumers(
+            args, result=_empty_calibration_result(), release_id="fixture"
+        ),
+    )
+    planned = getattr(plan, "planned_reform_passes", None)
+    assert planned is not None
+    assert planned("reform_coverage_smoke") == len(us_release_reform_coverage_probes())
+    assert planned("demographics") == 0
+    assert planned("reform_validation") > 0
+    # The diagnostics' record of the plan keeps its shape.
+    assert "reform_passes" not in plan.record()["consumers"]["reform_coverage_smoke"]
+
+
+def test_the_release_s_reform_validation_reports_each_pass_of_its_count(
+    builder, fake_reforms, monkeypatch, tmp_path
+) -> None:
+    """``_main`` hands the writer the plan's count beside its baseline plan."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path / "h5")
+    fit = _calibration_result_with_in_sample_fit(builder.PERIOD)
+    plan = builder._record_post_export_scoring_plan(
+        _plan_args(), n_households=7, result=fit, release_id="fixture-release"
+    )
+    planned = getattr(plan, "planned_reform_passes", None)
+    assert planned is not None
+    passes = planned("reform_validation")
+    assert passes > 0
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+    builder._write_reform_validation(
+        release_dir=release_dir,
+        dataset_path=scorer.dataset_path,
+        result=fit,
+        registry=TargetRegistry((), country="us"),
+        release_id="fixture-release",
+        simulate_out_of_sample=True,
+        post_export_scorer=scorer,
+        baseline_plan=plan.baseline_plan("reform_validation"),
+        planned_reform_passes=passes,
+    )
+    outer = [entry["outer"] for entry in recorder.requests if entry["outer"]]
+    assert [counter.done for counter in outer[:: scorer.n_batches]] == list(
+        range(1, passes + 1)
+    )
+    assert {(counter.total, counter.unit) for counter in outer} == {
+        (passes, "reform_pass")
+    }
+
+
+def test_a_consumer_scored_without_a_recorded_plan_counts_its_own_passes(
+    builder, fake_reforms, monkeypatch, tmp_path
+) -> None:
+    """A direct caller's dry run records the pass count with the baseline plan."""
+    recorder = _ProgressRecorder()
+    monkeypatch.setattr(builder, "_ACTIVE_EMITTER", recorder)
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    payload_for = builder._reform_validation_consumer(
+        result=_empty_calibration_result(), release_id="fixture-release"
+    )
+    builder._score_post_export_consumer(
+        "reform_validation",
+        payload_for,
+        dataset_path=scorer.dataset_path,
+        post_export_scorer=scorer,
+        baseline_plan=None,
+        maximum_microsim_batch_size=3,
+    )
+    passes = scorer.consumer_records["reform_validation"]["reform_passes"]
+    outer = [entry["outer"] for entry in recorder.requests if entry["outer"]]
+    assert outer
+    assert {counter.total for counter in outer} == {passes}
+    assert outer[-1].done == passes
+
+
+def test_recording_the_smoke_plan_builds_no_reform_and_needs_no_engine(
+    builder, monkeypatch
+) -> None:
+    """Sol review of microcosm#1197, finding 3: the plan's dry run records the
+    real smoke consumer with ``_build_reform`` left in place and the engine
+    packages unimportable. The recorder flags its simulate as
+    RECORDS_REQUESTS_ONLY, so the gate builds no reform and resolves no list
+    edit, and the plan still holds every probe's baseline measure."""
+    import microcosm.build.us_runtime.release_input_coverage as coverage_module
+
+    for module in ("policyengine_us", "policyengine_core", "policyengine_core.reforms"):
+        monkeypatch.setitem(sys.modules, module, None)
+
+    def resolved_on_an_engine():
+        raise AssertionError("the plan's dry run resolved a list edit")
+
+    # The installed-engine reader is cached per process, so blocking the
+    # imports alone would not catch a resolution served from an earlier test.
+    monkeypatch.setattr(
+        coverage_module, "_installed_parameter_stages", resolved_on_an_engine
+    )
+    original = smoke_module._build_reform
+    built: list[str] = []
+
+    def spy(probe):
+        built.append(probe.id)
+        return original(probe)
+
+    monkeypatch.setattr(smoke_module, "_build_reform", spy)
+    probes = us_release_reform_coverage_probes()
+    assert sum(1 for probe in probes if probe.list_edits) >= 10
+
+    keys = builder._record_post_export_baseline_plan(
+        builder._reform_coverage_smoke_consumer
+    )
+
+    assert built == []
+    assert {
+        (probe.budget_measure, int(probe.period or builder.PERIOD)) for probe in probes
+    } <= {(variable, period) for variable, period, _ in keys}
+
+
+def test_scorer_dataset_keeps_the_engine_projection(
+    builder, monkeypatch, tmp_path
+) -> None:
+    """Consumer plans read years after PERIOD, so the scorer's default
+    dataset keeps policyengine-us's projection: it does not ask for PERIOD
+    alone, as the in-build simulations do."""
+    calls: list[dict[str, object]] = []
+
+    def recording_dataset_from_frame(frame, **kwargs):
+        calls.append(kwargs)
+        return frame
+
+    monkeypatch.setattr(builder, "_dataset_from_frame", recording_dataset_from_frame)
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        _written_h5(tmp_path),
+        maximum_microsim_batch_size=3,
+        microsimulation_cls=_fake_engine(_EngineLog()),
+        load_frame=lambda path, *, expected_sha256: _nested_frame(),
+    )
+    first_batch = scorer._batches()[0]
+
+    assert scorer._dataset_from_frame(first_batch) is first_batch
+    assert calls == [{"assert_no_formula_owned_columns": False}]

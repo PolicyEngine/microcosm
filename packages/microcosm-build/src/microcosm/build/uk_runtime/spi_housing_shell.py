@@ -38,6 +38,13 @@ from microcosm.build.uk_runtime.council_tax_constants import (
     UK_COUNCIL_TAX_BANDS_BY_REGION,
     UK_NATION_BY_REGION,
 )
+from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.qrf_gates import (
+    UK_DEFAULT_GATE_CALIBRATION,
+    UK_GATE_OUTCOMES_EVIDENCE,
+    declared_gate_calibration,
+    gate_outcomes,
+)
 
 __all__ = [
     "HOUSING_AMOUNT_COLUMNS",
@@ -102,8 +109,11 @@ NUMERIC_PREDICTORS: tuple[str, ...] = (
     "investment_income",
     "state_pension_reported",
 )
+#: Interest is ISA interest included, as gross interest held it before the
+#: additive contract (microcosm#1360).
 _INVESTMENT_COLUMNS = (
     "savings_interest_income",
+    "individual_savings_account_interest_income",
     "dividend_income",
     "property_income",
     "other_investment_income",
@@ -410,8 +420,13 @@ def fit_housing_model(
     *,
     seed: int,
     n_estimators: int,
+    gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
 ) -> FittedHousingModel:
-    """Fit the categorical steps and the chained amounts on training households."""
+    """Fit the categorical steps and the chained amounts on training households.
+
+    ``gate_calibration`` is the amounts' declared
+    :class:`~microcosm.fit.GateCalibration`.
+    """
 
     from microcosm.fit.qrf import RegimeGatedQRF
 
@@ -450,7 +465,9 @@ def fit_housing_model(
     table = pd.concat(
         [features, targets[list(amount_targets)].astype(float)], axis=1
     ).reset_index(drop=True)
-    model.amount_model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed).fit(
+    model.amount_model = RegimeGatedQRF(
+        n_estimators=n_estimators, seed=seed, gate_calibration=gate_calibration
+    ).fit(
         table,
         list(features.columns),
         list(amount_targets),
@@ -509,8 +526,13 @@ def impute_spi_housing_shell(
     *,
     seed: int = 0,
     n_estimators: int = 100,
+    gate_calibration: str = UK_DEFAULT_GATE_CALIBRATION,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    """Redraw every SPI-channel household's housing; FRS rows are untouched."""
+    """Redraw every SPI-channel household's housing; FRS rows are untouched.
+
+    When ``gate_calibration`` is not the in-sample gate, the receipt names each
+    amount target's gate outcome.
+    """
 
     channel = household["household_support_channel"].astype(str).to_numpy()
     if not set(channel) <= {FRS_CHANNEL, SPI_CHANNEL}:
@@ -518,21 +540,39 @@ def impute_spi_housing_shell(
     weights = pd.Series(
         np.asarray(household_weights, dtype=float), index=household["household_id"]
     )
-    training_ids = household.loc[
-        (channel == FRS_CHANNEL) & (weights.to_numpy() > 0.0), "household_id"
-    ]
+    predictors = household_housing_predictors(person, household)
+    targets = household_housing_targets(person, household)
+    # The model trains on each survey household once: its geographic clones
+    # that agree on the predictors and targets fold into its first row with
+    # their weight, clones that differ stay rows of their own, and every
+    # other copy stays its own row; a frame without geographic clones keeps
+    # every row and weight (household_lineage.collapse_geographic_clones,
+    # microcosm#931).
+    training, fit_weights = collapse_geographic_clones(
+        {"household": household},
+        "household",
+        (channel == FRS_CHANNEL) & (weights.to_numpy() > 0.0),
+        weights.to_numpy(),
+        inputs=pd.concat(
+            [predictors.add_prefix("predictor:"), targets.add_prefix("target:")],
+            axis=1,
+        )
+        .reindex(household["household_id"].to_numpy())
+        .reset_index(drop=True),
+    )
+    fit_weights = pd.Series(fit_weights, index=household["household_id"])
+    training_ids = household.loc[training, "household_id"]
     recipient_ids = household.loc[channel == SPI_CHANNEL, "household_id"]
     if training_ids.empty or recipient_ids.empty:
         raise ValueError("Housing shell needs FRS training rows and SPI recipients.")
 
-    predictors = household_housing_predictors(person, household)
-    targets = household_housing_targets(person, household)
     model = fit_housing_model(
         predictors.loc[training_ids],
         targets.loc[training_ids],
-        weights.loc[training_ids].to_numpy(),
+        fit_weights.loc[training_ids].to_numpy(),
         seed=seed,
         n_estimators=n_estimators,
+        gate_calibration=gate_calibration,
     )
     band_redraws: dict[str, int] = {}
     raw = model.draw(predictors.loc[recipient_ids], firings=band_redraws)
@@ -575,7 +615,7 @@ def impute_spi_housing_shell(
         "category_shares": {
             column: {
                 "training": _weighted_shares(
-                    targets.loc[training_ids, column], weights.loc[training_ids]
+                    targets.loc[training_ids, column], fit_weights.loc[training_ids]
                 ),
                 "recipients": _weighted_shares(
                     draws[column], weights.loc[recipient_ids]
@@ -584,6 +624,10 @@ def impute_spi_housing_shell(
             for column in HOUSING_CATEGORICAL_COLUMNS
         },
     }
+    if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
+        receipt[UK_GATE_OUTCOMES_EVIDENCE] = gate_outcomes(
+            UK_SPI_HOUSING_SHELL_STAGE_NAME, model.amount_model
+        )
     return person_out, household_out, receipt
 
 
@@ -622,6 +666,7 @@ UK_SPI_HOUSING_SHELL_OPERATION: dict[str, Any] = {
     "landing": "household_reference_person",
     "n_estimators": 100,
     "seed": 0,
+    "gate_calibration": "cross_fitted",
 }
 UK_SPI_HOUSING_SHELL_REWRITES: tuple[str, ...] = (
     *HOUSING_CATEGORICAL_COLUMNS,
@@ -683,6 +728,9 @@ class UKSPIHousingShellStageTransform:
             seed=int(UK_SPI_HOUSING_SHELL_OPERATION["seed"]),
             n_estimators=int(
                 self.n_estimators or UK_SPI_HOUSING_SHELL_OPERATION["n_estimators"]
+            ),
+            gate_calibration=declared_gate_calibration(
+                self.stage, "impute_spi_housing_shell"
             ),
         )
         _assert_invariants(frame.table("person"), household, person_out, household_out)

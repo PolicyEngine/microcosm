@@ -1,14 +1,14 @@
-"""The Microcosm-derived fact resources every UK national compile binds.
+"""The Microcosm-derived fact resources compiled beside the pinned Chronicle feed.
 
-Two committed resources carry ``uk_derived_consumer_facts`` rows that contract
-targets select with ``source_name: microcosm`` beside the Chronicle feed: the
-high-value home stock (``uk/high_value_home_stock_facts.json``; local cells
-microcosm#1240, region rows microcosm#1301) and CenTax's tabulations of parents
-of 3- and 4-year-olds (``uk/centax_childcare_parent_facts.json``,
-microcosm#1399). A compile of the committed national references that misses
-either reports its rows unsupported, so every national compile site merges them
-through :func:`uk_derived_fact_rows`, and every receipt names both resources
-through :func:`uk_derived_fact_provenance`.
+Three committed resources carry facts Microcosm computes from public data, in
+consumer-fact row shape under the ``microcosm.derived_fact.`` key namespace:
+the high-value home stock (``uk/high_value_home_stock_facts.json``,
+microcosm#1240), DESNZ's domestic energy split onto constituencies
+(``uk/desnz_constituency_energy_facts.json``, microcosm#1095) and CenTax's
+tabulations of parents of 3- and 4-year-olds
+(``uk/centax_childcare_parent_facts.json``, microcosm#1399). Every compile of
+the UK target references reads all three beside the feed, so they are listed
+here once; a compile that left one out would find its family's cells absent.
 """
 
 from __future__ import annotations
@@ -19,36 +19,51 @@ from typing import Any
 from microcosm.build.uk_runtime.centax_childcare_parents import (
     load_uk_centax_childcare_parent_facts,
 )
+from microcosm.build.uk_runtime.desnz_constituency_energy import (
+    load_uk_desnz_constituency_energy_facts,
+)
 from microcosm.build.uk_runtime.high_value_homes import (
     load_uk_high_value_home_stock_facts,
 )
 
-
-def uk_derived_fact_rows() -> tuple[Mapping[str, Any], ...]:
-    """Both committed derived-fact resources' rows, high-value homes first."""
-
-    return (
-        *load_uk_high_value_home_stock_facts().rows,
-        *load_uk_centax_childcare_parent_facts().rows,
-    )
+__all__ = [
+    "load_uk_derived_facts",
+    "uk_derived_fact_resource_pins",
+    "uk_derived_fact_rows",
+]
 
 
-def uk_derived_fact_provenance() -> dict[str, dict[str, Any]]:
-    """Each committed derived-fact resource's identity, keyed by its stem."""
+def load_uk_derived_facts() -> dict[str, Any]:
+    """Each committed derived resource, validated, keyed by its file name's stem."""
 
-    high_value = load_uk_high_value_home_stock_facts()
-    centax = load_uk_centax_childcare_parent_facts()
     return {
-        "high_value_home_stock_facts": {
-            "rows": len(high_value.rows),
-            "rows_sha256": high_value.rows_sha256,
-            "inputs_sha256": high_value.inputs_sha256,
-            "generator": dict(high_value.generator),
-        },
-        "centax_childcare_parent_facts": {
-            "rows": len(centax.rows),
-            "rows_sha256": centax.rows_sha256,
-            "inputs_sha256": centax.inputs_sha256,
-            "generator": dict(centax.generator),
-        },
+        "high_value_home_stock_facts": load_uk_high_value_home_stock_facts(),
+        "desnz_constituency_energy_facts": load_uk_desnz_constituency_energy_facts(),
+        "centax_childcare_parent_facts": load_uk_centax_childcare_parent_facts(),
+    }
+
+
+def uk_derived_fact_rows(
+    derived: Mapping[str, Any] | None = None,
+) -> tuple[Mapping[str, Any], ...]:
+    """Every committed derived fact row, the high-value home stock's first."""
+
+    resources = load_uk_derived_facts() if derived is None else derived
+    return tuple(row for facts in resources.values() for row in facts.rows)
+
+
+def uk_derived_fact_resource_pins(
+    derived: Mapping[str, Any] | None = None,
+) -> dict[str, dict[str, str | int]]:
+    """Each committed derived resource's identity, keyed by its file name."""
+
+    resources = load_uk_derived_facts() if derived is None else derived
+    return {
+        f"{stem}.json": {
+            "resource": f"{stem}.json",
+            "rows": len(facts.rows),
+            "rows_sha256": facts.rows_sha256,
+            "inputs_sha256": facts.inputs_sha256,
+        }
+        for stem, facts in resources.items()
     }

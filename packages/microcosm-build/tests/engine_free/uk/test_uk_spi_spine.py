@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,6 +25,7 @@ from microcosm.build.uk_runtime.spi_income import (
     SPI_DONOR_REQUIRED_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPIDonorAgeModel,
+    SPIEmploymentPayFloor,
     impute_uk_spi_income_support,
 )
 from microcosm.build.uk_runtime.spi_spine import (
@@ -47,7 +49,7 @@ from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclara
 from microcosm.frame import WeightKind
 
 
-def _base_frame(*, time_period: str = "2023") -> object:
+def _base_frame(*, time_period: str = "2023", with_child: bool = False) -> object:
     person = pd.DataFrame(
         {
             "person_id": [2001, 1001],
@@ -62,6 +64,8 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "dividend_income": [20.0, 10.0],
             "private_pension_income": [0.0, 0.0],
             "property_income": [0.0, 0.0],
+            # The twin's other income locates the copy's draw (microcosm#1428).
+            "other_investment_income": [0.0, 0.0],
             "employee_pension_contributions": [3.0, 2.0],
             "employer_pension_contributions": [9.0, 6.0],
             "hmrc_spi_pay": [0.0, 0.0],
@@ -70,6 +74,8 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "ossben_identifiable_subset": [0.0, 0.0],
             "srp_regular_code5": [0.0, 0.0],
             "employment_status": ["FT_EMPLOYED", "FT_EMPLOYED"],
+            # Annual usual hours, as frs_spine writes them.
+            "hours_worked": [30 * 365.25 / 7, 0.0],
             "miscellaneous_income": [0.0, 0.0],
             **{
                 column: [0.0, 0.0]
@@ -82,6 +88,12 @@ def _base_frame(*, time_period: str = "2023") -> object:
             },
         }
     )
+    if with_child:
+        # A dependent child in household 1, paid CHILD.CHEARNS (microcosm#1663).
+        child = person.loc[person["person_id"] == 1001].assign(
+            person_id=1002, age=17, employment_income=15.0 * 52.0
+        )
+        person = pd.concat([person, child], ignore_index=True)
     benunit = pd.DataFrame({"benunit_id": [101, 201]})
     household = pd.DataFrame(
         {
@@ -103,6 +115,7 @@ def _leaves_stage(
     tmp_path: Path,
     *,
     extra_adult_rows: tuple[dict[str, object], ...] = (),
+    child_rows: tuple[dict[str, object], ...] = (),
 ) -> SourceStageSpec:
     adult = pd.DataFrame(
         [
@@ -111,6 +124,7 @@ def _leaves_stage(
             *extra_adult_rows,
         ]
     )
+    child = pd.DataFrame(list(child_rows), columns=["sernum", "person", "chearns"])
     benefits = pd.DataFrame(
         {
             "sernum": [1, 2, 2],
@@ -125,10 +139,12 @@ def _leaves_stage(
     penprov = pd.DataFrame({"sernum": [1, 2], "person": [1, 1], "stemppen": [2, 5]})
     job = pd.DataFrame({"sernum": [1, 2], "person": [1, 1], "jobsect": [2, 1]})
     adult_path = tmp_path / "adult.tab"
+    child_path = tmp_path / "child.tab"
     benefits_path = tmp_path / "benefits.tab"
     penprov_path = tmp_path / "penprov.tab"
     job_path = tmp_path / "job.tab"
     adult.to_csv(adult_path, sep="\t", index=False)
+    child.to_csv(child_path, sep="\t", index=False)
     benefits.to_csv(benefits_path, sep="\t", index=False)
     penprov.to_csv(penprov_path, sep="\t", index=False)
     job.to_csv(job_path, sep="\t", index=False)
@@ -155,6 +171,7 @@ def _leaves_stage(
             "grain": "person",
             "artifacts": [
                 artifact(adult_path, "adult"),
+                artifact(child_path, "child"),
                 artifact(benefits_path, "benefits"),
                 artifact(penprov_path, "penprov"),
                 artifact(job_path, "job"),
@@ -200,6 +217,35 @@ def test_spine_leaves_align_by_raw_person_id_not_position(tmp_path: Path) -> Non
     assert 0.0 <= employer[1] <= 3.0
     evidence = transform.last_result.evidence()["employer_pension_contributions"]
     assert evidence["members_with_earnings"] == 1
+
+
+def test_spine_leaves_give_a_dependent_child_their_pay(tmp_path: Path) -> None:
+    # A dependent child's pay is CHILD.CHEARNS (PolicyEngine/microcosm#1663),
+    # and the HMRC pay leaf carries it as it carries an adult's ADULT.INEARNS
+    # (Vahid's final review of PolicyEngine/microcosm#1663).
+    stage = _leaves_stage(
+        tmp_path, child_rows=({"sernum": 1, "person": 2, "chearns": 15.0},)
+    )
+
+    result = UKFRSHMRCSpineLeavesStageTransform(tmp_path, stage=stage)(
+        _base_frame(with_child=True)
+    )
+    pay = result.table("person").set_index("person_id")["hmrc_spi_pay"]
+
+    assert pay.loc[1002] == pytest.approx(15.0 * 52.0)
+    assert pay.loc[1001] == pytest.approx(4.0 * 52.0)
+    assert pay.loc[2001] == pytest.approx(5.0 * 52.0)
+
+
+def test_spine_leaves_need_the_child_tab(tmp_path: Path) -> None:
+    stage = _leaves_stage(tmp_path)
+    stage = replace(
+        stage,
+        artifacts=tuple(a for a in stage.artifacts if a.get("table") != "child"),
+    )
+
+    with pytest.raises(ValueError, match="child"):
+        UKFRSHMRCSpineLeavesStageTransform(tmp_path, stage=stage)(_base_frame())
 
 
 def test_spine_leaves_fail_closed_on_unknown_raw_person(tmp_path: Path) -> None:
@@ -313,24 +359,44 @@ def test_preclone_support_gate_passes_at_limit_and_fails_above() -> None:
         )
 
 
+def _fake_fit_label(targets: tuple[str, ...]) -> str:
+    return (
+        "stage1"
+        if "gift_aid" in targets
+        else "reference"
+        if "hmrc_spi_pay" in targets
+        else "stage2"
+    )
+
+
 class _FakeQRF:
     events: list[tuple[str, tuple[str, ...], list[float]]] = []
+    instances: list[_FakeQRF] = []
 
-    def __init__(self, n_estimators: int, seed: int) -> None:
+    def __init__(
+        self,
+        n_estimators: int,
+        seed: int,
+        gate_calibration: str = "in_sample",
+        gate_level_columns: tuple[str | tuple[str, ...], ...] = (),
+    ) -> None:
         self.seed = seed
+        self.gate_calibration = gate_calibration
+        self.gate_level_columns = tuple(gate_level_columns)
+        # One-hot groups flattened, for the checks on what each forest got.
+        self.level_column_names = tuple(
+            name
+            for entry in self.gate_level_columns
+            for name in ((entry,) if isinstance(entry, str) else entry)
+        )
         self.targets: tuple[str, ...] = ()
         self.weight_kind = "unknown"
+        type(self).instances.append(self)
 
-    def fit(self, frame, predictors, targets, weights):
+    def fit(self, frame, predictors, targets, weights, groups=None):
         self.targets = tuple(targets)
         self.weight_kind = weights
-        label = (
-            "stage1"
-            if "gift_aid" in self.targets
-            else "reference"
-            if "hmrc_spi_pay" in self.targets
-            else "stage2"
-        )
+        label = _fake_fit_label(self.targets)
         dividend = (
             frame.table("person")["dividend_income"].tolist()
             if "dividend_income" in frame.table("person")
@@ -341,6 +407,31 @@ class _FakeQRF:
 
     def regimes(self):
         return dict.fromkeys(self.targets, "zero_inflated_positive")
+
+    def gate_outcomes(self):
+        outcome = None if self.gate_calibration == "in_sample" else "cross_fitted"
+        return dict.fromkeys(self.targets, outcome)
+
+    def gate_levels(self):
+        # Every declared level column gets an offset on the first target only.
+        levels = tuple(f"{column}=1" for column in self.level_column_names)
+        return {
+            target: levels if position == 0 else ()
+            for position, target in enumerate(self.targets)
+        }
+
+    def gate_level_reports(self):
+        if not self.gate_level_columns:
+            return {}
+        return {
+            target: {
+                "fit": "offsets" if position == 0 else "no_supported_level",
+                "levels": list(levels),
+                "reference_levels": [],
+                "thin_levels": [],
+            }
+            for position, (target, levels) in enumerate(self.gate_levels().items())
+        }
 
     def sign_classes(self, target):
         return (0, 1)
@@ -600,6 +691,7 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
     tmp_path: Path,
 ) -> None:
     _FakeQRF.events = []
+    _FakeQRF.instances = []
     monkeypatch.setattr(spi_income, "QRF", _FakeQRF)
     monkeypatch.setattr(
         spi_income,
@@ -609,7 +701,7 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
 
     # This test checks parsed/path source resolution, independently of the engine.
     # Real index coverage lives in test_uk_spi_income.py.
-    def uprating_factors(year):
+    def uprating_factors(year, *, rebased_columns=None):
         return (
             {column: 1.25 for column in SPI_INCOME_QRF_OUTPUT_COLUMNS},
             {"from_period": 2022, "to_period": year, "basis": "synthetic_test"},
@@ -626,6 +718,19 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
                 (sex, age): 1.0 for sex in ("MALE", "FEMALE") for age in range(0, 91)
             },
             state_pension_age=66,
+            source="engine-free fixture",
+        ),
+    )
+    # The minimum wage is an engine read too; tests/engine/uk/
+    # test_uk_spi_income.py reads the real parameter.
+    monkeypatch.setattr(
+        spi_spine,
+        "load_spi_employment_pay_floor",
+        lambda _build_period: SPIEmploymentPayFloor(
+            age_thresholds=(0.0, 18.0, 21.0),
+            hourly_rates=(6.40, 8.60, 11.44),
+            weeks_in_year=52.0,
+            instant="2024-04-30",
             source="engine-free fixture",
         ),
     )
@@ -717,6 +822,52 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
 
     assert uk_frame_content_identity(from_path) == uk_frame_content_identity(from_seam)
     assert path_transform.checkpoint_metadata() == seam_transform.checkpoint_metadata()
+    pay_floor = path_transform.checkpoint_metadata()["evidence"]["employment_pay_floor"]
+    assert pay_floor["step"] == "spi_employment_pay_floor_before_stage2"
+    assert pay_floor["source"] == "engine-free fixture"
+    # The declared stage-1 level columns reach the tape forest and the
+    # reference forests, encoded as the forests read them; stage 2 has none.
+    by_fit: dict[str, list[_FakeQRF]] = {}
+    for fit in _FakeQRF.instances:
+        if fit.targets:
+            by_fit.setdefault(_fake_fit_label(fit.targets), []).append(fit)
+    assert set(by_fit) == {"stage1", "reference", "stage2"}
+    for label in ("stage1", "reference"):
+        for fit in by_fit[label]:
+            # The binaries go as columns, each categorical's one-hots as a group.
+            plain = [e for e in fit.gate_level_columns if isinstance(e, str)]
+            grouped = [e for e in fit.gate_level_columns if not isinstance(e, str)]
+            assert plain == ["has_pay", "has_trade"]
+            assert [group[0].rsplit("_", 1)[0] for group in grouped] == [
+                "spi_age_band",
+                "main_source",
+            ]
+            names = fit.level_column_names
+            assert any(column.startswith("spi_age_band_") for column in names)
+            assert any(column.startswith("main_source_") for column in names)
+    assert all(not fit.gate_level_columns for fit in by_fit["stage2"])
+    # The levels they got are in the evidence.
+    gate_level_evidence = path_transform.checkpoint_metadata()["evidence"][
+        "gate_levels"
+    ]
+    assert gate_level_evidence["declared"] == [
+        "spi_age_band",
+        "main_source",
+        "has_pay",
+        "has_trade",
+    ]
+    offsets = gate_level_evidence["offset_levels"]
+    assert any(key.startswith("uk_spi_2022_23_income:") for key in offsets)
+    assert any(key.startswith("uk_frs_reference_conditional:") for key in offsets)
+    # So does what each level fit came to, and the settings behind them.
+    fits = gate_level_evidence["level_fits"]
+    assert any(key.startswith("uk_spi_2022_23_income:") for key in fits)
+    assert any(key.startswith("uk_frs_reference_conditional:") for key in fits)
+    assert set(gate_level_evidence["settings"]) == {
+        "min_rows_per_sign_class",
+        "ridge",
+        "balance_tolerance",
+    }
 
 
 def test_income_stage_parameters_accept_the_committed_manifest() -> None:
@@ -759,6 +910,12 @@ def test_income_stage_parameters_refuse_a_base_channel_redraw() -> None:
             "target_population",
             "spi_synthetic_support_channel",
             "target population",
+        ),
+        (
+            "floor_spi_employment_pay_at_minimum_wage",
+            "weeks_in_year",
+            365.25 / 7,
+            "floor_spi_employment_pay_at_minimum_wage declaration drifted",
         ),
     ],
 )

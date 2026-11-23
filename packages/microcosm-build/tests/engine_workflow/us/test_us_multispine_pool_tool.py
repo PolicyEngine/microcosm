@@ -106,7 +106,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         assert published_transfer["completion"] == {
             "status": "complete",
             "group_count": 19,
-            "target_count": 70,
+            "target_count": 72,
             "residual_null_rows": 0,
         }
         calibrated = [
@@ -344,9 +344,28 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # move it. It covers microcosm.fit.qrf's attested bytes too, so
             # fit_draw_next's caller-owned uniforms (microcosm#1332) move it,
             # and so do microcosm#454's meps_esi_premiums stage and
-            # microcosm#1376's puma_county_vintage draw module, and
-            # microcosm#1380's self-employment post-transfer contract.
-            "spec_sha256": "c677d50bd0bbcd76c8c141c2c281a7bd49145369f08da8d5db324f2febbada5f",
+            # microcosm#1376's puma_county_vintage draw module,
+            # microcosm#1380's self-employment post-transfer contract, and
+            # the source-stage citation rewrites that pin us-data at a commit.
+            # microcosm#1251's passive partnership/S-corp leaf in puf_support moves it.
+            # microcosm#1259's recipient-share bound in puf_support moves it again.
+            # microcosm#1261's entity split of line 32 moves it too.
+            # The opt-in cross-fitted gate calibration in microcosm.fit.qrf moves it.
+            # microcosm#1073's scf_wealth education-debt declaration moves it
+            # through the bundle's source stages.
+            # The hierarchy value ranks move it through medicaid_take_up's
+            # attested bytes.
+            # microcosm#1096's exact softmax cap projection in solve moves it.
+            # microcosm#1387's SEMP-covered partnership step moves it through
+            # acs_transfer's attested bytes.
+            # microcosm#922's county facts pin, two declared legacy resources,
+            # moves it.
+            # microcosm#1543's fit input checks in microcosm.fit.qrf move it again.
+            # microcosm#1641 moves it again: docstring and comment wording in
+            # solve and ssi_take_up, and the calibration contract's renamed modes.
+            # microcosm#1585's us/gates.json row in country_package.json moves it.
+            # The in-place QRF leaf array in microcosm.fit.qrf moves it again.
+            "spec_sha256": "f5eb16a0ff78a0b6622c7701f22a9f12a466e5f2729fd83c200ccc3b519c0292",
         },
     }
 

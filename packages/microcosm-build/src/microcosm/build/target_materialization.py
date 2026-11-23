@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Protocol
@@ -30,6 +31,8 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # infinity unless the binding declares a source-unit ``band_upper_bound``.
 # Entity-count indicators: a value of one per record of the owning entity.
 _COUNT_VALUE_VARIABLES = frozenset({"household_count", "person_count", "benunit_count"})
+#: ``count_of`` values :func:`baseline_flag_crosstab` reads as ones.
+_CROSSTAB_COUNT_OF = frozenset({"household", "person", "household_count"})
 
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
@@ -710,6 +713,11 @@ def materialize_target_bindings(
     computes it at the measurement period. Without it (frame-only routes, no
     provider) the stored column is read as it is. Filters, conditions and
     bands keep their stored reads: who a row counts is fixed at the frame.
+    A provider binding reads its columns as the frame holds them, so a
+    period it declares must be one its value reads hold. A declared period
+    that any one read misses refuses the run: for a provider row on any
+    frame with a period model, and for a plain row that declares any period
+    but the calibration period, on a frame with period metadata.
     """
 
     provider_registry = {**default_provider_registry(), **(providers or {})}
@@ -752,6 +760,9 @@ def materialize_target_bindings(
                     f"does not match declared measurement period {measurement_period}"
                 )
             filter_aware = not kind or str(kind) in FILTER_AWARE_PROVIDER_KINDS
+            # Before the band: a row read at two years is refused, not
+            # skipped for want of its band edges.
+            _refuse_ignored_measurement_period(spec, binding, adapter, period)
             band = None
             if filter_aware and binding.get("groupby_variable"):
                 band = _band_bounds(
@@ -772,7 +783,6 @@ def materialize_target_bindings(
                         0.0,
                     )
             else:
-                _refuse_ignored_measurement_period(spec, binding, adapter, period)
                 values = _prepared_column_values(
                     adapter,
                     spec.entity,
@@ -852,7 +862,7 @@ def baseline_flag_crosstab(
         values = _entity_reduction(adapter, reduction)
     elif value_variable and value_variable not in _COUNT_VALUE_VARIABLES:
         values = _column(adapter, entity, value_variable)
-    elif count_of and count_of not in {"household", "person", "household_count"}:
+    elif count_of and count_of not in _CROSSTAB_COUNT_OF:
         values = _column(adapter, entity, count_of)
     else:
         values = np.ones_like(flag, dtype=float)
@@ -993,7 +1003,7 @@ def _refuse_ignored_measurement_period(
     adapter: Any,
     period: int | str,
 ) -> None:
-    """Refuse a plain-column period the route would not honour.
+    """Refuse a declared measurement period the read route would not honour.
 
     A plain-column value is read at the calibration period (through the
     provider, for a stored column) or, by declaration, at the frame's own
@@ -1003,42 +1013,217 @@ def _refuse_ignored_measurement_period(
     the calibration period, so the row would be measured there under the
     declared period. Only the value terms are checked: a filter, condition or
     band on an engine-computed variable is still read at the calibration
-    period under a declared frame period.
+    period under a declared frame period. An entity count read through the
+    adapter's ``column`` is ones and holds no period, so it is never checked.
+    A plain row on a frame without period metadata is not checked.
+
+    A provider binding (one with a ``kind``) reads its value columns as the
+    frame holds them, whatever the period it is passed, so each value it
+    reads must be held at its declared period, the calibration period
+    included (:func:`_provider_value_reads`), with or without frame period
+    metadata. Who it counts (filters, band, geography) is read at the frame,
+    as for a plain row at the frame's own period. A provider whose reads are
+    not known here may declare only the calibration period: a counterfactual
+    delta is read from a column the measure resolver or the frame supplies,
+    and a caller's own kind reads what it reads.
+
+    An adapter that reports neither its frame's period nor any value's
+    period has no period model to check against; its rows are read as they
+    are.
     """
 
     declared = binding.get("measurement_period")
+    value_period = getattr(adapter, "value_period", None)
     frame_period = getattr(adapter, "frame_period", None)
-    if declared is None or frame_period is None or str(declared) == str(period):
+    if declared is None or not (callable(value_period) or frame_period is not None):
         return
+    declared = str(declared)
     name = getattr(spec, "name", "?")
-    if str(declared) != str(frame_period):
+    kind = binding.get("kind")
+    if kind:
+        reads = _provider_value_reads(binding)
+        if reads is None:
+            if declared != str(period):
+                raise MeasurementPeriodError(
+                    f"target {name!r} declares measurement period {declared!r}, "
+                    f"but a {kind!r} provider's reads are not known here, so "
+                    f"only the calibration period {period!r} is honoured"
+                )
+            return
+        _refuse_reads_off_period(name, reads, adapter, declared, period)
+        return
+    if frame_period is None or declared == str(period):
+        return
+    if declared != str(frame_period):
         raise MeasurementPeriodError(
             f"target {name!r} declares measurement period "
             f"{declared!r}; a plain-column read honours only the calibration "
             f"period {period!r} or the frame's period {frame_period!r}"
         )
-    value_period = getattr(adapter, "value_period", None)
     if not callable(value_period):
         return
     entity = str(binding.get("from_entity") or spec.entity)
-    for variable in _value_variables(binding):
-        if value_period(entity, variable) != str(declared):
-            raise MeasurementPeriodError(
-                f"target {name!r} declares the frame's period {declared!r}, "
-                f"but {entity}.{variable} is not held at that period on the "
-                f"frame, so the engine would compute it at the calibration "
-                f"period {period!r}"
-            )
+    _refuse_reads_off_period(
+        name,
+        ((entity, variable, True) for variable in _value_variables(binding)),
+        adapter,
+        declared,
+        period,
+    )
+
+
+def _refuse_reads_off_period(
+    name: str,
+    reads: Iterable[tuple[str, str, bool]],
+    adapter: Any,
+    declared: str,
+    period: int | str,
+) -> None:
+    """Refuse a row whose value reads are not all held at its declared period.
+
+    Each read is ``(entity, variable, through_column)``: whether the value
+    is read through the adapter's ``column``, as against a member table's
+    stored column (a ``value_reduction``).
+    """
+
+    off = {}
+    for entity, variable, through_column in reads:
+        if _read_honours(
+            adapter,
+            entity,
+            variable,
+            declared,
+            period,
+            through_column=through_column,
+        ):
+            continue
+        year = _value_period(adapter, entity, variable)
+        off[f"{entity}.{variable}"] = (
+            f"held at {year}"
+            if year is not None
+            else "neither stored nor dated by name, so the engine computes it "
+            f"at the calibration period {period}"
+        )
+    if off:
+        raise MeasurementPeriodError(
+            f"target {name!r} declares measurement period {declared!r}, but "
+            f"reads values held at another period: {off}"
+        )
+
+
+def _read_honours(
+    adapter: Any,
+    entity: str,
+    variable: str,
+    declared: str,
+    period: int | str,
+    *,
+    through_column: bool,
+) -> bool:
+    """Whether one read is held at the declared period.
+
+    An entity count read through the adapter's ``column`` is ones and holds
+    no period. A member reduction reads the member table as the frame
+    stores it, so a count name there is checked like any other column. A
+    variable that reports a period (a stored column on a frame with period
+    metadata, or a measure its name dates) holds that one. On a frame
+    without period metadata a stored column holds no known period and is
+    read as it is. Anything else the engine computes at the calibration
+    period.
+    """
+
+    if through_column and _is_entity_count(entity, variable):
+        return True
+    year = _value_period(adapter, entity, variable)
+    if year is not None:
+        return year == declared
+    if getattr(adapter, "frame_period", None) is None and _frame_stores(
+        adapter, entity, variable
+    ):
+        return True
+    return str(period) == declared
+
+
+def _provider_value_reads(
+    binding: Mapping[str, Any],
+) -> tuple[tuple[str, str, bool], ...] | None:
+    """Every value column a provider binding reads.
+
+    As :func:`parameter_gated_threshold` and :func:`baseline_flag_crosstab`
+    read them, branch for branch: the gated or flag column, then the one
+    value column the provider takes (a ``value_reduction``'s member
+    variable, the value variable, or ``count_of``), each on the entity the
+    provider reads it on, as ``(entity, variable, through_column)``. Only
+    the member variable is read other than through the adapter's
+    ``column``: the adapter reduces it from the member table. None for a
+    provider whose reads are not known here. A caller that registers its own
+    function under one of these two kinds must read as the generic provider
+    does.
+    """
+
+    kind = str(binding.get("kind"))
+    if kind == "parameter_gated_threshold":
+        entity = str(binding.get("from_entity") or "person")
+        reads = [(entity, str(binding["gated_variable"]), True)]
+        if binding.get("value_variable"):
+            reads.append((entity, str(binding["value_variable"]), True))
+        return tuple(dict.fromkeys(reads))
+    if kind != "baseline_flag_crosstab":
+        return None
+    entity = str(binding.get("from_entity") or "household")
+    reads = [(entity, str(binding["affected_flag_variable"]), True)]
+    value_variable = str(binding.get("value_variable") or "")
+    count_of = str(binding.get("count_of") or "")
+    reduction = binding.get("value_reduction")
+    if reduction:
+        member = str(reduction.get("entity") or "person")
+        reads.append((member, str(reduction["variable"]), False))
+    elif value_variable and value_variable not in _COUNT_VALUE_VARIABLES:
+        reads.append((entity, value_variable, True))
+    elif count_of and count_of not in _CROSSTAB_COUNT_OF:
+        reads.append((entity, count_of, True))
+    return tuple(dict.fromkeys(reads))
 
 
 def _value_variables(binding: Mapping[str, Any]) -> tuple[str, ...]:
     """The value variables a plain-column binding reads."""
 
     if "value_expression" in binding:
-        return tuple(
-            name for _, name in _expression_terms(str(binding["value_expression"]))
-        )
+        return expression_names(str(binding["value_expression"]))
     return (str(binding["value_variable"]),)
+
+
+def _value_period(adapter: Any, entity: str, variable: str) -> str | None:
+    """The period a read holds without the engine, as the adapter reports it.
+
+    None for a value the engine computes, and for every value of an adapter
+    that reports no periods.
+    """
+
+    value_period = getattr(adapter, "value_period", None)
+    year = value_period(entity, variable) if callable(value_period) else None
+    return None if year is None else str(year)
+
+
+def _is_entity_count(entity: str, variable: str) -> bool:
+    """Whether a read is an entity count: ones, held at no period."""
+
+    return variable in _COUNT_VALUE_VARIABLES or variable == f"{entity}_count"
+
+
+def _frame_stores(adapter: Any, entity: str, variable: str) -> bool:
+    """Whether the frame itself stores a column.
+
+    ``stored_columns`` is the frame's own, before the measure resolver injects
+    the columns it computes; ``has_column`` would also see those. An adapter
+    that declares neither is taken to store every column.
+    """
+
+    stored = getattr(adapter, "stored_columns", None)
+    if isinstance(stored, Mapping):
+        return variable in stored.get(entity, ())
+    has_column = getattr(adapter, "has_column", None)
+    return not callable(has_column) or bool(has_column(entity, variable))
 
 
 def _binding_mask(
@@ -1170,17 +1355,163 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
 
 
 _EXPRESSION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_EXPRESSION_TOKEN = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[-+(),*])")
+_EXPRESSION_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+#: The one function the expression grammar admits: ``max(<sum>, 0)``, a sum
+#: floored at zero (the profit after losses brought forward, microcosm#1095).
+_ZERO_FLOOR = "max"
 
 
-def _expression_terms(expression: str) -> tuple[tuple[float, str], ...]:
-    """A value expression's signed terms: names joined by ``+`` or ``-``."""
+def _refuse_expression(expression: str) -> ValueError:
+    return ValueError(f"unsupported value_expression {expression!r}")
 
-    tokens = re.split(r"\s*([+-])\s*", expression.strip())
-    names = tokens[0::2]
-    if not names or any(not _EXPRESSION_NAME.fullmatch(name) for name in names):
-        raise ValueError(f"unsupported value_expression {expression!r}")
-    signs = (1.0, *(1.0 if sign == "+" else -1.0 for sign in tokens[1::2]))
-    return tuple(zip(signs, names, strict=True))
+
+@functools.cache
+def _parsed_expression(expression: str) -> tuple[Any, ...]:
+    """A value expression's tree, from a sum of terms joined by ``+`` or ``-``.
+
+    A term is a name, a positive constant times a name (``0.2 *
+    basic_rate_savings_income``: a statutory rate applied to the base it
+    taxes, which a published tax amount binds, microcosm#1418) or
+    ``max(<sum>, 0)``. Anything else (another product, a bare constant, a
+    leading sign) refuses.
+    """
+
+    text = expression.strip()
+    tokens: list[str] = []
+    position = 0
+    while position < len(text):
+        match = _EXPRESSION_TOKEN.match(text, position)
+        if match is None:
+            raise _refuse_expression(expression)
+        tokens.append(match.group(1))
+        position = match.end()
+
+    def term(at: int) -> tuple[tuple[Any, ...], int]:
+        if at >= len(tokens):
+            raise _refuse_expression(expression)
+        if tokens[at] == _ZERO_FLOOR and tokens[at + 1 : at + 2] == ["("]:
+            inner, at = total(at + 2)
+            close = tokens[at : at + 3]
+            if len(close) != 3 or close[0] != "," or close[2] != ")":
+                raise _refuse_expression(expression)
+            if not re.fullmatch(r"0(?:\.0+)?", close[1]):
+                raise _refuse_expression(expression)
+            return ("max0", inner), at + 3
+        if _EXPRESSION_NUMBER.fullmatch(tokens[at]) and tokens[at + 1 : at + 2] == [
+            "*"
+        ]:
+            coefficient = float(tokens[at])
+            name = tokens[at + 2 : at + 3]
+            if (
+                not coefficient > 0.0
+                or not name
+                or name[0] == _ZERO_FLOOR
+                or not _EXPRESSION_NAME.fullmatch(name[0])
+            ):
+                raise _refuse_expression(expression)
+            return ("scaled", coefficient, ("name", name[0])), at + 3
+        if tokens[at] == _ZERO_FLOOR or not _EXPRESSION_NAME.fullmatch(tokens[at]):
+            raise _refuse_expression(expression)
+        return ("name", tokens[at]), at + 1
+
+    def total(at: int) -> tuple[tuple[Any, ...], int]:
+        terms: list[tuple[float, tuple[Any, ...]]] = []
+        sign = 1.0
+        while True:
+            node, at = term(at)
+            terms.append((sign, node))
+            if at < len(tokens) and tokens[at] in ("+", "-"):
+                sign = 1.0 if tokens[at] == "+" else -1.0
+                at += 1
+                continue
+            return ("sum", tuple(terms)), at
+
+    tree, end = total(0)
+    if end != len(tokens):
+        raise _refuse_expression(expression)
+    return tree
+
+
+def _tree_names(node: tuple[Any, ...]) -> tuple[str, ...]:
+    if node[0] == "name":
+        return (node[1],)
+    if node[0] == "max0":
+        return _tree_names(node[1])
+    if node[0] == "scaled":
+        return _tree_names(node[2])
+    return tuple(name for _, term in node[1] for name in _tree_names(term))
+
+
+def _evaluate_tree(
+    node: tuple[Any, ...], read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    if node[0] == "name":
+        return read(node[1])
+    if node[0] == "max0":
+        return np.maximum(_evaluate_tree(node[1], read), 0.0)
+    if node[0] == "scaled":
+        return node[1] * _evaluate_tree(node[2], read)
+    (sign, first), *rest = node[1]
+    values = _evaluate_tree(first, read)
+    total = (values if sign > 0 else -values).copy()
+    for sign, term in rest:
+        values = _evaluate_tree(term, read)
+        total = total + (values if sign > 0 else -values)
+    return total
+
+
+def expression_names(expression: str) -> tuple[str, ...]:
+    """Every name a value expression reads, in order, each once."""
+
+    return tuple(dict.fromkeys(_tree_names(_parsed_expression(expression))))
+
+
+def evaluate_expression(
+    expression: str, read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    """A value expression's values, each name read through ``read``.
+
+    Terms are summed left to right, a subtracted term as its negation, so a
+    sum is the same float operations whatever adapter supplies the names.
+    """
+
+    return _evaluate_tree(_parsed_expression(expression), read)
+
+
+def named_term_leaves(name: str, terms: Mapping[str, str]) -> tuple[str, ...]:
+    """The names a named term reads once the terms it nests are expanded."""
+
+    def leaves(current: str, seen: tuple[str, ...]) -> tuple[str, ...]:
+        if current in seen:
+            raise ValueError(f"named term {current!r} refers to itself")
+        found: list[str] = []
+        for part in expression_names(terms[current]):
+            found.extend(leaves(part, (*seen, current)) if part in terms else (part,))
+        return tuple(dict.fromkeys(found))
+
+    return leaves(name, ())
+
+
+def evaluate_named_term(
+    name: str, terms: Mapping[str, str], read: Callable[[str], np.ndarray]
+) -> np.ndarray:
+    """A named term's values from its leaves (microcosm#1095).
+
+    A named term is a measure declared once as an expression of this grammar
+    (``terms`` maps each name to its expression). A name the expression reads
+    that is itself a term is evaluated from its own expression; any other is
+    read through ``read``, as floats.
+    """
+
+    named_term_leaves(name, terms)
+
+    def value(part: str) -> np.ndarray:
+        if part in terms:
+            return evaluate_expression(terms[part], value)
+        return np.asarray(read(part), dtype=float)
+
+    return evaluate_expression(terms[name], value)
 
 
 def _expression(
@@ -1191,16 +1522,12 @@ def _expression(
     period: int | str | None = None,
     route_stored: bool = False,
 ) -> np.ndarray:
-    total: np.ndarray | None = None
-    for sign, name in _expression_terms(expression):
-        values = _value_column(
+    return evaluate_expression(
+        expression,
+        lambda name: _value_column(
             adapter, entity, name, period=period, route_stored=route_stored
-        )
-        term = values if sign > 0 else -values
-        total = term.copy() if total is None else total + term
-    if total is None:
-        raise ValueError(f"unsupported value_expression {expression!r}")
-    return total
+        ),
+    )
 
 
 def _value_column(

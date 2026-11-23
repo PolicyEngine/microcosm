@@ -27,6 +27,13 @@ honors exactly — **not** by the forests' bootstrap: an n-of-n weighted
 resample would delete a vanishingly rare sign class outright (a positive row at
 weight 1 among thousands of zeros at weight 50 is drawn with probability ~4e-5),
 collapsing the gate to a single class that can never draw the missing sign.
+A gate is calibrated on its own training rows only, unless the model is built
+with ``gate_calibration="cross_fitted"`` (:class:`GateCalibration`): then it is
+a gate per fold, mapped by a calibration fitted on their out-of-fold scores, so
+a rare class is drawn at its rate on rows the gate was not fitted to. The rate
+balance is exact on the pooled out-of-fold donor scores, not on any recipient
+set, and in a chain a sign that changes moves later targets' amounts through
+their predictors although the forests and the draw uniforms are the same.
 
 **Chaining.** Targets are imputed sequentially; each conditions on the
 predictors plus the targets already drawn, so the joint structure across
@@ -50,24 +57,30 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
+import numbers
 import os
+import random
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
-from quantile_forest import RandomForestQuantileRegressor
+import quantile_forest
 from sklearn.ensemble import HistGradientBoostingClassifier
 
 from microcosm.fit.model import (
     DESIGN_WEIGHTS,
     WeightSpec,
     dataframe_fit_columns,
+    duplicated_column_labels,
     predictors_targets_entity,
     resolve_dataframe_fit_weights,
     resolve_fit_weights,
     resolved_weight_kind,
+    validated_integer,
 )
 from microcosm.frame import Frame
 
@@ -77,6 +90,10 @@ __all__ = [
     "QRFChainState",
     "QRFChainStepResult",
     "Regime",
+    "GateCalibration",
+    "GateOutcome",
+    "GateLevelFit",
+    "gate_level_settings",
     "DEFAULT_N_ESTIMATORS",
     "DEFAULT_ZERO_ATOL",
 ]
@@ -88,6 +105,133 @@ DEFAULT_N_ESTIMATORS = 100
 #: Absolute tolerance for "equals zero" in regime detection. A magnitude at or
 #: below this counts as a structural zero (the gate's zero class).
 DEFAULT_ZERO_ATOL = 1e-6
+
+
+class GateCalibration:
+    """How a sign gate's class probabilities are calibrated.
+
+    A row's sign class is drawn by placing its uniform on the gate's class
+    probabilities, so the share of rows drawn into a class is the gate's mean
+    probability of that class over those rows. Exposed as constants, like
+    :class:`Regime`, so a caller names its choice.
+    """
+
+    #: The gate as fitted: one boosted classifier, calibrated only on its own
+    #: training rows. Unregularised boosting memorises a rare class's training
+    #: rows, so on rows it was not fitted to (every recipient) its mean
+    #: probability of the rare class falls short of the class's weighted rate.
+    IN_SAMPLE = "in_sample"
+    #: Calibrated out of fold: the training rows are cut into folds stratified
+    #: by class, and a gate fitted the same way on all but one fold scores the
+    #: fold it left out. One weighted fit of a slope and a per-class offset on
+    #: those out-of-fold scores (Platt scaling, for two classes) maps every fold
+    #: gate's log-probabilities, and a row's probability is the mean of the
+    #: mapped fold gates. Each fold gate is mapped where it is calibrated, on
+    #: rows it was not fitted to, and the mapped out-of-fold probabilities'
+    #: weighted mean equals each class's weighted rate on those donor rows.
+    #: With ``groups``, whole groups (households) are dealt across the folds.
+    #: A target that cannot be cross-fitted keeps the in-sample gate, and
+    #: :meth:`FittedRegimeGatedQRF.gate_outcomes` says which (:class:`GateOutcome`).
+    CROSS_FITTED = "cross_fitted"
+    #: Cross-fitted as above, with each fold gate fitted on class-balanced
+    #: weights: every class's weights are scaled to the same total, so a class
+    #: that holds a hundredth of a percent of the weight still shapes the
+    #: gate's ranking of rows. The calibration is unchanged and is fitted on
+    #: the rows' own weights, so the mapped out-of-fold probabilities' weighted
+    #: mean still equals each class's weighted rate: the fold gates say which
+    #: rows, the calibration says how many (microcosm#1276). Scored on its own
+    #: training rows, as a sampled rung's or a synthetic fixture's in-sample
+    #: location may score it, a balanced gate draws a rare class well under its
+    #: rate, further under than a ``cross_fitted`` one: the rate holds out of
+    #: fold and on fresh rows, not on the rows the fold gates were fitted to.
+    CROSS_FITTED_BALANCED = "cross_fitted_balanced"
+
+
+_CROSS_FITTED_CALIBRATIONS = frozenset(
+    {GateCalibration.CROSS_FITTED, GateCalibration.CROSS_FITTED_BALANCED}
+)
+_GATE_CALIBRATIONS = frozenset({GateCalibration.IN_SAMPLE}) | _CROSS_FITTED_CALIBRATIONS
+
+
+class GateOutcome:
+    """The calibration a fitted sign gate actually has.
+
+    :meth:`FittedRegimeGatedQRF.gate_outcomes` names one per gated target, so a
+    stage can record where a cross-fitted request could not be met.
+    """
+
+    #: The model asked for the in-sample gate.
+    IN_SAMPLE = "in_sample"
+    #: Cross-fitted and calibrated out of fold.
+    CROSS_FITTED = "cross_fitted"
+    #: Asked cross-fitted, but a class has fewer rows (or groups) than folds,
+    #: so it cannot be in every fold: the in-sample gate.
+    THIN_CLASS = "in_sample_thin_class"
+    #: Asked cross-fitted, but a fold's training rows carry no weight for a
+    #: class, so its fold gate could not learn it: the in-sample gate.
+    WEIGHTLESS_FOLD = "in_sample_weightless_fold"
+    #: Cross-fitted, but the calibration's rate balance could not be met (or the
+    #: out-of-fold ranking was worse than none): every row gets the weighted
+    #: class rates.
+    CLASS_RATES = "cross_fitted_class_rates"
+
+
+class GateLevelFit:
+    """What a cross-fitted gate's level calibration (``gate_level_columns``) came to.
+
+    :meth:`FittedRegimeGatedQRF.gate_level_reports` names one per target whose
+    gate was cross-fitted with level columns, beside the levels it offset or
+    tried, each column's reference level and the levels too thin for offsets of
+    their own, so a receipt shows a level fit that was tried and dropped.
+    """
+
+    #: Every supported level holds offsets of its own.
+    OFFSETS = "offsets"
+    #: No declared level has enough rows of every sign class: the calibration
+    #: without levels.
+    NO_SUPPORTED_LEVEL = "no_supported_level"
+    #: The fit with levels missed its balance, or its slope fell below zero:
+    #: the calibration without levels, so no level is offset.
+    BALANCE_NOT_MET = "balance_not_met"
+
+
+#: Largest gap, in probability, between a calibrated class's weighted
+#: out-of-fold mean and its weighted rate that the balance check accepts.
+_GATE_BALANCE_TOLERANCE = 1e-6
+
+#: Folds of a cross-fitted gate calibration.
+_GATE_CROSS_FIT_FOLDS = 5
+
+#: The smallest positive float, so a class probability of zero has a finite log.
+_TINY = np.finfo(np.float64).tiny
+
+#: Rows of every sign class a predictor level needs before a cross-fitted
+#: gate's calibration gives it offsets of its own (``gate_level_columns``); a
+#: thinner level keeps its column's reference offsets.
+_GATE_LEVEL_MIN_ROWS = 30
+
+#: Ridge on the level offsets, in units of the calibration's mean-one weights.
+#: Each column's heaviest level is the reference (a one-hot categorical's
+#: columns count as one column), so the offsets are identified without it. It
+#: only keeps the solve finite where levels of two columns mark the same rows,
+#: and it is far below any level's weight, so each level's balance holds to
+#: well within :data:`_GATE_LEVEL_BALANCE_TOLERANCE`.
+_GATE_LEVEL_RIDGE = 1e-10
+
+#: Largest gap, in probability, between a calibrated class's weighted
+#: out-of-fold mean and its weighted rate within one offset level that the
+#: level calibration's balance check accepts (the ridge leaves a small gap).
+_GATE_LEVEL_BALANCE_TOLERANCE = 1e-5
+
+
+def gate_level_settings() -> dict[str, float | int]:
+    """The level calibration's fixed settings, for a receipt beside its outcomes."""
+
+    return {
+        "min_rows_per_sign_class": _GATE_LEVEL_MIN_ROWS,
+        "ridge": _GATE_LEVEL_RIDGE,
+        "balance_tolerance": _GATE_LEVEL_BALANCE_TOLERANCE,
+    }
 
 
 class Regime:
@@ -116,6 +260,42 @@ class Regime:
     DEGENERATE_ZERO = "degenerate_zero"
 
 
+def _check_zero_atol(value: object) -> None:
+    """Refuse a zero tolerance that is not a finite real ``>= 0``.
+
+    Every sign comparison reads the tolerance (``|y| <= zero_atol`` is zero,
+    ``y > zero_atol`` positive, ``y < -zero_atol`` negative), so a bad one
+    silently changes the regime: NaN makes all three comparisons false, which
+    detects positive data as degenerate zero and draws zeros; positive
+    infinity calls every finite value zero; a negative tolerance calls no
+    value zero and puts every value within its magnitude of zero in both sign
+    classes, so all-zero data detects as sign-only and the sign labels call 0
+    and 0.5 negative at a tolerance of -1. The check converts nothing: an
+    integer is finite and is compared as it is, so a caller's comparisons
+    keep its exact value.
+
+    Raises:
+        TypeError: If ``value`` is not a real number, or is a boolean.
+        ValueError: If ``value`` is NaN, infinite or negative.
+    """
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, numbers.Real):
+        raise TypeError(
+            f"zero_atol must be a real number, got {value!r} ({type(value).__name__})."
+        )
+    if isinstance(value, numbers.Integral):
+        valid = value >= 0
+    else:
+        tolerance = float(value)
+        valid = math.isfinite(tolerance) and tolerance >= 0.0
+    if not valid:
+        raise ValueError(
+            f"zero_atol must be finite and >= 0, got {value!r}: every sign "
+            "comparison reads it, so a NaN, infinite or negative tolerance "
+            "silently changes which values count as zero (NaN or positive "
+            "infinity would fit positive data as degenerate zero and draw zeros)."
+        )
+
+
 def detect_regime(y: np.ndarray, *, zero_atol: float) -> str:
     """Classify a target's training support into a :class:`Regime`.
 
@@ -125,11 +305,15 @@ def detect_regime(y: np.ndarray, *, zero_atol: float) -> str:
 
     Args:
         y: Training target values.
-        zero_atol: Magnitudes at or below this are zeros.
+        zero_atol: Magnitudes at or below this are zeros; finite and ``>= 0``.
 
     Returns:
         One of the :class:`Regime` label constants.
+
+    Raises:
+        TypeError, ValueError: If ``zero_atol`` is not a finite real ``>= 0``.
     """
+    _check_zero_atol(zero_atol)
     if y.size == 0:
         return Regime.DEGENERATE_ZERO
     has_zero = bool((np.abs(y) <= zero_atol).any())
@@ -209,10 +393,20 @@ def _weighted_bootstrap(
 
     Returns:
         ``(x_resampled, y_resampled)`` with the same row count as the input.
+
+    Raises:
+        ValueError: If the weights carry no positive mass, so there is no
+            distribution to resample from (``_fit_target`` refuses that case
+            first, naming the target and its sign).
     """
     if weights is None:
         return x, y
     total = float(weights.sum())
+    if not total > 0.0:
+        raise ValueError(
+            "A weighted forest needs rows with positive weight to resample; "
+            f"these {len(x)} rows carry a total weight of {total!r}."
+        )
     probabilities = weights / total
     selected = rng.choice(len(x), size=len(x), replace=True, p=probabilities)
     return x[selected], y[selected]
@@ -227,6 +421,620 @@ def _make_gate(seed: int) -> HistGradientBoostingClassifier:
     of draws that come out zero.
     """
     return HistGradientBoostingClassifier(random_state=seed)
+
+
+def _log_proba(proba: np.ndarray) -> np.ndarray:
+    """Log class probabilities, a zero probability held at the smallest float."""
+    return np.log(np.maximum(proba, _TINY))
+
+
+def _calibrated_proba(
+    log_proba: np.ndarray, slope: float, offsets: np.ndarray
+) -> np.ndarray:
+    """Class probabilities proportional to ``exp(slope * log_proba + offsets)``."""
+    logits = slope * log_proba + offsets
+    logits -= logits.max(axis=1, keepdims=True)
+    scaled = np.exp(logits)
+    return scaled / scaled.sum(axis=1, keepdims=True)
+
+
+@dataclass(frozen=True)
+class _GateLevels:
+    """The predictor levels a cross-fitted gate's calibration offsets on their own.
+
+    Indicator ``k`` marks rows whose feature column ``positions[k]`` equals
+    ``values[k]``. Every other value of that column, the reference level and
+    any level too thin for an offset of its own, takes no level offset, and so
+    does a value the fit never saw. A one-hot categorical's level is its
+    column at ``1``. ``references`` and ``thin`` name, as ``(position,
+    value)`` pairs, each column's reference level and the levels too thin for
+    offsets of their own, for the receipt.
+    """
+
+    positions: tuple[int, ...]
+    values: tuple[float, ...]
+    references: tuple[tuple[int, float], ...] = ()
+    thin: tuple[tuple[int, float], ...] = ()
+
+    def design(self, x: np.ndarray) -> np.ndarray:
+        """The rows' level indicators, one column per offset level."""
+        if not self.positions:
+            return np.zeros((len(x), 0))
+        return np.column_stack(
+            [x[:, p] == v for p, v in zip(self.positions, self.values, strict=True)]
+        ).astype(np.float64)
+
+
+@dataclass(frozen=True)
+class _GateLevelFit:
+    """What a gate's level calibration came to (a :class:`GateLevelFit` name).
+
+    ``levels`` holds the supported levels: offset under
+    :attr:`GateLevelFit.OFFSETS`, tried and dropped under
+    :attr:`GateLevelFit.BALANCE_NOT_MET`, none under
+    :attr:`GateLevelFit.NO_SUPPORTED_LEVEL`. Its references and thin levels are
+    recorded under every outcome.
+    """
+
+    status: str
+    levels: _GateLevels
+
+
+class _CrossFittedGate:
+    """Fold gates mapped by one out-of-fold calibration, their probabilities averaged.
+
+    Exposes the two members the draws read from a gate, ``classes_`` and
+    ``predict_proba``, so every draw path takes it in place of the classifier.
+    With ``levels`` the calibration's class offsets also move by the offsets of
+    the levels each row sits in (``level_offsets``, one row per level, the
+    first class's column zero). ``level_fit`` records what a level calibration
+    came to, for a gate fitted with level columns.
+    """
+
+    def __init__(
+        self,
+        folds: Sequence[HistGradientBoostingClassifier],
+        slope: float,
+        offsets: np.ndarray,
+        levels: _GateLevels | None = None,
+        level_offsets: np.ndarray | None = None,
+        level_fit: _GateLevelFit | None = None,
+    ) -> None:
+        self.folds = tuple(folds)
+        self.slope = float(slope)
+        self.offsets = np.asarray(offsets, dtype=np.float64)
+        self.level_fit = level_fit
+        has_levels = levels is not None and bool(levels.positions)
+        self.levels = levels if has_levels else None
+        self.level_offsets = (
+            np.asarray(level_offsets, dtype=np.float64) if has_levels else None
+        )
+        if self.levels is not None and (
+            self.level_offsets is None
+            or self.level_offsets.shape
+            != (len(self.levels.positions), len(self.offsets))
+        ):
+            raise ValueError(
+                "A cross-fitted gate's level offsets must match its levels."
+            )
+
+    @property
+    def classes_(self) -> np.ndarray:
+        return self.folds[0].classes_
+
+    def _row_offsets(self, x: np.ndarray) -> np.ndarray:
+        if self.levels is None:
+            return self.offsets
+        return self.offsets[None, :] + self.levels.design(x) @ self.level_offsets
+
+    def predict_proba(self, x: np.ndarray) -> np.ndarray:
+        offsets = self._row_offsets(x)
+        total = np.zeros((len(x), len(self.offsets)))
+        for gate in self.folds:
+            total += _calibrated_proba(
+                _log_proba(gate.predict_proba(x)), self.slope, offsets
+            )
+        return total / len(self.folds)
+
+
+def _stratified_folds(
+    labels: np.ndarray,
+    folds: int,
+    rng: np.random.Generator,
+    groups: np.ndarray | None = None,
+) -> np.ndarray:
+    """A fold per row: each class's rows, in random order, dealt round the folds.
+
+    With ``groups`` (integer codes, one per row) whole groups are dealt instead,
+    so rows that share a group never sit on both sides of a fold. Each group is
+    dealt with the rarest class it contains, counted in groups, so a rare class
+    spreads across the folds as its rows would.
+    """
+    assignment = np.empty(len(labels), dtype=np.int64)
+    if groups is None:
+        for value in np.unique(labels):
+            rows = rng.permutation(np.flatnonzero(labels == value))
+            assignment[rows] = np.arange(len(rows)) % folds
+        return assignment
+    classes = np.unique(labels)
+    present = np.zeros((int(groups.max()) + 1, len(classes)), dtype=bool)
+    present[groups, np.searchsorted(classes, labels)] = True
+    rarity = present.sum(axis=0)
+    # Each group's stratum: the rarest of its classes (ties to the first).
+    stratum = np.where(present, rarity[None, :], np.iinfo(np.int64).max).argmin(axis=1)
+    group_fold = np.empty(len(present), dtype=np.int64)
+    for index in range(len(classes)):
+        members = rng.permutation(np.flatnonzero(stratum == index))
+        group_fold[members] = np.arange(len(members)) % folds
+    assignment[:] = group_fold[groups]
+    return assignment
+
+
+def _fit_gate_calibration(
+    log_proba: np.ndarray, label_index: np.ndarray, weights: np.ndarray
+) -> tuple[float, np.ndarray, str]:
+    """Fit ``p_c ∝ exp(slope * log_proba_c + offset_c)`` by weighted likelihood.
+
+    One slope shared by the classes and an offset per class (the first fixed
+    at zero): Platt scaling of the gate's logit for two classes. At the
+    optimum each offset's score equation makes the weighted mean of the
+    calibrated probabilities equal its class's weighted rate. Newton steps,
+    halved until the loss does not rise; the likelihood is concave, so they
+    converge from the identity map.
+
+    The balance is checked at exit (:data:`_GATE_BALANCE_TOLERANCE`). Where
+    Newton's steps stall, as on saturated or constant scores, along which the
+    slope and the offsets are not identified, damped (Levenberg-Marquardt)
+    steps take over. If the balance still fails, or the slope is negative (an
+    out-of-fold ranking worse than none), every row gets the class rates.
+
+    Args:
+        log_proba: Out-of-fold log class probabilities, one column per class.
+        label_index: Each row's class, as a column index of ``log_proba``.
+        weights: Per-row weights, with positive weight on every class.
+
+    Returns:
+        ``(slope, offsets, outcome)`` with ``offsets[0] == 0`` and ``outcome``
+        :attr:`GateOutcome.CROSS_FITTED` or :attr:`GateOutcome.CLASS_RATES`.
+    """
+    n, k = log_proba.shape
+    w = np.asarray(weights, dtype=np.float64) / float(np.mean(weights))
+    onehot = np.zeros((n, k))
+    onehot[np.arange(n), label_index] = 1.0
+    rows = np.arange(n)
+    rate = w @ onehot / w.sum()
+
+    def unpack(theta: np.ndarray) -> tuple[float, np.ndarray]:
+        return float(theta[0]), np.concatenate([[0.0], theta[1:]])
+
+    def loss(theta: np.ndarray) -> float:
+        slope, offsets = unpack(theta)
+        logits = slope * log_proba + offsets
+        top = logits.max(axis=1)
+        log_total = top + np.log(np.exp(logits - top[:, None]).sum(axis=1))
+        return float(w @ (log_total - logits[rows, label_index]))
+
+    def derivatives(theta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        slope, offsets = unpack(theta)
+        proba = _calibrated_proba(log_proba, slope, offsets)
+        residual = proba - onehot
+        centred = log_proba - (proba * log_proba).sum(axis=1, keepdims=True)
+        gradient = np.concatenate(
+            [[w @ (residual * log_proba).sum(axis=1)], (w @ residual)[1:]]
+        )
+        hessian = np.empty((k, k))
+        hessian[0, 0] = w @ (proba * centred**2).sum(axis=1)
+        for c in range(1, k):
+            hessian[0, c] = hessian[c, 0] = w @ (proba[:, c] * centred[:, c])
+            for d in range(1, k):
+                hessian[c, d] = w @ (proba[:, c] * (float(c == d) - proba[:, d]))
+        return gradient, hessian
+
+    def balanced(theta: np.ndarray) -> bool:
+        slope, offsets = unpack(theta)
+        proba = _calibrated_proba(log_proba, slope, offsets)
+        gap = np.abs(w @ proba / w.sum() - rate)
+        return bool(np.all(np.isfinite(gap)) and gap.max() <= _GATE_BALANCE_TOLERANCE)
+
+    theta = np.zeros(k)
+    theta[0] = 1.0
+    current = loss(theta)
+    for _ in range(100):
+        gradient, hessian = derivatives(theta)
+        step = np.linalg.solve(hessian + 1e-12 * np.eye(k), gradient)
+        scale = 1.0
+        trial_theta = theta - step
+        trial = loss(trial_theta)
+        while trial > current and scale > 1e-10:
+            scale /= 2.0
+            trial_theta = theta - scale * step
+            trial = loss(trial_theta)
+        if trial > current:
+            break
+        theta, previous, current = trial_theta, current, trial
+        if previous - current <= 1e-13 * max(1.0, abs(current)):
+            break
+    if not balanced(theta):
+        # Damped steps: a ridge that grows while a step would raise the loss
+        # and shrinks after each accepted one, so a direction the scores do
+        # not identify cannot stall the fit.
+        damping = 1e-6
+        for _ in range(500):
+            gradient, hessian = derivatives(theta)
+            scale = max(float(np.abs(np.diag(hessian)).max()), 1e-12)
+            while damping <= 1e12:
+                trial_theta = theta - np.linalg.solve(
+                    hessian + damping * scale * np.eye(k), gradient
+                )
+                trial = loss(trial_theta)
+                if np.isfinite(trial) and trial <= current:
+                    break
+                damping *= 10.0
+            else:
+                break
+            theta, current = trial_theta, trial
+            damping = max(damping / 10.0, 1e-12)
+            if balanced(theta):
+                break
+    slope, offsets = unpack(theta)
+    if slope < 0.0 or not balanced(theta):
+        floor = np.maximum(rate, _TINY)
+        return 0.0, np.log(floor) - np.log(floor[0]), GateOutcome.CLASS_RATES
+    return slope, offsets, GateOutcome.CROSS_FITTED
+
+
+def _select_gate_levels(
+    features: np.ndarray,
+    labels: np.ndarray,
+    weights: np.ndarray | None,
+    positions: Sequence[int | Sequence[int]],
+) -> _GateLevels:
+    """The levels of the declared feature columns that get offsets of their own.
+
+    Each entry of ``positions`` is one feature column, whose levels are its
+    distinct values, or a one-hot categorical's columns as a group, whose
+    levels are its columns at ``1`` (a row marks at most one of them). In each
+    column or group the level holding the most weight is the reference, so the
+    offsets are identified without the ridge. Every other level gets an offset
+    when it holds at least :data:`_GATE_LEVEL_MIN_ROWS` rows, with positive
+    weight, of every sign class; a thinner level shares the reference's
+    offsets. The references and the thin levels are kept for the receipt.
+    """
+    classes = np.unique(labels)
+    w = (
+        np.ones(len(labels))
+        if weights is None
+        else np.asarray(weights, dtype=np.float64)
+    )
+
+    def supported(member: np.ndarray) -> bool:
+        return all(
+            int((member & (labels == c)).sum()) >= _GATE_LEVEL_MIN_ROWS
+            and float(w[member & (labels == c)].sum()) > 0.0
+            for c in classes
+        )
+
+    chosen: list[tuple[int, float]] = []
+    references: list[tuple[int, float]] = []
+    thin: list[tuple[int, float]] = []
+    for entry in positions:
+        group = (
+            (int(entry),)
+            if isinstance(entry, (int, np.integer))
+            else tuple(int(position) for position in entry)
+        )
+        if len(group) == 1:
+            column = features[:, group[0]]
+            values = np.unique(column)
+            if len(values) < 2:
+                continue
+            candidates = [(group[0], float(value), column == value) for value in values]
+        else:
+            block = features[:, list(group)]
+            if not np.isin(block, (0.0, 1.0)).all() or (block.sum(axis=1) > 1.0).any():
+                raise ValueError(
+                    "A one-hot level group must hold 0/1 columns that mark at most "
+                    f"one level on each row; feature columns {list(group)} do not."
+                )
+            candidates = [
+                (position, 1.0, block[:, k] == 1.0)
+                for k, position in enumerate(group)
+                if (block[:, k] == 1.0).any()
+            ]
+            if not candidates:
+                continue
+        masses = [float(w[member].sum()) for _, _, member in candidates]
+        reference = int(np.argmax(masses))
+        references.append(candidates[reference][:2])
+        for k, (position, value, member) in enumerate(candidates):
+            if k != reference:
+                (chosen if supported(member) else thin).append((position, value))
+    return _GateLevels(
+        tuple(position for position, _ in chosen),
+        tuple(value for _, value in chosen),
+        references=tuple(references),
+        thin=tuple(thin),
+    )
+
+
+def _fit_gate_level_calibration(
+    log_proba: np.ndarray,
+    label_index: np.ndarray,
+    weights: np.ndarray,
+    design: np.ndarray,
+) -> tuple[float, np.ndarray, np.ndarray, bool]:
+    """Fit the gate calibration with an offset per class for each level as well.
+
+    ``p_c ∝ exp(slope * log_proba_c + offset_c + Σ_k design_k * level_offset_kc)``
+    by weighted likelihood, the first class's offsets fixed at zero and a
+    small ridge (:data:`_GATE_LEVEL_RIDGE`) on the level offsets. At the
+    optimum each level offset's score equation makes the weighted mean of the
+    calibrated probabilities within its level equal its class's weighted rate
+    there, to within the ridge, as the class offsets do over all rows
+    (:func:`_fit_gate_calibration`): the calibration then holds the rate within
+    every offset level, not only over the whole frame (microcosm#1276). Newton
+    steps halved until the loss does not rise, then damped steps if the
+    balance is not met, as there.
+
+    Returns:
+        ``(slope, offsets, level_offsets, ok)``: ``offsets`` with
+        ``offsets[0] == 0``, ``level_offsets`` of shape ``(levels, classes)``
+        with its first column zero, and ``ok`` false when the slope is negative
+        or a class's balance, over all rows or within a level, is not met.
+    """
+    n, k = log_proba.shape
+    m = design.shape[1]
+    w = np.asarray(weights, dtype=np.float64) / float(np.mean(weights))
+    onehot = np.zeros((n, k))
+    rows = np.arange(n)
+    onehot[rows, label_index] = 1.0
+    size = 1 + (k - 1) * (1 + m)
+    # One feature vector per row and class: the shared slope's log-probability,
+    # then, for each class after the first, its offset and its level indicators.
+    x = np.zeros((n, k, size))
+    x[:, :, 0] = log_proba
+    for c in range(1, k):
+        x[:, c, c] = 1.0
+        start = k + (c - 1) * m
+        x[:, c, start : start + m] = design
+    penalty = np.zeros(size)
+    penalty[k:] = _GATE_LEVEL_RIDGE
+    members = [design[:, j] > 0.0 for j in range(m)]
+
+    def proba_of(theta: np.ndarray) -> np.ndarray:
+        logits = np.einsum("ncd,d->nc", x, theta)
+        logits -= logits.max(axis=1, keepdims=True)
+        scaled = np.exp(logits)
+        return scaled / scaled.sum(axis=1, keepdims=True)
+
+    def loss(theta: np.ndarray) -> float:
+        logits = np.einsum("ncd,d->nc", x, theta)
+        top = logits.max(axis=1)
+        log_total = top + np.log(np.exp(logits - top[:, None]).sum(axis=1))
+        return float(
+            w @ (log_total - logits[rows, label_index]) + 0.5 * penalty @ theta**2
+        )
+
+    def derivatives(theta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        proba = proba_of(theta)
+        gradient = np.einsum("n,nc,ncd->d", w, proba - onehot, x) + penalty * theta
+        mean = np.einsum("nc,ncd->nd", proba, x)
+        hessian = -((mean * w[:, None]).T @ mean)
+        for c in range(k):
+            xc = x[:, c, :]
+            hessian += (xc * (w * proba[:, c])[:, None]).T @ xc
+        return gradient, hessian + np.diag(penalty)
+
+    def balanced(theta: np.ndarray) -> bool:
+        proba = proba_of(theta)
+        gaps = [np.abs(w @ (proba - onehot) / w.sum())]
+        for member in members:
+            wm = w[member]
+            gaps.append(np.abs(wm @ (proba[member] - onehot[member]) / wm.sum()))
+        gap = np.concatenate(gaps)
+        return bool(
+            np.all(np.isfinite(gap)) and gap.max() <= _GATE_LEVEL_BALANCE_TOLERANCE
+        )
+
+    theta = np.zeros(size)
+    theta[0] = 1.0
+    current = loss(theta)
+    for _ in range(100):
+        gradient, hessian = derivatives(theta)
+        step = np.linalg.solve(hessian + 1e-12 * np.eye(size), gradient)
+        scale = 1.0
+        trial_theta = theta - step
+        trial = loss(trial_theta)
+        while trial > current and scale > 1e-10:
+            scale /= 2.0
+            trial_theta = theta - scale * step
+            trial = loss(trial_theta)
+        if trial > current:
+            break
+        theta, previous, current = trial_theta, current, trial
+        if previous - current <= 1e-13 * max(1.0, abs(current)):
+            break
+    if not balanced(theta):
+        damping = 1e-6
+        for _ in range(500):
+            gradient, hessian = derivatives(theta)
+            scale = max(float(np.abs(np.diag(hessian)).max()), 1e-12)
+            while damping <= 1e12:
+                trial_theta = theta - np.linalg.solve(
+                    hessian + damping * scale * np.eye(size), gradient
+                )
+                trial = loss(trial_theta)
+                if np.isfinite(trial) and trial <= current:
+                    break
+                damping *= 10.0
+            else:
+                break
+            theta, current = trial_theta, trial
+            damping = max(damping / 10.0, 1e-12)
+            if balanced(theta):
+                break
+    slope = float(theta[0])
+    offsets = np.concatenate([[0.0], theta[1:k]])
+    level_offsets = np.zeros((m, k))
+    for c in range(1, k):
+        start = k + (c - 1) * m
+        level_offsets[:, c] = theta[start : start + m]
+    return slope, offsets, level_offsets, bool(slope >= 0.0 and balanced(theta))
+
+
+def _can_cross_fit(labels: np.ndarray, groups: np.ndarray | None = None) -> bool:
+    """Whether every class can have a row in every fold of a cross-fitted gate.
+
+    A class needs at least one row (one group, with ``groups``) per fold.
+    """
+    if groups is None:
+        counts = np.unique(labels, return_counts=True)[1]
+    else:
+        pairs = np.unique(np.column_stack([labels, groups]), axis=0)
+        counts = np.unique(pairs[:, 0], return_counts=True)[1]
+    return int(counts.min()) >= _GATE_CROSS_FIT_FOLDS
+
+
+def _folds_carry_every_class(
+    folds: np.ndarray, labels: np.ndarray, weights: np.ndarray | None
+) -> bool:
+    """Whether every fold's training rows carry weight for every class."""
+    classes = np.unique(labels)
+    for fold in range(_GATE_CROSS_FIT_FOLDS):
+        training = folds != fold
+        for value in classes:
+            members = training & (labels == value)
+            carried = members.sum() if weights is None else weights[members].sum()
+            if not carried > 0:
+                return False
+    return True
+
+
+def _class_balanced_weights(
+    labels: np.ndarray, weights: np.ndarray | None
+) -> np.ndarray:
+    """Row weights rescaled so every class carries the same total weight.
+
+    A row keeps its weight relative to the rows of its own class. The result
+    averages one, so the classifier's fit is on the scale of an unweighted one.
+
+    :func:`_cross_fit_gate` calls this only once every fold's training rows
+    carry weight for every class (:func:`_folds_carry_every_class`, the same
+    test on the same totals); otherwise the whole gate falls back to the
+    in-sample gate (:attr:`GateOutcome.WEIGHTLESS_FOLD`), so no fit meets the
+    refusal below. A class whose total overflows to infinity does carry
+    weight, and a fit can reach that. Its rows weigh zero here, as before;
+    if every class's total overflows, the rescale divides by a zero sum and
+    every row's weight is NaN, as before.
+
+    Raises:
+        ValueError: If a class's rows carry no weight (a total that is not
+            positive), naming the class: dividing by that total would give its
+            rows NaN weights.
+    """
+    base = (
+        np.ones(len(labels), dtype=np.float64)
+        if weights is None
+        else np.asarray(weights, dtype=np.float64)
+    )
+    balanced = np.empty(len(labels), dtype=np.float64)
+    for value in np.unique(labels):
+        members = labels == value
+        total = base[members].sum()
+        if not total > 0.0:
+            raise ValueError(
+                "Class-balanced weights need every class to carry positive "
+                f"total weight; class {value!s} carries {float(total)!r} in "
+                "these rows."
+            )
+        balanced[members] = base[members] / total
+    return balanced * (len(labels) / balanced.sum())
+
+
+def _cross_fit_gate(
+    features: np.ndarray,
+    labels: np.ndarray,
+    weights: np.ndarray | None,
+    seed: int,
+    groups: np.ndarray | None = None,
+    *,
+    balanced: bool = False,
+    level_positions: Sequence[int | Sequence[int]] = (),
+) -> tuple[_CrossFittedGate | None, str]:
+    """Fit a gate per fold and calibrate them on their out-of-fold probabilities.
+
+    Each of :data:`_GATE_CROSS_FIT_FOLDS` folds (stratified by class, and dealt
+    by whole group with ``groups``) is scored by a gate fitted the same way on
+    the other folds, and the calibration fitted on those scores maps every fold
+    gate. The fold assignment and the fold gates' seeds derive from ``seed``,
+    the one the in-sample gate would take, so nothing else in the fit's RNG
+    stream moves. Every class must have a row in every fold
+    (:func:`_can_cross_fit`). With ``balanced`` each fold gate is fitted on
+    its training rows' class-balanced weights (:func:`_class_balanced_weights`);
+    the calibration always takes the rows' own weights. With
+    ``level_positions`` (feature columns, or a one-hot categorical's columns
+    as a group) the calibration also gives each supported level of those
+    columns offsets of its own (:func:`_select_gate_levels`,
+    :func:`_fit_gate_level_calibration`); where no level is supported, or that
+    fit's balance fails, the calibration is the one without levels. Either
+    way the gate records what the level fit came to (``level_fit``).
+
+    Returns:
+        ``(gate, outcome)``. ``gate`` is ``None``, with outcome
+        :attr:`GateOutcome.WEIGHTLESS_FOLD`, when some fold's training rows
+        carry no weight for a class, which no row count rules out once rows
+        can weigh zero; the caller then fits the in-sample gate.
+    """
+    classes = np.unique(labels)
+    fold_stream, gate_stream = np.random.SeedSequence(seed).spawn(2)
+    folds = _stratified_folds(
+        labels, _GATE_CROSS_FIT_FOLDS, np.random.default_rng(fold_stream), groups
+    )
+    if not _folds_carry_every_class(folds, labels, weights):
+        return None, GateOutcome.WEIGHTLESS_FOLD
+    gate_seeds = np.random.default_rng(gate_stream).integers(
+        0, 2**31 - 1, size=_GATE_CROSS_FIT_FOLDS
+    )
+    log_proba = np.empty((len(labels), len(classes)))
+    gates = []
+    for fold in range(_GATE_CROSS_FIT_FOLDS):
+        held = folds == fold
+        gate = _make_gate(int(gate_seeds[fold]))
+        fold_weights = None if weights is None else weights[~held]
+        if balanced:
+            fold_weights = _class_balanced_weights(labels[~held], fold_weights)
+        gate.fit(features[~held], labels[~held], sample_weight=fold_weights)
+        if not np.array_equal(np.asarray(gate.classes_), classes):
+            raise ValueError(
+                "A cross-fitted fold gate lost a sign class although every "
+                "class has a row in every fold; refusing an inconsistent gate."
+            )
+        log_proba[held] = _log_proba(gate.predict_proba(features[held]))
+        gates.append(gate)
+    label_index = np.searchsorted(classes, labels)
+    calibration_weights = np.ones(len(labels)) if weights is None else weights
+    level_fit: _GateLevelFit | None = None
+    if level_positions:
+        levels = _select_gate_levels(features, labels, weights, level_positions)
+        if levels.positions:
+            slope, offsets, level_offsets, ok = _fit_gate_level_calibration(
+                log_proba, label_index, calibration_weights, levels.design(features)
+            )
+            if ok:
+                fitted = _GateLevelFit(GateLevelFit.OFFSETS, levels)
+                return (
+                    _CrossFittedGate(
+                        gates, slope, offsets, levels, level_offsets, level_fit=fitted
+                    ),
+                    GateOutcome.CROSS_FITTED,
+                )
+            level_fit = _GateLevelFit(GateLevelFit.BALANCE_NOT_MET, levels)
+        else:
+            level_fit = _GateLevelFit(GateLevelFit.NO_SUPPORTED_LEVEL, levels)
+    slope, offsets, outcome = _fit_gate_calibration(
+        log_proba, label_index, calibration_weights
+    )
+    return _CrossFittedGate(gates, slope, offsets, level_fit=level_fit), outcome
 
 
 def _interp_rows(
@@ -336,6 +1144,258 @@ def _locate_rows(
     return np.clip(out, 0.0, np.nextafter(1.0, 0.0))
 
 
+#: The quantile-forest release whose private leaf-array builder
+#: :class:`_InPlaceLeafQRF` reproduces. ``microcosm-fit``'s ``pyproject.toml``
+#: pins exactly this release, and a fit under any other installed release is
+#: refused, because a private method can change in any release.
+_SUPPORTED_QUANTILE_FOREST_VERSION = "1.4.2"
+
+
+def _require_supported_quantile_forest() -> None:
+    """Refuse a quantile-forest release the in-place override was not checked on.
+
+    Raises:
+        RuntimeError: If the imported ``quantile_forest`` is not
+            :data:`_SUPPORTED_QUANTILE_FOREST_VERSION`.
+    """
+    installed = getattr(quantile_forest, "__version__", None)
+    if installed != _SUPPORTED_QUANTILE_FOREST_VERSION:
+        raise RuntimeError(
+            "microcosm-fit builds QRF leaf arrays with a copy of quantile-forest "
+            f"{_SUPPORTED_QUANTILE_FOREST_VERSION}'s private "
+            "BaseForestQuantileRegressor._get_y_train_leaves, but quantile-forest "
+            f"{installed} is installed. Install quantile-forest=="
+            f"{_SUPPORTED_QUANTILE_FOREST_VERSION}, the release microcosm-fit "
+            "pins, or compare the override with the new release's method and "
+            "update the pin and _SUPPORTED_QUANTILE_FOREST_VERSION together."
+        )
+
+
+def _fill_tree_leaves(
+    tree_leaves: np.ndarray,
+    bootstrap_indices: np.ndarray,
+    draw_leaves: np.ndarray,
+    sample_weight: np.ndarray | None,
+    leaf_subsample: bool,
+    max_samples_leaf: int,
+    random_state: int,
+) -> None:
+    """Write one tree's leaf-to-training-row map into ``tree_leaves``.
+
+    The body is quantile-forest 1.4.2's
+    ``BaseForestQuantileRegressor._get_y_train_leaves_slice``, except that it
+    writes into the caller's slice of the forest-wide array instead of
+    allocating a zeroed array of its own and returning it. So it takes no
+    ``max_node_count``, which only sized that array, and it checks that the
+    array the compiled helper returns shares memory with the slice, as it does
+    when the helper writes into its argument. Every other step, including the
+    grouping helper, the global ``random.seed``/``random.shuffle`` calls and the
+    order of the writes, is the library's.
+
+    Args:
+        tree_leaves: This tree's zeroed ``(nodes, outputs, width)`` slice of the
+            forest-wide array.
+        bootstrap_indices: ``(draws, outputs)`` 1-based positions in the sorted
+            training values of this tree's bootstrap draws.
+        draw_leaves: The leaf each bootstrap draw reaches in this tree.
+        sample_weight: Sorted training weights, or ``None``.
+        leaf_subsample: Whether leaves are truncated to ``max_samples_leaf``
+            entries.
+        max_samples_leaf: The width of every leaf's row.
+        random_state: This tree's seed, which also seeds the leaf subsample.
+    """
+    from quantile_forest import _quantile_forest as library
+
+    n_outputs = bootstrap_indices.shape[1]
+
+    if sample_weight is not None:
+        sample_weight = np.squeeze(sample_weight)
+
+    leaf_indices, leaf_values_list = library.group_indices_by_value(draw_leaves)
+
+    if leaf_subsample or sample_weight is not None:
+        if leaf_subsample:
+            random.seed(random_state)
+
+        for leaf in range(len(leaf_values_list)):
+            if sample_weight is not None:
+                # quantile-forest 1.4.2's filter, copied as it is: it looks
+                # up each entry's weight by the draw's position minus one, not
+                # by the drawn row.
+                weight_mask = sample_weight[leaf_values_list[leaf] - 1] > 0
+                leaf_values_list[leaf] = leaf_values_list[leaf][weight_mask]
+            if leaf_subsample:
+                if len(leaf_values_list[leaf]) > max_samples_leaf:
+                    random.shuffle(leaf_values_list[leaf])
+                    leaf_values_list[leaf] = leaf_values_list[leaf][:max_samples_leaf]
+            if len(leaf_values_list[leaf]) == 0:
+                leaf_values_list[leaf] = [0]
+
+    if max_samples_leaf == 1:
+        sorted_positions = bootstrap_indices[leaf_values_list].reshape(-1, 1, n_outputs)
+        for output in range(n_outputs):
+            tree_leaves[leaf_indices, output, 0] = sorted_positions[:, 0, output]
+    else:
+        filled = library.map_indices_to_leaves(
+            y_train_leaves_slice=tree_leaves,
+            bootstrap_indices=bootstrap_indices,
+            leaf_indices=leaf_indices,
+            leaf_values_list=leaf_values_list,
+        )
+        # The compiled helper writes through a memoryview of its argument and
+        # returns a view of the same buffer; a copy would leave this slice zero.
+        if not np.may_share_memory(filled, tree_leaves):
+            raise RuntimeError(
+                "quantile-forest's map_indices_to_leaves returned a copy instead "
+                "of filling the array it was given."
+            )
+
+
+class _InPlaceLeafQRF(quantile_forest.RandomForestQuantileRegressor):
+    """A quantile forest whose leaf array is filled in place.
+
+    After growing its trees, quantile-forest maps every leaf to the training
+    rows it holds in one int64 array of shape ``(trees, nodes, outputs,
+    width)``, zero-padded to the widest leaf (or to ``max_samples_leaf`` when
+    that is set). quantile-forest 1.4.2 builds one zeroed array per tree and
+    then copies the list into the final array with ``np.array(list)``. That
+    copy writes every byte, padding included, so the whole padded array
+    becomes resident memory, and for a while both the per-tree arrays and the
+    copy exist.
+
+    This subclass allocates the final array once and writes each tree's
+    entries straight into that tree's slice (:func:`_fill_tree_leaves`). The
+    width, ``apply``, bootstrap replay and rank computation are the library's
+    own, as are the ``random.seed``/``random.shuffle`` calls in tree order and
+    the dtype, shape and C order of the result, so the array is byte-identical
+    to the library's and so is every prediction. It replaces the private
+    ``_get_y_train_leaves`` and wraps :meth:`fit` only to check the version:
+    both refuse any quantile-forest release other than
+    :data:`_SUPPORTED_QUANTILE_FOREST_VERSION`. scikit-learn's validation
+    messages name this class. A ``max_samples_leaf`` so large that the whole
+    forest's array exceeds the largest size numpy can describe raises numpy's
+    ``ValueError`` here, where the library, allocating one tree at a time,
+    raises ``MemoryError``. A failed allocation here comes before any tree's
+    ``random`` calls. So with a leaf cap set, if the library gets past at
+    least one tree before its own allocation or its final copy fails,
+    Python's ``random`` state can differ from the library's after that failed
+    fit.
+
+    The saving lasts while pages stay untouched. Pages of an ``np.zeros``
+    array take no memory until something touches them. A write makes a page
+    resident, and on macOS so does a read: prediction reads each leaf row it
+    reaches, and pickling or deep-copying a fitted forest reads the whole
+    array, because quantile-forest's ``QuantileForest.__reduce__`` hands all
+    of it to pickle, which also writes it out in full. On Linux a read maps a
+    shared zero page instead, but where transparent huge pages are granted a
+    first write makes a whole 2 MiB region resident.
+    """
+
+    def fit(self, X, y, sample_weight=None, sparse_pickle=False):  # noqa: N803
+        """Check the installed quantile-forest, then fit as the library does.
+
+        The check runs here, before any tree is grown, and again in
+        :meth:`_get_y_train_leaves`, which also covers a caller that runs the
+        library's own ``fit`` on this class.
+        """
+        _require_supported_quantile_forest()
+        return super().fit(
+            X, y, sample_weight=sample_weight, sparse_pickle=sparse_pickle
+        )
+
+    def _get_y_train_leaves(self, X, y, sorter=None, sample_weight=None):  # noqa: N803
+        """Return the leaf array, built as quantile-forest 1.4.2 builds it.
+
+        The signature and the steps up to the per-tree fill are quantile-forest
+        1.4.2's ``BaseForestQuantileRegressor._get_y_train_leaves``, unchanged:
+        ``X`` is the training features and ``y`` the sorted targets. The
+        per-tree fill writes into one preallocated array instead of returning
+        a list that ``np.array`` then copies, so the library's per-tree method
+        ``_get_y_train_leaves_slice`` is not called.
+        """
+        _require_supported_quantile_forest()
+        from quantile_forest import _quantile_forest as library
+
+        n_samples = X.shape[0]
+        n_outputs = y.shape[-1]
+
+        if isinstance(self.max_samples_leaf, (numbers.Integral, np.integer)):
+            max_samples_leaf = self.max_samples_leaf
+            leaf_subsample = True
+        elif isinstance(self.max_samples_leaf, numbers.Real):
+            max_samples_leaf = int(math.ceil(self.max_samples_leaf * n_samples))
+            leaf_subsample = True
+        elif self.max_samples_leaf is None:
+            max_samples_leaf = self.max_samples_leaf
+            leaf_subsample = False
+        else:
+            raise ValueError(
+                "`max_samples_leaf` must be of integer, float, or None type, "
+                f"got {type(self.max_samples_leaf)}."
+            )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            sample_leaves = self.apply(X)
+
+        if self.bootstrap:
+            arguments = (n_samples, self.max_samples)
+            if library.sklearn_version >= library.parse_version("1.9.0"):
+                arguments += (self.sample_weight_,)
+            n_samples_bootstrap = library._get_n_samples_bootstrap(*arguments)
+
+        shape = (
+            n_samples if not self.bootstrap else n_samples_bootstrap,
+            self.n_estimators,
+        )
+        bootstrap_indices = np.empty(shape, dtype=np.int64)
+        draw_leaves = np.empty(shape, dtype=np.int64)
+        for tree, estimator in enumerate(self.estimators_):
+            if self.bootstrap:
+                arguments = (estimator.random_state, n_samples, n_samples_bootstrap)
+                if library.sklearn_version >= library.parse_version("1.9.0"):
+                    arguments += (self.sample_weight_,)
+                bootstrap_indices[:, tree] = library._generate_sample_indices(
+                    *arguments
+                )
+            else:
+                bootstrap_indices[:, tree] = np.arange(n_samples)
+            draw_leaves[:, tree] = sample_leaves[bootstrap_indices[:, tree], tree]
+
+        if sorter is not None:
+            bootstrap_indices = np.argsort(sorter, axis=0)[bootstrap_indices]
+
+        bootstrap_indices = bootstrap_indices.reshape(-1, self.n_estimators, n_outputs)
+        bootstrap_indices += 1  # 0 marks an empty entry
+
+        max_node_count = 0
+        max_samples_leaf = 0 if not leaf_subsample else max_samples_leaf
+        for tree, estimator in enumerate(self.estimators_):
+            node_count = estimator.tree_.node_count
+            max_node_count = max(max_node_count, node_count)
+            if not leaf_subsample:
+                sample_count = np.max(np.bincount(draw_leaves[:, tree]))
+                max_samples_leaf = max(max_samples_leaf, sample_count)
+
+        # The library stacks one array per tree with np.array(list), which
+        # gives exactly this dtype, shape and C order.
+        leaves = np.zeros(
+            (len(self.estimators_), max_node_count, n_outputs, max_samples_leaf),
+            dtype=np.int64,
+        )
+        for tree, estimator in enumerate(self.estimators_):
+            _fill_tree_leaves(
+                leaves[tree],
+                bootstrap_indices[:, tree],
+                draw_leaves[:, tree],
+                sample_weight,
+                leaf_subsample,
+                max_samples_leaf,
+                estimator.random_state,
+            )
+        return leaves
+
+
 _SERIALIZED_FOREST_N_JOBS = 1
 
 
@@ -343,13 +1403,13 @@ _SERIALIZED_FOREST_N_JOBS = 1
 class _Forest:
     """A fitted quantile forest plus the feature columns it was fit on."""
 
-    model: RandomForestQuantileRegressor
+    model: _InPlaceLeafQRF
     columns: tuple[str, ...]
 
     def __getstate__(self) -> dict[str, object]:
         """Return a worker-count-neutral pickle payload.
 
-        ``RandomForestQuantileRegressor.n_jobs`` controls only runtime
+        ``_InPlaceLeafQRF.n_jobs`` controls only runtime
         parallelism. A shallow model copy lets serialization pin that field
         without mutating the fitted object that will perform the first draw.
         """
@@ -362,7 +1422,7 @@ class _Forest:
         """Restore the current runtime worker setting after trusted loading."""
 
         model = state["model"]
-        if not isinstance(model, RandomForestQuantileRegressor):
+        if not isinstance(model, _InPlaceLeafQRF):
             raise TypeError("Serialized QRF forest model has an invalid type.")
         columns = state["columns"]
         if not isinstance(columns, tuple) or any(
@@ -672,7 +1732,9 @@ def _fit_forest(
             f"max_samples_leaf at {_DISCRETE_Y_LEAF_BOUND} for this forest.",
             flush=True,
         )
-    model = RandomForestQuantileRegressor(
+    # The in-place leaf array is byte-identical to the library's and avoids
+    # its full padded copy (see _InPlaceLeafQRF).
+    model = _InPlaceLeafQRF(
         n_estimators=n_estimators,
         max_samples_leaf=effective_max_samples_leaf,
         random_state=seed,
@@ -698,16 +1760,21 @@ class _TargetModel:
         regime: The detected :class:`Regime` label.
         columns: The predictor columns this target was fit on (predictors plus
             the targets chained before it).
-        gate: The sign-gate classifier, or ``None`` for ungated regimes.
+        gate: The sign-gate classifier (cross-fitted when the model's
+            :class:`GateCalibration` asks for it), or ``None`` for ungated
+            regimes.
         positive: The positive-magnitude forest, or ``None``.
         negative: The negative-magnitude forest, or ``None``.
+        gate_outcome: The calibration the gate actually has
+            (:class:`GateOutcome`), or ``None`` for ungated regimes.
     """
 
     regime: str
     columns: tuple[str, ...]
-    gate: HistGradientBoostingClassifier | None
+    gate: HistGradientBoostingClassifier | _CrossFittedGate | None
     positive: _Forest | None
     negative: _Forest | None
+    gate_outcome: str | None = None
 
 
 _CHAIN_STATE_SCHEMA_VERSION = 1
@@ -778,6 +1845,43 @@ def _index_identity(index: pd.Index) -> _IndexIdentity:
     )
 
 
+def _resolve_groups(table: pd.DataFrame, groups: object) -> np.ndarray | None:
+    """Fold-grouping codes, one per donor row: ``None``, a column name or a vector.
+
+    Rows with the same code are dealt to the same fold of a cross-fitted gate,
+    so a household's members never train a fold gate that scores one of them.
+    """
+    if groups is None:
+        return None
+    if isinstance(groups, str):
+        if groups not in table.columns:
+            raise ValueError(f"groups column {groups!r} is not in the fit input.")
+        if duplicated_column_labels(table, [groups]):
+            raise ValueError(
+                f"groups column label {groups!r} names more than one column, so "
+                "the fit cannot tell which column holds the groups. Rename or "
+                "drop the duplicate before fitting."
+            )
+        values = table[groups]
+    else:
+        values = pd.Series(np.asarray(groups))
+        if len(values) != len(table):
+            raise ValueError(
+                f"groups has {len(values)} values for {len(table)} fit rows."
+            )
+    if values.isna().any():
+        raise ValueError("groups must name a group for every fit row.")
+    codes, _ = pd.factorize(values, sort=True)
+    return codes.astype(np.int64)
+
+
+def _groups_identity(groups: np.ndarray | None) -> str | None:
+    """Fingerprint the fold grouping for safe resume checks."""
+    if groups is None:
+        return None
+    return hashlib.sha256(np.ascontiguousarray(groups).tobytes(order="C")).hexdigest()
+
+
 def _weight_identity(weights: np.ndarray | None) -> str:
     """Fingerprint the exact resolved fit weights for safe resume checks."""
     if weights is None:
@@ -831,6 +1935,12 @@ class QRFChainState:
     targets from the donor input. Recipient priors are likewise external and
     must be supplied to :meth:`RegimeGatedQRF.fit_draw_next` as the exact raw
     draw prefix, allowing a build to checkpoint them losslessly.
+
+    The gate calibration is written into the model configuration only when it
+    is not :attr:`GateCalibration.IN_SAMPLE`, and the fold grouping's
+    fingerprint only when the chain was started with ``groups``, so the state
+    of an in-sample, ungrouped chain, and any state written before either
+    existed, reads the same.
     """
 
     predictors: tuple[str, ...]
@@ -850,6 +1960,8 @@ class QRFChainState:
     fit_rng_state_json: str
     draw_rng_state_json: str
     schema_version: int = _CHAIN_STATE_SCHEMA_VERSION
+    gate_calibration: str = GateCalibration.IN_SAMPLE
+    groups_sha256: str | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed or internally inconsistent checkpoint state."""
@@ -889,6 +2001,22 @@ class QRFChainState:
                 "QRF chain max_samples_leaf kind/value mismatch: "
                 f"{self.max_samples_leaf_kind!r} vs {self.max_samples_leaf!r}."
             )
+        # JSON reads NaN and Infinity back as floats, so a checkpoint can carry
+        # a tolerance the constructor would refuse.
+        try:
+            _check_zero_atol(self.zero_atol)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"QRF chain zero_atol is invalid: {error}") from None
+        if self.gate_calibration not in _GATE_CALIBRATIONS:
+            raise ValueError(
+                f"QRF chain gate_calibration {self.gate_calibration!r} is not one "
+                f"of {sorted(_GATE_CALIBRATIONS)}."
+            )
+        if self.groups_sha256 is not None and (
+            len(self.groups_sha256) != 64
+            or any(c not in "0123456789abcdef" for c in self.groups_sha256)
+        ):
+            raise ValueError("QRF chain groups_sha256 is malformed.")
         _rng_from_state_json(self.fit_rng_state_json, stream="fit")
         _rng_from_state_json(self.draw_rng_state_json, stream="draw")
 
@@ -906,6 +2034,19 @@ class QRFChainState:
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-roundtrippable checkpoint mapping."""
+        model_config: dict[str, object] = {
+            "n_estimators": self.n_estimators,
+            "zero_atol": self.zero_atol,
+            "max_samples_leaf": self.max_samples_leaf,
+            "max_samples_leaf_kind": self.max_samples_leaf_kind,
+            "seed": self.seed,
+            "fit_n_jobs": self.fit_n_jobs,
+        }
+        if self.gate_calibration != GateCalibration.IN_SAMPLE:
+            model_config["gate_calibration"] = self.gate_calibration
+        grouping = (
+            {} if self.groups_sha256 is None else {"groups_sha256": self.groups_sha256}
+        )
         return {
             "schema_version": self.schema_version,
             "predictors": list(self.predictors),
@@ -914,14 +2055,8 @@ class QRFChainState:
             "entity": self.entity,
             "weight_kind": self.weight_kind,
             "weight_sha256": self.weight_sha256,
-            "model_config": {
-                "n_estimators": self.n_estimators,
-                "zero_atol": self.zero_atol,
-                "max_samples_leaf": self.max_samples_leaf,
-                "max_samples_leaf_kind": self.max_samples_leaf_kind,
-                "seed": self.seed,
-                "fit_n_jobs": self.fit_n_jobs,
-            },
+            **grouping,
+            "model_config": model_config,
             "donor_index": self.donor_index.to_dict(),
             "recipient_index": (
                 None if self.recipient_index is None else self.recipient_index.to_dict()
@@ -947,11 +2082,15 @@ class QRFChainState:
             "fit_rng_state",
             "draw_rng_state",
         }
-        if set(value) != expected:
+        if set(value) not in (expected, expected | {"groups_sha256"}):
             raise ValueError(
                 "QRF chain state keys must be exactly "
-                f"{sorted(expected)}, got {sorted(value)}."
+                f"{sorted(expected)}, optionally with 'groups_sha256', "
+                f"got {sorted(value)}."
             )
+        groups_sha256 = value.get("groups_sha256")
+        if groups_sha256 is not None and not isinstance(groups_sha256, str):
+            raise ValueError("QRF chain groups_sha256 must be a string.")
 
         def names(key: str) -> tuple[str, ...]:
             raw = value[key]
@@ -970,11 +2109,15 @@ class QRFChainState:
             "seed",
             "fit_n_jobs",
         }
-        if set(config) != config_keys:
+        if set(config) not in (config_keys, config_keys | {"gate_calibration"}):
             raise ValueError(
                 "QRF chain model_config keys must be exactly "
-                f"{sorted(config_keys)}, got {sorted(config)}."
+                f"{sorted(config_keys)}, optionally with 'gate_calibration', "
+                f"got {sorted(config)}."
             )
+        gate_calibration = config.get("gate_calibration", GateCalibration.IN_SAMPLE)
+        if not isinstance(gate_calibration, str):
+            raise ValueError("QRF chain gate_calibration must be a string.")
         donor_index = value["donor_index"]
         recipient_index = value["recipient_index"]
         if not isinstance(donor_index, Mapping):
@@ -1047,6 +2190,8 @@ class QRFChainState:
             ),
             fit_rng_state_json=fit_rng_state,
             draw_rng_state_json=draw_rng_state,
+            gate_calibration=gate_calibration,
+            groups_sha256=groups_sha256,
         )
 
 
@@ -1091,24 +2236,43 @@ class _ResolvedFitInput:
     weight_kind: str
 
 
+def _require_fit_rows(table: pd.DataFrame, entity: str | None) -> None:
+    """Refuse a fit table with no rows, as the graph's QRF kernel does."""
+    if len(table) == 0:
+        where = "the DataFrame" if entity is None else f"entity {entity!r}"
+        raise ValueError(
+            f"A QRF fit needs at least one donor row; {where} has none. With no "
+            "donors every target would fit as degenerate zero and impute 0 for "
+            "every recipient."
+        )
+
+
 def _resolve_qrf_fit_input(
     frame_or_df: Frame | pd.DataFrame,
     predictors: list[str],
     targets: list[str],
     weights: WeightSpec,
 ) -> _ResolvedFitInput:
-    """Resolve the two QRF front doors identically for all fit modes."""
+    """Resolve the two QRF front doors identically for all fit modes.
+
+    Raises:
+        ValueError: Beyond the column and weight checks, if the fit table has
+            no rows: an empty donor table would otherwise fit every target as
+            degenerate zero and impute 0 for every recipient.
+    """
     if isinstance(frame_or_df, Frame):
         entity = predictors_targets_entity(frame_or_df, predictors, targets)
-        weight_values = resolve_fit_weights(frame_or_df, entity, weights)
         table = frame_or_df.table(entity)
+        _require_fit_rows(table, entity)
+        weight_values = resolve_fit_weights(frame_or_df, entity, weights)
     else:
         entity = None
         dataframe_fit_columns(frame_or_df, predictors, targets)
+        table = frame_or_df
+        _require_fit_rows(table, entity)
         weight_values = resolve_dataframe_fit_weights(
             frame_or_df, weights, predictors=predictors, targets=targets
         )
-        table = frame_or_df
     weight_kind = resolved_weight_kind(frame_or_df, entity, weight_values)
     _validate_targets_finite(table, targets)
     return _ResolvedFitInput(entity, table, weight_values, weight_kind)
@@ -1150,15 +2314,29 @@ def _validate_uniform_mapping(
     return arrays
 
 
+def _gate_proba(
+    gate: HistGradientBoostingClassifier | _CrossFittedGate, x: np.ndarray
+) -> np.ndarray:
+    """The gate's class probabilities, one row per feature row.
+
+    sklearn refuses a predict on zero rows, so an empty batch gets an empty
+    ``(0, n_classes)`` matrix here and flows through every draw path like any
+    other batch: it consumes no uniforms and still honours released forests.
+    """
+    if len(x) == 0:
+        return np.zeros((0, len(gate.classes_)), dtype=np.float64)
+    return np.asarray(gate.predict_proba(x))
+
+
 def _gate_draw_with_rng(
-    gate: HistGradientBoostingClassifier,
+    gate: HistGradientBoostingClassifier | _CrossFittedGate,
     features: pd.DataFrame,
     columns: tuple[str, ...],
     rng: np.random.Generator,
 ) -> np.ndarray:
     """Draw sign classes from a fitted gate using the supplied RNG stream."""
     x = features.loc[:, list(columns)].to_numpy(dtype=np.float64)
-    proba = np.asarray(gate.predict_proba(x))
+    proba = _gate_proba(gate, x)
     cumulative = np.cumsum(proba, axis=1)
     u = rng.random(len(x))
     chosen = (cumulative >= u[:, None]).argmax(axis=1)
@@ -1257,7 +2435,7 @@ def _draw_target_from_uniforms(
     if model.regime == Regime.NEGATIVE_ONLY:
         return model.negative.draw(features, quantiles)
     x = features.loc[:, list(model.columns)].to_numpy(dtype=np.float64)
-    cumulative = np.cumsum(model.gate.predict_proba(x), axis=1)
+    cumulative = np.cumsum(_gate_proba(model.gate, x), axis=1)
     # Uniforms occupy [0, 1): strict comparison skips zero-probability classes
     # even at u=0. Close the final CDF bin against floating-point roundoff.
     cumulative[:, -1] = 1.0
@@ -1296,6 +2474,36 @@ class RegimeGatedQRF:
         seed: Base random seed. Controls the weighted-bootstrap resample, the
             forest randomness, and the per-row draw quantiles, so a fixed seed
             makes a freshly fitted model's first draw reproducible.
+        gate_calibration: How each sign gate's probabilities are calibrated, a
+            :class:`GateCalibration` name. ``"in_sample"`` (the default) is
+            the gate as fitted; ``"cross_fitted"`` fits a gate per fold and
+            maps them by a calibration fitted on their out-of-fold scores, so a
+            rare class is drawn at its rate on rows the gate was not fitted to.
+            The forests and every draw uniform are the same either way; only
+            the gates' probabilities move.
+        gate_level_columns: Predictor columns whose levels a cross-fitted
+            gate's calibration offsets on their own, so the calibrated
+            probabilities' weighted mean equals each class's weighted rate
+            within each supported level of each column, not only over all rows
+            (microcosm#1276). An entry is a column, whose levels are its
+            values, or a one-hot categorical's columns as a group (a sequence
+            of names), whose levels are its categories. In each the heaviest
+            level is the reference, so the offsets are identified, and a level
+            with fewer than 30 rows of some sign class shares the reference's
+            offsets. :meth:`FittedRegimeGatedQRF.gate_level_reports` records
+            what each gate's level fit came to. Empty (the default) leaves the
+            calibration as it is. Only with a cross-fitted calibration, and
+            not yet in the checkpointed chain (:meth:`start_chain`).
+
+    Raises:
+        ValueError: If ``gate_calibration`` names no :class:`GateCalibration`,
+            ``gate_level_columns`` names a column twice, holds an empty group
+            or comes without a cross-fitted calibration, ``n_estimators``
+            falls short of 1, ``seed`` is negative, or ``zero_atol`` is not
+            finite or is negative.
+        TypeError: If ``n_estimators`` or ``seed`` is not an integer (a bool
+            or a float such as ``1.9`` would otherwise alias to another seed),
+            or ``zero_atol`` is not a real number.
     """
 
     def __init__(
@@ -1305,11 +2513,50 @@ class RegimeGatedQRF:
         zero_atol: float = DEFAULT_ZERO_ATOL,
         max_samples_leaf: int | float | None = None,
         seed: int = 0,
+        gate_calibration: str = GateCalibration.IN_SAMPLE,
+        gate_level_columns: Sequence[str | Sequence[str]] = (),
     ) -> None:
-        self.n_estimators = int(n_estimators)
+        if gate_calibration not in _GATE_CALIBRATIONS:
+            raise ValueError(
+                f"gate_calibration {gate_calibration!r} is not one of "
+                f"{sorted(_GATE_CALIBRATIONS)}."
+            )
+        groups = tuple(
+            (entry,) if isinstance(entry, str) else tuple(entry)
+            for entry in gate_level_columns
+        )
+        if any(
+            not group or any(not isinstance(column, str) for column in group)
+            for group in groups
+        ):
+            raise ValueError(
+                "gate_level_columns must name columns as strings, and a one-hot "
+                "categorical's columns as a non-empty group of them."
+            )
+        names = [column for group in groups for column in group]
+        if len(set(names)) != len(names):
+            raise ValueError(
+                f"gate_level_columns repeats a column: {list(gate_level_columns)}."
+            )
+        level_columns = tuple(
+            group[0] if isinstance(entry, str) else group
+            for entry, group in zip(gate_level_columns, groups, strict=True)
+        )
+        if level_columns and gate_calibration not in _CROSS_FITTED_CALIBRATIONS:
+            raise ValueError(
+                "gate_level_columns needs a cross-fitted gate_calibration, got "
+                f"{gate_calibration!r}."
+            )
+        self.n_estimators = validated_integer(
+            n_estimators, name="n_estimators", minimum=1
+        )
+        _check_zero_atol(zero_atol)
         self.zero_atol = float(zero_atol)
         self.max_samples_leaf = max_samples_leaf
-        self.seed = int(seed)
+        self.seed = validated_integer(seed, name="seed", minimum=0)
+        self.gate_calibration = gate_calibration
+        self.gate_level_columns = level_columns
+        self._gate_level_groups = groups
 
     def fit(
         self,
@@ -1318,6 +2565,7 @@ class RegimeGatedQRF:
         targets: list[str],
         *,
         weights: WeightSpec = DESIGN_WEIGHTS,
+        groups: str | Sequence[object] | np.ndarray | None = None,
     ) -> FittedRegimeGatedQRF:
         """Fit the conditional model. See
         :meth:`~microcosm.fit.model.ConditionalModel.fit`.
@@ -1331,16 +2579,32 @@ class RegimeGatedQRF:
         target's regime structurally and grows the gated, weighted-bootstrap
         forests in chain order.
 
+        ``groups`` (a column of the fit input or a vector, one entry per row)
+        deals whole groups, such as a household's members, to the same fold of
+        a cross-fitted gate; it is unused by the in-sample gate.
+
         Raises:
             ValueError: If predictors/targets are empty, span more than one
                 entity (Frame) or are missing from the columns, request a
-                weight spec the input cannot resolve, or a target column
-                contains non-finite (NaN/inf) values. Messages name the
-                culprits.
+                weight spec the input cannot resolve, a target column
+                contains non-finite (NaN/inf) values, or ``groups`` does not
+                name a group for every row. Messages name the culprits.
         """
         predictors = list(predictors)
         targets = list(targets)
+        missing_levels = [
+            column
+            for group in self._gate_level_groups
+            for column in group
+            if column not in predictors
+        ]
+        if missing_levels:
+            raise ValueError(
+                f"gate_level_columns {missing_levels} are not among the predictors "
+                f"{predictors}."
+            )
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
+        group_codes = _resolve_groups(resolved.table, groups)
 
         # Split the model seed into two independent streams: one drives the
         # fit (bootstrap resample, forest randomness, gate random_state), the
@@ -1358,11 +2622,13 @@ class RegimeGatedQRF:
             y = resolved.table[target].to_numpy(dtype=np.float64)
             features = resolved.table.loc[:, list(chained)].to_numpy(dtype=np.float64)
             target_models[target] = self._fit_target(
+                target=target,
                 features=features,
                 y=y,
                 columns=chained,
                 weights=resolved.weights,
                 rng=rng,
+                groups=group_codes,
             )
 
         return FittedRegimeGatedQRF(
@@ -1382,18 +2648,26 @@ class RegimeGatedQRF:
         targets: list[str],
         *,
         weights: WeightSpec = DESIGN_WEIGHTS,
+        groups: str | Sequence[object] | np.ndarray | None = None,
     ) -> QRFChainState:
         """Initialize a safe target-at-a-time chain checkpoint.
 
         This performs the same entity, column, target-finiteness, and weight
         resolution as :meth:`fit`, then locks the donor row order, resolved
-        weights, exact model configuration, target order, and independent fit
-        and draw RNG streams into immutable JSON-roundtrippable state. No model
-        is fit until :meth:`fit_draw_next`.
+        weights, fold grouping (``groups``, as in :meth:`fit`), exact model
+        configuration, target order, and independent fit and draw RNG streams
+        into immutable JSON-roundtrippable state. No model is fit until
+        :meth:`fit_draw_next`.
         """
+        if self.gate_level_columns:
+            raise ValueError(
+                "The checkpointed QRF chain does not carry gate_level_columns yet; "
+                "fit the whole chain with fit() instead."
+            )
         predictors = list(predictors)
         targets = list(targets)
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
+        group_codes = _resolve_groups(resolved.table, groups)
         fit_seed, draw_seed = np.random.SeedSequence(self.seed).spawn(2)
         fit_rng = np.random.default_rng(fit_seed)
         draw_rng = np.random.default_rng(draw_seed)
@@ -1414,6 +2688,8 @@ class RegimeGatedQRF:
             recipient_index=None,
             fit_rng_state_json=_rng_state_json(fit_rng),
             draw_rng_state_json=_rng_state_json(draw_rng),
+            gate_calibration=self.gate_calibration,
+            groups_sha256=_groups_identity(group_codes),
         )
 
     def fit_draw_next(
@@ -1426,6 +2702,7 @@ class RegimeGatedQRF:
         weights: WeightSpec = DESIGN_WEIGHTS,
         quantiles: np.ndarray | None = None,
         sign_uniforms: np.ndarray | None = None,
+        groups: str | Sequence[object] | np.ndarray | None = None,
     ) -> QRFChainStepResult:
         """Fit and draw exactly the next target in a checkpointed chain.
 
@@ -1436,7 +2713,9 @@ class RegimeGatedQRF:
 
         Every call re-runs the ordinary input/weight resolution and refuses
         model-config drift, target-prefix drift, donor/recipient row reordering,
-        weight drift, an entity/front-door change, or non-float64 raw priors.
+        weight or fold-grouping drift (``groups`` must be what
+        :meth:`start_chain` took), an entity/front-door change, or non-float64
+        raw priors.
 
         ``quantiles`` and ``sign_uniforms`` (both or neither) are caller-owned
         uniforms, one in ``[0, 1)`` per recipient row. With them the step draws
@@ -1460,6 +2739,12 @@ class RegimeGatedQRF:
         targets = list(state.targets)
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
         self._validate_chain_donor(state, resolved)
+        group_codes = _resolve_groups(resolved.table, groups)
+        if _groups_identity(group_codes) != state.groups_sha256:
+            raise ValueError(
+                "QRF chain fold grouping changed since start_chain: pass the same "
+                "groups to every step."
+            )
         recipient = self._chain_recipient_table(recipient_predictors, state)
         recipient_identity = _index_identity(recipient.index)
         if state.recipient_index is not None and (
@@ -1476,11 +2761,13 @@ class RegimeGatedQRF:
         fit_rng = _rng_from_state_json(state.fit_rng_state_json, stream="fit")
         draw_rng = _rng_from_state_json(state.draw_rng_state_json, stream="draw")
         target_model = self._fit_target(
+            target=target,
             features=resolved.table.loc[:, list(chained)].to_numpy(dtype=np.float64),
             y=resolved.table[target].to_numpy(dtype=np.float64),
             columns=chained,
             weights=resolved.weights,
             rng=fit_rng,
+            groups=group_codes,
         )
 
         augmented = recipient.loc[:, list(state.predictors)].copy()
@@ -1541,6 +2828,11 @@ class RegimeGatedQRF:
 
     def _validate_chain_config(self, state: QRFChainState) -> None:
         """Refuse any model configuration drift across subprocesses."""
+        if self.gate_level_columns:
+            raise ValueError(
+                "The checkpointed QRF chain does not carry gate_level_columns yet; "
+                "fit the whole chain with fit() instead."
+            )
         actual = (
             self.n_estimators,
             self.zero_atol,
@@ -1548,6 +2840,7 @@ class RegimeGatedQRF:
             _max_samples_leaf_kind(self.max_samples_leaf),
             self.seed,
             _fit_n_jobs(),
+            self.gate_calibration,
         )
         expected = (
             state.n_estimators,
@@ -1556,6 +2849,7 @@ class RegimeGatedQRF:
             state.max_samples_leaf_kind,
             state.seed,
             state.fit_n_jobs,
+            state.gate_calibration,
         )
         if actual != expected or actual[3] != expected[3]:
             raise ValueError(
@@ -1642,14 +2936,42 @@ class RegimeGatedQRF:
     def _fit_target(
         self,
         *,
+        target: str,
         features: np.ndarray,
         y: np.ndarray,
         columns: tuple[str, ...],
         weights: np.ndarray | None,
         rng: np.random.Generator,
+        groups: np.ndarray | None = None,
     ) -> _TargetModel:
-        """Fit the gate and per-sign forests for one numeric target."""
+        """Fit the gate and per-sign forests for one numeric target.
+
+        Regimes are structural (unweighted): the fit models every sign the
+        donors show, even one the weights give no mass. A weighted forest
+        cannot resample a sign whose every row carries zero weight, and the
+        weighted gate still keeps that sign among its classes at a vanishing
+        probability, so the fit refuses such a target by name before it fits
+        anything.
+
+        Raises:
+            ValueError: If an observed positive or negative sign carries zero
+                total weight.
+        """
         regime = detect_regime(y, zero_atol=self.zero_atol)
+        if weights is not None:
+            for sign, mask in (
+                ("positive", y > self.zero_atol),
+                ("negative", y < -self.zero_atol),
+            ):
+                rows = int(mask.sum())
+                if rows and not float(weights[mask].sum()) > 0.0:
+                    raise ValueError(
+                        f"Target {target!r} has {rows} {sign} donor row(s) and "
+                        "every one carries zero weight, so a weighted fit has no "
+                        f"{sign} amounts to resample, yet the sign gate would "
+                        f"still draw the {sign} sign. Give those rows positive "
+                        "weight, drop them, or fit with weights='none'."
+                    )
 
         def forest(mask: np.ndarray) -> _Forest:
             sub_weights = None if weights is None else weights[mask]
@@ -1681,12 +3003,18 @@ class RegimeGatedQRF:
         # sample_weight (not by bootstrap), so every sign class survives even
         # when one is vanishingly rare under the weights.
         labels = self._sign_labels(y)
-        gate = self._fit_gate(features, labels, weights, rng)
+        level_positions = tuple(
+            tuple(columns.index(column) for column in group)
+            for group in self._gate_level_groups
+        )
+        gate, outcome = self._fit_gate(
+            features, labels, weights, rng, groups, level_positions=level_positions
+        )
         pos_mask = y > self.zero_atol
         neg_mask = y < -self.zero_atol
         positive = forest(pos_mask) if pos_mask.any() else None
         negative = forest(neg_mask) if neg_mask.any() else None
-        return _TargetModel(regime, columns, gate, positive, negative)
+        return _TargetModel(regime, columns, gate, positive, negative, outcome)
 
     def _sign_labels(self, y: np.ndarray) -> np.ndarray:
         """Per-row sign code: ``-1`` negative, ``0`` zero, ``1`` positive."""
@@ -1701,7 +3029,10 @@ class RegimeGatedQRF:
         labels: np.ndarray,
         weights: np.ndarray | None,
         rng: np.random.Generator,
-    ) -> HistGradientBoostingClassifier:
+        groups: np.ndarray | None = None,
+        *,
+        level_positions: Sequence[int | Sequence[int]] = (),
+    ) -> tuple[HistGradientBoostingClassifier | _CrossFittedGate, str]:
         """Fit the sign-gate classifier, weighting it directly by sample_weight.
 
         Unlike the forests, the gate is *not* weighted by bootstrap.
@@ -1720,22 +3051,56 @@ class RegimeGatedQRF:
         ``classes_``. If sklearn ever dropped a class, drawing it at probability
         zero would silently lose that sign, so we raise instead.
 
+        Under :attr:`GateCalibration.CROSS_FITTED` (or its class-balanced
+        form, :attr:`GateCalibration.CROSS_FITTED_BALANCED`) the gate is instead a gate
+        per fold, calibrated on their out-of-fold probabilities
+        (:func:`_cross_fit_gate`, with whole ``groups`` dealt to folds), unless
+        a class is too thin to have a row in every fold or a fold's training
+        rows carry no weight for a class; then it is the in-sample gate, and
+        the returned outcome says why. The fold gates' seeds derive from the
+        one seed drawn here, so the fit RNG advances by that single draw either
+        way and every forest after the gate is unchanged.
+
         Args:
             features: The chained predictor matrix for this target's rows.
             labels: Per-row sign codes (``-1`` / ``0`` / ``1``).
             weights: Per-row weights, or ``None`` for an unweighted gate.
             rng: Seeded generator supplying the gate's ``random_state`` (kept
                 for fit reproducibility even though no resample is drawn).
+            groups: Fold-grouping codes, one per row, or ``None``.
+            level_positions: Feature columns, or one-hot groups of them, whose
+                levels the cross-fitted calibration offsets on their own
+                (``gate_level_columns``).
 
         Returns:
-            The fitted sign-gate classifier.
+            ``(gate, outcome)``: the fitted sign-gate classifier, cross-fitted
+            when configured and possible, and its :class:`GateOutcome`.
 
         Raises:
             ValueError: If a sign class present in ``labels`` is absent from the
                 fitted gate's ``classes_`` (internal inconsistency).
         """
-        gate = _make_gate(int(rng.integers(0, 2**31 - 1)))
-        gate.fit(features, labels, sample_weight=weights)
+        seed = int(rng.integers(0, 2**31 - 1))
+        gate: HistGradientBoostingClassifier | _CrossFittedGate | None = None
+        outcome = GateOutcome.IN_SAMPLE
+        if self.gate_calibration in _CROSS_FITTED_CALIBRATIONS:
+            if _can_cross_fit(labels, groups):
+                gate, outcome = _cross_fit_gate(
+                    features,
+                    labels,
+                    weights,
+                    seed,
+                    groups,
+                    balanced=(
+                        self.gate_calibration == GateCalibration.CROSS_FITTED_BALANCED
+                    ),
+                    level_positions=level_positions,
+                )
+            else:
+                outcome = GateOutcome.THIN_CLASS
+        if gate is None:
+            gate = _make_gate(seed)
+            gate.fit(features, labels, sample_weight=weights)
         training_classes = set(np.unique(labels).tolist())
         fitted_classes = set(np.asarray(gate.classes_).tolist())
         missing = sorted(training_classes - fitted_classes)
@@ -1748,7 +3113,7 @@ class RegimeGatedQRF:
                 "probability zero would silently lose that sign; refusing to "
                 "fit an inconsistent gate."
             )
-        return gate
+        return gate, outcome
 
 
 @dataclass(frozen=True)
@@ -1768,6 +3133,58 @@ class ConditionalUniforms:
     sign_uniforms: dict[str, np.ndarray]
     degenerate: tuple[str, ...]
     ungated: tuple[str, ...]
+
+
+def _gate_level_names(model: _TargetModel) -> tuple[str, ...]:
+    """``"<column>=<value>"`` for each level a target's gate offsets on its own."""
+
+    levels = getattr(model.gate, "levels", None)
+    if levels is None:
+        return ()
+    return tuple(
+        f"{model.columns[position]}={value:g}"
+        for position, value in zip(levels.positions, levels.values, strict=True)
+    )
+
+
+#: Thin levels a gate's level report names one by one; past this many (a
+#: continuous column declared as a level column) it gives their count.
+_GATE_LEVEL_REPORTED_THIN = 50
+
+
+def _gate_level_report(model: _TargetModel) -> dict[str, object] | None:
+    """What a target's level calibration came to, or ``None`` without one.
+
+    ``fit`` is a :class:`GateLevelFit` name; ``levels`` are the supported
+    levels, offset under ``offsets`` and tried and dropped under
+    ``balance_not_met``; ``reference_levels`` are each column's heaviest level
+    and ``thin_levels`` the levels with too few rows of some sign class, which
+    share the reference's offsets.
+    """
+
+    fit = getattr(model.gate, "level_fit", None)
+    if fit is None:
+        return None
+
+    def name(position: int, value: float) -> str:
+        return f"{model.columns[position]}={value:g}"
+
+    thin = [name(position, value) for position, value in fit.levels.thin]
+    return {
+        "fit": fit.status,
+        "levels": [
+            name(position, value)
+            for position, value in zip(
+                fit.levels.positions, fit.levels.values, strict=True
+            )
+        ],
+        "reference_levels": [
+            name(position, value) for position, value in fit.levels.references
+        ],
+        "thin_levels": (
+            thin if len(thin) <= _GATE_LEVEL_REPORTED_THIN else {"count": len(thin)}
+        ),
+    }
 
 
 class FittedRegimeGatedQRF:
@@ -1814,6 +3231,19 @@ class FittedRegimeGatedQRF:
         self._zero_atol = zero_atol
         self._rng = np.random.default_rng(draw_seed)
         self._weight_kind = weight_kind
+        # Read now: ``predict(release_models=True)`` drops the target models.
+        self._gate_outcomes = {
+            name: getattr(model, "gate_outcome", None)
+            for name, model in target_models.items()
+        }
+        self._gate_levels = {
+            name: _gate_level_names(model) for name, model in target_models.items()
+        }
+        self._gate_level_reports = {
+            name: report
+            for name, model in target_models.items()
+            if (report := _gate_level_report(model)) is not None
+        }
 
     @property
     def weight_kind(self) -> str:
@@ -1823,6 +3253,37 @@ class FittedRegimeGatedQRF:
     def regimes(self) -> dict[str, str]:
         """The detected :class:`Regime` label per target."""
         return {name: model.regime for name, model in self._target_models.items()}
+
+    def gate_outcomes(self) -> dict[str, str | None]:
+        """The calibration each target's sign gate actually has.
+
+        A :class:`GateOutcome` per gated target and ``None`` for an ungated
+        one, so a caller can record where a cross-fitted request kept the
+        in-sample gate or fell back to the class rates.
+        """
+        return dict(self._gate_outcomes)
+
+    def gate_levels(self) -> dict[str, tuple[str, ...]]:
+        """The predictor levels each target's gate calibration offsets on its own.
+
+        One ``"<column>=<value>"`` per level that holds offsets of its own
+        (``gate_level_columns``), and an empty tuple for a target whose gate
+        has none: no level columns, none supported, or the level-free
+        calibration kept. Every other level takes the reference.
+        """
+        return dict(self._gate_levels)
+
+    def gate_level_reports(self) -> dict[str, dict[str, object]]:
+        """What each target's level calibration came to, for its receipt.
+
+        One entry per target whose gate was cross-fitted with level columns:
+        its :class:`GateLevelFit` (``fit``), the supported levels it offset or
+        tried (``levels``), each column's reference level and the levels too
+        thin for offsets of their own. :func:`gate_level_settings` gives the
+        fixed settings behind them. A target with an in-sample gate, or no
+        level columns, has no entry.
+        """
+        return {name: dict(report) for name, report in self._gate_level_reports.items()}
 
     def sign_classes(self, target: str) -> tuple[int, ...]:
         """The sign classes of ``target``, ascending.
@@ -2032,7 +3493,7 @@ class FittedRegimeGatedQRF:
                         f"absent from the fitted gate's classes {classes.tolist()}."
                     )
                 x = augmented.loc[:, list(model.columns)].to_numpy(dtype=np.float64)
-                proba = np.asarray(model.gate.predict_proba(x))
+                proba = _gate_proba(model.gate, x)
                 rows = np.arange(n)
                 mass = proba[rows, index]
                 before = np.cumsum(proba, axis=1)[rows, index] - mass
@@ -2145,7 +3606,7 @@ class FittedRegimeGatedQRF:
 
     def _gate_draw(
         self,
-        gate: HistGradientBoostingClassifier,
+        gate: HistGradientBoostingClassifier | _CrossFittedGate,
         features: pd.DataFrame,
         columns: tuple[str, ...],
     ) -> np.ndarray:

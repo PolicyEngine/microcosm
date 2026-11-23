@@ -43,6 +43,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_build_identifier_frame,
     uk_time_period,
 )
+from microcosm.build.uk_runtime.receipt_counts import own_source_households
 from microcosm.build.uk_runtime.regional_uprating import (
     load_regional_land_values_resource,
     uprate_household_property_by_region,
@@ -120,6 +121,15 @@ def e4_identity_receipt(
         raise ValueError("LHA_category materialization must align to benunit rows.")
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
     benunit["region"] = _benunit_regions(person, household, benunit)
+    # is_apprentice's rate among eligible employees reads the household
+    # weights, which a row permutation carries with each household id.
+    weight_by_household = dict(
+        zip(
+            household["household_id"].to_numpy(),
+            np.asarray(frame.weights_for("household").values, dtype=float),
+            strict=True,
+        )
+    )
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
         anchors = aggregate_person_reported_to_benunit(person_t, benunit_t)
@@ -137,7 +147,16 @@ def e4_identity_receipt(
             take_up[UK_EXTENDED_CHILDCARE_OUTPUT].to_numpy(),
         )
         take_up.index = benunit_t["benunit_id"].to_numpy()
-        person_draws = derive_frs_person_draws(person_t, contract=contract)
+        person_draws = derive_frs_person_draws(
+            person_t,
+            contract=contract,
+            person_weights=person_t["person_household_id"]
+            .map(weight_by_household)
+            .to_numpy(dtype=float),
+            # Only the draws are compared, never the receipt's support
+            # counts, so each row's household stands as its source.
+            person_sources=own_source_households(person_t),
+        )
         person_draws[UK_UNDER_TWO_USAGE_OUTPUT] = derive_under_two_childcare_usage(
             person_t, claiming=claiming, contract=contract
         )

@@ -89,9 +89,10 @@ def test_household_grain_predictors_match_per_capita_round_trip_identity() -> No
 
 def test_etb_services_chain_order_and_records(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FakeModel:
-        def __init__(self, *, n_estimators, seed):
+        def __init__(self, *, n_estimators, seed, gate_calibration):
             assert n_estimators == 100
             assert seed == 0
+            assert gate_calibration == "in_sample"
             self.calls = []
 
         def start_chain(self, donor, predictors, targets, *, weights):

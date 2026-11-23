@@ -1,9 +1,12 @@
-"""Pinned enhanced-FRS input-surface reference for UK coverage parity.
+"""Pinned enhanced-FRS input-surface reference, kept as a historical record.
 
 The licensed H5 never ships in Microcosm.  ``efrs_parity_reference.json`` is the
 frozen, sha-addressed extraction of its populated PolicyEngine-UK input leaves.
-Release coverage manifests and gates consume this small checked-in fact instead
-of resolving a moving or licensed artifact at build time.
+Until microcosm#1095 the release coverage manifest and the export-surface and
+input-coverage gates compared every UK cut with it; a cut now compares with the
+current build of its own line (:mod:`.reference_surface`). The coverage
+manifest generator still checks its exclusions ledger,
+``efrs_parity_known_gaps.json``, against these frozen facts it was measured on.
 """
 
 from __future__ import annotations

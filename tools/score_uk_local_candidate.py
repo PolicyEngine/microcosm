@@ -34,6 +34,7 @@ from microcosm.calibrate import (
     default_target_loss_scales,
     relative_error_loss,
 )
+from microcosm.diagnostics import HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
 
 #: ``statistical_scope`` (the rowwise ``brma`` grain) is Scotland's PIPR BRMA
 #: rows, which the incumbent never fitted: they score candidate-only, as
@@ -104,9 +105,13 @@ def _candidate_estimates(
     A withheld row (microcosm#1262) carries the note in its metadata and no
     final estimate; it is neither scored nor missing.
     """
-    if diagnostics.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+    # Schema 9 moved only the hierarchy labels into catalogs; the names,
+    # metadata and final estimates read here are on every row in 8 and 9.
+    if diagnostics.get("schema_version") not in (
+        HIERARCHY_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+    ):
         raise ValueError(
-            "UK local scoring requires calibration diagnostics schema "
+            "UK local scoring requires calibration diagnostics schema 8 or "
             f"{CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
         )
     rows = diagnostics.get("targets")

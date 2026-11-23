@@ -1,0 +1,126 @@
+{
+  "files": {
+    "c1/inventory.json": {
+      "writers": [
+        {
+          "function": "_c1_inventory",
+          "module": "tools/generate_release_contract_fixtures.py"
+        }
+      ]
+    },
+    "c1/microcosm-uk-2024-25-national/build_manifest.json": {
+      "writers": [
+        {
+          "function": "uk_national_release_manifests",
+          "module": "tools/assemble_uk_release_dir.py"
+        },
+        {
+          "function": "_write_json",
+          "module": "tools/assemble_uk_release_dir.py"
+        }
+      ]
+    },
+    "c1/microcosm-uk-2024-25-national/release_manifest.json": {
+      "writers": [
+        {
+          "function": "uk_national_release_manifests",
+          "module": "tools/assemble_uk_release_dir.py"
+        },
+        {
+          "function": "_write_json",
+          "module": "tools/assemble_uk_release_dir.py"
+        }
+      ]
+    },
+    "c1/microcosm-us-2024-national/build_manifest.json": {
+      "writers": [
+        {
+          "function": "_build_manifests",
+          "module": "tools/build_us_fiscal_refresh_release.py"
+        },
+        {
+          "function": "_finish_build_folder_release",
+          "module": "tools/build_us_fiscal_refresh_release.py"
+        },
+        {
+          "function": "rewrite_release_dir",
+          "module": "microcosm.data.build_folder_manifests"
+        }
+      ]
+    },
+    "c1/microcosm-us-2024-national/release_manifest.json": {
+      "writers": [
+        {
+          "function": "_build_manifests",
+          "module": "tools/build_us_fiscal_refresh_release.py"
+        },
+        {
+          "function": "_finish_build_folder_release",
+          "module": "tools/build_us_fiscal_refresh_release.py"
+        },
+        {
+          "function": "rewrite_release_dir",
+          "module": "microcosm.data.build_folder_manifests"
+        }
+      ]
+    },
+    "c5/registry.json": {
+      "writers": [
+        {
+          "function": "_c5_registry",
+          "module": "tools/generate_release_contract_fixtures.py"
+        }
+      ]
+    },
+    "c5/uk/releases.json": {
+      "writers": [
+        {
+          "function": "add_build",
+          "module": "microcosm_emitter_interface.releases"
+        },
+        {
+          "function": "make_current",
+          "module": "microcosm_emitter_interface.releases"
+        },
+        {
+          "function": "replace",
+          "module": "dataclasses"
+        },
+        {
+          "function": "ReleasesRecord.serialize",
+          "module": "microcosm_emitter_interface.releases"
+        }
+      ]
+    },
+    "c5/us/releases.json": {
+      "writers": [
+        {
+          "function": "add_build",
+          "module": "microcosm_emitter_interface.releases"
+        },
+        {
+          "function": "make_current",
+          "module": "microcosm_emitter_interface.releases"
+        },
+        {
+          "function": "replace",
+          "module": "dataclasses"
+        },
+        {
+          "function": "ReleasesRecord.serialize",
+          "module": "microcosm_emitter_interface.releases"
+        }
+      ]
+    },
+    "writers.json": {
+      "writers": [
+        {
+          "function": "_writers",
+          "module": "tools/generate_release_contract_fixtures.py"
+        }
+      ]
+    }
+  },
+  "schema_name": "microcosm.release-contract.fixture-writers",
+  "schema_version": 1
+}

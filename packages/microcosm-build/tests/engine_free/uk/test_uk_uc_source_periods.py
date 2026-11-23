@@ -450,13 +450,28 @@ def test_generator_preserves_observation_basis_and_explicit_months():
 
 def test_shipped_uc_monthly_references_preserve_each_declared_window():
     references = load_country_spec("uk").target_references
-    monthly = [
+    universal_credit = [
         reference
         for reference in references
         if reference.family == "dwp_universal_credit"
     ]
-    # microcosm#1095: less the five-or-more-children count, a diagnostic.
-    assert len(monthly) == 117
+    # Part 3 of PolicyEngine/microcosm#1663: DWP's young people with the UC
+    # health element (Table 28) is a window of two financial years, not a
+    # monthly Stat-Xplore series, and declares no source months.
+    fiscal = [
+        reference
+        for reference in universal_credit
+        if reference.value_operation == "calendar_year_window"
+    ]
+    assert [reference.name for reference in fiscal] == [
+        "dwp.uc.people_aged_16_to_24_lcwra_element"
+    ]
+    assert EXPECTED_SOURCE_MONTHS not in fiscal[0].metadata
+    monthly = [reference for reference in universal_credit if reference not in fiscal]
+    # microcosm#1095: less the five-or-more-children count, a diagnostic; plus
+    # Y4's three people-by-age rows (8 Nov 2026) and B5's four rows by
+    # conditionality group (PR3, 12 Nov 2026), held out of the solve.
+    assert len(monthly) == 124
     calendar_2025 = [f"2025-{month:02}" for month in range(1, 13)]
     new_paid = {
         "dwp.uc.households",
@@ -489,8 +504,28 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
             f"2025-{month:02}" for month in range(3, 13)
         ],
     }
+    # Y4: DWP's people on UC by single year of age, every regime, on the four
+    # quarterly points of 2025, one operand per single year. B5 splits the two
+    # age groups by conditionality regime: one operand per single year and
+    # regime, with DWP's "Unknown or missing regime" from age 18.
+    people_by_age = {
+        "dwp.uc.people_aged_16_to_24": 9,
+        "dwp.uc.people_aged_16_to_21": 6,
+        "dwp.uc.people_aged_22_to_24": 3,
+        "dwp.uc.people_aged_16_to_21_no_work_requirements": 6,
+        "dwp.uc.people_aged_16_to_21_other_regimes": 34,
+        "dwp.uc.people_aged_22_to_24_no_work_requirements": 3,
+        "dwp.uc.people_aged_22_to_24_other_regimes": 18,
+    }
     for reference in monthly:
-        if reference.name in new_paid or reference.name in element_windows:
+        if reference.name in people_by_age:
+            expected_months = ["2025-02", "2025-05", "2025-08", "2025-11"]
+            assert reference.ledger_selector["period_value"] == expected_months
+            assert reference.value_operation == "monthly_window_sum_average"
+            assert reference.period_match_policy == "source_window"
+            assert len(reference.value_operands) == people_by_age[reference.name]
+            assert reference.uprating_from_period is None
+        elif reference.name in new_paid or reference.name in element_windows:
             expected_months = element_windows.get(reference.name, calendar_2025)
             assert reference.ledger_selector["period_value"] == expected_months
             if reference.value_operation == "monthly_window_sum_average":
@@ -514,6 +549,7 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == expected_months
     assert new_paid <= {reference.name for reference in monthly}
     assert set(element_windows) <= {reference.name for reference in monthly}
+    assert set(people_by_age) <= {reference.name for reference in monthly}
     # The #882 Housing Benefit caseload rows bind the Stat-Xplore client-type
     # by tenure cube on the same calendar-2025 window, and since microcosm#1069
     # c10 so do its pension-age rows.
@@ -598,6 +634,35 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert reference.value_operation == "monthly_window_average"
         assert reference.period_match_policy == "source_window"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
+    # P3 of the November event-data plan: DWP's PIP cases on the cube's four
+    # quarter-end points inside calendar 2025. The award split binds (P2), and
+    # since PR3 so do England's five broad age bands (B2); the other rows are
+    # held out of the solve. PolicyEngine/microcosm#1663 adds England's cases
+    # aged 16 to 24 at each component's enhanced rate, held out.
+    pip_months = ["2025-01", "2025-04", "2025-07", "2025-10"]
+    pip_cases = [reference for reference in references if reference.family == "dwp_pip"]
+    assert len(pip_cases) == 101
+    # B2's broad bands sum the thirteen fine bands' quarterly points, one
+    # operand per fine band; #1663's two award rows sum 16 to 19 and 20 to 24.
+    pip_broad_bands = {
+        "dwp.pip.cases_england_aged_16_to_24": 2,
+        "dwp.pip.cases_england_aged_16_to_24_daily_living_enhanced": 2,
+        "dwp.pip.cases_england_aged_16_to_24_mobility_enhanced": 2,
+        "dwp.pip.cases_england_aged_25_to_34": 2,
+        "dwp.pip.cases_england_aged_35_to_49": 3,
+        "dwp.pip.cases_england_aged_50_to_64": 3,
+        "dwp.pip.cases_england_aged_65_and_over": 3,
+    }
+    assert set(pip_broad_bands) <= {reference.name for reference in pip_cases}
+    for reference in pip_cases:
+        assert reference.ledger_selector["period_value"] == pip_months
+        if reference.name in pip_broad_bands:
+            assert reference.value_operation == "monthly_window_sum_average"
+            assert len(reference.value_operands) == pip_broad_bands[reference.name]
+        else:
+            assert reference.value_operation == "monthly_window_average"
+        assert reference.period_match_policy == "source_window"
+        assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == pip_months
     assert not any(
         EXPECTED_SOURCE_MONTHS in reference.metadata
         for reference in references
@@ -609,5 +674,6 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
             "dwp_state_pension",
             "dwp_pension_credit",
             "dwp_attendance_allowance",
+            "dwp_pip",
         }
     )

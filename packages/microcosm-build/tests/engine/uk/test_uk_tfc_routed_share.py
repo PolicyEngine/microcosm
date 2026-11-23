@@ -23,6 +23,10 @@ def _frame():
                 "person_benunit_id": [1],
                 "person_household_id": [1],
                 "age": [3],
+                # frs_person_draws reads both for is_apprentice (microcosm#1372;
+                # full-time students are never drawn, nit 3 of #1535's review).
+                "employment_status": ["CHILD"],
+                "is_in_full_time_education": [False],
                 "childcare_expenses": [1_000.0],
                 "tax_free_childcare_uses_qualifying_provider": [True],
                 "tax_free_childcare_qualifying_child": [True],
@@ -64,7 +68,11 @@ def test_engine_and_manifest_define_person_input_contract() -> None:
     spec = load_country_spec("uk")
     stage = spec.sources.stage_map()["frs_person_draws"]
     assert "tax_free_childcare_spend_routed_share" in stage.outputs
-    operation = stage.operations[-1]
+    (operation,) = (
+        op
+        for op in stage.operations
+        if op.parameters.get("output") == "tax_free_childcare_spend_routed_share"
+    )
     assert operation.kind == "assign_period_constant"
     assert operation.parameters == {
         "contract_key": "tax_free_childcare_spend_routed_share",

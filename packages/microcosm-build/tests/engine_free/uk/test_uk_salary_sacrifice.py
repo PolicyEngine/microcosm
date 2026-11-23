@@ -32,6 +32,7 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
     load_bonus_sacrifice_anchor,
     load_salary_sacrifice_anchor,
 )
+from test_support.microcosm_build.uk_geographic_clones import with_geographic_clones
 
 
 class _Fitted:
@@ -45,18 +46,24 @@ class _Fitted:
             assert uniforms.shape == (len(predictors),)
         return pd.DataFrame({SALSAC_OUTPUT: self.value}, index=predictors.index)
 
+    def gate_outcomes(self) -> dict[str, str]:
+        return {SALSAC_OUTPUT: "cross_fitted"}
+
 
 class _FakeQRF:
     training_frames: list[pd.DataFrame] = []
 
-    def __init__(self, *, n_estimators: int, seed: int) -> None:
+    def __init__(self, *, n_estimators: int, seed: int, gate_calibration: str) -> None:
         assert n_estimators == 100
         assert seed == 42
+        assert gate_calibration == "cross_fitted"
 
-    def fit(self, frame, predictors, targets, *, weights):
+    def fit(self, frame, predictors, targets, *, weights, groups):
         assert predictors == ["age", "employment_income"]
         assert targets == [SALSAC_OUTPUT]
         assert weights == "_fit_weight"
+        # One household key per training person, for the gate's folds.
+        assert len(groups) == len(frame)
         self.training_frames.append(frame.copy())
         return _Fitted()
 
@@ -72,12 +79,14 @@ def _frame(
     weights=None,
     employment_income=None,
     bonus=None,
+    dependent_child=None,
 ):
     n = len(asked)
     ids = np.arange(1, n + 1, dtype="int64")
     channels = channels or ["frs"] * n
     clones = clones or [False] * n
     donors = donors or [False] * n
+    dependent_child = dependent_child or [False] * n
     person = pd.DataFrame(
         {
             "person_id": ids,
@@ -93,15 +102,22 @@ def _frame(
             SALSAC_OUTPUT: salary_sacrifice_values,
             "employee_pension_contributions": employee_pension,
             BONUS_SACRIFICE_SOURCE: np.zeros(n) if bonus is None else bonus,
+            "is_hbai_dependent_child": dependent_child,
         }
     )
     household = pd.DataFrame(
         {
             "household_id": ids,
             "household_source_id": ids,
+            "source_household_id": ids,
             "household_support_channel": channels,
+            # The copy steps' ordinals beside their flags, as on the spine.
+            "household_support_clone_index": np.where(
+                np.asarray(channels) == "spi", 1, 0
+            ),
             HOUSEHOLD_IS_CGT_CLONE: clones,
             HOUSEHOLD_IS_CGT_SUPPORT_COPY: donors,
+            "cgt_support_copy_index": np.asarray(donors, dtype=np.int64),
         }
     )
     return uk_national_frame(
@@ -203,6 +219,65 @@ def test_qrf_predicts_only_for_people_not_asked_who_are_paid(
     # The headcount the conversion tops up starts from true users only: the
     # asked person without pay is no longer one of them.
     assert result.pre_headcount == 2.0
+
+
+def test_a_dependent_child_with_pay_takes_no_predicted_sacrifice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given an asked adult, and an adult and a dependent child who were not
+    # asked, both paid: the child's pay is CHILD.CHEARNS
+    # (PolicyEngine/microcosm#1663).
+    _FakeQRF.training_frames = []
+    _Fitted.value = 900.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 0, 0],
+        salary_sacrifice_values=[10.0, 0.0, 0.0],
+        employee_pension=[0.0] * 3,
+        employment_income=[30_000.0, 3_000.0, 3_000.0],
+        dependent_child=[False, False, True],
+        weights=np.asarray([1.0, 1.0, 4.0]),
+    )
+
+    result = impute_salary_sacrifice(frame)
+
+    # Then the forest predicts for the adult alone, and the child sacrifices
+    # none of their pay (Vahid's final review of PolicyEngine/microcosm#1663).
+    assert result.frame.table("person")[SALSAC_OUTPUT].tolist() == [10.0, 900.0, 0.0]
+    assert result.prediction_rows == 1
+    assert result.not_asked_dependent_child_rows == 1
+    assert result.not_asked_dependent_child_mass == 4.0
+    qrf = result.evidence()["qrf"]
+    assert qrf["not_asked_dependent_child_rows"] == 1
+    assert qrf["not_asked_dependent_child_mass"] == 4.0
+    assert "is_hbai_dependent_child" in qrf["target_population"]
+    # The headcount the conversion tops up counts the two adults alone.
+    assert result.pre_headcount == 2.0
+
+
+def test_the_stage_needs_every_persons_dependent_child_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 0], salary_sacrifice_values=[0.0, 0.0], employee_pension=[0.0, 0.0]
+    )
+
+    def rebuilt(person: pd.DataFrame):
+        return uk_national_frame(
+            person=person,
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            household_weights=frame.weights_for("household").values,
+            time_period="2024",
+        )
+
+    person = frame.table("person")
+    with pytest.raises(ValueError, match="is_hbai_dependent_child"):
+        impute_salary_sacrifice(rebuilt(person.drop(columns="is_hbai_dependent_child")))
+    with pytest.raises(ValueError, match="is_hbai_dependent_child"):
+        impute_salary_sacrifice(rebuilt(person.assign(is_hbai_dependent_child=[0, 2])))
 
 
 def test_qrf_trains_only_on_asked_respondents_with_pay(
@@ -490,8 +565,8 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
             return pd.DataFrame({SALSAC_OUTPUT: 0.0}, index=predictors.index)
 
     class _KeyedQRF(_FakeQRF):
-        def fit(self, frame, predictors, targets, *, weights):
-            super().fit(frame, predictors, targets, weights=weights)
+        def fit(self, frame, predictors, targets, *, weights, groups):
+            super().fit(frame, predictors, targets, weights=weights, groups=groups)
             return _Keyed()
 
     monkeypatch.setattr(salary_sacrifice, "QRF", _KeyedQRF)
@@ -509,9 +584,12 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
                 {
                     "household_id": groups,
                     "household_support_channel": "frs",
+                    "household_support_clone_index": 0,
                     HOUSEHOLD_IS_CGT_CLONE: False,
                     HOUSEHOLD_IS_CGT_SUPPORT_COPY: False,
+                    "cgt_support_copy_index": 0,
                     "household_source_id": groups,
+                    "source_household_id": groups,
                 }
             ),
             household_weights=np.ones(len(ids)),
@@ -532,6 +610,7 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
             SALSAC_OUTPUT: [10.0, 20.0, 0.0, 0.0, 0.0, 0.0],
             "employee_pension_contributions": np.zeros(rows),
             BONUS_SACRIFICE_SOURCE: np.zeros(rows),
+            "is_hbai_dependent_child": np.zeros(rows, dtype=bool),
         }
     )
     assert_draws_are_keyed_on_ids(
@@ -867,11 +946,52 @@ def test_the_stage_adds_bonus_sacrifice_beside_pay(
     assert receipt["pay"] == "unchanged: a sacrificed bonus is never received"
     assert receipt["spi_drawn_support"] == 0
     assert receipt["target_base"] == 90_000.0
-    # Five sources: the base and the band are withheld under ten.
-    assert receipt["participant_support"] == "<10"
-    assert receipt["projected_base"] == "<10"
+    # Five sources: above the floor of three, so the band reads "3-9" and the
+    # base is given: five bonuses of 18,000 above the threshold.
+    assert receipt["participant_support"] == "3-9"
+    assert receipt["projected_base"] == pytest.approx(90_000.0)
     assert receipt["candidate_support"] == "10-29"
     assert BONUS_SACRIFICE_OUTPUT in UKSalarySacrificeStageTransform.output_columns()
+
+
+def test_the_spi_bonus_draw_takes_adults_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Since PolicyEngine/microcosm#1663 a dependent child's CHILD.CHEARNS is
+    # their pay. The draw's donors are base-FRS adults and its drawers
+    # SPI-channel adults (BONUS_SACRIFICE_SPI_DRAW), so a paid child is
+    # neither: they no longer join the donors or move the pay cells' edges.
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    seen: dict[str, np.ndarray] = {}
+    real = salary_sacrifice.draw_spi_bonuses
+
+    def spy(**kwargs):
+        seen["donors"] = np.asarray(kwargs["donors"]).copy()
+        seen["spi"] = np.asarray(kwargs["spi"]).copy()
+        return real(**kwargs)
+
+    monkeypatch.setattr(salary_sacrifice, "draw_spi_bonuses", spy)
+    frame = _frame(
+        asked=[1, 0, 0, 0],
+        salary_sacrifice_values=[0.0] * 4,
+        employee_pension=[0.0] * 4,
+        channels=["frs", "frs", "spi", "spi"],
+        employment_income=[60_000.0, 3_000.0, 70_000.0, 3_000.0],
+        dependent_child=[False, True, False, True],
+        bonus=[6_000.0, 0.0, 0.0, 0.0],
+    )
+
+    result = impute_salary_sacrifice(frame, bonus_anchor=_toy_bonus_anchor())
+
+    # The FRS adult is the one donor and the SPI-channel adult the one drawer;
+    # neither child is either.
+    assert seen["donors"].tolist() == [True, False, False, False]
+    assert seen["spi"].tolist() == [False, False, True, False]
+    assert result.frame.table("person")[BONUS_SACRIFICE_OUTPUT].tolist()[1::2] == [
+        0.0,
+        0.0,
+    ]
 
 
 def test_the_stage_refuses_a_frame_without_the_bonus_carrier(
@@ -928,3 +1048,25 @@ def test_the_hmrc_salary_sacrifice_rows_bind_the_salary_route_alone() -> None:
     for row in rows:
         text = json.dumps(row)
         assert BONUS_SACRIFICE_OUTPUT not in text, row["target_id"]
+
+
+def test_geographic_clones_train_each_respondent_once_at_their_whole_weight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two geographic clones of every household at half its weight hand the
+    forest the respondents and weights they hand it alone (microcosm#931)."""
+
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    _Fitted.value = 5.0
+    frame = _frame(
+        asked=[1, 1, 1, 0, 0],
+        salary_sacrifice_values=[10.0, 20.0, 30.0, 0.0, 0.0],
+        employee_pension=[0.0] * 5,
+        channels=["frs", "frs", "frs", "frs", "spi"],
+        weights=np.asarray([2.0, 4.0, 6.0, 8.0, 10.0]),
+    )
+    _FakeQRF.training_frames = []
+    impute_salary_sacrifice(frame)
+    impute_salary_sacrifice(with_geographic_clones(frame))
+    alone, cloned = _FakeQRF.training_frames
+    pd.testing.assert_frame_equal(cloned, alone)

@@ -12,6 +12,20 @@
     "local"
    ]
   },
+  "household.beer_draught_share": {
+   "reason": "Constant by construction: HMRC's alcohol clearances give the share of beer litres of pure alcohol cleared under draught relief, alone or with small producer relief, and the excise step writes that published ratio to every household as it is (microcosm#1359), since the LCFS records no draught or packaged split to distribute it by. policyengine-uk reads it to apply the draught duty rates. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1359",
+   "approved_on": "2026-10-27",
+   "expires_on": "2027-04-27"
+  },
+  "household.cider_draught_share": {
+   "reason": "Constant by construction: HMRC's alcohol clearances give the share of cider litres of pure alcohol cleared under draught relief, alone or with small producer relief, and the excise step writes that published ratio to every household as it is (microcosm#1359), since the LCFS records no draught or packaged split to distribute it by. policyengine-uk reads it to apply the draught duty rates. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1359",
+   "approved_on": "2026-10-27",
+   "expires_on": "2027-04-27"
+  },
   "household.source_year": {
    "reason": "Constant at the build vintage by construction on a single-vintage artifact, and fully derivable from the artifact's time_period metadata (the rowwise clone path re-derives it when absent). Retained deliberately for row-level vintage documentation and UK/US schema symmetry \u2014 the US pools three ASEC vintages, where the same column is irreducible per-row identity. Not signal.",
    "approved_by": "juaristi22",
@@ -19,12 +33,117 @@
    "approved_on": "2026-08-10",
    "expires_on": "2027-02-10"
   },
+  "household.uk_total_alcohol_and_tobacco_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of alcohol_and_tobacco_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_clothing_and_footwear_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of clothing_and_footwear_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_communication_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of communication_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_corporate_wealth": {
+   "reason": "Constant by construction: the release boundary writes the UK total of corporate_wealth, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_education_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of education_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_food_and_non_alcoholic_beverages_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of food_and_non_alcoholic_beverages_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_health_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of health_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_household_furnishings_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of household_furnishings_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_housing_water_and_electricity_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of housing_water_and_electricity_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_miscellaneous_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of miscellaneous_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_private_pension_wealth": {
+   "reason": "Constant by construction: the release boundary writes the UK total of private_pension_wealth, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_recreation_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of recreation_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_restaurants_and_hotels_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of restaurants_and_hotels_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
+  "household.uk_total_transport_consumption": {
+   "reason": "Constant by construction: the release boundary writes the UK total of transport_consumption, its sum at the stored household weights, to every household (microcosm#1687), as policyengine_uk.utils.uk_totals sums it. policyengine-uk reads it (pe-uk#2901) so a simulation of part of the file gives each household its share of the national total rather than of the part's own. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1687 (microcosm#1095; Mar\u00eda's signature of 22 November 2026, pending review)",
+   "approved_on": "2026-11-22",
+   "expires_on": "2027-05-22"
+  },
   "person.tax_free_childcare_spend_routed_share": {
    "reason": "Constant by construction: the published FY mean of an HMRC account-activity proxy assigned without an invented distribution (uk-data #473 judgement, microcosm#834); not signal.",
    "approved_by": "juaristi22",
    "adjudication": "microcosm#834",
    "approved_on": "2026-09-05",
    "expires_on": "2027-03-05"
+  },
+  "person.trading_allowance_full_relief": {
+   "reason": "All-zero by construction: the trading allowance receipts stage (microcosm#1439) places a share of the full-relief population (FRS respondents with a profit of GBP 1,000 or less who are not drawn claimants) in the group, and that share is zero by ruling, since M10 of the November event-data plan found the frame's small traders below SPI's declarers even before any full relief. Retained deliberately: the bound SPI self-employment rows read the carrier, so a row re-measured on a built file reads the same population. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#1439",
+   "approved_on": "2026-11-11",
+   "expires_on": "2027-05-11"
   }
  }
 }

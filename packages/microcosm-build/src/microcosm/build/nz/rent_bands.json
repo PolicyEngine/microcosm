@@ -1,0 +1,816 @@
+{
+  "schema_version": 1,
+  "country": "nz",
+  "generator": "tools/generate_nz_target_references.py",
+  "description": "Annual rent band edges in NZD for transport.quantile_map@1, one band list per code in household_region_code. Each reference names one 2023 Census count of households by weekly rent, so every region's shares come from its own published counts.",
+  "weeks_per_year": 52,
+  "component_column": "household_region_code",
+  "map_bands": {
+    "components": [
+      {
+        "value": "01",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r01__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r01__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r01__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r01__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r01__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r01__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r01__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r01__b8"
+          }
+        ]
+      },
+      {
+        "value": "02",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r02__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r02__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r02__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r02__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r02__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r02__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r02__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r02__b8"
+          }
+        ]
+      },
+      {
+        "value": "03",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r03__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r03__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r03__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r03__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r03__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r03__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r03__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r03__b8"
+          }
+        ]
+      },
+      {
+        "value": "04",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r04__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r04__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r04__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r04__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r04__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r04__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r04__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r04__b8"
+          }
+        ]
+      },
+      {
+        "value": "05",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r05__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r05__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r05__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r05__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r05__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r05__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r05__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r05__b8"
+          }
+        ]
+      },
+      {
+        "value": "06",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r06__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r06__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r06__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r06__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r06__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r06__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r06__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r06__b8"
+          }
+        ]
+      },
+      {
+        "value": "07",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r07__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r07__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r07__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r07__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r07__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r07__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r07__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r07__b8"
+          }
+        ]
+      },
+      {
+        "value": "08",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r08__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r08__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r08__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r08__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r08__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r08__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r08__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r08__b8"
+          }
+        ]
+      },
+      {
+        "value": "09",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r09__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r09__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r09__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r09__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r09__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r09__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r09__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r09__b8"
+          }
+        ]
+      },
+      {
+        "value": "12",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r12__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r12__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r12__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r12__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r12__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r12__b6"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r12__b8"
+          }
+        ]
+      },
+      {
+        "value": "13",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r13__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r13__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r13__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r13__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r13__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r13__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r13__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r13__b8"
+          }
+        ]
+      },
+      {
+        "value": "14",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r14__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r14__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r14__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r14__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r14__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r14__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r14__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r14__b8"
+          }
+        ]
+      },
+      {
+        "value": "15",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r15__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r15__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r15__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r15__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r15__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r15__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r15__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r15__b8"
+          }
+        ]
+      },
+      {
+        "value": "16",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r16__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r16__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r16__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r16__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r16__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r16__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r16__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r16__b8"
+          }
+        ]
+      },
+      {
+        "value": "17",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r17__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r17__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r17__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r17__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r17__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r17__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r17__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r17__b8"
+          }
+        ]
+      },
+      {
+        "value": "18",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r18__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r18__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r18__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r18__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r18__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": 36400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r18__b6"
+          },
+          {
+            "lower": 36400.0,
+            "upper": 41600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r18__b7"
+          },
+          {
+            "lower": 41600.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r18__b8"
+          }
+        ]
+      },
+      {
+        "value": "99",
+        "bands": [
+          {
+            "lower": 0.0,
+            "upper": 10400.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r99__b1"
+          },
+          {
+            "lower": 10400.0,
+            "upper": 15600.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r99__b2"
+          },
+          {
+            "lower": 15600.0,
+            "upper": 20800.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r99__b3"
+          },
+          {
+            "lower": 20800.0,
+            "upper": 26000.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r99__b4"
+          },
+          {
+            "lower": 26000.0,
+            "upper": 31200.0,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r99__b5"
+          },
+          {
+            "lower": 31200.0,
+            "upper": null,
+            "reference": "stats_nz_census_households_by_weekly_rent_region__r99__b6"
+          }
+        ]
+      }
+    ]
+  },
+  "interpolation": {
+    "method": "pareto",
+    "alpha": 4.615054
+  },
+  "tail_fit": {
+    "estimator": "grouped_pareto_mle@1",
+    "anchors": [
+      {
+        "reference": "national_weekly_rent_band_6",
+        "lower": "31200",
+        "upper": "36400",
+        "count": 68544.0
+      },
+      {
+        "reference": "national_weekly_rent_band_7",
+        "lower": "36400",
+        "upper": "41600",
+        "count": 32286.0
+      },
+      {
+        "reference": "national_weekly_rent_band_8",
+        "lower": "41600",
+        "upper": null,
+        "count": 35712.0
+      }
+    ],
+    "bracket": [
+      "1.00000095367431640625",
+      "64"
+    ],
+    "iterations": 64,
+    "alpha_decimal": "4.615054",
+    "top_band_lower": "41600",
+    "top_band_mean_decimal": "53107.435297"
+  },
+  "zero_count_merges": [
+    {
+      "region": "12",
+      "zero_count_reference": "stats_nz_census_households_by_weekly_rent_region__r12__b7",
+      "kept": "stats_nz_census_households_by_weekly_rent_region__r12__b6"
+    },
+    {
+      "region": "99",
+      "zero_count_reference": "stats_nz_census_households_by_weekly_rent_region__r99__b7",
+      "kept": "stats_nz_census_households_by_weekly_rent_region__r99__b6"
+    },
+    {
+      "region": "99",
+      "zero_count_reference": "stats_nz_census_households_by_weekly_rent_region__r99__b8",
+      "kept": "stats_nz_census_households_by_weekly_rent_region__r99__b6"
+    }
+  ],
+  "disclosure": "Each edge is a Census 2023 weekly-rent cut times 52, in NZD per year, because the rent concept is annual and the Accommodation Supplement's weekly-rent input divides it by 52. The counts hold Census 2023 levels, and the C1 rent ageing ruling remains open. The publisher's product does not state the table's population; its label reads weekly rent paid by household. The map keeps zero rent at zero and ranks positive rents, so these bands set shares among rent-paying households and the map does not change how many households pay rent.",
+  "zero_count_disclosure": "transport.quantile_map refuses a zero share. Where the Census publishes 0 for a band, the band below it takes its upper edge and keeps its own reference, so the merged band spreads its households across the range the Census publishes as 0. A published 0 need not mean no households: every count in these tables is a multiple of 3, and the regional counts sum to the national count within 6 per band while the totals agree. A region whose open top band publishes 0 takes its Pareto top from the lower edge of the nearest band with a positive count, so part of that top maps above cuts where the Census publishes 0."
+}

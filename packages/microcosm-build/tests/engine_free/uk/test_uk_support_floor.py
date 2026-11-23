@@ -67,7 +67,7 @@ def _frame():
         {
             "household_id": [1, 2, 3, 4, 5, 6],
             "region": ["LONDON"] * 6,
-            "household_source_id": [10, 10, 20, 30, 40, 40],
+            "source_household_id": [10, 10, 20, 30, 40, 40],
             "band_low": [1.0, 1.0, 1.0, 1.0, 0.0, 0.0],
             "band_thin": [1.0, 1.0, 0.0, 0.0, 0.0, 1.0],
             "band_zero_weight": [0.0, 0.0, 0.0, 0.0, 1.0, 1.0],
@@ -290,11 +290,11 @@ def test_lineage_is_read_only_when_a_row_in_scope_needs_it():
     no_lineage = uk_national_frame(
         person=frame.table("person"),
         benunit=frame.table("benunit"),
-        household=frame.table("household").drop(columns=["household_source_id"]),
+        household=frame.table("household").drop(columns=["source_household_id"]),
         household_weights=frame.weights_for("household").values,
         time_period="2025",
     )
-    with pytest.raises(ValueError, match="household_source_id"):
+    with pytest.raises(ValueError, match="source_household_id"):
         uk_household_source_ids(no_lineage)
 
 
@@ -358,12 +358,19 @@ def test_the_packaged_floor_drops_only_unsupported_bands_and_binds_thin_ones():
             ),
             *(f"dwp.benefit_cap.capped_households_{band}" for band in bands),
         },
-        # Extended on María's ruling of 2026-10-22 (the next policyengine-uk bump).
+        # Extended on María's ruling of 2026-10-22 (the next policyengine-uk
+        # bump), then to the SPI families microcosm#1418 binds: Table 3.7's
+        # other income and Table 3.10's self-employment bands, and to the
+        # employment counts over those bands microcosm#1428 binds.
         "hmrc_spi_income_band_counts": {
-            f"hmrc.spi.{family}.count_by_total_income_band" for family in spi
+            *(f"hmrc.spi.{family}.count_by_total_income_band" for family in spi),
+            "hmrc.spi.self_employment_income.count_by_self_employment_income_band",
+            "hmrc.spi.employment_income.count_by_self_employment_income_band",
         },
         "hmrc_spi_income_band_amounts": {
-            f"hmrc.spi.{family}.amount_by_total_income_band" for family in spi
+            *(f"hmrc.spi.{family}.amount_by_total_income_band" for family in spi),
+            "hmrc.spi.other_investment_income.amount_by_total_income_band",
+            "hmrc.spi.self_employment_income.amount_by_self_employment_income_band",
         },
         "council_tax_band_h_by_region": {"mhclg.council_tax_stock.band_h"},
     }
@@ -527,10 +534,26 @@ def test_readers_narrow_by_the_recorded_drops_under_the_declared_floor():
         narrow_uk_registry_by_support_floor(registry, {"other": record}, floor)
     with pytest.raises(ValueError, match="not a row of the register"):
         narrow_uk_registry_by_support_floor(registry, {"absent": record}, floor)
-    with pytest.raises(ValueError, match="declared signature"):
-        narrow_uk_registry_by_support_floor(
-            registry, {"thin": {**record, "approved_by": "someone"}}, floor
-        )
+    for field, value in (
+        ("approved_by", "someone"),
+        ("approved_on", "2026-01-01"),
+        ("expires_on", "2027-12-31"),
+        ("tracking", "microcosm#1"),
+    ):
+        with pytest.raises(ValueError, match="declared signature"):
+            narrow_uk_registry_by_support_floor(
+                registry, {"thin": {**record, field: value}}, floor
+            )
+    # A drop recorded before the floor's texts were re-worded keeps its
+    # signature, so a run built then can still be certified at a later head
+    # (the re-review of microcosm#1420, 3).
+    reworded = {**record, "reason": "an older reason", "adjudication": "older"}
+    assert [
+        spec.name
+        for spec in narrow_uk_registry_by_support_floor(
+            registry, {"thin": reworded}, floor
+        ).specs
+    ] == ["low", "other"]
     tight = uk_support_floor_from_payload(_block(scope={"max_dropped_rows": 0}))
     with pytest.raises(ValueError, match="in scope 'uc_bands', more than its signed"):
         narrow_uk_registry_by_support_floor(registry, {"thin": record}, tight)
@@ -685,3 +708,13 @@ def test_readers_take_the_solved_register_from_the_problem_bindings():
         solved_national_measure_exclusions(
             document, {"measure_exclusions": {"thin": record}}
         )
+
+
+def test_the_floor_counts_the_receipts_true_source_column() -> None:
+    """The floor names its column because the target kernels hash it and not
+    receipt_counts; the two stay one column (microcosm#931)."""
+
+    from microcosm.build.uk_runtime.receipt_counts import SOURCE_HOUSEHOLD_COLUMN
+    from microcosm.build.uk_runtime.support_floor import UK_SUPPORT_LINEAGE_COLUMN
+
+    assert UK_SUPPORT_LINEAGE_COLUMN == SOURCE_HOUSEHOLD_COLUMN

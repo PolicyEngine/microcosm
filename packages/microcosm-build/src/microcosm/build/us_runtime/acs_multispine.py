@@ -32,6 +32,23 @@ from microcosm.build.us_runtime.acs_local_hours import (
     complete_acs_local_under15_hours,
     require_acs_local_hours_fallback_universe,
 )
+from microcosm.build.us_runtime.acs_local_income import (
+    ACS_LOCAL_INCOME_DONOR_CHANNEL,
+    ACS_LOCAL_INCOME_PREDICTOR_EXTENSIONS,
+    acs_local_income_transfer_target_families,
+    map_acs_local_other_income,
+    record_acs_local_income_transfer,
+    require_acs_local_income_donor,
+    without_acs_local_other_income,
+)
+from microcosm.build.us_runtime.acs_local_receipt_anchors import (
+    require_acs_receipt_anchor_sources,
+    with_acs_local_snap_receipt_anchor,
+)
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    map_acs_local_work_disability_inputs,
+    record_acs_local_work_disability_transfer,
+)
 from microcosm.build.us_runtime.acs_pums import (
     DEFAULT_CHUNKSIZE,
     AcsPumsSource,
@@ -45,8 +62,17 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.base_pool import (
+    ACS_POOL_BLOCK_LOCATION_METADATA_KEY,
     preflight_pooled_ladder_geography,
+    validate_pool_location_options,
     with_optional_acs_spine,
+)
+from microcosm.build.us_runtime.block_location import (
+    US_BLOCK_LOCATION_RULE_ID,
+    US_LOCATION_RULE_BLOCK_V1,
+    US_LOCATION_RULE_LEGACY,
+    UsLocationLadder,
+    location_geography_columns,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
@@ -92,6 +118,10 @@ def build_optional_acs_multispine(
     hours_donor_factory: Callable[[Frame], tuple[Frame, Frame, dict[str, object]]]
     | None = None,
     hours_under15_policy: str | None = None,
+    work_disability_inputs: bool = False,
+    income_transfer: bool = False,
+    native_receipt_anchors: bool = False,
+    semp_covers_partnership_income: bool = False,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
@@ -103,6 +133,11 @@ def build_optional_acs_multispine(
         CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
     ),
     drop_group_quarters_children: bool = False,
+    location_rule: str = US_LOCATION_RULE_LEGACY,
+    block_ladder: UsLocationLadder | None = None,
+    location_seed: int = 0,
+    location_clones: int = 1,
+    donor_location_rule: str | None = None,
 ) -> AcsMultispineResult:
     """Optionally build, transfer, and append the ACS 2024 1-year spine.
 
@@ -112,11 +147,46 @@ def build_optional_acs_multispine(
     fallback for usual-hours cells unresolved by the native WKHP mapping.
     Alternatively, ``hours_donor_factory`` qualifies that donor lazily: a
     source-complete ACS spine never needs its raw ASEC fields opened.
+    ``work_disability_inputs`` (the ACS local lane, microcosm#1021) writes
+    native ``is_disabled``/``is_blind``/``weeks_worked`` on every ACS row
+    before any transfer, so the null-only transfer leaves them alone; its
+    receipt is ``provenance["acs_local_work_disability"]``.
+    ``income_transfer`` (the ACS local lane, microcosm#1022) runs a separate
+    ASEC-channel QRF pass for the SNAP-relevant income leaves the shared plan
+    does not carry, with its own local-only plan and two opt-in predictor
+    extensions for that call alone (ACS ``OIP`` for child support, an
+    ACS-aligned ``RETP`` analog for disability and account distributions);
+    the shared transfer and its execution contract are unchanged. Its receipt
+    is ``provenance["acs_local_income_transfer"]``.
+    ``native_receipt_anchors`` (the ACS local lane, microcosm#1022) replaces
+    the transferred ``receives_snap`` with native household ``FS`` on every
+    ACS SPM unit after the shared transfer, whose plan is unchanged, and
+    before pooling, so no donor row reaches it; its receipt (with the ``PAP``
+    public-assistance counts it records against ``receives_tanf``) is
+    ``provenance["acs_local_receipt_anchors"]``. The source is checked before
+    any fit.
+    ``semp_covers_partnership_income`` (the ACS local lane, microcosm#1387)
+    tells the shared transfer that ACS ``SEMP`` already includes
+    own-partnership income, so a ``partnership_income`` draw is kept at zero
+    where the row's or its tax unit's SEMP accounts for it (see
+    :func:`~microcosm.build.us_runtime.acs_transfer.keep_semp_covered_partnership_income`).
+    Only the shared call receives it; the hours and income passes do not
+    draw ``partnership_income``.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
     but it avoids retaining the raw, mapped, transferred, and pooled versions
     together for the rest of the build.
+
+    ``location_rule`` defaults to ``"legacy"``: the PUMA-ladder assignment
+    above, unchanged. ``"block_v1"`` (microcosm#696) locates every pooled
+    household on one 2020 block from ``block_ladder`` instead
+    (:func:`~microcosm.build.us_runtime.base_pool.with_optional_acs_spine`);
+    its record lands in ``provenance["household_location"]``.
+    ``donor_location_rule`` is the location rule ``base`` recorded;
+    ``block_v1`` keeps each donor's block, so it refuses a base located under
+    any other rule. The location options are validated before the ACS spine
+    is loaded.
     """
 
     if source is None:
@@ -124,12 +194,32 @@ def build_optional_acs_multispine(
             frame=base,
             provenance={"enabled": False},
         )
+    block_location = location_rule != US_LOCATION_RULE_LEGACY
+    if (
+        block_location
+        or block_ladder is not None
+        or location_seed != 0
+        or location_clones != 1
+        or donor_location_rule is not None
+    ):
+        validate_pool_location_options(
+            location_rule,
+            block_ladder=block_ladder,
+            location_seed=location_seed,
+            location_clones=location_clones,
+            geography_seed=geography_seed,
+            donor_location_rule=donor_location_rule,
+        )
 
     raw_acs, loader_metadata = build_acs_pums_unit_frame(
         source,
         chunksize=chunksize,
     )
     loader_provenance = _json_ready_mapping(loader_metadata)
+    if native_receipt_anchors:
+        # Local lane only (microcosm#1022): refuse a source whose FS or PAP
+        # the post-transfer anchor cannot read before any fit runs.
+        require_acs_receipt_anchor_sources(raw_acs)
 
     # Interim (microcosm#1263, d1484): a group-quarters child under 15 can
     # have no classified SPM adult, and an engine that measures every unit
@@ -148,6 +238,21 @@ def build_optional_acs_multispine(
     native_provenance = _json_ready_mapping(mapped.native_inputs)
     mapped_frame = mapped.frame
     del mapped
+    work_disability = None
+    if work_disability_inputs:
+        # Local lane only: map_acs_native_inputs is shared with the pool and
+        # stays unchanged. Native values must land before the transfers below,
+        # which fill only missing cells (microcosm#1021).
+        local = map_acs_local_work_disability_inputs(mapped_frame)
+        overlap = sorted(set(native_provenance) & set(local.native_inputs))
+        if overlap:
+            raise ValueError(
+                f"ACS local work/disability inputs would overwrite native {overlap}."
+            )
+        native_provenance.update(_json_ready_mapping(local.native_inputs))
+        mapped_frame = local.frame
+        work_disability = local.receipt
+        del local
     modeled_hours = None
     if hours_under15_policy is not None:
         mapped_frame, modeled_hours = complete_acs_local_under15_hours(
@@ -168,7 +273,16 @@ def build_optional_acs_multispine(
     # tract, incoherent preserved geography, or an unknown ACS PUMA must
     # fail here, not after the QRF fits have run.
     donor_geography: str | None = None
-    if puma_ladder is not None:
+    if block_location:
+        donor_geography = preflight_pooled_ladder_geography(
+            base.table("household"),
+            mapped_frame.table("household"),
+            puma_ladder,
+            location_rule=location_rule,
+            block_ladder=block_ladder,
+            donor_location_rule=donor_location_rule,
+        )
+    elif puma_ladder is not None:
         donor_geography = preflight_pooled_ladder_geography(
             base.table("household"),
             mapped_frame.table("household"),
@@ -209,6 +323,45 @@ def build_optional_acs_multispine(
         hours_imputed_inputs = tuple(hours_transfer.imputed_inputs)
         hours_donor_channel = hours_transfer.resolved_donor_channel
         del hours_transfer
+    income_fit_records = ()
+    income_imputed_inputs = ()
+    income_receipt = None
+    if income_transfer:
+        # Local lane only (microcosm#1022): measured ASEC amounts, a plan
+        # disjoint from the shared declaration, and the shared null-only merge.
+        # ACS OIP and an ACS-aligned RETP analog enter as opt-in predictor
+        # extensions of this call alone (microcosm#1056 review), so the shared
+        # transfer below keeps its predictors, draws and execution contract.
+        income_donor = require_acs_local_income_donor(base)
+        acs_persons = mapped_frame.n("person")
+        other_income = map_acs_local_other_income(mapped_frame)
+        other_income_coverage = other_income.coverage
+        mapped_frame = other_income.frame
+        del other_income
+        income = transfer_acs_inputs(
+            mapped_frame,
+            base,
+            target_families=acs_local_income_transfer_target_families(),
+            donor_spine=donor_spine,
+            donor_channel=ACS_LOCAL_INCOME_DONOR_CHANNEL,
+            seed=seed,
+            n_estimators=n_estimators,
+            max_targets_per_fit=max_targets_per_fit,
+            person_predictor_extensions=ACS_LOCAL_INCOME_PREDICTOR_EXTENSIONS,
+        )
+        # The mapped OIP is this pass's predictor source only: it never
+        # reaches the shared transfer, the pool or the release.
+        mapped_frame = without_acs_local_other_income(income.frame)
+        income_fit_records = tuple(income.fit_records)
+        income_imputed_inputs = tuple(income.imputed_inputs)
+        income_receipt = record_acs_local_income_transfer(
+            income_donor,
+            _json_ready_sequence(income_imputed_inputs),
+            acs_persons=acs_persons,
+            other_income=other_income_coverage,
+        )
+        income_receipt["resolved_donor_channel"] = income.resolved_donor_channel
+        del income
     transferred = transfer_acs_inputs(
         mapped_frame,
         base,
@@ -218,15 +371,30 @@ def build_optional_acs_multispine(
         seed=seed,
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
+        **(
+            {"semp_covers_partnership_income": True}
+            if semp_covers_partnership_income
+            else {}
+        ),
     )
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
-    fit_records = hours_fit_records + tuple(transferred.fit_records)
+    fit_records = (
+        hours_fit_records + income_fit_records + tuple(transferred.fit_records)
+    )
     imputed_provenance = _json_ready_sequence(
-        hours_imputed_inputs + tuple(transferred.imputed_inputs)
+        hours_imputed_inputs + income_imputed_inputs + tuple(transferred.imputed_inputs)
     )
     deferred_inputs = tuple(transferred.deferred_inputs)
-    if puma_ladder is not None:
+    if block_location:
+        # The block resolves every geography the transfer defers (block,
+        # tract, county, congressional district).
+        assert block_ladder is not None
+        located = set(location_geography_columns(block_ladder))
+        deferred_inputs = tuple(
+            column for column in deferred_inputs if column not in located
+        )
+    elif puma_ladder is not None:
         deferred_inputs = tuple(
             column
             for column in deferred_inputs
@@ -237,9 +405,32 @@ def build_optional_acs_multispine(
     fit_provenance = _json_ready_sequence(fit_records)
     transferred_frame = transferred.frame
     del transferred
+    receipt_anchors = None
+    if native_receipt_anchors:
+        # Local lane only (microcosm#1022): after the shared transfer, so the
+        # declared plan still fits receives_snap and the receipt can count
+        # what the measured FS overrides; before pooling, so the frame holds
+        # ACS rows only and the donor's ASEC receipt is never touched.
+        transferred_frame, receipt_anchors = with_acs_local_snap_receipt_anchor(
+            transferred_frame
+        )
 
     pool_options: dict[str, Any] = {"acs_share": acs_share}
-    if puma_ladder is not None:
+    if block_location:
+        pool_options.update(
+            {
+                "geography_seed": geography_seed,
+                "expected_congressional_district_vintage": (
+                    expected_congressional_district_vintage
+                ),
+                "location_rule": location_rule,
+                "block_ladder": block_ladder,
+                "location_seed": location_seed,
+                "location_clones": location_clones,
+                "donor_location_rule": donor_location_rule,
+            }
+        )
+    elif puma_ladder is not None:
         pool_options.update(
             {
                 "puma_ladder": puma_ladder,
@@ -279,7 +470,35 @@ def build_optional_acs_multispine(
         provenance["local_hours_source"] = hours_source
     if modeled_hours is not None:
         provenance["hours_modeled_completion"] = modeled_hours
-    if puma_ladder is not None:
+    if income_receipt is not None:
+        provenance["fit_configuration"]["income_donor_channel"] = income_receipt[
+            "resolved_donor_channel"
+        ]
+        provenance["acs_local_income_transfer"] = _json_ready_mapping(income_receipt)
+    if receipt_anchors is not None:
+        provenance["acs_local_receipt_anchors"] = _json_ready_mapping(receipt_anchors)
+    if work_disability is not None:
+        provenance["acs_local_work_disability"] = _json_ready_mapping(
+            record_acs_local_work_disability_transfer(
+                work_disability, imputed_provenance
+            )
+        )
+    if block_location:
+        assert block_ladder is not None
+        provenance["household_location"] = _json_ready_mapping(
+            _thawed_metadata(pooled.metadata[ACS_POOL_BLOCK_LOCATION_METADATA_KEY])
+        )
+        provenance["geography_ladder"] = _block_geography_provenance(
+            pooled,
+            block_ladder,
+            puma_ladder,
+            location_seed=location_seed,
+            donor_geography=donor_geography,
+            expected_congressional_district_vintage=(
+                expected_congressional_district_vintage
+            ),
+        )
+    elif puma_ladder is not None:
         geography = us_puma_ladder_assignment_summary(
             pooled.table("household"),
             puma_ladder,
@@ -317,6 +536,58 @@ def build_optional_acs_multispine(
     )
 
 
+def _block_geography_provenance(
+    pooled: Frame,
+    block_ladder: UsLocationLadder,
+    puma_ladder: UsPumaLadder | None,
+    *,
+    location_seed: int,
+    donor_geography: str | None,
+    expected_congressional_district_vintage: str | None,
+) -> dict[str, Any]:
+    """The ``geography_ladder`` provenance of a ``block_v1`` pool.
+
+    It keeps the legacy record's shape (coverage of the PUMA-ladder columns,
+    which ``block_v1`` still writes, from
+    :func:`~microcosm.build.us_runtime.puma_ladder.us_puma_ladder_assignment_summary`
+    when a PUMA ladder is supplied) and states the block rule: every
+    geography column is resolved from the drawn or preserved block, so no
+    sub-PUMA input stays unresolved.
+    """
+
+    household = pooled.table("household")
+    columns = list(location_geography_columns(block_ladder))
+    if puma_ladder is not None:
+        geography = us_puma_ladder_assignment_summary(
+            household,
+            puma_ladder,
+            weight_values=pooled.weights_for("household").values,
+        )
+    else:
+        geography = {
+            "applied": all(column in household.columns for column in columns),
+            "household_rows": int(len(household)),
+        }
+    geography.update(
+        {
+            "location_rule": US_LOCATION_RULE_BLOCK_V1,
+            "assignment_rule": US_BLOCK_LOCATION_RULE_ID,
+            "seed": location_seed,
+            "block_ladder_sha256": block_ladder.sha256,
+            "block_layer_vintages": block_ladder.layer_vintages,
+            "expected_congressional_district_vintage": (
+                expected_congressional_district_vintage
+            ),
+            # ACS rows draw a block within their observed PUMA; donor rows
+            # keep the block their block_v1 base drew.
+            "donor_geography": donor_geography,
+            "resolved_model_inputs": columns,
+            "unresolved_sub_puma_inputs": [],
+        }
+    )
+    return _json_ready_mapping(geography)
+
+
 def _require_recipient_adult_care_structure(
     frame: Frame,
 ) -> dict[str, Any] | None:
@@ -344,6 +615,20 @@ def _require_recipient_adult_care_structure(
             "gate:\n  " + "\n  ".join(gate.failures)
         )
     return {"passed": True, "details": dict(gate.details)}
+
+
+def _thawed_metadata(value: Any) -> Any:
+    """A plain-container copy of frozen :class:`Frame` metadata.
+
+    Frame metadata freezes mappings and sequences into its own immutable
+    types; the manifest wants plain dicts and lists.
+    """
+
+    if isinstance(value, Mapping):
+        return {key: _thawed_metadata(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_thawed_metadata(item) for item in value]
+    return value
 
 
 def _json_ready_mapping(value: Mapping[str, Any]) -> dict[str, Any]:

@@ -9,7 +9,6 @@ PolicyEngineUKEngine` returns :data:`POLICYENGINE_UK_CONCEPT_MAPPING` from
 
 from microcosm.frame.concept_mapping import (
     ConceptMapping,
-    Fraction,
     GroupRule,
     Identity,
     InputBinding,
@@ -36,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.151.0. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.179.2. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -183,27 +182,126 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
 
 
 #: Take-up inputs of the engine the build leaves at the engine's default,
-#: with why. None today: ``would_claim_uc_at_legacy_closure``
-#: (policyengine-uk 2.128.0, pe-uk#2119), the last of them, is drawn at DWP's
-#: Move to UC claim rates since they became a Chronicle fact (microcosm#1095).
-UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {}
+#: with why. ``would_claim_uc_at_legacy_closure`` (policyengine-uk 2.128.0,
+#: pe-uk#2119) left this register once DWP's Move to UC claim rates became a
+#: Chronicle fact (microcosm#1095).
+UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {
+    "would_claim_wales_childcare_offer": (
+        "Whether a family would claim the Childcare Offer for Wales if eligible "
+        "(policyengine-uk 2.155.0, pe-uk#2535); the engine's default is true, so "
+        "every eligible family in Wales claims it. The Welsh Government publishes "
+        "the Offer's take-up, but the pinned Chronicle feed carries no fact for "
+        "it, so the build leaves the default: the Offer's cost, and the "
+        "childcare support of Welsh families, are overstated by the eligible "
+        "families who do not claim. A Chronicle request is drafted, and the flag "
+        "is drawn at the published rate once the fact lands (María's ruling of "
+        "2026-10-25, microcosm#1095)."
+    ),
+    "would_claim_student_loan": (
+        "Whether a tertiary-educated person with no recorded student loan "
+        "takes one up when policyengine-uk's projection of later years makes "
+        "them a new borrower (policyengine-uk 2.179.0, a stored draw). The "
+        "build stores none, so the engine keeps its own draw, keyed on "
+        "person_id at its graduate take-up rate (0.4), as before 2.179.0: "
+        "which graduates become new borrowers is random with respect to "
+        "everything the file records beyond their education, age and region, "
+        "and the same in every year. The survey year's loans, which the "
+        "student_loans stage writes, do not move (microcosm#1095; María's "
+        "signature of 19 November 2026, pending review)."
+    ),
+}
+
+
+_UK_OWNED_COMPANY_STOCKS_AT_DEFAULT = (
+    "The FRS records whether an adult runs their own company (the job record's "
+    "director answers, from which the root stage sets "
+    "stands_as_sole_owner_or_partner_of_company and five more owner-manager "
+    "inputs) but no company balance sheet. So the three regulation 77 stocks, "
+    "owned_company_capital, owned_company_holding_value and "
+    "owned_company_trade_assets, stay at zero, and Universal Credit makes no "
+    "company substitution (UC Regs 2013 reg. 77(2), (3)(a)): an owner-manager's "
+    "capital is the unit's recorded capital alone. It is too high by their own "
+    "company's shares where the recorded capital includes them (the FRS "
+    "stocks-and-shares questions do not exclude them), which the regulation "
+    "replaces by the company's capital, and too low by the company's capital "
+    "beyond the assets used wholly and exclusively in its trade, which the "
+    "regulation counts. Only the capital test moves: tariff income above "
+    "GBP 6,000 and the GBP 16,000 limit (microcosm#1095; for María's signature)."
+)
+_UK_OWNED_COMPANY_INTERMEDIARIES_AT_DEFAULT = (
+    "The FRS does not record whether the intermediaries or managed service "
+    "company rules (ITEPA 2003 Part 2, Chapters 8 to 10) make an owner-manager's "
+    "company income employed earnings, so owned_company_intermediary_earnings_"
+    "chapter stays NONE and owned_company_intermediary_earnings_from_main_"
+    "employment stays False. uc_company_intermediary_exclusion_applies is then "
+    "false for everyone, and Universal Credit's company owner rule applies to "
+    "every owner-manager the root stage flags, including a contractor caught by "
+    "those rules in their main employment, whom UC Regs 2013 reg. 77(5) takes "
+    "out of it. Such a contractor's award is assessed on the company's income "
+    "and capital instead of as an employee's, which can move it either way "
+    "(microcosm#1095; for María's signature)."
+)
+_UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT = (
+    "The exceptions to the Universal Credit and Child Tax Credit two-child limit "
+    "(UC Regs 2013 Sch 12; CTC Regs 2002 regs 9 to 14; policyengine-uk 2.161.0) "
+    "for multiple births, adoption, non-consensual conception and the "
+    "continuation of an earlier exception. The FRS records none of them as such, "
+    "so each stays false, and a third or later child who qualifies for one gets "
+    "no child element: Universal Credit is understated for those families until "
+    "the limit ends on 6 April 2026. Multiple births stay false although "
+    "siblings of the same age could stand for them: the FRS has no twin field and "
+    "its birth dates are blank, so same-age siblings would also take in siblings "
+    "born under a year apart (María's ruling of 2 November 2026). The "
+    "non-parental caring exception is read from the household grid by "
+    "frs_relationships (microcosm#1095; for María's signature)."
+)
+#: The fourteen uk_total_* inputs (policyengine-uk 2.178.0, policyengine-uk#2901)
+#: are no longer defaults: the release boundary writes the UK totals of the
+#: share keys' components at the file's weights
+#: (microcosm.build.uk_runtime.national_frame.uk_household_totals; María's call
+#: of 19 November 2026).
+_UK_LEFT_EDUCATION_ROUTES_AT_DEFAULT = (
+    "Three routes by which a young person who has left education stays a "
+    "qualifying young person for part of the year (policyengine-uk 2.178.3): "
+    "before the Child Benefit terminal date after leaving (Child Benefit "
+    "(General) Regulations 2006 reg. 7(2)), and in the 20-week extension "
+    "period of a young person registered for work or training, for Child "
+    "Benefit (reg. 5) and for Child Tax Credit (Child Tax Credit Regulations "
+    "2002 reg. 5(3)(b)). The FRS records whether a person is in full-time "
+    "education at interview, but no leaving date, registration or request for "
+    "the extension, so all three stay False, as the engine documents for "
+    "surveys. A young person who left education during the year then stops "
+    "counting from leaving, so Child Benefit, and the Housing Benefit, legacy "
+    "benefit and Council Tax Reduction young persons that follow its "
+    "conditions, are understated for the weeks the terminal date or the "
+    "extension would have kept them; Child Tax Credit closed on 5 April 2025 "
+    "(microcosm#1095; María's signature of 19 November 2026, pending review)."
+)
+_UK_LHA_PLACEMENTS_AT_DEFAULT = (
+    "Four size-criteria and family inputs (policyengine-uk 2.178.7): a child "
+    "placed for adoption, an adopter who is the child's foster parent or close "
+    "relative, an approved foster parent between placements, and a person "
+    "with a non-resident overnight carer. The build reads none of them: its "
+    "relationship codes count an adopted child as the parent's own (FRS "
+    "relationship code 3) and record no placement, and it reads neither "
+    "foster approval nor overnight care from outside the household. So all "
+    "four stay False. A child placed for adoption then counts as the adopter's "
+    "own child: Housing Benefit, the legacy means tests, the pension-age "
+    "Council Tax Reduction schemes and Tax-Free Childcare count a child they "
+    "would leave out, and Universal Credit gives the adopter neither the "
+    "foster parent's additional bedroom nor the shared accommodation rate "
+    "exception. A foster parent between placements, and a renter whose "
+    "disabled member has a non-resident overnight carer, miss an additional "
+    "bedroom, so the Universal Credit housing element and Housing Benefit are "
+    "understated for them. adopter_is_foster_parent_or_close_relative "
+    "changes nothing while is_placed_for_adoption is False (microcosm#1095; "
+    "María's signature of 19 November 2026, pending review)."
+)
 
 
 #: Other engine inputs the build leaves at the engine's default, each signed as
 #: an approximation with the error it can make (microcosm#1095).
 UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
-    "self_employment_gross_receipts": (
-        "No source of the self-employed's turnover is read yet (the FRS job "
-        "record and the SPI tape are the candidates, as #1145 found landlords' "
-        "receipts). Since policyengine-uk 2.108.0 the trading allowance replaces "
-        "expenses and does not stack on them, so without receipts "
-        "trading_allowance_deduction relieves a profit of GBP 1,000 or less in "
-        "full and gives a larger profit no allowance. Taxable profit is off by at "
-        "most GBP 1,000 a person: too low where receipts above GBP 1,000 leave a "
-        "small profit, too high just above GBP 1,000 where the allowance would "
-        "beat the expenses. Signed as an approximation with the plan for the "
-        "next policyengine-uk bump, approved on 2026-10-23."
-    ),
     "housing_benefit_residential_capital_exception": (
         "The working-age residential capital tariff exception (Housing Benefit "
         "Regulations 2006 reg. 52(4)-(5), (8)-(9); NI reg. 49) covers residents "
@@ -215,6 +313,303 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "GBP 6,000 instead of GBP 10,000, so Housing Benefit is understated for "
         "such residents alone; eligibility, capital and the upper limit do not "
         "move (Vahid's review of #1383, item 4)."
+    ),
+    "uc_receives_new_claimant_health_element": (
+        "From 6 April 2026 the LCWRA element of a claim made after that date "
+        "is paid at the lower new-claimant rate (UC Regs 2013 reg. 36). Every "
+        "FRS 2024-25 recipient claimed before it, and the survey cannot say who "
+        "would claim after it, so the build supplies no status for any year, "
+        "and policyengine-uk assigns it from the draw the uc_new_claimant_draw "
+        "stage stores (uc_new_claimant_health_element_draw, policyengine-uk "
+        "2.179.0): a unit with the element gets the new-claimant rate where "
+        "its draw falls below gov.dwp.universal_credit.rebalancing."
+        "new_claimant_share (WPI Economics' estimates for 2026-27 to 2029-30, "
+        "held after). The stage orders the draw by claim recency, then age, "
+        "within the units paid the element at the calibration year, and keeps "
+        "it uniform, so at the stage's weights the share paid the lower rate "
+        "is the parameter's and the units paid it are the most recent and "
+        "youngest claims. The share is zero in 2025, the calibration year. The "
+        "calibration reweights the units, so the share at the release's "
+        "weights moves with how it reweights recent claims; a unit that has "
+        "the element only in a later year, such as one moved off "
+        "income-related ESA, is assigned at random, as the engine's own draw "
+        "assigns every unit (microcosm#1095; María's signature of 19 November 2026, pending review)."
+    ),
+    "owned_company_capital": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
+    "owned_company_holding_value": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
+    "owned_company_trade_assets": _UK_OWNED_COMPANY_STOCKS_AT_DEFAULT,
+    "owned_company_intermediary_earnings_chapter": (
+        _UK_OWNED_COMPANY_INTERMEDIARIES_AT_DEFAULT
+    ),
+    "owned_company_intermediary_earnings_from_main_employment": (
+        _UK_OWNED_COMPANY_INTERMEDIARIES_AT_DEFAULT
+    ),
+    "benunit_reported_capital": (
+        "The build records each benefit unit's capital as the complete "
+        "overrides uc_reported_capital and pension_credit_reported_capital "
+        "(uc_capital_coherence), which both means tests read in place of this "
+        "financial-only record. Where a unit's recorded capital is unavailable "
+        "(-1, with no TOTCAPB4), it falls back to the household capital proxy, "
+        "as the engine documents for this input at -1. Setting it from TOTCAPB4 "
+        "as well would change no assessment: where TOTCAPB4 is recorded the "
+        "overrides take precedence, and where it is not the input would also "
+        "be -1 (microcosm#1095; for María's signature)."
+    ),
+    "housing_benefit_has_main_phase_esa": (
+        "Whether the Housing Benefit claimant is personally entitled to "
+        "main-phase ESA (policyengine-uk 2.152.0), which gives a working-age "
+        "claimant the higher personal allowance (HB Regs 2006 Sch 3 para 1A; NI "
+        "Sch 4 para 1A). The build does not set it, so it stays false and the "
+        "engine keeps its age-based allowance: Housing Benefit is understated "
+        "for a claimant under 25 on main-phase ESA. The FRS records ESA receipt "
+        "and its group, from which a mapping could follow after this lock "
+        "(microcosm#1095; for María's signature)."
+    ),
+    "severe_disability_premium_joint_occupier_exclusion_applies": (
+        "A caller's assertion that every other rent-liable claimant or partner "
+        "in the household is a joint occupier, or has a separate liability, "
+        "that the legacy severe disability premium's non-dependant test "
+        "excludes (policyengine-uk 2.159.0). The FRS records the conditions "
+        "only in part, so the input stays false, as the engine asks when the "
+        "facts are unknown: the premium can be denied to a severely disabled "
+        "claimant who shares a liability on those terms (microcosm#1095; for "
+        "María's signature)."
+    ),
+    "housing_benefit_family_premium_category": (
+        "Housing Benefit's protected family premium (policyengine-uk 2.160.0): "
+        "a working-age claim that kept it from before its closure to new "
+        "claims (1 May 2016 in Great Britain, 5 September 2016 in Northern "
+        "Ireland), or the pre-April 1998 lone-parent rate. The FRS records no "
+        "claim history, so every unit takes the default, NONE: Housing Benefit "
+        "is understated for any such protected claim still in payment "
+        "(microcosm#1095; for María's signature)."
+    ),
+    **dict.fromkeys(
+        (
+            "child_limit_adoption_exception",
+            "child_limit_continuation_exception",
+            "child_limit_multiple_birth_exception",
+            "child_limit_non_consensual_conception_exception",
+        ),
+        _UK_CHILD_LIMIT_EXCEPTIONS_AT_DEFAULT,
+    ),
+    **dict.fromkeys(
+        (
+            "electricity_consumption_kwh",
+            "gas_consumption_kwh",
+            "ni_epg_full_rate_applies",
+        ),
+        "Northern Ireland's Energy Price Guarantee discounts (policyengine-uk "
+        "2.161.1) read each month's kWh and an assertion that the full rates "
+        "apply. The frame stores annual spend and, for the energy dashboards, "
+        "the annual kWh that spend is priced from (electricity_kwh and gas_kwh, "
+        "which the engine does not read), but no month's kWh, so these inputs "
+        "stay unknown (-1), the full rates are not asserted and the discounts are "
+        "not calculated. The guarantee applied in 2022-23 only, so the "
+        "calibration year is unaffected (microcosm#1095; for María's signature).",
+    ),
+    **dict.fromkeys(
+        (
+            "individual_savings_account_dividend_income",
+            "non_cash_isa_cash_interest",
+        ),
+        "ISA dividends and the cash interest held in non-cash ISAs "
+        "(policyengine-uk 2.162.2). The FRS records ISA interest as one total, "
+        "which the frame supplies in individual_savings_account_interest_income "
+        "(microcosm#1360), so the of-which detail stays zero. Until 2027-28 that changes nothing; from 2027-28 the "
+        "detail sets isa_cash_interest_flat_rate_charge, the final charge on cash "
+        "interest in non-cash ISAs, so projections from that year show no such "
+        "charge. It records no ISA dividends "
+        "apart from other dividends, so ISA dividends stay zero: any the "
+        "survey's dividend answer holds are taxed as ordinary dividends "
+        "(microcosm#1095; for María's signature).",
+    ),
+    **dict.fromkeys(
+        (
+            "lifetime_isa_withdrawals",
+            "lifetime_isa_withdrawals_towards_first_home",
+            "lifetime_isa_first_time_buyer",
+            "lifetime_isa_terminally_ill",
+            "lifetime_isa_months_since_first_payment",
+        ),
+        "The Lifetime ISA's withdrawals and the conditions on them "
+        "(policyengine-uk 2.162.2). Neither the FRS nor the WAS records "
+        "withdrawals from a Lifetime ISA (the was_lisa stage draws holdings and "
+        "isa_subscriptions the payments, microcosm#1415), so withdrawals stay "
+        "zero and the withdrawal charge is zero for every account "
+        "(microcosm#1095; for María's signature).",
+    ),
+    **dict.fromkeys(
+        (
+            "main_residential_property_purchased_is_in_uk",
+            "main_residential_property_purchased_with_mortgage",
+        ),
+        "Two flags on a main-home purchase (policyengine-uk 2.162.2) that only "
+        "the Lifetime ISA withdrawal charge's first-home exemption reads. With no "
+        "Lifetime ISA withdrawals they change nothing, so they stay false "
+        "(microcosm#1095; for María's signature).",
+    ),
+    **dict.fromkeys(
+        (
+            "company_car_availability",
+            "company_car_private_use_payments",
+            "company_car_registered_from_6_april_2020",
+        ),
+        "Three of the company car inputs (policyengine-uk 2.165.0, "
+        "policyengine-uk#2750) that the FRS does not ask, so the company_cars "
+        "stage leaves them at the engine's defaults (microcosm#1430): every car "
+        "is available all year, its holder pays nothing for private use, and no "
+        "car carries the flag for registration from 6 April 2020, which changes "
+        "the rates only in 2020-21 and 2021-22. Each car's benefit is then its "
+        "full year's charge, which overstates it for a car held for part of the "
+        "year or one whose holder pays towards its private use (for María's "
+        "signature).",
+    ),
+    "is_in_first_year_of_apprenticeship": (
+        "Whether an apprentice is in the first 12 months of the apprenticeship "
+        "(policyengine-uk 2.162.8, policyengine-uk#2683): the apprentice "
+        "minimum wage applies under 19 or in that first year. The build flags "
+        "apprentices aged 21 to 24 only (frs_person_draws) and records no "
+        "apprenticeship start, so the input stays false and every flagged "
+        "apprentice takes the age-related minimum wage. A first-year apprentice "
+        "aged 21 to 24 is then held to the higher minimum income in the "
+        "Tax-Free Childcare, extended childcare and Childcare Offer for Wales "
+        "income tests, so those tests are slightly harder for them to pass; "
+        "employer NICs do not read it (microcosm#1373; for María's signature)."
+    ),
+    "income_not_otherwise_charged": (
+        "The part of miscellaneous_income that ITTOIA 2005 Part 5 Chapter 8 "
+        "charges, which the trading allowance relieves from policyengine-uk "
+        "2.165.3. The build does not separate it: the FRS odd-job receipts sit "
+        "in miscellaneous_income with its other items, and the SPI tape's "
+        "profits are after the allowance. So the input stays zero and the "
+        "allowance relieves no casual income, as before 2.165.3: for a person "
+        "with such income and no trade receipts that use the allowance, "
+        "taxable income is overstated by up to the trading allowance (GBP "
+        "1,000; GBP 3,000 from 2027-28), so income tax by that amount at the "
+        "person's marginal rate. The means tests read miscellaneous income "
+        "before the allowance, so they do not move. uk-data#641 sets it from "
+        "the FRS odd-job income; its port waits for the odd-job annualisation "
+        "fix, uk-data#640 (microcosm#1095; for María's signature)."
+    ),
+    "machine_games_standard_rate_higher_stake_net_takings": (
+        "The part of the standard-rate Machine Games Duty takings from machines "
+        "with a stake above GBP 1 or a prize above GBP 100 (policyengine-uk "
+        "2.167.0), which pays the 25 percent higher rate from 1 April 2027 and "
+        "the standard rate before. The lcfs_consumption stage writes the "
+        "standard-rate takings whole (microcosm#1381) and has no source for a "
+        "split by machine category, so the input stays zero. Nothing changes "
+        "before April 2027; from then the Budget 2026 rate rise scores nothing "
+        "on these takings. The split needs the Gambling Commission's yield by "
+        "machine category in Chronicle (microcosm#1418, item 5; for María's "
+        "signature)."
+    ),
+    "self_employment_gross_receipts": (
+        "A trader's gross receipts, against which policyengine-uk applies the "
+        "trading allowance. Neither the FRS nor the SPI tape records turnover, "
+        "so the input stays at the engine's zero, and the "
+        "trading_allowance_receipts stage stores which receipts lie behind each "
+        "positive profit as trading_allowance_claim_status instead "
+        "(policyengine-uk 2.172.0, policyengine-uk#2765; microcosm#1439). With "
+        "no receipts the engine relieves a CLAIMANT from the allowance less the "
+        "GBP 1,000 their profit already deducts, a NON_CLAIMANT at no allowance, "
+        "and an UNKNOWN trader in full where the profit lies within the "
+        "allowance. So the build cannot score a reform that turns on receipts "
+        "themselves, such as a turnover threshold, and a NON_CLAIMANT whose "
+        "receipts lie within a raised allowance gains nothing from it (for "
+        "María's signature)."
+    ),
+    "has_education_maintenance_funding": (
+        "Whether the person has a student loan or grant for their maintenance "
+        "(policyengine-uk 2.173.2), which makes a full-time course that is not "
+        "advanced education count as education for Universal Credit (UC Regs "
+        "2013 reg. 12(2)(b)). It matters where is_in_full_time_education is "
+        "true, which frs_education sets from the FRS full-time education "
+        "answer (EDUCFT on 2024-25). The FRS has no clean source for it: a "
+        "payment under a scheme that helps people under 21 finish such courses "
+        "does not count (reg. 68(7)), and the FRS does not say what a grant or "
+        "loan pays for. So it stays false, and a full-time student on a course "
+        "below advanced level receives education only as a qualifying young "
+        "person (reg. 12(1A)): Universal Credit eligibility is overstated for "
+        "such a student who is not a qualifying young person, has maintenance "
+        "funding and whom no exception covers. It is understated for an 18- or "
+        "19-year-old on the FRS adult table on such a course who reports no "
+        "Universal Credit, JSA or ESA of their own and is without parental "
+        "support: policyengine-uk 2.179.2 has no input for parental support, "
+        "so it doesn't apply reg. 14(1)(a), and such a person counts as a "
+        "qualifying young person. Such records are mostly young people living "
+        "away from their parents (microcosm#1095, microcosm#1535; for María's "
+        "signature)."
+    ),
+    "legacy_prescribed_accommodation_capital_exception": (
+        "From policyengine-uk 2.174.8 a claimant who lives permanently in "
+        "prescribed accommodation (a care home, an independent hospital, an "
+        "Abbeyfield Home or Polish Resettlement Act accommodation, receiving the "
+        "care the regulations describe: IS Regs 1987 reg. 53(1B)-(1C), JSA Regs "
+        "1996 reg. 116(1B)-(1C), ESA Regs 2008 reg. 118(3)-(4) and their "
+        "Northern Ireland equivalents) takes tariff income on capital above GBP "
+        "10,000 instead of GBP 6,000 for Income Support, income-based JSA and "
+        "income-related ESA. The FRS samples private households, so it holds "
+        "almost no such resident, and the input stays False. A qualifying "
+        "resident's legacy benefit is understated by the tariff income on "
+        "capital between GBP 6,000 and GBP 10,000; eligibility, capital and the "
+        "upper limit do not move (microcosm#1095; for María's signature)."
+    ),
+    "esa_income_appointee_saving": (
+        "Under SI 2025/1148 art. 3A(2) (SR 2025/176 art. 3A(2) in Northern "
+        "Ireland) an old-style income-related ESA award stays payable after the "
+        "abolition of 1 July 2026 (1 October 2026 in Northern Ireland) where an "
+        "appointee acts for the claimant, or the department decided in the six "
+        "months before that one was likely needed. The FRS does not identify "
+        "appointees, so the input stays False and policyengine-uk 2.175.3 ends "
+        "every reported award at the abolition. DWP exempted around 500 such "
+        "claimants from the June 2026 closure (LA Welfare Direct 6/2026), so "
+        "from July 2026 the build ends about that many awards that the saving "
+        "keeps. 2025, the calibration year, does not move (microcosm#1095; for "
+        "María's signature)."
+    ),
+    **dict.fromkeys(
+        (
+            "is_before_child_benefit_terminal_date",
+            "is_in_child_benefit_extension_period",
+            "is_in_child_tax_credit_extension_period",
+        ),
+        _UK_LEFT_EDUCATION_ROUTES_AT_DEFAULT,
+    ),
+    **dict.fromkeys(
+        (
+            "is_placed_for_adoption",
+            "adopter_is_foster_parent_or_close_relative",
+            "is_approved_foster_parent_without_placement",
+            "has_non_resident_overnight_carer",
+        ),
+        _UK_LHA_PLACEMENTS_AT_DEFAULT,
+    ),
+    "pip_phase_in_draw": (
+        "The PIP phase-in scenario's draw (policyengine-uk 2.179.0): that "
+        "opt-in scenario removes a person's PIP in a year from 2025 to 2029 "
+        "when the draw falls below the year's phase-in share. The build stores "
+        "none, so the scenario keeps its own seeded draw, which gives each "
+        "person the value at their row, as before 2.179.0: which recipients "
+        "lose PIP is random with respect to everything the file records and "
+        "changes with the file's row order, while the share removed follows "
+        "the scenario's on average. The baseline does not read it "
+        "(microcosm#1095; María's signature of 19 November 2026, pending review)."
+    ),
+    "housing_benefit_report_is_rate_rebate_only": (
+        "Whether a Northern Ireland Housing Benefit report covers only a rate "
+        "rebate (policyengine-uk 2.179.2), which a Universal Credit claim ends "
+        "the day before the award, while a rent rebate or allowance runs on "
+        "for two weeks (SR 2016/226 reg. 6). The build writes "
+        "housing_benefit_reported from FRS benefit code 94 without telling the "
+        "two apart, so it stays False and the engine reads every report as a "
+        "rent rebate or allowance. Only the first-day test of the Universal "
+        "Credit education condition reads it, in Northern Ireland: for a young "
+        "person there whose own report is only a rate rebate, the engine reads "
+        "the award as still running on the first day of a Universal Credit "
+        "award, which can change whether that young person counts as a "
+        "qualifying young person on that day (microcosm#1095; María's "
+        "signature of 19 November 2026, pending review)."
     ),
 }
 
@@ -240,7 +635,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.151.0",
+    engine_version="2.179.2",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
@@ -336,24 +731,16 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             Identity(),
             AlignmentRelation.NARROW_MATCH,
             (
-                "Engine documentation: 'Income from interest on savings, gross "
-                "of tax', ISA interest included (taxable savings interest "
-                "subtracts tax_free_savings_income from it). Securities and "
-                "National Savings interest belong to other_investment_income, "
-                "which stays uncovered."
-            ),
-        ),
-        bind(
-            "individual_savings_account_interest_income",
-            "person",
-            "fact:person.interest_income",
-            Fraction(parameter="uk.isa_interest_fraction"),
-            AlignmentRelation.NARROW_MATCH,
-            (
-                "Engine label 'Amount received in interest from Individual "
-                "Savings Accounts': a tax-free part of the interest "
-                "savings_interest_income already holds in full, read through "
-                "tax_free_savings_income."
+                "Engine label from 2.162.2: 'Savings interest outside tax-free "
+                "accounts'. The frame stores it so, under the additive ISA "
+                "income contract it declares (microcosm#1360): ISA interest is "
+                "stored apart in individual_savings_account_interest_income, a "
+                "total the engine's formula takes first, and "
+                "tax_free_savings_income adds it. A legacy gross file (the "
+                "enhanced FRS) stores interest gross with the ISA part in "
+                "tax_free_savings_income, which policyengine-uk subtracts when "
+                "it loads the file. Securities and National Savings interest "
+                "belong to other_investment_income, which stays uncovered."
             ),
         ),
         bind(
@@ -609,7 +996,18 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "describe a company the person owns, for Universal Credit's "
             "regulation 77 (owned_company_capital, owned_company_holding_value "
             "and owned_company_trade_assets); every one defaults to no such "
-            "company, and the build sets none. savings and share_like_capital are two "
+            "company, and the build sets none. Since policyengine-uk 2.164.0 "
+            "cash_isa_balance and stocks_and_shares_isa_balance hold the "
+            "person's ISAs, and the household cash_isa and "
+            "stocks_and_shares_isa sum them; the isa_subscriptions stage "
+            "splits the WAS household totals into them (microcosm#1415), a "
+            "split of one wrapper's balance, not of liquid financial assets. "
+            "Since policyengine-uk 2.165.0 company_car_list_price and "
+            "company_car_capital_contributions describe a car the person's "
+            "employer makes available, whose benefit is taxed as employment "
+            "income (ITEPA 2003 ss. 121 and 132); the company_cars stage writes "
+            "them from the FRS job table, and neither is the person's asset. "
+            "savings and share_like_capital are two "
             "of Universal Credit's capital sources "
             "(gov.dwp.universal_credit.means_test.capital.sources); since "
             "policyengine-uk 2.147.0 share_like_capital is corporate_wealth unless "
@@ -617,9 +1015,13 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "unit_and_investment_trusts, add up to more; the WAS stage writes "
             "both on its corporate_wealth less the stocks-and-shares ISA, so "
             "they and the ISA sum to it (microcosm#1095). Universal Credit's "
-            "one person-level source is "
+            "person-level sources (capital.person_sources) are "
             "lifetime_isa_countable_capital, the Lifetime ISA at its surrender "
-            "value (capital.person_sources). "
+            "value, and since policyengine-uk 2.174.0 cash_isa_countable_capital "
+            "and stocks_and_shares_isa_countable_capital: each member's ISA "
+            "balances count in their own benefit unit, and the formulas take "
+            "them out of cash_isa and share_like_capital before they allocate "
+            "the rest. "
             "uc_reported_capital (benefit unit, default -1) is Universal "
             "Credit capital; since policyengine-uk 2.136.1 a value of zero or "
             "more set directly is the unit's complete countable capital, in "
