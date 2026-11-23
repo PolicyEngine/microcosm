@@ -1,0 +1,1 @@
+Refresh the committed policyengine-uk firm input snapshot to `0d1c25010` (microcosm#1705): 71 formula-less firm inputs. The five new ones (`firm_small_profits_rate_excluded`, `firm_is_wales_retail_property`, `firm_is_wales_higher_multiplier_excluded`, `firm_capex_main_pool_new_for_leasing`, `firm_disposal_proceeds_full_expensing`) are recorded as not set.

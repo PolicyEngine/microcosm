@@ -258,7 +258,7 @@ UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS = ("firm_paybill",)
 UK_FIRM_INPUT_STATUSES = ("set", "derived", "assumed", "not_set")
 
 #: Every formula-less policyengine-uk firm input (branch firm-entity-engine
-#: at ``d856de5a7``, the committed snapshot; policyengine_uk/variables/firm/)
+#: at ``0d1c25010``, the committed snapshot; policyengine_uk/variables/firm/)
 #: -> how the fullest export, with every group, fills it. The keys with status
 #: other than ``not_set`` are exactly the base policyengine-uk columns and those
 #: of every ``UK_FIRM_EXPORT_GROUPS`` entry; a table without some groups sets a
@@ -311,6 +311,8 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # Not drawn: no source yet. Placeholders would flow into NIC, CT,
         # VAT and business rates revenue.
         "firm_n_associated_companies": "not_set",
+        # Small profits rate exclusion (policyengine-uk 0d1c25010).
+        "firm_small_profits_rate_excluded": "not_set",
         "firm_is_bank": "not_set",
         "firm_is_charity": "not_set",
         # Assumed from ONS legal status and employment
@@ -329,17 +331,23 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_is_pub_or_live_music_venue": "not_set",
         "firm_is_live_music_venue": "not_set",
         "firm_is_rhl_property": "not_set",
+        # Welsh rates (policyengine-uk 0d1c25010).
+        "firm_is_wales_retail_property": "not_set",
+        "firm_is_wales_higher_multiplier_excluded": "not_set",
         "firm_months_empty": "not_set",
         "firm_n_properties": "not_set",
         "firm_property_occupied": "not_set",
         # Capital allowances.
         "firm_aia_share": "not_set",
         "firm_capex_main_pool_new": "not_set",
+        # Leasing assets outside full expensing (policyengine-uk 0d1c25010).
+        "firm_capex_main_pool_new_for_leasing": "not_set",
         "firm_capex_main_pool_used": "not_set",
         "firm_capex_special_rate_new": "not_set",
         "firm_capex_special_rate_used": "not_set",
         "firm_capex_structures": "not_set",
         "firm_disposal_proceeds_main_pool": "not_set",
+        "firm_disposal_proceeds_full_expensing": "not_set",
         "firm_main_pool_brought_forward": "not_set",
         "firm_sba_qualifying_cost_brought_forward": "not_set",
         "firm_special_rate_pool_brought_forward": "not_set",

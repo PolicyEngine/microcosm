@@ -126,6 +126,13 @@ _NOT_SET_WITHOUT_CANDIDATE = {
     # Class 1A, live music venue relief and the RDEC PAYE/NIC cap
     # (policyengine-uk d856de5a7).
     "firm_class_1a_benefits",
+    # Welsh rates, the small profits rate exclusion and full expensing
+    # (policyengine-uk 0d1c25010).
+    "firm_capex_main_pool_new_for_leasing",
+    "firm_disposal_proceeds_full_expensing",
+    "firm_is_wales_higher_multiplier_excluded",
+    "firm_is_wales_retail_property",
+    "firm_small_profits_rate_excluded",
     "firm_is_live_music_venue",
     "firm_rd_staff_paye_nic",
     "firm_rdec_paye_nic_cap_supplied",

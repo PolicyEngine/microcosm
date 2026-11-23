@@ -5,6 +5,7 @@
     "firm_apprenticeship_levy_allowance_share",
     "firm_bank_surcharge_allowance_share",
     "firm_capex_main_pool_new",
+    "firm_capex_main_pool_new_for_leasing",
     "firm_capex_main_pool_used",
     "firm_capex_special_rate_new",
     "firm_capex_special_rate_used",
@@ -12,6 +13,7 @@
     "firm_claims_employment_allowance",
     "firm_class_1a_benefits",
     "firm_deductions_allowance_share",
+    "firm_disposal_proceeds_full_expensing",
     "firm_disposal_proceeds_main_pool",
     "firm_employees",
     "firm_employees_above_auto_enrolment_upper_limit",
@@ -34,6 +36,8 @@
     "firm_is_rhl_property",
     "firm_is_single_director_company",
     "firm_is_sme",
+    "firm_is_wales_higher_multiplier_excluded",
+    "firm_is_wales_retail_property",
     "firm_legal_form",
     "firm_losses_brought_forward",
     "firm_low_paid_hours",
@@ -57,6 +61,7 @@
     "firm_relevant_paye_nic_liabilities",
     "firm_sba_qualifying_cost_brought_forward",
     "firm_sic_section",
+    "firm_small_profits_rate_excluded",
     "firm_special_rate_pool_brought_forward",
     "firm_standard_rated_supplies",
     "firm_taxable_trading_profit",
@@ -311,6 +316,17 @@
       "unit": "GBP",
       "value_type": "float"
     },
+    "firm_capex_main_pool_new_for_leasing": {
+      "default_value": 0,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/capital_allowances/firm_capex_main_pool_new_for_leasing.py",
+      "has_formula": false,
+      "name": "firm_capex_main_pool_new_for_leasing",
+      "unit": "GBP",
+      "value_type": "float"
+    },
     "firm_capex_main_pool_used": {
       "default_value": null,
       "definition_period": "year",
@@ -463,6 +479,17 @@
       "has_formula": false,
       "name": "firm_deductions_allowance_share",
       "unit": "/1",
+      "value_type": "float"
+    },
+    "firm_disposal_proceeds_full_expensing": {
+      "default_value": 0,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/capital_allowances/firm_disposal_proceeds_full_expensing.py",
+      "has_formula": false,
+      "name": "firm_disposal_proceeds_full_expensing",
+      "unit": "GBP",
       "value_type": "float"
     },
     "firm_disposal_proceeds_main_pool": {
@@ -627,6 +654,17 @@
       "file": "variables/gov/hmrc/corporation_tax/capital_allowances/firm_full_expensing_allowance.py",
       "has_formula": true,
       "name": "firm_full_expensing_allowance",
+      "unit": "GBP",
+      "value_type": "float"
+    },
+    "firm_full_expensing_balancing_charge": {
+      "default_value": null,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/gov/hmrc/corporation_tax/capital_allowances/firm_full_expensing_balancing_charge.py",
+      "has_formula": true,
+      "name": "firm_full_expensing_balancing_charge",
       "unit": "GBP",
       "value_type": "float"
     },
@@ -814,6 +852,28 @@
       "file": "variables/firm/rd/firm_is_sme.py",
       "has_formula": false,
       "name": "firm_is_sme",
+      "unit": null,
+      "value_type": "bool"
+    },
+    "firm_is_wales_higher_multiplier_excluded": {
+      "default_value": false,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/business_rates/firm_is_wales_higher_multiplier_excluded.py",
+      "has_formula": false,
+      "name": "firm_is_wales_higher_multiplier_excluded",
+      "unit": null,
+      "value_type": "bool"
+    },
+    "firm_is_wales_retail_property": {
+      "default_value": false,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/business_rates/firm_is_wales_retail_property.py",
+      "has_formula": false,
+      "name": "firm_is_wales_retail_property",
       "unit": null,
       "value_type": "bool"
     },
@@ -1418,6 +1478,17 @@
       "unit": "GBP",
       "value_type": "float"
     },
+    "firm_small_profits_rate_excluded": {
+      "default_value": false,
+      "definition_period": "year",
+      "enum": null,
+      "enum_members": null,
+      "file": "variables/firm/corporation_tax/firm_small_profits_rate_excluded.py",
+      "has_formula": false,
+      "name": "firm_small_profits_rate_excluded",
+      "unit": null,
+      "value_type": "bool"
+    },
     "firm_special_rate_first_year_allowance": {
       "default_value": null,
       "definition_period": "year",
@@ -1696,7 +1767,7 @@
   ],
   "policyengine_uk": {
     "dirty": false,
-    "head_commit": "d856de5a7e11ae387e6031e6e1bca69962506b5e",
+    "head_commit": "0d1c25010835c4f8b14b5f8030c696937ecd51f7",
     "pull_request": "PolicyEngine/policyengine-uk#2940"
   },
   "policyengine_uk_variable_names": [
@@ -2148,6 +2219,7 @@
     "firm_business_rates_multiplier",
     "firm_business_rates_reliefs",
     "firm_capex_main_pool_new",
+    "firm_capex_main_pool_new_for_leasing",
     "firm_capex_main_pool_used",
     "firm_capex_special_rate_new",
     "firm_capex_special_rate_used",
@@ -2162,6 +2234,7 @@
     "firm_corporation_tax_lower_limit",
     "firm_corporation_tax_upper_limit",
     "firm_deductions_allowance_share",
+    "firm_disposal_proceeds_full_expensing",
     "firm_disposal_proceeds_main_pool",
     "firm_employees",
     "firm_employees_above_auto_enrolment_upper_limit",
@@ -2177,6 +2250,7 @@
     "firm_flat_rate_sector_percentage",
     "firm_flat_rate_turnover",
     "firm_full_expensing_allowance",
+    "firm_full_expensing_balancing_charge",
     "firm_gross_business_rates",
     "firm_id",
     "firm_in_england",
@@ -2194,6 +2268,8 @@
     "firm_is_rhl_property",
     "firm_is_single_director_company",
     "firm_is_sme",
+    "firm_is_wales_higher_multiplier_excluded",
+    "firm_is_wales_retail_property",
     "firm_legal_form",
     "firm_liable_to_corporation_tax",
     "firm_losses_brought_forward",
@@ -2244,6 +2320,7 @@
     "firm_sba_qualifying_cost_brought_forward",
     "firm_sic_section",
     "firm_small_business_rate_relief",
+    "firm_small_profits_rate_excluded",
     "firm_special_rate_first_year_allowance",
     "firm_special_rate_first_year_allowance_available",
     "firm_special_rate_pool_balance",
@@ -3363,5 +3440,5 @@
     "youngest_claimant_or_partner_age"
   ],
   "schema_version": 1,
-  "snapshot_date": "2026-11-22"
+  "snapshot_date": "2026-11-23"
 }
