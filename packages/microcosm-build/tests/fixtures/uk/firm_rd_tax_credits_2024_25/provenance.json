@@ -1,0 +1,46 @@
+{
+  "kind": "uk_firm_rd_tax_credit_fixture",
+  "schema_version": 1,
+  "period": "Financial year 2024-25 (accounting periods; provisional, uplifted by HMRC for claims not yet received)",
+  "accessed": "2026-11-23",
+  "method": "Cells were read from the downloaded workbook on the access date by tools/extract_uk_firm_rd_tax_credits_tables.py and written as published text: thousands separators, HMRC's suppression marker (a '<' followed by the rounding floor), 'N/A' and blank cells are kept. None was filled from memory.",
+  "source": {
+    "publisher": "HM Revenue and Customs",
+    "dataset_title": "Corporate tax: Research and Development Tax Credits",
+    "landing_page": "https://www.gov.uk/government/statistics/corporate-tax-research-and-development-tax-credit",
+    "url": "https://assets.publishing.service.gov.uk/media/6ab52b118cb3c0580e501188/rd_tax_credits_main_tables_2026.ods",
+    "edition": "Research and Development Tax Credits Statistics: September 2026 (published 29 September 2026); Main tables 2026; claims in Company Tax returns received on or before 31 May 2026",
+    "file": "rd_tax_credits_main_tables_2026.ods",
+    "size_bytes": 24793,
+    "sha256": "efc2238695c40dc4273acc8846f9057bbe582ff04c951c75085c32632c004324",
+    "sheets": {
+      "hmrc_rd_rd1_claims.csv": "RD1",
+      "hmrc_rd_rd4_expenditure.csv": "RD4",
+      "hmrc_rd_rd6_sector_2024_25.csv": "RD6_2425"
+    },
+    "rounding": "All figures independently rounded to the nearest 5 or \u00a35 million; components may not sum to totals (Cover sheet).",
+    "licence": "Open Government Licence v3.0"
+  },
+  "edition_note": "The September 2026 edition is the latest on the access date and replaces the September 2025 edition (2023-24 claims). Its 2024-25 year is the first with the merged RDEC scheme (accounting periods beginning on or after 1 April 2024): HMRC notes SME-level figures for 2024-25 are not comparable with earlier years.",
+  "coverage": "RD6 sector is the primary SIC 2007 code of the registered company, which may not be the sector of the R&D. RD6 gives the number and cost of claims by scheme but qualifying expenditure only in total per sector; RD4 gives expenditure by scheme only nationally. RD1 counts claims (40,325 in 2024-25) and companies (37,545) separately.",
+  "extraction_date": "2026-11-23",
+  "tool": "tools/extract_uk_firm_rd_tax_credits_tables.py",
+  "command": "uv run --no-sync python tools/extract_uk_firm_rd_tax_credits_tables.py --ods <download>/rd_tax_credits_main_tables_2026.ods",
+  "files": {
+    "hmrc_rd_rd1_claims.csv": {
+      "sha256": "dbb6df5aaaf4618b2a759254e166fbfaaef79ba6a194b03593edb8968caa935b",
+      "bytes": 1251,
+      "rows": 9
+    },
+    "hmrc_rd_rd4_expenditure.csv": {
+      "sha256": "68b391ae0098e5e142e2dd830d069c1207ab04066d7b32c5c42a00b27a2546fc",
+      "bytes": 686,
+      "rows": 9
+    },
+    "hmrc_rd_rd6_sector_2024_25.csv": {
+      "sha256": "9329ac1a500713e7e991bf56000da2c10c9fa86b734ab29a5f527296e54e0305",
+      "bytes": 2123,
+      "rows": 20
+    }
+  }
+}
