@@ -644,6 +644,95 @@ def test_consumption_build_splits_turnover_only(builds, tmp_path: Path) -> None:
     assert "uk_firm_consumption" not in builds[0]["receipt"]
 
 
+def test_mid_headcount_and_out_of_frame_switches(builds, tmp_path: Path) -> None:
+    built = _build(
+        tmp_path / "mid",
+        paybill_dir=PAYBILL,
+        bpe_dir=FIXTURES / "firm_bpe_2025",
+        bpe_mid_headcount=True,
+        out_of_frame_no_employees=True,
+    )
+    table = built["table"]
+    base = builds[0]["table"]
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    before = base["firm_employees"].to_numpy()
+    after = table["ons_employment"].to_numpy()
+    outside = ~table["in_frame"].to_numpy(bool)
+    assert (after[outside] == 0).all()
+    status = table["ons_legal_status"].to_numpy()
+    mid = (before >= 5) & (before <= 249) & np.isin(status, [1, 2, 3, 4]) & ~outside
+    edges = [5, 10, 20, 50, 100, 250]
+    assert (
+        np.searchsorted(edges, before[mid], side="right")
+        == np.searchsorted(edges, after[mid], side="right")
+    ).all()
+    assert (after[mid] != before[mid]).any()
+    record = built["receipt"]["uk_firm_headcount"]
+    assert record["mid_band_remap"]["weighted_rows_changed"] > 0
+    assert record["out_of_frame_employment_removed"] > 0
+
+
+def test_bpe_turnover_lifts_the_cap_and_pairs_turnover_with_employment(
+    builds, tmp_path: Path
+) -> None:
+    """The thinned test build keeps different rows once turnover changes, so
+    only properties are compared, not rows."""
+
+    built = _build(
+        tmp_path / "bpe_turnover",
+        paybill_dir=PAYBILL,
+        bpe_dir=FIXTURES / "firm_bpe_2025",
+        bpe_turnover=True,
+    )
+    table = built["table"]
+    base = builds[0]["table"]
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    assert base["firm_turnover"].max() < 50e6
+    assert table["firm_turnover"].max() > 50e6
+    record = built["receipt"]["uk_firm_headcount"]["bpe_turnover"]
+    assert 0.0 < record["rho"] < 1.0
+    assert record["cap_k"] > 50_000
+
+    def corr(frame_table: pd.DataFrame, headcount: str) -> float:
+        rows = frame_table[
+            frame_table["in_frame"].to_numpy(bool) & (frame_table["firm_turnover"] > 0)
+        ]
+        return float(
+            np.corrcoef(np.log1p(rows["firm_turnover"]), np.log1p(rows[headcount]))[
+                0, 1
+            ]
+        )
+
+    assert corr(table, "ons_employment") > corr(base, "firm_employees") + 0.2
+    assert "bpe_turnover" not in builds[0]["receipt"]["config"]
+    assert "bpe_turnover" in built["receipt"]["config"]
+
+
+def test_rd_tax_credits_and_large_headcount_build(builds, tmp_path: Path) -> None:
+    built = _build(
+        tmp_path / "rd",
+        paybill_dir=PAYBILL,
+        bpe_dir=FIXTURES / "firm_bpe_2025",
+        bpe_large_headcount=True,
+        rd_tax_credits_dir=FIXTURES / "firm_rd_tax_credits_2024_25",
+    )
+    table = built["table"]
+    base = builds[0]["table"]
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    spend = table["firm_qualifying_rd_expenditure"].to_numpy()
+    assert spend.max() > 0
+    assert not spend[table["ons_legal_status"].to_numpy() != 1].any()
+    assert (spend <= table["firm_turnover"].to_numpy()).all()
+    receipt = built["receipt"]
+    assert receipt["uk_firm_rd_tax_credits"]["status"] == "assumed"
+    large = receipt["uk_firm_headcount"]["large_band_remap"]
+    assert large["weighted_employment_after"] > large["weighted_employment_before"]
+    before = base["firm_employees"].to_numpy()
+    after = table["ons_employment"].to_numpy()
+    assert ((after >= 250) == (before >= 250)).all()
+    assert "uk_firm_rd_tax_credits" not in builds[0]["receipt"]
+
+
 def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
     rules = _StandardRateDouble()
     with pytest.raises(ValueError, match="bpe_dir needs paybill_dir"):
@@ -675,6 +764,7 @@ def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
     [
         ("bpe_dir", "firm_bpe_2025"),
         ("consumption_dir", "firm_supply_use_2024"),
+        ("rd_tax_credits_dir", "firm_rd_tax_credits_2024_25"),
         ("employment_allowance_takeup_dir", "firm_employment_allowance_takeup_2024_25"),
         ("public_sector_dir", "firm_public_sector_2025"),
         ("profit_dir", "firm_ct_2024"),

@@ -164,6 +164,8 @@ _BPE_SMALL_ROWS: tuple[tuple[str, int, int], ...] = (
 _BPE_UNREGISTERED = "With no employees (unregistered)"
 #: Distinguishes this redraw's random stream from any other use of ``seed``.
 _SEED_TAG = zlib.crc32(b"microcosm.uk_firm_headcount.small_redraw")
+_MID_SEED_TAG = zlib.crc32(b"microcosm.uk_firm_headcount.mid_remap")
+_LARGE_SEED_TAG = zlib.crc32(b"microcosm.uk_firm_headcount.large_remap")
 #: Status codes the BPE private sector covers (companies include public
 #: corporations, BPE Table 3 heading).
 _PRIVATE_SECTOR_STATUSES = (1, 2, 3, 4)
@@ -617,6 +619,223 @@ def uk_firm_small_headcount_diagnostics(
     ]
 
 
+#: ONS employment bands the mid-band remap redraws within, with the BPE 2025
+#: Table 1 (private sector, employee bands) rows whose employment means pin
+#: each band's shape. 100-249 mixes two BPE rows, weighted by their counts.
+UK_FIRM_MID_BANDS: tuple[tuple[int, int, tuple[tuple[str, int, int], ...]], ...] = (
+    (5, 9, (("5 to 9", 5, 9),)),
+    (10, 19, (("10 to 19", 10, 19),)),
+    (20, 49, (("20 to 49", 20, 49),)),
+    (50, 99, (("50 to 99", 50, 99),)),
+    (100, 249, (("100 to 199", 100, 199), ("200 to 249", 200, 249))),
+)
+#: Legal statuses the mid-band remap reads (BPE's private sector).
+UK_FIRM_MID_BAND_STATUSES = (1, 2, 3, 4)
+UK_FIRM_MID_HEADCOUNT_METHOD = (
+    "Inside each ONS employment band from 5-9 to 100-249, for ONS legal "
+    "statuses 1-4, headcount is remapped by weighted rank to a truncated "
+    "geometric matched to DBT Business Population Estimates 2025 Table 1 "
+    "private-sector employment per business (100-249 a count-weighted mix of "
+    "the 100-199 and 200-249 rows). Bands, ranks and weights are kept. BPE "
+    "bands are by employees and ONS bands by employment; the shapes are "
+    "taken across that difference."
+)
+
+
+def uk_firm_mid_headcount_targets(source: UKFirmBPESource) -> pd.DataFrame:
+    """Target pmf per ONS mid band: ``ons_band``, ``employment``, ``probability``,
+    with the BPE rows, counts and means behind it."""
+
+    table_1 = source.size_bands[
+        (source.size_bands["table"] == "Table 1")
+        & (source.size_bands["sector"] == "private_sector")
+    ].set_index("size_band")
+    rows = []
+    for band_low, band_high, parts in UK_FIRM_MID_BANDS:
+        mixture = np.zeros(band_high - band_low + 1, dtype=np.float64)
+        total = 0.0
+        for label, low, high in parts:
+            businesses = float(table_1.loc[label, "business_number"])
+            mean = (
+                float(table_1.loc[label, "employment_thousand"]) * 1_000.0 / businesses
+            )
+            ratio, _, _ = fit_truncated_geometric(low, high, mean)
+            pmf = _geometric_pmf(low, high, ratio)
+            mixture[low - band_low : high - band_low + 1] += businesses * pmf
+            total += businesses
+        mixture /= total
+        for offset, probability in enumerate(mixture):
+            rows.append(
+                {
+                    "ons_band": f"{band_low}-{band_high}",
+                    "employment": band_low + offset,
+                    "probability": float(probability),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _in_frame(firms: pd.DataFrame) -> np.ndarray:
+    """Rows in the ONS frame (every row when ``in_frame`` is absent): BPE's
+    size rows describe registered businesses, so the remaps read only them."""
+
+    if "in_frame" not in firms.columns:
+        return np.ones(len(firms), dtype=bool)
+    return firms["in_frame"].to_numpy(bool)
+
+
+def remap_uk_firm_mid_headcount(
+    firms: pd.DataFrame,
+    source: UKFirmBPESource,
+    *,
+    seed: int,
+    weight_column: str = "firm_weight",
+    employment_column: str = "employment",
+    id_column: str | None = None,
+) -> pd.DataFrame:
+    """A copy of ``firms`` with mid-band headcounts remapped to BPE shapes.
+
+    For rows of ONS statuses 1-4 whose employment lies in an ONS band from
+    5-9 to 100-249 (and in the ONS frame, when ``in_frame`` is given), each
+    band's rows are ordered by employment (ties by a
+    uniform from this function's own stream, in firm id order), and the row
+    at weighted mid-rank ``q`` takes the target pmf's ``q`` quantile. Every
+    row keeps its ONS band, its rank and its weight, so the ONS employment
+    band targets are unchanged; only headcounts inside the bands move.
+    """
+
+    out = firms.copy()
+    employment = out[employment_column].to_numpy(np.float64)
+    status = _status_array(out["ons_legal_status"])
+    weight = out[weight_column].to_numpy(np.float64)
+    ids = _firm_ids(out, id_column)
+    order_ids = np.argsort(ids, kind="stable")
+    ties = np.empty(len(ids), dtype=np.float64)
+    ties[order_ids] = np.random.default_rng(
+        np.random.SeedSequence([int(seed), _MID_SEED_TAG])
+    ).random(len(ids))
+    targets = uk_firm_mid_headcount_targets(source)
+    result = employment.copy()
+    eligible = np.isin(status, UK_FIRM_MID_BAND_STATUSES) & _in_frame(out)
+    for band_low, band_high, _ in UK_FIRM_MID_BANDS:
+        rows = np.flatnonzero(
+            eligible & (employment >= band_low) & (employment <= band_high)
+        )
+        if rows.size == 0:
+            continue
+        pmf = targets[targets["ons_band"] == f"{band_low}-{band_high}"]
+        cdf = np.cumsum(pmf["probability"].to_numpy(np.float64))
+        values = pmf["employment"].to_numpy(np.float64)
+        ranked = rows[np.lexsort((ties[rows], employment[rows]))]
+        mass = np.maximum(weight[ranked], 0.0)
+        if not mass.sum() > 0:
+            mass = np.ones(len(ranked), dtype=np.float64)
+        upper = np.cumsum(mass)
+        mid = (upper - 0.5 * mass) / upper[-1]
+        index = np.minimum(np.searchsorted(cdf, mid, side="left"), len(values) - 1)
+        result[ranked] = values[index]
+    out[employment_column] = result.astype(out[employment_column].dtype)
+    return out
+
+
+#: BPE 2025 Table 1 private-sector rows the large-band remap reads, top first.
+UK_FIRM_LARGE_BAND_ROWS: tuple[tuple[str, int, int | None], ...] = (
+    ("1000 or more", 1000, None),
+    ("500 to 999", 500, 999),
+    ("250 to 499", 250, 499),
+)
+UK_FIRM_LARGE_HEADCOUNT_METHOD = (
+    "Inside the ONS 250+ band, for ONS legal statuses 1-4, firms are ranked "
+    "by headcount and, from the top, the weighted count of DBT Business "
+    "Population Estimates 2025 Table 1 private-sector businesses with 1000 or "
+    "more employees take the 1000+ shape, the next 500-999 count the 500-999 "
+    "shape, and the rest 250-499. 1000+ is a truncated Pareto on [1000, "
+    "LARGE_EMPLOYMENT_CAP] with BPE's mean employment per business; the "
+    "closed rows are truncated geometrics with BPE's means. The band's other "
+    "firms keep 250-499: the model has more 250+ firms than BPE."
+)
+
+
+def remap_uk_firm_large_headcount(
+    firms: pd.DataFrame,
+    source: UKFirmBPESource,
+    *,
+    seed: int,
+    weight_column: str = "firm_weight",
+    employment_column: str = "employment",
+    id_column: str | None = None,
+) -> pd.DataFrame:
+    """A copy of ``firms`` with 250+ headcounts remapped to BPE's large rows.
+
+    Ranks and weights are kept and every row stays at 250 or more; the BPE
+    business counts of the 1000+ and 500-999 rows are taken as absolute
+    weighted counts from the top of the ranking.
+    """
+
+    from microcosm.build.uk_runtime.firm_generation import (
+        LARGE_EMPLOYMENT_CAP,
+        large_employment_slice_means,
+    )
+
+    out = firms.copy()
+    employment = out[employment_column].to_numpy(np.float64)
+    status = _status_array(out["ons_legal_status"])
+    weight = np.maximum(out[weight_column].to_numpy(np.float64), 0.0)
+    ids = _firm_ids(out, id_column)
+    ties = np.empty(len(ids), dtype=np.float64)
+    ties[np.argsort(ids, kind="stable")] = np.random.default_rng(
+        np.random.SeedSequence([int(seed), _LARGE_SEED_TAG])
+    ).random(len(ids))
+    rows = np.flatnonzero(
+        np.isin(status, UK_FIRM_MID_BAND_STATUSES)
+        & (employment >= 250)
+        & _in_frame(out)
+    )
+    result = employment.copy()
+    if rows.size:
+        table_1 = source.size_bands[
+            (source.size_bands["table"] == "Table 1")
+            & (source.size_bands["sector"] == "private_sector")
+        ].set_index("size_band")
+        # Highest headcount first.
+        ranked = rows[np.lexsort((-ties[rows], -employment[rows]))]
+        mass = weight[ranked]
+        start = np.cumsum(mass) - mass
+        mid = start + 0.5 * mass
+        edge = 0.0
+        for label, low, high in UK_FIRM_LARGE_BAND_ROWS:
+            businesses = float(table_1.loc[label, "business_number"])
+            mean = (
+                float(table_1.loc[label, "employment_thousand"]) * 1_000.0 / businesses
+            )
+            take = mid >= edge
+            if label != UK_FIRM_LARGE_BAND_ROWS[-1][0]:
+                take &= mid < edge + businesses
+            members = ranked[take][::-1]  # lowest headcount first
+            edge += businesses
+            if members.size == 0:
+                continue
+            masses = weight[members]
+            if not masses.sum() > 0:
+                masses = np.ones(len(members), dtype=np.float64)
+            if high is None:
+                result[members] = np.round(
+                    large_employment_slice_means(
+                        masses, mean=mean, lower=float(low), cap=LARGE_EMPLOYMENT_CAP
+                    )
+                )
+                continue
+            ratio, _, _ = fit_truncated_geometric(low, high, mean)
+            cdf = np.cumsum(_geometric_pmf(low, high, ratio))
+            upper = np.cumsum(masses)
+            total = upper[-1] if upper[-1] > 0 else 1.0
+            quantile = (upper - 0.5 * masses) / total
+            index = np.minimum(np.searchsorted(cdf, quantile, side="left"), high - low)
+            result[members] = low + index
+    out[employment_column] = result.astype(out[employment_column].dtype)
+    return out
+
+
 def _lower_edge(label: str) -> int:
     if label.startswith("Zero"):
         return 0
@@ -704,6 +923,14 @@ def uk_firm_bpe_size_band_reconciliation(
 
 
 __all__ = [
+    "UK_FIRM_LARGE_BAND_ROWS",
+    "UK_FIRM_LARGE_HEADCOUNT_METHOD",
+    "remap_uk_firm_large_headcount",
+    "UK_FIRM_MID_BANDS",
+    "UK_FIRM_MID_BAND_STATUSES",
+    "UK_FIRM_MID_HEADCOUNT_METHOD",
+    "remap_uk_firm_mid_headcount",
+    "uk_firm_mid_headcount_targets",
     "UK_FIRM_ASSUMED_PROPRIETORS",
     "UK_FIRM_BPE_LEGAL_STATUS_COLUMNS",
     "UK_FIRM_BPE_LEGAL_STATUS_FILE",

@@ -492,6 +492,9 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
     } == {
         # employment less assumed working proprietors (labour link group).
         "firm_employees",
+        # HMRC R&D tax credit statistics (rd_tax_credits group).
+        "firm_qualifying_rd_expenditure",
+        "firm_is_sme",
         "firm_input_vat",
         "firm_legal_form",
         "firm_is_public_body",
@@ -527,6 +530,7 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         "sic_division",
         "labour_link",
         "employment_allowance_takeup",
+        "rd_tax_credits",
         "consumption",
     ]
     (
@@ -539,8 +543,14 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         sic_division,
         labour_link,
         takeup,
+        rd,
         consumption,
     ) = UK_FIRM_EXPORT_GROUPS
+    assert rd.policyengine_uk_columns == (
+        "firm_qualifying_rd_expenditure",
+        "firm_is_sme",
+    )
+    assert rd.requires == ("attributes",)
     assert consumption.requires == ("attributes", "sic_division")
     assert consumption.microcosm_columns == (
         "firm_household_sales",
@@ -605,6 +615,7 @@ def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
         "sic_division",
         "labour_link",
         "employment_allowance_takeup",
+        "rd_tax_credits",
         "consumption",
     ]
     expected = {(): UK_FIRM_TABLE_COLUMNS}

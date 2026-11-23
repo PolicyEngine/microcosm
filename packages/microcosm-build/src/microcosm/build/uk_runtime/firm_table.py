@@ -68,6 +68,10 @@ The groups today:
   (``firm_employment_allowance_takeup.py``). It extends ``attributes``,
   ``paybill``, ``employment_allowance``, ``sic_division`` and
   ``labour_link``.
+- ``rd_tax_credits``: the assumed ``firm_qualifying_rd_expenditure``
+  (pounds, companies only, never above turnover) and ``firm_is_sme`` (from
+  ``firm_rd_tax_credits.draw_uk_firm_rd_tax_credits``). It extends
+  ``attributes``.
 - ``consumption``: Microcosm-only ``firm_household_sales``,
   ``firm_intermediate_sales`` and ``firm_other_final_sales`` (pounds),
   turnover split by the firm's SIC division's shares of total demand in the
@@ -382,8 +386,13 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_low_paid_hours": "not_set",
         "firm_low_paid_paybill": "not_set",
         # R&D.
-        "firm_is_sme": "not_set",
-        "firm_qualifying_rd_expenditure": "not_set",
+        # Assumed (firm_rd_tax_credits.py): HMRC R&D tax credit statistics
+        # 2024-25 claims by section and size stratum, expenditure raked to
+        # section and size totals and capped at turnover; firm_is_sme from
+        # the stratum, else ONS employment below 500. Only when the build is
+        # given an R&D source.
+        "firm_is_sme": "assumed",
+        "firm_qualifying_rd_expenditure": "assumed",
         # RDEC PAYE/NIC cap (policyengine-uk d856de5a7).
         "firm_rdec_paye_nic_cap_supplied": "not_set",
         "firm_rd_staff_paye_nic": "not_set",
@@ -767,6 +776,30 @@ def _validate_consumption_columns(df: pd.DataFrame) -> None:
         )
 
 
+def _rd_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {
+        "firm_qualifying_rd_expenditure": ordered[
+            "firm_qualifying_rd_expenditure"
+        ].to_numpy(np.float64),
+        "firm_is_sme": ordered["firm_is_sme"].to_numpy(bool),
+    }
+
+
+def _validate_rd_columns(df: pd.DataFrame) -> None:
+    spend = _non_negative(df, "firm_qualifying_rd_expenditure")
+    if np.any(spend[df["ons_legal_status"].to_numpy(np.int64) != 1]):
+        raise ValueError(
+            "UK firm firm_qualifying_rd_expenditure must be zero for firms that "
+            "are not companies."
+        )
+    if np.any(spend > np.maximum(df["firm_turnover"].to_numpy(np.float64), 0.0)):
+        raise ValueError(
+            "UK firm firm_qualifying_rd_expenditure must not exceed firm_turnover."
+        )
+    if not pd.api.types.is_bool_dtype(df["firm_is_sme"]):
+        raise ValueError("UK firm firm_is_sme must be boolean.")
+
+
 def _validate_paybill_columns(df: pd.DataFrame) -> None:
     for column in UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS:
         values = df[column].to_numpy(np.float64)
@@ -889,6 +922,15 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         ),
         columns=_employment_allowance_takeup_group_columns,
         validate=_validate_employment_allowance_takeup_columns,
+    ),
+    UKFirmExportGroup(
+        name="rd_tax_credits",
+        source_columns=("firm_qualifying_rd_expenditure", "firm_is_sme"),
+        policyengine_uk_columns=("firm_qualifying_rd_expenditure", "firm_is_sme"),
+        microcosm_columns=(),
+        requires=("attributes",),
+        columns=_rd_group_columns,
+        validate=_validate_rd_columns,
     ),
     UKFirmExportGroup(
         name="consumption",

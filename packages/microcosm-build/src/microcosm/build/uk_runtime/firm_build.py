@@ -78,8 +78,12 @@ from microcosm.build.uk_runtime.firm_generation import (
 from microcosm.build.uk_runtime.firm_headcount import (
     UK_FIRM_HEADCOUNT_METHOD,
     UK_FIRM_HEADCOUNT_STATUS,
+    UK_FIRM_LARGE_HEADCOUNT_METHOD,
+    UK_FIRM_MID_HEADCOUNT_METHOD,
     read_uk_firm_bpe_source,
     redraw_uk_firm_small_headcount,
+    remap_uk_firm_large_headcount,
+    remap_uk_firm_mid_headcount,
     uk_firm_bpe_size_band_reconciliation,
     uk_firm_employees,
     uk_firm_small_headcount_diagnostics,
@@ -116,6 +120,12 @@ from microcosm.build.uk_runtime.firm_rateable_value import (
     UK_FIRM_RATEABLE_VALUE_STATUS,
     assign_uk_firm_rateable_value,
     read_uk_firm_rateable_value_source,
+)
+from microcosm.build.uk_runtime.firm_rd_tax_credits import (
+    UK_FIRM_RD_METHOD,
+    UK_FIRM_RD_STATUS,
+    draw_uk_firm_rd_tax_credits,
+    read_uk_firm_rd_source,
 )
 from microcosm.build.uk_runtime.firm_rules import (
     UKFirmRuleOutputs,
@@ -177,6 +187,11 @@ def build_uk_firm_dataset(
     bpe_dir: str | Path | None = None,
     employment_allowance_takeup_dir: str | Path | None = None,
     consumption_dir: str | Path | None = None,
+    bpe_mid_headcount: bool = False,
+    out_of_frame_no_employees: bool = False,
+    bpe_turnover: bool = False,
+    bpe_large_headcount: bool = False,
+    rd_tax_credits_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build the UK firm table and its receipt into ``output_dir``.
 
@@ -215,7 +230,20 @@ def build_uk_firm_dataset(
     (``firm_employment_allowance_takeup.py``). ``consumption_dir``
     (``tests/fixtures/uk/firm_supply_use_2024``) splits turnover into
     household, intermediate and other final sales by SIC division from the
-    ONS Supply and Use Tables 2024 (``firm_consumption.py``). Returns ``table`` (the
+    ONS Supply and Use Tables 2024 (``firm_consumption.py``).
+    ``bpe_mid_headcount`` (needs ``bpe_dir``) remaps headcount inside the
+    ONS bands 5-9 to 100-249 to BPE 2025 Table 1 shapes by weighted rank;
+    ``out_of_frame_no_employees`` (needs ``bpe_dir``) gives the rows outside
+    the ONS frame no headcount, an assumption with no published pin.
+    ``bpe_turnover`` (needs ``bpe_dir``) runs the generator with the BPE
+    turnover fix (``UKFirmGenerationConfig.bpe_turnover``): an open-band
+    turnover tail pinned to BPE 2025 and employment re-paired with turnover.
+    ``bpe_large_headcount`` (needs ``bpe_dir``) remaps 250+ headcounts to
+    BPE 2025 Table 1's large rows. ``rd_tax_credits_dir``
+    (``tests/fixtures/uk/firm_rd_tax_credits_2024_25``) adds the assumed
+    ``firm_qualifying_rd_expenditure`` and ``firm_is_sme`` from HMRC R&D tax
+    credit statistics (``firm_rd_tax_credits.py``).
+    Returns ``table`` (the
     validated policyengine-uk firm table), ``receipt`` (the dict written as
     JSON), ``result`` (the ``UKFirmGenerationResult``), ``table_path`` and
     ``receipt_path``.
@@ -238,6 +266,7 @@ def build_uk_firm_dataset(
         ("bpe_dir", bpe_dir),
         ("employment_allowance_takeup_dir", employment_allowance_takeup_dir),
         ("consumption_dir", consumption_dir),
+        ("rd_tax_credits_dir", rd_tax_credits_dir),
     ):
         if directory is not None and config.data_vintage != "2024-25":
             raise ValueError(
@@ -248,6 +277,16 @@ def build_uk_firm_dataset(
         raise ValueError("pay_distribution_dir needs paybill_dir.")
     if bpe_dir is not None and paybill_dir is None:
         raise ValueError("bpe_dir needs paybill_dir.")
+    if (
+        bpe_mid_headcount
+        or out_of_frame_no_employees
+        or bpe_turnover
+        or bpe_large_headcount
+    ) and bpe_dir is None:
+        raise ValueError(
+            "bpe_mid_headcount, out_of_frame_no_employees, bpe_turnover and "
+            "bpe_large_headcount need bpe_dir."
+        )
     if employment_allowance_takeup_dir is not None and (
         bpe_dir is None or not employment_allowance
     ):
@@ -260,6 +299,10 @@ def build_uk_firm_dataset(
 
     recorder = _RecordingRules(rules)
     run_config = dataclasses.replace(config, firm_rules=recorder)
+    if bpe_turnover:
+        run_config = dataclasses.replace(
+            run_config, bpe_turnover=read_uk_firm_bpe_source(bpe_dir)
+        )
     source = read_uk_firm_source_data(processed, input_files=run_config.input_files)
     result = generate_uk_firm_population(source, run_config)
     if not recorder.provenance:
@@ -278,6 +321,32 @@ def build_uk_firm_dataset(
         )
         headcount = uk_firm_small_headcount_diagnostics(firms, redrawn, bpe_source)
         firms = redrawn
+    out_of_frame_employment = None
+    if out_of_frame_no_employees:
+        outside = ~firms["in_frame"].to_numpy(bool)
+        out_of_frame_employment = float(
+            (firms["firm_weight"].to_numpy(np.float64) * firms["employment"])[
+                outside
+            ].sum()
+        )
+        employment = firms["employment"].to_numpy().copy()
+        employment[outside] = 0
+        firms = firms.assign(employment=employment)
+    mid_headcount = None
+    if bpe_mid_headcount:
+        remapped = remap_uk_firm_mid_headcount(
+            firms, bpe_source, seed=result.config.seed
+        )
+        mid_headcount = _mid_headcount_record(firms, remapped)
+        firms = remapped
+    large_headcount = None
+    if bpe_large_headcount:
+        remapped = remap_uk_firm_large_headcount(
+            firms, bpe_source, seed=result.config.seed
+        )
+        large_headcount = _mid_headcount_record(firms, remapped)
+        large_headcount["method"] = UK_FIRM_LARGE_HEADCOUNT_METHOD
+        firms = remapped
     public_sector = None
     if public_sector_dir is not None:
         public_sector_source = read_uk_firm_public_sector_source(public_sector_dir)
@@ -320,6 +389,15 @@ def build_uk_firm_dataset(
             firm_taxable_trading_profit=assign_uk_firm_taxable_profit(
                 firms, profit_source
             )
+        )
+    rd_source = None
+    rd_draw = None
+    if rd_tax_credits_dir is not None:
+        rd_source = read_uk_firm_rd_source(rd_tax_credits_dir)
+        rd_draw = draw_uk_firm_rd_tax_credits(firms, rd_source, seed=result.config.seed)
+        firms = firms.assign(
+            firm_qualifying_rd_expenditure=rd_draw.qualifying_rd_expenditure,
+            firm_is_sme=rd_draw.is_sme,
         )
     rateable_value_source = None
     if rateable_value_dir is not None:
@@ -520,6 +598,16 @@ def build_uk_firm_dataset(
             "status": UK_FIRM_HEADCOUNT_STATUS,
             "method": UK_FIRM_HEADCOUNT_METHOD,
             "small_band_redraw": _records(headcount),
+            # Report-only: paybill over BPE 2025 whole-economy employees times
+            # ASHE's all-employee mean pay. ASHE annual jobs (the usual
+            # check's base) cover only jobs held a full year.
+            "paybill_vs_bpe_employees_x_ashe_mean": float(
+                (weight * table["firm_paybill"]).sum()
+                / (
+                    _bpe_whole_economy_employees(bpe_source)
+                    * paybill_source.all_employees_mean
+                )
+            ),
             "weighted_employees": float((weight * table["firm_employees"]).sum()),
             "weighted_ons_employment": float((weight * table["ons_employment"]).sum()),
             "bpe_reconciliation": _records(
@@ -528,6 +616,16 @@ def build_uk_firm_dataset(
                 )
             ),
         }
+    if bpe_source is not None:
+        # Opt-in switches appear only when set.
+        for key, value in (
+            ("mid_band_remap", mid_headcount),
+            ("large_band_remap", large_headcount),
+            ("bpe_turnover", result.bpe_turnover),
+            ("out_of_frame_employment_removed", out_of_frame_employment),
+        ):
+            if value is not None:
+                receipt["uk_firm_headcount"][key] = value
     if consumption_source is not None:
         receipt["inputs"]["consumption"] = dict(consumption_source.sha256)
         receipt["uk_firm_consumption"] = {
@@ -567,6 +665,16 @@ def build_uk_firm_dataset(
             "method": UK_FIRM_EA_TAKEUP_METHOD,
             **takeup,
         }
+    if rd_source is not None:
+        receipt["inputs"]["rd_tax_credits"] = dict(rd_source.sha256)
+        receipt["uk_firm_rd_tax_credits"] = {
+            "status": UK_FIRM_RD_STATUS,
+            "method": UK_FIRM_RD_METHOD,
+            "weighted_expenditure_gbp": float(
+                (weight * table["firm_qualifying_rd_expenditure"]).sum()
+            ),
+            **dict(rd_draw.diagnostics),
+        }
     if rateable_value_source is not None:
         receipt["inputs"]["rateable_value"] = {
             rateable_value_source.file: rateable_value_source.sha256
@@ -597,6 +705,34 @@ def build_uk_firm_dataset(
     }
 
 
+def _bpe_whole_economy_employees(source: Any) -> float:
+    rows = source.size_bands
+    row = rows[
+        (rows["table"] == "Table 2")
+        & (rows["sector"] == "whole_economy")
+        & (rows["size_band"] == "All")
+    ]
+    return float(row["employees_thousand"].iloc[0]) * 1_000.0
+
+
+def _mid_headcount_record(before: pd.DataFrame, after: pd.DataFrame) -> dict[str, Any]:
+    weight = before["firm_weight"].to_numpy(np.float64)
+    return {
+        "method": UK_FIRM_MID_HEADCOUNT_METHOD,
+        "weighted_employment_before": float(
+            (weight * before["employment"].to_numpy(np.float64)).sum()
+        ),
+        "weighted_employment_after": float(
+            (weight * after["employment"].to_numpy(np.float64)).sum()
+        ),
+        "weighted_rows_changed": float(
+            weight[
+                before["employment"].to_numpy() != after["employment"].to_numpy()
+            ].sum()
+        ),
+    }
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -613,6 +749,12 @@ def _config_record(config: UKFirmGenerationConfig) -> dict[str, Any]:
         if item.name in _RULE_CONFIG_FIELDS:
             continue
         value = getattr(config, item.name)
+        if item.name == "bpe_turnover":
+            # Opt-in: absent from the default receipt; the source's hashes
+            # stand for it.
+            if value is None:
+                continue
+            value = dict(value.sha256)
         if isinstance(value, Mapping):
             value = {str(key): str(entry) for key, entry in value.items()}
         record[item.name] = value

@@ -104,6 +104,43 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--bpe-mid-headcount",
+        action="store_true",
+        help=(
+            "remap headcount inside the ONS 5-9 to 100-249 bands to BPE 2025 "
+            "Table 1 shapes (needs --bpe-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--bpe-turnover",
+        action="store_true",
+        help=(
+            "draw the open ONS turnover band on a tail pinned to BPE 2025 total "
+            "turnover and re-pair employment with turnover (needs --bpe-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--bpe-large-headcount",
+        action="store_true",
+        help="remap 250+ headcount to BPE 2025 Table 1 large rows (needs --bpe-dir)",
+    )
+    parser.add_argument(
+        "--rd-tax-credits-dir",
+        type=Path,
+        help=(
+            "directory holding HMRC R&D tax credit statistics 2024-25; sets the "
+            "assumed firm_qualifying_rd_expenditure and firm_is_sme"
+        ),
+    )
+    parser.add_argument(
+        "--out-of-frame-no-employees",
+        action="store_true",
+        help=(
+            "give rows outside the ONS frame no headcount, an assumption "
+            "(needs --bpe-dir)"
+        ),
+    )
+    parser.add_argument(
         "--employment-allowance-takeup-dir",
         type=Path,
         help=(
@@ -178,6 +215,11 @@ def main(argv: list[str] | None = None) -> int:
         bpe_dir=args.bpe_dir,
         employment_allowance_takeup_dir=args.employment_allowance_takeup_dir,
         consumption_dir=args.consumption_dir,
+        bpe_mid_headcount=args.bpe_mid_headcount,
+        out_of_frame_no_employees=args.out_of_frame_no_employees,
+        bpe_turnover=args.bpe_turnover,
+        bpe_large_headcount=args.bpe_large_headcount,
+        rd_tax_credits_dir=args.rd_tax_credits_dir,
     )
     receipt = built["receipt"]
     print(

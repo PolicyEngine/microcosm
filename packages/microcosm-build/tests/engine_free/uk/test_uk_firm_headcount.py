@@ -400,3 +400,66 @@ def test_size_band_reconciliation() -> None:
 def test_firm_headcount_exports() -> None:
     for name in firm_headcount.__all__:
         assert hasattr(firm_headcount, name)
+
+
+def _mid_frame(n: int = 200_000, seed: int = 3) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    bands = [(5, 9), (10, 19), (20, 49), (50, 99), (100, 249), (250, 400)]
+    choice = rng.integers(0, len(bands), n)
+    low = np.array([b[0] for b in bands])[choice]
+    high = np.array([b[1] for b in bands])[choice]
+    return pd.DataFrame(
+        {
+            "firm_id": np.arange(1, n + 1),
+            "ons_legal_status": rng.choice([1, 2, 3, 4, 5, 7], n),
+            "employment": rng.integers(low, high + 1),
+            "firm_weight": rng.uniform(0.5, 2.0, n),
+        }
+    )
+
+
+def test_mid_remap_keeps_bands_ranks_and_other_rows() -> None:
+    firms = _mid_frame()
+    out = firm_headcount.remap_uk_firm_mid_headcount(firms, _source(), seed=1)
+    before = firms["employment"].to_numpy()
+    after = out["employment"].to_numpy()
+    eligible = np.isin(firms["ons_legal_status"], [1, 2, 3, 4]) & (before <= 249)
+    assert (after[~eligible] == before[~eligible]).all()
+    pd.testing.assert_frame_equal(
+        out.drop(columns="employment"), firms.drop(columns="employment")
+    )
+    edges = [5, 10, 20, 50, 100, 250]
+    band_before = np.searchsorted(edges, before, side="right")
+    band_after = np.searchsorted(edges, after, side="right")
+    assert (band_before == band_after).all()
+    for band in range(1, 6):
+        rows = eligible & (band_before == band)
+        frame = pd.DataFrame({"before": before[rows], "after": after[rows]})
+        span = frame.groupby("before")["after"].agg(["min", "max"])
+        # A larger headcount never maps below a smaller one.
+        assert (span["max"].to_numpy()[:-1] <= span["min"].to_numpy()[1:]).all()
+
+
+def test_mid_remap_weighted_means_match_bpe() -> None:
+    firms = _mid_frame()
+    out = firm_headcount.remap_uk_firm_mid_headcount(firms, _source(), seed=1)
+    targets = firm_headcount.uk_firm_mid_headcount_targets(_source())
+    expected = (
+        targets.assign(m=targets["employment"] * targets["probability"])
+        .groupby("ons_band")["m"]
+        .sum()
+    )
+    eligible = np.isin(out["ons_legal_status"], [1, 2, 3, 4])
+    for band_low, band_high, _ in firm_headcount.UK_FIRM_MID_BANDS:
+        rows = eligible & out["employment"].between(band_low, band_high)
+        w = out.loc[rows, "firm_weight"]
+        mean = float((w * out.loc[rows, "employment"]).sum() / w.sum())
+        assert mean == pytest.approx(expected[f"{band_low}-{band_high}"], rel=0.01)
+
+
+def test_mid_remap_is_deterministic_and_row_order_free() -> None:
+    firms = _mid_frame(20_000)
+    once = firm_headcount.remap_uk_firm_mid_headcount(firms, _source(), seed=7)
+    shuffled = firms.sample(frac=1.0, random_state=4)
+    again = firm_headcount.remap_uk_firm_mid_headcount(shuffled, _source(), seed=7)
+    pd.testing.assert_frame_equal(once, again.sort_index())
