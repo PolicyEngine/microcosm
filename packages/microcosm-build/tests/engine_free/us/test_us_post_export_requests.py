@@ -21,12 +21,16 @@ each consumer's output from their results. These tests check that:
 # ruff: noqa: F403, F405
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import itertools
 import json
 import multiprocessing
 import os
 import pickle
+import re
+import threading
+import types
 import typing
 from collections.abc import Mapping
 from concurrent.futures import ProcessPoolExecutor
@@ -315,26 +319,69 @@ def test_reform_requests_follow_the_order_of_first_asks(
         scorer.close()
 
 
-@pytest.mark.parametrize("kind", ["built reform", "description pickle cannot name"])
-def test_the_dry_run_refuses_a_reform_it_cannot_describe(
-    builder, no_engine, monkeypatch, kind
-) -> None:
-    """A worker rebuilds each reform from its description, so a consumer that
-    hands the dry run a built reform, or a description that cannot be pickled,
-    fails the plan, which the release records and refuses before the export,
-    instead of recording a request no worker could run."""
+class _Unreducible:
+    """A value whose pickling raises ``ValueError``, not ``PicklingError``."""
+
+    def __reduce__(self):
+        raise ValueError("fixture value refuses to be pickled")
+
+
+def _undescribable_reform(kind: str, monkeypatch):
+    """(a reform the dry run must refuse, the message it must give)."""
 
     class BuiltReform:
         pass
 
-    class LocalChanges(ParameterChangesReform):
-        """An accepted type, defined in a function: pickle cannot name it."""
-
+    spec = next(
+        spec
+        for spec in reform_validation_module.load_default_reform_specs(period=2024)
+        if spec.parameter_changes
+    )
     if kind == "built reform":
-        reform, message = BuiltReform(), "BuiltReform"
-    else:
-        reform = LocalChanges({"gov.fixture": {"2024-01-01": 1}})
-        message = "LocalChanges reform description that cannot be pickled"
+        return BuiltReform(), "got a .*BuiltReform"
+    if kind == "subclass registered only in this process":
+        # It pickles here, by its module's name; a spawned worker, which has
+        # no such module, could not unpickle it.
+        module = types.ModuleType("registered_only_in_this_process")
+        exec(
+            "from microcosm.build.us_runtime.post_export_requests import "
+            "ParameterChangesReform\n"
+            "class RegisteredChanges(ParameterChangesReform):\n"
+            "    pass\n",
+            module.__dict__,
+        )
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+        reform = module.RegisteredChanges({"gov.fixture": {"2024-01-01": 1}})
+        pickle.dumps(reform)
+        return reform, "got a RegisteredChanges"
+    if kind == "read-only mapping":
+        proxied = dataclasses.replace(
+            spec, parameter_changes=MappingProxyType(dict(spec.parameter_changes))
+        )
+        return proxied, "ReformValidationSpec reform description that cannot be pickled"
+    unreducible = dataclasses.replace(
+        spec, parameter_changes={"gov.fixture": {"2024-01-01": _Unreducible()}}
+    )
+    return unreducible, "cannot be pickled .*ValueError: fixture value refuses"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "built reform",
+        "subclass registered only in this process",
+        "read-only mapping",
+        "value whose pickling raises ValueError",
+    ],
+)
+def test_the_dry_run_refuses_a_reform_it_cannot_describe(
+    builder, no_engine, monkeypatch, kind
+) -> None:
+    """A worker rebuilds each reform from its description, so a consumer that
+    hands the dry run a built reform, or a description a worker might not
+    unpickle, fails the plan, which the release records and refuses before
+    the export, instead of recording a request no worker could run."""
+    reform, message = _undescribable_reform(kind, monkeypatch)
 
     def consumer(simulate):
         simulate(reform).calculate("income_tax", 2024)
@@ -355,7 +402,7 @@ def test_the_dry_run_refuses_a_reform_it_cannot_describe(
         release_id=_RELEASE_ID,
     )
     assert plan.error is not None
-    assert plan.error.startswith("TypeError") and message in plan.error
+    assert plan.error.startswith("TypeError") and re.search(message, plan.error)
     assert plan.terminal_failures()
 
 
@@ -410,8 +457,11 @@ def test_a_request_rebuilds_its_reform_with_its_consumer_s_builder(
         ({"period": "2024"}, TypeError, "period"),
         ({"period": True}, TypeError, "period"),
         ({"map_to": ""}, ValueError, "map_to"),
+        ({"map_to": 5}, TypeError, "map_to"),
         ({"consumer": ""}, ValueError, "consumer"),
+        ({"consumer": 5}, TypeError, "consumer"),
         ({"variable": ""}, ValueError, "variable"),
+        ({"variable": None}, TypeError, "variable"),
     ],
 )
 def test_a_request_refuses_inconsistent_fields(fields, error, message) -> None:
@@ -434,6 +484,11 @@ def test_parameter_changes_must_name_a_reform(changes) -> None:
     """No changes is the baseline, which consumers ask for as ``None``."""
     with pytest.raises((TypeError, ValueError), match="parameter changes"):
         ParameterChangesReform(changes)
+
+
+def test_parameter_changes_that_cannot_be_copied_are_refused() -> None:
+    with pytest.raises(TypeError, match="parameter changes cannot be copied"):
+        ParameterChangesReform({"gov.fixture": {"2024-01-01": threading.Lock()}})
 
 
 def test_descriptors_cannot_be_hashed_and_keep_their_own_changes() -> None:
