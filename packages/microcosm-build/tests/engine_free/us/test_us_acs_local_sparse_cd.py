@@ -24,7 +24,7 @@ from scipy import sparse
 from microcosm.calibrate import TargetSpec
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.target import TargetSet
-from microcosm.frame import US_SCHEMA, Frame
+from microcosm.frame import US_SCHEMA, Frame, SharedColumnChangedError
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -1305,3 +1305,17 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
     assert sorted(path.name for path in checkpoint.iterdir()) == sorted(
         ["weights_latest.npz", module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME]
     )
+
+
+def test_struct_extraction_refuses_a_frame_whose_shared_column_changed() -> None:
+    """The extracted tables are copies, so a later check could not see the change."""
+
+    module = _load_tool_module()
+    source = _load_fixtures()._nested_frame()
+    shared = source.replace_tables()
+    np.add.at(source.table("household")["household_id"].to_numpy(), [0], 1)
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        module.extract_struct_tables(shared)
+
+    assert raised.value.changed_columns == (("household", "household_id"),)

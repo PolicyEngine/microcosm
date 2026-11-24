@@ -172,6 +172,35 @@ THREAD_ENV_KEYS = (
     "NUMEXPR_NUM_THREADS",
     "BLIS_NUM_THREADS",
 )
+#: The one thread setting of the US build commands, which fills the variables
+#: above and a few more (tools/us_build_thread_environment.py; this module
+#: imports nothing from the workspace, so its rule is repeated here). A plan's
+#: value is checked when the plan is loaded: the base tool's check step loads
+#: the tool without running its start-up step, so the tool itself would refuse
+#: a bad value only after the runner had staged the inputs.
+THREAD_SETTING_ENV = "MICROCOSM_THREADS"
+
+
+def _thread_setting_problem(value: str) -> str | None:
+    """Why ``value`` is not a usable MICROCOSM_THREADS, or None if it is.
+
+    A blank value means unset, as it does to the tools.
+    """
+
+    if value == "":
+        return None
+    if value.isascii() and value.isdigit():
+        try:
+            if int(value) > 0:
+                return None
+        except ValueError:  # longer than int() will parse
+            pass
+    return (
+        f"env {THREAD_SETTING_ENV!r} must be a positive whole number of threads, "
+        f"got {value!r}"
+    )
+
+
 #: PYTHONUNBUFFERED is allowed so a plan can match a local run's environment
 #: exactly (Route A's base ran with only PYTHONUNBUFFERED=1). It changes when
 #: log lines reach the runner, not what the tool computes.
@@ -1637,6 +1666,10 @@ def parse_plan(data: object) -> Plan:
             raise PlanError(f"env {key!r} must be a string")
         if key == TELEMETRY_REQUIRED_ENV and raw_env[key] != "0":
             raise PlanError(_telemetry_setting_refusal(raw_env[key]))
+        if key == THREAD_SETTING_ENV:
+            problem = _thread_setting_problem(raw_env[key])
+            if problem is not None:
+                raise PlanError(problem)
         env[key] = raw_env[key]
 
     max_wall = data.get("max_wall_seconds")

@@ -1120,11 +1120,13 @@ def uk_release_export_frame(frame: Frame) -> Frame:
     of the share keys' components at the frame's weights
     (:func:`uk_household_totals`); the dataset-year division sums them again at
     the weights the file stores (``weight_year.uk_dataset_year_frame``). A
-    frame that already left passes unchanged.
+    frame that already left passes unchanged. The tables are copied below, so
+    shared columns are checked first.
     """
 
     from .geography_ladder import export_area_code_columns
 
+    frame.check_shared_columns()
     tables: dict[str, pd.DataFrame] = {}
     changed = False
     for entity in ("person", "benunit", "household"):

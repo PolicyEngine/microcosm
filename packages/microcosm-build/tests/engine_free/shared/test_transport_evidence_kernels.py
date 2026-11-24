@@ -180,6 +180,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.data.source_enrichment",
         "microcosm.data.stored_inputs",
         "microcosm.data.us_critical_targets",
+        # microcosm#1683: microcosm.frame.bundle imports the shared-column
+        # check, so a binding that reaches the frame bundle reaches it.
+        "microcosm.frame.shared_columns",
     ]
 )
 BATTERY = "toy.gates.terminal"
