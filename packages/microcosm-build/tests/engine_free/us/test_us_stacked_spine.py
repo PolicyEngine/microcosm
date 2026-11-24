@@ -3308,6 +3308,17 @@ def test_primary_qrf_worker_identity_memo_binds_lock(
             )
 
 
+def test_the_approved_uv_lock_digest_is_the_repository_lock_s() -> None:
+    """A worker started from this checkout refuses any other lock digest."""
+
+    repository_lock = Path(__file__).resolve().parents[5] / "uv.lock"
+    repository_lock_sha256 = hashlib.sha256(repository_lock.read_bytes()).hexdigest()
+    assert repository_lock_sha256 == worker_identity_module.APPROVED_UV_LOCK_SHA256, (
+        "uv.lock changed: set APPROVED_UV_LOCK_SHA256 in "
+        "microcosm.build.us_runtime.worker_identity to its new digest"
+    )
+
+
 def test_primary_qrf_worker_execution_binding_isolates_semantic_memo(
     _worker_identity_memo_inputs,
 ) -> None:
