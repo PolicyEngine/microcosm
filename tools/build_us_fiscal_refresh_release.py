@@ -5342,9 +5342,13 @@ def _record_post_export_request_descriptors(
 
     One ``PostExportRequest`` per request of the engine-free dry run
     (``_dry_run_post_export_requests``), in the order the serial scorer runs
-    them, so a spawned worker process can run each request and the consumer's
-    output can be rebuilt from the results. Nothing records the descriptors:
-    the plan in ``calibration_diagnostics.json`` keeps its keys only.
+    them, so a spawned worker process can run each request. The results are
+    the values each request calculates; a consumer's output also holds what
+    it reads off the reforms it builds itself (the smoke check records each
+    list-edit probe's resolved lists from its built reform), so rebuilding an
+    output means running the consumer again over the results. Nothing records
+    the descriptors: the plan in ``calibration_diagnostics.json`` keeps its
+    keys only.
     """
     return tuple(
         PostExportRequest(

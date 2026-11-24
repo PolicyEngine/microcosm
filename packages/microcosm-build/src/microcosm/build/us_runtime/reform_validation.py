@@ -37,10 +37,6 @@ from microcosm.build.us_runtime.fiscal_targets import (
     US_JCT_TAX_EXPENDITURE_REFORMS,
     SimpleTaxExpenditureReform,
 )
-from microcosm.build.us_runtime.post_export_requests import (
-    RECORDS_REQUESTS_ONLY,
-    ParameterChangesReform,
-)
 from microcosm.calibrate.geography_constants import (
     US_STATE_POSTAL_TO_NUMERIC_FIPS,
 )
@@ -759,6 +755,12 @@ def reform_validation_payload(
     :class:`~microcosm.build.us_runtime.post_export_requests.ParameterChangesReform`
     for each cumulative OBBBA state. No reform is built.
     """
+    # Imported here: post_export_requests imports ReformValidationSpec.
+    from microcosm.build.us_runtime.post_export_requests import (
+        RECORDS_REQUESTS_ONLY,
+        ParameterChangesReform,
+    )
+
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
     baseline: Any = None

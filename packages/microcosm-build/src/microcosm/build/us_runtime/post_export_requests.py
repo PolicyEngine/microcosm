@@ -25,19 +25,21 @@ the reform from that description with the consumer's own builder:
 
 These types live here, in an importable package, because the release tool is
 loaded by file path, outside ``sys.modules``: a spawned process could not
-unpickle a type defined in it.
+unpickle a type defined in it. Neither type can be hashed, because a reform
+description holds dictionaries; key a request's results by its
+``(consumer, position)``.
 """
 
 from __future__ import annotations
 
+import copy
+import pickle
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from microcosm.build.us_runtime.reform_validation import ReformValidationSpec
 from microcosm.build.us_runtime.release_input_coverage import ReformCoverageProbe
-
-if TYPE_CHECKING:
-    from microcosm.build.us_runtime.reform_validation import ReformValidationSpec
 
 __all__ = [
     "RECORDS_REQUESTS_ONLY",
@@ -63,9 +65,16 @@ class ParameterChangesReform:
     Reform validation scores OBBBA's provisions cumulatively from a pre-OBBBA
     state; each state is one such payload. An empty payload is the baseline,
     which a consumer asks for as ``simulate(None)``, so it is refused here.
+
+    It keeps a deep copy of the payload, as a ``dict``: the request records
+    the reform as the consumer asked for it, and no later change to the
+    consumer's dictionaries (which its reform specs share) reaches it.
     """
 
     parameter_changes: Mapping[str, Any]
+
+    # Not hashable: the payload is a dictionary.
+    __hash__ = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if not isinstance(self.parameter_changes, Mapping):
@@ -78,6 +87,9 @@ class ParameterChangesReform:
                 "ParameterChangesReform needs at least one of its parameter "
                 "changes; the baseline is simulate(None)."
             )
+        object.__setattr__(
+            self, "parameter_changes", copy.deepcopy(dict(self.parameter_changes))
+        )
 
 
 #: What a post-export request records as its reform: the description the
@@ -87,28 +99,40 @@ type PostExportReform = (
 )
 
 
-def _post_export_reform_types() -> tuple[type, ...]:
-    # Imported here: reform_validation imports this module.
-    from microcosm.build.us_runtime.reform_validation import ReformValidationSpec
-
-    return (ReformCoverageProbe, ReformValidationSpec, ParameterChangesReform)
+_POST_EXPORT_REFORM_TYPES = (
+    ReformCoverageProbe,
+    ReformValidationSpec,
+    ParameterChangesReform,
+)
 
 
 def check_post_export_reform(reform: object) -> None:
     """Refuse a reform that is not a description a worker can rebuild.
 
+    The description must be one of the accepted types and must pickle, so a
+    failure shows in the release's pre-export plan rather than when a request
+    is sent to a worker.
+
     Raises:
-        TypeError: Naming the reform's type and the types accepted.
+        TypeError: Naming the reform's type and the types accepted, or why
+            the description cannot be pickled.
     """
-    types = _post_export_reform_types()
-    if not isinstance(reform, types):
-        accepted = ", ".join(kind.__name__ for kind in types)
+    if not isinstance(reform, _POST_EXPORT_REFORM_TYPES):
+        accepted = ", ".join(kind.__name__ for kind in _POST_EXPORT_REFORM_TYPES)
         raise TypeError(
             "Post-export scoring records each reform as the description a worker "
             f"rebuilds it from ({accepted}); got a {type(reform).__qualname__}. "
             "A consumer whose simulate carries RECORDS_REQUESTS_ONLY must hand it "
             "that description, not a built reform."
         )
+    try:
+        pickle.dumps(reform)
+    except (pickle.PicklingError, TypeError, AttributeError) as error:
+        raise TypeError(
+            f"Post-export scoring got a {type(reform).__qualname__} reform "
+            "description that cannot be pickled for a worker process: "
+            f"{type(error).__name__}: {error}"
+        ) from error
 
 
 def build_post_export_reform(reform: PostExportReform) -> Any:
@@ -127,6 +151,17 @@ def build_post_export_reform(reform: PostExportReform) -> Any:
 
         return reform_validation._build_parameter_reform(reform.parameter_changes)
     return reform.build_reform()
+
+
+def _require_integer(name: str, value: object, *, minimum: int | None = None) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(
+            f"PostExportRequest.{name} must be a Python integer, got {value!r}."
+        )
+    if minimum is not None and value < minimum:
+        raise ValueError(
+            f"PostExportRequest.{name} must be {minimum} or more, got {value}."
+        )
 
 
 @dataclass(frozen=True)
@@ -162,6 +197,9 @@ class PostExportRequest:
     reform: PostExportReform | None = None
     reformed_simulation: int | None = None
 
+    # Not hashable: most reform descriptions hold dictionaries.
+    __hash__ = None  # type: ignore[assignment]
+
     def __post_init__(self) -> None:
         for name in ("consumer", "variable"):
             value = getattr(self, name)
@@ -170,16 +208,8 @@ class PostExportRequest:
                     f"PostExportRequest.{name} must be a non-empty string, "
                     f"got {value!r}."
                 )
-        for name in ("position", "period"):
-            value = getattr(self, name)
-            if not isinstance(value, int) or isinstance(value, bool):
-                raise TypeError(
-                    f"PostExportRequest.{name} must be an integer, got {value!r}."
-                )
-        if self.position < 0:
-            raise ValueError(
-                f"PostExportRequest.position must be 0 or more, got {self.position}."
-            )
+        _require_integer("position", self.position, minimum=0)
+        _require_integer("period", self.period)
         if self.map_to is not None and (
             not isinstance(self.map_to, str) or not self.map_to
         ):
@@ -195,16 +225,12 @@ class PostExportRequest:
                 )
             return
         check_post_export_reform(self.reform)
-        simulation = self.reformed_simulation
-        if (
-            not isinstance(simulation, int)
-            or isinstance(simulation, bool)
-            or simulation < 0
-        ):
+        if self.reformed_simulation is None:
             raise ValueError(
-                "A reform PostExportRequest names its reformed simulation as an "
-                f"integer of 0 or more, got {simulation!r}."
+                "A reform PostExportRequest names the reformed simulation that "
+                "asked for it."
             )
+        _require_integer("reformed_simulation", self.reformed_simulation, minimum=0)
 
     @property
     def key(self) -> tuple[str, int, str | None]:

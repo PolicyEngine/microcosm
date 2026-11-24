@@ -445,18 +445,18 @@ one Microsimulation over the whole file.
 - Each stage's baseline requests are learned before export by an engine-free
   dry run and scored in one pass over the batches, in ascending period order.
   One engine refuses a period earlier than one it has already computed.
-  The same dry run returns every request, baseline and reform, as a picklable
-  `PostExportRequest` (`microcosm.build.us_runtime.post_export_requests`),
-  which a process started with `spawn` can unpickle. A reform request holds
-  the description its stage builds the reform from: the smoke probe, the
-  reform-validation spec, or a cumulative OBBBA state's parameter changes. The
-  dry run builds no reform and refuses one it cannot describe. Nothing records
-  the descriptors; the guard sweep below rebuilds each reform from its
-  descriptor in the worker that scores it.
   The real-engine test probes the MD CCS request-order premise by requesting
   2025 state taxes after 2027 keys. It checks for the
   `md.msde.ccs.payment.informal.rates` error and warns if that error is absent;
   it does not require the upstream bug to persist.
+- The same dry run returns every request, baseline and reform, as a picklable
+  `PostExportRequest` (`microcosm.build.us_runtime.post_export_requests`),
+  which a process started with `spawn` can unpickle. A reform request holds
+  the description its stage builds the reform from: the smoke probe, the
+  reform-validation spec, or a cumulative OBBBA state's parameter changes. The
+  dry run builds no reform, and refuses a reform it cannot describe or pickle.
+  Nothing records the descriptors; the guard sweep below rebuilds each reform
+  from its descriptor in the worker that scores it.
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold
