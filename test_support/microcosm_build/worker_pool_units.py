@@ -27,6 +27,11 @@ def initialize_with_payload(payload):
     return {"payload": payload, "initializer_calls": _INITIALIZER_CALLS}
 
 
+def echo(state, unit):
+    """Return the unit; needs no initializer state."""
+    return unit
+
+
 def describe_worker(state, unit):
     return {
         "unit": unit,
@@ -130,3 +135,49 @@ def score_household_batch(state, positions):
         "per_household": per_household,
         "weighted_total": np.sum(per_household * weights, dtype=np.float64),
     }
+
+
+def start_lingering_thread(*args):
+    """An initializer whose worker keeps a non-daemon thread after it returns.
+
+    multiprocessing waits for such a thread before the process exits, so a
+    worker told to stop stays alive until the pool kills it.
+    """
+    import threading
+
+    threading.Thread(target=time.sleep, args=(120,), daemon=False).start()
+
+
+def _refuse_to_load():
+    raise ValueError("this object cannot be rebuilt after pickling")
+
+
+class RefusesToUnpickle:
+    """Pickles fine, but raises when it is unpickled."""
+
+    def __reduce__(self):
+        return (_refuse_to_load, ())
+
+
+def return_object_the_parent_cannot_unpickle(state, unit):
+    return RefusesToUnpickle()
+
+
+_KEPT: list = []
+
+
+def keep_memory_after_returning(state, unit):
+    """Return at once, but keep ``mebibytes`` alive in this worker."""
+    value, mebibytes = unit
+    if mebibytes:
+        _KEPT.append(np.ones(mebibytes * 1024 * 1024 // 8))
+    else:
+        time.sleep(0.5)
+    return value
+
+
+def write_pid_then_sleep(state, unit):
+    directory, seconds = unit
+    (Path(directory) / f"worker-{os.getpid()}").write_text("running")
+    time.sleep(seconds)
+    return os.getpid()

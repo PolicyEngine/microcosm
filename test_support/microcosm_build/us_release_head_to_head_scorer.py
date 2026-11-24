@@ -273,6 +273,17 @@ def _initialize_failing_fixture_slice_worker(*args):
     return state
 
 
+def _initialize_low_limit_fixture_slice_worker(*args):
+    """A fixture worker whose own memory check fires after its first slice."""
+    state = _initialize_fixture_slice_worker(*args)
+    _load_head_to_head_module().MAX_RSS_BYTES = 1
+    return state
+
+
+def _initialize_refusing_fixture_slice_worker(*args):
+    raise ValueError("fixture worker start refused")
+
+
 def _three_household_fixture_artifact(module, *, sha256: str, measure_values):
     """Extend the existing frame with a shorter household-slice tail."""
     artifact = _fixture_artifact(

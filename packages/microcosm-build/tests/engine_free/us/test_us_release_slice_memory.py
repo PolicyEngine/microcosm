@@ -258,3 +258,25 @@ def test_an_unclosed_scope_removes_nothing_when_it_is_collected(tmp_path) -> Non
     finally:
         sys.modules.pop(abandoned_name, None)
         sys.modules.pop(later_name, None)
+
+
+def test_closing_an_earlier_scope_keeps_a_later_open_scopes_modules(tmp_path) -> None:
+    """Scopes may close out of order without removing a module still in use."""
+    variables_dir = tmp_path / "variables"
+    earlier_name = "7500001_-123_income_tax"
+    later_name = "7500002_-123_income_tax"
+    try:
+        earlier = EngineVariableModuleScope(variables_dir).open()
+        _register_variable_module(earlier_name, variables_dir)
+        later = EngineVariableModuleScope(variables_dir).open()
+        _register_variable_module(later_name, variables_dir)
+
+        earlier.close()
+        assert earlier_name not in sys.modules
+        assert later_name in sys.modules
+
+        later.close()
+        assert later_name not in sys.modules
+    finally:
+        sys.modules.pop(earlier_name, None)
+        sys.modules.pop(later_name, None)

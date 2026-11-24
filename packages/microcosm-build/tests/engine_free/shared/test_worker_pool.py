@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import gc
 import multiprocessing
 import os
 import signal
+import subprocess
+import sys
+import time
 from collections import Counter
+from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import pytest
 
+import microcosm.build.worker_pool as worker_pool_module
 from microcosm.build.worker_pool import (
     WorkerPool,
     WorkerPoolError,
@@ -22,6 +29,7 @@ from test_support.microcosm_build.worker_pool_identity import (
     assert_identical_across_worker_counts,
     canonical_result_bytes,
 )
+from test_support.paths import paths_for
 
 MIB = 1024 * 1024
 TEST_SECONDS_LIMIT = 120
@@ -334,6 +342,210 @@ def test_process_memory_bytes_sees_this_process_grow() -> None:
     del held
 
 
+def test_the_memory_cap_is_enforced_while_another_worker_starts(monkeypatch) -> None:
+    """Starting a worker can block for as long as the worker takes to import.
+
+    The memory thread must still be able to stop a worker over its cap, so a
+    start must not hold the lock that thread needs.
+    """
+    pool = WorkerPool(WorkerPoolSettings(workers=1), unit_function=units.echo)
+    starts_under_lock = []
+    real_process = pool._context.Process
+
+    class RecordingProcess(real_process):
+        def start(self):
+            starts_under_lock.append(pool._shared.lock.locked())
+            return super().start()
+
+    monkeypatch.setattr(pool._context, "Process", RecordingProcess)
+    with pool:
+        list(pool.map([0]))
+    assert starts_under_lock == [False]
+
+
+def test_resuming_a_map_after_the_pool_closed_raises_and_starts_nothing() -> None:
+    pool = WorkerPool(
+        WorkerPoolSettings(workers=2), unit_function=units.sleep_then_return
+    )
+    results = pool.map([(index, 0.3) for index in range(6)])
+    assert next(results) == 0
+    pool.close()
+    starts = pool.report().worker_starts
+
+    with pytest.raises(WorkerPoolError, match="closed"):
+        next(results)
+    assert pool.report().worker_starts == starts
+    assert multiprocessing.active_children() == []
+
+
+def test_a_worker_that_will_not_exit_after_being_stopped_is_killed(monkeypatch) -> None:
+    monkeypatch.setattr(worker_pool_module, "_STOP_SECONDS", 1.0)
+    started = time.monotonic()
+    with WorkerPool(
+        WorkerPoolSettings(workers=1, max_units_per_worker=1),
+        initializer=units.start_lingering_thread,
+        unit_function=units.echo,
+    ) as pool:
+        results = list(pool.map(range(2)))
+
+    assert results == [0, 1]
+    assert time.monotonic() - started < 60
+
+
+def _unclosed_run() -> list:
+    pool = WorkerPool(WorkerPoolSettings(workers=2), unit_function=units.echo)
+    return list(pool.map(range(2)))
+
+
+def test_a_pool_dropped_without_closing_stops_its_workers() -> None:
+    assert len(_unclosed_run()) == 2
+    gc.collect()
+    deadline = time.monotonic() + 30
+    while multiprocessing.active_children() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert multiprocessing.active_children() == []
+
+
+def _process_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    status = Path(f"/proc/{pid}/stat")
+    if status.exists():
+        # An exited process its new parent has not reaped yet is a zombie.
+        return status.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    return True
+
+
+def test_busy_workers_exit_when_their_parent_is_killed(tmp_path) -> None:
+    repository = paths_for("microcosm-build").repository
+    environment = {**os.environ, "PYTHONPATH": str(repository)}
+    parent = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "test_support.microcosm_build.worker_pool_orphan_parent",
+            str(tmp_path),
+        ],
+        cwd=repository,
+        env=environment,
+    )
+    try:
+        deadline = time.monotonic() + 90
+        while len(list(tmp_path.glob("worker-*"))) < 2:
+            assert parent.poll() is None, "the parent process exited early"
+            assert time.monotonic() < deadline, "the workers did not start"
+            time.sleep(0.2)
+        worker_pids = [
+            int(path.name.split("-")[1]) for path in tmp_path.glob("worker-*")
+        ]
+    finally:
+        parent.kill()
+        parent.wait()
+
+    deadline = time.monotonic() + 20
+    while (
+        any(_process_running(pid) for pid in worker_pids)
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.2)
+    still_running = [pid for pid in worker_pids if _process_running(pid)]
+    for pid in still_running:
+        os.kill(pid, signal.SIGKILL)
+    assert still_running == []
+
+
+def test_taking_every_result_finishes_the_map_without_exhausting_it() -> None:
+    with WorkerPool(WorkerPoolSettings(workers=2), unit_function=units.echo) as pool:
+        results = pool.map(range(3))
+        assert [next(results) for _ in range(3)] == [0, 1, 2]
+        results.close()
+        assert list(pool.map(range(2))) == [0, 1]
+
+
+def test_a_unit_the_worker_cannot_unpickle_stops_the_run_with_its_cause() -> None:
+    with WorkerPool(
+        WorkerPoolSettings(workers=1, max_attempts=3),
+        unit_function=units.echo,
+    ) as pool:
+        with pytest.raises(
+            WorkerPoolUnitError, match=r"unit 1/1 .*ValueError: this object cannot"
+        ) as failure:
+            list(pool.map([units.RefusesToUnpickle()]))
+        assert pool.report().worker_starts == 1
+    assert len(failure.value.causes) == 1
+
+
+def test_a_result_the_parent_cannot_unpickle_stops_the_run_with_its_label() -> None:
+    with WorkerPool(
+        WorkerPoolSettings(workers=1),
+        unit_function=units.return_object_the_parent_cannot_unpickle,
+    ) as pool:
+        with pytest.raises(
+            WorkerPoolUnitError, match=r"unit 1/1 .*could not be read in the parent"
+        ):
+            list(pool.map([0]))
+
+
+def test_memory_a_unit_leaves_behind_is_not_charged_to_the_next_unit() -> None:
+    # The memory thread's first reading comes long after this test ends, so
+    # only the reading taken when unit 0 returns can see the 600 MiB.
+    settings = WorkerPoolSettings(
+        workers=1,
+        memory_cap_bytes=400 * MIB,
+        memory_poll_seconds=300.0,
+        max_attempts=1,
+    )
+    with WorkerPool(settings, unit_function=units.keep_memory_after_returning) as pool:
+        assert list(pool.map([(0, 600), (1, 0)])) == [0, 1]
+        report = pool.report()
+
+    assert report.failed_attempts == ()
+    assert report.workers_stopped_over_cap == 1
+
+
+def test_a_worker_environment_value_that_cannot_be_encoded_is_refused() -> None:
+    with pytest.raises(ValueError, match="worker_environment"):
+        WorkerPoolSettings(
+            workers=1,
+            worker_environment={
+                "MICROCOSM_TEST_OK": "1",
+                "MICROCOSM_TEST_BAD": "\ud800",
+            },
+        )
+
+
+def test_a_dead_worker_is_noticed_when_something_else_collects_children() -> None:
+    previous = signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    try:
+        with WorkerPool(
+            WorkerPoolSettings(workers=1, max_attempts=2),
+            unit_function=units.always_die,
+        ) as pool:
+            with pytest.raises(WorkerPoolUnitError, match="unit 1/1 failed on all 2"):
+                list(pool.map([0]))
+    finally:
+        signal.signal(signal.SIGCHLD, previous)
+
+
+def test_a_function_defined_where_workers_cannot_import_it_is_refused(
+    monkeypatch,
+) -> None:
+    script_main = ModuleType("__main__")  # As under ``python -c`` or a REPL.
+
+    def typed_at_the_prompt(state, unit):
+        return unit
+
+    typed_at_the_prompt.__module__ = "__main__"
+    typed_at_the_prompt.__qualname__ = "typed_at_the_prompt"
+    script_main.typed_at_the_prompt = typed_at_the_prompt
+    monkeypatch.setitem(sys.modules, "__main__", script_main)
+
+    with pytest.raises(TypeError, match="importable"):
+        WorkerPool(WorkerPoolSettings(workers=1), unit_function=typed_at_the_prompt)
+
+
 # ---------------------------------------------------------------------------
 # The 1-vs-N byte-identity helper
 # ---------------------------------------------------------------------------
@@ -429,3 +641,36 @@ def test_canonical_bytes_tell_apart_what_equality_hides() -> None:
     assert canonical_result_bytes((1, 2)) != canonical_result_bytes([1, 2])
     with pytest.raises(TypeError, match="object"):
         canonical_result_bytes(object())
+
+
+def test_canonical_bytes_keep_field_types_array_kinds_and_pandas_metadata() -> None:
+    import enum
+
+    import pandas as pd
+
+    little_endian = np.array([(1.0,)], dtype=[("a", "<f8")])
+    assert canonical_result_bytes(little_endian) != canonical_result_bytes(
+        little_endian.view([("a", ">f8")])
+    )
+    assert canonical_result_bytes(little_endian) != canonical_result_bytes(
+        little_endian.view([("b", "<f8")])
+    )
+    assert canonical_result_bytes(
+        np.ma.array([1.0, 2.0], mask=[False, True])
+    ) != canonical_result_bytes(np.ma.array([1.0, 2.0], mask=[True, False]))
+    assert canonical_result_bytes(np.ma.array([1.0, 2.0])) != canonical_result_bytes(
+        np.array([1.0, 2.0])
+    )
+    assert canonical_result_bytes(np.True_) != canonical_result_bytes(True)
+
+    class Size(enum.IntEnum):
+        ONE = 1
+
+    assert canonical_result_bytes(Size.ONE) != canonical_result_bytes(1)
+    assert canonical_result_bytes(b"ab") != canonical_result_bytes(bytearray(b"ab"))
+    assert canonical_result_bytes(
+        pd.Series(["a"], dtype=pd.CategoricalDtype(["a", "b"]))
+    ) != canonical_result_bytes(pd.Series(["a"], dtype=pd.CategoricalDtype(["a", "c"])))
+    assert canonical_result_bytes(
+        pd.Series([1.0], index=pd.Index([0], name="household"))
+    ) != canonical_result_bytes(pd.Series([1.0], index=pd.Index([0], name="person")))

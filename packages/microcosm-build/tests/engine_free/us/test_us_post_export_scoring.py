@@ -2097,3 +2097,39 @@ def test_a_scorer_keeps_one_reform_open_across_its_consumers(
     assert _rule_module_name(log.systems[1]) in sys.modules
     scorer.finish_consumer(second_consumer)
     assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
+
+
+def test_closing_one_scorer_keeps_another_scorers_open_reform_modules(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    first_log, second_log = _EngineLog(), _EngineLog()
+    first = _scorer(
+        builder,
+        _nested_frame(),
+        first_log,
+        3,
+        tmp_path / "first",
+        variables_dir=stand_in_rule_modules,
+    )
+    second = _scorer(
+        builder,
+        _nested_frame(),
+        second_log,
+        3,
+        tmp_path / "second",
+        variables_dir=stand_in_rule_modules,
+    )
+    first.open_consumer("fixture", ()).simulate(_FakeReform("first")).calculate(
+        "income_tax", builder.PERIOD
+    )
+    second_consumer = second.open_consumer("fixture", ())
+    second_reform = second_consumer.simulate(_FakeReform("second"))
+    second_reform.calculate("income_tax", builder.PERIOD)
+
+    first.close()
+
+    assert _rule_module_name(first_log.systems[0]) not in sys.modules
+    assert _rule_module_name(second_log.systems[0]) in sys.modules
+    second_reform.calculate("income_tax", builder.PERIOD + 1)
+    second.finish_consumer(second_consumer)
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []

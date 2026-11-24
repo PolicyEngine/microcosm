@@ -3,13 +3,18 @@
 # ruff: noqa: F403, F405
 import json
 import multiprocessing
+import re
 import signal
 import time
 
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
-from microcosm.build.worker_pool import WorkerPool, WorkerPoolUnitError
+from microcosm.build.worker_pool import (
+    WorkerPool,
+    WorkerPoolError,
+    WorkerPoolUnitError,
+)
 from test_support.microcosm_build.us_release_head_to_head_scorer import *
 
 
@@ -187,7 +192,54 @@ def test_spawned_worker_failure_includes_chunk_and_slice_label(monkeypatch) -> N
         )
 
 
-def test_abrupt_worker_death_is_labelled_and_leaves_no_children(monkeypatch) -> None:
+def test_a_workers_own_memory_limit_stops_the_run_without_scoring_the_slice_again(
+    monkeypatch,
+) -> None:
+    """The scorer's 20 GiB check stays fatal in a worker, as in one process."""
+    module = _load_head_to_head_module()
+    _parallel_fixture(module, monkeypatch)
+    monkeypatch.setattr(
+        module, "_initialize_slice_worker", _initialize_low_limit_fixture_slice_worker
+    )
+    with pytest.raises(
+        WorkerPoolUnitError,
+        match=r"incumbent chunk 1/2 slice 1/2 .*scoring limit",
+    ) as failure:
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+            maximum_microsim_batch_size=2,
+            workers=1,
+            worker_max_slices=100,
+        )
+    assert len(failure.value.causes) == 1
+
+
+def test_a_worker_start_failure_names_the_artifact(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    _parallel_fixture(module, monkeypatch)
+    monkeypatch.setattr(
+        module, "_initialize_slice_worker", _initialize_refusing_fixture_slice_worker
+    )
+    with pytest.raises(
+        WorkerPoolError,
+        match=r"incumbent slice workers failed: .*fixture worker start refused",
+    ):
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+            maximum_microsim_batch_size=2,
+            workers=2,
+        )
+
+
+def test_abrupt_worker_death_is_labelled_and_leaves_no_children(
+    monkeypatch, capsys
+) -> None:
     from test_support.microcosm_build.us_release_head_to_head_worker_death import (
         OneHouseholdFrame,
         exit_slice_worker,
@@ -227,6 +279,13 @@ def test_abrupt_worker_death_is_labelled_and_leaves_no_children(monkeypatch) -> 
         assert len(failure.value.causes) == 2
         assert all("exited with code 97" in cause for cause in failure.value.causes)
         assert multiprocessing.active_children() == []
+        # Each failed attempt is reported on stderr, as the memory receipts are.
+        stderr = capsys.readouterr().err
+        assert re.search(
+            r"fixture chunk [12]/2 slice 1/1: attempt 1 ended without a result "
+            r"\(the worker exited with code 97\)",
+            stderr,
+        )
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         for process in multiprocessing.active_children():
