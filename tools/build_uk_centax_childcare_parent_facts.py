@@ -1,54 +1,67 @@
 #!/usr/bin/env python
-"""Build uk/centax_childcare_parent_facts.json from CenTax's released workbook.
+"""Build uk/centax_childcare_parent_facts.json from CenTax's registered workbook.
 
 Advani, Flew, Pepin-Hall and Summers (CenTax, September 2026), *Removing the
-childcare cliff-edge*, released their HMRC tabulations as
-``AdvaniFlewPepinhallSummers2026_ChildcareThreshold_data.xlsx``; its SHA-256 is
-pinned in ``uk_runtime/centax_childcare_parents.py``. This tool reads
-Figures 3.1, 3.3, 3.6 and 3.7 from it and writes nine derived facts (see that
-module): four ANI band shares of the parents in (0, £200k], and five splits of
-the parents in (£80k, £150k], each times ``parent_count``.
+£100,000 childcare cliff-edge*, publish their data for the charts as
+``AdvaniFlewPepinhallSummers2026_ChildcareThreshold_data.xlsx``, which Chronicle
+registers raw-only as ``centax-childcare-cliff-edge-2026``. This tool checks a
+local copy of the workbook against that registration's pins
+(``microcosm.build.pinned_inputs``), reads Figures 3.1, 3.3, 3.6 and 3.7 from it
+and writes six derived facts (see ``uk_runtime/centax_childcare_parents.py``):
+three ANI band shares of the parents in (£50k, £200k], and three splits of the
+parents in (£80k, £150k], each times ``parent_count``.
 
-``parent_count`` is the baseline build's own number of such parents at the
-calibration year, read from the JSON ``tools/diagnose_uk_centax_parents.py``
-writes on the baseline H5; the resource records that H5's SHA-256. The
-uprating that ages the 2021-22 edges is the installed policyengine-uk's OBR
-average earnings index, which must agree with the diagnostics'.
+``parent_count`` is the baseline build's own number of parents in the aged
+(£50k, £200k] at the calibration year, read from the JSON
+``tools/diagnose_uk_centax_parents.py`` writes on the baseline H5; the resource
+records that build and its H5's SHA-256. The uprating that ages the 2021-22
+edges is the installed policyengine-uk's OBR average earnings index, which must
+agree with the diagnostics'.
 
-Kept as diagnostics, never targets: Table A.1's levels (1,648,632 parents; 77,615
-on £80k-£140k), Figure 2.1's live childcare account shares and Figure 3.12's
-non-working-partner shares. CenTax's model outputs (Tables 3.1, 3.2 and 4.1,
-the frictions, elasticities, marginal bunchers and every cost) are not read.
+Never read into the resource: CenTax's model outputs (Tables 3.1, 3.2 and 4.1,
+the frictions, elasticities, marginal bunchers and every cost) and the figures
+kept as diagnostics (Table A.1's levels, Figures 2.1 and 3.12, the band below
+£50k and the region groups outside London), which the diagnostic reads from the
+registered workbook itself.
 
     uv run --no-sync python tools/build_uk_centax_childcare_parent_facts.py \\
+        --manifest <chronicle>/db/data/centax/childcare_cliff_edge_2026/manifest.yaml \\
         --workbook AdvaniFlewPepinhallSummers2026_ChildcareThreshold_data.xlsx \\
-        --baseline-diagnostics centax_parents_a6299504_2025.json
+        --baseline-diagnostics centax_parents_<build>_2025.json --built-on YYYY-MM-DD
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
 from collections.abc import Mapping, Sequence
-from datetime import date
 from pathlib import Path
 from typing import Any
 
 import openpyxl
 
+from microcosm.build import pinned_inputs
 from microcosm.build.uk_runtime.centax_childcare_parents import (
     CENTAX_ANI_BANDS_2022,
+    CENTAX_BOUND_REGION_GROUPS,
+    CENTAX_CHRONICLE_PACKAGE_ID,
+    CENTAX_CHRONICLE_SOURCE_ID,
     CENTAX_DATA_TAX_YEAR,
     CENTAX_DERIVED_FACT_KEY_PREFIX,
     CENTAX_FACTS_RESOURCE,
     CENTAX_REGION_GROUPS,
     CENTAX_REPORT_URL,
+    CENTAX_SHARE_BASE_2022,
     CENTAX_SPLIT_BAND_2022,
     CENTAX_SPLITS,
+    CENTAX_WORKBOOK_FILENAME,
     CENTAX_WORKBOOK_SHA256,
     RESOURCE_KIND,
+    RESOURCE_SCHEMA_VERSION,
     ROW_SCHEMA_VERSION,
+    aged_edges,
     centax_ani_uprating,
     centax_cell_ids,
     load_uk_centax_childcare_parent_facts,
@@ -58,15 +71,23 @@ from microcosm.build.uk_runtime.centax_childcare_parents import (
 
 GENERATOR = {
     "tool": "tools/build_uk_centax_childcare_parent_facts.py",
-    "version": "uk-centax-childcare-parents-v1",
+    "version": "uk-centax-childcare-parents-v2",
 }
+#: The diagnostics schema whose ``parent_count`` this tool scales by.
+DIAGNOSTICS_SCHEMA = "microcosm.uk.centax_parent_diagnostics.v2"
 DEFAULT_OUT = (
     Path(__file__).resolve().parents[1]
     / "packages/microcosm-build/src/microcosm/build/uk"
     / CENTAX_FACTS_RESOURCE
 )
-WORKBOOK_NAME = "AdvaniFlewPepinhallSummers2026_ChildcareThreshold_data.xlsx"
-#: Sheet, expected header row (from column B) and the bin step in pounds.
+#: Sheet, expected header row (from column B) and the bin step in pounds. The
+#: bins are labelled by their upper edge: Figure 3.1's labels run from 500 to
+#: 200,000, so its first bin is (0, £500] and its last ends at the figure's
+#: top; the workbook does not say so in words. The report's notes give £1,000
+#: bins for Figures 3.1 and 3.6, but their sheets hold £500 bins and say the
+#: report's charts aggregate them. Every band edge here falls on a bin edge of
+#: every figure, so a cell sums whole bins; read by lower edges, each cell
+#: would move by one bin at each end.
 SHEETS: Mapping[str, tuple[tuple[str, ...], int]] = {
     "Fig. 3.1": (("Income Bin (ANI)", "Number of Taxpayer in Income Bin"), 500),
     "Fig. 3.3": (
@@ -96,13 +117,13 @@ SHEETS: Mapping[str, tuple[tuple[str, ...], int]] = {
         1000,
     ),
 }
-_FIG_3_7_COLUMN = {
+#: Figure 3.7's English columns, by region group.
+FIG_3_7_COLUMN = {
     "london": "Number of Taxpayers in Income Bin (London)",
     "north_and_midlands": "Number of Taxpayers in Income Bin (North and Midlands)",
     "south_excl_london": "Number of Taxpayers in Income Bin (South excl. London)",
 }
 _CELL_LABELS = {
-    "ani_0_to_50k": "ANI up to £50,000",
     "ani_50k_to_80k": "ANI over £50,000 to £80,000",
     "ani_80k_to_120k": "ANI over £80,000 to £120,000",
     "ani_120k_to_200k": "ANI over £120,000 to £200,000",
@@ -111,12 +132,6 @@ _CELL_LABELS = {
         "main income source other than employment, ANI over £80,000 to £150,000"
     ),
     "london_ani_80k_to_150k": "London, ANI over £80,000 to £150,000",
-    "south_excl_london_ani_80k_to_150k": (
-        "South excluding London, ANI over £80,000 to £150,000"
-    ),
-    "north_and_midlands_ani_80k_to_150k": (
-        "North and Midlands, ANI over £80,000 to £150,000"
-    ),
 }
 _CELL_FIGURES = {
     **{band: "Fig. 3.1" for band, _, _ in CENTAX_ANI_BANDS_2022},
@@ -124,10 +139,46 @@ _CELL_FIGURES = {
 }
 SOURCE_MEASURE_ID = "parents_of_eligible_3_4_year_olds"
 SOURCE_CONCEPT = "microcosm.centax_childcare_parents.count"
+#: The tax year the cells count, which policyengine-uk dates 2025 (the period
+#: value the compile matches at the calibration year).
+_TAX_YEAR_START = "{year}-04-06"
+_TAX_YEAR_END = "{next_year}-04-05"
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def open_registered_workbook(
+    manifest_path: Path, workbook_path: Path
+) -> tuple[Any, dict[str, Any], dict[str, str], dict[str, Any]]:
+    """The workbook, checked against its Chronicle registration.
+
+    Returns the open workbook, the registration record a resource stores
+    (``pinned_inputs.registration``), the licence the manifest states and the
+    manifest itself. Refuses a manifest of another package or kind, or a file
+    whose bytes are not the registered ones.
+    """
+
+    manifest, files = pinned_inputs.manifest_files(manifest_path)
+    if (
+        manifest.get("package_id") != CENTAX_CHRONICLE_PACKAGE_ID
+        or manifest.get("source_id") != CENTAX_CHRONICLE_SOURCE_ID
+    ):
+        raise ValueError(
+            f"{manifest_path} is not the {CENTAX_CHRONICLE_PACKAGE_ID} registration."
+        )
+    if manifest.get("registration_kind") != "raw_only" or len(files) != 1:
+        raise ValueError(f"{manifest_path} must register one raw-only workbook.")
+    ((key, entry),) = files.items()
+    verified = pinned_inputs.verify_pinned_file(workbook_path, entry)
+    if (
+        verified["sha256"] != CENTAX_WORKBOOK_SHA256
+        or verified["filename"] != CENTAX_WORKBOOK_FILENAME
+    ):
+        raise ValueError(
+            f"{manifest_path} does not register the workbook this module pins."
+        )
+    registration = pinned_inputs.registration(manifest, {key: verified})
+    licence = pinned_inputs.licence_of(manifest)
+    workbook = openpyxl.load_workbook(workbook_path, read_only=True, data_only=True)
+    return workbook, registration, licence, manifest
 
 
 def read_series(workbook: Any, sheet: str) -> dict[str, dict[int, float]]:
@@ -175,107 +226,57 @@ def band_sum(series: Mapping[int, float], lower: float, upper: float) -> float:
     )
 
 
-def centax_shares(workbook: Any) -> tuple[dict[str, float], dict[str, Any]]:
-    """Each cell's share of the parents in (0, £200k], and the workbook sums."""
+def within_split_band(
+    columns: Mapping[str, Mapping[int, float]], numerator: str
+) -> float:
+    """``numerator``'s share of the columns' parents in (£80k, £150k]."""
+
+    lower, upper = CENTAX_SPLIT_BAND_2022
+    whole = sum(band_sum(column, lower, upper) for column in columns.values())
+    return band_sum(columns[numerator], lower, upper) / whole
+
+
+def england_region_columns(workbook: Any) -> dict[str, dict[int, float]]:
+    """Figure 3.7's English columns by region group (Scotland left out)."""
+
+    fig37 = read_series(workbook, "Fig. 3.7")
+    columns = {group: fig37[column] for group, column in FIG_3_7_COLUMN.items()}
+    if set(columns) != set(CENTAX_REGION_GROUPS):
+        raise ValueError("Fig. 3.7 groups differ from the module's region groups.")
+    return columns
+
+
+def centax_shares(workbook: Any) -> tuple[dict[str, float], float]:
+    """Each bound cell's share of the parents in (£50k, £200k], and the split band's."""
 
     fig31 = read_series(workbook, "Fig. 3.1")["Number of Taxpayer in Income Bin"]
     fig33 = read_series(workbook, "Fig. 3.3")
     fig36 = read_series(workbook, "Fig. 3.6")
-    fig37 = read_series(workbook, "Fig. 3.7")
-    top = CENTAX_ANI_BANDS_2022[-1][2]
-    if max(fig31) != top:
-        raise ValueError(f"Fig. 3.1 ends at £{max(fig31)}, not £{top:,.0f}.")
-    total = band_sum(fig31, 0.0, top)
+    regions = england_region_columns(workbook)
+    base_lower, base_upper = CENTAX_SHARE_BASE_2022
+    if max(fig31) != base_upper:
+        raise ValueError(f"Fig. 3.1 ends at £{max(fig31)}, not £{base_upper:,.0f}.")
+    base = band_sum(fig31, base_lower, base_upper)
     shares = {
-        band: band_sum(fig31, lower, upper) / total
+        band: band_sum(fig31, lower, upper) / base
         for band, lower, upper in CENTAX_ANI_BANDS_2022
     }
-    lower, upper = CENTAX_SPLIT_BAND_2022
-    split_share = band_sum(fig31, lower, upper) / total
-
-    def within(columns: Mapping[str, Mapping[int, float]], numerator: str) -> float:
-        whole = sum(band_sum(column, lower, upper) for column in columns.values())
-        return band_sum(columns[numerator], lower, upper) / whole
-
-    england_regions = {
-        group: fig37[column] for group, column in _FIG_3_7_COLUMN.items()
-    }
-    if set(england_regions) != set(CENTAX_REGION_GROUPS):
-        raise ValueError("Fig. 3.7 groups differ from the module's region groups.")
+    split_share = band_sum(fig31, *CENTAX_SPLIT_BAND_2022) / base
     split_within = {
-        "female": within(fig36, "Number of Taxpayers in Income Bin (Females)"),
-        "non_employee": within(
+        "female": within_split_band(
+            fig36, "Number of Taxpayers in Income Bin (Females)"
+        ),
+        "non_employee": within_split_band(
             fig33, "Number of Taxpayers in Income Bin (Non-Employees)"
         ),
-        **{group: within(england_regions, group) for group in england_regions},
+        **{
+            group: within_split_band(regions, group)
+            for group in CENTAX_BOUND_REGION_GROUPS
+        },
     }
     for split, _ in CENTAX_SPLITS:
         shares[f"{split}_ani_80k_to_150k"] = split_share * split_within[split]
-    sums = {
-        "fig_3_1_parents_0_to_200k": total,
-        "fig_3_1_parents_80k_to_150k": band_sum(fig31, lower, upper),
-        "split_shares_within_80k_to_150k": split_within,
-        "fig_3_6_parents_80k_to_150k": sum(
-            band_sum(column, lower, upper) for column in fig36.values()
-        ),
-        "fig_3_3_parents_80k_to_150k": sum(
-            band_sum(column, lower, upper) for column in fig33.values()
-        ),
-        "fig_3_7_england_parents_80k_to_150k_pooled_2019_2022": sum(
-            band_sum(column, lower, upper) for column in england_regions.values()
-        ),
-    }
-    return shares, {"split_band_share": split_share, "workbook_sums": sums}
-
-
-def diagnostic_comparators(workbook: Any) -> dict[str, Any]:
-    """The CenTax figures kept as diagnostics: never targets."""
-
-    table = list(workbook["Tab. A.1"].iter_rows(values_only=True))
-    parents = next(
-        row
-        for row in table
-        if row[1] == "3- and 4-year-olds" and row[2] == "Number of Parents"
-    )
-    female = next(
-        row
-        for row in table
-        if row[2] == "Share Female (%)" and table.index(row) < table.index(parents) + 5
-    )
-    fig312 = {
-        row[1]: row[2:5]
-        for row in workbook["Fig. 3.12"].iter_rows(values_only=True)
-        if isinstance(row[1], (int, float)) and not isinstance(row[1], bool)
-    }
-    lower, upper = CENTAX_SPLIT_BAND_2022
-    in_band = [values for label, values in fig312.items() if lower < label <= upper]
-    return {
-        "table_a1_3_4_year_olds": {
-            "parents_whole_population": parents[3],
-            "parents_80k_to_140k": parents[4],
-            "share_female_whole_population_pct": female[3],
-            "share_female_80k_to_140k_pct": female[4],
-            "note": (
-                "Levels of identified parents in HMRC's data for 2021-22. Not bound: "
-                "HMRC identifies parents through its own linkage, so the level is not "
-                "the FRS's family count, and the DfE caseloads already set the level."
-            ),
-        },
-        "fig_3_12_non_working_partner_share_80k_to_150k_unweighted_bin_mean": {
-            "men": sum(values[1] for values in in_band) / len(in_band),
-            "women": sum(values[2] for values in in_band) / len(in_band),
-            "note": (
-                "Mean of the £2,500 bins' shares (the figure gives shares, not counts). "
-                "Not bound: the denominator is parents with an identified partner, "
-                "and the workbook's 'Men & Women' column repeats 'Men'."
-            ),
-        },
-        "fig_2_1": (
-            "Live DfE childcare account shares by ANI. Not bound: the frame has no "
-            "childcare-account measure; the dashboard's take-up assumption is the "
-            "place to compare it."
-        ),
-    }
+    return shares, split_share
 
 
 def fact_row(
@@ -285,6 +286,7 @@ def fact_row(
     period: str,
     edges: Sequence[int],
     inputs_sha256: str,
+    vintage: str,
 ) -> dict[str, Any]:
     record_set_spec_id = f"uk.centax_childcare_parents.{cell}.v1"
     identity = {
@@ -300,6 +302,7 @@ def fact_row(
         "Parents of age-eligible 3- and 4-year-olds, "
         f"{_CELL_LABELS[cell]} (2021-22 pounds), England"
     )
+    tax_year = f"{period}-{(int(period) + 1) % 100:02d}"
     return {
         "schema_version": ROW_SCHEMA_VERSION,
         "aggregate_fact_key": CENTAX_DERIVED_FACT_KEY_PREFIX + digest,
@@ -312,13 +315,15 @@ def fact_row(
         "provenance_class": "derived_administrative",
         "period": {"type": "calendar_year", "value": period},
         "period_coverage": {
-            "start_date": f"{period}-01-01",
-            "end_date": f"{period}-12-31",
+            "start_date": _TAX_YEAR_START.format(year=period),
+            "end_date": _TAX_YEAR_END.format(next_year=int(period) + 1),
             "basis": "flow",
             "notes": (
-                f"CenTax's share for tax year {CENTAX_DATA_TAX_YEAR} times the "
-                f"baseline build's parents at {period}; the ANI edges are aged to "
-                f"{period} pounds ({edges[0]:,} to {edges[1]:,})."
+                f"The {tax_year} tax year's ANI, which policyengine-uk dates "
+                f"{period}, the period value. CenTax's share for tax year "
+                f"{CENTAX_DATA_TAX_YEAR} times the baseline build's parents at "
+                f"{period}; the ANI edges are aged to {period} pounds "
+                f"({edges[0]:,} to {edges[1]:,})."
             ),
         },
         "geography": {
@@ -348,11 +353,12 @@ def fact_row(
         "source": {
             "source_name": "microcosm",
             "source_table": (
-                f"CenTax, Removing the childcare cliff-edge (2026), {_CELL_FIGURES[cell]}; "
+                f"CenTax, Removing the £100,000 childcare cliff-edge (2026), "
+                f"{_CELL_FIGURES[cell]} (Chronicle {CENTAX_CHRONICLE_PACKAGE_ID}); "
                 "Microcosm derivation"
             ),
             "source_file": CENTAX_FACTS_RESOURCE,
-            "vintage": "centax_2026_09",
+            "vintage": vintage,
             "source_sha256": inputs_sha256,
             "url": CENTAX_REPORT_URL,
         },
@@ -366,39 +372,61 @@ def fact_row(
     }
 
 
+def check_baseline(
+    baseline: Mapping[str, Any], *, calibration_year: int, uprating: float
+) -> None:
+    """Refuse diagnostics that are not this engine's, at this year and range."""
+
+    if baseline.get("schema") != DIAGNOSTICS_SCHEMA:
+        raise ValueError(
+            f"the baseline diagnostics are {baseline.get('schema')!r}, not "
+            f"{DIAGNOSTICS_SCHEMA!r}."
+        )
+    if int(baseline["year"]) != calibration_year:
+        raise ValueError(
+            f"the baseline diagnostics are at {baseline['year']}, not {calibration_year}."
+        )
+    if baseline["model_ani_edges"] != model_ani_edges(uprating):
+        raise ValueError("the baseline diagnostics were banded on other ANI edges.")
+    if abs(float(baseline["ani_uprating"]) - uprating) > 1e-12:
+        raise ValueError("the baseline diagnostics used another ANI uprating.")
+    if baseline["parent_count_range"] != aged_edges(*CENTAX_SHARE_BASE_2022, uprating):
+        raise ValueError(
+            "the baseline diagnostics counted parents over another ANI range."
+        )
+    installed = importlib.metadata.version("policyengine-uk")
+    measured = (baseline.get("resolver") or {}).get("policyengine_uk_version")
+    if measured != installed:
+        raise ValueError(
+            f"the baseline diagnostics ran policyengine-uk {measured}, not the "
+            f"installed {installed}."
+        )
+
+
 def build_resource(
     *,
+    manifest_path: Path,
     workbook_path: Path,
     baseline: Mapping[str, Any],
     calibration_year: int,
     uprating: float,
     built_on: str,
 ) -> dict[str, Any]:
-    digest = _sha256(workbook_path)
-    if digest != CENTAX_WORKBOOK_SHA256:
-        raise ValueError(
-            f"{workbook_path} is not the pinned CenTax workbook ({digest})."
-        )
+    workbook, registration, licence, manifest = open_registered_workbook(
+        manifest_path, workbook_path
+    )
+    check_baseline(baseline, calibration_year=calibration_year, uprating=uprating)
     edges = model_ani_edges(uprating)
-    if int(baseline["year"]) != calibration_year:
-        raise ValueError(
-            f"the baseline diagnostics are at {baseline['year']}, not {calibration_year}."
-        )
-    if baseline["model_ani_edges"] != edges:
-        raise ValueError("the baseline diagnostics were banded on other ANI edges.")
-    if abs(float(baseline["ani_uprating"]) - uprating) > 1e-12:
-        raise ValueError("the baseline diagnostics used another ANI uprating.")
-    workbook = openpyxl.load_workbook(workbook_path, read_only=True, data_only=True)
-    shares, receipts = centax_shares(workbook)
-    comparators = diagnostic_comparators(workbook)
+    shares, split_share = centax_shares(workbook)
     parent_count = float(baseline["parent_count"])
+    vintage = _registered_vintage(manifest_path)
     inputs = {
         "workbook": {
-            "filename": WORKBOOK_NAME,
-            "sha256": digest,
+            **registration,
+            "source_page": manifest.get("source_page"),
+            "licence": licence,
             "report_url": CENTAX_REPORT_URL,
             "figures": ["Fig. 3.1", "Fig. 3.3", "Fig. 3.6", "Fig. 3.7"],
-            "received": "Arun Advani to Vahid Ahmadi, 21 October 2026",
         },
         "baseline": {
             "dataset": baseline["dataset"],
@@ -419,30 +447,28 @@ def build_resource(
             period=period,
             edges=edges[cell],
             inputs_sha256=inputs_sha256,
+            vintage=vintage,
         )
         for cell in centax_cell_ids()
     ]
     rows.sort(key=lambda row: row["aggregate_fact_key"])
+    base_edges = aged_edges(*CENTAX_SHARE_BASE_2022, uprating)
     return {
         "kind": RESOURCE_KIND,
-        "schema_version": 1,
+        "schema_version": RESOURCE_SCHEMA_VERSION,
         "resource": CENTAX_FACTS_RESOURCE,
         "description": (
             "Microcosm-derived counts of parents of age-eligible 3- and 4-year-olds in "
             "England by adjusted net income, from CenTax's HMRC tabulations for "
             f"{CENTAX_DATA_TAX_YEAR} (Advani, Flew, Pepin-Hall and Summers 2026, "
-            "Figures 3.1, 3.3, 3.6 and 3.7): each published share times the baseline "
-            "build's own parent count. Not Chronicle facts, and no CenTax model output."
+            "Figures 3.1, 3.3, 3.6 and 3.7, from the workbook Chronicle registers as "
+            f"{CENTAX_CHRONICLE_PACKAGE_ID}): each published share of the parents "
+            "in (£50k, £200k] times the baseline build's own parents in that range. "
+            "No CenTax model output, and none of the figures kept as diagnostics."
         ),
         "built_on": built_on,
         "generator": GENERATOR,
-        "licence": {
-            "attribution": [
-                "Advani, A., Flew, D., Pepin-Hall, J. and Summers, A. (2026), Removing "
-                "the childcare cliff-edge, CenTax. HMRC administrative data; the "
-                "authors' calculations."
-            ],
-        },
+        "licence": {"attribution": [str(licence.get("attribution", ""))]},
         "inputs": inputs,
         "inputs_sha256": inputs_sha256,
         "parameters": {
@@ -452,6 +478,7 @@ def build_resource(
                 "policyengine-uk gov.economic_assumptions.indices.obr.average_earnings, "
                 f"{calibration_year} over 2021"
             ),
+            "share_base_2022": list(CENTAX_SHARE_BASE_2022),
             "ani_bands_2022": {
                 band: [lower, upper] for band, lower, upper in CENTAX_ANI_BANDS_2022
             },
@@ -460,12 +487,10 @@ def build_resource(
             "parent_count": parent_count,
             "parent_count_basis": (
                 "baseline parents of age-eligible 3- and 4-year-olds with annual ANI in "
-                f"(0, {edges[CENTAX_ANI_BANDS_2022[-1][0]][1]:,}] at {calibration_year}"
+                f"({base_edges[0]:,}, {base_edges[1]:,}] at {calibration_year}"
             ),
             "shares": shares,
-            "split_band_share": receipts["split_band_share"],
-            "workbook_sums": receipts["workbook_sums"],
-            "diagnostic_comparators": comparators,
+            "split_band_share": split_share,
             "never_targets": [
                 "Tables 3.1, 3.2 and 4.1 (bunching estimates)",
                 "friction parameters, elasticities and marginal bunchers",
@@ -478,16 +503,39 @@ def build_resource(
     }
 
 
+def _registered_vintage(manifest_path: Path) -> str:
+    """The registered file's vintage (one file, checked by the opener)."""
+
+    _, files = pinned_inputs.manifest_files(manifest_path)
+    return str(next(iter(files.values())).get("vintage") or "")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--workbook", type=Path, required=True)
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help="Chronicle's manifest.yaml for centax-childcare-cliff-edge-2026",
+    )
+    parser.add_argument(
+        "--workbook",
+        type=Path,
+        required=True,
+        help="a local copy of the registered workbook (checked against the manifest)",
+    )
     parser.add_argument("--baseline-diagnostics", type=Path, required=True)
     parser.add_argument("--calibration-year", type=int, default=2025)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--built-on", default=date.today().isoformat())
+    parser.add_argument(
+        "--built-on",
+        required=True,
+        help="build date recorded in the resource (YYYY-MM-DD), so a rerun reproduces it",
+    )
     args = parser.parse_args(argv)
     baseline = json.loads(args.baseline_diagnostics.read_text(encoding="utf-8"))
     resource = build_resource(
+        manifest_path=args.manifest,
         workbook_path=args.workbook,
         baseline=baseline,
         calibration_year=args.calibration_year,

@@ -2849,10 +2849,9 @@ def _centax_parent_simulation() -> SimulationStub:
         "person",
         np.array([False, True, True]),
     )
-    simulation.values[("country", "person")] = (
-        "person",
-        np.array(["ENGLAND"] * 3),
-    )
+    # The engine declares country on the household; the stub serves it at
+    # person grain, which the resolver reads natively.
+    simulation.values["country"] = ("person", np.array(["ENGLAND"] * 3))
     return SimulationStub(simulation.values)
 
 
@@ -2960,10 +2959,13 @@ def test_the_main_source_measure_compares_the_years_sources(monkeypatch, tmp_pat
     assert resolver.knows("person", CENTAX_EMPLOYEE_MAIN_SOURCE)
     assert not resolver.knows("household", CENTAX_EMPLOYEE_MAIN_SOURCE)
     employee, route = resolver.compute("person", CENTAX_EMPLOYEE_MAIN_SOURCE)
-    # Person 1's pay is the largest source; person 2's year's pay (9,450) is
-    # below its dividends, and person 3's (10,500) below its rents.
+    # Person 1's pay and company car benefit are the largest source; person 2's
+    # year's pay (9,450) is below its dividends, and person 3's pay and car
+    # benefit (12,500) below its rents.
     assert employee.tolist() == [1.0, 0.0, 0.0]
-    assert route.startswith("annual_income_sources:employment_income_annual,")
+    assert route.startswith(
+        "annual_income_sources:employment_income_with_benefits_in_kind_annual,"
+    )
 
 
 class _CenTaxInvestorSimulation(_CenTaxAnnualSimulation):
@@ -2992,8 +2994,8 @@ def test_the_main_source_measure_reads_other_investment_income(monkeypatch, tmp_
         frame=_AnnualFrameStub(),
     )
     employee, route = resolver.compute("person", CENTAX_EMPLOYEE_MAIN_SOURCE)
-    # Person 1's year's pay (31,500) is below its 100,000 of other investment
-    # income, so it is not an employee.
+    # Person 1's year's pay and car benefit (34,500) are below its 100,000 of
+    # other investment income, so it is not an employee.
     assert employee.tolist() == [0.0, 0.0, 0.0]
     assert "other_investment_income" in route.split(":", 1)[1].split(",")
 
