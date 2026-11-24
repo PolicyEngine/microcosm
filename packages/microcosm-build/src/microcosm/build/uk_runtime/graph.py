@@ -142,7 +142,9 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # which the open-surface readers before it bind (microcosm#1069).
         "pension_credit_take_up",
         # The Child Benefit redraw rewrites ``frs_take_up``'s two Child Benefit
-        # flags, which the open-surface readers before it bind (microcosm#1063).
+        # flags (microcosm#1063) and the SPI income stage's Child Benefit
+        # reports on the copies (microcosm#1508), which the open-surface
+        # readers before it bind.
         "child_benefit_take_up",
         # The Carer's Allowance draw rewrites ``would_claim_carers_allowance``,
         # the root cell the SPI income stage refreshes, which the open-surface
@@ -1340,6 +1342,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "child_benefit_take_up": (
         _Cell("benunit", "would_claim_child_benefit", "bool"),
         _Cell("benunit", "child_benefit_opts_out", "bool"),
+        _Cell("person", "child_benefit_reported", "float64"),
     ),
     "carers_allowance_take_up": (
         _Cell("person", "would_claim_carers_allowance", "bool"),

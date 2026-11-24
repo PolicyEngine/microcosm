@@ -686,9 +686,10 @@
         "maximum_age_claim_rate_deviation": 0.05,
         "minimum_age_child_rows": 200,
         "maximum_opt_out_share_deviation": 0.01,
-        "minimum_eligible_family_units": 1
+        "minimum_eligible_family_units": 1,
+        "maximum_copy_report_rate_deviation": 0.05
       },
-      "notes": "Stage-time gate over the Child Benefit take-up receipt (microcosm#1063): the share of eligible children claimed for is within 0.02 of HMRC's published claim rates by single year of age (Table 15, May 2025) at the frame's age mix, and within 0.05 at each age with at least 200 child rows whose solved rate was not clipped (clipped ages are reported); the opted-out share of claiming families is within 0.01 of the published opted-out share of registered families (August 2025), or below it only where the charged families are exhausted. The terminal take-up signal gate no longer measures would_claim_child_benefit or child_benefit_opts_out, whose rates are shares of eligible children and of claiming families, not of every benefit unit."
+      "notes": "Stage-time gate over the Child Benefit take-up receipt (microcosm#1063): the share of eligible children claimed for is within 0.02 of HMRC's published claim rates by single year of age (Table 15, May 2025) at the frame's age mix, and within 0.05 at each age with at least 200 child rows whose solved rate was not clipped (clipped ages are reported); the opted-out share of claiming families is within 0.01 of the published opted-out share of registered families (August 2025), or below it only where the charged families are exhausted. The terminal take-up signal gate no longer measures would_claim_child_benefit or child_benefit_opts_out, whose rates are shares of eligible children and of claiming families, not of every benefit unit. The SPI copies' redrawn Child Benefit reports (microcosm#1508) leave every FRS row unchanged, rest each cell on at least the stage's declared number of FRS source households, and give the copy families a weighted reporting share within 0.05 of their cells' FRS rates; the coupling to each copy's FRS twin moves the share only as far as the twins' own reports differ from their cells' rates."
     },
     {
       "id": "uk_stage_cgt_incidence_clone_mass",

@@ -4,26 +4,67 @@
 over every benefit unit with the FRS reporters added on top, and
 ``child_benefit_opts_out`` at a flat rate over every benefit unit whatever its
 income. This stage redraws both once the SPI income chain has set the incomes
-the charge is assessed on, against HMRC's Child Benefit statistics.
+the charge is assessed on, against HMRC's Child Benefit statistics, after
+redrawing the SPI copies' own Child Benefit reports.
+
+Copies' reports. The SPI support channel's copies of FRS households take their
+benefit reports from the SPI income chain's forests, which see the copy's age,
+gender, region and incomes but not its children: a copy with no eligible child
+can report Child Benefit, and copy families report too rarely below the charge
+start and too often where it takes the whole benefit, against the FRS families
+like them. A reporter always claims and is never opted out, so the
+stage first redraws whether each copy's benefit unit reports (microcosm#1508).
+A copy family reports at the weighted share of FRS families that report in its
+cell: its eligible children (1, 2, 3 or more) by the charge band of its highest
+adjusted net income (at most the charge start, inside the taper, or fully
+charged). Adjacent bands are pooled until a cell rests on enough FRS source
+households, and a children group that cannot is merged with its neighbour
+first. The draw is coupled to the copy's FRS twin, the benefit unit it was
+cloned from, so the copy keeps as much of its twin's report as its own cell's
+rate allows:
+
+    copy reports  iff  u * p_twin < p_copy               (twin reports)
+                       p_twin + u * (1 - p_twin) < p_copy (twin does not)
+
+with ``u`` uniform on the copy's identity: a copy in its twin's cell keeps the
+twin's report, and where the twins report at their cells' rates the copies
+report at their own. A
+reporting copy takes its twin's reported amounts, or the engine's annual Child
+Benefit entitlement on its benefit unit head when the twin does not report; a
+copy without an eligible child takes its twin's reports. FRS rows are never
+modified.
 
 Claims. One temporary engine materialization gives each person's eligibility
 (a child, or a qualifying young person). HMRC publishes the share of eligible
 children for whom Child Benefit is claimed, opted-out families included, by
-single year of age. A family claims for all its children or for none, so the
-draw is by family, keyed on the age of its eldest eligible child: a family
-that reports the benefit claims, and the other families of key age ``g``
-claim at a rate ``r_g``. The rates are solved from the eldest age down so that
-the claimed share of the children of each single year of age is the published
-one:
+single year of age. The model claims for all of a family's children or for
+none, so the draw is by family: a family that reports the benefit claims, and
+the other families of key age ``g`` claim at a rate ``r_g``.
 
-    r_g = (t_g * C_g - R_g - sum_{k > g} N_{g,k} * r_k) / N_{g,g}
+The key is the age of the family's eldest eligible child under 16, or of its
+eldest eligible child when none is under 16 (microcosm#1508). Payments for a
+young person of 16 to 19 carry on only while the family extends the claim for
+approved education or training, so HMRC's claimed shares fall after 16. A
+claim is made child by child, and a family whose young person's claim lapses
+keeps claiming for the younger children. Keying such a family on its young
+person instead would apply the young person's low rate to the younger
+children too, and the rates for younger keys could not make up the loss.
+
+The rates are solved so that the claimed share of the children of each single
+year of age is the published one, ages 15 down to 0 first and then 19 down to
+16:
+
+    r_g = (t_g * C_g - R_g - sum_{k solved} N_{g,k} * r_k) / N_{g,g}
 
 with ``t_g`` the published rate at age ``g``, ``C_g`` the eligible children
 aged ``g``, ``R_g`` those in reporting families and ``N_{g,k}`` those in
-non-reporting families whose eldest eligible child is aged ``k``, all weighted
-at the stage's household weights. A rate outside [0, 1] is clipped and the
-receipt says so (reporters alone exceed the published rate, or every family
-claiming still falls short of it).
+non-reporting families of key age ``k``, all weighted at the stage's household
+weights. A child under 16 is in a family keyed at its own age or older, so its
+older keys are solved first; a young person of 16 or over is in a family keyed
+under 16, solved in the first pass, or in a family of young people only, keyed
+at its own age or older. A rate outside [0, 1] is clipped and the receipt says
+so (reporters alone exceed the published rate, or every family claiming still
+falls short of it).
 
 Opt-outs. HMRC publishes the families registered and, of them, the families
 that opted out of payment because of the High Income Child Benefit Charge.
@@ -67,7 +108,14 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.spi_support import (
+    BASE_FRS_SUPPORT_CHANNEL,
+    SPI_SYNTHETIC_SUPPORT_CHANNEL,
+    support_channel_column,
+    support_source_id_column,
+)
 from microcosm.build.uk_runtime.uc_capital_coherence import (
+    _boolean_values,
     _household_to_benunit_weights,
 )
 from microcosm.frame import Frame
@@ -81,12 +129,41 @@ CHILD_BENEFIT_ELIGIBILITY_VARIABLE = (
     "is_child_or_qualifying_young_person_for_child_benefit"
 )
 CHILD_BENEFIT_CHARGE_INCOME_VARIABLE = "adjusted_net_income"
+#: The annual amount a copy's new report carries (benefit unit grain).
+CHILD_BENEFIT_ENTITLEMENT_VARIABLE = "child_benefit_entitlement"
 CHILD_BENEFIT_ENGINE_VARIABLES = (
     CHILD_BENEFIT_ELIGIBILITY_VARIABLE,
     CHILD_BENEFIT_CHARGE_INCOME_VARIABLE,
+    CHILD_BENEFIT_ENTITLEMENT_VARIABLE,
 )
+CHILD_BENEFIT_REPORT_OUTPUT = "child_benefit_reported"
 CHILD_BENEFIT_REPORTED_ANCHOR = "child_benefit_reported_anchor"
-CHILD_BENEFIT_AGGREGATES = {CHILD_BENEFIT_REPORTED_ANCHOR: "child_benefit_reported"}
+CHILD_BENEFIT_AGGREGATES = {CHILD_BENEFIT_REPORTED_ANCHOR: CHILD_BENEFIT_REPORT_OUTPUT}
+#: The SPI copies' report cells (microcosm#1508): eligible children by the
+#: charge band of the benefit unit's highest adjusted net income.
+CHILD_BENEFIT_COPY_CHILDREN = ("1", "2", "3+")
+CHILD_BENEFIT_COPY_INCOME_BANDS = ("below_charge_start", "taper", "fully_charged")
+CHILD_BENEFIT_COPY_MINIMUM_SOURCE_HOUSEHOLDS = 30
+CHILD_BENEFIT_COPY_SOURCE_HOUSEHOLD = "source_household_id"
+CHILD_BENEFIT_COPY_LANDING = "is_benunit_head"
+#: A receipt figure resting on fewer survey households is withheld (CD171's
+#: floor of 3).
+CHILD_BENEFIT_RECEIPT_FLOOR = 3
+CHILD_BENEFIT_COPY_REPORT_RULE = (
+    "an SPI copy's benefit unit with an eligible child reports at the weighted "
+    "share of FRS benefit units with an eligible child that report Child "
+    "Benefit in its cell of eligible children (1, 2, 3+) by the charge band of "
+    "its highest adjusted net income (at most the charge start, inside the "
+    "taper, fully charged), adjacent bands pooled until a cell rests on "
+    f"{CHILD_BENEFIT_COPY_MINIMUM_SOURCE_HOUSEHOLDS} FRS source households and "
+    "a children group short of that merged with its neighbour first; coupled "
+    "to its FRS twin (benunit_source_id): a copy of a reporting twin reports "
+    "when u * p_twin < p_copy, of a non-reporting twin when p_twin + u * (1 - "
+    "p_twin) < p_copy; a reporting copy takes its twin's reported amounts "
+    "(person_source_id), or child_benefit_entitlement on its benefit unit head "
+    "when the twin does not report; a copy without an eligible child takes its "
+    "twin's reports; FRS rows are unchanged"
+)
 CHILD_BENEFIT_STATISTICS_RESOURCE = "hmrc_child_benefit_statistics.json"
 #: HMRC Child Benefit statistics, annual release at August 2025: the claim
 #: rates are estimated at the May reference month, the caseload at August.
@@ -100,11 +177,19 @@ CHILD_BENEFIT_CHILDREN_IN_PAYMENT_MEASURE = "children_in_payment_united_kingdom"
 CHILD_BENEFIT_CHILDREN_OPTED_OUT_MEASURE = "children_opted_out_united_kingdom"
 CHILD_BENEFIT_ALL_AGES = "All ages"
 CHILD_BENEFIT_CHARGE_PARAMETERS = "gov.hmrc.income_tax.charges.CB_HITC"
-CHILD_BENEFIT_FAMILY_KEY = "age of the benefit unit's eldest eligible child"
+#: Child Benefit's children are under 16; from 16 a qualifying young person's
+#: payments need the claim extended (SSCBA 1992 s.142). The family key prefers
+#: a child under this age (microcosm#1508).
+CHILD_BENEFIT_KEY_AGE_LIMIT = 16
+CHILD_BENEFIT_FAMILY_KEY = (
+    "age of the benefit unit's eldest eligible child under 16, or of its eldest "
+    "eligible child when none is under 16"
+)
 CHILD_BENEFIT_CLAIM_RULE = (
-    "a reporter claims; a non-reporting family whose eldest eligible child is "
-    "aged g claims at r_g = (t_g * C_g - R_g - sum over k > g of N_gk * r_k) / "
-    "N_gg, weighted, solved from the eldest age down and clipped to [0, 1]"
+    "a reporter claims; a non-reporting family of key age g claims at r_g = "
+    "(t_g * C_g - R_g - sum over the solved keys k of N_gk * r_k) / N_gg, "
+    "weighted, solved for ages 15 down to 0 and then 19 down to 16, and "
+    "clipped to [0, 1]"
 )
 CHILD_BENEFIT_OPT_OUT_RULE = (
     "published opted-out share of registered families, of the claiming "
@@ -298,6 +383,7 @@ class UKChildBenefitTakeUpResult:
 
     frame: Frame
     claim_export: Mapping[str, object]
+    copy_reports: Mapping[str, object]
     claims: Mapping[str, object]
     opt_outs: Mapping[str, object]
     in_payment: Mapping[str, object]
@@ -309,10 +395,12 @@ class UKChildBenefitTakeUpResult:
             "stage": CHILD_BENEFIT_TAKE_UP_STAGE_NAME,
             "seed": CHILD_BENEFIT_TAKE_UP_SEED,
             "family_key": CHILD_BENEFIT_FAMILY_KEY,
+            "copy_report_rule": CHILD_BENEFIT_COPY_REPORT_RULE,
             "claim_rule": CHILD_BENEFIT_CLAIM_RULE,
             "opt_out_rule": CHILD_BENEFIT_OPT_OUT_RULE,
             "payment_rule": CHILD_BENEFIT_PAYMENT_RULE,
             "claim_export": dict(self.claim_export),
+            "copy_reports": dict(self.copy_reports),
             "claims": dict(self.claims),
             "opt_outs": dict(self.opt_outs),
             "in_payment": dict(self.in_payment),
@@ -361,8 +449,9 @@ def redraw_child_benefit_take_up(
     engine: object,
     statistics: UKChildBenefitStatistics,
     thresholds: UKChildBenefitChargeThresholds,
+    minimum_source_households: int = CHILD_BENEFIT_COPY_MINIMUM_SOURCE_HOUSEHOLDS,
 ) -> UKChildBenefitTakeUpResult:
-    """Redraw the claim and opt-out flags from engine eligibility and income."""
+    """Redraw the copies' reports, then the claim and opt-out flags."""
 
     validate_uk_national_frame(frame)
     assert_rules_engine_country(engine, "uk")
@@ -373,18 +462,28 @@ def redraw_child_benefit_take_up(
         (
             person,
             (
+                "person_id",
                 "person_benunit_id",
                 "person_household_id",
                 "age",
-                "child_benefit_reported",
+                CHILD_BENEFIT_REPORT_OUTPUT,
+                CHILD_BENEFIT_COPY_LANDING,
+                support_source_id_column("person"),
             ),
             "person",
         ),
         (
             benunit,
-            ("benunit_id", CHILD_BENEFIT_CLAIM_OUTPUT, CHILD_BENEFIT_OPT_OUT_OUTPUT),
+            (
+                "benunit_id",
+                CHILD_BENEFIT_CLAIM_OUTPUT,
+                CHILD_BENEFIT_OPT_OUT_OUTPUT,
+                support_channel_column("benunit"),
+                support_source_id_column("benunit"),
+            ),
             "benunit",
         ),
+        (household, ("household_id", CHILD_BENEFIT_COPY_SOURCE_HOUSEHOLD), "household"),
     ):
         missing = sorted(set(columns) - set(table.columns))
         if missing:
@@ -433,12 +532,45 @@ def redraw_child_benefit_take_up(
         highest_income, person_position[~eligible_child], income[~eligible_child]
     )
     highest_income[~np.isfinite(highest_income)] = 0.0
-    reporter_ids = person.loc[
-        pd.to_numeric(person["child_benefit_reported"], errors="coerce").fillna(0.0)
-        > 0,
-        "person_benunit_id",
-    ]
-    reporter = benunit["benunit_id"].isin(reporter_ids).to_numpy(dtype=bool)
+    family = children > 0
+    entitlement = _aligned(
+        materialized[CHILD_BENEFIT_ENTITLEMENT_VARIABLE],
+        len(benunit),
+        CHILD_BENEFIT_ENTITLEMENT_VARIABLE,
+        table="benefit unit",
+    ).astype(np.float64)
+    reported = pd.to_numeric(
+        person[CHILD_BENEFIT_REPORT_OUTPUT], errors="coerce"
+    ).to_numpy(np.float64)
+    reported = np.where(np.isnan(reported), 0.0, reported)
+    if (reported < 0.0).any():
+        raise ValueError(f"{CHILD_BENEFIT_REPORT_OUTPUT} must be nonnegative.")
+    landed, copy_rows, copy_receipt = redraw_spi_child_benefit_reports(
+        person=person,
+        benunit=benunit,
+        household=household,
+        person_position=person_position,
+        eligible_child=eligible_child,
+        family=family,
+        children=children,
+        highest_income=highest_income,
+        reported=reported,
+        entitlement=entitlement,
+        weights=weights,
+        thresholds=thresholds,
+        minimum_source_households=minimum_source_households,
+    )
+    person.loc[copy_rows, CHILD_BENEFIT_REPORT_OUTPUT] = landed[copy_rows]
+    original = frame.table("person")[CHILD_BENEFIT_REPORT_OUTPUT]
+    if not np.array_equal(
+        pd.to_numeric(
+            person.loc[~copy_rows, CHILD_BENEFIT_REPORT_OUTPUT], errors="coerce"
+        ).to_numpy(np.float64),
+        pd.to_numeric(original.loc[~copy_rows], errors="coerce").to_numpy(np.float64),
+        equal_nan=True,
+    ):
+        raise RuntimeError("Child Benefit take-up touched FRS reported amounts.")
+    reporter = _units_with_positive(landed, person_position, len(benunit))
     claim_draws = stable_identity_uniforms(
         benunit_ids, seed=CHILD_BENEFIT_TAKE_UP_SEED, salt=CHILD_BENEFIT_CLAIM_OUTPUT
     )
@@ -465,7 +597,6 @@ def redraw_child_benefit_take_up(
         statistics=statistics,
         thresholds=thresholds,
     )
-    family = children > 0
     paid = claims & ~opt_out
     previous_claim = benunit[CHILD_BENEFIT_CLAIM_OUTPUT].fillna(False).to_numpy(bool)
     previous_opt_out = (
@@ -498,6 +629,7 @@ def redraw_child_benefit_take_up(
             "supports_opt_out": thresholds.supports_opt_out,
             "engine_parameters_source": thresholds.source,
         },
+        copy_reports=copy_receipt,
         claims=claim_receipt,
         opt_outs=opt_out_receipt,
         in_payment={
@@ -517,8 +649,491 @@ def redraw_child_benefit_take_up(
         changed_units={
             CHILD_BENEFIT_CLAIM_OUTPUT: int((previous_claim != would_claim).sum()),
             CHILD_BENEFIT_OPT_OUT_OUTPUT: int((previous_opt_out != opt_out).sum()),
+            # Person rows, all on SPI copies.
+            CHILD_BENEFIT_REPORT_OUTPUT: int((landed != reported).sum()),
         },
     )
+
+
+def redraw_spi_child_benefit_reports(
+    *,
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    person_position: np.ndarray,
+    eligible_child: np.ndarray,
+    family: np.ndarray,
+    children: np.ndarray,
+    highest_income: np.ndarray,
+    reported: np.ndarray,
+    entitlement: np.ndarray,
+    weights: np.ndarray,
+    thresholds: UKChildBenefitChargeThresholds,
+    minimum_source_households: int = CHILD_BENEFIT_COPY_MINIMUM_SOURCE_HOUSEHOLDS,
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    """Redraw the SPI copies' reports against their FRS twins and cells.
+
+    Returns the person-aligned reported amounts, the person rows the stage may
+    write (the SPI copies' members) and the receipt. Only the copies' rows
+    change; the caller checks the FRS rows against the frame after writing.
+    """
+
+    unit_count = len(benunit)
+    channel = benunit[support_channel_column("benunit")].astype(str).to_numpy()
+    base = channel == BASE_FRS_SUPPORT_CHANNEL
+    copy = channel == SPI_SYNTHETIC_SUPPORT_CHANNEL
+    if np.any(~(base | copy)):
+        raise ValueError(
+            "Child Benefit take-up expects only the FRS and SPI support channels."
+        )
+    reporter = _units_with_positive(reported, person_position, unit_count)
+    twin = _benunit_twins(benunit, base=base, copy=copy)
+    copy_rows = copy[person_position]
+    twin_rows = _person_twins(
+        person, copy_rows=copy_rows, person_position=person_position, twin=twin
+    )
+    source_households = _benunit_source_households(
+        person, household, person_position=person_position, unit_count=unit_count
+    )
+    cell, cells = child_benefit_copy_report_cells(
+        family=family,
+        children=children,
+        highest_income=highest_income,
+        base=base,
+        source_households=source_households,
+        thresholds=thresholds,
+        minimum_source_households=minimum_source_households,
+    )
+    rates = _cell_report_rates(
+        cell, len(cells), members=base & family, reporter=reporter, weights=weights
+    )
+    if np.any(copy & family) and not np.any(base & family):
+        raise ValueError(
+            "Child Benefit take-up has SPI copy families but no FRS family to "
+            "take report rates from."
+        )
+    draws = stable_identity_uniforms(
+        benunit["benunit_id"].to_numpy(),
+        seed=CHILD_BENEFIT_TAKE_UP_SEED,
+        salt=CHILD_BENEFIT_REPORT_OUTPUT,
+    )
+    drawn = assign_spi_child_benefit_reports(
+        copy=copy,
+        family=family,
+        twin=twin,
+        cell=cell,
+        rates=rates,
+        reporter=reporter,
+        draws=draws,
+    )
+    twin_reporter = np.zeros(unit_count, dtype=bool)
+    twin_reporter[copy] = reporter[twin[copy]]
+    takes_twin = copy & (~family | (drawn & twin_reporter))
+    new_report = copy & family & drawn & ~twin_reporter
+    unpayable = new_report & ~(entitlement > 0.0)
+    landing = _landing_rows(
+        person,
+        person_position=person_position,
+        eligible_child=eligible_child,
+        unit_count=unit_count,
+    )
+    landed = reported.copy()
+    rows = np.flatnonzero(copy_rows)
+    unit = person_position[rows]
+    values = np.where(takes_twin[unit], reported[twin_rows[rows]], 0.0)
+    lands = (new_report & ~unpayable)[unit] & landing[rows]
+    landed[rows] = np.where(lands, entitlement[unit], values)
+
+    # Checked from the landed amounts, against inputs they were not derived
+    # from: every copy family reporting exactly when its draw says so (bar an
+    # entitlement of nothing), every other copy carrying its twin's amounts
+    # row for row. The caller checks the FRS rows against the frame.
+    reporter_after = _units_with_positive(landed, person_position, unit_count)
+    copy_family = copy & family
+    if np.any(reporter_after[copy_family] != (drawn & ~unpayable)[copy_family]):
+        raise RuntimeError(
+            "Child Benefit take-up landed copy reports that disagree with the draw."
+        )
+    childless_rows = copy_rows & ~family[person_position]
+    if not np.array_equal(landed[childless_rows], reported[twin_rows[childless_rows]]):
+        raise RuntimeError(
+            "Child Benefit take-up must give a copy without an eligible child its "
+            "twin's reports."
+        )
+    receipt = _copy_report_receipt(
+        cells=cells,
+        cell=cell,
+        rates=rates,
+        base=base,
+        copy=copy,
+        family=family,
+        reporter_before=reporter,
+        reporter_after=reporter_after,
+        twin_reporter=twin_reporter,
+        new_report=new_report,
+        unpayable=unpayable,
+        weights=weights,
+        source_households=source_households,
+        thresholds=thresholds,
+        minimum_source_households=minimum_source_households,
+    )
+    return landed, copy_rows, receipt
+
+
+def child_benefit_copy_report_cells(
+    *,
+    family: np.ndarray,
+    children: np.ndarray,
+    highest_income: np.ndarray,
+    base: np.ndarray,
+    source_households: np.ndarray,
+    thresholds: UKChildBenefitChargeThresholds,
+    minimum_source_households: int = CHILD_BENEFIT_COPY_MINIMUM_SOURCE_HOUSEHOLDS,
+) -> tuple[np.ndarray, list[dict[str, object]]]:
+    """Each family's report cell (-1 for a unit without an eligible child).
+
+    A cell is a set of children groups (1, 2, 3+) by a run of adjacent charge
+    bands. Children groups whose FRS families rest on fewer than
+    ``minimum_source_households`` distinct source households are merged with
+    a neighbour, the smallest first; within a group, bands are taken in order
+    and closed into a cell once its FRS families reach the minimum, a short
+    remainder joining the last cell. Support counts FRS families only; the
+    cell covers both channels.
+    """
+
+    family = np.asarray(family, dtype=bool)
+    base = np.asarray(base, dtype=bool)
+    if int(minimum_source_households) < 1:
+        raise ValueError("minimum_source_households must be at least 1.")
+    group = np.clip(np.asarray(children, dtype=np.int64), 1, 3) - 1
+    band = np.select(
+        [
+            np.asarray(highest_income) <= thresholds.phase_out_start,
+            np.asarray(highest_income) < thresholds.phase_out_end,
+        ],
+        [0, 1],
+        2,
+    )
+    support_rows = base & family
+    sources = np.asarray(source_households)
+
+    def support(mask: np.ndarray) -> int:
+        return int(np.unique(sources[support_rows & mask]).size)
+
+    groups = [[0], [1], [2]]
+    while len(groups) > 1:
+        supports = [support(np.isin(group, members)) for members in groups]
+        short = [
+            i for i, value in enumerate(supports) if value < minimum_source_households
+        ]
+        if not short:
+            break
+        index = min(short, key=lambda i: (supports[i], i))
+        neighbour = index - 1 if index > 0 else 1
+        low, high = sorted((index, neighbour))
+        groups[low : high + 1] = [groups[low] + groups[high]]
+    cell = np.full(len(family), -1, dtype=np.int64)
+    cells: list[dict[str, object]] = []
+    for members in groups:
+        in_group = family & np.isin(group, members)
+        runs: list[list[int]] = []
+        current: list[int] = []
+        for value in range(len(CHILD_BENEFIT_COPY_INCOME_BANDS)):
+            current.append(value)
+            if support(in_group & np.isin(band, current)) >= minimum_source_households:
+                runs.append(current)
+                current = []
+        if current:
+            if runs:
+                runs[-1] = runs[-1] + current
+            else:
+                runs.append(current)
+        for run in runs:
+            cell[in_group & np.isin(band, run)] = len(cells)
+            cells.append(
+                {
+                    "children": [CHILD_BENEFIT_COPY_CHILDREN[i] for i in members],
+                    "income_bands": [CHILD_BENEFIT_COPY_INCOME_BANDS[i] for i in run],
+                    "frs_source_households": support(in_group & np.isin(band, run)),
+                }
+            )
+    return cell, cells
+
+
+def assign_spi_child_benefit_reports(
+    *,
+    copy: np.ndarray,
+    family: np.ndarray,
+    twin: np.ndarray,
+    cell: np.ndarray,
+    rates: np.ndarray,
+    reporter: np.ndarray,
+    draws: np.ndarray,
+) -> np.ndarray:
+    """Whether each copy family reports, coupled to its twin's report.
+
+    A copy reports when ``u * p_twin < p_copy`` if its twin reports and when
+    ``p_twin + u * (1 - p_twin) < p_copy`` if it does not: a copy in its
+    twin's cell keeps the twin's report, and a twin reporting at its cell's
+    rate gives its copies their own cell's rate. ``p_twin`` is the copy's own
+    rate when the twin is in no cell (it has no eligible child). False outside
+    the copy families.
+    """
+
+    copy = np.asarray(copy, dtype=bool)
+    family = np.asarray(family, dtype=bool)
+    twin = np.asarray(twin, dtype=np.int64)
+    cell = np.asarray(cell, dtype=np.int64)
+    rates = np.asarray(rates, dtype=np.float64)
+    reporter = np.asarray(reporter, dtype=bool)
+    draws = np.asarray(draws, dtype=np.float64)
+    target = copy & family
+    if np.any(twin[target] < 0):
+        raise ValueError("Every SPI copy family needs an FRS twin.")
+    if np.any(cell[target] < 0):
+        raise ValueError("Every SPI copy family needs a report cell.")
+    p_copy = rates[cell[target]]
+    twin_cell = cell[twin[target]]
+    p_twin = np.where(twin_cell >= 0, rates[np.maximum(twin_cell, 0)], p_copy)
+    u = draws[target]
+    coupled = np.where(reporter[twin[target]], u * p_twin, p_twin + u * (1.0 - p_twin))
+    drawn = np.zeros(len(copy), dtype=bool)
+    drawn[target] = coupled < p_copy
+    return drawn
+
+
+def _units_with_positive(
+    values: np.ndarray, person_position: np.ndarray, unit_count: int
+) -> np.ndarray:
+    return (
+        np.bincount(
+            person_position,
+            weights=(np.asarray(values) > 0.0).astype(np.float64),
+            minlength=unit_count,
+        )
+        > 0
+    )
+
+
+def _benunit_twins(
+    benunit: pd.DataFrame, *, base: np.ndarray, copy: np.ndarray
+) -> np.ndarray:
+    """Each SPI copy's FRS twin as a benefit-unit position, -1 elsewhere."""
+
+    ids = benunit["benunit_id"].to_numpy()
+    if pd.Index(ids).has_duplicates:
+        raise ValueError("Child Benefit take-up needs unique benefit unit ids.")
+    position = pd.Series(np.arange(len(benunit)), index=ids)
+    source = benunit[support_source_id_column("benunit")].to_numpy()
+    mapped = position.reindex(source[copy]).to_numpy(dtype=np.float64)
+    if np.isnan(mapped).any():
+        raise ValueError(
+            "An SPI copy's benunit_source_id names no benefit unit in the frame."
+        )
+    twin = np.full(len(benunit), -1, dtype=np.int64)
+    twin[copy] = mapped.astype(np.int64)
+    if not base[twin[copy]].all():
+        raise ValueError("An SPI copy's twin must be an FRS benefit unit.")
+    return twin
+
+
+def _person_twins(
+    person: pd.DataFrame,
+    *,
+    copy_rows: np.ndarray,
+    person_position: np.ndarray,
+    twin: np.ndarray,
+) -> np.ndarray:
+    """Each copy member's twin person as a row position, -1 elsewhere."""
+
+    ids = person["person_id"].to_numpy()
+    if pd.Index(ids).has_duplicates:
+        raise ValueError("Child Benefit take-up needs unique person ids.")
+    position = pd.Series(np.arange(len(person)), index=ids)
+    source = person[support_source_id_column("person")].to_numpy()
+    mapped = position.reindex(source[copy_rows]).to_numpy(dtype=np.float64)
+    if np.isnan(mapped).any():
+        raise ValueError(
+            "An SPI copy member's person_source_id names no person in the frame."
+        )
+    rows = np.full(len(person), -1, dtype=np.int64)
+    rows[copy_rows] = mapped.astype(np.int64)
+    if np.any(person_position[rows[copy_rows]] != twin[person_position[copy_rows]]):
+        raise ValueError(
+            "An SPI copy member's twin must belong to the copy's twin benefit unit."
+        )
+    return rows
+
+
+def _benunit_source_households(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    person_position: np.ndarray,
+    unit_count: int,
+) -> np.ndarray:
+    """The survey household each benefit unit comes from, through its members."""
+
+    first = np.full(unit_count, len(person), dtype=np.int64)
+    np.minimum.at(first, person_position, np.arange(len(person), dtype=np.int64))
+    if np.any(first == len(person)):
+        raise ValueError("Every benefit unit needs at least one person row.")
+    sources = household.set_index("household_id")[CHILD_BENEFIT_COPY_SOURCE_HOUSEHOLD]
+    mapped = person["person_household_id"].to_numpy()[first]
+    values = sources.reindex(mapped)
+    if values.isna().any():
+        raise ValueError(
+            f"A benefit unit's household carries no {CHILD_BENEFIT_COPY_SOURCE_HOUSEHOLD}."
+        )
+    return values.to_numpy()
+
+
+def _cell_report_rates(
+    cell: np.ndarray,
+    count: int,
+    *,
+    members: np.ndarray,
+    reporter: np.ndarray,
+    weights: np.ndarray,
+) -> np.ndarray:
+    """The weighted reporting share of each cell's FRS families."""
+
+    rates = np.zeros(count, dtype=np.float64)
+    for index in range(count):
+        in_cell = members & (cell == index)
+        mass = float(weights[in_cell].sum())
+        if mass > 0.0:
+            rates[index] = float(weights[in_cell & reporter].sum()) / mass
+    return rates
+
+
+def _landing_rows(
+    person: pd.DataFrame,
+    *,
+    person_position: np.ndarray,
+    eligible_child: np.ndarray,
+    unit_count: int,
+) -> np.ndarray:
+    """One row per benefit unit for a new report: its head, else an adult."""
+
+    head = _boolean_values(person[CHILD_BENEFIT_COPY_LANDING])
+    preference = np.where(head & ~eligible_child, 0, np.where(eligible_child, 2, 1))
+    order = np.lexsort((np.arange(len(person)), preference, person_position))
+    leading = np.ones(len(order), dtype=bool)
+    leading[1:] = person_position[order][1:] != person_position[order][:-1]
+    landing = np.zeros(len(person), dtype=bool)
+    landing[order[leading]] = True
+    return landing
+
+
+def _floored(value: int) -> int | None:
+    """A count, withheld when it rests on one or two cases."""
+
+    return None if 0 < value < CHILD_BENEFIT_RECEIPT_FLOOR else int(value)
+
+
+def _copy_report_receipt(
+    *,
+    cells: list[dict[str, object]],
+    cell: np.ndarray,
+    rates: np.ndarray,
+    base: np.ndarray,
+    copy: np.ndarray,
+    family: np.ndarray,
+    reporter_before: np.ndarray,
+    reporter_after: np.ndarray,
+    twin_reporter: np.ndarray,
+    new_report: np.ndarray,
+    unpayable: np.ndarray,
+    weights: np.ndarray,
+    source_households: np.ndarray,
+    thresholds: UKChildBenefitChargeThresholds,
+    minimum_source_households: int,
+) -> dict[str, object]:
+    """The copies' report audit; figures on one or two households are withheld."""
+
+    def share(mask: np.ndarray, numerator: np.ndarray) -> float | None:
+        mass = float(weights[mask].sum())
+        return float(weights[mask & numerator].sum()) / mass if mass > 0.0 else None
+
+    rows = []
+    for index, definition in enumerate(cells):
+        frs = base & family & (cell == index)
+        copies = copy & family & (cell == index)
+        frs_support = int(np.unique(source_households[frs]).size)
+        copy_support = int(np.unique(source_households[copies]).size)
+        frs_shown = frs_support >= CHILD_BENEFIT_RECEIPT_FLOOR
+        copy_shown = copy_support >= CHILD_BENEFIT_RECEIPT_FLOOR
+        rows.append(
+            {
+                **definition,
+                "frs_source_households": frs_support if frs_shown else None,
+                "frs_rate": float(rates[index]) if frs_shown else None,
+                "copy_family_units": _floored(int(copies.sum())),
+                "copy_source_households": _floored(copy_support),
+                "copy_rate_before": (
+                    share(copies, reporter_before) if copy_shown else None
+                ),
+                "copy_rate_after": share(copies, reporter_after)
+                if copy_shown
+                else None,
+            }
+        )
+    copy_family = copy & family
+    copy_mass = float(weights[copy_family].sum())
+    expected = (
+        float(
+            (weights * np.where(cell >= 0, rates[np.maximum(cell, 0)], 0.0))[
+                copy_family
+            ].sum()
+        )
+        / copy_mass
+        if copy_mass > 0.0
+        else None
+    )
+    childless = copy & ~family
+    return {
+        "channel": SPI_SYNTHETIC_SUPPORT_CHANNEL,
+        "twin": support_source_id_column("benunit"),
+        "source_household": CHILD_BENEFIT_COPY_SOURCE_HOUSEHOLD,
+        "minimum_source_households": int(minimum_source_households),
+        "phase_out_start": thresholds.phase_out_start,
+        "phase_out_end": thresholds.phase_out_end,
+        "weights": "household weights at the stage, before calibration",
+        "cells": rows,
+        "copy_family_units": _floored(int(copy_family.sum())),
+        "copy_families": copy_mass,
+        "copy_rate_before": share(copy_family, reporter_before),
+        "copy_rate_expected": expected,
+        "copy_rate_after": share(copy_family, reporter_after),
+        "transitions": {
+            "promoted": _floored(
+                int((copy_family & ~reporter_before & reporter_after).sum())
+            ),
+            "demoted": _floored(
+                int((copy_family & reporter_before & ~reporter_after).sum())
+            ),
+            "held_reporter": _floored(
+                int((copy_family & reporter_before & reporter_after).sum())
+            ),
+            "held_nonreporter": _floored(
+                int((copy_family & ~reporter_before & ~reporter_after).sum())
+            ),
+        },
+        "landing": {
+            "twin_amounts": _floored(
+                int((copy_family & reporter_after & twin_reporter).sum())
+            ),
+            "entitlement_amounts": _floored(int((new_report & ~unpayable).sum())),
+            "no_entitlement": _floored(int(unpayable.sum())),
+        },
+        "copies_without_eligible_child": {
+            "units": _floored(int(childless.sum())),
+            "reporting_before": _floored(int((childless & reporter_before).sum())),
+            "reporting_after": _floored(int((childless & reporter_after).sum())),
+        },
+        "frs_rows_unchanged": True,
+    }
 
 
 def solve_child_benefit_claim_rates(
@@ -532,7 +1147,9 @@ def solve_child_benefit_claim_rates(
     """Non-reporter claim rate by key age, and one receipt row per age.
 
     ``child_*`` describe the eligible children: own age, the family's key age
-    (its eldest eligible child's), whether the family reports, and the weight.
+    (see ``child_benefit_family_key_ages``), whether the family reports, and
+    the weight. Ages under 16 are solved from 15 down first, then 19 down to
+    16, so each age's other keys are solved before it.
     """
 
     child_ages = np.asarray(child_ages, dtype=np.int64)
@@ -545,22 +1162,36 @@ def solve_child_benefit_claim_rates(
             "HMRC publishes no Child Benefit claim rate for eligible children "
             f"aged {unknown}."
         )
-    if (child_key_ages < child_ages).any():
-        raise ValueError("A family's key age is below one of its children's ages.")
+    # A key below a child's own age is the family's younger key child, which
+    # only a young person of 16 or over may have.
+    young_person_under_child_key = (child_ages >= CHILD_BENEFIT_KEY_AGE_LIMIT) & (
+        child_key_ages < CHILD_BENEFIT_KEY_AGE_LIMIT
+    )
+    if ((child_key_ages < child_ages) & ~young_person_under_child_key).any():
+        raise ValueError(
+            "A family's key age is below one of its children's ages, and that "
+            "child is not a young person in a family keyed under 16."
+        )
     residual: dict[int, float] = {}
     rows: list[dict[str, object]] = []
-    for age in sorted(claim_rates, reverse=True):
+    for age in _claim_rate_solve_order(claim_rates):
         of_age = child_ages == age
         eligible = float(child_weights[of_age].sum())
         reporting = float(child_weights[of_age & child_reporter].sum())
         own = of_age & ~child_reporter & (child_key_ages == age)
         own_mass = float(child_weights[own].sum())
-        # Children of this age in non-reporting families keyed on an older
-        # sibling claim at that sibling's rate, already solved.
-        older = of_age & ~child_reporter & (child_key_ages > age)
+        # Children of this age in non-reporting families keyed at another age
+        # claim at that key's rate, which the solve order has already set.
+        others = of_age & ~child_reporter & (child_key_ages != age)
+        unsolved = others & ~np.isin(child_key_ages, list(residual))
+        if unsolved.any():
+            raise ValueError(
+                f"Children aged {age} sit in families keyed at ages solved "
+                "after theirs."
+            )
         older_claimed = float(
             sum(
-                child_weights[older & (child_key_ages == key)].sum() * rate
+                child_weights[others & (child_key_ages == key)].sum() * rate
                 for key, rate in residual.items()
             )
         )
@@ -586,6 +1217,34 @@ def solve_child_benefit_claim_rates(
     return residual, rows
 
 
+def _claim_rate_solve_order(claim_rates: Mapping[int, float]) -> list[int]:
+    """Ages under 16 from the eldest down, then ages 16 and over likewise."""
+
+    ages = sorted(claim_rates, reverse=True)
+    return [age for age in ages if age < CHILD_BENEFIT_KEY_AGE_LIMIT] + [
+        age for age in ages if age >= CHILD_BENEFIT_KEY_AGE_LIMIT
+    ]
+
+
+def child_benefit_family_key_ages(
+    child_units: np.ndarray, child_ages: np.ndarray, unit_count: int
+) -> np.ndarray:
+    """Each unit's key age: its eldest eligible child under 16, else its eldest.
+
+    ``child_units`` holds each eligible child's benefit-unit position and
+    ``child_ages`` its whole age. A unit without an eligible child gets -1.
+    """
+
+    child_units = np.asarray(child_units, dtype=np.int64)
+    child_ages = np.asarray(child_ages, dtype=np.int64)
+    eldest = np.full(unit_count, -1, dtype=np.int64)
+    np.maximum.at(eldest, child_units, child_ages)
+    under = child_ages < CHILD_BENEFIT_KEY_AGE_LIMIT
+    eldest_under = np.full(unit_count, -1, dtype=np.int64)
+    np.maximum.at(eldest_under, child_units[under], child_ages[under])
+    return np.where(eldest_under >= 0, eldest_under, eldest)
+
+
 def assign_child_benefit_claims(
     *,
     child_units: np.ndarray,
@@ -600,7 +1259,8 @@ def assign_child_benefit_claims(
 
     ``child_units`` holds each eligible child's benefit-unit position and
     ``child_ages`` its whole age; ``eldest`` is each unit's eldest eligible
-    child's age, or -1 for a unit without one.
+    child's age, or -1 for a unit without one, and marks the families. The key
+    each family claims at is ``child_benefit_family_key_ages``.
     """
 
     child_units = np.asarray(child_units, dtype=np.int64)
@@ -610,16 +1270,21 @@ def assign_child_benefit_claims(
     weights = np.asarray(weights, dtype=np.float64)
     draws = np.asarray(draws, dtype=np.float64)
     family = eldest >= 0
+    key = child_benefit_family_key_ages(child_units, child_ages, len(eldest))
+    if not np.array_equal(key >= 0, family):
+        raise ValueError(
+            "Child Benefit families must be the units with an eligible child."
+        )
     child_weights = weights[child_units]
     residual, rows = solve_child_benefit_claim_rates(
         child_ages=child_ages,
-        child_key_ages=eldest[child_units],
+        child_key_ages=key[child_units],
         child_reporter=reporter[child_units],
         child_weights=child_weights,
         claim_rates=statistics.claim_rates,
     )
     unit_rate = np.zeros(len(eldest), dtype=np.float64)
-    unit_rate[family] = np.asarray([residual[int(age)] for age in eldest[family]])
+    unit_rate[family] = np.asarray([residual[int(age)] for age in key[family]])
     claims = family & (reporter | (draws < unit_rate))
     child_claims = claims[child_units]
     for row in rows:
@@ -771,10 +1436,12 @@ def assign_child_benefit_opt_outs(
     return opt_out, receipt
 
 
-def _aligned(values: object, expected: int, label: str) -> np.ndarray:
+def _aligned(
+    values: object, expected: int, label: str, *, table: str = "person"
+) -> np.ndarray:
     array = np.asarray(values)
     if array.shape != (expected,):
-        raise ValueError(f"{label} must align to the person table.")
+        raise ValueError(f"{label} must align to the {table} table.")
     if array.dtype != bool and not np.isfinite(array.astype(np.float64)).all():
         raise ValueError(f"{label} must be finite.")
     return array
@@ -787,6 +1454,25 @@ def child_benefit_take_up_operation_parameters() -> dict[str, dict[str, object]]
         "materialize_rules_engine_predictors": {
             "predictors": list(CHILD_BENEFIT_ENGINE_VARIABLES),
             "consumed_only": True,
+        },
+        "redraw_spi_reported_child_benefit": {
+            "output": CHILD_BENEFIT_REPORT_OUTPUT,
+            "draw": CHILD_BENEFIT_REPORT_OUTPUT,
+            "seed": CHILD_BENEFIT_TAKE_UP_SEED,
+            "rows": f"{support_channel_column('benunit')} == {SPI_SYNTHETIC_SUPPORT_CHANNEL}",
+            "twin": support_source_id_column("benunit"),
+            "person_twin": support_source_id_column("person"),
+            "eligibility": CHILD_BENEFIT_ELIGIBILITY_VARIABLE,
+            "charge_income": CHILD_BENEFIT_CHARGE_INCOME_VARIABLE,
+            "charge_parameters": CHILD_BENEFIT_CHARGE_PARAMETERS,
+            "children": list(CHILD_BENEFIT_COPY_CHILDREN),
+            "income_bands": list(CHILD_BENEFIT_COPY_INCOME_BANDS),
+            "source_household": CHILD_BENEFIT_COPY_SOURCE_HOUSEHOLD,
+            "minimum_source_households": CHILD_BENEFIT_COPY_MINIMUM_SOURCE_HOUSEHOLDS,
+            "amount": CHILD_BENEFIT_ENTITLEMENT_VARIABLE,
+            "landing": CHILD_BENEFIT_COPY_LANDING,
+            "weight_mapping": "household_to_benunit",
+            "rule": CHILD_BENEFIT_COPY_REPORT_RULE,
         },
         "aggregate_person_to_benunit": {
             "method": "any_positive",
@@ -846,7 +1532,11 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
             f"{CHILD_BENEFIT_TAKE_UP_STAGE_NAME} parameters drifted from the "
             f"reviewed mapping on operation(s) {drifted}."
         )
-    rewrites = (CHILD_BENEFIT_CLAIM_OUTPUT, CHILD_BENEFIT_OPT_OUT_OUTPUT)
+    rewrites = (
+        CHILD_BENEFIT_CLAIM_OUTPUT,
+        CHILD_BENEFIT_OPT_OUT_OUTPUT,
+        CHILD_BENEFIT_REPORT_OUTPUT,
+    )
     if stage.outputs != () or stage.rewrites != rewrites:
         raise ValueError(
             f"{CHILD_BENEFIT_TAKE_UP_STAGE_NAME} must declare no new outputs and "
@@ -864,9 +1554,13 @@ __all__ = [
     "UKChildBenefitTakeUpStageTransform",
     "assign_child_benefit_claims",
     "assign_child_benefit_opt_outs",
+    "assign_spi_child_benefit_reports",
+    "child_benefit_copy_report_cells",
+    "child_benefit_family_key_ages",
     "child_benefit_take_up_operation_parameters",
     "load_child_benefit_statistics",
     "redraw_child_benefit_take_up",
+    "redraw_spi_child_benefit_reports",
     "solve_child_benefit_claim_rates",
     "uk_child_benefit_charge_thresholds",
 ]

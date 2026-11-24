@@ -7271,9 +7271,38 @@
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "is_child_or_qualifying_young_person_for_child_benefit",
-      "adjusted_net_income"
+      "adjusted_net_income",
+      "child_benefit_entitlement"
      ],
      "consumed_only": true
+    },
+    {
+     "kind": "redraw_spi_reported_child_benefit",
+     "output": "child_benefit_reported",
+     "draw": "child_benefit_reported",
+     "seed": 0,
+     "rows": "benunit_support_channel == spi",
+     "twin": "benunit_source_id",
+     "person_twin": "person_source_id",
+     "eligibility": "is_child_or_qualifying_young_person_for_child_benefit",
+     "charge_income": "adjusted_net_income",
+     "charge_parameters": "gov.hmrc.income_tax.charges.CB_HITC",
+     "children": [
+      "1",
+      "2",
+      "3+"
+     ],
+     "income_bands": [
+      "below_charge_start",
+      "taper",
+      "fully_charged"
+     ],
+     "source_household": "source_household_id",
+     "minimum_source_households": 30,
+     "amount": "child_benefit_entitlement",
+     "landing": "is_benunit_head",
+     "weight_mapping": "household_to_benunit",
+     "rule": "an SPI copy's benefit unit with an eligible child reports at the weighted share of FRS benefit units with an eligible child that report Child Benefit in its cell of eligible children (1, 2, 3+) by the charge band of its highest adjusted net income (at most the charge start, inside the taper, fully charged), adjacent bands pooled until a cell rests on 30 FRS source households and a children group short of that merged with its neighbour first; coupled to its FRS twin (benunit_source_id): a copy of a reporting twin reports when u * p_twin < p_copy, of a non-reporting twin when p_twin + u * (1 - p_twin) < p_copy; a reporting copy takes its twin's reported amounts (person_source_id), or child_benefit_entitlement on its benefit unit head when the twin does not report; a copy without an eligible child takes its twin's reports; FRS rows are unchanged"
     },
     {
      "kind": "aggregate_person_to_benunit",
@@ -7290,12 +7319,12 @@
      "seed": 0,
      "anchor": "child_benefit_reported_anchor",
      "eligibility": "is_child_or_qualifying_young_person_for_child_benefit",
-     "family_key": "age of the benefit unit's eldest eligible child",
+     "family_key": "age of the benefit unit's eldest eligible child under 16, or of its eldest eligible child when none is under 16",
      "resource": "hmrc_child_benefit_statistics.json",
      "rate_measure": "claim_rate",
      "rate_period": "2025-05",
      "weight_mapping": "household_to_benunit",
-     "rule": "a reporter claims; a non-reporting family whose eldest eligible child is aged g claims at r_g = (t_g * C_g - R_g - sum over k > g of N_gk * r_k) / N_gg, weighted, solved from the eldest age down and clipped to [0, 1]"
+     "rule": "a reporter claims; a non-reporting family of key age g claims at r_g = (t_g * C_g - R_g - sum over the solved keys k of N_gk * r_k) / N_gg, weighted, solved for ages 15 down to 0 and then 19 down to 16, and clipped to [0, 1]"
     },
     {
      "kind": "assign_opt_out_by_charge_income",
@@ -7320,9 +7349,10 @@
    "outputs": [],
    "rewrites": [
     "would_claim_child_benefit",
-    "child_benefit_opts_out"
+    "child_benefit_opts_out",
+    "child_benefit_reported"
    ],
-   "notes": "Runs after the SPI income chain, UC capital coherence and the Pension Credit redraw, before CGT cloning (microcosm#1063). frs_take_up draws would_claim_child_benefit early at one flat rate over every benefit unit with the reporters on top, and child_benefit_opts_out at a flat rate whatever the unit's income; this stage redraws both. One temporary engine materialization gives each person's eligibility as a child or qualifying young person and each person's adjusted net income (consumed only). A family claims for all its children or none, so the draw is by family, keyed on the age of its eldest eligible child: a reporter claims, and the other families claim at rates solved from the eldest age down so that the claimed share of the eligible children of each single year of age is HMRC's published one (Table 15, May 2025, opted-out families included), weighted at the stage's household weights. The published opted-out share of registered families (August 2025) is drawn among claiming non-reporters, fully charged first. Opt-out-aware models restrict both the full-charge and taper pools to a positive charge fraction at least the installed opt_out_charge_share. With the default share of one, only fully charged families can opt out; an insufficient pool is recorded as a shortfall instead of selecting paid taper families. Legacy models retain the original full-charge pool and taper fallback. Models exposing gov.hmrc.child_benefit.opt_out_charge_share (policyengine-uk#2140) receive registered claims, including opted-out families, in would_claim_child_benefit and the separate opt-out in child_benefit_opts_out. Older models receive the legacy claims-and-not-opted-out payment flag because they ignore the opt-out input. Stage evidence records the selected encoding, evaluated opt-out charge share and engine parameter source. The in-payment audit counts claims-and-not-opted-out in the draw, with new candidates aligned to baseline payment suppression; it is not a fresh model run or population calibration evidence. A benefit unit with no eligible child keeps its early draw and is never opted out."
+   "notes": "Runs after the SPI income chain, UC capital coherence and the Pension Credit redraw, before CGT cloning (microcosm#1063). frs_take_up draws would_claim_child_benefit early at one flat rate over every benefit unit with the reporters on top, and child_benefit_opts_out at a flat rate whatever the unit's income; this stage redraws both, after redrawing the SPI copies' own Child Benefit reports. One temporary engine materialization gives each person's eligibility as a child or qualifying young person, each person's adjusted net income and each benefit unit's annual Child Benefit entitlement (consumed only). The SPI income chain's forests give each copy its benefit reports from its age, gender, region and incomes, not its children, so a copy with no eligible child can report Child Benefit and copy families report too rarely below the charge start and too often where it takes the whole benefit, against the FRS families like them; a reporter always claims and is never opted out, so the stage first redraws the copies' reports (microcosm#1508). A copy family reports at the weighted share of FRS families that report in its cell of eligible children (1, 2, 3 or more) by the charge band of its highest adjusted net income (at most the charge start, inside the taper, fully charged), adjacent bands pooled until a cell rests on 30 FRS source households and a children group short of that merged with its neighbour first. The draw is coupled to the copy's FRS twin (benunit_source_id): a copy in its twin's cell keeps the twin's report, a copy of a reporting twin reports with probability p_copy / p_twin, and a copy of a non-reporting twin with probability (p_copy - p_twin) / (1 - p_twin). A reporting copy takes its twin's reported amounts (person_source_id), or the engine's child_benefit_entitlement on its benefit unit head when the twin does not report; a copy without an eligible child takes its twin's reports; FRS rows are never modified. The model claims for all of a family's children or none, so the draw is by family, keyed on the age of its eldest eligible child under 16, or of its eldest eligible child when none is under 16, since a family whose young person's claim lapses keeps claiming for the younger children (microcosm#1508): a reporter claims, and the other families claim at rates solved for ages 15 down to 0 and then 19 down to 16 so that the claimed share of the eligible children of each single year of age is HMRC's published one (Table 15, May 2025, opted-out families included), weighted at the stage's household weights. The published opted-out share of registered families (August 2025) is drawn among claiming non-reporters, fully charged first. Opt-out-aware models restrict both the full-charge and taper pools to a positive charge fraction at least the installed opt_out_charge_share. With the default share of one, only fully charged families can opt out; an insufficient pool is recorded as a shortfall instead of selecting paid taper families. Legacy models retain the original full-charge pool and taper fallback. Models exposing gov.hmrc.child_benefit.opt_out_charge_share (policyengine-uk#2140) receive registered claims, including opted-out families, in would_claim_child_benefit and the separate opt-out in child_benefit_opts_out. Older models receive the legacy claims-and-not-opted-out payment flag because they ignore the opt-out input. Stage evidence records the selected encoding, evaluated opt-out charge share and engine parameter source. The in-payment audit counts claims-and-not-opted-out in the draw, with new candidates aligned to baseline payment suppression; it is not a fresh model run or population calibration evidence. A benefit unit with no eligible child keeps its early draw and is never opted out."
   },
   {
    "stage": "uc_deduction_attributes",

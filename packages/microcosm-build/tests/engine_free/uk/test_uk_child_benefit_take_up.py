@@ -21,6 +21,9 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
     _assert_stage_parameters,
     assign_child_benefit_claims,
     assign_child_benefit_opt_outs,
+    assign_spi_child_benefit_reports,
+    child_benefit_copy_report_cells,
+    child_benefit_family_key_ages,
     child_benefit_take_up_operation_parameters,
     load_child_benefit_statistics,
     redraw_child_benefit_take_up,
@@ -28,7 +31,11 @@ from microcosm.build.uk_runtime.child_benefit_take_up import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UK_TAKE_UP_SIGNAL_OUTPUTS
 from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendor_selections
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_child_benefit_take_up import (
+    STUB_ENTITLEMENT_PER_CHILD,
+    _copy_frame,
     _frame,
     _statistics,
     _StubEngine,
@@ -121,6 +128,94 @@ def test_a_rate_the_draw_cannot_reach_is_clipped_and_receipted() -> None:
             child_weights=np.asarray([1.0]),
             claim_rates={0: 0.5},
         )
+
+
+def test_family_key_prefers_the_eldest_child_under_16() -> None:
+    # A young person with younger siblings keys the family on the eldest
+    # sibling under 16; young people alone key it on the eldest of them.
+    key = child_benefit_family_key_ages(
+        child_units=np.asarray([0, 0, 1, 1, 2]),
+        child_ages=np.asarray([17, 13, 19, 16, 5]),
+        unit_count=4,
+    )
+    assert key.tolist() == [13, 19, 5, -1]
+
+
+def test_a_young_person_with_younger_siblings_claims_at_their_rate() -> None:
+    # Families: (17, 13), (13), (17), none reporting. Keyed on the eldest
+    # child under 16, the first family claims at the 13-year-olds' rate, so
+    # r_13 = 0.9 and r_17 = (0.5 * 2 - 0.9) / 1. Keyed on the eldest child it
+    # would claim at r_17 = 0.5 and r_13 would need (0.9 * 2 - 0.5) / 1 > 1.
+    residual, rows = solve_child_benefit_claim_rates(
+        child_ages=np.asarray([17, 13, 13, 17]),
+        child_key_ages=np.asarray([13, 13, 13, 17]),
+        child_reporter=np.zeros(4, dtype=bool),
+        child_weights=np.ones(4),
+        claim_rates={13: 0.9, 17: 0.5},
+    )
+    assert residual == {13: pytest.approx(0.9), 17: pytest.approx(0.1)}
+    assert not any(row["clipped"] for row in rows)
+
+
+def test_a_child_under_16_keyed_below_its_age_is_refused() -> None:
+    with pytest.raises(ValueError, match="not a young person"):
+        solve_child_benefit_claim_rates(
+            child_ages=np.asarray([10, 8]),
+            child_key_ages=np.asarray([8, 8]),
+            child_reporter=np.zeros(2, dtype=bool),
+            child_weights=np.ones(2),
+            claim_rates={8: 0.9, 10: 0.9},
+        )
+
+
+def _young_person_families(with_child_share: float, *, count: int = 60_000):
+    """Families of a young person (16 to 19), with a younger child or not."""
+
+    rng = np.random.default_rng(11)
+    young = rng.integers(16, 20, size=count)
+    with_child = rng.random(count) < with_child_share
+    child = rng.integers(10, 16, size=count)
+    units = np.r_[np.arange(count), np.flatnonzero(with_child)]
+    ages = np.r_[young, child[with_child]]
+    eldest = np.full(count, -1)
+    np.maximum.at(eldest, units, ages)
+    rates = {age: 0.95 for age in range(10, 16)} | {
+        16: 0.9,
+        17: 0.75,
+        18: 0.7,
+        19: 0.5,
+    }
+    return assign_child_benefit_claims(
+        child_units=units,
+        child_ages=ages,
+        eldest=eldest,
+        reporter=rng.random(count) < 0.2,
+        weights=np.ones(count),
+        draws=rng.random(count),
+        statistics=replace(_statistics(), claim_rates=rates),
+    )
+
+
+def test_claims_realise_the_published_rates_for_mixed_age_families() -> None:
+    # The young people's lower rates and the younger children's higher ones
+    # both hold: a young person with a younger sibling claims with them, and
+    # the families of young people only make up each young age's share.
+    _, receipt = _young_person_families(0.3)
+    assert receipt["clipped_ages"] == []
+    for row in receipt["ages"]:
+        assert row["realized_rate"] == pytest.approx(row["published_rate"], abs=0.02)
+
+
+def test_young_people_living_with_younger_siblings_can_be_over_claimed() -> None:
+    # Claims stay all or none inside a family: when most 19-year-olds have a
+    # younger sibling, their siblings' claims alone exceed the published 50%,
+    # so the young-people-only rate clips at zero and the receipt says so.
+    _, receipt = _young_person_families(0.9)
+    by_age = {row["age"]: row for row in receipt["ages"]}
+    assert 19 in receipt["clipped_ages"]
+    assert by_age[19]["residual_rate_unclipped"] < 0.0
+    assert by_age[19]["realized_rate"] > by_age[19]["published_rate"]
+    assert all(age >= 16 for age in receipt["clipped_ages"])
 
 
 def test_claims_keep_reporters_and_realise_the_published_rates() -> None:
@@ -261,7 +356,12 @@ def test_redraw_reads_the_engine_once_and_rewrites_only_the_two_flags() -> None:
     assert evidence["changed_units"] == {
         "would_claim_child_benefit": 1,
         "child_benefit_opts_out": 4,
+        "child_benefit_reported": 0,
     }
+    # A frame without SPI copies has nothing to redraw.
+    assert evidence["copy_reports"]["copy_family_units"] == 0
+    assert evidence["copy_reports"]["copy_rate_after"] is None
+    assert evidence["copy_reports"]["frs_rows_unchanged"] is True
 
 
 def _stage() -> SourceStageSpec:
@@ -275,7 +375,11 @@ def test_committed_manifest_declares_the_stage_its_resource_and_rewrites() -> No
 
     assert stage.grain == "benunit"
     assert stage.outputs == ()
-    assert stage.rewrites == ("would_claim_child_benefit", "child_benefit_opts_out")
+    assert stage.rewrites == (
+        "would_claim_child_benefit",
+        "child_benefit_opts_out",
+        "child_benefit_reported",
+    )
     assert [artifact["resource"] for artifact in stage.artifacts] == [
         CHILD_BENEFIT_STATISTICS_RESOURCE
     ]
@@ -526,3 +630,227 @@ def test_new_contract_preserves_draws_when_full_charge_pool_is_sufficient():
     assert legacy_receipt["pools"][1]["rate"] == modern_receipt["pools"][1]["rate"] == 0
     assert modern_receipt["pool_shortfall_families"] == 0.0
     assert modern_receipt["pool_exhausted"] is False
+
+
+# The SPI copies' reports (microcosm#1508).
+
+
+def _copy_result(frame=None):
+    return redraw_child_benefit_take_up(
+        _copy_frame() if frame is None else frame,
+        engine=_StubEngine(),
+        statistics=_statistics({5: 0.9}),
+        thresholds=THRESHOLDS,
+        minimum_source_households=1,
+    )
+
+
+def _reports(result) -> dict[int, float]:
+    person = result.frame.table("person").set_index("person_id")
+    return person["child_benefit_reported"].to_dict()
+
+
+def _rebuilt(frame, *, person=None, benunit=None, household=None):
+    return uk_national_frame(
+        person=frame.table("person") if person is None else person,
+        benunit=frame.table("benunit") if benunit is None else benunit,
+        household=frame.table("household") if household is None else household,
+        household_weights=frame.weights_for("household").values,
+        weight_kind=WeightKind.IMPORTANCE,
+        time_period="2024",
+    )
+
+
+def test_copy_reports_follow_their_cells_and_twins_and_keep_frs_rows() -> None:
+    frame = _copy_frame()
+    result = _copy_result(frame)
+    before = frame.table("person").set_index("person_id")["child_benefit_reported"]
+    after = _reports(result)
+
+    assert {key: after[key] for key in before.index if key < 1_000} == {
+        key: value for key, value in before.items() if key < 1_000
+    }
+    # Below the charge start two of the four FRS families report; in the
+    # fully charged cell none does. Copy 101's twin reports in its own cell,
+    # so it keeps the twin's report and amount.
+    assert (after[1011], after[1012]) == (1_300.0, 0.0)
+    # Copy 102's twin does not report in its cell: the forests' report goes.
+    assert after[1021] == 0.0
+    # Copy 105's twin reports, but the copy is fully charged.
+    assert after[1051] == 0.0
+    # Copy 106 has no eligible child and takes its twin's (absent) report.
+    assert after[1061] == 0.0
+    receipt = result.copy_reports
+    assert [cell["children"] for cell in receipt["cells"]] == [["1", "2", "3+"]] * 2
+    assert [cell["income_bands"] for cell in receipt["cells"]] == [
+        ["below_charge_start"],
+        ["taper", "fully_charged"],
+    ]
+    assert receipt["cells"][0]["frs_source_households"] == 4
+    assert receipt["cells"][0]["frs_rate"] == 0.5
+    # One FRS household carries the fully charged cell: its figures are
+    # withheld, and so is every count of one or two copies.
+    assert receipt["cells"][1]["frs_source_households"] is None
+    assert receipt["cells"][1]["frs_rate"] is None
+    assert receipt["cells"][1]["copy_rate_after"] is None
+    assert receipt["copy_family_units"] == 3
+    assert receipt["copy_rate_before"] == pytest.approx(2 / 3)
+    assert receipt["copy_rate_expected"] == pytest.approx(1 / 3)
+    assert receipt["copy_rate_after"] == pytest.approx(1 / 3)
+    assert receipt["transitions"] == {
+        "promoted": None,
+        "demoted": None,
+        "held_reporter": 0,
+        "held_nonreporter": 0,
+    }
+    assert receipt["copies_without_eligible_child"] == {
+        "units": None,
+        "reporting_before": None,
+        "reporting_after": 0,
+    }
+    assert receipt["frs_rows_unchanged"] is True
+    assert result.changed_units["child_benefit_reported"] == 4
+    # The claim draw reads the redrawn reports: copy 101 claims as a reporter.
+    claims = result.frame.table("benunit").set_index("benunit_id")
+    assert bool(claims.loc[101, "would_claim_child_benefit"])
+
+
+def test_a_copy_of_a_non_reporting_twin_can_take_up_a_report() -> None:
+    frame = _copy_frame()
+    person = frame.table("person").copy()
+    benunit = frame.table("benunit").copy()
+    household = frame.table("household").copy()
+    # Every FRS family below the charge start reports, and copy 105 now copies
+    # the fully charged unit 5, which does not, into that cell.
+    person.loc[person["person_id"].isin([31, 41]), "child_benefit_reported"] = 1_000.0
+    benunit.loc[benunit["benunit_id"] == 105, "benunit_source_id"] = 5
+    copy = person["person_benunit_id"] == 105
+    person.loc[copy, "person_source_id"] = [51, 52]
+    person.loc[person["person_id"] == 1051, "stub_income"] = 30_000.0
+    household.loc[household["household_id"] == 105, "source_household_id"] = 5
+    result = _copy_result(
+        _rebuilt(frame, person=person, benunit=benunit, household=household)
+    )
+
+    after = _reports(result)
+    # A new report carries the engine's entitlement on the benefit unit head.
+    assert (after[1051], after[1052]) == (STUB_ENTITLEMENT_PER_CHILD, 0.0)
+    # Copies of reporting twins in the twins' cell take the twins' amounts.
+    assert (after[1011], after[1021]) == (1_300.0, 1_000.0)
+    assert result.copy_reports["copy_rate_after"] == 1.0
+
+
+def test_copy_report_redraw_refuses_broken_lineage() -> None:
+    frame = _copy_frame()
+    cases = []
+    benunit = frame.table("benunit").copy()
+    benunit.loc[benunit["benunit_id"] == 101, "benunit_source_id"] = 999
+    cases.append((_rebuilt(frame, benunit=benunit), "names no benefit unit"))
+    benunit = frame.table("benunit").copy()
+    benunit.loc[benunit["benunit_id"] == 102, "benunit_source_id"] = 101
+    cases.append((_rebuilt(frame, benunit=benunit), "must be an FRS benefit unit"))
+    person = frame.table("person").copy()
+    person.loc[person["person_id"] == 1012, "person_source_id"] = 22
+    cases.append((_rebuilt(frame, person=person), "copy's twin benefit unit"))
+    benunit = frame.table("benunit").copy()
+    benunit.loc[benunit["benunit_id"] == 106, "benunit_support_channel"] = "cgt"
+    cases.append((_rebuilt(frame, benunit=benunit), "only the FRS and SPI"))
+    person = frame.table("person").drop(columns=["person_source_id"])
+    cases.append((_rebuilt(frame, person=person), "person columns missing"))
+    for broken, message in cases:
+        with pytest.raises(ValueError, match=message):
+            _copy_result(broken)
+
+
+def test_copy_report_cells_pool_bands_then_children_groups() -> None:
+    # One-child families: three households below the charge start, one in
+    # the taper, two fully charged. Two-child families: one below the start
+    # and one fully charged. No larger family; one unit without a child.
+    children = np.array([1, 1, 1, 1, 1, 1, 2, 2, 0])
+    income = np.array([10, 20, 30, 70, 90, 95, 10, 90, 10]) * 1_000.0
+    arguments = {
+        "family": children > 0,
+        "children": children,
+        "highest_income": income,
+        "base": np.ones(9, dtype=bool),
+        "source_households": np.arange(9),
+        "thresholds": THRESHOLDS,
+    }
+
+    cell, cells = child_benefit_copy_report_cells(
+        **arguments, minimum_source_households=2
+    )
+    assert [(row["children"], row["income_bands"]) for row in cells] == [
+        (["1"], ["below_charge_start"]),
+        (["1"], ["taper", "fully_charged"]),
+        (["2", "3+"], ["below_charge_start", "taper", "fully_charged"]),
+    ]
+    assert cell.tolist() == [0, 0, 0, 1, 1, 1, 2, 2, -1]
+    assert [row["frs_source_households"] for row in cells] == [3, 3, 2]
+    # With three households needed, the two-child group cannot stand alone.
+    _, cells = child_benefit_copy_report_cells(**arguments, minimum_source_households=3)
+    assert [(row["children"], row["income_bands"]) for row in cells] == [
+        (["1", "2", "3+"], ["below_charge_start"]),
+        (["1", "2", "3+"], ["taper", "fully_charged"]),
+    ]
+    # Support counts each FRS household once: six one-child units from one
+    # household cannot stand alone, and merge with the two-child group.
+    _, cells = child_benefit_copy_report_cells(
+        **{**arguments, "source_households": np.r_[np.zeros(6), np.arange(1, 4)]},
+        minimum_source_households=2,
+    )
+    assert [(row["children"], row["income_bands"]) for row in cells] == [
+        (["1", "2", "3+"], ["below_charge_start"]),
+        (["1", "2", "3+"], ["taper", "fully_charged"]),
+    ]
+    assert [row["frs_source_households"] for row in cells] == [2, 2]
+    # FRS families alone carry support; copies in a cell add none.
+    _, cells = child_benefit_copy_report_cells(
+        **{**arguments, "base": np.r_[np.ones(6, dtype=bool), np.zeros(3, dtype=bool)]},
+        minimum_source_households=3,
+    )
+    assert [(row["children"], row["income_bands"]) for row in cells] == [
+        (["1", "2", "3+"], ["below_charge_start"]),
+        (["1", "2", "3+"], ["taper", "fully_charged"]),
+    ]
+
+
+def test_coupled_copy_reports_keep_same_cell_twins_and_reach_the_cell_rate() -> None:
+    rng = np.random.default_rng(3)
+    count = 40_000
+    rates = np.array([0.6, 0.3, 0.9])
+    twin_reports = rng.random(count) < rates[0]
+    copy_cell = rng.integers(0, 3, size=count)
+    drawn = assign_spi_child_benefit_reports(
+        copy=np.r_[np.zeros(count, dtype=bool), np.ones(count, dtype=bool)],
+        family=np.ones(2 * count, dtype=bool),
+        twin=np.r_[np.full(count, -1), np.arange(count)],
+        cell=np.r_[np.zeros(count, dtype=np.int64), copy_cell],
+        rates=rates,
+        # The copies' own earlier reports play no part.
+        reporter=np.r_[twin_reports, rng.random(count) < 0.5],
+        draws=rng.random(2 * count),
+    )
+
+    assert not drawn[:count].any()
+    copies = drawn[count:]
+    same = copy_cell == 0
+    assert np.array_equal(copies[same], twin_reports[same])
+    for index, rate in enumerate(rates):
+        assert copies[copy_cell == index].mean() == pytest.approx(rate, abs=0.015)
+    # Into a lower-rate cell only a reporting twin's copy reports, with
+    # probability p_copy / p_twin; into a higher one every such copy does.
+    low, high = copy_cell == 1, copy_cell == 2
+    assert not copies[low & ~twin_reports].any()
+    assert copies[low & twin_reports].mean() == pytest.approx(0.3 / 0.6, abs=0.02)
+    assert copies[high & twin_reports].all()
+    with pytest.raises(ValueError, match="needs an FRS twin"):
+        assign_spi_child_benefit_reports(
+            copy=np.array([True]),
+            family=np.array([True]),
+            twin=np.array([-1]),
+            cell=np.array([0]),
+            rates=rates,
+            reporter=np.array([False]),
+            draws=np.array([0.5]),
+        )
