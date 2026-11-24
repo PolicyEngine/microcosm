@@ -5876,10 +5876,12 @@ class _HouseholdBatchedPostExportScorer:
                     flush=True,
                 )
                 self._merged_baseline_failed = True
-        if self._merged_baseline_failed:
-            # Outside the handler: the failed pass's traceback, and the
-            # per-batch values its frame collected, are freed before this pass.
-            return self._score(baseline_plan, label=f"{name} baseline plan"), False
+            if self._merged_baseline_failed:
+                # Outside the handler, so the failed pass's traceback and the
+                # per-batch values its frame collected are no longer
+                # referenced; a full collection frees any held in a cycle.
+                _collect_family_garbage()
+                return self._score(baseline_plan, label=f"{name} baseline plan"), False
         del self._unserved_baseline_plans[name]
         served = {key: self._merged_baseline[key] for key in baseline_plan}
         still_planned = {

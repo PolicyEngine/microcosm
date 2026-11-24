@@ -464,10 +464,15 @@ one Microsimulation over the whole file.
   - The shared pass holds every stage's baseline arrays at once, from the
     first stage's start until each stage has been served. On the
     eight-household fixture that is 12,027 bytes, against 8,418 for reform
-    validation's plan, the largest one held before (about 1.4 times).
-  - The shared pass runs when the smoke starts, so the build telemetry's
-    `reform_coverage_smoke` stage time now includes every stage's baseline
-    work, and the later stages' times include none.
+    validation's plan, the largest one held before (about 1.4 times). Each of
+    its batch engines also computes every stage's keys (97 on the fixture,
+    against at most 75 before), so it caches more intermediate values.
+  - The shared pass runs when the first stage starts: the smoke, unless
+    `--skip-reform-coverage-smoke` is set. The build telemetry's time for that
+    stage now includes every stage's baseline work, and the later stages'
+    times include none.
+  - A shared pass that fails costs the time it ran in addition to every
+    stage's own pass.
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold
@@ -547,7 +552,9 @@ counts and the scored H5 digest.
 Run this fixture sweep before R4's full-export timing steps, and repeat it
 after a probe, spec or engine-lock change before starting a release.
 R4's existing full-export rehearsal times the smoke and validation
-baseline plans plus three selected reform passes; it does not cover every
+baseline plans plus three selected reform passes (`tools/probe_us_post_export.py`
+still scores each stage's baseline plan in a pass of its own, which the release
+no longer does); it does not cover every
 reform and does not replace this sweep.
 
 `calibration_diagnostics.json` records the plan under `build.post_export_scoring`
