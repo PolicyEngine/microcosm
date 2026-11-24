@@ -506,6 +506,15 @@
       "expires_on": "2027-02-03"
     },
     {
+      "name": "hmrc.child_benefit.families_in_payment.children_1",
+      "reason": "Measured distortion, not thin support (María's rule of 2026-10-21): HMRC counts claimant families by the children in payment, and its 3.36m one-child families in payment in August 2025 exceed the FRS 2024-25's 3.23m benefit units with one dependent child of any kind at the survey's grossing weights, while for two, three and four children the FRS is within 3 to 8 percent of HMRC. The claim draw only chooses which eligible units are paid, so the row can be met only by inflating one-child families. On b891aa69, calibration raised the children in one-child families from 3.34m at the spine's weights to 4.12m (HBAI 3.2m) and lowered those in two-child families from 6.99m to 6.17m (HBAI 6.8m), and dropping the row barely moves the children below HBAI's poverty lines (microcosm#1710, B3 of its bottom-tail plan; for María's signature). Held out and measured on every evaluation; the other family sizes stay bound. Bind again only if the model counts claimant families as HMRC does (uk-data#562) or a build's eligible one-child units reach HMRC's count.",
+      "tracking": "microcosm#1710",
+      "approved_by": "juaristi22",
+      "adjudication": "María's go of 2026-11-24 on B3 of microcosm#1710's bottom-tail plan: hold HMRC's one-child Child Benefit families in payment out of the solve in the #1508 PR (microcosm#1718), tested as a calibrate-only variant on that PR's arm (for María's signature).",
+      "approved_on": "2026-11-24",
+      "expires_on": "2027-02-24"
+    },
+    {
       "name": "hmrc.pris.rental_income.scotland",
       "reason": "Diagnostic first, not yet a weight question: PRIS stays a diagnostic since María's ruling of 2026-10-08 (microcosm#1106), when every UK PRIS receipts or count target moved weight across the SPI's total-income bands, pushed the SPI property amounts off their bound and failed uk_weight_ratio. Scotland's receipts (Table 9) are measured on every evaluation for the Scottish property rate costing. The published total counts partnerships as well as individuals while the spine carries individuals, so part of any gap is definitional. Bind only if a calibrate-only solve with the row bound keeps uk_weight_ratio at or below 1,151.25 and the SPI property rows within 10 percent; never the landlord counts, which conflict with the SPI's (microcosm#1145). The bound-variant solve of 2026-11-11 on the head spine of microcosm#1572 (B7 of the November event-data plan's PR3, microcosm#1095) kept uk_weight_ratio within its limit and fit both PRIS rows, which start 34 and 43 percent low at design weights, but took the SPI property amount in the GBP 12,570 to 15,000 band from 13 to 18 percent low and moved weight onto Scotland's highest SPI income bands, so both rows stay held out (María's ruling of 2026-11-11).",
       "tracking": "microcosm#1095",
