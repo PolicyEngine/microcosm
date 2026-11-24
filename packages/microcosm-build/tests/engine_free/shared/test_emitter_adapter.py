@@ -326,6 +326,11 @@ def _start_build_emitter(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     ("version_answer", "reported"),
     [
+        # The minimum until 2026-11-19 and the release just before 0.17.0,
+        # which leaves parent_build_manifest.json and reform_validation.json,
+        # handed over with a release publication, out of the build's
+        # calibration-diagnostics submission.
+        (_version_answer("0.16.0"), "reports version 0.16.0"),
         # The minimum until 2026-11-16 and the release just before 0.16.0,
         # which accepts a promotion's or withdrawal's collector provenance
         # but drops it, so it submits no releases.json.
@@ -352,6 +357,7 @@ def _start_build_emitter(monkeypatch, tmp_path):
         ("not JSON", "reports no version"),
     ],
     ids=[
+        "0.16.0",
         "0.15.0",
         "0.14.0",
         "0.13.0",
@@ -383,7 +389,7 @@ def test_an_emitter_older_than_the_minimum_is_never_started_and_the_build_contin
     assert not emitter.available
     warning = capsys.readouterr().err
     assert f"The installed microcosm-emitter {reported};" in warning
-    assert "this build needs 0.16.0 or later" in warning
+    assert "this build needs 0.17.0 or later" in warning
     # The warning says what the build loses without the emitter, including
     # the one option that then fails the build.
     assert (
@@ -391,7 +397,7 @@ def test_an_emitter_older_than_the_minimum_is_never_started_and_the_build_contin
         "and queues no Orrery graph publication; a UK build given "
         "--staging-read-back will fail at the read-back." in warning
     )
-    assert "uv tool install --upgrade 'microcosm-emitter>=0.16.0'" in warning
+    assert "uv tool install --upgrade 'microcosm-emitter>=0.17.0'" in warning
     # It also says that a remote stage of the dataset bundle is refused, so
     # the pre-flight's later refusal does not contradict it.
     assert "will continue without it" not in warning
@@ -416,8 +422,8 @@ def test_the_fake_client_reports_a_release_builds_start():
 @pytest.mark.parametrize(
     "installed_version",
     # Compared by number, not as text: as text, 0.9.0, which is refused,
-    # sorts after 0.16.0.
-    ["0.16.0", "0.16.10", "0.17.0", "1.0.0"],
+    # sorts after 0.17.0.
+    ["0.17.0", "0.17.10", "0.18.0", "1.0.0"],
 )
 def test_an_emitter_from_the_minimum_on_starts(
     monkeypatch, capsys, tmp_path, installed_version
@@ -456,7 +462,7 @@ def test_a_short_lived_graph_emitter_older_than_the_minimum_is_never_started(
     assert starts == []
     assert not started.exists()
     assert client.calls == []
-    assert "this build needs 0.16.0 or later" in capsys.readouterr().err
+    assert "this build needs 0.17.0 or later" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])
