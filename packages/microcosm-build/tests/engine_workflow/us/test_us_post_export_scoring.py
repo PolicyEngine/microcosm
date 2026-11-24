@@ -305,8 +305,6 @@ def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
     reform pass on this fixture). The scorer removes them once the consumer
     opens the next reform or finishes, and the scored arrays are byte-identical
     to scoring without the removal."""
-    import contextlib
-
     import policyengine_us
 
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
@@ -348,9 +346,19 @@ def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
     before, after, released = score()
     assert after == before
 
-    monkeypatch.setattr(
-        builder, "temporary_engine_variable_modules", contextlib.nullcontext
-    )
+    class KeepEveryModule:
+        """A scope that removes nothing: post-export scoring before the fix."""
+
+        def __init__(self, variables_dir=None) -> None:
+            pass
+
+        def open(self):
+            return self
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(builder, "EngineVariableModuleScope", KeepEveryModule)
     kept_before, kept_after, kept = score()
     assert len(kept_after - kept_before) >= 2 * 1_000
     assert released == kept

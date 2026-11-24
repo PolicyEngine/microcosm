@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from microcosm.build.us_runtime.engine_lifecycle import (
+    EngineVariableModuleScope,
     temporary_engine_variable_modules,
 )
 from test_support.microcosm_build.us_release_head_to_head_scorer import (
@@ -214,3 +215,46 @@ def test_temporary_variable_modules_clean_up_first_lazy_engine_import(
         assert all(reference() is None for reference in transient_refs)
     finally:
         sys.modules.pop(transient_name, None)
+
+
+def test_an_explicit_scope_spans_calls_and_closes_once(tmp_path) -> None:
+    """The explicit scope removes what was registered between open and close."""
+    variables_dir = tmp_path / "variables"
+    name = "7470001_-123_income_tax"
+    try:
+        scope = EngineVariableModuleScope(variables_dir).open()
+        retained = _register_variable_module(name, variables_dir)
+        assert sys.modules[name].IncomeTax().formula() == 42.0
+        scope.close()
+        gc.collect()
+        assert name not in sys.modules
+        assert all(reference() is None for reference in retained)
+        scope.close()  # Closing again does nothing.
+    finally:
+        sys.modules.pop(name, None)
+
+
+def test_an_unclosed_scope_removes_nothing_when_it_is_collected(tmp_path) -> None:
+    """A scope left open and dropped never removes a later scope's modules.
+
+    A suspended ``temporary_engine_variable_modules`` generator would run its
+    cleanup whenever the garbage collector closed it, removing modules that a
+    later scope registered and still uses.
+    """
+    variables_dir = tmp_path / "variables"
+    abandoned_name = "7480001_-123_income_tax"
+    later_name = "7480002_-123_income_tax"
+    try:
+        abandoned = EngineVariableModuleScope(variables_dir).open()
+        _register_variable_module(abandoned_name, variables_dir)
+        del abandoned
+        later = EngineVariableModuleScope(variables_dir).open()
+        _register_variable_module(later_name, variables_dir)
+        gc.collect()
+        assert later_name in sys.modules
+        assert abandoned_name in sys.modules
+        later.close()
+        assert later_name not in sys.modules
+    finally:
+        sys.modules.pop(abandoned_name, None)
+        sys.modules.pop(later_name, None)

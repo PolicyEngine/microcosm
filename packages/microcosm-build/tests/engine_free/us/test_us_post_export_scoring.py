@@ -2036,3 +2036,64 @@ def test_the_shipped_consumers_leave_no_rule_modules_and_score_the_same(
     assert demographics == reference_demographics
     assert len(log.systems) > 43
     assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
+
+
+def test_an_abandoned_scorers_reform_never_removes_a_later_scorers_modules(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    """A scorer dropped with a reform open leaves its modules, harmlessly, and
+    the garbage collector never makes it remove a later reform's modules."""
+    abandoned_log = _EngineLog()
+    abandoned = _scorer(
+        builder,
+        _nested_frame(),
+        abandoned_log,
+        3,
+        tmp_path / "abandoned",
+        variables_dir=stand_in_rule_modules,
+    )
+    abandoned.open_consumer("fixture", ()).simulate(_FakeReform("dropped")).calculate(
+        "income_tax", builder.PERIOD
+    )
+    del abandoned
+    log = _EngineLog()
+    scorer = _scorer(
+        builder,
+        _nested_frame(),
+        log,
+        3,
+        tmp_path / "later",
+        variables_dir=stand_in_rule_modules,
+    )
+    consumer = scorer.open_consumer("fixture", ())
+    consumer.simulate(_FakeReform("kept")).calculate("income_tax", builder.PERIOD)
+    later_module = _rule_module_name(log.systems[0])
+    gc.collect()
+    assert later_module in sys.modules
+
+    scorer.finish_consumer(consumer)
+    assert later_module not in sys.modules
+
+
+def test_a_scorer_keeps_one_reform_open_across_its_consumers(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    log = _EngineLog()
+    scorer = _scorer(
+        builder, _nested_frame(), log, 3, tmp_path, variables_dir=stand_in_rule_modules
+    )
+    first_consumer = scorer.open_consumer("first", ())
+    first_consumer.simulate(_FakeReform("first")).calculate(
+        "income_tax", builder.PERIOD
+    )
+    second_consumer = scorer.open_consumer("second", ())
+    second_consumer.simulate(_FakeReform("second")).calculate(
+        "income_tax", builder.PERIOD
+    )
+
+    assert _rule_module_name(log.systems[0]) not in sys.modules
+    assert _rule_module_name(log.systems[1]) in sys.modules
+    scorer.finish_consumer(first_consumer)
+    assert _rule_module_name(log.systems[1]) in sys.modules
+    scorer.finish_consumer(second_consumer)
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
