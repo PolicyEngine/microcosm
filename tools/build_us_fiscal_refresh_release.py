@@ -5752,12 +5752,17 @@ class _HouseholdBatchedPostExportScorer:
         # Each finished consumer's scoring record, for the manifests' block.
         # Records, not consumers: a finished consumer's arrays must be freed.
         self.consumer_records: dict[str, dict[str, object]] = {}
-        # Registered plans not yet served, and the merged pass's values of
-        # the keys they still need (None until that pass runs).
+        # Every registered plan, which an opened consumer must match; the
+        # non-empty ones not yet served; and the merged pass's values of the
+        # keys those still need (None until that pass runs).
         self._registered_baseline_plans: dict[str, tuple[PostExportKey, ...]] = {
-            name: tuple(plan) for name, plan in (baseline_plans or {}).items() if plan
+            name: tuple(plan) for name, plan in (baseline_plans or {}).items()
+        }
+        self._unserved_baseline_plans = {
+            name: plan for name, plan in self._registered_baseline_plans.items() if plan
         }
         self._merged_baseline: dict[PostExportKey, _PostExportValues] | None = None
+        self._merged_baseline_failed = False
 
     def open_consumer(
         self,
@@ -5830,18 +5835,20 @@ class _HouseholdBatchedPostExportScorer:
 
     def _baseline_for(
         self, name: str, baseline_plan: tuple[PostExportKey, ...]
-    ) -> dict[PostExportKey, _PostExportValues]:
+    ) -> tuple[dict[PostExportKey, _PostExportValues], bool]:
         """Score ``name``'s baseline plan, or serve it from the merged pass.
 
-        The first registered consumer opened scores the union of every
-        registered plan in one batch-outer pass, in ascending period order;
-        each registered consumer opened with its registered plan is then
-        served exactly its own keys, once, and the merged values are dropped
-        once no unserved registered plan holds them. A consumer without a
-        registered plan, or opened again, scores its own plan in a pass of its
-        own. If the merged pass raises, every consumer scores its own plan, so
-        a key that only one consumer planned fails that consumer alone, with
-        the error it raised before the merge (the holdout reports catch it).
+        Returns the plan's values and whether they came from the merged pass.
+        A registered consumer opened with any plan but its registered one is
+        refused. The first registered consumer opened scores the union of
+        every unserved registered plan in one batch-outer pass, in ascending
+        period order; each registered consumer is then served exactly its own
+        keys, once, and the merged values are dropped once no unserved
+        registered plan holds them. A consumer without a registered plan, or
+        opened again, scores its own plan in a pass of its own. If the merged
+        pass raises, every consumer scores its own plan, so a key that only
+        one consumer planned fails that consumer alone, with the error it
+        raised before the merge (the holdout reports catch it).
         """
         registered = self._registered_baseline_plans.get(name)
         if registered is not None and registered != baseline_plan:
@@ -5851,13 +5858,13 @@ class _HouseholdBatchedPostExportScorer:
                 "before export."
             )
         if not baseline_plan:
-            return {}
+            return {}, False
         self._batches()
-        if registered is None:
-            return self._score(baseline_plan, label=f"{name} baseline plan")
+        if name not in self._unserved_baseline_plans or self._merged_baseline_failed:
+            return self._score(baseline_plan, label=f"{name} baseline plan"), False
         if self._merged_baseline is None:
             union = _ascending_period_plan(
-                key for plan in self._registered_baseline_plans.values() for key in plan
+                key for plan in self._unserved_baseline_plans.values() for key in plan
             )
             try:
                 self._merged_baseline = self._score(union, label="merged baseline plan")
@@ -5868,17 +5875,20 @@ class _HouseholdBatchedPostExportScorer:
                     "own baseline plan instead.",
                     flush=True,
                 )
-                self._registered_baseline_plans = {}
-                return self._score(baseline_plan, label=f"{name} baseline plan")
-        del self._registered_baseline_plans[name]
+                self._merged_baseline_failed = True
+        if self._merged_baseline_failed:
+            # Outside the handler: the failed pass's traceback, and the
+            # per-batch values its frame collected, are freed before this pass.
+            return self._score(baseline_plan, label=f"{name} baseline plan"), False
+        del self._unserved_baseline_plans[name]
         served = {key: self._merged_baseline[key] for key in baseline_plan}
         still_planned = {
-            key for plan in self._registered_baseline_plans.values() for key in plan
+            key for plan in self._unserved_baseline_plans.values() for key in plan
         }
         for key in tuple(self._merged_baseline):
             if key not in still_planned:
                 del self._merged_baseline[key]
-        return served
+        return served, True
 
     def _construct(self, batch_frame: Frame, *, reform_system):
         dataset = self._dataset_from_frame(batch_frame)
@@ -6057,7 +6067,9 @@ class _PostExportConsumer:
         self.reform_passes = 0
         self.planned_reform_passes = planned_reform_passes
         self.reform_systems = 0
-        self._baseline = scorer._baseline_for(name, baseline_plan)
+        self._baseline, self.baseline_from_merged_pass = scorer._baseline_for(
+            name, baseline_plan
+        )
 
     def simulate(self, reform):
         if reform is None:
@@ -6126,6 +6138,12 @@ class _PlannedPostExportBaseline:
         return self._consumer._baseline_values(
             _post_export_key(variable, period, map_to)
         )
+
+    def prefetch(self, requests) -> None:
+        """Nothing to score: refuse any request outside the served plan, as
+        ``calculate`` would (the dry run's recorder takes ``prefetch`` too)."""
+        for request in requests:
+            self._consumer._baseline_values(_post_export_key(*request))
 
 
 class _BatchedPostExportReform:
@@ -11310,8 +11328,13 @@ def _score_post_export_consumer(
         )
         output = consumer(scoring.simulate)
         record = scorer.finish_consumer(scoring)
+        baseline = (
+            "baseline served from the merged pass"
+            if scoring.baseline_from_merged_pass
+            else f"{record['baseline_passes']} baseline pass"
+        )
         print(
-            f"Post-export {name}: {record['baseline_passes']} baseline pass "
+            f"Post-export {name}: {baseline} "
             f"({len(plan)} keys), {record['reform_passes']} reform passes, "
             f"{record['reform_systems']} reform systems, "
             f"{record['n_batches']} batches of up to "

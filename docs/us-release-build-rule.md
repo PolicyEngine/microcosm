@@ -450,12 +450,24 @@ one Microsimulation over the whole file.
   pass of its own: five passes over 177 batches on a national export. If the
   shared pass raises, every stage runs its own pass as before, so a key that
   only one held-out report asks for still fails that report alone. Each
-  stage's recorded `baseline_passes` stays 1, now counting the shared pass.
+  stage's recorded `baseline_passes` stays 1: the one pass its baseline came
+  from, shared unless the shared pass failed. Only the build log tells the two
+  apart: it prints `Post-export merged baseline plan failed` on a fallback,
+  and the summary that reform validation, demographics and the held-out
+  reports print says `baseline served from the merged pass` when the stage was
+  served from the shared one.
   One engine refuses a period earlier than one it has already computed.
   The real-engine test probes the MD CCS request-order premise by requesting
   2025 state taxes after 2027 keys. It checks for the
   `md.msde.ccs.payment.informal.rates` error and warns if that error is absent;
   it does not require the upstream bug to persist.
+  - The shared pass holds every stage's baseline arrays at once, from the
+    first stage's start until each stage has been served. On the
+    eight-household fixture that is 12,027 bytes, against 8,418 for reform
+    validation's plan, the largest one held before (about 1.4 times).
+  - The shared pass runs when the smoke starts, so the build telemetry's
+    `reform_coverage_smoke` stage time now includes every stage's baseline
+    work, and the later stages' times include none.
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold
@@ -525,9 +537,11 @@ validation reform and the OBBBA pre-baseline and stacked states. It also
 exercises the fallback simulations used when an in-sample estimate is absent.
 It scores at most four reform passes per worker, serially, and compares all
 baseline values and four reform passes with whole-file engines. Its baseline
-worker serves the plans from one shared pass, as the release does; its reform
-workers score each recorded request in a pass of its own, so the pre-OBBBA
-state's two requests are two passes there. Workers stop
+worker serves its three plans (the smoke, reform validation recorded without a
+calibration fit, and demographics) from one shared pass; the release's shared
+pass also holds the two held-out reports' keys. Its reform workers score each
+recorded request in a pass of its own, so the pre-OBBBA state's two requests
+are two passes there. Workers stop
 at a sampled 7 GiB RSS threshold and report their peak RSS, elapsed time,
 counts and the scored H5 digest.
 Run this fixture sweep before R4's full-export timing steps, and repeat it

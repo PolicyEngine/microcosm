@@ -773,24 +773,29 @@ def reform_validation_payload(
     ) -> dict[tuple[str, int], float]:
         """Weighted totals of a single-use reform simulation, then release it.
 
-        ``requests`` are ``(measure, period)`` pairs. A simulation offering
-        ``prefetch`` (the release tool's household-batched reform) scores them
-        all in one pass before any total is read.
+        ``requests`` are ``(measure, period)`` pairs, read in ascending period
+        order: policyengine-us 2.2.1 can fail to compute an earlier period
+        after a later one on the same simulation (microcosm#956). A simulation
+        offering ``prefetch`` (the release tool's household-batched reform)
+        scores them all in one pass before any total is read.
 
         microcosm#456: every out-of-sample score builds a full-release-sized
         engine simulation whose object graph stays reachable after the local
         name dies (system backref, branch-clone cycles). Release it and sweep
         so the smoke phase runs at one-simulation footprint.
         """
+        ascending = tuple(
+            sorted(dict.fromkeys(requests), key=lambda request: request[1])
+        )
         try:
             prefetch = getattr(transient_simulation, "prefetch", None)
             if prefetch is not None:
-                prefetch(requests)
+                prefetch(ascending)
             return {
                 (measure, at_period): _weighted_total(
                     transient_simulation, measure, at_period
                 )
-                for measure, at_period in requests
+                for measure, at_period in ascending
             }
         finally:
             if _released_engine_state(transient_simulation):
