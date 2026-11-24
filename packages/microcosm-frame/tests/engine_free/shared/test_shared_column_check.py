@@ -229,6 +229,75 @@ def test_the_check_names_a_column_changed_by_a_raw_write(raw_write: str) -> None
         assert column_name in str(raised.value)
 
 
+# A column that leaves a frame takes the evidence of a raw write with it: no
+# later check of the new frame sees it (microcosm#1683 review). replace_tables,
+# and with_columns through it, compare each recorded column the new frame drops
+# or replaces before building it.
+
+
+@pytest.mark.parametrize("raw_write", sorted(_RAW_WRITES))
+def test_dropping_a_changed_shared_column_is_refused(raw_write: str) -> None:
+    column_name, write = _RAW_WRITES[raw_write]
+    source = _source_frame()
+    result = _reweighted(source)
+    write(result.table("person")[column_name])
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        result.replace_tables(person=result.table("person").drop(columns=column_name))
+    assert raised.value.changed_columns == (("person", column_name),)
+
+
+def test_a_column_derived_from_a_changed_column_cannot_drop_it() -> None:
+    """The writer reads its changed column into a new one, then drops it."""
+
+    source = _source_frame()
+    result = _reweighted(source)
+    _add_at_into_to_numpy(result.table("person")["income"])
+    person = result.table("person")
+    derived = person.assign(doubled=2 * person["income"]).drop(columns="income")
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        result.replace_tables(person=derived)
+    assert raised.value.changed_columns == (("person", "income"),)
+
+
+def test_a_frame_cannot_drop_a_column_another_frame_changed() -> None:
+    """The other frame's raw write changed this frame's column too."""
+
+    source = _source_frame()
+    result = _reweighted(source)
+    _add_at_into_to_numpy(result.table("person")["income"])
+    person = source.table("person")
+    derived = person.assign(raised=person["income"] + 1.0).drop(columns="income")
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        source.replace_tables(person=derived)
+    assert raised.value.changed_columns == (("person", "income"),)
+
+
+def test_with_columns_cannot_replace_a_changed_shared_column() -> None:
+    source = _source_frame()
+    result = _reweighted(source)
+    _add_at_into_to_numpy(source.table("person")["income"])
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        result.with_columns("person", income=np.zeros(_PERSON_COUNT))
+    assert raised.value.changed_columns == (("person", "income"),)
+
+
+def test_dropping_or_replacing_an_unchanged_shared_column_passes() -> None:
+    source = _source_frame()
+    result = _reweighted(source)
+
+    dropped = result.replace_tables(
+        person=result.table("person").drop(columns="income")
+    )
+    replaced = result.with_columns("person", income=np.zeros(_PERSON_COUNT))
+
+    for frame in (dropped, replaced, result, source):
+        frame.check_shared_columns()
+
+
 @pytest.mark.parametrize("operation", sorted(_SHARING_OPERATIONS))
 def test_every_sharing_operation_makes_its_columns_checked(operation: str) -> None:
     source = _source_frame()
@@ -436,6 +505,8 @@ def test_writes_made_through_pandas_do_not_trip_the_check(pandas_write: str) -> 
 
     result.check_shared_columns()
     source.check_shared_columns()
+    person = result.table("person").drop(columns=["income"], errors="ignore")
+    result.replace_tables(person=person).check_shared_columns()
 
 
 def test_replacing_a_column_after_its_sharer_is_gone_passes_the_check() -> None:
@@ -566,6 +637,18 @@ def test_a_column_is_hashed_once_however_many_frames_share_it(
 
     assert len(hashed_lengths) == hashed_for_first_frame
     assert third.n("person") == _PERSON_COUNT
+
+
+def test_replace_tables_hashes_only_the_columns_it_drops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source_frame()
+    result = _reweighted(source)
+    hashed_lengths = _counted_digests(monkeypatch)
+
+    result.replace_tables(person=result.table("person").drop(columns="income"))
+
+    assert hashed_lengths == [_PERSON_COUNT]
 
 
 def test_frames_that_share_nothing_are_not_hashed(
