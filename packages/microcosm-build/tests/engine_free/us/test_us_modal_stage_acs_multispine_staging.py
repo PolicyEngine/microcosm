@@ -61,6 +61,8 @@ OWNED_FLAGS = {
     "--location-seed",
     "--location-clones",
     "--block-ladder",
+    # microcosm#454: a Modal staging run always enforces the ESI premium.
+    "--allow-esi-premium-gaps",
 }
 
 
@@ -192,6 +194,7 @@ def test_only_all_is_registered(stage: str) -> None:
         "puma_ladder",
         "donor_release_manifest",
         "allow_dirty",
+        "allow_esi_premium_gaps",
     ],
 )
 def test_plan_cannot_control_sources_or_outputs(option: str) -> None:

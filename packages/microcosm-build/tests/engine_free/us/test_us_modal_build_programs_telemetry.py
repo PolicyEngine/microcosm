@@ -477,6 +477,8 @@ def test_the_acs_staging_builder_records_its_phases_up_to_a_failure(
         location_seed=0,
         location_clones=1,
         block_ladder=None,
+        # microcosm#454: the ESI premium is enforced by default.
+        allow_esi_premium_gaps=False,
     )
     base = SimpleNamespace(weights_for=lambda unit: SimpleNamespace(total=1.0))
     monkeypatch.setattr(module, "_parse_args", lambda argv: args)
@@ -498,6 +500,7 @@ def test_the_acs_staging_builder_records_its_phases_up_to_a_failure(
         "_require_ssi_disability_donor",
         "_require_donor_work_experience",
         "_require_dense_donor_coverage",
+        "_qualify_esi_premium_donor",
     ):
         monkeypatch.setattr(module, check, _passes)
     monkeypatch.setattr(module, "declared_acs_transfer_target_families", tuple)

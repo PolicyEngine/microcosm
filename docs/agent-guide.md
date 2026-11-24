@@ -566,6 +566,21 @@ A source-enrichment publisher claim widens the range
 consumers accept, not what was checked: the bundle's
 `compatibility.claim_measurement` names the one version the probe measured.
 
+The ACS local-area chain produces `employer_sponsored_insurance_premiums` on
+its ACS spine itself (microcosm#454): the staging build
+(`tools/build_us_acs_multispine_base.py`) transfers it from the donor
+release's ASEC observations and holds it to the donor rows' premium per unit
+of household mass, and both ESI premium gates run on the staging frame and
+again in finalize on the calibrated artifact. A donor built before the
+`meps_esi_premiums` stage is refused. `--allow-esi-premium-gaps`, on the
+staging tool and the release tool, is for diagnostic builds only: it records a
+red verdict in the staging summary and the gate report instead of failing.
+Modal staging plans cannot pass it. The lane's calls to the ESI gates pass
+`allow_transferred_rows=True`; the base build and the fiscal-refresh release
+tool keep the default, which refuses any row without the raw ASEC coverage
+fields, so do not pass it on those paths. See
+[the ESI premium note](us-esi-employer-premiums.md#acs-local-releases).
+
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
 pool whose terminal battery is red remains fail-closed unless the operator

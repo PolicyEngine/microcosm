@@ -1479,6 +1479,37 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
             arguments={"receipt": "receipt_anchors_receipt"},
             pinned=_pins("acs_local_receipt_anchors", "ACS_SNAP_HOUSEHOLD_SHARE_BAND"),
         ),
+        # The lane's ESI premium gates grade the pooled frame by row kind
+        # (allow_transferred_rows=True), so they bind the lane's own callables,
+        # not the shared ESI checks, which keep the default and refuse an ACS
+        # row. Each pins the national entry's constants and the band the ACS
+        # rows are compared against.
+        USGateSpec(
+            check="esi_premiums_signal",
+            legacy_name="esi_premiums_signal",
+            gate="tool:acs_local_esi_premium_signal_gate",
+            positional=(FRAME,),
+            pinned=_pins(
+                "esi_premiums",
+                "_POSITIVE_SHARE_BAND",
+                "_RAW_MEAN_BAND",
+                "_TRANSFERRED_TO_SOURCE_BAND",
+            ),
+        ),
+        USGateSpec(
+            check="esi_premiums_anchor",
+            legacy_name="esi_premiums_anchor",
+            gate="tool:acs_local_esi_premium_anchor_gate",
+            positional=(FRAME,),
+            arguments={"time_period": "time_period"},
+            pinned=_pins(
+                "esi_premiums",
+                "ANCHOR_RELATIVE_TOLERANCE",
+                "_EMPLOYED_SHARE_BAND",
+                "_RAW_MEAN_BAND",
+                "_TRANSFERRED_PER_MASS_BAND",
+            ),
+        ),
         USGateSpec(
             check="reviewed_fill_consumers",
             legacy_name="acs_local_reviewed_fill_consumers",
