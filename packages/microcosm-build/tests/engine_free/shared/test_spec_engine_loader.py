@@ -37,7 +37,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # again (acs_transfer's attested bytes; no draw changes).
     # microcosm#1686's shared SIPP person-file read moves it again.
     assert first.spec_sha256 == (
-        "2a66284b0a16d8150f5e2b375a62cade745185c8b691d22b2bfae624c5af3ab2"
+        "61342345ef256d736938783d39211474e5d84448f2d7d4eddf7d8f86058f321b"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

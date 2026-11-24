@@ -368,7 +368,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The ACS transfer fitting and drawing one QRF target at a time
             # moves it again (acs_transfer's attested bytes; no draw changes).
             # microcosm#1686's shared SIPP person-file read moves it again.
-            "spec_sha256": "d9e7ca4c17b639b0689d4db279acd3452f7ea1eed68bf265848dcfaf36b1d710",
+            "spec_sha256": "edcb553abd45d6523c47e7d35516939bdd10da5a0e6826361880db66eaf07b77",
         },
     }
 

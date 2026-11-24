@@ -409,8 +409,8 @@ EXPECTED_HASHES = {
     # acs_transfer's attested bytes change; no draw, RNG rule or QRF target does.
     # microcosm#1686's shared SIPP person-file read moves both again: the five
     # SIPP donor tables are byte-identical, and no draw changes.
-    "seed_map": "e3e9efbd92b6ffe48403541b89200df506ebd2e9edc4a17087ac108af88df83c",
-    "seed_protocol": "adf9216eec33937a47d5d1872eb57dd2e751a7611faaebf94075c0efd2e42996",
+    "seed_map": "3f8e94865f20faf4ef38d55c61275da98dc48140ff0d0b738e53c30afead8b81",
+    "seed_protocol": "32db678fb571a9e7d2708126f96238667d23b43766953c812cb8f94db3a2b4c0",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
