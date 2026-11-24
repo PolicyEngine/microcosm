@@ -17,6 +17,14 @@ failure, and the rule, seed and both ladders' sha256 are recorded in the
 summary (``household_location``, ``orchestration``, ``geography_ladder``) and
 the staging H5's root attributes. The legacy default is unchanged.
 
+The ESI employer premium (microcosm#454) is qualified on the donor before the
+ACS fetch, transferred onto the ACS spine and anchored by
+:mod:`microcosm.build.us_runtime.acs_local_esi_premiums`, and graded by both
+ESI gates on the final frame before export; a red gate stops the build before
+the staging H5 is written. ``--allow-esi-premium-gaps`` (diagnostic builds
+only) records a refused donor and red gates in the summary
+(``local_esi_premiums``) instead.
+
 Telemetry: after parsing its arguments the builder starts the emitter
 (``microcosm.build.program_telemetry``, pipeline ``us_acs_multispine_staging``),
 records a stage change at each main phase (``load_donor``,
@@ -51,6 +59,12 @@ from microcosm.build.program_telemetry import program_telemetry
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter
 from microcosm.build.us_runtime import acs_sources
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
+from microcosm.build.us_runtime.acs_local_esi_premiums import (
+    acs_local_esi_premium_gate_payload,
+    acs_local_esi_premium_gates,
+    acs_local_esi_premium_transfer_target_families,
+    prepare_acs_local_esi_premium_donor,
+)
 from microcosm.build.us_runtime.acs_local_hours import (
     ACS_UNDER15_ZERO_POLICY,
     acs_local_hours_signal_gate,
@@ -318,6 +332,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--allow-esi-premium-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (microcosm#454): build from a donor "
+            "release that predates the meps_esi_premiums stage. No row then "
+            "carries employer_sponsored_insurance_premiums and both ESI gates "
+            "are red; what was red is written to the staging summary. A donor "
+            "that carries the column but fails qualification leaves it null "
+            "on the ACS spine, which the release tool refuses. Release builds "
+            "must leave this unset."
+        ),
+    )
+    parser.add_argument(
         "--donor-release-manifest",
         type=Path,
         help=(
@@ -551,6 +578,13 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
         donor_channel=args.donor_channel,
         target_families=transfer_plan,
     )
+    # microcosm#454: qualify the ESI employer premium's donor before the SIPP
+    # donor load and the ACS fetch, so a donor that cannot carry the premium
+    # onto the ACS spine fails in minutes, not after the transfer.
+    esi_premium_waiver = _qualify_esi_premium_donor(
+        base, allow_gaps=args.allow_esi_premium_gaps
+    )
+    transfer_esi_premiums = esi_premium_waiver is None
     # microcosm#1022: resolve and verify the pinned SIPP donor before the ACS
     # fetch and transfer, so an unavailable donor fails in minutes, not hours.
     ssi_disability_donor, ssi_disability_identity = _load_ssi_disability_donor(
@@ -597,6 +631,9 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
             donor, seed=args.seed, period=args.period
         ),
         hours_under15_policy=args.hours_under15_policy,
+        esi_premium_donor_factory=(
+            prepare_acs_local_esi_premium_donor if transfer_esi_premiums else None
+        ),
         work_disability_inputs=True,
         income_transfer=True,
         native_receipt_anchors=True,
@@ -627,7 +664,7 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     transfer_coverage = _require_default_transfer_coverage(
         result,
         base,
-        target_families=acs_local_transfer_target_families(),
+        target_families=_local_coverage_plan(esi_premiums=transfer_esi_premiums),
     )
     weights_audit = _audit_fits(result)
 
@@ -675,6 +712,14 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
         raise SystemExit(
             "Local staging hours gate failed: " + "; ".join(hours_gate.failures)
         )
+    # microcosm#454: grade the employer premium on the frame the staging H5
+    # is written from, after the last stage that replaces the frame.
+    local_esi_premiums = _local_esi_premium_evidence(
+        result,
+        period=args.period,
+        waiver=esi_premium_waiver,
+        allow_gaps=args.allow_esi_premium_gaps,
+    )
 
     telemetry.transition_stage("export")
     args.out_h5.parent.mkdir(parents=True, exist_ok=True)
@@ -753,11 +798,84 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     summary.update(work_disability)
     summary.update(income)
     summary.update(ssi_disability)
+    summary["local_esi_premiums"] = local_esi_premiums
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
     summary_path.write_text(rendered, encoding="utf-8")
     print(rendered, end="")
     return 0
+
+
+def _qualify_esi_premium_donor(base: Frame, *, allow_gaps: bool) -> str | None:
+    """Qualify the donor of the employer premium before ACS acquisition.
+
+    Returns ``None`` for a qualified donor, or the refusal a diagnostic build
+    waived (``--allow-esi-premium-gaps``). The transfer qualifies the donor
+    again when it selects its rows, so no selection is held through the ACS
+    load.
+    """
+
+    try:
+        prepare_acs_local_esi_premium_donor(base)
+    except ValueError as exc:
+        if not allow_gaps:
+            raise SystemExit(
+                "Dense ASEC-by-PUF donor failed the ESI employer premium "
+                f"qualification: {exc} Pass --allow-esi-premium-gaps only for "
+                "a diagnostic build."
+            ) from exc
+        return str(exc)
+    return None
+
+
+def _local_coverage_plan(*, esi_premiums: bool) -> TargetFamilies:
+    """Every input the lane's transfers owe the ACS spine."""
+
+    plan = {
+        entity: dict(families)
+        for entity, families in acs_local_transfer_target_families().items()
+    }
+    if esi_premiums:
+        local = acs_local_esi_premium_transfer_target_families()
+        for entity, families in local.items():
+            plan.setdefault(entity, {}).update(families)
+    return plan
+
+
+def _local_esi_premium_evidence(
+    result: AcsMultispineResult,
+    *,
+    period: int,
+    waiver: str | None,
+    allow_gaps: bool,
+) -> dict[str, object]:
+    """Grade the employer premium on the pooled staging frame (microcosm#454).
+
+    Both gates run on the frame the staging H5 is written from: the donor
+    rows get the MEPS-IC recomputation and the ACS rows are compared with
+    them. A red gate fails the build unless a diagnostic build waived it; the
+    verdicts are recorded either way.
+    """
+
+    signal, anchor = acs_local_esi_premium_gates(result.frame, time_period=period)
+    evidence: dict[str, object] = {
+        "enforced": not allow_gaps,
+        "transferred": waiver is None,
+        "donor_qualification_waived": waiver,
+        "provenance": result.provenance.get("local_esi_premiums"),
+        "signal_gate": acs_local_esi_premium_gate_payload(signal),
+        "anchor_gate": acs_local_esi_premium_gate_payload(anchor),
+    }
+    failures = [
+        f"{gate.name}: {failure}"
+        for gate in (signal, anchor)
+        for failure in gate.failures
+    ]
+    if failures and not allow_gaps:
+        raise SystemExit(
+            "Local staging ESI employer premium gates failed: " + "; ".join(failures)
+        )
+    return evidence
 
 
 def _audit_fits(result: AcsMultispineResult) -> dict[str, object]:
@@ -2070,6 +2188,7 @@ def _build_summary(
         "n_estimators": args.n_estimators,
         "max_targets_per_fit": args.max_targets_per_fit,
         "donor_channel": args.donor_channel,
+        "allow_esi_premium_gaps": bool(args.allow_esi_premium_gaps),
         "provenance": result.provenance,
     }
     if block_location:

@@ -338,6 +338,46 @@ def test_package_argv_adds_release_root_and_bool_flags() -> None:
     assert "--allow-dirty" not in argv
 
 
+@pytest.mark.parametrize("stage", ["finalize", "package"])
+def test_the_esi_premium_waiver_reaches_the_stages_that_grade_it(stage) -> None:
+    # microcosm#454: a diagnostic run on a checkpoint without the premium
+    # needs the waiver forwarded; a release plan leaves it unset.
+    data = _plan_data(stage)
+    data["options"] = {"allow_esi_premium_gaps": True}
+    assert "--allow-esi-premium-gaps" in plan_lib.planned_argv(
+        plan_lib.parse_plan(data)
+    )
+    data["options"] = {"allow_esi_premium_gaps": False}
+    assert "--allow-esi-premium-gaps" not in plan_lib.planned_argv(
+        plan_lib.parse_plan(data)
+    )
+    assert "--allow-esi-premium-gaps" not in plan_lib.planned_argv(
+        plan_lib.parse_plan(_plan_data(stage))
+    )
+
+
+def test_modal_staging_never_forwards_the_esi_premium_waiver() -> None:
+    # microcosm#454: the staging waiver is the builder's own diagnostic flag.
+    # A staging plan cannot name it, and the runner owns it so that no
+    # option can reach it, so every Modal staging run qualifies the donor
+    # and enforces both ESI gates.
+    staging = plan_lib.US_ACS_MULTISPINE_STAGING
+    assert "allow_esi_premium_gaps" not in staging.options
+    assert "--allow-esi-premium-gaps" in staging.owned_flags
+    assert "--allow-esi-premium-gaps" not in {
+        option.flag for option in staging.options.values()
+    }
+    # The release stages that grade the premium are the only ones that take it.
+    assert {
+        tool.name
+        for tool in plan_lib.TOOLS.values()
+        if any(
+            option.flag == "--allow-esi-premium-gaps"
+            for option in tool.options.values()
+        )
+    } == {plan_lib.US_ACS_LOCAL_RELEASE.name}
+
+
 def test_argv_paths_are_stable_across_stages() -> None:
     # run_identity.json records the staging path and every later stage
     # re-verifies the staging digest, so staged paths must not move.

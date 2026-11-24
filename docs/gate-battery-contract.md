@@ -327,10 +327,10 @@ local publication work in #146; they are evaluated in their own signed
 accounting.
 
 US adoption is in progress (microcosm#1585 item 11), in four steps, and
-`us/gates.json` now declares 143 entries, each US build tool's share of
+`us/gates.json` now declares 145 entries, each US build tool's share of
 them a scope of its own (`us_runtime/gate_scopes.py`): `us_base` (Route
 A's base, 37), `us_pool` (the multispine pool's stacked path, 6),
-`us_national` (the national release, 76) and `us_local` (ACS local, 24). A
+`us_national` (the national release, 76) and `us_local` (ACS local, 26). A
 scope owns the entries whose id starts with its name, checked
 closed-world. In this step the battery runs **in shadow**: each tool still
 gates as it did, and beside each gate it evaluates the declared entry

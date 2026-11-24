@@ -63,8 +63,9 @@ package; each is separately resumable):
                 participation rate).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
                 gate, district ESS collapse gate -- report-only unless
-                ``--district-ess-gate-blocking`` --, spine-composition
-                evidence) + the reviewed-limitations
+                ``--district-ess-gate-blocking`` --, both ESI employer-premium
+                gates on the calibrated artifact (microcosm#454),
+                spine-composition evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
@@ -114,6 +115,7 @@ from __future__ import annotations
 import argparse
 import gc
 import hashlib
+import io
 import json
 import resource
 import shutil
@@ -135,6 +137,11 @@ from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.program_telemetry import program_telemetry
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
+from microcosm.build.us_runtime.acs_local_esi_premiums import (
+    acs_local_esi_premium_anchor_gate,
+    acs_local_esi_premium_gate_payload,
+    acs_local_esi_premium_signal_gate,
+)
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 from microcosm.build.us_runtime.acs_local_immigration import (
     ACS_LOCAL_IMMIGRATION_COLUMNS,
@@ -1089,9 +1096,12 @@ def fill_reviewed_nulls(
             f"Refusing to default-fill runtime-owned input(s): {'; '.join(denied)}."
         )
 
-    # microcosm#454: the ESI employer premium exists only where the
-    # meps_esi_premiums stage ran (the ASEC donor rows). Refuse before any
-    # fill: a registered null here would become a silent zero on the ACS spine.
+    # microcosm#454: the staging build transfers the ESI employer premium onto
+    # the ACS spine and holds it to the donor rows' scale, so every row of a
+    # current staging frame carries it. A null means a staging H5 built before
+    # that, or a diagnostic one that waived it (--allow-esi-premium-gaps).
+    # Refuse before any fill: a registered null here would become a silent
+    # zero on the ACS spine.
     refuse_unassigned_us_esi_premiums(
         frame, consumer="ACS local release (fill_reviewed_nulls)"
     )
@@ -5832,6 +5842,64 @@ _SELF_EMPLOYMENT_DOUBLE_COUNT_DETAILS = (
 )
 
 
+#: The lane's verdict on the ESI employer premium (microcosm#454), in the
+#: gate report finalize writes and package requires.
+ESI_PREMIUM_GATE_NAMES = ("esi_premiums_signal", "esi_premiums_anchor")
+
+
+def _esi_premium_gate_entry(gate, *, artifact_sha256: str, enforced: bool) -> dict:
+    """One ESI premium verdict, bound to the artifact bytes it graded."""
+
+    payload = acs_local_esi_premium_gate_payload(gate)
+    return {
+        "passed": payload["passed"],
+        "failures": payload["failures"],
+        "detail": payload["details"],
+        "artifact_sha256": artifact_sha256,
+        "enforced": enforced,
+    }
+
+
+def _require_esi_premium_gates(gates, *, h5_sha: str, allow_gaps: bool) -> None:
+    """Refuse to package without the lane's ESI premium verdict on these bytes.
+
+    Without ``--allow-esi-premium-gaps`` both gates must be present, passing
+    and bound to the bytes being packaged, the check every other finalize
+    gate gets (:func:`_require_bound_finalize_gate`). With it, each gate must
+    still carry a boolean verdict bound to these bytes: a report finalized
+    before the gates existed carries neither and is always refused. A red
+    gate then packages only as the waiver finalize recorded (``enforced:
+    false``), so the shipped report says the waiver was taken; a red gate
+    finalize enforced is refused, whatever this stage's flag says.
+    """
+
+    for name in ESI_PREMIUM_GATE_NAMES:
+        if not allow_gaps:
+            _require_bound_finalize_gate(gates, name, h5_sha)
+            continue
+        gate = gates.get(name) if isinstance(gates, dict) else None
+        if not isinstance(gate, dict) or not isinstance(gate.get("passed"), bool):
+            raise SystemExit(
+                f"The finalize gate report carries no {name} verdict "
+                "(microcosm#454); an old simulation_ready summary is "
+                "insufficient. Re-run --stage finalize."
+            )
+        if gate.get("artifact_sha256") != h5_sha:
+            raise SystemExit(
+                f"The {name} gate is missing its artifact binding or certifies "
+                "different H5 bytes. Re-run --stage finalize against the "
+                "current artifact."
+            )
+        if not gate["passed"] and gate.get("enforced") is not False:
+            raise SystemExit(
+                f"The {name} gate is red and finalize did not record a waiver "
+                "for it (enforced is not false), so the report would ship a "
+                "red verdict marked enforced. --allow-esi-premium-gaps at "
+                "package admits only a waiver finalize recorded: re-run --stage "
+                "finalize with --allow-esi-premium-gaps."
+            )
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.hours_worked import (
         US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -6053,6 +6121,24 @@ def do_finalize(args) -> None:
             },
         ),
     )
+    # microcosm#454: the lane's own verdict on the ESI employer premium, on
+    # the calibrated bytes. The donor rows get the MEPS-IC recomputation, the
+    # ACS rows are compared with them, and the anchor-universe total is held
+    # to the stage's national anchor at the calibrated weights.
+    esi_signal_gate = _shadow_local_frame_gate(
+        "us_local_esi_premiums_signal",
+        lambda frame=frame: acs_local_esi_premium_signal_gate(frame),
+        frame,
+    )
+    esi_anchor_gate = shadow_gate(
+        "us_local_esi_premiums_anchor",
+        lambda frame=frame: acs_local_esi_premium_anchor_gate(
+            frame, time_period=PERIOD
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame, artifacts={"time_period": PERIOD}
+        ),
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -6221,17 +6307,35 @@ def do_finalize(args) -> None:
             ),
             "detail": diagnostics.get("weight_origin"),
         },
+        "esi_premiums_signal": _esi_premium_gate_entry(
+            esi_signal_gate,
+            artifact_sha256=hours_artifact_sha,
+            enforced=not args.allow_esi_premium_gaps,
+        ),
+        "esi_premiums_anchor": _esi_premium_gate_entry(
+            esi_anchor_gate,
+            artifact_sha256=hours_artifact_sha,
+            enforced=not args.allow_esi_premium_gaps,
+        ),
         "input_coverage": {
-            # Enforced upstream: the staging driver's donor-coverage gate
-            # hard-fails before transfer, so reaching finalize means it held.
-            "passed": True,
+            # The donor's own coverage is enforced upstream: the staging
+            # driver's donor-coverage gate hard-fails before transfer, so
+            # reaching finalize means it held. That says nothing about a
+            # required input on the ACS spine, so the one this lane produces
+            # there from a stage output, the ESI employer premium, is graded
+            # on this artifact by the two gates above (microcosm#454).
+            "passed": bool(esi_signal_gate.passed and esi_anchor_gate.passed),
             "binds": "donor_certified_release",
+            "graded_on_artifact": list(ESI_PREMIUM_GATE_NAMES),
             "note": (
                 "Input coverage is enforced on the certified donor release "
                 "before transfer; the ACS spine inherits required inputs via "
-                "QRF transfer. ACS native GQ-housing / source-universe nulls "
-                "are reviewed_limitations (calibration_blocker: false) and "
-                "are NOT re-imposed on the ACS spine. Take-up draws are not "
+                "QRF transfer. The ESI employer premium (microcosm#454) is "
+                "also graded on the calibrated artifact: esi_premiums_signal "
+                "and esi_premiums_anchor. ACS native GQ-housing / "
+                "source-universe nulls are reviewed_limitations "
+                "(calibration_blocker: false) and are NOT re-imposed on the "
+                "ACS spine. Take-up draws are not "
                 "transferred: ACS SNAP/TANF take-up is seeded by this tool "
                 "and gated by acs_local_take_up_signal (microcosm#1019). The "
                 "same stage fills the ACS rows' discretionary ABAWD exemption "
@@ -6386,6 +6490,12 @@ def do_finalize(args) -> None:
         hard_failures.append(DISTRICT_ESS_GATE)
     if block_location_gate is not None and not block_location_gate.passed:
         hard_failures.append("us_block_location_gate")
+    # microcosm#454: --allow-esi-premium-gaps records a red ESI premium gate
+    # without failing a diagnostic build; the gate entries keep what was red.
+    if not args.allow_esi_premium_gaps:
+        hard_failures += [
+            name for name in ESI_PREMIUM_GATE_NAMES if not gates[name]["passed"]
+        ]
     updated_summary = dict(staging_summary)
     updated_summary.update(
         {
@@ -6406,7 +6516,7 @@ def do_finalize(args) -> None:
         "reviewed_limitations": limitations,
         "generated_at": datetime.now(UTC).isoformat(),
     }
-    args.gate_report.write_text(json.dumps(gate_report, indent=2))
+    _write_gate_report(args, gate_report)
     if hard_failures:
         raise SystemExit(
             f"finalize: hard gate failure(s): {hard_failures} — see {args.gate_report}."
@@ -6666,7 +6776,7 @@ def do_package(args) -> dict:
             "calibration_summary.json has no valid calibration_diagnostics status; "
             "run --stage calibrate with the current builder."
         )
-    gate_report = _load_json(args.gate_report)
+    gate_report = _load_gate_report(args)
     staging_summary = _load_json(_staging_summary_path(args))
     final_summary = _load_json(args.out_summary)
     held_back = _load_json(args.checkpoint_dir / "held_back_columns.json")
@@ -6747,6 +6857,14 @@ def do_package(args) -> dict:
         out_h5=calibrated_h5,
         out_h5_sha256=h5_sha,
         stage="package",
+    )
+    # microcosm#454: the lane's verdict on the ESI employer premium must be
+    # in the report and bound to these bytes. A refusal leaves no release
+    # directory behind.
+    _require_esi_premium_gates(
+        gate_report.get("gates"),
+        h5_sha=h5_sha,
+        allow_gaps=args.allow_esi_premium_gaps,
     )
 
     code = _repo_code_identity(args.allow_dirty)
@@ -7453,6 +7571,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(
+        "--allow-esi-premium-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (microcosm#454): record the ESI premium "
+            "gates on the calibrated artifact -- "
+            "employer_sponsored_insurance_premiums absent, zero-mass, missing "
+            "on the ACS spine, missing its raw ASEC coverage columns, or off "
+            "the stage's national anchor -- without failing finalize or "
+            "package (for example on a staging H5 built from a donor that "
+            "predates the meps_esi_premiums stage). The failures are still "
+            "written to the gate report. Package takes a red gate only as the "
+            "waiver finalize recorded, so finalize needs the flag too. Release "
+            "builds must leave this unset."
+        ),
+    )
+    parser.add_argument(
         "--allow-partial-geography",
         action="store_true",
         help=(
@@ -7576,7 +7710,282 @@ def _local_stage_observations(args, stage: str) -> Path:
     return _local_gate_shadow_directory(args) / f"{stage}.observations.json"
 
 
-def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
+#: The --allow-* flags that waive one of this scope's entries today, by
+#: argparse destination: (destination, flag, stage, entry ids), where the
+#: stage is the one that evaluates those entries. The shadow records them by
+#: entry id; the battery evaluates every entry as if unwaived. The stages may
+#: run as separate processes with different flags, so an entry's waiver is
+#: the one its own stage ran with (:func:`_recorded_local_gate_waivers`).
+_LOCAL_GATE_WAIVERS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    (
+        "allow_esi_premium_gaps",
+        "--allow-esi-premium-gaps",
+        "finalize",
+        ("us_local_esi_premiums_signal", "us_local_esi_premiums_anchor"),
+    ),
+)
+
+
+def _local_gate_waivers(args, *, stage: str | None = None) -> dict[str, list[str]]:
+    """The waivers these flags apply, by entry id.
+
+    With ``stage``, only to the entries that stage evaluates.
+    """
+
+    waivers: dict[str, list[str]] = {}
+    for destination, flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
+        if stage is not None and evaluated_at != stage:
+            continue
+        if getattr(args, destination, False):
+            for entry_id in entry_ids:
+                waivers.setdefault(entry_id, []).append(flag)
+    return waivers
+
+
+def _local_stage_waivers(args, stage: str) -> Path:
+    return _local_gate_shadow_directory(args) / f"{stage}.waivers.json"
+
+
+#: The stage that writes the gate report package selects (``--gate-report``).
+#: Its waiver record names that report by SHA-256, so the shadow attaches the
+#: record only to the report the same finalize run wrote.
+_GATE_REPORT_STAGE = "finalize"
+
+
+def _gate_report_sha256(args) -> str | None:
+    """The SHA-256 of the gate report at ``args.gate_report``; None without one."""
+
+    path = getattr(args, "gate_report", None)
+    if path is None or not Path(path).is_file():
+        return None
+    return _sha256(Path(path))
+
+
+def _write_gate_report(args, gate_report: dict) -> None:
+    """Finalize's write of its gate report to ``args.gate_report``.
+
+    Once the write succeeds, it sets ``args.gate_report_bytes_sha256`` to the
+    SHA-256 of the bytes written, which finalize's waiver record names
+    (:func:`_local_gate_shadow_stage`).
+    """
+
+    payload = json.dumps(gate_report, indent=2).encode("utf-8")
+    Path(args.gate_report).write_bytes(payload)
+    args.gate_report_bytes_sha256 = hashlib.sha256(payload).hexdigest()
+
+
+def _load_gate_report(args) -> dict:
+    """Package's read of the gate report, parsed as :func:`_load_json` parses it.
+
+    It reads ``args.gate_report`` once and sets ``args.gate_report_bytes_sha256``
+    to the SHA-256 of the bytes it parses (None without a file), so the
+    shadow matches finalize's waiver record to those bytes, not to whatever
+    file the path holds when the stage ends.
+    """
+
+    path = Path(args.gate_report)
+    if not path.exists():
+        args.gate_report_bytes_sha256 = None
+        return {}
+    payload = path.read_bytes()
+    args.gate_report_bytes_sha256 = hashlib.sha256(payload).hexdigest()
+    # Decoded as ``Path.read_text`` decodes: default encoding, universal newlines.
+    with io.TextIOWrapper(io.BytesIO(payload)) as text:
+        return json.loads(text.read())
+
+
+def _save_local_stage_waivers(
+    args, stage: str, *, gate_report_sha256: str | None = None
+) -> None:
+    """Record the waivers ``stage`` applied to its own entries, for later stages.
+
+    The gate report stage's record also names, by SHA-256, the gate report
+    that stage wrote, or None when it wrote none.
+    """
+
+    record: dict[str, object] = {"waivers": _local_gate_waivers(args, stage=stage)}
+    if stage == _GATE_REPORT_STAGE:
+        record["gate_report_sha256"] = gate_report_sha256
+    path = _local_stage_waivers(args, stage)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_name(f"{path.name}.tmp")
+    staging.write_text(
+        json.dumps(record, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    staging.replace(path)
+
+
+#: A record's ``gate_report_sha256`` when it has none: records saved before
+#: they named a gate report held only the waivers, by entry id.
+_NO_RECORDED_GATE_REPORT = object()
+
+
+def _read_local_stage_waivers(
+    path: Path, stage: str
+) -> tuple[dict[str, list[str]], object]:
+    """A stage's saved waivers by entry id, and the gate report digest it names.
+
+    Raises ``FileNotFoundError`` when there is no file, and another
+    ``OSError``, ``RecursionError`` (JSON nested past the decoder's depth) or
+    ``ValueError`` (``json.JSONDecodeError`` among them) when it cannot read
+    the file or the file is not a waiver record: a mapping of the entries
+    ``stage`` evaluates to lists of flags, under ``waivers`` with an optional
+    ``gate_report_sha256``, or bare, as earlier records were.
+    """
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(saved, dict):
+        raise ValueError(f"the record is a {type(saved).__name__}, not a mapping")
+    digest: object = _NO_RECORDED_GATE_REPORT
+    waivers = saved
+    if "waivers" in saved:
+        unexpected = sorted(set(saved) - {"waivers", "gate_report_sha256"})
+        if unexpected:
+            raise ValueError(f"the record has unexpected keys {unexpected}")
+        waivers = saved["waivers"]
+        digest = saved.get("gate_report_sha256", _NO_RECORDED_GATE_REPORT)
+        if digest is not None and digest is not _NO_RECORDED_GATE_REPORT:
+            if not (
+                isinstance(digest, str)
+                and len(digest) == 64
+                and all(character in "0123456789abcdef" for character in digest)
+            ):
+                raise ValueError(
+                    f"gate_report_sha256 {digest!r} is not a SHA-256 hex digest"
+                )
+    if not isinstance(waivers, dict) or not all(
+        isinstance(flags, list) and all(isinstance(flag, str) for flag in flags)
+        for flags in waivers.values()
+    ):
+        raise ValueError("its waivers are not lists of flags by entry id")
+    evaluated = {
+        entry_id
+        for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS
+        if evaluated_at == stage
+        for entry_id in entry_ids
+    }
+    foreign = sorted(set(waivers) - evaluated)
+    if foreign:
+        raise ValueError(
+            f"it names entries the {stage} stage does not waive: {foreign}"
+        )
+    return {entry_id: list(flags) for entry_id, flags in waivers.items()}, digest
+
+
+#: ``args.gate_report_bytes_sha256`` before package reads the gate report.
+_GATE_REPORT_NOT_READ = object()
+
+
+def _waiver_gate_report_mismatch(args, stage: str, recorded: object) -> str | None:
+    """Why ``stage``'s waiver record does not belong to the selected gate
+    report, or None when it names that report's digest, or names none and
+    the selected path holds no file (package then refuses: no gate report).
+
+    The selected report is the bytes package parsed (:func:`_load_gate_report`).
+    A package run stopped before it read the report has none, so the shadow
+    then hashes the file at the path when the stage ends.
+    """
+
+    selected = getattr(args, "gate_report_bytes_sha256", _GATE_REPORT_NOT_READ)
+    if selected is _GATE_REPORT_NOT_READ:
+        try:
+            selected = _gate_report_sha256(args)
+        except OSError as error:
+            return (
+                f"the selected gate report {getattr(args, 'gate_report', None)} "
+                f"could not be read to match the {stage} stage's waiver record "
+                f"to it ({type(error).__name__}: {error})"
+            )
+    if recorded is _NO_RECORDED_GATE_REPORT:
+        return (
+            f"the {stage} stage's waiver record names no gate report, so it "
+            "cannot be matched to the selected gate report "
+            f"{selected or 'none (no file)'}"
+        )
+    if recorded != selected:
+        unnamed = (
+            "none (that run wrote no gate report, or its report could not be read)"
+        )
+        return (
+            f"the {stage} stage's waiver record belongs to gate report "
+            f"{recorded or unnamed}, not to the selected gate report "
+            f"{selected or 'none (no file)'}"
+        )
+    return None
+
+
+#: What the shadow records as the waiver of an entry whose stage's waiver
+#: record it cannot attach, since it then cannot know the flags that stage
+#: ran with.
+_UNKNOWN_STAGE_WAIVER = "unknown: {reason}"
+
+
+def _recorded_local_gate_waivers(args, stage: str) -> dict[str, list[str]]:
+    """Each entry's waivers as the stage that evaluated it ran, by entry id.
+
+    This stage's come from ``args``, and an earlier stage's from the record it
+    saved beside its observations (:func:`_local_gate_shadow_stage`), so a
+    later stage's flags never rewrite the waivers an earlier stage took or
+    refused. Finalize's record also names, by SHA-256, the gate report bytes
+    that run wrote, and the shadow attaches it only when those are the bytes
+    package read (:func:`_waiver_gate_report_mismatch`): a package run on
+    another finalize run's report would otherwise show that run's waiver.
+
+    Each entry an earlier stage can waive records
+    :data:`_UNKNOWN_STAGE_WAIVER`, with the reason, instead of a waiver when
+    the stage left observations without a record (as a checkpoint saved
+    before stages kept one does), when the shadow cannot open or read its
+    record (JSON nested past the decoder's depth among the causes) or it is
+    not a waiver record, or when finalize's names another gate report, names
+    none while package read a gate report, or lacks the digest (as records
+    saved before they named one do). The shadow still rebuilds the
+    comparison. An earlier stage with neither file contributes none. The
+    shadow matches only the waiver to the gate report: it reads the latest
+    saved finalize observations, whichever report package selects.
+    """
+
+    waivers = _local_gate_waivers(args, stage=stage)
+    for name in _LOCAL_GATE_SHADOW_STAGES[: _LOCAL_GATE_SHADOW_STAGES.index(stage)]:
+        path = _local_stage_waivers(args, name)
+        # The read tells an absent record from one the shadow cannot open;
+        # ``Path.is_file`` would report a stat error as no file.
+        try:
+            saved, recorded = _read_local_stage_waivers(path, name)
+        except FileNotFoundError:
+            if not _local_stage_observations(args, name).is_file():
+                continue
+            reason = f"the {name} stage saved no waiver record"
+        except (OSError, RecursionError, ValueError) as error:
+            reason = (
+                f"{path.name} could not be read as a waiver record "
+                f"({type(error).__name__}: {error})"
+            )
+        else:
+            reason = (
+                _waiver_gate_report_mismatch(args, name, recorded)
+                if name == _GATE_REPORT_STAGE
+                else None
+            )
+            if reason is None:
+                for entry_id, flags in saved.items():
+                    waivers.setdefault(entry_id, []).extend(flags)
+                continue
+        unknown = _UNKNOWN_STAGE_WAIVER.format(reason=reason)
+        for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
+            if evaluated_at == name:
+                for entry_id in entry_ids:
+                    waivers.setdefault(entry_id, []).append(unknown)
+        log(
+            f"WARNING: gate battery shadow: {reason}; it records the {name} "
+            "stage's waivers as unknown."
+        )
+    return waivers
+
+
+def _local_gate_shadow(
+    args, directory: Path, *, waivers: dict[str, list[str]] | None = None
+) -> GateBatteryShadow:
     gates = us_scoped_gate_manifest(US_LOCAL_GATE_SCOPE)
     report_path, comparison_path = shadow_file_paths(directory, US_LOCAL_GATE_SCOPE)
     return GateBatteryShadow(
@@ -7586,6 +7995,7 @@ def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
         report_path=report_path,
         comparison_path=comparison_path,
         registry=us_gate_registry(US_LOCAL_GATE_SCOPE, tool=globals()),
+        waivers=_local_gate_waivers(args) if waivers is None else waivers,
         overrides=us_flag_overrides(gates, us_gate_specs(US_LOCAL_GATE_SCOPE), args),
     )
 
@@ -7604,7 +8014,11 @@ def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
         stages_run = _LOCAL_GATE_SHADOW_STAGES[
             : _LOCAL_GATE_SHADOW_STAGES.index(stage) + 1
         ]
-        shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args))
+        shadow = _local_gate_shadow(
+            args,
+            _local_gate_shadow_directory(args),
+            waivers=_recorded_local_gate_waivers(args, stage),
+        )
         for name in _LOCAL_GATE_SHADOW_STAGES:
             observations = _local_stage_observations(args, name)
             if observations.is_file():
@@ -7630,11 +8044,14 @@ def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
 def _local_gate_shadow_stage(args, stage: str):
     """Observe one stage's gates in shadow, then bring the scope's files up to date.
 
-    The stages may run as separate processes, so each saves what it observed
-    beside the checkpoint, and rerunning a stage discards its own and every
-    later stage's observations. Afterwards the scope's report and comparison
-    are rebuilt from every stage saved so far. With the switch off (the test
-    suite) the stage runs without a shadow and touches no shadow file.
+    The stages may run as separate processes, so each saves what it observed,
+    and the waivers its flags applied to its own entries, beside the
+    checkpoint; finalize's waiver record also names, by SHA-256, the gate
+    report bytes that run wrote (:func:`_write_gate_report`), or none.
+    Rerunning a stage discards its own and every later stage's files.
+    Afterwards the scope's report and comparison are rebuilt from every stage
+    saved so far. With the switch off (the test suite) the stage runs without
+    a shadow and touches no shadow file.
     """
 
     if not tool_gate_shadows_enabled():
@@ -7643,6 +8060,7 @@ def _local_gate_shadow_stage(args, stage: str):
     try:
         for name in _LOCAL_GATE_SHADOW_STAGES[_LOCAL_GATE_SHADOW_STAGES.index(stage) :]:
             _local_stage_observations(args, name).unlink(missing_ok=True)
+            _local_stage_waivers(args, name).unlink(missing_ok=True)
         # The scope's report and comparison were built from observations just
         # discarded, so they go too: a stage that never reaches its end, killed
         # before it rebuilds them, must not leave an earlier run's verdict.
@@ -7652,10 +8070,25 @@ def _local_gate_shadow_stage(args, stage: str):
             stale.unlink(missing_ok=True)
     except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
         log(f"WARNING: gate battery shadow could not clear earlier files: {error}")
+    # Only this stage's own write or read of the gate report counts
+    # (:func:`_write_gate_report`, :func:`_load_gate_report`): finalize's
+    # record names the bytes it wrote, none if it wrote none, and package's
+    # match uses the bytes it read.
+    try:
+        del args.gate_report_bytes_sha256
+    except AttributeError:
+        pass
     shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args) / stage)
 
     def save() -> None:
         try:
+            # The waiver record first, so observations this code saves always
+            # have one (:func:`_recorded_local_gate_waivers`).
+            _save_local_stage_waivers(
+                args,
+                stage,
+                gate_report_sha256=getattr(args, "gate_report_bytes_sha256", None),
+            )
             shadow.save_observations(_local_stage_observations(args, stage))
         except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
             log(f"WARNING: gate battery shadow could not save {stage}: {error}")
