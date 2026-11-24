@@ -12,7 +12,9 @@ each consumer's output from their results. These tests check that:
   (the baseline plan, then each reform pass), name the reformed simulation
   that asked for each, and rebuild the reform that simulation was given;
 - every descriptor survives a pickle round trip through a spawned process;
-- the dry run refuses a reform it cannot describe;
+- the dry run refuses a reform it cannot describe or pickle;
+- descriptors cannot be hashed and keep their own copy of a reform's
+  parameter changes;
 - the recorded outputs of the release stay byte-identical on the fixture.
 """
 
@@ -24,13 +26,17 @@ import itertools
 import json
 import multiprocessing
 import os
+import pickle
+import typing
 from collections.abc import Mapping
 from concurrent.futures import ProcessPoolExecutor
+from types import MappingProxyType
 
 import microcosm.build.us_runtime.release_input_coverage as coverage_module
 from microcosm.build.us_runtime.post_export_requests import (
     RECORDS_REQUESTS_ONLY,
     ParameterChangesReform,
+    PostExportReform,
     PostExportRequest,
     build_post_export_reform,
 )
@@ -309,23 +315,33 @@ def test_reform_requests_follow_the_order_of_first_asks(
         scorer.close()
 
 
+@pytest.mark.parametrize("kind", ["built reform", "description pickle cannot name"])
 def test_the_dry_run_refuses_a_reform_it_cannot_describe(
-    builder, no_engine, monkeypatch
+    builder, no_engine, monkeypatch, kind
 ) -> None:
     """A worker rebuilds each reform from its description, so a consumer that
-    hands the dry run a built reform fails the plan, which the release records
-    and refuses before the export, instead of recording a request no worker
-    could run."""
+    hands the dry run a built reform, or a description that cannot be pickled,
+    fails the plan, which the release records and refuses before the export,
+    instead of recording a request no worker could run."""
 
     class BuiltReform:
         pass
 
-    def consumer(simulate):
-        simulate(BuiltReform()).calculate("income_tax", 2024)
+    class LocalChanges(ParameterChangesReform):
+        """An accepted type, defined in a function: pickle cannot name it."""
 
-    with pytest.raises(TypeError, match="BuiltReform"):
+    if kind == "built reform":
+        reform, message = BuiltReform(), "BuiltReform"
+    else:
+        reform = LocalChanges({"gov.fixture": {"2024-01-01": 1}})
+        message = "LocalChanges reform description that cannot be pickled"
+
+    def consumer(simulate):
+        simulate(reform).calculate("income_tax", 2024)
+
+    with pytest.raises(TypeError, match=message):
         builder._record_post_export_requests(consumer)
-    with pytest.raises(TypeError, match="BuiltReform"):
+    with pytest.raises(TypeError, match=message):
         builder._record_post_export_request_descriptors("fixture", consumer)
     monkeypatch.setattr(
         builder,
@@ -339,7 +355,7 @@ def test_the_dry_run_refuses_a_reform_it_cannot_describe(
         release_id=_RELEASE_ID,
     )
     assert plan.error is not None
-    assert plan.error.startswith("TypeError") and "BuiltReform" in plan.error
+    assert plan.error.startswith("TypeError") and message in plan.error
     assert plan.terminal_failures()
 
 
@@ -381,19 +397,24 @@ def test_a_request_rebuilds_its_reform_with_its_consumer_s_builder(
 
 
 @pytest.mark.parametrize(
-    "fields, message",
+    "fields, error, message",
     [
-        ({"reform": None, "reformed_simulation": 0}, "reformed simulation"),
-        ({"reformed_simulation": None}, "reformed simulation"),
-        ({"reform": object()}, "object"),
-        ({"position": -1}, "position"),
-        ({"period": "2024"}, "period"),
-        ({"map_to": ""}, "map_to"),
-        ({"consumer": ""}, "consumer"),
-        ({"variable": ""}, "variable"),
+        ({"reform": None, "reformed_simulation": 0}, ValueError, "reformed simulation"),
+        ({"reformed_simulation": None}, ValueError, "reformed simulation"),
+        ({"reformed_simulation": -1}, ValueError, "reformed_simulation"),
+        ({"reformed_simulation": True}, TypeError, "reformed_simulation"),
+        ({"reformed_simulation": np.int64(0)}, TypeError, "reformed_simulation"),
+        ({"reform": object()}, TypeError, "object"),
+        ({"position": -1}, ValueError, "position"),
+        ({"position": np.int64(0)}, TypeError, "position"),
+        ({"period": "2024"}, TypeError, "period"),
+        ({"period": True}, TypeError, "period"),
+        ({"map_to": ""}, ValueError, "map_to"),
+        ({"consumer": ""}, ValueError, "consumer"),
+        ({"variable": ""}, ValueError, "variable"),
     ],
 )
-def test_a_request_refuses_inconsistent_fields(fields, message) -> None:
+def test_a_request_refuses_inconsistent_fields(fields, error, message) -> None:
     valid = {
         "consumer": "fixture",
         "position": 0,
@@ -404,7 +425,7 @@ def test_a_request_refuses_inconsistent_fields(fields, message) -> None:
         "reformed_simulation": 0,
     }
     PostExportRequest(**valid)
-    with pytest.raises((TypeError, ValueError), match=message):
+    with pytest.raises(error, match=message):
         PostExportRequest(**{**valid, **fields})
 
 
@@ -415,12 +436,54 @@ def test_parameter_changes_must_name_a_reform(changes) -> None:
         ParameterChangesReform(changes)
 
 
+def test_descriptors_cannot_be_hashed_and_keep_their_own_changes() -> None:
+    """Most reform descriptions hold dictionaries, so no descriptor hashes
+    (results are keyed by consumer and position), and a cumulative OBBBA
+    state keeps a copy of the payload the consumer handed the dry run."""
+    changes = {"gov.fixture.parameter": {"2026-01-01": 0}}
+    reform = ParameterChangesReform(changes)
+    changes["gov.fixture.parameter"]["2026-01-01"] = 1
+    changes["gov.fixture.other"] = {"2026-01-01": 2}
+    assert reform.parameter_changes == {"gov.fixture.parameter": {"2026-01-01": 0}}
+    baseline = PostExportRequest(
+        consumer="fixture", position=0, variable="age", period=2024
+    )
+    reformed = PostExportRequest(
+        consumer="fixture",
+        position=1,
+        variable="income_tax",
+        period=2026,
+        reform=reform,
+        reformed_simulation=0,
+    )
+    for value in (baseline, reformed, reform):
+        with pytest.raises(TypeError, match="unhashable"):
+            hash(value)
+    # A read-only mapping cannot be pickled; the copy is a dict, which can.
+    proxied = ParameterChangesReform(
+        MappingProxyType({"gov.fixture.parameter": {"2026-01-01": 0}})
+    )
+    assert type(proxied.parameter_changes) is dict
+    assert pickle.loads(pickle.dumps(proxied)) == proxied == reform
+
+
+def test_the_reform_alias_names_the_three_descriptions() -> None:
+    assert typing.get_args(PostExportReform.__value__) == (
+        ReformCoverageProbe,
+        ReformValidationSpec,
+        ParameterChangesReform,
+    )
+
+
 #: SHA-256 of each output the post-export stages record, on the fixture frame
 #: and fake engine below, with a calibration fit covering two in-sample JCT
 #: reforms. Pinned from origin/main at fcabe4e65, before the dry run returned
-#: descriptors. A change that moves one of them changes what a release records:
-#: re-pin only when a probe, spec, baseline level or the fixture changed on
-#: purpose, in the same pull request.
+#: descriptors. The digests also cover the shipped probes, reform specs,
+#: baseline levels and holdout benchmarks, so a change to any of those moves
+#: them too. Re-pin only when such an input or the fixture changed on purpose,
+#: in the same pull request, by copying the digests this test's failure
+#: prints. The manifests' ``post_export_scoring`` block, which holds the
+#: method label and the batching, is not pinned here.
 _RECORDED_OUTPUT_SHA256 = {
     "calibration_diagnostics.build.post_export_scoring": (
         "7ed2a0dd088cf2d5a65e27e00368819cdf357160a5bdc2e42f079233d1f2f7b1"
@@ -440,6 +503,17 @@ _RECORDED_OUTPUT_SHA256 = {
     "medicare_irmaa_holdout": (
         "1962831f0fb368fdadd222e42310ca45a70effe214fe520c11a7f1f60d75337f"
     ),
+}
+
+
+#: The reform passes the plan counts for each stage (its progress reporting
+#: reads them), on the same fixture; also as on origin/main at fcabe4e65.
+_PLANNED_REFORM_PASSES = {
+    "reform_coverage_smoke": 43,
+    "reform_validation": 64,
+    "demographics": 0,
+    "ssi_social_security_holdout": 0,
+    "medicare_irmaa_holdout": 0,
 }
 
 
@@ -468,6 +542,9 @@ def _recorded_post_export_outputs(builder, tmp_path) -> dict[str, object]:
         args, n_households=7, result=fit, release_id=_RELEASE_ID
     )
     assert plan.error is None
+    assert {
+        name: plan.planned_reform_passes(name) for name in plan.baseline_plans
+    } == _PLANNED_REFORM_PASSES
     outputs: dict[str, object] = {
         "calibration_diagnostics.build.post_export_scoring": plan.record()
     }
