@@ -16,11 +16,21 @@ from types import SimpleNamespace
 
 import pytest
 
+from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
+    load_reviewed_fill_consumer_register,
+)
 from microcosm.build.us_runtime.esi_premiums import US_ESI_EMPLOYER_PREMIUM_COLUMN
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
 _ACS = "acs_2024_1yr"
+#: The pre-check grades fills against the packaged register, whose gate
+#: passes only on the engine it was reviewed against.
+_REVIEWED = load_reviewed_fill_consumer_register()["reviewed_against"][
+    "policyengine_us"
+]
+#: An engine the register is never reviewed against.
+_OTHER_ENGINE = "2.3.0"
 
 
 @pytest.fixture(scope="module")
@@ -110,20 +120,20 @@ def test_staged_nulls_split_as_r2_fill_step_treats_them(check, release) -> None:
 @pytest.mark.parametrize(
     ("nulls", "version", "passed", "message"),
     [
-        ([_null("strike_benefits", {_ACS: 7})], "2.2.1", True, None),
+        ([_null("strike_benefits", {_ACS: 7})], _REVIEWED, True, None),
         (
             [_null("not_a_registered_input", {_ACS: 7})],
-            "2.2.1",
+            _REVIEWED,
             False,
             "person.not_a_registered_input",
         ),
         (
             [_null("strike_benefits", {_ACS: 7, "asec_puf": 1})],
-            "2.2.1",
+            _REVIEWED,
             False,
             "person.strike_benefits",
         ),
-        ([_null("strike_benefits", {_ACS: 7})], "2.3.0", False, "2.3.0"),
+        ([_null("strike_benefits", {_ACS: 7})], _OTHER_ENGINE, False, _OTHER_ENGINE),
     ],
 )
 def test_r2_gate_grades_the_expected_fills(
@@ -166,7 +176,7 @@ def test_an_acs_only_null_that_staging_should_have_filled_is_refused(
             split,
             manifest_names=release.REVIEWED_FILL_MANIFESTS,
             never_default_filled=release.NEVER_DEFAULT_FILLED,
-            installed_engine_version="2.2.1",
+            installed_engine_version=_REVIEWED,
         )
 
         assert report["passed"] is False
@@ -188,10 +198,10 @@ def test_command_exits_2_on_an_unregistered_fill(
     monkeypatch.setattr(
         check, "_tax_benefit_system", lambda: SimpleNamespace(variables=variables)
     )
-    monkeypatch.setattr(check, "_engine_version", lambda _release: "2.2.1")
+    monkeypatch.setattr(check, "_engine_version", lambda _release: _REVIEWED)
     summary = tmp_path / "staging.summary.json"
     out = tmp_path / "report.json"
-    engine = {"policyengine_us": "2.2.1", "policyengine_core": "3.32.5"}
+    engine = {"policyengine_us": _REVIEWED, "policyengine_core": "3.32.5"}
     summary.write_text(
         json.dumps(
             {
@@ -222,7 +232,7 @@ def test_command_exits_2_on_an_unregistered_fill(
 
 @pytest.mark.parametrize(
     "engine",
-    [None, {"policyengine_us": "2.145.3", "policyengine_core": "3.36.1"}],
+    [None, {"policyengine_us": _OTHER_ENGINE, "policyengine_core": "3.36.1"}],
     ids=["no-record", "another-engine"],
 )
 def test_command_exits_2_on_a_staging_run_on_another_engine(
@@ -238,7 +248,7 @@ def test_command_exits_2_on_a_staging_run_on_another_engine(
             variables={"strike_benefits": SimpleNamespace(default_value=0)}
         ),
     )
-    monkeypatch.setattr(check, "_engine_version", lambda _release: "2.2.1")
+    monkeypatch.setattr(check, "_engine_version", lambda _release: _REVIEWED)
     summary = tmp_path / "staging.summary.json"
     out = tmp_path / "report.json"
     payload = {"reviewed_engine_input_nulls": [_null("strike_benefits", {_ACS: 7})]}

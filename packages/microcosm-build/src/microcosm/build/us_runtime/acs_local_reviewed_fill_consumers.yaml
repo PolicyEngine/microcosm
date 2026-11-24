@@ -19,11 +19,12 @@
 #   standalone outputs. State income tax credits are out of scope.
 # - consumers: every program with a root the column reaches in the static
 #   dependency graph of the pinned engine
-#   (PolicyEngineUSVariableMetadataIndex.consumer_receipts, walked from the
-#   column to its consumers until nothing new is reached). A column that is a
-#   root reaches its own program. The engine-tier test
-#   test_us_acs_local_reviewed_fill_consumers.py recomputes the walk and fails
-#   when a list here differs from it.
+#   (PolicyEngineUSVariableMetadataIndex.consumer_receipts with follow_helpers,
+#   so a read inside one of the engine's helper functions is its calling
+#   variable's, walked from the column to its consumers until nothing new is
+#   reached). A column that is a root reaches its own program. The engine-tier
+#   test test_us_acs_local_reviewed_fill_consumers.py recomputes the walk and
+#   fails when a list here differs from it.
 # - notes: each consumer is covered by exactly one note. verdict is harmless
 #   when the default does not change the program's result on the filled rows,
 #   or changes it only negligibly, and the note says why (the default is the
@@ -33,7 +34,7 @@
 #   than the true value would give), understates or mixed. via names the
 #   programs whose results carry an inherited effect.
 # - couplings: a program that reads another program's result inherits its bias.
-#   Medicaid and CHIP eligibility bar the PTC (pays_aca_premium) and Medicaid
+#   Medicaid and CHIP eligibility bar the PTC (is_aca_marketplace_enrollee) and Medicaid
 #   eligibility bars CHIP (is_chip_eligible_child), so a Medicaid bias moves them
 #   the opposite way; SSI and TANF are SNAP unearned income, and TANF receipt
 #   confers SNAP categorical eligibility; Medicaid, SNAP and TANF receipt confer
@@ -54,7 +55,7 @@
 schema_version: 1
 issue: "microcosm#1022"
 reviewed_against:
-  policyengine_us: "2.2.1"
+  policyengine_us: "2.145.3"
 programs:
   aca_ptc:
     label: "ACA premium tax credit"
@@ -119,8 +120,9 @@ entries:
       One of five American opportunity credit (AOTC) conditions, all False on ACS rows
       because the ACS asks none of them, so no ACS student claims the AOTC and qualified
       tuition goes to the lifetime learning credit instead.
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -143,6 +145,33 @@ entries:
           everything past it do not change. County general assistance subtracts income
           tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
           but its applicants owe almost none.
+      - programs: [head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          Reached only through the filer flag, which a change in tax liability cannot
+          flip: only a unit already required to file has tax liability for these
+          deductions and credits to change (see the Medicaid note).
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: cps_race
     fill_value: "0"
@@ -158,7 +187,7 @@ entries:
     fill_value: "0"
     spines: [acs_2024_1yr]
     rows: "every ACS person"
-    summary: "No policyengine-us 2.2.1 variable reads it."
+    summary: "No policyengine-us 2.145.3 variable reads it."
     consumers: []
     notes: []
   - entity: person
@@ -169,23 +198,49 @@ entries:
     summary: >-
       Scholarships, grants and other educational assistance received; no ACS item
       isolates it. SNAP does not count it.
-    consumers: [general_assistance, school_meals, state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
-      - programs: [school_meals, wic]
+      - programs: [wic]
         verdict: known_bias
         direction: overstates
         note: >-
-          Both count educational assistance as income
-          (gov.usda.school_meals.income.sources, gov.usda.wic.income.sources). At 0,
-          families with a student receiving aid look slightly poorer, so eligibility is
-          slightly overstated.
-      - programs: [general_assistance, state_benefits]
+          WIC counts educational assistance as income (gov.usda.wic.income.sources). At
+          0, families with a student receiving aid look slightly poorer, so eligibility
+          is slightly overstated.
+      - programs: [school_meals]
+        verdict: harmless
+        note: >-
+          School meals no longer count educational assistance
+          (gov.usda.school_meals.income.sources leaves it out, citing 20 U.S.C. 1087uu).
+          The only remaining static path runs from WIC receipt through California CARE's
+          electricity discount into Illinois AABD's utility allowance, which no
+          household can take: CARE is defined for California and the AABD utility
+          allowance for Illinois.
+      - programs: [general_assistance]
         verdict: known_bias
         direction: overstates
         note: >-
           Orange County and San Bernardino County general relief count it as unearned
-          income; California's CVRP increased rebate reads the school-meal income ratio
-          and CARE reads WIC receipt, so they inherit the same small overstatement.
+          income, so a student with aid looks slightly poorer.
+      - programs: [state_benefits]
+        verdict: harmless
+        note: >-
+          Its only state-benefit routes are California's CVRP, whose income test counts
+          it (ca_cvrp_countable_income), and California CARE, through WIC receipt. Both
+          pay nothing on these files: CVRP's rebate needs a purchased-vehicle amount
+          (ca_cvrp_vehicle_rebate_amount) and CARE's discounts an electricity or gas
+          expense, which no stage writes.
+      - programs: [aca_ptc, chip, ctc, eitc, head_start, housing_assistance, lifeline,
+          medicaid, snap, ssi, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the behavioral responses
+          (labor_supply_behavioral_response and capital_gains_behavioral_response, which
+          read household_net_income, and the labor-supply elasticities they gate), which
+          return 0 before reading anything in an engine pass without a reform, as every
+          release pass is; inert.
   - entity: person
     column: employment_income_before_lsr
     fill_value: "0"
@@ -207,6 +262,46 @@ entries:
           certified ASEC frame also carries an explicit zero there
           (acs_income_universe).
   - entity: person
+    column: federal_parent_plus_loan_balance
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Federal Parent PLUS loan balance, which the national build imputes from the SCF
+      (scf_education_debt, microcosm#1073); the ACS asks no debt item. Read only by
+      the Parent PLUS and combined standard repayment payments
+      (parent_plus_standard_repayment_payment, parent_plus_standard_amortized_payment,
+      combined_standard_repayment_payment, tiered_standard_repayment_payment), which
+      reach no means-tested program. At 0, ACS parents carry no Parent PLUS debt.
+    consumers: []
+    notes: []
+  - entity: person
+    column: federal_student_loan_balance
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Federal student loan balance, which the national build imputes from the SCF
+      (scf_education_debt, microcosm#1073); the ACS asks no debt item. Read only by the
+      federal repayment plans (standard, tiered, income-based, income-contingent, PAYE,
+      SAVE and RAP payments, and income-driven eligibility), which reach no means-tested
+      program. At 0, ACS borrowers carry no federal student debt and every repayment
+      payment is 0.
+    consumers: []
+    notes: []
+  - entity: person
+    column: federal_student_loan_graduate_share
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Graduate share of the federal student loan balance (scf_education_debt,
+      microcosm#1073). Read only by save_plan_payment, which reaches no means-tested
+      program; inert while federal_student_loan_balance is the reviewed default 0 on
+      the same rows.
+    consumers: []
+    notes: []
+  - entity: person
     column: fsla_overtime_premium
     fill_value: "0"
     spines: [acs_2024_1yr]
@@ -215,8 +310,9 @@ entries:
       FLSA overtime premium, which the ACS does not separate from WAGP. Read by the
       federal overtime deduction (tax years 2025-2028, P.L. 119-21) and Georgia's
       overtime exclusion.
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -240,6 +336,33 @@ entries:
           County general assistance subtracts income tax or payroll withholding from
           earnings (Santa Clara, Marin, Los Angeles), but its applicants owe almost
           none.
+      - programs: [head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          Reached only through the filer flag, which a change in tax liability cannot
+          flip: only a unit already required to file has tax liability for these
+          deductions and credits to change (see the Medicaid note).
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: has_american_opportunity_credit_1098_t_or_exception
     fill_value: "False"
@@ -249,8 +372,9 @@ entries:
       One of five American opportunity credit (AOTC) conditions, all False on ACS rows
       because the ACS asks none of them, so no ACS student claims the AOTC and qualified
       tuition goes to the lifetime learning credit instead.
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -273,6 +397,33 @@ entries:
           everything past it do not change. County general assistance subtracts income
           tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
           but its applicants owe almost none.
+      - programs: [head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          Reached only through the filer flag, which a change in tax liability cannot
+          flip: only a unit already required to file has tax liability for these
+          deductions and credits to change (see the Medicaid note).
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: has_american_opportunity_credit_institution_ein
     fill_value: "False"
@@ -282,8 +433,9 @@ entries:
       One of five American opportunity credit (AOTC) conditions, all False on ACS rows
       because the ACS asks none of them, so no ACS student claims the AOTC and qualified
       tuition goes to the lifetime learning credit instead.
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -306,6 +458,33 @@ entries:
           everything past it do not change. County general assistance subtracts income
           tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
           but its applicants owe almost none.
+      - programs: [head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          Reached only through the filer flag, which a change in tax liability cannot
+          flip: only a unit already required to file has tax liability for these
+          deductions and credits to change (see the Medicaid note).
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: has_never_worked
     fill_value: "False"
@@ -326,12 +505,13 @@ entries:
       A direct premium override. The statutory medical-expense aggregate
       (medical_expense_health_insurance_premiums) reads 0 as not supplied and uses the
       transferred health_insurance_premiums_without_medicare_part_b plus the modeled
-      Part B premium instead. The self-employed health insurance deduction, Missouri's
-      child care subsidy, Orange County general relief and a few state income taxes read
-      it directly.
+      Part B premium instead, and so does
+      medicaid_eligibility_health_insurance_premiums, which Medicaid's spend-down tests
+      read. The self-employed health insurance deduction, Missouri's child care subsidy,
+      Orange County general relief and a few state income taxes read it directly.
     consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
-      wic]
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [eitc, medicaid]
         verdict: known_bias
@@ -348,7 +528,7 @@ entries:
         note: >-
           The same too-high MAGI lowers the PTC and CHIP eligibility directly, but it
           also lifts some people above the Medicaid limit, and Medicaid eligibility bars
-          both the PTC (pays_aca_premium) and CHIP (is_chip_eligible_child), so those
+          both the PTC (is_aca_marketplace_enrollee) and CHIP (is_chip_eligible_child), so those
           people gain PTC or CHIP eligibility instead.
       - programs: [lifeline, wic]
         verdict: known_bias
@@ -363,8 +543,7 @@ entries:
         note: >-
           Missouri's child care subsidy deducts only these premiums from gross income
           (mo_ccs_adjusted_income) and Orange County general relief deducts them from
-          countable income, so at 0 both see slightly too much income; California's CVRP
-          reads AGI (above).
+          countable income, so at 0 both see slightly too much income.
       - programs: [ctc, head_start, housing_assistance, school_meals, snap, tanf]
         verdict: harmless
         note: >-
@@ -374,13 +553,26 @@ entries:
           Missouri's smaller child care subsidy leaves slightly larger out-of-pocket
           child care for the SNAP, HUD and Missouri TANF child-care deductions and the
           CDCC ahead of the CTC; the CTC phases out only above $200,000 of AGI; Head
-          Start and school meals follow SNAP and TANF receipt.
+          Start follows SNAP and TANF receipt; school meals also count SSI state
+          supplements, which this column moves only through a spouse's Medicaid
+          enrollment (Colorado OAP and AND-CS) and Illinois income tax withholding on
+          AGI (Illinois AABD).
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: hourly_wage
     fill_value: "0"
     spines: [acs_2024_1yr]
     rows: "every ACS person"
-    summary: "No policyengine-us 2.2.1 variable reads it."
+    summary: "No policyengine-us 2.145.3 variable reads it."
     consumers: []
     notes: []
   - entity: person
@@ -403,8 +595,9 @@ entries:
       One of five American opportunity credit (AOTC) conditions, all False on ACS rows
       because the ACS asks none of them, so no ACS student claims the AOTC and qualified
       tuition goes to the lifetime learning credit instead.
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -427,6 +620,33 @@ entries:
           everything past it do not change. County general assistance subtracts income
           tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
           but its applicants owe almost none.
+      - programs: [head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          Reached only through the filer flag, which a change in tax liability cannot
+          flip: only a unit already required to file has tax liability for these
+          deductions and credits to change (see the Medicaid note).
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: is_executive_administrative_professional
     fill_value: "False"
@@ -460,25 +680,125 @@ entries:
     consumers: []
     notes: []
   - entity: person
+    column: is_income_based_repayment_new_borrower
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Whether the borrower is a new borrower under Income-Based Repayment
+      (scf_education_debt, microcosm#1073). Read only by income_based_repayment_payment,
+      which reaches no means-tested program; inert while federal_student_loan_balance is
+      the reviewed default 0 on the same rows.
+    consumers: []
+    notes: []
+  - entity: person
     column: is_military
     fill_value: "False"
     spines: [acs_2024_1yr]
     rows: "every ACS person"
     summary: >-
-      Read only by the FLSA overtime occupation category and the 2021 recovery rebate
-      credit's armed-forces exception, neither of which reaches a means-tested program
-      (ACS MIL == 1 could fill it natively).
-    consumers: []
-    notes: []
+      Active-duty status; ACS MIL == 1 could fill it natively. SNAP's five-year bar
+      exempts a military-connected qualified alien, their spouse and their dependent
+      children (is_snap_alien_military_connected); Missouri SSP's immigrant waiver, the
+      2020-2021 recovery rebate credits' armed-forces exception, the FLSA overtime
+      occupation category, Indiana EAP and Utah HEAT read it too.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [snap]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          ACS active-duty members inside the five-year bar, and their spouses and
+          dependent children, lose the military-connected exception (8 U.S.C.
+          1612(a)(2)(C), is_snap_alien_military_connected), so the bar excludes them. A
+          unit whose members are all inside the bar loses SNAP; in a unit that keeps an
+          exempt member, such as a child under 18, the barred adults' income is prorated
+          (7 CFR 273.11(c)(2)), which can raise or lower its allotment.
+      - programs: [lifeline]
+        verdict: known_bias
+        direction: understates
+        via: [snap]
+        note: >-
+          Only through SNAP receipt, which only a unit whose members are all inside the
+          bar loses, and only where it is the unit's only route: Lifeline's own income
+          test is 135% of FPG (150% in Texas).
+      - programs: [state_benefits]
+        verdict: harmless
+        note: >-
+          California CARE (categorical through CalFresh), Los Angeles EZ-SAVE and
+          Missouri SSP pay nothing on these files: CARE and EZ-SAVE need an electricity
+          expense, and Missouri SSP a living arrangement, which no stage writes. Its
+          other state-benefit routes run only through Medicaid enrollment, which the
+          Medicaid note below rules nil.
+      - programs: [head_start, school_meals, wic]
+        verdict: harmless
+        note: >-
+          A unit with a child keeps SNAP receipt through the child, whom the five-year
+          bar exempts under 18, so Head Start and school-meal categorical eligibility do
+          not change; WIC's 185% income test passes for any SNAP-income-eligible unit.
+          Missouri SSP's immigrant waiver needs a living arrangement no stage produces.
+      - programs: [aca_ptc, chip, medicaid]
+        verdict: harmless
+        note: >-
+          Only through SNAP's community-engagement pass-through, which applies from 2027
+          (gov.hhs.medicaid.eligibility.work_requirements.applies), and the 2020-2021
+          recovery rebate credits, whose maximums are 0 from 2022. The SNAP change
+          removes receipt only from a unit whose members are all inside the five-year
+          bar, and Medicaid's own five-year bar already excludes them (no military
+          exemption is modeled). CHIP reads Medicaid eligibility only for children and
+          pregnant people, whom the work requirement exempts; the PTC follows Medicaid.
+      - programs: [ctc, general_assistance]
+        verdict: harmless
+        note: >-
+          Only through the armed-forces exception of the 2020 and 2021 recovery rebate
+          credits, whose maximums are 0 from 2022.
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: is_paid_hourly
     fill_value: "False"
     spines: [acs_2024_1yr]
     rows: "every ACS person"
     summary: >-
-      Read only by is_eligible_for_fsla_overtime, which reaches no means-tested program.
-    consumers: []
-    notes: []
+      Read by is_eligible_for_fsla_overtime, which reaches no means-tested program, and
+      by Georgia's overtime exclusion (ga_qualified_overtime_exclusion), which reaches
+      means-tested programs only through household_net_income and the behavioral
+      responses.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, ssi,
+          state_benefits, tanf, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the behavioral responses
+          (labor_supply_behavioral_response and capital_gains_behavioral_response, which
+          read household_net_income, and the labor-supply elasticities they gate), which
+          return 0 before reading anything in an engine pass without a reform, as every
+          release pass is; inert.
   - entity: person
     column: is_pursuing_credential_for_american_opportunity_credit
     fill_value: "False"
@@ -488,8 +808,9 @@ entries:
       One of five American opportunity credit (AOTC) conditions, all False on ACS rows
       because the ACS asks none of them, so no ACS student claims the AOTC and qualified
       tuition goes to the lifetime learning credit instead.
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -512,19 +833,47 @@ entries:
           everything past it do not change. County general assistance subtracts income
           tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
           but its applicants owe almost none.
+      - programs: [head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          Reached only through the filer flag, which a change in tax liability cannot
+          flip: only a unit already required to file has tax liability for these
+          deductions and credits to change (see the Medicaid note).
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: is_self_employed
     fill_value: "False"
     spines: [acs_2024_1yr]
     rows: "every ACS person"
     summary: >-
-      Read only as the defined_for condition of self_employed_health_insurance_premiums,
-      the input to the self-employed health insurance deduction. ACS COW 6/7 could fill
-      it natively, but the deduction also needs health_insurance_premiums, which is 0 on
-      ACS rows.
+      Read only as the defined_for condition of self_employed_health_insurance_premiums
+      and self_employed_long_term_care_premiums, the inputs to the self-employed health
+      insurance deduction. ACS COW 6/7 could fill it natively, but the deduction also
+      needs health_insurance_premiums, which is 0 on ACS rows, or long-term care
+      premiums, which no stage produces.
     consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
-      wic]
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [eitc, medicaid]
         verdict: known_bias
@@ -541,7 +890,7 @@ entries:
         note: >-
           The same too-high MAGI lowers the PTC and CHIP eligibility directly, but it
           also lifts some people above the Medicaid limit, and Medicaid eligibility bars
-          both the PTC (pays_aca_premium) and CHIP (is_chip_eligible_child), so those
+          both the PTC (is_aca_marketplace_enrollee) and CHIP (is_chip_eligible_child), so those
           people gain PTC or CHIP eligibility instead.
       - programs: [lifeline, wic]
         verdict: known_bias
@@ -553,7 +902,10 @@ entries:
       - programs: [state_benefits]
         verdict: known_bias
         direction: understates
-        note: "California's CVRP income test reads AGI (above)."
+        note: >-
+          State programs reached through AGI or MAGI see too much income for
+          self-employed people who buy their own coverage; which of those routes move a
+          benefit is not reviewed yet (microcosm#1720).
       - programs: [ctc, general_assistance, head_start, housing_assistance,
           school_meals, snap, tanf]
         verdict: harmless
@@ -562,7 +914,21 @@ entries:
           through Medicare IRMAA (AGI two years prior, above $103,000 for a single filer
           in 2024, far above their limits), the 2020-only unemployment exclusion
           (taxable_uc_agi) and South Carolina TANF's count of taxable Social Security;
-          the CTC phases out only above $200,000 of AGI. All negligible.
+          the CTC phases out only above $200,000 of AGI. All negligible. School meals
+          also count SSI state supplements: Illinois AABD deducts Illinois income tax
+          withholding, which reads AGI, and Colorado OAP and AND-CS read a spouse's
+          Medicaid enrollment, which the MAGI above moves; DC TANF reads filing status,
+          which a dependent's gross income can move. All second-order.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: is_separated
     fill_value: "False"
@@ -586,7 +952,7 @@ entries:
           Mostly overstated: separated ACS filers without a qualifying child file single
           instead of separately, so the PTC's separate-filer bar (is_aca_ptc_eligible)
           never applies to them. The Medicaid changes below move the PTC the other way
-          for some units, because Medicaid eligibility bars it (pays_aca_premium).
+          for some units, because Medicaid eligibility bars it (is_aca_marketplace_enrollee).
       - programs: [chip, ctc, eitc, general_assistance, housing_assistance, medicaid,
           snap, ssi, tanf]
         verdict: known_bias
@@ -602,8 +968,11 @@ entries:
       - programs: [head_start, lifeline, school_meals, state_benefits, wic]
         verdict: known_bias
         direction: mixed
-        via: [medicaid, snap, tanf]
-        note: "Only through Medicaid, SNAP and TANF results."
+        via: [medicaid, snap, ssi, tanf]
+        note: >-
+          Only through Medicaid, SNAP, SSI and TANF results; the state supplements in
+          household_state_benefits and in school-meal income also apply SSI's spousal
+          rules to the same tax-unit roles.
   - entity: person
     column: is_surviving_spouse
     fill_value: "False"
@@ -616,8 +985,8 @@ entries:
       two prior years, which ACS MARHW (widowed in the past 12 months) only
       approximates.
     consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
-      wic]
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
           housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
@@ -630,13 +999,27 @@ entries:
           thresholds (above $103,000 for a single filer in 2024) or California's CVRP
           income caps (above $135,000), and surviving spouse versus head of household
           moves none of them. The CTC sees only the tax-liability difference, for the
-          few recently widowed parents whose liability limits it; negligible.
+          few recently widowed parents whose liability limits it; negligible. The one
+          exception is the filing threshold: a surviving spouse's is the joint one, so
+          as head of household a unit counts as required to file at a lower income,
+          which moves the filer flag, and Medicaid's non-filer rules, only for a
+          recently widowed parent with no earnings and no refundable credit; negligible.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: is_union_member_or_covered
     fill_value: "False"
     spines: [acs_2024_1yr]
     rows: "every ACS person"
-    summary: "No policyengine-us 2.2.1 variable reads it."
+    summary: "No policyengine-us 2.145.3 variable reads it."
     consumers: []
     notes: []
   - entity: person
@@ -661,8 +1044,9 @@ entries:
       noninstitutional ones (emergency and transitional shelters, group homes,
       workers' quarters), whose residents can pay for their shelter; 0 is right only
       for those who pay nothing.
-    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
-      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [snap]
         verdict: known_bias
@@ -687,10 +1071,11 @@ entries:
         verdict: known_bias
         direction: understates
         note: >-
-          Conditional on paid shelter: Los Angeles and Riverside general relief and
-          Nebraska AABD's standard of need read housing costs, so they are too low for a
-          group-quarters resident who pays for shelter.
-      - programs: [head_start, lifeline, school_meals, wic]
+          Conditional on paid shelter: Los Angeles and Riverside general relief,
+          Nebraska AABD's standard of need and Connecticut SSP's shelter allowance read
+          housing costs or rent, so they are too low for a group-quarters resident who
+          pays for shelter.
+      - programs: [head_start, lifeline, wic]
         verdict: known_bias
         direction: understates
         via: [snap, tanf]
@@ -699,6 +1084,17 @@ entries:
           own housing-cost adjustment (head_start_countable_income) applies only when
           head_start_applies_housing_cost_adjustment is set, which it is not on these
           rows.
+      - programs: [school_meals]
+        verdict: known_bias
+        direction: mixed
+        via: [snap, state_benefits, tanf]
+        note: >-
+          Through SNAP and TANF categorical eligibility, understated as above; and
+          through the Connecticut SSP, Nebraska AABD and Illinois AABD payments that
+          school meals count as income (Illinois AABD directly, since it is outside
+          state benefits), whose shelter allowances read rent (ct_ssp_shelter_allowance,
+          il_aabd_shelter_allowance, ne_aabd_standard_of_need), so at 0 a recipient's
+          school-meal income is too low. Both only for a group-quarters unit that holds a K-12 student.
       - programs: [medicaid]
         verdict: known_bias
         direction: understates
@@ -711,28 +1107,54 @@ entries:
           meet the work requirement.
       - programs: [aca_ptc]
         verdict: known_bias
-        direction: overstates
+        direction: mixed
         via: [medicaid]
         note: >-
-          No effect for 2024. From 2027, the rare adult the Medicaid path above leaves
-          Medicaid-ineligible no longer has Medicaid eligibility barring the PTC
-          (pays_aca_premium).
+          No effect for 2024, and none in practice from 2027: an adult the Medicaid path
+          above leaves without Medicaid fails only the work requirement, which bars the
+          Marketplace too (is_medicaid_ineligible_due_to_work_requirement in
+          gov.aca.ineligible_coverage). Kept known_bias because REVIEWED_FILL_COUPLINGS
+          requires it wherever Medicaid is.
       - programs: [chip, ctc, housing_assistance]
         verdict: harmless
         note: >-
-          HUD assistance attaches to housing units, not group quarters, so 0 HUD gross
-          rent is the right value here (the renter-test overstatement is noted on
-          spm_unit_tenure_type). CHIP reads Medicaid eligibility only for children and
-          pregnant people, whom the Medicaid work requirement exempts. The CTC sees only
-          the tax chain (TANF in the state sales-tax deduction); negligible.
+          HUD assistance attaches to housing units, not group quarters, so any payment
+          to these units comes from the renter test (noted on spm_unit_tenure_type):
+          with pre_subsidy_rent 0, hud_gross_rent is the HUD utility allowance alone,
+          encoded only for Los Angeles County, the Texas TDHCA area and four Kansas
+          PHAs, and a true rent would only enlarge that payment. CHIP reads Medicaid
+          eligibility only for children and pregnant people, whom the Medicaid work
+          requirement exempts. The CTC sees only the tax chain (TANF in the state
+          sales-tax deduction); negligible.
+      - programs: [eitc]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: previous_year_income_available
     fill_value: "False"
     spines: [acs_2024_1yr]
     rows: "every ACS person"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it; it is a provenance flag the prior-year
-      income gate reads.
+      No policyengine-us 2.145.3 variable reads it; it is a provenance flag the
+      prior-year income gate reads.
     consumers: []
     notes: []
   - entity: person
@@ -745,8 +1167,9 @@ entries:
     summary: >-
       Native TAXAMT on the reference person of owner-occupied units; TAXAMT is blank for
       every other household, whose members keep the default.
-    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
-      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [aca_ptc, chip, ctc, general_assistance, head_start,
           housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
@@ -755,8 +1178,30 @@ entries:
         note: >-
           The filled households own no home, so they pay no property tax directly and 0
           is the right value for SNAP's shelter costs, the TANF shelter allowances, Head
-          Start and school-meal housing costs, state property-tax relief (which reads
-          rent for renters) and itemized deductions.
+          Start housing costs, the Illinois and Nebraska AABD shelter allowances that
+          school meals count, state property-tax relief (which reads rent for renters)
+          and itemized deductions.
+      - programs: [eitc]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: roth_401k_contributions_desired
     fill_value: "0"
@@ -767,8 +1212,8 @@ entries:
       deferrals do not reduce AGI; they share the 402(g) scale with traditional
       deferrals (also 0 on ACS rows) and count for the saver's credit.
     consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
-      wic]
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -784,7 +1229,20 @@ entries:
           Roth deferrals do not reduce AGI or MAGI, and the 402(g) scale is inert while
           traditional deferrals are also 0 on ACS rows. The saver's credit reaches these
           programs only through the tax-liability chain, which cannot flip the filer
-          flag of a unit not already required to file.
+          flag of a unit not already required to file. Roth deferrals to an employer
+          plan also leave less room for a self-employed person's own plan deduction
+          (self_employed_pension_contribution_limit), which binds only for self-employed
+          savers contributing at the limit; negligible.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: roth_ira_contributions_desired
     fill_value: "0"
@@ -796,8 +1254,8 @@ entries:
       transferred traditional IRA contributions (ira_contribution_scale) and count for
       the saver's credit.
     consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
-      wic]
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -816,6 +1274,16 @@ entries:
           contributions exceed it ($7,000 in 2024), rare at these programs' incomes; the
           saver's credit reaches them only through the tax-liability chain, which cannot
           flip the filer flag of a unit not already required to file.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: s_corp_income
     fill_value: "0"
@@ -827,8 +1295,8 @@ entries:
       pass-through profit is missing on ACS rows. SNAP's income sources do not include
       it.
     consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
-      wic]
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc, eitc, housing_assistance, lifeline, medicaid, state_benefits,
           tanf]
@@ -837,10 +1305,9 @@ entries:
         note: >-
           It counts in MAGI, AGI (the EITC and CTC phase-outs), HUD unearned income, IRS
           gross income (Lifeline), South Carolina TANF unearned income and several state
-          benefits' income (California CARE and FERA, New Jersey, child care in
-          Massachusetts, Oklahoma and Wisconsin), so owners' incomes are understated and
-          eligibility overstated. S corporation owners are rarely in these programs'
-          income ranges.
+          benefits' income (New Jersey, child care in Massachusetts, Oklahoma and
+          Wisconsin), so owners' incomes are understated and eligibility overstated. S
+          corporation owners are rarely in these programs' income ranges.
       - programs: [aca_ptc, chip]
         verdict: known_bias
         direction: mixed
@@ -848,7 +1315,7 @@ entries:
         note: >-
           Understated MAGI raises the PTC and CHIP eligibility directly, but it also
           brings some owners' households under the Medicaid limit, and Medicaid
-          eligibility bars both the PTC (pays_aca_premium) and CHIP
+          eligibility bars both the PTC (is_aca_marketplace_enrollee) and CHIP
           (is_chip_eligible_child), so those households lose PTC or CHIP eligibility
           instead.
       - programs: [snap]
@@ -859,13 +1326,21 @@ entries:
           SNAP does not count S corporation income; only through South Carolina TANF
           (sc_tanf): more TANF cash is SNAP unearned income, and TANF receipt confers
           SNAP categorical eligibility.
-      - programs: [head_start, school_meals]
+      - programs: [head_start]
         verdict: known_bias
         direction: overstates
         via: [tanf]
         note: >-
-          They do not count S corporation income; only through South Carolina TANF
+          It does not count S corporation income; only through South Carolina TANF
           receipt, which confers categorical eligibility.
+      - programs: [school_meals]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          School meals count each person's S corporation income, a net loss as zero
+          (partnership_s_corp_income in gov.usda.school_meals.income.business_sources),
+          so owners' school-meal income is understated and eligibility overstated; S
+          corporation owners are rarely in these income ranges.
       - programs: [wic]
         verdict: known_bias
         direction: overstates
@@ -879,6 +1354,16 @@ entries:
           It does not count S corporation income. Its static paths run through Medicare
           IRMAA, TANF and child-care subsidy results and income tax withholding;
           negligible.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: self_employment_income_before_lsr
     fill_value: "0"
@@ -916,8 +1401,9 @@ entries:
       ACS persons under 15 (outside the SSIP universe) and donor-spine persons without a
       reported amount
     summary: >-
-      Read only by applicable_ssi, which policyengine-us 2.2.1 documents as deprecated:
-      no program reads it, and programs count ssi directly (policyengine-us#9111).
+      Read only by applicable_ssi, which policyengine-us 2.145.3 documents as
+      deprecated: no program reads it, and programs count ssi directly
+      (policyengine-us#9111).
     consumers: []
     notes: []
   - entity: person
@@ -932,22 +1418,33 @@ entries:
       (ACS_LOCAL_OTHER_INCOME_DONOR_COMPONENTS). No respondent in the pinned public ASEC
       person files reports code 12, so every donor-spine value is 0 too
       (microcosm#922).
-    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
-      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
-      - programs: [aca_ptc, chip, ctc, general_assistance, head_start,
+      - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
           housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
           tanf, wic]
         verdict: harmless
         note: >-
           0 is the value the donor gives every person: no pinned ASEC respondent reports
           strike benefits, so a QRF transfer from the donor would also draw 0 on these
-          rows. HUD unearned income, school-meal and WIC income, Missouri and Texas TANF
-          unearned income, Marin and San Bernardino general relief and several state
-          child-care and assistance programs count it directly; the other consumers read
-          it only through those programs' results. The fill differs from the true value
-          only for ACS respondents whose OIP includes strike pay, which no pinned ASEC
-          year observes.
+          rows. Federal tax counts them through taxable_strike_benefits (gross income,
+          AGI, EITC earned income, the filing requirement), and HUD unearned income,
+          school-meal and WIC income, Missouri and Texas TANF unearned income, Marin and
+          San Bernardino general relief and several state programs count them directly;
+          the fill differs from the true value only for ACS respondents whose OIP
+          includes strike pay, which no pinned ASEC year observes.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: tip_income
     fill_value: "0"
@@ -956,10 +1453,11 @@ entries:
     summary: >-
       Tips, which ACS WAGP already includes and does not separate. Read by the federal
       tip deduction (tax years 2025-2028, P.L. 119-21), Florida School Readiness income
-      (from October 2025), Georgia's cash tip exclusion and Washington's long-term care
-      wage base.
-    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
-      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+      (from October 2025), Georgia's cash tip exclusion, Hawaii's tip deduction and
+      Washington's long-term care wage base.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -984,6 +1482,27 @@ entries:
           County general assistance subtracts income tax or payroll withholding from
           earnings (Santa Clara, Marin, Los Angeles), but its applicants owe almost
           none.
+      - programs: [eitc]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: traditional_401k_contributions_desired
     fill_value: "0"
@@ -994,17 +1513,18 @@ entries:
       and WAGP is gross of deferrals. At 0, irs_employment_income, AGI and MAGI include
       wages that savers defer.
     consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
-      wic]
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [eitc, lifeline, medicaid, state_benefits]
         verdict: known_bias
         direction: understates
         note: >-
-          MAGI (Medicaid), AGI (the EITC phase-out, California's CVRP) and IRS gross
-          income (Lifeline, Los Angeles EZ Save) are too high for workers who defer
-          wages, so their eligibility and amounts are understated. EITC earned income is
-          gross of deferrals, so only the phase-out moves.
+          MAGI (Medicaid), AGI (the EITC phase-out) and IRS gross income (Lifeline) are
+          too high for workers who defer wages, so their eligibility and amounts are
+          understated. EITC earned income is gross of deferrals, so only the phase-out
+          moves. State programs reached through those measures see the same; which of
+          their routes move a benefit is not reviewed yet (microcosm#1720).
       - programs: [aca_ptc, chip]
         verdict: known_bias
         direction: mixed
@@ -1012,7 +1532,7 @@ entries:
         note: >-
           Too-high MAGI lowers the PTC and CHIP eligibility directly, but it also lifts
           some workers' households above the Medicaid limit, and Medicaid eligibility
-          bars both the PTC (pays_aca_premium) and CHIP (is_chip_eligible_child), so
+          bars both the PTC (is_aca_marketplace_enrollee) and CHIP (is_chip_eligible_child), so
           those households gain PTC or CHIP eligibility instead.
       - programs: [ctc]
         verdict: known_bias
@@ -1034,6 +1554,21 @@ entries:
           2024), the 2020-only unemployment exclusion and South Carolina TANF's count of
           taxable Social Security; Los Angeles General Relief reads
           irs_employment_income, but its applicants rarely defer wages. All negligible.
+          School meals also count SSI state supplements: Illinois AABD deducts Illinois
+          income tax withholding, which reads AGI, and Colorado OAP and AND-CS read a
+          spouse's Medicaid enrollment, which Medicaid's filing test on
+          irs_employment_income moves; DC TANF reads filing status, which a dependent's
+          gross income can move. All second-order.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: treasury_tipped_occupation_code
     fill_value: "0"
@@ -1042,35 +1577,159 @@ entries:
     summary: >-
       Treasury tipped-occupation code for the tip deduction (tax years 2025-2028); ACS
       OCCP is not mapped to it.
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
-      - programs: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-          state_benefits, wic]
+      - programs: [aca_ptc, chip, ctc, general_assistance, head_start, lifeline,
+          medicaid, school_meals, snap, state_benefits, wic]
         verdict: harmless
         note: >-
           Inert while tip_income is the reviewed default 0 on the same rows: without
-          tips the tip deduction is zero whatever the occupation. Revisit if tip_income
-          is filled.
+          tips the federal tip deduction, Georgia's cash tip exclusion and Hawaii's tip
+          deduction are zero whatever the occupation. Revisit if tip_income is filled.
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: person
     column: weeks_unemployed
     fill_value: "0"
     spines: [acs_2024_1yr]
     rows: "every ACS person"
     summary: >-
-      Read only by the Alabama, New York, Oklahoma and Pennsylvania unemployment benefit
-      calculators, which feed no means-tested program. SNAP's work-registration test
-      reads unemployment_compensation > 0, not weeks.
-    consumers: []
-    notes: []
+      Weeks of unemployment; the ACS asks none. They set the months of UC receipt
+      (unemployment_compensation_months, 12 when weeks are 0 and UC is positive), which
+      exempt a recipient from SNAP work registration and so from the ABAWD time limit,
+      and they feed the Alabama, New York, Oklahoma and Pennsylvania unemployment
+      benefit calculators, whose claim-wage inputs no stage produces.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [snap]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          With weeks 0 a UC recipient is exempt from SNAP work registration, and so from
+          the ABAWD time limit, in all 12 months; with true weeks only in the months of
+          receipt. In 2024 that frees ABAWD-age adults (18 to 52, 18 to 54 from October
+          2024) with no household member under 18 (under 14 from 2025-07-04), working
+          under 20 hours a week, outside waived areas.
+      - programs: [medicaid]
+        verdict: known_bias
+        direction: understates
+        note: >-
+          No effect for 2024. From 2027 Medicaid's work requirement applies
+          (gov.hhs.medicaid.eligibility.work_requirements.applies), and its SNAP
+          community-engagement pass-through needs a SNAP recipient who is subject to a
+          SNAP work requirement. With weeks 0 a UC recipient is exempt from SNAP work
+          registration in every month, so loses the pass-through; the fill never adds
+          one.
+      - programs: [aca_ptc]
+        verdict: known_bias
+        direction: mixed
+        via: [medicaid]
+        note: >-
+          No effect for 2024, and none in practice from 2027: an adult the Medicaid path
+          above leaves without Medicaid fails only the work requirement, which bars the
+          Marketplace too (is_medicaid_ineligible_due_to_work_requirement in
+          gov.aca.ineligible_coverage), and the requirement binds only below its income
+          test, under the PTC's income floor. Kept known_bias because
+          REVIEWED_FILL_COUPLINGS requires it wherever Medicaid is.
+      - programs: [head_start, lifeline, school_meals, state_benefits, wic]
+        verdict: harmless
+        note: >-
+          The ABAWD time limit skips SNAP units with a member under 18 (14 from
+          2025-07-04) or a pregnant member, so it never reaches the units Head Start and
+          WIC serve. Lifeline, California CARE (through CalFresh) and school meals read
+          SNAP receipt over the year, which the months of receipt keep. From 2027 the
+          Medicaid change reaches only SNAP recipients, who keep Lifeline through SNAP,
+          and adults outside WIC's categories; CVRP's increased rebate has its own
+          income test, and school meals read Medicaid enrollment only second-order,
+          through state supplements.
+      - programs: [chip]
+        verdict: harmless
+        note: >-
+          Only through Medicaid eligibility, for children and pregnant people, whom the
+          Medicaid work requirement exempts, and through the modeled state UI programs,
+          whose claim-wage inputs no stage produces.
+      - programs: [ctc, eitc, general_assistance, housing_assistance, ssi, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the modeled state UI programs
+          (gov.states.household.modeled_state_unemployment_compensation), whose monetary
+          eligibility needs base-period and quarterly wage inputs that default to 0 and
+          no stage produces (test_us_weeks_unemployed.py), so they pay nothing on ACS
+          rows; total_unemployment_compensation also prefers the reported amount.
+  - entity: person
+    column: weeks_worked
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "ACS persons under 16, outside the WKWN universe"
+    summary: >-
+      Weeks worked in the past 12 months. Staging maps ACS WKWN natively on every ACS
+      row (microcosm#1021) and leaves it blank, with WKHP, below age 16, where the ACS
+      does not ask it. policyengine-us 2.145.3 reads it as an input (its 2.2.1
+      formula_2025 is gone, policyengine-us#9660): SNAP's work tests average usual hours
+      over the year with it, Wisconsin Works averages the W-2 parent's hours, Hawaii TDI
+      counts qualifying weeks and SPM work expenses count adults' weeks. 0 is the
+      engine's "not reported" value, which keeps usual hours unchanged.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
+          tanf, wic]
+        verdict: harmless
+        note: >-
+          The filled rows are persons under 16. Below 15 their usual hours are the
+          modeled 0, so the averaged hours are 0 whatever the weeks. At 15 none of the
+          rules that read the average applies: SNAP's general work requirements exempt
+          persons under 16 and the ABAWD time limit starts at 18, Medicaid's work
+          requirement (from 2027) covers ages 19 to 64, and Wisconsin Works reads the
+          hours of the W-2 parent (a custodial parent or the tax-unit head or spouse who
+          claims the child), rarely a person under 16. Hawaii TDI reaches only the Marin
+          and Los Angeles general relief net incomes, through payroll withholding, a
+          route no household can take. The other consumers read these only through
+          those programs' results.
+      - programs: [eitc, ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the behavioral responses (labor_supply_behavioral_response
+          and capital_gains_behavioral_response), which return 0 before reading anything
+          in an engine pass without a reform, as every release pass is, together with
+          the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, or, for SSI, the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled; inert.
   - entity: household
     column: auto_loan_balance
     fill_value: "0"
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it; the auto loan interest deduction reads
-      qualified_passenger_vehicle_loan_interest.
+      No policyengine-us 2.145.3 variable reads it; the auto loan interest deduction
+      reads qualified_passenger_vehicle_loan_interest.
     consumers: []
     notes: []
   - entity: household
@@ -1079,8 +1738,8 @@ entries:
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it; the auto loan interest deduction reads
-      qualified_passenger_vehicle_loan_interest.
+      No policyengine-us 2.145.3 variable reads it; the auto loan interest deduction
+      reads qualified_passenger_vehicle_loan_interest.
     consumers: []
     notes: []
   - entity: household
@@ -1089,17 +1748,68 @@ entries:
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
-      limitation mixed_sub_puma_column_coverage).
-    consumers: []
-    notes: []
+      Donor-spine-only geography (reviewed limitation mixed_sub_puma_column_coverage).
+      Read only by the local sales tax geography (sales_tax_location, behind
+      combined_sales_tax_rate and local_sales_tax_table), which uses the county's
+      population-weighted rate when block and place are blank, as on ACS rows.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, head_start, lifeline, medicaid, school_meals, snap,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the local sales tax rate (sales_tax_location reads block,
+          county and place). Block and place are blank on ACS rows, so
+          combined_sales_tax_rate is the county's population-weighted rate, and outside
+          New York, Virginia and the Streamlined Sales Tax states with local taxes the
+          local rate is 0 whatever the place. The tax reaches these programs only
+          through the itemized SALT deduction and the tax-liability chain into
+          tax_unit_is_filer; a change in itemized deductions moves tax only for a unit
+          already required to file, so the filer flag and everything past it do not
+          change.
+      - programs: [ctc]
+        verdict: harmless
+        note: >-
+          Only itemizers who deduct sales tax, in states whose local rates vary by
+          place, see the county's population-weighted rate instead of their own: tens of
+          dollars of deduction and a few dollars of tax, which reach the CTC only where
+          tax liability limits it; negligible.
+      - programs: [general_assistance]
+        verdict: harmless
+        note: >-
+          Marin general relief subtracts withholding estimated from income tax before
+          credits, and policyengine-us has no official California locality rates, so the
+          location cannot change local sales tax there.
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: household
     column: cbsa_code
     fill_value: "''"
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      No policyengine-us 2.145.3 variable reads it. Donor-spine-only geography (reviewed
       limitation mixed_sub_puma_column_coverage).
     consumers: []
     notes: []
@@ -1116,8 +1826,9 @@ entries:
       count only scales exemptions of a zero value or averages it, except in the
       count-only rules of San Francisco CAAP, Los Angeles General Relief and
       lives_in_vehicle.
-    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
-      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [general_assistance]
         verdict: known_bias
@@ -1138,11 +1849,32 @@ entries:
         note: >-
           Texas's broad-based categorical eligibility asset test for SNAP
           (meets_tanf_non_cash_asset_test) uses the count only to scale the per-vehicle
-          exclusions applied to vehicle value, and Montana
-          and Washington TANF (Washington RCA through it) and Illinois AABD (its
+          exclusions applied to vehicle value, and Montana and Washington TANF
+          (Washington RCA through it) and Illinois AABD (its own asset test and its
           Medicaid buy-in) use it only to average value across vehicles; with
           household_vehicles_value 0 on the same rows none of them moves. The other
           programs are reached only through those results.
+      - programs: [eitc]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: household
     column: household_vehicles_value
     fill_value: "0"
@@ -1152,8 +1884,9 @@ entries:
       The ACS asks how many vehicles a household keeps (VEH) but not their value
       (reviewed limitation acs_household_vehicle_value_default). SNAP's own asset test
       (snap_assets) reads no vehicle.
-    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
-      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [snap]
         verdict: known_bias
@@ -1183,7 +1916,7 @@ entries:
         note: >-
           Medicaid eligibility bars the PTC: an Illinois worker with a disability whose
           zero vehicle value passes the HBWD asset test is modeled Medicaid-eligible
-          (is_medicaid_eligible), fails pays_aca_premium and loses the whole credit
+          (is_medicaid_eligible), fails is_aca_marketplace_enrollee and loses the whole credit
           (is_aca_ptc_eligible), even where the true vehicle value would leave an
           otherwise eligible 2024 Marketplace adult. Illinois only, but the full credit
           for each person it reaches.
@@ -1204,23 +1937,53 @@ entries:
           eligibility (is_lifeline_eligible) and WIC adjunctive eligibility: the
           Illinois HBWD buy-in, Texas's SNAP asset test and the state TANF resource
           tests above.
-      - programs: [head_start, school_meals]
+      - programs: [head_start]
         verdict: known_bias
         direction: overstates
         via: [snap, tanf]
         note: "Only through TANF and SNAP categorical eligibility."
+      - programs: [school_meals]
+        verdict: known_bias
+        direction: mixed
+        via: [snap, tanf]
+        note: >-
+          Mostly overstated through TANF and SNAP categorical eligibility. School meals
+          also count Illinois AABD as income, and zero vehicle value passes AABD's asset
+          test (il_aabd_countable_vehicle_value), so the family of an Illinois AABD
+          recipient with vehicle equity sees too much school-meal income.
       - programs: [ctc, housing_assistance]
         verdict: harmless
         note: >-
           Second-order and negligible: TANF income in HUD income, and CalWORKs child
           care in the CDCC ahead of the CTC and in HUD's child-care deduction.
+      - programs: [eitc]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: household
     column: net_worth
     fill_value: "0"
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it; SNAP's asset test reads snap_assets
+      No policyengine-us 2.145.3 variable reads it; SNAP's asset test reads snap_assets
       (bank, stock and bond holdings).
     consumers: []
     notes: []
@@ -1230,10 +1993,63 @@ entries:
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
-      limitation mixed_sub_puma_column_coverage).
-    consumers: []
-    notes: []
+      Donor-spine-only geography (reviewed limitation mixed_sub_puma_column_coverage).
+      Read by the local sales tax geography (sales_tax_location, behind
+      combined_sales_tax_rate and local_sales_tax_table), which uses the county's
+      population-weighted rate when block and place are blank, as on ACS rows, and by
+      Alaska's Heating Assistance Program (ak_hap), which reaches no means-tested
+      program.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, head_start, lifeline, medicaid, school_meals, snap,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the local sales tax rate (sales_tax_location reads block,
+          county and place). Block and place are blank on ACS rows, so
+          combined_sales_tax_rate is the county's population-weighted rate, and outside
+          New York, Virginia and the Streamlined Sales Tax states with local taxes the
+          local rate is 0 whatever the place. The tax reaches these programs only
+          through the itemized SALT deduction and the tax-liability chain into
+          tax_unit_is_filer; a change in itemized deductions moves tax only for a unit
+          already required to file, so the filer flag and everything past it do not
+          change.
+      - programs: [ctc]
+        verdict: harmless
+        note: >-
+          Only itemizers who deduct sales tax, in states whose local rates vary by
+          place, see the county's population-weighted rate instead of their own: tens of
+          dollars of deduction and a few dollars of tax, which reach the CTC only where
+          tax liability limits it; negligible.
+      - programs: [general_assistance]
+        verdict: harmless
+        note: >-
+          Marin general relief subtracts withholding estimated from income tax before
+          credits, and policyengine-us has no official California locality rates, so the
+          location cannot change local sales tax there.
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: household
     column: qualified_passenger_vehicle_loan_interest
     fill_value: "0"
@@ -1242,8 +2058,9 @@ entries:
     summary: >-
       Interest on a qualified passenger vehicle loan for the auto loan interest
       deduction (tax years 2025-2028, P.L. 119-21); the ACS has no item.
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [ctc]
         verdict: known_bias
@@ -1267,13 +2084,40 @@ entries:
           County general assistance subtracts income tax or payroll withholding from
           earnings (Santa Clara, Marin, Los Angeles), but its applicants owe almost
           none.
+      - programs: [head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          Reached only through the filer flag, which a change in tax liability cannot
+          flip: only a unit already required to file has tax liability for these
+          deductions and credits to change (see the Medicaid note).
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: household
     column: sldl
     fill_value: "''"
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      No policyengine-us 2.145.3 variable reads it. Donor-spine-only geography (reviewed
       limitation mixed_sub_puma_column_coverage).
     consumers: []
     notes: []
@@ -1283,7 +2127,7 @@ entries:
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      No policyengine-us 2.145.3 variable reads it. Donor-spine-only geography (reviewed
       limitation mixed_sub_puma_column_coverage).
     consumers: []
     notes: []
@@ -1293,17 +2137,41 @@ entries:
     spines: [acs_2024_1yr]
     rows: "ACS group-quarters households (TYPEHUGQ 2/3)"
     summary: >-
-      Native ACS TEN for housing units; group quarters have none. No policyengine-us
-      2.2.1 variable reads it: programs read spm_unit_tenure_type.
-    consumers: []
-    notes: []
+      Native ACS TEN for housing units; group quarters have none. Read only by
+      Colorado's in-kind support and maintenance exemption for clients who own their
+      home (_ism_exempt); other programs read spm_unit_tenure_type.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, head_start, lifeline, medicaid, school_meals, snap,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Read only by Colorado's in-kind support and maintenance exemption for a client
+          who owns their home (_ism_exempt in co_ssa_in_kind_support_and_maintenance),
+          which Colorado OAP and AND-CS count; SNAP and school meals count those grants,
+          and the other programs follow SNAP and Medicaid. NONE gives the same answer as
+          RENTED, and group-quarters residents do not own their quarters, so NONE is the
+          true value here. Colorado counts this ISM only for a client who receives
+          shelter from others (ssi_receives_shelter_from_others_in_household,
+          ssi_receives_outside_shelter_support), inputs no stage produces, and SSI
+          recipients are charged SSA's ISM, which reads no tenure.
+      - programs: [ctc, eitc, general_assistance, housing_assistance, ssi, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the behavioral responses
+          (labor_supply_behavioral_response and capital_gains_behavioral_response, which
+          read household_net_income, and the labor-supply elasticities they gate), which
+          return 0 before reading anything in an engine pass without a reform, as every
+          release pass is; inert.
   - entity: household
     column: tract_geoid
     fill_value: "''"
     spines: [acs_2024_1yr]
     rows: "every ACS household"
     summary: >-
-      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      No policyengine-us 2.145.3 variable reads it. Donor-spine-only geography (reviewed
       limitation mixed_sub_puma_column_coverage).
     consumers: []
     notes: []
@@ -1313,65 +2181,103 @@ entries:
     spines: [acs_2024_1yr]
     rows: "every ACS tax unit"
     summary: "Second-home mortgage balance; the ACS has no item."
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
-      - programs: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-          state_benefits, wic]
+      - programs: [aca_ptc, chip, ctc, general_assistance, head_start, lifeline,
+          medicaid, school_meals, snap, state_benefits, wic]
         verdict: harmless
         note: >-
-          Inert while second_home_mortgage_interest is the reviewed default 0 on the
-          same rows; the balance prorates deductible mortgage interest only above the
-          $750,000 acquisition-debt cap.
-  - entity: tax_unit
-    column: second_home_mortgage_interest
-    fill_value: "0.0"
-    spines: [acs_2024_1yr]
-    rows: "every ACS tax unit"
-    summary: "Second-home mortgage interest; the ACS has no item."
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
-    notes:
-      - programs: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-          state_benefits, wic]
+          0 matches the donor: the base carries the second-home legs as all-zero columns
+          and consolidates the mortgage surface onto the first-home leaves the transfer
+          carries (acs_transfer.py, puf_tax_itemization), so the acquisition-debt caps
+          already see the household's whole balance. Second-residence interest is now
+          the person input second_residence_mortgage_interest
+          (PolicyEngine/policyengine-us#9605), which no stage produces.
+      - programs: [eitc, housing_assistance, tanf]
         verdict: harmless
         note: >-
-          It lowers tax only for itemizers with a second-home mortgage, few of whom have
-          a CTC limited by tax liability; negligible. Itemized deductions leave AGI and
-          MAGI unchanged. Reached only through the tax-liability chain: nonrefundable
-          credits ahead of the CTC, then refundable_ctc, eligible_for_refundable_credits
-          and tax_unit_is_filer, which Medicaid's non-filer rules and the PTC's filing
-          condition read, and programs that read Medicaid enrollment. A change in tax
-          liability moves the refundable CTC to or from zero only for a unit with
-          positive income tax, which is already required to file, so the filer flag and
-          everything past it do not change. County general assistance subtracts income
-          tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
-          but its applicants owe almost none.
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: tax_unit
     column: second_home_mortgage_origination_year
     fill_value: "0"
     spines: [acs_2024_1yr]
     rows: "every ACS tax unit"
     summary: "Second-home mortgage origination year; the ACS has no item."
-    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
-      - programs: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
-          state_benefits, wic]
+      - programs: [aca_ptc, chip, ctc, general_assistance, head_start, lifeline,
+          medicaid, school_meals, snap, state_benefits, wic]
         verdict: harmless
         note: >-
-          Inert while second_home_mortgage_interest is the reviewed default 0 on the
-          same rows; the year selects the acquisition-debt cap.
+          Inert while second_home_mortgage_balance is the reviewed default 0 on the same
+          rows: an unknown year (0) only classifies that balance as post-2017 debt.
+      - programs: [eitc, housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: tax_unit
     column: selected_marketplace_plan_benchmark_ratio
     fill_value: "1.0"
     spines: [acs_2024_1yr]
     rows: "every ACS tax unit"
     summary: >-
-      Read only by selected_marketplace_plan_premium_proxy, a net-premium proxy; the
-      premium tax credit reads the benchmark (SLCSP) premium, not the selected plan.
-    consumers: []
-    notes: []
+      Read only by monthly_selected_marketplace_plan_premium_proxy, which
+      selected_marketplace_plan_premium_proxy sums, a net-premium proxy; the premium tax
+      credit reads the benchmark (SLCSP) premium, not the selected plan. The proxy
+      reaches the programs only through household health costs, household_net_income and
+      the behavioral responses.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, ssi,
+          state_benefits, tanf, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the behavioral responses
+          (labor_supply_behavioral_response and capital_gains_behavioral_response, which
+          read household_net_income, and the labor-supply elasticities they gate), which
+          return 0 before reading anything in an engine pass without a reform, as every
+          release pass is; inert.
   - entity: tax_unit
     column: takes_up_aca_if_eligible
     fill_value: "True"
@@ -1380,7 +2286,9 @@ entries:
     summary: >-
       Runtime-owned take-up flag, not seeded on ACS rows (reviewed limitation
       acs_take_up_engine_defaults).
-    consumers: [aca_ptc]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [aca_ptc]
         verdict: known_bias
@@ -1388,49 +2296,15 @@ entries:
         note: >-
           Universal take-up: assigned_aca_ptc is the full credit for every eligible ACS
           unit, while donor rows carry the seeded draw.
-  - entity: tax_unit
-    column: takes_up_eitc
-    fill_value: "True"
-    spines: [acs_2024_1yr]
-    rows: "every ACS tax unit"
-    summary: >-
-      Runtime-owned take-up flag, not seeded on ACS rows (reviewed limitation
-      acs_take_up_engine_defaults). The EITC it gates also sets
-      eligible_for_refundable_credits, which feeds the filer flag.
-    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
-    notes:
-      - programs: [eitc]
-        verdict: known_bias
-        direction: overstates
-        note: "Universal take-up on ACS rows, while donor rows carry the seeded draw."
-      - programs: [aca_ptc]
-        verdict: known_bias
-        direction: mixed
-        via: [medicaid]
-        note: >-
-          Mostly overstated: every EITC-eligible unit counts as eligible for refundable
-          credits, so more ACS units file (tax_unit_is_filer) and meet the PTC's filing
-          condition. The Medicaid changes below (non-filer rules) move the PTC either
-          way for some units, because Medicaid eligibility bars it (pays_aca_premium).
-      - programs: [chip, medicaid]
-        verdict: known_bias
-        direction: mixed
-        note: >-
-          More ACS units count as filers, so Medicaid's non-filer household rules
-          (medicaid_uses_non_filer_rules) apply to fewer of them; the direction depends
-          on the household.
-      - programs: [lifeline, state_benefits, wic]
-        verdict: known_bias
-        direction: mixed
-        via: [medicaid]
-        note: "Only through Medicaid enrollment."
-      - programs: [ctc, general_assistance]
+      - programs: [chip, ctc, eitc, general_assistance, head_start, housing_assistance,
+          lifeline, medicaid, school_meals, snap, ssi, state_benefits, tanf, wic]
         verdict: harmless
         note: >-
-          The CTC reads the EITC only in the additional CTC's alternative phase-in for
-          three or more children (Social Security taxes minus the EITC); county general
-          assistance reads only income tax withholding. Negligible.
+          Reached only through the behavioral responses
+          (labor_supply_behavioral_response and capital_gains_behavioral_response, which
+          read household_net_income, and the labor-supply elasticities they gate), which
+          return 0 before reading anything in an engine pass without a reform, as every
+          release pass is; inert.
   - entity: tax_unit
     column: would_file_taxes_voluntarily
     fill_value: "False"
@@ -1439,26 +2313,26 @@ entries:
     summary: >-
       Voluntary-filing propensity, which donor rows carry (voluntary_filing) and ACS
       rows do not. It feeds the filer flag and the EITC's filing condition.
-    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, lifeline, medicaid,
-      state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [eitc]
-        verdict: known_bias
-        direction: understates
+        verdict: harmless
         note: >-
-          It requires a filed return. ACS units neither required to file nor filing for
-          refundable credits never file, so the few that would file anyway lose the
-          credit (small, since EITC-eligible units mostly file for credits).
+          The EITC's own filing test passes for every unit:
+          would_file_if_eligible_for_refundable_credit is the engine default True on
+          every row, so voluntary filing never decides the credit.
       - programs: [aca_ptc]
         verdict: known_bias
         direction: mixed
         via: [medicaid]
         note: >-
-          Mostly understated: the PTC requires a filed return, and ACS units neither
-          required to file nor filing for refundable credits never file, so the few that
-          would file anyway lose it. The Medicaid changes below (non-filer rules) move
-          the PTC the other way for some units, because Medicaid eligibility bars it
-          (pays_aca_premium).
+          No direct effect on ACS rows: files_return_for_aca_ptc counts a unit that
+          takes up a positive credit as filing for it, and takes_up_aca_if_eligible is
+          the reviewed default True on every ACS unit. Only through Medicaid's non-filer
+          rules below, which move the PTC either way because Medicaid eligibility keeps
+          a person off the Marketplace.
       - programs: [chip, medicaid]
         verdict: known_bias
         direction: mixed
@@ -1476,6 +2350,37 @@ entries:
           The CTC reads the EITC only in the additional CTC's alternative phase-in for
           three or more children; county general assistance reads only income tax
           withholding. Negligible.
+      - programs: [head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          Second-order and negligible: only through the Medicaid enrollment of a
+          Colorado OAP or AND-CS client's spouse (or, for AND-CS, parent), which can lift
+          the deeming and
+          so change the grant that SNAP counts as unearned income and school meals count
+          as income (Head Start follows SNAP receipt); the other state supplements that
+          read Medicaid enrollment need facility or certification inputs no stage
+          produces, and the California CARE route into Illinois AABD crosses states.
+      - programs: [housing_assistance, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
   - entity: spm_unit
     column: spm_unit_energy_subsidy
     fill_value: "0"
@@ -1502,8 +2407,9 @@ entries:
     rows: "ACS group-quarters SPM units (TYPEHUGQ 2/3)"
     summary: >-
       Native ACS TEN for housing units; group quarters have none and read as renters.
-    consumers: [aca_ptc, chip, general_assistance, head_start, housing_assistance,
-      lifeline, medicaid, school_meals, snap, state_benefits, wic]
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
     notes:
       - programs: [housing_assistance]
         verdict: known_bias
@@ -1515,10 +2421,32 @@ entries:
           Angeles County, the Texas TDHCA area and four Kansas PHAs, so a payment arises
           only there, and only where the transferred housing take-up flag is True
           (microcosm#975).
-      - programs: [aca_ptc, chip, general_assistance, head_start, lifeline, medicaid,
-          school_meals, snap, state_benefits, wic]
+      - programs: [aca_ptc, chip, ctc, general_assistance, head_start, lifeline,
+          medicaid, school_meals, snap, state_benefits, wic]
         verdict: harmless
         note: >-
           Reached only through housing_assistance into rent, which stays 0 for these
           units because their pre-subsidy rent is 0, and into California CARE and FERA
-          income (Los Angeles County group quarters only); negligible.
+          income (Los Angeles County group quarters only), which pay nothing on these
+          files; nil.
+      - programs: [eitc, tanf]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and the behavioral responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.
+      - programs: [ssi]
+        verdict: harmless
+        note: >-
+          Reached only through the 2020-only charitable deduction for non-itemizers
+          (charitable_contributions_ald), which is 0 before it reads anything in any
+          other year, and/or the contributed COLA means test
+          (social_security_cola_means_test_withheld), which is False unless
+          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
+          responses (labor_supply_behavioral_response and
+          capital_gains_behavioral_response, which read household_net_income, and the
+          labor-supply elasticities they gate), which return 0 before reading anything
+          in an engine pass without a reform; inert.

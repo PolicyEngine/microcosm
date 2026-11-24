@@ -57,10 +57,10 @@ requires_pytables = pytest.mark.skipif(
 #: fixture below replaces them, for the tests that pin the contract itself.
 _REAL_REQUIRE_H5_STORED_INPUTS = stored_inputs.require_h5_stored_inputs
 #: A policyengine-us stand-in for the package stage's stored-input contract.
-#: Until the reviewed-fill register's re-review (microcosm#1675), the lane's
-#: tests model a release on the register's reviewed engine, policyengine-us
-#: 2.2.1 (``_REVIEWED_ENGINE`` below), so the stand-in keeps that label. The
-#: stored-input register follows the locked engine, 2.145.3, which defines
+#: The package-stage tests model a release built with policyengine-us 2.2.1,
+#: the label their release fixtures record too: a fixed stand-in, not the
+#: register's reviewed engine (``_REVIEWED_ENGINE`` below). The stored-input
+#: register follows the locked engine, 2.145.3, which defines
 #: tax_unit_role_input as an input (policyengine-us#9617), so the stand-in
 #: defines it too.
 _PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
@@ -736,9 +736,9 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     register_entries = load_reviewed_fill_consumer_register()["entries"]
     for fragment in (
         f"{len(register_entries)} entries",
-        "policyengine-us 2.2.1",
+        f"policyengine-us {_REVIEWED_ENGINE}",
         "spm_unit.spm_unit_energy_subsidy (liheap)",
-        "tax_unit.takes_up_eitc (",
+        "tax_unit.takes_up_aca_if_eligible (aca_ptc)",
     ):
         assert fragment in register["reason"], fragment
     assert "acs_local_reviewed_fill_consumers" in register["treatment"]
@@ -6610,13 +6610,31 @@ def _reviewed_fill(entity, column, fill_value="0", spine="acs_2024_1yr") -> dict
 #: strike_benefits: the OIP predictor extension (d5aa4e25c) makes every donor
 #: carry it, and nothing transfers it, so every ACS person is filled
 #: (microcosm#922).
-_REVIEWED_FILLS_ADDED_SINCE_767312D60 = {("person", "strike_benefits")}
+_REVIEWED_FILLS_ADDED_SINCE_767312D60 = {
+    ("person", "strike_benefits"),
+    # microcosm#1675: columns the next national donor stores that ACS rows lack
+    # (the four SCF student-debt inputs) or that 2.145.3 reads as an input
+    # (weeks_worked, blank under 16).
+    ("person", "federal_parent_plus_loan_balance"),
+    ("person", "federal_student_loan_balance"),
+    ("person", "federal_student_loan_graduate_share"),
+    ("person", "is_income_based_repayment_new_borrower"),
+    ("person", "weeks_worked"),
+}
+#: Reviewed fills of release 767312d60 whose column the reviewed engine no longer
+#: defines, so their entries left the register: policyengine-us 2.145.3 removed
+#: second_home_mortgage_interest (PolicyEngine/policyengine-us#9605;
+#: microcosm#1675).
+_REVIEWED_FILLS_RETIRED_SINCE_767312D60 = {
+    ("tax_unit", "second_home_mortgage_interest")
+}
 
 
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
-    them (NEVER_DEFAULT_FILLED), and every other one has a register entry, as
-    does each reviewed fill added since."""
+    them (NEVER_DEFAULT_FILLED), and every other one has a register entry,
+    except one the reviewed engine no longer defines, as does each reviewed
+    fill added since."""
 
     module = _load_tool_module()
     document = load_reviewed_fill_consumer_register()
@@ -6634,11 +6652,16 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     assert len(released) == 79
     now_filled = released & set(module.NEVER_DEFAULT_FILLED)
     registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
-    # 20 are filled natively and 59 are registered. The ACS vehicle count
-    # returned to a reviewed fill after the microcosm#1064 review (VEH counts
-    # vehicles available, not owned): it left NEVER_DEFAULT_FILLED and gained
-    # an entry together, so this still holds.
-    assert registered == (released - now_filled) | _REVIEWED_FILLS_ADDED_SINCE_767312D60
+    # 20 are filled natively, 1 is retired and 58 are registered. The ACS
+    # vehicle count returned to a reviewed fill after the microcosm#1064 review
+    # (VEH counts vehicles available, not owned): it left NEVER_DEFAULT_FILLED
+    # and gained an entry together, so this still holds.
+    assert _REVIEWED_FILLS_RETIRED_SINCE_767312D60 <= released - now_filled
+    assert (
+        registered
+        == (released - now_filled - _REVIEWED_FILLS_RETIRED_SINCE_767312D60)
+        | _REVIEWED_FILLS_ADDED_SINCE_767312D60
+    )
     assert not released & _REVIEWED_FILLS_ADDED_SINCE_767312D60
 
 
@@ -6725,7 +6748,14 @@ def test_do_finalize_grades_the_registered_fills_of_both_engine_passes(
     assert detail["known_bias"]["household.household_vehicles_value"]["snap"] == (
         "mixed"
     )
-    assert "person.weeks_unemployed" not in detail["known_bias"]
+    # policyengine-us 2.145.3 reads the weeks: they set the months of UC receipt,
+    # which SNAP's ABAWD time limit and, from 2027, Medicaid's SNAP pass-through
+    # read (microcosm#1675).
+    assert detail["known_bias"]["person.weeks_unemployed"] == {
+        "aca_ptc": "mixed",
+        "medicaid": "understates",
+        "snap": "overstates",
+    }
     entries = load_reviewed_fill_consumer_register()["entries"]
     assert len(detail["unused_entries"]) == len(entries) - 2
     summary = json.loads(args.out_summary.read_text())
@@ -6837,7 +6867,9 @@ def test_package_regrades_the_packaged_fill_manifests(tmp_path, monkeypatch):
 def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch):
     module = _load_tool_module()
     args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
-    fills = [_reviewed_fill("tax_unit", "takes_up_eitc", "True")]
+    # microcosm#1675: EITC take-up is drawn on ACS rows and never default-filled;
+    # ACA take-up still ships at the default with its reviewed known bias.
+    fills = [_reviewed_fill("tax_unit", "takes_up_aca_if_eligible", "True")]
     (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
         json.dumps({"columns_filled": 1, "fills": fills})
     )
@@ -6856,16 +6888,8 @@ def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch
     ]
     assert record["sha256"] == reviewed_fill_register_sha256(document)
     assert record["entries"] == len(document["entries"])
-    assert record["reviewed_against"] == {"policyengine_us": "2.2.1"}
-    assert record["known_bias"]["tax_unit.takes_up_eitc"] == [
-        "aca_ptc",
-        "chip",
-        "eitc",
-        "lifeline",
-        "medicaid",
-        "state_benefits",
-        "wic",
-    ]
+    assert record["reviewed_against"] == {"policyengine_us": _REVIEWED_ENGINE}
+    assert record["known_bias"]["tax_unit.takes_up_aca_if_eligible"] == ["aca_ptc"]
     gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
         "acs_local_reviewed_fill_consumers"
     ]
@@ -6874,16 +6898,7 @@ def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
     assert gate["detail"]["register_sha256"] == record["sha256"]
     assert gate["detail"]["known_bias"] == {
-        "tax_unit.takes_up_eitc": {
-            # microcosm#1071 review: the Medicaid changes move it both ways.
-            "aca_ptc": "mixed",
-            "chip": "mixed",
-            "eitc": "overstates",
-            "lifeline": "mixed",
-            "medicaid": "mixed",
-            "state_benefits": "mixed",
-            "wic": "mixed",
-        }
+        "tax_unit.takes_up_aca_if_eligible": {"aca_ptc": "overstates"}
     }
 
 

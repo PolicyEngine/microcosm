@@ -190,11 +190,13 @@ from microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up import (
     with_recorded_acs_local_ssi_medicaid_take_up,
 )
 from microcosm.build.us_runtime.acs_local_take_up import (
+    ACS_LOCAL_EITC_TAKE_UP_ISSUE,
     ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
     ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
     ACS_LOCAL_TAKE_UP_COLUMNS,
     ACS_LOCAL_TAKE_UP_GATE_NAME,
     ACS_VEHICLES_AVAILABLE_RECEIPT,
+    US_EITC_TAKE_UP_OUTPUT_COLUMN,
     acs_local_take_up_signal_gate,
     with_acs_local_take_up_inputs,
 )
@@ -858,6 +860,13 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
         )
         for column in ACS_LOCAL_TAKE_UP_COLUMNS
     },
+    # microcosm#1675: likewise EITC take-up, which the ACS take-up stage draws
+    # from the take-up contract on ACS tax units.
+    ("tax_unit", US_EITC_TAKE_UP_OUTPUT_COLUMN): (
+        "the engine default is universal EITC take-up "
+        f"({ACS_LOCAL_EITC_TAKE_UP_ISSUE}); run the ACS local take-up stage "
+        "first"
+    ),
     # microcosm#1020: the immigration defaults are a citizen with a valid SSN
     # and 5 years since entry; staging's ACS local immigration stage fills
     # them.

@@ -83,8 +83,9 @@ def _release_tool():
 def stage_filled_never_default(release: Any) -> frozenset[tuple[str, str]]:
     """The ``NEVER_DEFAULT_FILLED`` columns that R2's own stages fill on ACS rows.
 
-    Materialize's ACS take-up stage fills the SPM-unit take-up flags and the
-    engine-free fills; its SSI/Medicaid take-up stage fills those two flags.
+    Materialize's ACS take-up stage fills the SPM-unit take-up flags, EITC
+    take-up and the engine-free fills; its SSI/Medicaid take-up stage fills
+    those two flags.
     R2's reasons for every other never-default column (immigration,
     disability, income transfers, SSI disability criteria) say to re-run
     staging, and a null there stops materialize on any spine.
@@ -93,6 +94,7 @@ def stage_filled_never_default(release: Any) -> frozenset[tuple[str, str]]:
     filled = frozenset(
         {
             *(("spm_unit", column) for column in release.ACS_LOCAL_TAKE_UP_COLUMNS),
+            ("tax_unit", release.US_EITC_TAKE_UP_OUTPUT_COLUMN),
             *(tuple(key) for key in release.ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS),
             *(
                 ("person", column)

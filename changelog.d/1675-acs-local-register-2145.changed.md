@@ -1,0 +1,5 @@
+The ACS local lane's reviewed-fill register is re-reviewed on policyengine-us 2.145.3 (microcosm#1675). `reviewed_against` is 2.145.3, and each entry lists every means-tested program the engine's dependency walk reaches, through the engine's helper functions as well (`follow_helpers`), with one note per program; pairs reached only through paths that do nothing in a release pass are listed as harmless.
+
+- `second_home_mortgage_interest` leaves the register (no longer an engine input, PolicyEngine/policyengine-us#9605), and so does `takes_up_eitc`: R2 now draws it, and it joins `NEVER_DEFAULT_FILLED` and the pre-check's stage-filled list.
+- Five entries are added for the next national donor: the four SCF student-debt inputs, which reach no program, and `weeks_worked`, blank on ACS persons under 16.
+- Notes that counted California CARE, FERA or CVRP, or Missouri SSP, effects say that those programs pay nothing on these files, and two state-benefit verdicts that rested on them alone are harmless. The PTC's Medicaid bar is named where it sits on 2.145.3, `is_aca_marketplace_enrollee`.
