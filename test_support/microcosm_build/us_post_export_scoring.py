@@ -550,6 +550,20 @@ def _comparable_output(output):
     return output
 
 
+def _record_pass_labels(scorer) -> list[str]:
+    """Record the label of every batch-outer pass ``scorer`` runs, so a test
+    can tell the merged baseline pass from a fallback to separate passes."""
+    labels: list[str] = []
+    score = scorer._score
+
+    def recording_score(keys, **options):
+        labels.append(options["label"])
+        return score(keys, **options)
+
+    scorer._score = recording_score
+    return labels
+
+
 def _same_bytes(observed, expected) -> bool:
     """Values and weights of two scored results are byte-identical."""
     values, reference = np.asarray(observed.values), np.asarray(expected.values)
@@ -852,11 +866,14 @@ _MEDICAID_HOUSEHOLDS = (
 )
 
 
-def _write_engine_h5(builder, directory: Path, households) -> Path:
+def _write_engine_h5(
+    builder, directory: Path, households, *, person_inputs=None
+) -> Path:
     """Write ``households`` as a release H5 through the engine's own writer.
 
     One tax unit, SPM unit and family per household; household ``i`` weighs
-    ``1,000 * i``.
+    ``1,000 * i``. ``person_inputs`` maps an extra person input column to its
+    values, one per person in household order.
     """
     from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
@@ -879,6 +896,8 @@ def _write_engine_h5(builder, directory: Path, households) -> Path:
                 }
             )
     person = pd.DataFrame(rows)
+    for column, values in (person_inputs or {}).items():
+        person[column] = np.asarray(values, dtype=np.float64)
     household_ids = np.arange(1, len(households) + 1, dtype=np.int64)
     frame = Frame(
         {

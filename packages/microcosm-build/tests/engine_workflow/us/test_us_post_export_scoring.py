@@ -288,9 +288,11 @@ def test_shipped_baseline_plans_match_whole_file_policyengine_us(
         path, maximum_microsim_batch_size=3, baseline_plans=plans
     )
     assert scorer.n_batches == 3
+    passes = _record_pass_labels(scorer)
     try:
         sweep._score_baselines(builder, scorer, path, plans)
-        assert not scorer._registered_baseline_plans
+        # One merged pass, not a fallback to one pass per plan.
+        assert passes == ["merged baseline plan"]
     finally:
         scorer.close()
 
@@ -303,8 +305,15 @@ def test_merged_baseline_and_shared_pre_obbba_pass_are_byte_identical(
     pass serves every planned consumer the same bytes (values, weights and
     dtypes) as that consumer's own pass, and the pre-OBBBA state scored once
     for both OBBBA groups gives each group's total the bytes of a pass of its
-    own (microcosm#1595)."""
-    path = _write_engine_h5(builder, tmp_path, _GUARD_HOUSEHOLDS)
+    own (microcosm#1595). One person holds a taxable estate, so the estate
+    tax, which the shared pass computes after the income tax, is nonzero."""
+    people = sum(len(members) for _, _, members in _GUARD_HOUSEHOLDS)
+    path = _write_engine_h5(
+        builder,
+        tmp_path,
+        _GUARD_HOUSEHOLDS,
+        person_inputs={"taxable_estate_value": [30_000_000.0] + [0.0] * (people - 1)},
+    )
     fit = _full_in_sample_fit(builder.PERIOD)
     plan = builder._record_post_export_scoring_plan(
         _plan_args(),
@@ -320,6 +329,7 @@ def test_merged_baseline_and_shared_pre_obbba_pass_are_byte_identical(
         path, maximum_microsim_batch_size=3, baseline_plans=plan.baseline_plans
     )
     assert merged.n_batches == separate.n_batches == 3
+    merged_passes = _record_pass_labels(merged)
     try:
         for name in plan.baseline_plans:
             expected = separate.open_consumer(name, plan.baseline_plan(name))
@@ -330,6 +340,8 @@ def test_merged_baseline_and_shared_pre_obbba_pass_are_byte_identical(
                     key,
                 )
             del expected, observed
+        # One merged pass, not a fallback to one pass per consumer.
+        assert merged_passes == ["merged baseline plan"]
         assert not merged._merged_baseline
 
         specs = reform_validation_module.load_default_reform_specs(
@@ -351,6 +363,7 @@ def test_merged_baseline_and_shared_pre_obbba_pass_are_byte_identical(
         for request in requests:
             alone = consumer.simulate(reform).calculate(*request)
             assert _same_bytes(shared.calculate(*request), alone), request
+            assert alone.sum() != 0.0, request
         assert consumer.record()["reform_passes"] == 1 + len(requests)
     finally:
         separate.close()

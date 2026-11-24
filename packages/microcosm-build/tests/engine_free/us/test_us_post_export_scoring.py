@@ -2103,22 +2103,44 @@ def test_a_registered_consumer_is_served_only_its_own_plan(
     assert smoke.simulate(None).calculate("income_tax", 2024).sum() != 0.0
     with pytest.raises(RuntimeError, match="which its recorded plan does not hold"):
         demographics.simulate(None).calculate("income_tax", 2024)
+    # The served baseline's prefetch, which the dry run's recorder also
+    # offers, refuses the same key and accepts the consumer's own.
+    with pytest.raises(RuntimeError, match="which its recorded plan does not hold"):
+        demographics.simulate(None).prefetch((("income_tax", 2024),))
+    demographics.simulate(None).prefetch((("age", 2024),))
 
 
 def test_a_registered_consumer_opened_with_another_plan_is_refused(
     builder, tmp_path
 ) -> None:
+    """A consumer is refused a plan other than its recorded one, including an
+    empty recorded plan, and still after the merged pass has failed."""
     plans = {
         "demographics": (("age", 2024, None),),
         "ssi_social_security_holdout": (("ssi", 2024, None),),
+        "nothing planned": (),
     }
     log = _EngineLog()
     scorer = _scorer(builder, _nested_frame(), log, 3, tmp_path, baseline_plans=plans)
-    with pytest.raises(ValueError, match="demographics: .* registered baseline plan"):
+    refused = "demographics: .* registered baseline plan"
+    with pytest.raises(ValueError, match=refused):
         scorer.open_consumer("demographics", (("age", 2024, None), ("ssi", 2024, None)))
-    with pytest.raises(ValueError, match="demographics: .* registered baseline plan"):
+    with pytest.raises(ValueError, match=refused):
         scorer.open_consumer("demographics", ())
+    with pytest.raises(
+        ValueError, match="nothing planned: .* registered baseline plan"
+    ):
+        scorer.open_consumer("nothing planned", (("age", 2024, None),))
     assert log.constructions == []
+    assert scorer.open_consumer("nothing planned", ())._baseline == {}
+
+    log.fail_on = "ssi"
+    with pytest.raises(RuntimeError, match="fixture engine refuses ssi"):
+        scorer.open_consumer(
+            "ssi_social_security_holdout", plans["ssi_social_security_holdout"]
+        )
+    with pytest.raises(ValueError, match=refused):
+        scorer.open_consumer("demographics", (("age", 2024, None), ("ssi", 2024, None)))
 
 
 def test_the_merged_baseline_holds_only_keys_an_unserved_consumer_needs(
@@ -2214,6 +2236,65 @@ def test_a_failed_merged_pass_falls_back_to_each_consumers_own_pass(
     )
     assert all(engine.dataset is None for engine in merged_log.constructions)
     assert "merged baseline plan failed" in capsys.readouterr().out
+
+
+def test_a_failed_merged_pass_frees_its_partial_values_before_the_fallback(
+    builder, tmp_path
+) -> None:
+    """The fallback pass starts only after the failed merged pass's frame,
+    and the per-batch values it had collected, are released."""
+    import weakref
+
+    plans = {"first": (("age", 2024, None),), "second": (("ssi", 2024, None),)}
+    scorer = _scorer(
+        builder, _nested_frame(), _EngineLog(), 3, tmp_path, baseline_plans=plans
+    )
+    partial_values: list[weakref.ref] = []
+    score = scorer._score
+
+    class _PartialValues:
+        pass
+
+    def failing_merged_score(keys, **options):
+        if options["label"] == "merged baseline plan":
+            collected = _PartialValues()
+            partial_values.append(weakref.ref(collected))
+            raise RuntimeError("the merged pass failed in its last batch")
+        assert partial_values and partial_values[0]() is None, (
+            "the failed merged pass's values are still alive"
+        )
+        return score(keys, **options)
+
+    scorer._score = failing_merged_score
+    first = scorer.open_consumer("first", plans["first"])
+    assert first.simulate(None).calculate("age", 2024).sum() > 0.0
+
+
+def test_the_consumer_log_names_the_merged_pass(builder, tmp_path, capsys) -> None:
+    """A consumer served from the merged pass says so in the build log; its
+    recorded ``baseline_passes`` stays 1."""
+    plans = {"demographics": (("age", 2024, None),)}
+    scorer = _scorer(
+        builder, _nested_frame(), _EngineLog(), 3, tmp_path, baseline_plans=plans
+    )
+    for name in ("demographics", "unregistered"):
+        builder._score_post_export_consumer(
+            name,
+            lambda simulate: simulate(None).calculate("age", 2024).sum(),
+            dataset_path=scorer.dataset_path,
+            post_export_scorer=scorer,
+            baseline_plan=plans["demographics"],
+            maximum_microsim_batch_size=3,
+        )
+    log = capsys.readouterr().out
+    assert (
+        "Post-export demographics: baseline served from the merged pass (1 keys)" in log
+    )
+    assert "Post-export unregistered: 1 baseline pass (1 keys)" in log
+    assert {
+        name: record["baseline_passes"]
+        for name, record in scorer.consumer_records.items()
+    } == {"demographics": 1, "unregistered": 1}
 
 
 # ---------------------------------------------------------------------------

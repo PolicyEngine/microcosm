@@ -358,6 +358,49 @@ def test_obbba_pre_baseline_state_is_one_simulation_for_every_group(monkeypatch)
     assert rows["obbba_estate"]["microcosm"]["budget_effect"] == pytest.approx(-20.0)
 
 
+def test_obbba_pre_baseline_state_reads_its_groups_in_ascending_period(monkeypatch):
+    # One simulation answers every group's starting total. A later group
+    # listed first is still read after the earlier one, since policyengine-us
+    # 2.2.1 can fail to compute an earlier period after a later one.
+    def spec(id_, path, period):
+        return ReformValidationSpec(
+            id=id_,
+            name=id_,
+            category="OBBBA",
+            in_sample=False,
+            period=period,
+            jct_score=-1.0,
+            jct_window="FY2026",
+            jct_source="JCX",
+            jct_source_url="",
+            parameter_changes={path: {"2026-01-01.2027-12-31": 0}},
+            effect_direction="baseline_minus_reform",
+        )
+
+    specs = (
+        spec("obbba_late", "gov.example.late", 2027),
+        spec("obbba_early", "gov.example.early", 2026),
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: frozenset(changes),
+    )
+    pre_obbba = frozenset({"gov.example.late", "gov.example.early"})
+    read_periods = {}
+
+    class _PeriodRecordingSim:
+        def __init__(self, reform) -> None:
+            self._reform = reform
+
+        def calculate(self, measure, period):
+            read_periods.setdefault(self._reform, []).append(period)
+            return _FakeSeries(1_000.0 if self._reform == pre_obbba else 900.0)
+
+    reform_validation_payload(specs, period=2026, simulate=_PeriodRecordingSim)
+    assert read_periods[pre_obbba] == [2026, 2027]
+
+
 def test_obbba_stacked_scoring_releases_intermediate_simulations(monkeypatch):
     specs = tuple(
         ReformValidationSpec(
