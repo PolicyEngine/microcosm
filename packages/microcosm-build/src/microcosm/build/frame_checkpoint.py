@@ -182,7 +182,7 @@ def load_frame_checkpoint(
     """Load a checkpoint and reconstruct its schema, data, and audit metadata.
 
     The frame takes the decoded tables without copying them when pandas
-    copy-on-write is on (:meth:`~microcosm.frame.Frame._adopt`), so each
+    copy-on-write is on (:meth:`~microcosm.frame.Frame.adopt`), so each
     loaded table keeps one internal block per column; values, dtypes and the
     bytes a rewrite produces are unchanged. A pandas fixed-format HDF write,
     which stores one dataset per internal block, can therefore group a loaded
@@ -316,7 +316,7 @@ def load_frame_checkpoint(
         # The decoded tables have no other owner, so the frame takes them
         # without copying (under pandas copy-on-write): reading a checkpoint
         # holds one copy of its data, not the decoded columns plus a copy.
-        frame = Frame._adopt(
+        frame = Frame.adopt(
             tables,
             schema,
             weights,

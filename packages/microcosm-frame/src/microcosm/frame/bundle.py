@@ -25,7 +25,7 @@ The constructor deep-copies every table it is given. :meth:`Frame.replace_tables
 :meth:`Frame.with_columns`, :meth:`Frame.with_weights`, :meth:`Frame.place` and
 :meth:`Frame.select` instead build a frame that shares the memory of every
 unchanged column with its source frame when pandas copy-on-write is on, and
-deep-copy when it is off (see :meth:`Frame._adopt`). Those operations record a
+deep-copy when it is off (see :meth:`Frame.adopt`). Those operations record a
 digest of each column of this frame they start sharing, and
 :meth:`Frame.check_shared_columns` compares the digests, which finds a raw write
 into memory the checked frame still holds (see
@@ -133,7 +133,7 @@ class Frame:
         )
 
     @classmethod
-    def _adopt(
+    def adopt(
         cls,
         tables: Mapping[str, pd.DataFrame],
         schema: EntitySchema,
@@ -169,7 +169,10 @@ class Frame:
         column has no missing value, python-backed strings, and sparse
         columns without gaps. :meth:`check_shared_columns` finds such a write
         afterwards, for columns a frame operation recorded when it started
-        sharing them.
+        sharing them. ``adopt`` records no columns itself: the frame
+        operations record the columns they share before calling it, so a raw
+        write into tables that a caller shares with another frame and passes
+        straight to ``adopt`` is not found.
 
         When copy-on-write is off (the pandas 2.x default), a shallow copy
         shares data even for ordinary pandas writes, so the tables and strata
@@ -232,9 +235,9 @@ class Frame:
 
         With ``copy_data``, each table and the strata are deep-copied (the
         constructor); without it, the tables are stored as given and the
-        strata shallow-copied (:meth:`_adopt` under copy-on-write). With
+        strata shallow-copied (:meth:`adopt` under copy-on-write). With
         ``require_dataframes``, a table that is not a DataFrame raises
-        ``TypeError`` (:meth:`_adopt`).
+        ``TypeError`` (:meth:`adopt`).
         """
 
         self._schema = schema
@@ -869,7 +872,7 @@ class Frame:
 
         Returns:
             A new validated bundle. Its tables are built through
-            :meth:`_adopt`, so under pandas copy-on-write they share every
+            :meth:`adopt`, so under pandas copy-on-write they share every
             column's memory with this bundle; each bundle holds its own
             DataFrame objects, so a write made through pandas to either
             never reaches the other.
@@ -887,7 +890,7 @@ class Frame:
         new_weights = dict(self._weights)
         new_weights[entity] = weights
         new_mass_log = self._mass_log if record is None else (*self._mass_log, record)
-        return Frame._adopt(
+        return Frame.adopt(
             self._shallow_table_copies(),
             self._schema,
             new_weights,
@@ -962,7 +965,7 @@ class Frame:
         """A shallow copy of every entity and link table, keyed by name.
 
         Each copy is a new DataFrame object over the same data. A frame built
-        from them through :meth:`_adopt` therefore shares this frame's column
+        from them through :meth:`adopt` therefore shares this frame's column
         memory under copy-on-write but never its DataFrame objects, so a
         write made through pandas to either frame cannot reach the other.
         The columns are recorded for :meth:`check_shared_columns`.
@@ -1009,7 +1012,7 @@ class Frame:
         pandas to either side never reaches the other. Each frame still holds
         its own DataFrame objects, so the caller may go on writing to the
         DataFrames it passed. Raw writes into the shared memory are not
-        protected (see :meth:`_adopt`). A replacement's columns are recorded
+        protected (see :meth:`adopt`). A replacement's columns are recorded
         for :meth:`check_shared_columns` only once a later operation shares
         them. Weights, strata, the mass log and
         metadata are carried unchanged. When copy-on-write is off, every
@@ -1035,7 +1038,7 @@ class Frame:
         tables.update(
             {name: table.copy(deep=False) for name, table in changed_tables.items()}
         )
-        return Frame._adopt(
+        return Frame.adopt(
             tables,
             self._schema,
             self._weights,
@@ -1170,7 +1173,7 @@ class Frame:
 
         Returns:
             A new validated bundle with the column on ``entity``, built
-            through :meth:`_adopt`: under pandas copy-on-write it shares the
+            through :meth:`adopt`: under pandas copy-on-write it shares the
             memory of every column it does not move with this bundle, in
             DataFrame objects of its own.
 
@@ -1228,7 +1231,7 @@ class Frame:
             warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
             destination[column] = placed
         tables[owner] = self._tables[owner].drop(columns=[column])
-        return Frame._adopt(
+        return Frame.adopt(
             tables,
             self._schema,
             dict(self._weights),
@@ -1491,7 +1494,7 @@ class Frame:
         Returns:
             A new validated bundle containing the masked persons, the group
             rows they reference, the matching weight slices, and the matching
-            strata, built through :meth:`_adopt`: under pandas copy-on-write
+            strata, built through :meth:`adopt`: under pandas copy-on-write
             the selected tables are not copied a second time.
 
         Raises:
@@ -1563,7 +1566,7 @@ class Frame:
         # Row selection makes new DataFrame objects, so the result can own
         # them; under copy-on-write, a table that kept every row still shares
         # the source's memory.
-        return Frame._adopt(
+        return Frame.adopt(
             tables,
             self._schema,
             weights,
