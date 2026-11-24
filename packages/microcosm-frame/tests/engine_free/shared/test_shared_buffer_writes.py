@@ -158,6 +158,28 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "Read only, so the shared-column check can hash a nullable column's "
         "missing-value mask. pandas exposes only a copy of it."
     ),
+    (
+        "packages/microcosm-graph/src/microcosm/graph/executor.py",
+        "_read_only_masked",
+        "pandas-private-attribute",
+        "values._data",
+        "f08675645fa1",
+    ): (
+        "Read only: the graph executor wraps a nullable column's values in a "
+        "new view marked read-only, so a kernel's item write into it raises "
+        "instead of reaching the stored population (graph amendment 31)."
+    ),
+    (
+        "packages/microcosm-graph/src/microcosm/graph/executor.py",
+        "_read_only_masked",
+        "pandas-private-attribute",
+        "values._mask",
+        "f08675645fa1",
+    ): (
+        "Read only: the graph executor wraps a nullable column's mask in a "
+        "new view marked read-only, so a kernel's item write into it raises "
+        "instead of reaching the stored population (graph amendment 31)."
+    ),
 }
 
 #: The functions a reviewed reason rests on, by repository-relative path and

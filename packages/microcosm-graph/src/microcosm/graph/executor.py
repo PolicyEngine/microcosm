@@ -347,12 +347,115 @@ def _freeze_series(series: pd.Series) -> None:
         pass
 
 
-def _freeze_frame(table: pd.DataFrame) -> pd.DataFrame:
-    frozen = table.copy(deep=True)
-    for column in frozen.columns:
-        _freeze_series(frozen[column])
-    _set_read_only(frozen.index.to_numpy(copy=False))
-    return frozen
+# Kernel inputs (amendment 31). A kernel's tables and strata are new pandas
+# objects over read-only views of the memory they are projected from: the
+# population's own for a node that reads every row, and the single copy
+# ``.loc`` makes of the selected rows otherwise. Nothing else is copied. A
+# pandas write raises or stays on the kernel's own objects, and so does an
+# item write into an array a column hands out. ``np.<ufunc>.at`` writes even
+# into a read-only array, so such a write reaches the population's memory;
+# the before/after context digest then rejects the node before its result is
+# applied or stored.
+
+_MASKED_ARRAY_TYPES = (
+    pd.arrays.BooleanArray,
+    pd.arrays.FloatingArray,
+    pd.arrays.IntegerArray,
+)
+
+
+def _read_only_view(values: np.ndarray) -> np.ndarray:
+    """A new view of the memory of ``values`` that item assignment refuses."""
+
+    view = values.view()
+    view.setflags(write=False)
+    return view
+
+
+def _read_only_masked(values: pd.api.extensions.ExtensionArray) -> object:
+    """A nullable array over read-only views of its values and its mask.
+
+    pandas has no public access to these buffers that does not convert a
+    column with missing values, so they are read here, and only viewed.
+    """
+
+    return type(values)(_read_only_view(values._data), _read_only_view(values._mask))
+
+
+def _read_only_values(series: pd.Series) -> object | None:
+    """A new array object over read-only views of the column's own memory.
+
+    Returns ``None`` for storage with no known view, which the caller copies.
+    """
+
+    values = series.array
+    if isinstance(series.dtype, np.dtype) and isinstance(
+        values, pd.arrays.NumpyExtensionArray
+    ):
+        return _read_only_view(np.asarray(values))
+    if isinstance(values, _MASKED_ARRAY_TYPES):
+        return _read_only_masked(values)
+    if isinstance(values, pd.Categorical):
+        return pd.Categorical.from_codes(
+            _read_only_view(values.codes), dtype=values.dtype, validate=False
+        )
+    if isinstance(values, pd.arrays.StringArray):
+        # The public constructor validates by writing into the array it is
+        # given, which a read-only view refuses; these values are valid.
+        return values._from_backing_data(_read_only_view(np.asarray(values)))
+    if isinstance(values, pd.arrays.ArrowExtensionArray):
+        # pyarrow buffers are immutable, and copy() wraps the same buffers in
+        # a new array object, so an item write rebinds only that object.
+        return values.copy()
+    return None
+
+
+def _read_only_index(index: pd.Index) -> pd.Index:
+    """A new index object over read-only views of the memory of ``index``."""
+
+    if isinstance(index, pd.RangeIndex):
+        # A view of a RangeIndex shares the cache that holds its values once
+        # materialized, and np.asarray(index) returns that cached array
+        # writable, so a write into it would change the population's index.
+        return pd.RangeIndex(index.start, index.stop, index.step, name=index.name)
+    if (
+        not isinstance(index, pd.MultiIndex)
+        and isinstance(index.dtype, np.dtype)
+        and index.dtype.kind in "biufO"
+    ):
+        return pd.Index(
+            _read_only_view(np.asarray(index)),
+            dtype=index.dtype,
+            name=index.name,
+            copy=False,
+        )
+    return index.copy(deep=True)
+
+
+def _read_only_series(series: pd.Series, index: pd.Index) -> pd.Series:
+    values = _read_only_values(series)
+    if values is None:
+        copied = pd.Series(
+            series.array.copy(), index=index, name=series.name, copy=False
+        )
+        _freeze_series(copied)
+        return copied
+    return pd.Series(
+        values, index=index, name=series.name, dtype=series.dtype, copy=False
+    )
+
+
+def _read_only_table(table: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """``table[columns]`` over read-only views of the memory of ``table``."""
+
+    index = _read_only_index(table.index)
+    projected = pd.DataFrame(
+        {column: _read_only_series(table[column], index) for column in columns},
+        index=index,
+        copy=False,
+    )
+    projected.columns = table.columns[table.columns.get_indexer(columns)]
+    return projected.__finalize__(table)
 
 
 def _detached_record(record):
@@ -768,7 +871,10 @@ def _project_context(
         else:
             mask = np.ones(len(table), dtype=np.bool_)
         entity_masks[entity] = mask
-        tables[entity] = _freeze_frame(table.loc[mask, columns])
+        # Every row: views of the population's own memory. A row mask: views
+        # of the one copy of the selected rows that ``.loc`` makes.
+        selected = table if mask.all() else table.loc[mask, columns]
+        tables[entity] = _read_only_table(selected, columns)
 
     weights: dict[str, Weights] = {}
     for entity in sorted(projected_entities):
@@ -789,8 +895,10 @@ def _project_context(
         frame.schema.person_entity,
         np.ones(frame.n(frame.schema.person_entity), dtype=np.bool_),
     )
-    strata = frame.strata.loc[person_mask].copy()
-    _freeze_series(strata)
+    strata_source = frame.strata if person_mask.all() else frame.strata.loc[person_mask]
+    strata = _read_only_series(
+        strata_source, _read_only_index(strata_source.index)
+    ).__finalize__(strata_source)
     # The projection above orders each table by declaration, not by the
     # version's own layout, so a consumer rebuilding the version's tables
     # needs that layout separately -- restricted to what it was given, so it
@@ -3056,9 +3164,10 @@ def _execute_graph(
             after = _context_digest(context)
             if before != after:
                 raise NodeRejected(f"Node {node.id!r} mutated its input context.")
-            # The context copies every column this node projected, and its
-            # artifacts are decoded payloads. Nothing below reads either, so
-            # they go now, not when the next cold node replaces them.
+            # The context holds the selected rows a row mask copied, keeps the
+            # population's memory alive through its views, and its artifacts
+            # are decoded payloads. Nothing below reads either, so they go
+            # now, not when the next cold node replaces them.
             del context, artifact_values
             for name in node.sources:
                 # A stat signature that still matches the one taken across this

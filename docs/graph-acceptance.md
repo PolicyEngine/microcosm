@@ -768,6 +768,37 @@ lock unchanged:
     2026-11-06 for the 15-clone UK spine (#931), which cannot hold every
     version it builds in 32 GiB.
 
+31. **Kernel inputs are read-only views, not copies.** The executor used to
+    deep-copy every table a kernel reads (`_freeze_frame`), so each node
+    held a second full copy of its input columns beside the stored
+    population before the kernel made its own working copy. Each table and
+    the strata are now new pandas objects whose buffers are read-only views
+    of the memory they are projected from: the population's own memory for
+    a node that reads every row, and the single copy `.loc` makes of the
+    selected rows for a node with a row mask. A column type with no known
+    view is copied as before. Kernels see the same columns, order, dtypes,
+    index, values and `attrs`, so no node key, output or digest moves.
+    B4 holds as stated: a pandas write (`.loc`, `.iloc`, `.iat`, `.at`,
+    column assignment, in-place methods) and an item write into an array a
+    column hands out (`to_numpy()`, `.values`, `.array`, `np.asarray`, and
+    `np.put`, `np.copyto`, `+=` into one) raise, or change only the kernel's
+    own objects, which the before/after comparison then refuses. The
+    kernel's `RangeIndex` is a new object: a view would share the cache that
+    holds its materialized values, which `np.asarray(index)` returns
+    writable, so before this a write into it changed the population's index.
+    `np.<ufunc>.at` writes even into a read-only array, so with shared
+    memory it changes the population. The before/after comparison rejects
+    that node before its result is applied or stored and the run stops: the
+    store is unchanged, the failed run's in-memory population is not. A
+    kernel that keeps an array and writes into it while a later node runs
+    is caught only if that later node reads the column. No workspace code
+    writes into a column with `ufunc.at`, and the shared-buffer source scan
+    refuses one whose target the function did not create. Adopted
+    2026-11-25 for #1679 (the 15-clone UK spine holds about 6 GiB per copy);
+    checking digests of every handed-out buffer before each node's result
+    is applied, which would also catch the kept array, was declined for its
+    cost of about one SHA-256 pass over the population per node.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.

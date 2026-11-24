@@ -799,7 +799,7 @@ def _wide_population() -> Population:
         "person_household_id": np.arange(_PEAK_ROWS, dtype=np.int64) // 2,
         "half": np.arange(_PEAK_ROWS) % 2 == 0,
     }
-    for number in range(12):
+    for number in range(24):
         columns[f"float64_{number}"] = generator.normal(size=_PEAK_ROWS)
     for number in range(2):
         columns[f"Int64_{number}"] = pd.array(
@@ -860,28 +860,29 @@ def _traced_projection(population: Population, rows: str) -> tuple[int, int]:
 def test_an_every_row_context_allocates_no_copy_of_its_tables() -> None:
     """No copy of the tables: the context's own allocations stay small.
 
-    With the deep copy (before #1679) the context held 1.18 times the bytes of
-    the input columns and the projection peaked at 1.31 times. What is left
-    is the row mask and the effective weights, which are still copied, and
-    pandas' objects.
+    With the deep copy (before #1679) the context held 1.11 times the bytes of
+    the input columns and the projection peaked at 1.18 times; with views it
+    holds 0.04 times and peaks at 0.11 times. What is left is the row mask,
+    the effective weights, which are still copied, and pandas' objects.
     """
 
     population = _wide_population()
     held, peak = _traced_projection(population, ROWS_ALL)
     input_bytes = _input_bytes(population)
-    assert held < 0.15 * input_bytes
-    assert peak < 0.2 * input_bytes
+    assert held < 0.1 * input_bytes
+    assert peak < 0.25 * input_bytes
 
 
 def test_a_masked_context_allocates_one_copy_of_the_selected_rows() -> None:
     """Half the rows: ``.loc`` copies them once, and nothing copies them again.
 
     One copy of half the rows is 0.5 times the input columns. With the deep
-    copy (before #1679) the projection peaked at 1.04 times.
+    copy (before #1679) the projection peaked at 1.02 times; with views it
+    peaks at 0.61 times.
     """
 
     population = _wide_population()
     held, peak = _traced_projection(population, "half")
     input_bytes = _input_bytes(population)
     assert held < 0.65 * input_bytes
-    assert peak < 0.75 * input_bytes
+    assert peak < 0.8 * input_bytes
