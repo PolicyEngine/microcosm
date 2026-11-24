@@ -3,7 +3,7 @@
 :meth:`Frame.replace_tables`, :meth:`Frame.with_columns`,
 :meth:`Frame.with_weights`, :meth:`Frame.place` and :meth:`Frame.select` build
 frames that share the memory of unchanged columns with their source frame
-(:meth:`Frame._adopt`). pandas copy-on-write keeps a write made through pandas
+(:meth:`Frame.adopt`). pandas copy-on-write keeps a write made through pandas
 (``.loc``, column assignment, in-place methods) on one frame from reaching
 the other, but it does not see a raw write into the shared memory. Checked
 with pandas 3.0.3 and NumPy 2.4.6, each form below writes into the shared

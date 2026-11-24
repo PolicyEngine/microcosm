@@ -764,7 +764,7 @@ def test_loader_keeps_the_decoded_columns_without_copying(
 ) -> None:
     """The loaded frame holds the columns the loader decoded, not a copy.
 
-    The loader builds its one frame through ``Frame._adopt``, so reading a
+    The loader builds its one frame through ``Frame.adopt``, so reading a
     checkpoint holds one copy of the data instead of the decoded columns plus
     the constructor's copy of them.
     """
@@ -842,7 +842,7 @@ def _doubled_household_weights(frame: Frame) -> Frame:
     )
 
 
-#: Operations that build their result through ``Frame._adopt``.
+#: Operations that build their result through ``Frame.adopt``.
 _ADOPTING_OPERATIONS = {
     "with_weights": _doubled_household_weights,
     "place person to household": lambda frame: frame.place(
@@ -902,7 +902,7 @@ def _checkpoint_content_sha256(path: Path) -> str:
 
 #: Checkpoint content digests of each operation's result, recorded with the
 #: copying implementation at commit 8afea44e9, before ``with_weights``,
-#: ``place``, ``select`` and the loader moved to ``Frame._adopt``.
+#: ``place``, ``select`` and the loader moved to ``Frame.adopt``.
 _COPYING_IMPLEMENTATION_CONTENT_SHA256: dict[tuple[str, str, str], str] = {
     (
         "fixture",

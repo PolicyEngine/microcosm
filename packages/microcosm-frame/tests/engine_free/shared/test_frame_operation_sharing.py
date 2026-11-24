@@ -1,12 +1,12 @@
-"""``with_weights``, ``place`` and ``select`` build their result through ``_adopt``.
+"""``with_weights``, ``place`` and ``select`` build their result through ``Frame.adopt``.
 
 These operations used to rebuild their result with the :class:`Frame`
 constructor, which deep-copies every table. They now hand the result's tables
-to ``Frame._adopt``. Under pandas copy-on-write the result therefore shares the
+to ``Frame.adopt``. Under pandas copy-on-write the result therefore shares the
 memory of every column it does not change with its source frame, and a write
 made through pandas to either frame never reaches the other, because each
 frame holds its own DataFrame objects. When copy-on-write is off (the pandas
-2.x default), ``_adopt`` deep-copies instead; these tests replace the
+2.x default), ``Frame.adopt`` deep-copies instead; these tests replace the
 copy-on-write check to take that path, because pandas 3 always has it on.
 """
 
@@ -130,7 +130,7 @@ def copy_on_write_on() -> Iterator[None]:
 
 @pytest.fixture
 def copy_on_write_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make ``Frame._adopt`` see pandas copy-on-write as off."""
+    """Make ``Frame.adopt`` see pandas copy-on-write as off."""
 
     monkeypatch.setattr(bundle_module, "_pandas_copy_on_write", lambda: False)
 
@@ -340,7 +340,7 @@ def test_a_pandas_write_to_the_source_leaves_the_result_unchanged(
     _assert_matches_snapshot(result, before)
 
 
-# Selecting a strict subset of persons copies their rows whatever ``_adopt``
+# Selecting a strict subset of persons copies their rows whatever ``Frame.adopt``
 # does, so only operations that can share memory are checked here.
 @pytest.mark.parametrize(
     "operation", [name for name in _OPERATIONS if name != "select one household"]
@@ -376,7 +376,7 @@ def _fragmented_frame() -> Frame:
             )
         fragmented[name] = pd.DataFrame(columns, index=table.index, copy=False)
     tables.update(fragmented)
-    return Frame._adopt(tables, _UNLINKED_SCHEMA, _weights(), _strata())
+    return Frame.adopt(tables, _UNLINKED_SCHEMA, _weights(), _strata())
 
 
 @pytest.mark.parametrize(

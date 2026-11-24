@@ -1,15 +1,15 @@
-"""Frames that share unchanged tables: ``_adopt``, ``replace_tables``, ``with_columns``.
+"""Frames that share unchanged tables: ``Frame.adopt``, ``replace_tables``, ``with_columns``.
 
 The default :class:`Frame` constructor deep-copies every table it is given.
-``Frame._adopt`` instead stores the tables it is given without copying them
+``Frame.adopt`` instead stores the tables it is given without copying them
 when pandas copy-on-write is on, so a frame built by ``replace_tables`` or
 ``with_columns`` shares the memory of every unchanged column with its source
 frame. Copy-on-write keeps a write made through pandas on one frame from
 reaching the other. When copy-on-write is off (the pandas 2.x default), a
-shallow copy shares data even for ordinary pandas writes, so ``_adopt``
+shallow copy shares data even for ordinary pandas writes, so ``Frame.adopt``
 deep-copies instead. Tests take that path through the ``copy_on_write_off``
 fixture, which turns copy-on-write off under pandas 2.x and, under pandas 3,
-where it is always on, replaces the check ``_adopt`` makes, or by replacing
+where it is always on, replaces the check ``Frame.adopt`` makes, or by replacing
 the check themselves (the parametrized ``cow_off`` cases). Every other test
 runs with copy-on-write on.
 """
@@ -127,7 +127,7 @@ def copy_on_write_on() -> Iterator[None]:
 @pytest.fixture
 def copy_on_write_off(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Turn copy-on-write off: under pandas 2.x through its option, and under
-    pandas 3, where it cannot be off, by replacing the check ``_adopt`` makes."""
+    pandas 3, where it cannot be off, by replacing the check ``Frame.adopt`` makes."""
 
     if _PANDAS_3:
         monkeypatch.setattr(bundle_module, "_pandas_copy_on_write", lambda: False)
@@ -180,10 +180,14 @@ class TestDefaultConstructor:
 
 
 class TestAdopt:
+    def test_adopt_is_public_with_no_private_alias(self) -> None:
+        assert callable(Frame.adopt)
+        assert not hasattr(Frame, "_adopt")
+
     def test_adopt_stores_the_given_tables_without_copying(self) -> None:
         tables = _source_tables()
         strata = _source_strata()
-        frame = Frame._adopt(tables, _SCHEMA, _source_weights(), strata)
+        frame = Frame.adopt(tables, _SCHEMA, _source_weights(), strata)
 
         for name, table in _tables_of(frame).items():
             assert table is tables[name]
@@ -201,14 +205,14 @@ class TestAdopt:
         tables: dict[str, Any] = {**_source_tables(), "jobs": None}
 
         with pytest.raises(TypeError, match="'jobs' must be a pandas DataFrame"):
-            Frame._adopt(tables, _SCHEMA, _source_weights())
+            Frame.adopt(tables, _SCHEMA, _source_weights())
 
     def test_adopt_deep_copies_when_copy_on_write_is_off(
         self, copy_on_write_off: None
     ) -> None:
         tables = _source_tables()
         strata = _source_strata()
-        frame = Frame._adopt(tables, _SCHEMA, _source_weights(), strata)
+        frame = Frame.adopt(tables, _SCHEMA, _source_weights(), strata)
 
         for name, table in _tables_of(frame).items():
             assert table is not tables[name]
@@ -221,14 +225,14 @@ class TestAdopt:
         self,
     ) -> None:
         strata = _source_strata().rename("provenance")
-        frame = Frame._adopt(_source_tables(), _SCHEMA, _source_weights(), strata)
+        frame = Frame.adopt(_source_tables(), _SCHEMA, _source_weights(), strata)
 
         assert frame.strata.name == "stratum"
         assert strata.name == "provenance"
         assert frame.strata.tolist() == ["cps", "cps", "puf", "puf"]
 
     def test_adopt_carries_the_mass_log_and_metadata(self, source_frame) -> None:
-        frame = Frame._adopt(
+        frame = Frame.adopt(
             _source_tables(),
             _SCHEMA,
             _source_weights(),
@@ -353,7 +357,7 @@ def test_adopt_raises_the_constructors_validation_errors(
     with pytest.raises((TypeError, ValueError)) as constructor_error:
         Frame(**_constructor_arguments(change))
     with pytest.raises(type(constructor_error.value)) as adopt_error:
-        Frame._adopt(**_constructor_arguments(change))
+        Frame.adopt(**_constructor_arguments(change))
 
     assert str(adopt_error.value) == str(constructor_error.value)
 
