@@ -284,7 +284,7 @@ def test_the_loader_refuses_a_repeated_cell(tmp_path) -> None:
 
 
 @settings(max_examples=40, deadline=None)
-@given(st.permutations(range(6)))
+@given(st.permutations(range(len(centax_cell_ids()))))
 def test_the_rows_digest_ignores_row_order(order) -> None:
     rows = _resource_payload()["rows"]
     assert rows_sha256([rows[i] for i in order]) == rows_sha256(rows)

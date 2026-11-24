@@ -9,14 +9,16 @@ each also over the FRS source households the Microcosm copies come from.
 ``parent_count`` (the parents in the aged (£50k, £200k]) is the number the facts
 tool scales the CenTax shares by when this H5 is the baseline.
 
-It also reports what the targets leave unbound (Vahid's review of
+It also reports what the targets leave unbound (Vahid's reviews of
 microcosm#1399):
 
 - the parents at or below the aged £50k, and among them those with no
   employment, self-employment or private pension income in the year, whom
   HMRC's PAYE and Self Assessment data would not hold;
 - the South excluding London and the North and Midlands, with the East of
-  England in either group, since Figure 3.7 does not say where it sits.
+  England in either group, since Figure 3.7 does not say where it sits;
+- the parents whose main income source is not employment (Figure 3.3), a cell
+  too thinly supported to bind (María's ruling of 24 November 2026).
 
 With ``--facts`` it reports each bound cell's target and relative error, and
 the level check: this H5's ``parent_count`` against the resource's, within
@@ -59,6 +61,7 @@ from microcosm.build.uk_runtime.centax_childcare_parents import (
     centax_ani_uprating,
     centax_cell_filters,
     centax_cell_ids,
+    centax_diagnostic_cell_ids,
     centax_region_codes,
     load_uk_centax_childcare_parent_facts,
     model_ani_edges,
@@ -195,6 +198,7 @@ def workbook_comparators(workbook: Any) -> dict[str, Any]:
     fig31 = builder.read_series(workbook, "Fig. 3.1")[
         "Number of Taxpayer in Income Bin"
     ]
+    fig33 = builder.read_series(workbook, "Fig. 3.3")
     regions = builder.england_region_columns(workbook)
     lower, upper = CENTAX_DIAGNOSTIC_BAND_2022[1:]
     top = CENTAX_SHARE_BASE_2022[1]
@@ -219,6 +223,9 @@ def workbook_comparators(workbook: Any) -> dict[str, Any]:
     return {
         "fig_3_1_share_of_0_to_200k_at_or_below_50k": (
             builder.band_sum(fig31, lower, upper) / builder.band_sum(fig31, 0.0, top)
+        ),
+        "fig_3_3_non_employee_share_within_80k_to_150k": builder.within_split_band(
+            fig33, "Number of Taxpayers in Income Bin (Non-Employees)"
         ),
         "fig_3_7_shares_within_80k_to_150k": {
             group: builder.within_split_band(regions, group) for group in regions
@@ -358,6 +365,15 @@ def main(argv: list[str] | None = None) -> int:
             entry["relative_error"] = entry["model_count"] / target - 1.0
         cells[cell] = entry
 
+    # The split cells the targets never bind, on the split band's edges.
+    diagnostic_cells: dict[str, Any] = {}
+    split_edges = aged_edges(*CENTAX_SPLIT_BAND_2022, uprating)
+    for cell in centax_diagnostic_cell_ids():
+        diagnostic_cells[cell] = {
+            **support(_mask(columns, centax_cell_filters(cell, split_edges))),
+            "model_ani_edges": split_edges,
+        }
+
     # The region groups outside London, with the East of England in each.
     split_lower, split_upper = aged_edges(*CENTAX_SPLIT_BAND_2022, uprating)
     in_split = parent & (ani > split_lower) & (ani <= split_upper)
@@ -428,6 +444,7 @@ def main(argv: list[str] | None = None) -> int:
             "current_ani_over_100k": support(parent & (current_ani > _CLIFF_GBP)),
         },
         "cells": cells,
+        "diagnostic_cells": diagnostic_cells,
         "region_groups": region_groups,
         "partners_ani_80k_to_150k": partner_shares,
         "resolver": {

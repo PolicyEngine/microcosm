@@ -1,11 +1,11 @@
 {
- "compiled_count": 1720,
+ "compiled_count": 1719,
  "counts_by_kind": {
   "calibration_drift": 564,
   "fixture_only": 44,
-  "ledger_only": 1127
+  "ledger_only": 1126
  },
- "difference_count": 1735,
+ "difference_count": 1734,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -6402,13 +6402,6 @@
    "kind": "ledger_only",
    "ledger_value": 28047.888,
    "name": "microcosm.centax_childcare_parents.london_ani_80k_to_150k",
-   "period": 2025,
-   "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
-  },
-  {
-   "kind": "ledger_only",
-   "ledger_value": 14227.897,
-   "name": "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k",
    "period": 2025,
    "reason": "ledger_only by construction: the row is a Microcosm-derived count of parents of age-eligible 3- and 4-year-olds in England in one adjusted net income cell: CenTax's share of HMRC's 2021-22 tabulation (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7) times the baseline build's own parents (uk/centax_childcare_parent_facts.json), compiled beside the Chronicle feed. The incumbent registry carries no such row, so the difference is the derived target itself. The rows bind on the national line only (calibration_lines; microcosm#1399)."
   },
