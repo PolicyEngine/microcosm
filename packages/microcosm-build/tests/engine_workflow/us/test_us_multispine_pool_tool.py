@@ -367,8 +367,10 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The in-place QRF leaf array in microcosm.fit.qrf moves it again.
             # The ACS transfer fitting and drawing one QRF target at a time
             # moves it again (acs_transfer's attested bytes; no draw changes).
+            # The QRF draw's default thread count, joblib.cpu_count() in
+            # microcosm.fit.qrf, moves it again.
             # microcosm#1686's shared SIPP person-file read moves it again.
-            "spec_sha256": "edcb553abd45d6523c47e7d35516939bdd10da5a0e6826361880db66eaf07b77",
+            "spec_sha256": "b7de6fe099fa9b2e9491021eb80781b1037e3390e614ff4df0c910c734adcfc4",
         },
     }
 
