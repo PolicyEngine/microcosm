@@ -109,9 +109,10 @@ def test_the_stage_needs_the_stored_draw_and_writes_attendance_once():
 
 def test_only_the_isa_subscriptions_and_receipts_follow_the_stage():
     """No later stage copies or re-keys a person, so the stored flags reach
-    the release as the engine set them. Only the ISA subscriptions and the
-    self-employed's gross receipts follow it, each writing person columns on
-    the rows they are given (microcosm#1415, microcosm#1428)."""
+    the release as the engine set them. Only the ISA subscriptions, the PIP
+    points, the self-employed's gross receipts and the UC new-claimant draw
+    follow it, each writing person or benefit-unit columns on the rows they
+    are given (microcosm#1415, microcosm#1428, microcosm#1095)."""
 
     stages = load_country_spec("uk").sources.stages
     names = [stage.stage for stage in stages]
@@ -120,6 +121,7 @@ def test_only_the_isa_subscriptions_and_receipts_follow_the_stage():
         "isa_subscriptions",
         "pip_points",
         "trading_allowance_receipts",
+        "uc_new_claimant_draw",
     ]
     for stage in later:
         assert PRIVATE_SCHOOL_ATTENDANCE_OUTPUT not in {

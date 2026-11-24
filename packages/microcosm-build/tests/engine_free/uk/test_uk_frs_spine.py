@@ -61,6 +61,8 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_CONDITION_LIMITS_COLUMN,
     FRS_SPINE_TABLES,
     FRS_UC_CARER_ELEMENT_COLUMN,
+    FRS_UC_CLAIM_MONTHS_COLUMN,
+    FRS_UC_CLAIM_MONTHS_NOT_LINKED,
     FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -81,6 +83,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     frs_dwp_carer_care_hours,
     frs_lcwra_proxy,
     frs_uc_carer_element,
+    frs_uc_claim_months,
     frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
@@ -5241,6 +5244,73 @@ class TestUCLimitedCapabilityCarrier:
         assert {value for key, value in status.items() if key not in (1001,)} == {
             "NOT_LINKED"
         }
+
+
+class TestUCClaimRecencyCarrier:
+    """How recent a linked UC claim is, for the new-claimant draw (microcosm#1095)."""
+
+    @staticmethod
+    def _tables(rows):
+        benefits = pd.DataFrame(
+            rows, columns=["benunit_id", "household_id", "benefit", "ucstart_raw"]
+        )
+        household = pd.DataFrame(
+            {"intdate": [float(_FIXTURE_INTERVIEW_SAS_DATE)] * 4},
+            index=pd.Index([1, 2, 3, 4], name="household_id"),
+        )
+        benunit = pd.DataFrame({"benunit_id": [101, 201, 301, 401, 402]})
+        return benefits, benunit, household
+
+    def test_each_linked_claim_carries_its_months_and_every_other_unit_none(
+        self,
+    ) -> None:
+        benefits, benunit, household = self._tables(
+            [
+                (101, 1, 95, "07/15/2024"),  # three months before the interview
+                (201, 2, 95, "09/15/2022"),  # 25 months
+                (301, 3, 95, " "),  # no linked record
+                (401, 4, 96, "01/15/2020"),  # PIP daily living, not UC
+            ]
+        )
+
+        assert frs_uc_claim_months(benefits, benunit, household).tolist() == [
+            3.0,
+            25.0,
+            FRS_UC_CLAIM_MONTHS_NOT_LINKED,
+            FRS_UC_CLAIM_MONTHS_NOT_LINKED,
+            FRS_UC_CLAIM_MONTHS_NOT_LINKED,
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        benefits, benunit, household = self._tables([(101, 1, 95, "07/15/2024")])
+        with pytest.raises(KeyError, match="ucstart"):
+            frs_uc_claim_months(
+                benefits.drop(columns=["ucstart_raw"]), benunit, household
+            )
+        twice, _, _ = self._tables(
+            [(101, 1, 95, "07/15/2024"), (101, 1, 95, "07/15/2024")]
+        )
+        with pytest.raises(ValueError, match="two FRS UC rows"):
+            frs_uc_claim_months(twice, benunit, household)
+        later, _, _ = self._tables([(101, 1, 95, "11/15/2024")])
+        with pytest.raises(ValueError, match="after the interview"):
+            frs_uc_claim_months(later, benunit, household)
+        stray, _, _ = self._tables([(999, 1, 95, "07/15/2024")])
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_claim_months(stray, benunit, household)
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 2))
+        tables["benefits"].append(_uc_row(2, "", ""))
+        stage = _write_fixture(tmp_path, tables)
+        benunit = build_uk_frs_spine_frame(tmp_path, stage=stage).table("benunit")
+
+        months = benunit.set_index("benunit_id")[FRS_UC_CLAIM_MONTHS_COLUMN]
+        assert months.dtype == np.float64
+        assert months.to_dict() == {101: 3.0, 201: FRS_UC_CLAIM_MONTHS_NOT_LINKED}
 
 
 class TestUCCarerElementCarrier:

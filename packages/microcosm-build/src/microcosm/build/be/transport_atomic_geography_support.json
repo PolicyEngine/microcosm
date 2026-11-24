@@ -1,0 +1,6263 @@
+{
+  "version": 1,
+  "level": "commune",
+  "code_system": "be_nis",
+  "vintage": "nis_2025",
+  "share_tolerance": 0,
+  "population_geography_level": "commune",
+  "population_code_column": "commune_nis",
+  "columns": {
+    "area": {
+      "kind": "code",
+      "source": "Statbel registered population on 1 January 2025 by NIS 2025 commune, Chronicle record set statbel.population_structure.cy2025.people.by_commune_nis2025.total",
+      "vintage": "nis_2025",
+      "relation": "exact"
+    },
+    "commune_nis": {
+      "kind": "code",
+      "source": "Statbel registered population on 1 January 2025 by NIS 2025 commune, Chronicle record set statbel.population_structure.cy2025.people.by_commune_nis2025.total",
+      "vintage": "nis_2025",
+      "relation": "exact"
+    },
+    "province_nis": {
+      "kind": "code",
+      "source": "statbel-population-structure-2025@sha256:33910ea36437e39cfffd82ad82c759a2a8d1f2ab7662d45ce71c8ec9f336716c#CD_PROV_REFNIS, Statbel's 2025 province code; the 19 Brussels-Capital Region communes belong to no province and Statbel codes them 04000",
+      "vintage": "province_2025",
+      "relation": "exact"
+    },
+    "region_nuts1": {
+      "kind": "code",
+      "source": "statbel-population-structure-2025@sha256:33910ea36437e39cfffd82ad82c759a2a8d1f2ab7662d45ce71c8ec9f336716c#CD_RGN_REFNIS, renamed one to one to NUTS 2024 level 1 (02000 BE2, 03000 BE3, 04000 BE1) by eurostat-lau-2024-nuts-2024@sha256:1528df47dfc8fa6815e3e7b9fca78b38d40c1142c6b4748ff5fa512f281b5446#BE/NUTS3 via statbel-nis-2025-commune-crosswalk@sha256:717b0fecc3d78ee072a07f35ada4280f2ae4595ef2366b23d02e96efd872b1ba",
+      "vintage": "nuts1_2025",
+      "relation": "exact"
+    },
+    "community_code": {
+      "kind": "code",
+      "source": "language region: german for the 9 communes in NUTS 2024 BE336 'Bezirk Verviers — Deutschsprachige Gemeinschaft' (beside BE335 'Arr. Verviers — communes francophones') by eurostat-lau-2024-nuts-2024@sha256:1528df47dfc8fa6815e3e7b9fca78b38d40c1142c6b4748ff5fa512f281b5446#BE/NUTS3 via statbel-nis-2025-commune-crosswalk@sha256:717b0fecc3d78ee072a07f35ada4280f2ae4595ef2366b23d02e96efd872b1ba, labels eurostat-nuts-2021-2024@sha256:1c46016ce209e1cf61cfb66535374dba58851485a72006c6db72676d5dcd9623#NUTS2024; otherwise from statbel-population-structure-2025@sha256:33910ea36437e39cfffd82ad82c759a2a8d1f2ab7662d45ce71c8ec9f336716c#CD_RGN_REFNIS (02000 dutch, 03000 french, 04000 brussels_bilingual); inferred, as no pinned file states it: BE336's communes are the German-speaking Community's territory, that territory is the German language region, and each Region's territory is its language region or regions (Constitution art. 4 names the four language regions)",
+      "vintage": "community_2025",
+      "relation": "exact"
+    },
+    "population": {
+      "kind": "weight",
+      "source": "Statbel registered population on 1 January 2025 by NIS 2025 commune, Chronicle record set statbel.population_structure.cy2025.people.by_commune_nis2025.total",
+      "basis": "Statbel registered population on 1 January 2025, one support row per commune"
+    }
+  },
+  "rows": [
+    {
+      "target": "statbel_population_by_commune__nis11001",
+      "codes": {
+        "area": "11001",
+        "commune_nis": "11001",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11002",
+      "codes": {
+        "area": "11002",
+        "commune_nis": "11002",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11004",
+      "codes": {
+        "area": "11004",
+        "commune_nis": "11004",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11005",
+      "codes": {
+        "area": "11005",
+        "commune_nis": "11005",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11008",
+      "codes": {
+        "area": "11008",
+        "commune_nis": "11008",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11009",
+      "codes": {
+        "area": "11009",
+        "commune_nis": "11009",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11013",
+      "codes": {
+        "area": "11013",
+        "commune_nis": "11013",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11016",
+      "codes": {
+        "area": "11016",
+        "commune_nis": "11016",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11018",
+      "codes": {
+        "area": "11018",
+        "commune_nis": "11018",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11021",
+      "codes": {
+        "area": "11021",
+        "commune_nis": "11021",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11022",
+      "codes": {
+        "area": "11022",
+        "commune_nis": "11022",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11023",
+      "codes": {
+        "area": "11023",
+        "commune_nis": "11023",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11024",
+      "codes": {
+        "area": "11024",
+        "commune_nis": "11024",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11025",
+      "codes": {
+        "area": "11025",
+        "commune_nis": "11025",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11029",
+      "codes": {
+        "area": "11029",
+        "commune_nis": "11029",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11030",
+      "codes": {
+        "area": "11030",
+        "commune_nis": "11030",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11035",
+      "codes": {
+        "area": "11035",
+        "commune_nis": "11035",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11037",
+      "codes": {
+        "area": "11037",
+        "commune_nis": "11037",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11038",
+      "codes": {
+        "area": "11038",
+        "commune_nis": "11038",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11039",
+      "codes": {
+        "area": "11039",
+        "commune_nis": "11039",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11040",
+      "codes": {
+        "area": "11040",
+        "commune_nis": "11040",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11044",
+      "codes": {
+        "area": "11044",
+        "commune_nis": "11044",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11050",
+      "codes": {
+        "area": "11050",
+        "commune_nis": "11050",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11052",
+      "codes": {
+        "area": "11052",
+        "commune_nis": "11052",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11053",
+      "codes": {
+        "area": "11053",
+        "commune_nis": "11053",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11054",
+      "codes": {
+        "area": "11054",
+        "commune_nis": "11054",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11055",
+      "codes": {
+        "area": "11055",
+        "commune_nis": "11055",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis11057",
+      "codes": {
+        "area": "11057",
+        "commune_nis": "11057",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12002",
+      "codes": {
+        "area": "12002",
+        "commune_nis": "12002",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12005",
+      "codes": {
+        "area": "12005",
+        "commune_nis": "12005",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12007",
+      "codes": {
+        "area": "12007",
+        "commune_nis": "12007",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12009",
+      "codes": {
+        "area": "12009",
+        "commune_nis": "12009",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12014",
+      "codes": {
+        "area": "12014",
+        "commune_nis": "12014",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12021",
+      "codes": {
+        "area": "12021",
+        "commune_nis": "12021",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12025",
+      "codes": {
+        "area": "12025",
+        "commune_nis": "12025",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12026",
+      "codes": {
+        "area": "12026",
+        "commune_nis": "12026",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12029",
+      "codes": {
+        "area": "12029",
+        "commune_nis": "12029",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12035",
+      "codes": {
+        "area": "12035",
+        "commune_nis": "12035",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12040",
+      "codes": {
+        "area": "12040",
+        "commune_nis": "12040",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis12041",
+      "codes": {
+        "area": "12041",
+        "commune_nis": "12041",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13001",
+      "codes": {
+        "area": "13001",
+        "commune_nis": "13001",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13002",
+      "codes": {
+        "area": "13002",
+        "commune_nis": "13002",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13003",
+      "codes": {
+        "area": "13003",
+        "commune_nis": "13003",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13004",
+      "codes": {
+        "area": "13004",
+        "commune_nis": "13004",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13006",
+      "codes": {
+        "area": "13006",
+        "commune_nis": "13006",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13008",
+      "codes": {
+        "area": "13008",
+        "commune_nis": "13008",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13010",
+      "codes": {
+        "area": "13010",
+        "commune_nis": "13010",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13011",
+      "codes": {
+        "area": "13011",
+        "commune_nis": "13011",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13012",
+      "codes": {
+        "area": "13012",
+        "commune_nis": "13012",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13013",
+      "codes": {
+        "area": "13013",
+        "commune_nis": "13013",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13014",
+      "codes": {
+        "area": "13014",
+        "commune_nis": "13014",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13016",
+      "codes": {
+        "area": "13016",
+        "commune_nis": "13016",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13017",
+      "codes": {
+        "area": "13017",
+        "commune_nis": "13017",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13019",
+      "codes": {
+        "area": "13019",
+        "commune_nis": "13019",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13021",
+      "codes": {
+        "area": "13021",
+        "commune_nis": "13021",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13023",
+      "codes": {
+        "area": "13023",
+        "commune_nis": "13023",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13025",
+      "codes": {
+        "area": "13025",
+        "commune_nis": "13025",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13029",
+      "codes": {
+        "area": "13029",
+        "commune_nis": "13029",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13031",
+      "codes": {
+        "area": "13031",
+        "commune_nis": "13031",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13035",
+      "codes": {
+        "area": "13035",
+        "commune_nis": "13035",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13036",
+      "codes": {
+        "area": "13036",
+        "commune_nis": "13036",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13037",
+      "codes": {
+        "area": "13037",
+        "commune_nis": "13037",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13040",
+      "codes": {
+        "area": "13040",
+        "commune_nis": "13040",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13044",
+      "codes": {
+        "area": "13044",
+        "commune_nis": "13044",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13046",
+      "codes": {
+        "area": "13046",
+        "commune_nis": "13046",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13049",
+      "codes": {
+        "area": "13049",
+        "commune_nis": "13049",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis13053",
+      "codes": {
+        "area": "13053",
+        "commune_nis": "13053",
+        "province_nis": "10000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21001",
+      "codes": {
+        "area": "21001",
+        "commune_nis": "21001",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21002",
+      "codes": {
+        "area": "21002",
+        "commune_nis": "21002",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21003",
+      "codes": {
+        "area": "21003",
+        "commune_nis": "21003",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21004",
+      "codes": {
+        "area": "21004",
+        "commune_nis": "21004",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21005",
+      "codes": {
+        "area": "21005",
+        "commune_nis": "21005",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21006",
+      "codes": {
+        "area": "21006",
+        "commune_nis": "21006",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21007",
+      "codes": {
+        "area": "21007",
+        "commune_nis": "21007",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21008",
+      "codes": {
+        "area": "21008",
+        "commune_nis": "21008",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21009",
+      "codes": {
+        "area": "21009",
+        "commune_nis": "21009",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21010",
+      "codes": {
+        "area": "21010",
+        "commune_nis": "21010",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21011",
+      "codes": {
+        "area": "21011",
+        "commune_nis": "21011",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21012",
+      "codes": {
+        "area": "21012",
+        "commune_nis": "21012",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21013",
+      "codes": {
+        "area": "21013",
+        "commune_nis": "21013",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21014",
+      "codes": {
+        "area": "21014",
+        "commune_nis": "21014",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21015",
+      "codes": {
+        "area": "21015",
+        "commune_nis": "21015",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21016",
+      "codes": {
+        "area": "21016",
+        "commune_nis": "21016",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21017",
+      "codes": {
+        "area": "21017",
+        "commune_nis": "21017",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21018",
+      "codes": {
+        "area": "21018",
+        "commune_nis": "21018",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis21019",
+      "codes": {
+        "area": "21019",
+        "commune_nis": "21019",
+        "province_nis": "04000",
+        "region_nuts1": "BE1",
+        "community_code": "brussels_bilingual"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23002",
+      "codes": {
+        "area": "23002",
+        "commune_nis": "23002",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23003",
+      "codes": {
+        "area": "23003",
+        "commune_nis": "23003",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23009",
+      "codes": {
+        "area": "23009",
+        "commune_nis": "23009",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23016",
+      "codes": {
+        "area": "23016",
+        "commune_nis": "23016",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23025",
+      "codes": {
+        "area": "23025",
+        "commune_nis": "23025",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23027",
+      "codes": {
+        "area": "23027",
+        "commune_nis": "23027",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23033",
+      "codes": {
+        "area": "23033",
+        "commune_nis": "23033",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23038",
+      "codes": {
+        "area": "23038",
+        "commune_nis": "23038",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23039",
+      "codes": {
+        "area": "23039",
+        "commune_nis": "23039",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23044",
+      "codes": {
+        "area": "23044",
+        "commune_nis": "23044",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23045",
+      "codes": {
+        "area": "23045",
+        "commune_nis": "23045",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23047",
+      "codes": {
+        "area": "23047",
+        "commune_nis": "23047",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23050",
+      "codes": {
+        "area": "23050",
+        "commune_nis": "23050",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23052",
+      "codes": {
+        "area": "23052",
+        "commune_nis": "23052",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23060",
+      "codes": {
+        "area": "23060",
+        "commune_nis": "23060",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23062",
+      "codes": {
+        "area": "23062",
+        "commune_nis": "23062",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23064",
+      "codes": {
+        "area": "23064",
+        "commune_nis": "23064",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23077",
+      "codes": {
+        "area": "23077",
+        "commune_nis": "23077",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23081",
+      "codes": {
+        "area": "23081",
+        "commune_nis": "23081",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23086",
+      "codes": {
+        "area": "23086",
+        "commune_nis": "23086",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23088",
+      "codes": {
+        "area": "23088",
+        "commune_nis": "23088",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23094",
+      "codes": {
+        "area": "23094",
+        "commune_nis": "23094",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23096",
+      "codes": {
+        "area": "23096",
+        "commune_nis": "23096",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23097",
+      "codes": {
+        "area": "23097",
+        "commune_nis": "23097",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23098",
+      "codes": {
+        "area": "23098",
+        "commune_nis": "23098",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23099",
+      "codes": {
+        "area": "23099",
+        "commune_nis": "23099",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23100",
+      "codes": {
+        "area": "23100",
+        "commune_nis": "23100",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23101",
+      "codes": {
+        "area": "23101",
+        "commune_nis": "23101",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23102",
+      "codes": {
+        "area": "23102",
+        "commune_nis": "23102",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23103",
+      "codes": {
+        "area": "23103",
+        "commune_nis": "23103",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23104",
+      "codes": {
+        "area": "23104",
+        "commune_nis": "23104",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23105",
+      "codes": {
+        "area": "23105",
+        "commune_nis": "23105",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis23106",
+      "codes": {
+        "area": "23106",
+        "commune_nis": "23106",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24001",
+      "codes": {
+        "area": "24001",
+        "commune_nis": "24001",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24007",
+      "codes": {
+        "area": "24007",
+        "commune_nis": "24007",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24008",
+      "codes": {
+        "area": "24008",
+        "commune_nis": "24008",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24009",
+      "codes": {
+        "area": "24009",
+        "commune_nis": "24009",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24011",
+      "codes": {
+        "area": "24011",
+        "commune_nis": "24011",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24014",
+      "codes": {
+        "area": "24014",
+        "commune_nis": "24014",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24016",
+      "codes": {
+        "area": "24016",
+        "commune_nis": "24016",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24020",
+      "codes": {
+        "area": "24020",
+        "commune_nis": "24020",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24028",
+      "codes": {
+        "area": "24028",
+        "commune_nis": "24028",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24033",
+      "codes": {
+        "area": "24033",
+        "commune_nis": "24033",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24038",
+      "codes": {
+        "area": "24038",
+        "commune_nis": "24038",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24041",
+      "codes": {
+        "area": "24041",
+        "commune_nis": "24041",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24043",
+      "codes": {
+        "area": "24043",
+        "commune_nis": "24043",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24045",
+      "codes": {
+        "area": "24045",
+        "commune_nis": "24045",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24048",
+      "codes": {
+        "area": "24048",
+        "commune_nis": "24048",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24054",
+      "codes": {
+        "area": "24054",
+        "commune_nis": "24054",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24055",
+      "codes": {
+        "area": "24055",
+        "commune_nis": "24055",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24059",
+      "codes": {
+        "area": "24059",
+        "commune_nis": "24059",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24062",
+      "codes": {
+        "area": "24062",
+        "commune_nis": "24062",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24066",
+      "codes": {
+        "area": "24066",
+        "commune_nis": "24066",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24086",
+      "codes": {
+        "area": "24086",
+        "commune_nis": "24086",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24094",
+      "codes": {
+        "area": "24094",
+        "commune_nis": "24094",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24104",
+      "codes": {
+        "area": "24104",
+        "commune_nis": "24104",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24107",
+      "codes": {
+        "area": "24107",
+        "commune_nis": "24107",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24109",
+      "codes": {
+        "area": "24109",
+        "commune_nis": "24109",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24130",
+      "codes": {
+        "area": "24130",
+        "commune_nis": "24130",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24133",
+      "codes": {
+        "area": "24133",
+        "commune_nis": "24133",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24134",
+      "codes": {
+        "area": "24134",
+        "commune_nis": "24134",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24135",
+      "codes": {
+        "area": "24135",
+        "commune_nis": "24135",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis24137",
+      "codes": {
+        "area": "24137",
+        "commune_nis": "24137",
+        "province_nis": "20001",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25005",
+      "codes": {
+        "area": "25005",
+        "commune_nis": "25005",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25014",
+      "codes": {
+        "area": "25014",
+        "commune_nis": "25014",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25015",
+      "codes": {
+        "area": "25015",
+        "commune_nis": "25015",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25018",
+      "codes": {
+        "area": "25018",
+        "commune_nis": "25018",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25023",
+      "codes": {
+        "area": "25023",
+        "commune_nis": "25023",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25031",
+      "codes": {
+        "area": "25031",
+        "commune_nis": "25031",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25037",
+      "codes": {
+        "area": "25037",
+        "commune_nis": "25037",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25043",
+      "codes": {
+        "area": "25043",
+        "commune_nis": "25043",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25044",
+      "codes": {
+        "area": "25044",
+        "commune_nis": "25044",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25048",
+      "codes": {
+        "area": "25048",
+        "commune_nis": "25048",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25050",
+      "codes": {
+        "area": "25050",
+        "commune_nis": "25050",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25068",
+      "codes": {
+        "area": "25068",
+        "commune_nis": "25068",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25072",
+      "codes": {
+        "area": "25072",
+        "commune_nis": "25072",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25084",
+      "codes": {
+        "area": "25084",
+        "commune_nis": "25084",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25091",
+      "codes": {
+        "area": "25091",
+        "commune_nis": "25091",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25105",
+      "codes": {
+        "area": "25105",
+        "commune_nis": "25105",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25107",
+      "codes": {
+        "area": "25107",
+        "commune_nis": "25107",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25110",
+      "codes": {
+        "area": "25110",
+        "commune_nis": "25110",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25112",
+      "codes": {
+        "area": "25112",
+        "commune_nis": "25112",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25117",
+      "codes": {
+        "area": "25117",
+        "commune_nis": "25117",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25118",
+      "codes": {
+        "area": "25118",
+        "commune_nis": "25118",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25119",
+      "codes": {
+        "area": "25119",
+        "commune_nis": "25119",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25120",
+      "codes": {
+        "area": "25120",
+        "commune_nis": "25120",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25121",
+      "codes": {
+        "area": "25121",
+        "commune_nis": "25121",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25122",
+      "codes": {
+        "area": "25122",
+        "commune_nis": "25122",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25123",
+      "codes": {
+        "area": "25123",
+        "commune_nis": "25123",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis25124",
+      "codes": {
+        "area": "25124",
+        "commune_nis": "25124",
+        "province_nis": "20002",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31003",
+      "codes": {
+        "area": "31003",
+        "commune_nis": "31003",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31004",
+      "codes": {
+        "area": "31004",
+        "commune_nis": "31004",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31005",
+      "codes": {
+        "area": "31005",
+        "commune_nis": "31005",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31006",
+      "codes": {
+        "area": "31006",
+        "commune_nis": "31006",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31012",
+      "codes": {
+        "area": "31012",
+        "commune_nis": "31012",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31022",
+      "codes": {
+        "area": "31022",
+        "commune_nis": "31022",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31033",
+      "codes": {
+        "area": "31033",
+        "commune_nis": "31033",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31040",
+      "codes": {
+        "area": "31040",
+        "commune_nis": "31040",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31042",
+      "codes": {
+        "area": "31042",
+        "commune_nis": "31042",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis31043",
+      "codes": {
+        "area": "31043",
+        "commune_nis": "31043",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis32003",
+      "codes": {
+        "area": "32003",
+        "commune_nis": "32003",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis32006",
+      "codes": {
+        "area": "32006",
+        "commune_nis": "32006",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis32010",
+      "codes": {
+        "area": "32010",
+        "commune_nis": "32010",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis32011",
+      "codes": {
+        "area": "32011",
+        "commune_nis": "32011",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis32030",
+      "codes": {
+        "area": "32030",
+        "commune_nis": "32030",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis33011",
+      "codes": {
+        "area": "33011",
+        "commune_nis": "33011",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis33016",
+      "codes": {
+        "area": "33016",
+        "commune_nis": "33016",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis33021",
+      "codes": {
+        "area": "33021",
+        "commune_nis": "33021",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis33029",
+      "codes": {
+        "area": "33029",
+        "commune_nis": "33029",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis33037",
+      "codes": {
+        "area": "33037",
+        "commune_nis": "33037",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis33039",
+      "codes": {
+        "area": "33039",
+        "commune_nis": "33039",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis33040",
+      "codes": {
+        "area": "33040",
+        "commune_nis": "33040",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis33041",
+      "codes": {
+        "area": "33041",
+        "commune_nis": "33041",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34002",
+      "codes": {
+        "area": "34002",
+        "commune_nis": "34002",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34003",
+      "codes": {
+        "area": "34003",
+        "commune_nis": "34003",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34009",
+      "codes": {
+        "area": "34009",
+        "commune_nis": "34009",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34013",
+      "codes": {
+        "area": "34013",
+        "commune_nis": "34013",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34022",
+      "codes": {
+        "area": "34022",
+        "commune_nis": "34022",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34023",
+      "codes": {
+        "area": "34023",
+        "commune_nis": "34023",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34025",
+      "codes": {
+        "area": "34025",
+        "commune_nis": "34025",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34027",
+      "codes": {
+        "area": "34027",
+        "commune_nis": "34027",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34040",
+      "codes": {
+        "area": "34040",
+        "commune_nis": "34040",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34041",
+      "codes": {
+        "area": "34041",
+        "commune_nis": "34041",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34042",
+      "codes": {
+        "area": "34042",
+        "commune_nis": "34042",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis34043",
+      "codes": {
+        "area": "34043",
+        "commune_nis": "34043",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis35002",
+      "codes": {
+        "area": "35002",
+        "commune_nis": "35002",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis35005",
+      "codes": {
+        "area": "35005",
+        "commune_nis": "35005",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis35006",
+      "codes": {
+        "area": "35006",
+        "commune_nis": "35006",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis35011",
+      "codes": {
+        "area": "35011",
+        "commune_nis": "35011",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis35013",
+      "codes": {
+        "area": "35013",
+        "commune_nis": "35013",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis35014",
+      "codes": {
+        "area": "35014",
+        "commune_nis": "35014",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis35029",
+      "codes": {
+        "area": "35029",
+        "commune_nis": "35029",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis36006",
+      "codes": {
+        "area": "36006",
+        "commune_nis": "36006",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis36007",
+      "codes": {
+        "area": "36007",
+        "commune_nis": "36007",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis36008",
+      "codes": {
+        "area": "36008",
+        "commune_nis": "36008",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis36010",
+      "codes": {
+        "area": "36010",
+        "commune_nis": "36010",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis36011",
+      "codes": {
+        "area": "36011",
+        "commune_nis": "36011",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis36012",
+      "codes": {
+        "area": "36012",
+        "commune_nis": "36012",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis36015",
+      "codes": {
+        "area": "36015",
+        "commune_nis": "36015",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis36019",
+      "codes": {
+        "area": "36019",
+        "commune_nis": "36019",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis37002",
+      "codes": {
+        "area": "37002",
+        "commune_nis": "37002",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis37010",
+      "codes": {
+        "area": "37010",
+        "commune_nis": "37010",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis37011",
+      "codes": {
+        "area": "37011",
+        "commune_nis": "37011",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis37017",
+      "codes": {
+        "area": "37017",
+        "commune_nis": "37017",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis37020",
+      "codes": {
+        "area": "37020",
+        "commune_nis": "37020",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis37021",
+      "codes": {
+        "area": "37021",
+        "commune_nis": "37021",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis37022",
+      "codes": {
+        "area": "37022",
+        "commune_nis": "37022",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis38002",
+      "codes": {
+        "area": "38002",
+        "commune_nis": "38002",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis38008",
+      "codes": {
+        "area": "38008",
+        "commune_nis": "38008",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis38014",
+      "codes": {
+        "area": "38014",
+        "commune_nis": "38014",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis38016",
+      "codes": {
+        "area": "38016",
+        "commune_nis": "38016",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis38025",
+      "codes": {
+        "area": "38025",
+        "commune_nis": "38025",
+        "province_nis": "30000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41002",
+      "codes": {
+        "area": "41002",
+        "commune_nis": "41002",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41011",
+      "codes": {
+        "area": "41011",
+        "commune_nis": "41011",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41018",
+      "codes": {
+        "area": "41018",
+        "commune_nis": "41018",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41024",
+      "codes": {
+        "area": "41024",
+        "commune_nis": "41024",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41027",
+      "codes": {
+        "area": "41027",
+        "commune_nis": "41027",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41034",
+      "codes": {
+        "area": "41034",
+        "commune_nis": "41034",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41048",
+      "codes": {
+        "area": "41048",
+        "commune_nis": "41048",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41063",
+      "codes": {
+        "area": "41063",
+        "commune_nis": "41063",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41081",
+      "codes": {
+        "area": "41081",
+        "commune_nis": "41081",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis41082",
+      "codes": {
+        "area": "41082",
+        "commune_nis": "41082",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42003",
+      "codes": {
+        "area": "42003",
+        "commune_nis": "42003",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42004",
+      "codes": {
+        "area": "42004",
+        "commune_nis": "42004",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42006",
+      "codes": {
+        "area": "42006",
+        "commune_nis": "42006",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42008",
+      "codes": {
+        "area": "42008",
+        "commune_nis": "42008",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42010",
+      "codes": {
+        "area": "42010",
+        "commune_nis": "42010",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42011",
+      "codes": {
+        "area": "42011",
+        "commune_nis": "42011",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42023",
+      "codes": {
+        "area": "42023",
+        "commune_nis": "42023",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42025",
+      "codes": {
+        "area": "42025",
+        "commune_nis": "42025",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42026",
+      "codes": {
+        "area": "42026",
+        "commune_nis": "42026",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis42028",
+      "codes": {
+        "area": "42028",
+        "commune_nis": "42028",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis43002",
+      "codes": {
+        "area": "43002",
+        "commune_nis": "43002",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis43005",
+      "codes": {
+        "area": "43005",
+        "commune_nis": "43005",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis43007",
+      "codes": {
+        "area": "43007",
+        "commune_nis": "43007",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis43010",
+      "codes": {
+        "area": "43010",
+        "commune_nis": "43010",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis43014",
+      "codes": {
+        "area": "43014",
+        "commune_nis": "43014",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis43018",
+      "codes": {
+        "area": "43018",
+        "commune_nis": "43018",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44013",
+      "codes": {
+        "area": "44013",
+        "commune_nis": "44013",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44019",
+      "codes": {
+        "area": "44019",
+        "commune_nis": "44019",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44020",
+      "codes": {
+        "area": "44020",
+        "commune_nis": "44020",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44021",
+      "codes": {
+        "area": "44021",
+        "commune_nis": "44021",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44052",
+      "codes": {
+        "area": "44052",
+        "commune_nis": "44052",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44064",
+      "codes": {
+        "area": "44064",
+        "commune_nis": "44064",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44081",
+      "codes": {
+        "area": "44081",
+        "commune_nis": "44081",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44083",
+      "codes": {
+        "area": "44083",
+        "commune_nis": "44083",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44084",
+      "codes": {
+        "area": "44084",
+        "commune_nis": "44084",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44085",
+      "codes": {
+        "area": "44085",
+        "commune_nis": "44085",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44086",
+      "codes": {
+        "area": "44086",
+        "commune_nis": "44086",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44087",
+      "codes": {
+        "area": "44087",
+        "commune_nis": "44087",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis44088",
+      "codes": {
+        "area": "44088",
+        "commune_nis": "44088",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45035",
+      "codes": {
+        "area": "45035",
+        "commune_nis": "45035",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45041",
+      "codes": {
+        "area": "45041",
+        "commune_nis": "45041",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45059",
+      "codes": {
+        "area": "45059",
+        "commune_nis": "45059",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45060",
+      "codes": {
+        "area": "45060",
+        "commune_nis": "45060",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45061",
+      "codes": {
+        "area": "45061",
+        "commune_nis": "45061",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45062",
+      "codes": {
+        "area": "45062",
+        "commune_nis": "45062",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45063",
+      "codes": {
+        "area": "45063",
+        "commune_nis": "45063",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45064",
+      "codes": {
+        "area": "45064",
+        "commune_nis": "45064",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45065",
+      "codes": {
+        "area": "45065",
+        "commune_nis": "45065",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis45068",
+      "codes": {
+        "area": "45068",
+        "commune_nis": "45068",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis46020",
+      "codes": {
+        "area": "46020",
+        "commune_nis": "46020",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis46021",
+      "codes": {
+        "area": "46021",
+        "commune_nis": "46021",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis46024",
+      "codes": {
+        "area": "46024",
+        "commune_nis": "46024",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis46025",
+      "codes": {
+        "area": "46025",
+        "commune_nis": "46025",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis46029",
+      "codes": {
+        "area": "46029",
+        "commune_nis": "46029",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis46030",
+      "codes": {
+        "area": "46030",
+        "commune_nis": "46030",
+        "province_nis": "40000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51004",
+      "codes": {
+        "area": "51004",
+        "commune_nis": "51004",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51008",
+      "codes": {
+        "area": "51008",
+        "commune_nis": "51008",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51009",
+      "codes": {
+        "area": "51009",
+        "commune_nis": "51009",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51012",
+      "codes": {
+        "area": "51012",
+        "commune_nis": "51012",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51014",
+      "codes": {
+        "area": "51014",
+        "commune_nis": "51014",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51017",
+      "codes": {
+        "area": "51017",
+        "commune_nis": "51017",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51019",
+      "codes": {
+        "area": "51019",
+        "commune_nis": "51019",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51065",
+      "codes": {
+        "area": "51065",
+        "commune_nis": "51065",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51067",
+      "codes": {
+        "area": "51067",
+        "commune_nis": "51067",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51068",
+      "codes": {
+        "area": "51068",
+        "commune_nis": "51068",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis51069",
+      "codes": {
+        "area": "51069",
+        "commune_nis": "51069",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52010",
+      "codes": {
+        "area": "52010",
+        "commune_nis": "52010",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52011",
+      "codes": {
+        "area": "52011",
+        "commune_nis": "52011",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52012",
+      "codes": {
+        "area": "52012",
+        "commune_nis": "52012",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52015",
+      "codes": {
+        "area": "52015",
+        "commune_nis": "52015",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52018",
+      "codes": {
+        "area": "52018",
+        "commune_nis": "52018",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52021",
+      "codes": {
+        "area": "52021",
+        "commune_nis": "52021",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52022",
+      "codes": {
+        "area": "52022",
+        "commune_nis": "52022",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52025",
+      "codes": {
+        "area": "52025",
+        "commune_nis": "52025",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52048",
+      "codes": {
+        "area": "52048",
+        "commune_nis": "52048",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52055",
+      "codes": {
+        "area": "52055",
+        "commune_nis": "52055",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52074",
+      "codes": {
+        "area": "52074",
+        "commune_nis": "52074",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis52075",
+      "codes": {
+        "area": "52075",
+        "commune_nis": "52075",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53014",
+      "codes": {
+        "area": "53014",
+        "commune_nis": "53014",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53020",
+      "codes": {
+        "area": "53020",
+        "commune_nis": "53020",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53028",
+      "codes": {
+        "area": "53028",
+        "commune_nis": "53028",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53039",
+      "codes": {
+        "area": "53039",
+        "commune_nis": "53039",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53044",
+      "codes": {
+        "area": "53044",
+        "commune_nis": "53044",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53046",
+      "codes": {
+        "area": "53046",
+        "commune_nis": "53046",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53053",
+      "codes": {
+        "area": "53053",
+        "commune_nis": "53053",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53065",
+      "codes": {
+        "area": "53065",
+        "commune_nis": "53065",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53068",
+      "codes": {
+        "area": "53068",
+        "commune_nis": "53068",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53070",
+      "codes": {
+        "area": "53070",
+        "commune_nis": "53070",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53082",
+      "codes": {
+        "area": "53082",
+        "commune_nis": "53082",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53083",
+      "codes": {
+        "area": "53083",
+        "commune_nis": "53083",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis53084",
+      "codes": {
+        "area": "53084",
+        "commune_nis": "53084",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis55004",
+      "codes": {
+        "area": "55004",
+        "commune_nis": "55004",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis55035",
+      "codes": {
+        "area": "55035",
+        "commune_nis": "55035",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis55040",
+      "codes": {
+        "area": "55040",
+        "commune_nis": "55040",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis55050",
+      "codes": {
+        "area": "55050",
+        "commune_nis": "55050",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis55085",
+      "codes": {
+        "area": "55085",
+        "commune_nis": "55085",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis55086",
+      "codes": {
+        "area": "55086",
+        "commune_nis": "55086",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56001",
+      "codes": {
+        "area": "56001",
+        "commune_nis": "56001",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56005",
+      "codes": {
+        "area": "56005",
+        "commune_nis": "56005",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56016",
+      "codes": {
+        "area": "56016",
+        "commune_nis": "56016",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56022",
+      "codes": {
+        "area": "56022",
+        "commune_nis": "56022",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56029",
+      "codes": {
+        "area": "56029",
+        "commune_nis": "56029",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56044",
+      "codes": {
+        "area": "56044",
+        "commune_nis": "56044",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56049",
+      "codes": {
+        "area": "56049",
+        "commune_nis": "56049",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56051",
+      "codes": {
+        "area": "56051",
+        "commune_nis": "56051",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56078",
+      "codes": {
+        "area": "56078",
+        "commune_nis": "56078",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56086",
+      "codes": {
+        "area": "56086",
+        "commune_nis": "56086",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis56088",
+      "codes": {
+        "area": "56088",
+        "commune_nis": "56088",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57003",
+      "codes": {
+        "area": "57003",
+        "commune_nis": "57003",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57018",
+      "codes": {
+        "area": "57018",
+        "commune_nis": "57018",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57027",
+      "codes": {
+        "area": "57027",
+        "commune_nis": "57027",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57062",
+      "codes": {
+        "area": "57062",
+        "commune_nis": "57062",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57064",
+      "codes": {
+        "area": "57064",
+        "commune_nis": "57064",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57072",
+      "codes": {
+        "area": "57072",
+        "commune_nis": "57072",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57081",
+      "codes": {
+        "area": "57081",
+        "commune_nis": "57081",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57093",
+      "codes": {
+        "area": "57093",
+        "commune_nis": "57093",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57094",
+      "codes": {
+        "area": "57094",
+        "commune_nis": "57094",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57095",
+      "codes": {
+        "area": "57095",
+        "commune_nis": "57095",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57096",
+      "codes": {
+        "area": "57096",
+        "commune_nis": "57096",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis57097",
+      "codes": {
+        "area": "57097",
+        "commune_nis": "57097",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis58001",
+      "codes": {
+        "area": "58001",
+        "commune_nis": "58001",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis58002",
+      "codes": {
+        "area": "58002",
+        "commune_nis": "58002",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis58003",
+      "codes": {
+        "area": "58003",
+        "commune_nis": "58003",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis58004",
+      "codes": {
+        "area": "58004",
+        "commune_nis": "58004",
+        "province_nis": "50000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61003",
+      "codes": {
+        "area": "61003",
+        "commune_nis": "61003",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61010",
+      "codes": {
+        "area": "61010",
+        "commune_nis": "61010",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61012",
+      "codes": {
+        "area": "61012",
+        "commune_nis": "61012",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61019",
+      "codes": {
+        "area": "61019",
+        "commune_nis": "61019",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61024",
+      "codes": {
+        "area": "61024",
+        "commune_nis": "61024",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61028",
+      "codes": {
+        "area": "61028",
+        "commune_nis": "61028",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61031",
+      "codes": {
+        "area": "61031",
+        "commune_nis": "61031",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61039",
+      "codes": {
+        "area": "61039",
+        "commune_nis": "61039",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61041",
+      "codes": {
+        "area": "61041",
+        "commune_nis": "61041",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61043",
+      "codes": {
+        "area": "61043",
+        "commune_nis": "61043",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61048",
+      "codes": {
+        "area": "61048",
+        "commune_nis": "61048",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61063",
+      "codes": {
+        "area": "61063",
+        "commune_nis": "61063",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61068",
+      "codes": {
+        "area": "61068",
+        "commune_nis": "61068",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61072",
+      "codes": {
+        "area": "61072",
+        "commune_nis": "61072",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61079",
+      "codes": {
+        "area": "61079",
+        "commune_nis": "61079",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61080",
+      "codes": {
+        "area": "61080",
+        "commune_nis": "61080",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis61081",
+      "codes": {
+        "area": "61081",
+        "commune_nis": "61081",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62003",
+      "codes": {
+        "area": "62003",
+        "commune_nis": "62003",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62006",
+      "codes": {
+        "area": "62006",
+        "commune_nis": "62006",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62009",
+      "codes": {
+        "area": "62009",
+        "commune_nis": "62009",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62011",
+      "codes": {
+        "area": "62011",
+        "commune_nis": "62011",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62015",
+      "codes": {
+        "area": "62015",
+        "commune_nis": "62015",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62022",
+      "codes": {
+        "area": "62022",
+        "commune_nis": "62022",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62026",
+      "codes": {
+        "area": "62026",
+        "commune_nis": "62026",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62027",
+      "codes": {
+        "area": "62027",
+        "commune_nis": "62027",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62032",
+      "codes": {
+        "area": "62032",
+        "commune_nis": "62032",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62038",
+      "codes": {
+        "area": "62038",
+        "commune_nis": "62038",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62051",
+      "codes": {
+        "area": "62051",
+        "commune_nis": "62051",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62060",
+      "codes": {
+        "area": "62060",
+        "commune_nis": "62060",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62063",
+      "codes": {
+        "area": "62063",
+        "commune_nis": "62063",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62079",
+      "codes": {
+        "area": "62079",
+        "commune_nis": "62079",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62093",
+      "codes": {
+        "area": "62093",
+        "commune_nis": "62093",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62096",
+      "codes": {
+        "area": "62096",
+        "commune_nis": "62096",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62099",
+      "codes": {
+        "area": "62099",
+        "commune_nis": "62099",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62100",
+      "codes": {
+        "area": "62100",
+        "commune_nis": "62100",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62108",
+      "codes": {
+        "area": "62108",
+        "commune_nis": "62108",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62118",
+      "codes": {
+        "area": "62118",
+        "commune_nis": "62118",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62119",
+      "codes": {
+        "area": "62119",
+        "commune_nis": "62119",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62120",
+      "codes": {
+        "area": "62120",
+        "commune_nis": "62120",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62121",
+      "codes": {
+        "area": "62121",
+        "commune_nis": "62121",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis62122",
+      "codes": {
+        "area": "62122",
+        "commune_nis": "62122",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63001",
+      "codes": {
+        "area": "63001",
+        "commune_nis": "63001",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63003",
+      "codes": {
+        "area": "63003",
+        "commune_nis": "63003",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63004",
+      "codes": {
+        "area": "63004",
+        "commune_nis": "63004",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63012",
+      "codes": {
+        "area": "63012",
+        "commune_nis": "63012",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63013",
+      "codes": {
+        "area": "63013",
+        "commune_nis": "63013",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63020",
+      "codes": {
+        "area": "63020",
+        "commune_nis": "63020",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63023",
+      "codes": {
+        "area": "63023",
+        "commune_nis": "63023",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63035",
+      "codes": {
+        "area": "63035",
+        "commune_nis": "63035",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63038",
+      "codes": {
+        "area": "63038",
+        "commune_nis": "63038",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63040",
+      "codes": {
+        "area": "63040",
+        "commune_nis": "63040",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63045",
+      "codes": {
+        "area": "63045",
+        "commune_nis": "63045",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63046",
+      "codes": {
+        "area": "63046",
+        "commune_nis": "63046",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63048",
+      "codes": {
+        "area": "63048",
+        "commune_nis": "63048",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63049",
+      "codes": {
+        "area": "63049",
+        "commune_nis": "63049",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63057",
+      "codes": {
+        "area": "63057",
+        "commune_nis": "63057",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63058",
+      "codes": {
+        "area": "63058",
+        "commune_nis": "63058",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63061",
+      "codes": {
+        "area": "63061",
+        "commune_nis": "63061",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63067",
+      "codes": {
+        "area": "63067",
+        "commune_nis": "63067",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63072",
+      "codes": {
+        "area": "63072",
+        "commune_nis": "63072",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63073",
+      "codes": {
+        "area": "63073",
+        "commune_nis": "63073",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63075",
+      "codes": {
+        "area": "63075",
+        "commune_nis": "63075",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63076",
+      "codes": {
+        "area": "63076",
+        "commune_nis": "63076",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63079",
+      "codes": {
+        "area": "63079",
+        "commune_nis": "63079",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63080",
+      "codes": {
+        "area": "63080",
+        "commune_nis": "63080",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63084",
+      "codes": {
+        "area": "63084",
+        "commune_nis": "63084",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63086",
+      "codes": {
+        "area": "63086",
+        "commune_nis": "63086",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63087",
+      "codes": {
+        "area": "63087",
+        "commune_nis": "63087",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "german"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63088",
+      "codes": {
+        "area": "63088",
+        "commune_nis": "63088",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis63089",
+      "codes": {
+        "area": "63089",
+        "commune_nis": "63089",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64008",
+      "codes": {
+        "area": "64008",
+        "commune_nis": "64008",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64015",
+      "codes": {
+        "area": "64015",
+        "commune_nis": "64015",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64021",
+      "codes": {
+        "area": "64021",
+        "commune_nis": "64021",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64023",
+      "codes": {
+        "area": "64023",
+        "commune_nis": "64023",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64025",
+      "codes": {
+        "area": "64025",
+        "commune_nis": "64025",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64029",
+      "codes": {
+        "area": "64029",
+        "commune_nis": "64029",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64034",
+      "codes": {
+        "area": "64034",
+        "commune_nis": "64034",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64047",
+      "codes": {
+        "area": "64047",
+        "commune_nis": "64047",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64056",
+      "codes": {
+        "area": "64056",
+        "commune_nis": "64056",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64063",
+      "codes": {
+        "area": "64063",
+        "commune_nis": "64063",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64065",
+      "codes": {
+        "area": "64065",
+        "commune_nis": "64065",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64074",
+      "codes": {
+        "area": "64074",
+        "commune_nis": "64074",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64075",
+      "codes": {
+        "area": "64075",
+        "commune_nis": "64075",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis64076",
+      "codes": {
+        "area": "64076",
+        "commune_nis": "64076",
+        "province_nis": "60000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71002",
+      "codes": {
+        "area": "71002",
+        "commune_nis": "71002",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71004",
+      "codes": {
+        "area": "71004",
+        "commune_nis": "71004",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71011",
+      "codes": {
+        "area": "71011",
+        "commune_nis": "71011",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71016",
+      "codes": {
+        "area": "71016",
+        "commune_nis": "71016",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71017",
+      "codes": {
+        "area": "71017",
+        "commune_nis": "71017",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71020",
+      "codes": {
+        "area": "71020",
+        "commune_nis": "71020",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71024",
+      "codes": {
+        "area": "71024",
+        "commune_nis": "71024",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71034",
+      "codes": {
+        "area": "71034",
+        "commune_nis": "71034",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71037",
+      "codes": {
+        "area": "71037",
+        "commune_nis": "71037",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71045",
+      "codes": {
+        "area": "71045",
+        "commune_nis": "71045",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71053",
+      "codes": {
+        "area": "71053",
+        "commune_nis": "71053",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71066",
+      "codes": {
+        "area": "71066",
+        "commune_nis": "71066",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71067",
+      "codes": {
+        "area": "71067",
+        "commune_nis": "71067",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71070",
+      "codes": {
+        "area": "71070",
+        "commune_nis": "71070",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71071",
+      "codes": {
+        "area": "71071",
+        "commune_nis": "71071",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis71072",
+      "codes": {
+        "area": "71072",
+        "commune_nis": "71072",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72003",
+      "codes": {
+        "area": "72003",
+        "commune_nis": "72003",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72004",
+      "codes": {
+        "area": "72004",
+        "commune_nis": "72004",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72018",
+      "codes": {
+        "area": "72018",
+        "commune_nis": "72018",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72020",
+      "codes": {
+        "area": "72020",
+        "commune_nis": "72020",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72021",
+      "codes": {
+        "area": "72021",
+        "commune_nis": "72021",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72030",
+      "codes": {
+        "area": "72030",
+        "commune_nis": "72030",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72037",
+      "codes": {
+        "area": "72037",
+        "commune_nis": "72037",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72038",
+      "codes": {
+        "area": "72038",
+        "commune_nis": "72038",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72039",
+      "codes": {
+        "area": "72039",
+        "commune_nis": "72039",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72041",
+      "codes": {
+        "area": "72041",
+        "commune_nis": "72041",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72042",
+      "codes": {
+        "area": "72042",
+        "commune_nis": "72042",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis72043",
+      "codes": {
+        "area": "72043",
+        "commune_nis": "72043",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73001",
+      "codes": {
+        "area": "73001",
+        "commune_nis": "73001",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73022",
+      "codes": {
+        "area": "73022",
+        "commune_nis": "73022",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73028",
+      "codes": {
+        "area": "73028",
+        "commune_nis": "73028",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73042",
+      "codes": {
+        "area": "73042",
+        "commune_nis": "73042",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73066",
+      "codes": {
+        "area": "73066",
+        "commune_nis": "73066",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73098",
+      "codes": {
+        "area": "73098",
+        "commune_nis": "73098",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73107",
+      "codes": {
+        "area": "73107",
+        "commune_nis": "73107",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73109",
+      "codes": {
+        "area": "73109",
+        "commune_nis": "73109",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73110",
+      "codes": {
+        "area": "73110",
+        "commune_nis": "73110",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis73111",
+      "codes": {
+        "area": "73111",
+        "commune_nis": "73111",
+        "province_nis": "70000",
+        "region_nuts1": "BE2",
+        "community_code": "dutch"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis81001",
+      "codes": {
+        "area": "81001",
+        "commune_nis": "81001",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis81003",
+      "codes": {
+        "area": "81003",
+        "commune_nis": "81003",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis81004",
+      "codes": {
+        "area": "81004",
+        "commune_nis": "81004",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis81013",
+      "codes": {
+        "area": "81013",
+        "commune_nis": "81013",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis81015",
+      "codes": {
+        "area": "81015",
+        "commune_nis": "81015",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis82009",
+      "codes": {
+        "area": "82009",
+        "commune_nis": "82009",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis82014",
+      "codes": {
+        "area": "82014",
+        "commune_nis": "82014",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis82032",
+      "codes": {
+        "area": "82032",
+        "commune_nis": "82032",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis82036",
+      "codes": {
+        "area": "82036",
+        "commune_nis": "82036",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis82037",
+      "codes": {
+        "area": "82037",
+        "commune_nis": "82037",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis82038",
+      "codes": {
+        "area": "82038",
+        "commune_nis": "82038",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis82039",
+      "codes": {
+        "area": "82039",
+        "commune_nis": "82039",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83012",
+      "codes": {
+        "area": "83012",
+        "commune_nis": "83012",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83013",
+      "codes": {
+        "area": "83013",
+        "commune_nis": "83013",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83028",
+      "codes": {
+        "area": "83028",
+        "commune_nis": "83028",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83031",
+      "codes": {
+        "area": "83031",
+        "commune_nis": "83031",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83034",
+      "codes": {
+        "area": "83034",
+        "commune_nis": "83034",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83040",
+      "codes": {
+        "area": "83040",
+        "commune_nis": "83040",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83044",
+      "codes": {
+        "area": "83044",
+        "commune_nis": "83044",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83049",
+      "codes": {
+        "area": "83049",
+        "commune_nis": "83049",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis83055",
+      "codes": {
+        "area": "83055",
+        "commune_nis": "83055",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84009",
+      "codes": {
+        "area": "84009",
+        "commune_nis": "84009",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84010",
+      "codes": {
+        "area": "84010",
+        "commune_nis": "84010",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84016",
+      "codes": {
+        "area": "84016",
+        "commune_nis": "84016",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84029",
+      "codes": {
+        "area": "84029",
+        "commune_nis": "84029",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84033",
+      "codes": {
+        "area": "84033",
+        "commune_nis": "84033",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84035",
+      "codes": {
+        "area": "84035",
+        "commune_nis": "84035",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84043",
+      "codes": {
+        "area": "84043",
+        "commune_nis": "84043",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84050",
+      "codes": {
+        "area": "84050",
+        "commune_nis": "84050",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84059",
+      "codes": {
+        "area": "84059",
+        "commune_nis": "84059",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84068",
+      "codes": {
+        "area": "84068",
+        "commune_nis": "84068",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84075",
+      "codes": {
+        "area": "84075",
+        "commune_nis": "84075",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis84077",
+      "codes": {
+        "area": "84077",
+        "commune_nis": "84077",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85007",
+      "codes": {
+        "area": "85007",
+        "commune_nis": "85007",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85009",
+      "codes": {
+        "area": "85009",
+        "commune_nis": "85009",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85011",
+      "codes": {
+        "area": "85011",
+        "commune_nis": "85011",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85024",
+      "codes": {
+        "area": "85024",
+        "commune_nis": "85024",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85026",
+      "codes": {
+        "area": "85026",
+        "commune_nis": "85026",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85034",
+      "codes": {
+        "area": "85034",
+        "commune_nis": "85034",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85039",
+      "codes": {
+        "area": "85039",
+        "commune_nis": "85039",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85045",
+      "codes": {
+        "area": "85045",
+        "commune_nis": "85045",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85046",
+      "codes": {
+        "area": "85046",
+        "commune_nis": "85046",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis85047",
+      "codes": {
+        "area": "85047",
+        "commune_nis": "85047",
+        "province_nis": "80000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91005",
+      "codes": {
+        "area": "91005",
+        "commune_nis": "91005",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91013",
+      "codes": {
+        "area": "91013",
+        "commune_nis": "91013",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91015",
+      "codes": {
+        "area": "91015",
+        "commune_nis": "91015",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91030",
+      "codes": {
+        "area": "91030",
+        "commune_nis": "91030",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91034",
+      "codes": {
+        "area": "91034",
+        "commune_nis": "91034",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91054",
+      "codes": {
+        "area": "91054",
+        "commune_nis": "91054",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91059",
+      "codes": {
+        "area": "91059",
+        "commune_nis": "91059",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91064",
+      "codes": {
+        "area": "91064",
+        "commune_nis": "91064",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91072",
+      "codes": {
+        "area": "91072",
+        "commune_nis": "91072",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91103",
+      "codes": {
+        "area": "91103",
+        "commune_nis": "91103",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91114",
+      "codes": {
+        "area": "91114",
+        "commune_nis": "91114",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91120",
+      "codes": {
+        "area": "91120",
+        "commune_nis": "91120",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91141",
+      "codes": {
+        "area": "91141",
+        "commune_nis": "91141",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91142",
+      "codes": {
+        "area": "91142",
+        "commune_nis": "91142",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis91143",
+      "codes": {
+        "area": "91143",
+        "commune_nis": "91143",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92003",
+      "codes": {
+        "area": "92003",
+        "commune_nis": "92003",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92006",
+      "codes": {
+        "area": "92006",
+        "commune_nis": "92006",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92035",
+      "codes": {
+        "area": "92035",
+        "commune_nis": "92035",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92045",
+      "codes": {
+        "area": "92045",
+        "commune_nis": "92045",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92048",
+      "codes": {
+        "area": "92048",
+        "commune_nis": "92048",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92054",
+      "codes": {
+        "area": "92054",
+        "commune_nis": "92054",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92087",
+      "codes": {
+        "area": "92087",
+        "commune_nis": "92087",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92094",
+      "codes": {
+        "area": "92094",
+        "commune_nis": "92094",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92097",
+      "codes": {
+        "area": "92097",
+        "commune_nis": "92097",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92101",
+      "codes": {
+        "area": "92101",
+        "commune_nis": "92101",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92114",
+      "codes": {
+        "area": "92114",
+        "commune_nis": "92114",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92137",
+      "codes": {
+        "area": "92137",
+        "commune_nis": "92137",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92138",
+      "codes": {
+        "area": "92138",
+        "commune_nis": "92138",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92140",
+      "codes": {
+        "area": "92140",
+        "commune_nis": "92140",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92141",
+      "codes": {
+        "area": "92141",
+        "commune_nis": "92141",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis92142",
+      "codes": {
+        "area": "92142",
+        "commune_nis": "92142",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis93010",
+      "codes": {
+        "area": "93010",
+        "commune_nis": "93010",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis93014",
+      "codes": {
+        "area": "93014",
+        "commune_nis": "93014",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis93018",
+      "codes": {
+        "area": "93018",
+        "commune_nis": "93018",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis93022",
+      "codes": {
+        "area": "93022",
+        "commune_nis": "93022",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis93056",
+      "codes": {
+        "area": "93056",
+        "commune_nis": "93056",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis93088",
+      "codes": {
+        "area": "93088",
+        "commune_nis": "93088",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    },
+    {
+      "target": "statbel_population_by_commune__nis93090",
+      "codes": {
+        "area": "93090",
+        "commune_nis": "93090",
+        "province_nis": "90000",
+        "region_nuts1": "BE3",
+        "community_code": "french"
+      },
+      "population_share": 1
+    }
+  ]
+}

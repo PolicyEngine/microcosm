@@ -172,6 +172,35 @@ THREAD_ENV_KEYS = (
     "NUMEXPR_NUM_THREADS",
     "BLIS_NUM_THREADS",
 )
+#: The one thread setting of the US build commands, which fills the variables
+#: above and a few more (tools/us_build_thread_environment.py; this module
+#: imports nothing from the workspace, so its rule is repeated here). A plan's
+#: value is checked when the plan is loaded: the base tool's check step loads
+#: the tool without running its start-up step, so the tool itself would refuse
+#: a bad value only after the runner had staged the inputs.
+THREAD_SETTING_ENV = "MICROCOSM_THREADS"
+
+
+def _thread_setting_problem(value: str) -> str | None:
+    """Why ``value`` is not a usable MICROCOSM_THREADS, or None if it is.
+
+    A blank value means unset, as it does to the tools.
+    """
+
+    if value == "":
+        return None
+    if value.isascii() and value.isdigit():
+        try:
+            if int(value) > 0:
+                return None
+        except ValueError:  # longer than int() will parse
+            pass
+    return (
+        f"env {THREAD_SETTING_ENV!r} must be a positive whole number of threads, "
+        f"got {value!r}"
+    )
+
+
 #: PYTHONUNBUFFERED is allowed so a plan can match a local run's environment
 #: exactly (Route A's base ran with only PYTHONUNBUFFERED=1). It changes when
 #: log lines reach the runner, not what the tool computes.
@@ -859,7 +888,10 @@ RUNNER_SMOKE = ToolSpec(
 # from the completed prefix (_run_staged_all), with its whole run config
 # (input paths and digests, settings, code identity, thread variables)
 # locked in stage_run_context.json; a resume whose config differs is
-# refused. Every path the tool records is the same in every attempt of a
+# refused. At 4b57d15a2 that covers every thread variable; code containing
+# the later QRF thread-count change records the two POPULACE_FIT_* variables
+# without comparing them. Every path the tool records is the same in every
+# attempt of a
 # run (/work/inputs/..., /work/state/...), and so are the image, the plan's
 # environment and the class, so a later attempt of the same run_id should
 # resume where the last one stopped. The placement is non-preemptible, so
@@ -1634,6 +1666,10 @@ def parse_plan(data: object) -> Plan:
             raise PlanError(f"env {key!r} must be a string")
         if key == TELEMETRY_REQUIRED_ENV and raw_env[key] != "0":
             raise PlanError(_telemetry_setting_refusal(raw_env[key]))
+        if key == THREAD_SETTING_ENV:
+            problem = _thread_setting_problem(raw_env[key])
+            if problem is not None:
+                raise PlanError(problem)
         env[key] = raw_env[key]
 
     max_wall = data.get("max_wall_seconds")

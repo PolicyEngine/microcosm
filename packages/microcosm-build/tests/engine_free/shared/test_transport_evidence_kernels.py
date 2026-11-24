@@ -182,6 +182,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.data.source_enrichment",
         "microcosm.data.stored_inputs",
         "microcosm.data.us_critical_targets",
+        # microcosm#1683: microcosm.frame.bundle imports the shared-column
+        # check, so a binding that reaches the frame bundle reaches it.
+        "microcosm.frame.shared_columns",
     ]
 )
 BATTERY = "toy.gates.terminal"
@@ -2826,12 +2829,15 @@ class TestSupportRoster:
         assert counts == {
             "closure_default": 92,
             "derived": 323,
-            "normalized": 11,
+            # Rule 1 (d3058): mortgage principal is pending, so no node reads
+            # it and the roster leaves it out.
+            "normalized": 10,
             "copied": 3,
             "quantile_mapped": 2,
             "structural": 6,
         }
         classes = {(row["entity"], row["column"]): row["class"] for row in roster}
+        assert ("household", "mortgage_principal") not in classes
         assert classes["household", "rent"] == "quantile_mapped"
         assert classes["person", "liquid_financial_assets"] == "normalized"
         derived = [row for row in roster if row["class"] == "derived"]

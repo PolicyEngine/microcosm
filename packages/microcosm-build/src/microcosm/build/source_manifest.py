@@ -65,6 +65,8 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_trading_allowance_receipts",
         # microcosm#1095 (Y1): DWP's admin-linked UC limited capability status.
         "assign_uc_limited_capability_from_admin_status",
+        # microcosm#1095: UC's new-claimant health element draw, by claim recency.
+        "assign_uc_new_claimant_draw",
         "assign_uniform_draw",
         "aggregate_person_to_benunit",
         "allocate_per_capita_from_cell_table",

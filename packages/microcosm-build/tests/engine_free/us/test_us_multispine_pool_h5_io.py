@@ -54,7 +54,13 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
-from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.frame import (
+    US_SCHEMA,
+    Frame,
+    SharedColumnChangedError,
+    WeightKind,
+    Weights,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -1314,7 +1320,7 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         _cached_canonical_stacked_late_dag_receipt(
             worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
             worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-            worker_identity_module.os.cpu_count(),
+            worker_identity_module._default_predict_workers(),
         )
     )
 
@@ -1885,6 +1891,51 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
         )
         == (manifest["stack_manifest"])
     )
+
+
+def _load_pool_for_release(manifest_path: Path):
+    return load_authenticated_us_multispine_pool_for_release(
+        manifest_path,
+        allow_terminal_gate_failure=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "load_pool",
+    (
+        pytest.param(load_simulation_ready_us_multispine_pool, id="ready"),
+        pytest.param(_load_pool_for_release, id="release"),
+        pytest.param(load_authenticated_us_multispine_pool_for_scoring, id="scoring"),
+    ),
+)
+def test_stacked_pool_loads_under_other_qrf_thread_counts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    load_pool: Callable[[Path], tuple[Frame, dict[str, object], object]],
+) -> None:
+    pytest.importorskip("tables")
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "2")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "3")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    primary_producer = next(
+        row
+        for row in manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"][
+            "execution"
+        ]
+        if row["producer"] == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
+    recorded_controls = primary_producer["available_input_receipts"][
+        "tax_unit.@primary_puf_execution_config"
+    ]["binding"]["qrf"]["worker_execution"]["audit_thread_controls"]
+    assert recorded_controls["POPULACE_FIT_N_JOBS"]["resolved"] == 2
+    assert recorded_controls["POPULACE_FIT_PREDICT_WORKERS"]["resolved"] == 3
+
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "5")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "9")
+    frame, _loaded_manifest, _authenticated_h5 = load_pool(manifest_path)
+
+    assert frame.n("household") == 3
 
 
 def test_ready_stacked_pool_loader_restores_sampled_rung_manifest(
@@ -3660,3 +3711,24 @@ def test_legacy_stacked_manifest_refuses_h5_location_rule_attrs(
 
     with pytest.raises(ValueError, match="legacy-rule manifest"):
         load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_nullable_h5_writer_refuses_a_frame_whose_shared_column_changed(
+    tmp_path: Path,
+) -> None:
+    # The writer converts object strings to new arrays before writing them, so
+    # only a check of the frame itself can see this column.
+    source = _pool_frame_with_object_strings_on_every_entity()
+    shared = source.replace_tables()
+    np.asarray(source.table("person")["PERIDNUM"].array)[0] = "changed"
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        write_nullable_us_h5(
+            shared,
+            tmp_path / "pool.h5",
+            period=2024,
+            artifact_kind=LEGACY_NULLABLE_STAGING_ARTIFACT_KIND,
+        )
+
+    assert raised.value.changed_columns == (("person", "PERIDNUM"),)
+    assert list(tmp_path.iterdir()) == []

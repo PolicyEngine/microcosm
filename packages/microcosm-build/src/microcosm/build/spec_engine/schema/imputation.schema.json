@@ -3385,7 +3385,7 @@
                    "additionalProperties": false,
                    "properties": {
                     "schema_version": {
-                     "const": 1
+                     "const": 2
                     },
                     "semantic_identity": {
                      "type": "object",
@@ -3422,13 +3422,26 @@
                      "required": [
                       "resolver_op"
                      ]
+                    },
+                    "audit_thread_controls": {
+                     "type": "object",
+                     "additionalProperties": false,
+                     "properties": {
+                      "resolver_op": {
+                       "const": "primary_qrf_worker_audit_thread_controls"
+                      }
+                     },
+                     "required": [
+                      "resolver_op"
+                     ]
                     }
                    },
                    "required": [
                     "schema_version",
                     "semantic_identity",
                     "semantic_identity_sha256",
-                    "audit_aliases"
+                    "audit_aliases",
+                    "audit_thread_controls"
                    ]
                   }
                  },

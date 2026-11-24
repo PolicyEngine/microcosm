@@ -1,6 +1,7 @@
 """Tests split from packages/microcosm-build/tests/test_us_spm_independence_role.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.frame import SharedColumnChangedError
 from test_support.microcosm_build.us_spm_independence_role import *
 
 
@@ -537,3 +538,22 @@ def test_seeded_agreement_with_the_raw_rule_and_the_derivation(
     assert provenance["adult_child_person_count_mismatch_units"] == 0
     teens = person["age"].between(15, 17).to_numpy()
     assert provenance["independent_minor_persons"] == int((role & teens).sum())
+
+
+def test_the_stage_refuses_a_frame_whose_shared_column_changed(population) -> None:
+    """The stage works on deep copies, which could not show the change."""
+
+    _source, path, pin, frame = population
+    shared = frame.replace_tables()
+    np.add.at(frame.table("person")["age"].to_numpy(), [0], 1)
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        with_us_spm_independence_role(
+            shared,
+            seed=0,
+            time_period=2024,
+            asec_spm_role_source_paths={_INCOME_YEAR: path},
+            source_pins={_INCOME_YEAR: pin},
+        )
+
+    assert raised.value.changed_columns == (("person", "age"),)

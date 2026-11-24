@@ -94,10 +94,16 @@ def write_frame_checkpoint(
     *,
     metadata: Mapping[str, object] | None = None,
 ) -> Path:
-    """Atomically write a deterministic checkpoint, one column at a time."""
+    """Atomically write a deterministic checkpoint, one column at a time.
+
+    Raises:
+        SharedColumnChangedError: If a raw write changed a column the frame
+            shares. Nothing is written.
+    """
 
     if not isinstance(frame, Frame):
         raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
+    frame.check_shared_columns()
     external_metadata = _normalize_external_metadata(metadata)
     checkpoint_metadata = _checkpoint_metadata(frame, external_metadata)
 
@@ -175,9 +181,17 @@ def load_frame_checkpoint(
 ) -> LoadedFrameCheckpoint:
     """Load a checkpoint and reconstruct its schema, data, and audit metadata.
 
+    The frame takes the decoded tables without copying them when pandas
+    copy-on-write is on (:meth:`~microcosm.frame.Frame.adopt`), so each
+    loaded table keeps one internal block per column; values, dtypes and the
+    bytes a rewrite produces are unchanged. A pandas fixed-format HDF write,
+    which stores one dataset per internal block, can therefore group a loaded
+    table's columns into different datasets than a write of the same table
+    built in memory; the values read back by column name are the same.
+
     ``frame_metadata`` lets a caller restore separately bound
     :class:`~microcosm.frame.Frame` metadata during the loader's one Frame
-    construction. This avoids a second full-table copy for large checkpoints.
+    construction. This avoids building a second frame for large checkpoints.
     The caller remains responsible for validating that metadata against its
     own artifact identity or embedded external metadata.
     """
@@ -299,7 +313,10 @@ def load_frame_checkpoint(
         )
     mass_log = _mass_log_from_metadata(stored_metadata, input_path)
     try:
-        frame = Frame(
+        # The decoded tables have no other owner, so the frame takes them
+        # without copying (under pandas copy-on-write): reading a checkpoint
+        # holds one copy of its data, not the decoded columns plus a copy.
+        frame = Frame.adopt(
             tables,
             schema,
             weights,

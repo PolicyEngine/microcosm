@@ -461,7 +461,7 @@ def test_image_installs_the_emitter_command_on_its_own(app) -> None:
     commands = plan_lib.image_build_commands(plan)
     sync = next(index for index, command in enumerate(commands) if "uv sync" in command)
     install_command = (
-        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.16.0'"
+        "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'microcosm-emitter>=0.17.0'"
     )
     assert install_command in commands
     install = commands.index(install_command)
@@ -2688,6 +2688,28 @@ def test_a_plan_may_set_the_telemetry_requirement_only_to_0(value: str) -> None:
     with pytest.raises(plan_lib.PlanError, match="may only be 0"):
         plan_lib.tool_environment({}, {"MICROCOSM_TELEMETRY_REQUIRED": value})
     env = {"MICROCOSM_TELEMETRY_REQUIRED": "0"}
+    assert dict(plan_lib.parse_plan(_plan_data(env=env)).env) == env
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "0",
+        "-1",
+        "+4",
+        " 3 ",
+        "4.0",
+        "four",
+        pytest.param("9" * 5000, id="longer_than_int_parses"),
+    ],
+)
+def test_a_plan_s_thread_setting_must_be_a_positive_whole_number(value: str) -> None:
+    # The base tool's check step loads it without running its start-up step,
+    # so a bad value would otherwise stop the run only after the runner had
+    # staged the inputs.
+    with pytest.raises(plan_lib.PlanError, match="MICROCOSM_THREADS"):
+        plan_lib.parse_plan(_plan_data(env={"MICROCOSM_THREADS": value}))
+    env = {"MICROCOSM_THREADS": "4"}
     assert dict(plan_lib.parse_plan(_plan_data(env=env)).env) == env
 
 

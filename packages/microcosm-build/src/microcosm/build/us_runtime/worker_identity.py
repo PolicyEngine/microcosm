@@ -14,7 +14,7 @@ import os
 import subprocess
 import sys
 import sysconfig
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib import metadata
@@ -24,11 +24,21 @@ from tempfile import TemporaryDirectory
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
-PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION = 1
+#: Schema 2 records the fit-job and prediction-worker counts in
+#: ``audit_thread_controls``, outside the semantic identity that recorded-versus-
+#: live comparisons read. The counts change no imputed value (``microcosm-fit``'s
+#: ``test_qrf_worker_counts.py``), and an unset prediction-worker count follows
+#: the machine, so a different CPU count no longer makes a pool's worker differ.
+#: The one exception is the frozen schema-4 record that the scoring-only
+#: relocation of a sealed pool compares field by field, counts included.
+PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION = 2
+#: Schema 1 kept the counts in ``semantic_identity.environment.semantic_controls``.
+#: Those records still validate; they never equal a schema-2 identity.
+_SCHEMA_1_WORKER_IDENTITY_SCHEMA_VERSION = 1
 PRIMARY_QRF_WORKER_MODULE = "microcosm.build.us_runtime.puf_qrf_worker"
 PRIMARY_QRF_INTERPRETER_PLACEHOLDER = "{python_interpreter}"
 APPROVED_UV_LOCK_SHA256 = (
-    "6a823b13f3ee70a454ebf6828631037fc0f13a9e0dc8e7624ae8dfb68e0f4b89"
+    "cc2ece9d97931ede6009491aeb311b728ebea7cb03cf6e2752b06fac412b02eb"
 )
 LEGACY_CAMPAIGN_UV_LOCK_SHA256 = (
     "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
@@ -58,9 +68,25 @@ _PLAN_SIGNATURE = {
         "85345eae623d0081354d746a118c9dc5ddaa89a641238e546d8c8e9f7aabbb44"
     ),
 }
-_SEMANTIC_ENVIRONMENT_NAMES = (
+#: The thread-count variables the worker inherits from its parent.
+_THREAD_CONTROL_NAMES = (
     "POPULACE_FIT_N_JOBS",
     "POPULACE_FIT_PREDICT_WORKERS",
+)
+#: ``resolution`` of an unset POPULACE_FIT_PREDICT_WORKERS: the QRF draw's
+#: default width, ``joblib.cpu_count()``.
+_PREDICT_WORKERS_FALLBACK = "joblib_cpu_count_fallback"
+#: The same field as bindings recorded it while the default was
+#: ``os.cpu_count()``. Those records still validate, and the frozen schema-4
+#: worker shape (``legacy_primary_qrf_worker_execution_binding``) records an
+#: unset count as that code did: ``os.cpu_count()`` under this label.
+_SCHEMA_4_PREDICT_WORKERS_FALLBACK = "os_cpu_count_fallback"
+_PREDICT_WORKERS_RESOLUTIONS = frozenset(
+    {
+        "environment_override",
+        _PREDICT_WORKERS_FALLBACK,
+        _SCHEMA_4_PREDICT_WORKERS_FALLBACK,
+    }
 )
 _TORCH_BACKEND_ENTRY_POINT_GROUP = "torch.backends"
 _WORKER_ENVIRONMENT_OVERRIDES = {
@@ -69,7 +95,7 @@ _WORKER_ENVIRONMENT_OVERRIDES = {
     "PYTHONPYCACHEPREFIX": "{empty_pycache_dir}",
 }
 _BOUND_ENVIRONMENT_NAMES = (
-    *_SEMANTIC_ENVIRONMENT_NAMES,
+    *_THREAD_CONTROL_NAMES,
     *_WORKER_ENVIRONMENT_OVERRIDES,
 )
 _CLEAN_WORKER_IMPORT_TRACE_MARKER = "MICROCOSM_WORKER_IMPORT_TRACE="
@@ -153,9 +179,26 @@ _ATTESTATION_KEYS = {
     "permitted_mismatches",
 }
 _SHA256_ALPHABET = frozenset("0123456789abcdef")
-_PRIMARY_QRF_WORKER_IDENTITY_CACHE: dict[
-    tuple[str | None, str | None, str | None], dict[str, object]
-] = {}
+_WORKER_BINDING_KEYS_BY_SCHEMA = {
+    _SCHEMA_1_WORKER_IDENTITY_SCHEMA_VERSION: frozenset(
+        {
+            "schema_version",
+            "semantic_identity",
+            "semantic_identity_sha256",
+            "audit_aliases",
+        }
+    ),
+    PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION: frozenset(
+        {
+            "schema_version",
+            "semantic_identity",
+            "semantic_identity_sha256",
+            "audit_aliases",
+            "audit_thread_controls",
+        }
+    ),
+}
+_PRIMARY_QRF_WORKER_IDENTITY_CACHE: dict[str | None, dict[str, object]] = {}
 
 
 @dataclass(frozen=True)
@@ -1221,7 +1264,31 @@ def _canonical_pyvenv_config() -> dict[str, object]:
     }
 
 
-def _semantic_environment() -> dict[str, object]:
+def _default_predict_workers() -> int:
+    """The QRF draw's own width for an unset ``POPULACE_FIT_PREDICT_WORKERS``.
+
+    The worker resolves the same value through ``microcosm.fit.qrf``, so the
+    binding records the pool width the worker uses. Imported here rather
+    than at module level, which loads only the standard library and
+    ``packaging``.
+    """
+
+    from microcosm.fit.qrf import default_predict_workers
+
+    return default_predict_workers()
+
+
+def _thread_controls(
+    *,
+    unset_predict_workers: Callable[[], int],
+    unset_predict_workers_resolution: str,
+) -> dict[str, object]:
+    """Read and check the thread-count variables the worker inherits.
+
+    An unset or blank ``POPULACE_FIT_PREDICT_WORKERS`` records
+    ``unset_predict_workers()`` under ``unset_predict_workers_resolution``.
+    """
+
     fit_jobs_raw = os.environ.get("POPULACE_FIT_N_JOBS")
     if fit_jobs_raw is None:
         fit_jobs = -1
@@ -1240,8 +1307,8 @@ def _semantic_environment() -> dict[str, object]:
             )
     predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
     if predict_workers_raw is None or not predict_workers_raw.strip():
-        predict_workers = os.cpu_count() or 1
-        predict_workers_source = "os_cpu_count_fallback"
+        predict_workers = unset_predict_workers()
+        predict_workers_source = unset_predict_workers_resolution
     else:
         try:
             predict_workers = int(predict_workers_raw)
@@ -1257,21 +1324,51 @@ def _semantic_environment() -> dict[str, object]:
             )
         predict_workers_source = "environment_override"
     return {
+        "POPULACE_FIT_N_JOBS": {
+            "configured": fit_jobs_raw,
+            "resolved": fit_jobs,
+        },
+        "POPULACE_FIT_PREDICT_WORKERS": {
+            "configured": predict_workers_raw,
+            "resolved": predict_workers,
+            "resolution": predict_workers_source,
+        },
+    }
+
+
+def _audit_thread_controls() -> dict[str, object]:
+    """The thread counts this process would launch the worker with."""
+
+    return _thread_controls(
+        unset_predict_workers=_default_predict_workers,
+        unset_predict_workers_resolution=_PREDICT_WORKERS_FALLBACK,
+    )
+
+
+def _schema_4_thread_controls() -> dict[str, object]:
+    """The same counts as schema-4 code recorded them.
+
+    That code resolved an unset prediction-worker count to ``os.cpu_count()``
+    under ``"os_cpu_count_fallback"``.
+    """
+
+    return _thread_controls(
+        unset_predict_workers=lambda: os.cpu_count() or 1,
+        unset_predict_workers_resolution=_SCHEMA_4_PREDICT_WORKERS_FALLBACK,
+    )
+
+
+def _semantic_environment() -> dict[str, object]:
+    """Return the environment policy, which names variables but holds no counts.
+
+    ``bound_names`` lists the thread-count variables among those the worker
+    binding covers; their values are in ``audit_thread_controls``.
+    """
+    return {
         "policy": (
             "inherit_parent_environment_with_bound_fit_controls_and_forced_overrides"
         ),
         "overrides": dict(_WORKER_ENVIRONMENT_OVERRIDES),
-        "semantic_controls": {
-            "POPULACE_FIT_N_JOBS": {
-                "configured": fit_jobs_raw,
-                "resolved": fit_jobs,
-            },
-            "POPULACE_FIT_PREDICT_WORKERS": {
-                "configured": predict_workers_raw,
-                "resolved": predict_workers,
-                "resolution": predict_workers_source,
-            },
-        },
         "bound_names": list(_BOUND_ENVIRONMENT_NAMES),
     }
 
@@ -1289,38 +1386,34 @@ def primary_qrf_worker_semantic_identity(
     """Return the shared canonical worker identity, excluding launcher aliases.
 
     A process's interpreter, source tree, and installed distributions are
-    attested once per process for each lock and bound-environment combination.
+    attested once per process for each lock.
     Anything that deliberately mutates them must call
     ``clear_primary_qrf_worker_identity_cache()`` before reattesting. The
     returned object graph is shared across calls and must be treated as read-only.
 
-    The raw lock argument is part of the key: ``None`` validates the checkout's
-    lock on its first cache miss and after clearing, while explicit approved
-    and legacy digests have separate entries. Bound environment values are
-    likewise keyed by their raw configured strings so validation is preserved.
+    The raw lock argument is the key: ``None`` validates the checkout's lock
+    on its first cache miss and after clearing, while explicit approved and
+    legacy digests have separate entries. The thread-count variables are not
+    part of this identity; ``primary_qrf_worker_execution_binding()`` reads
+    and checks them on every call.
     """
 
     if uv_lock_sha256 is not None:
         _require_sha256(uv_lock_sha256, boundary="primary-QRF worker lock")
-    key = (
-        uv_lock_sha256,
-        os.environ.get("POPULACE_FIT_N_JOBS"),
-        os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-    )
-    if key not in _PRIMARY_QRF_WORKER_IDENTITY_CACHE:
-        _PRIMARY_QRF_WORKER_IDENTITY_CACHE[key] = (
+    if uv_lock_sha256 not in _PRIMARY_QRF_WORKER_IDENTITY_CACHE:
+        _PRIMARY_QRF_WORKER_IDENTITY_CACHE[uv_lock_sha256] = (
             _uncached_primary_qrf_worker_semantic_identity(
                 uv_lock_sha256=uv_lock_sha256
             )
         )
-    return _PRIMARY_QRF_WORKER_IDENTITY_CACHE[key]
+    return _PRIMARY_QRF_WORKER_IDENTITY_CACHE[uv_lock_sha256]
 
 
 def _uncached_primary_qrf_worker_semantic_identity(
     *,
     uv_lock_sha256: str | None = None,
 ) -> dict[str, object]:
-    """Build the canonical worker identity, excluding all launcher aliases."""
+    """Build the canonical worker identity, excluding all audit fields."""
 
     if uv_lock_sha256 is None:
         lock_sha256 = _approved_uv_lock_sha256()
@@ -1406,8 +1499,16 @@ def _uncached_primary_qrf_worker_semantic_identity(
 
 
 def primary_qrf_worker_execution_binding() -> dict[str, object]:
-    """Return semantic worker identity plus integrity-bound audit aliases."""
+    """Return the semantic worker identity plus fields kept only for audit.
 
+    ``audit_aliases`` spell the interpreter paths and ``audit_thread_controls``
+    the fit-job and prediction-worker counts. Comparisons with a recorded
+    binding read only the semantic identity, so neither the install location
+    nor the machine's CPU count makes a pool or checkpoint incomparable.
+    """
+
+    # Checked before the attestation, so a malformed count fails fast.
+    thread_controls = _audit_thread_controls()
     raw_executable = sys.executable
     executable = Path(raw_executable).absolute()
     # Execution bindings become mutable artifact payloads; their edits must
@@ -1423,6 +1524,7 @@ def primary_qrf_worker_execution_binding() -> dict[str, object]:
             "sys_prefix": str(Path(sys.prefix).absolute()),
             "argv_template_0": raw_executable,
         },
+        "audit_thread_controls": thread_controls,
     }
     validate_primary_qrf_worker_execution_binding(
         result,
@@ -1431,8 +1533,48 @@ def primary_qrf_worker_execution_binding() -> dict[str, object]:
     return result
 
 
+def _validate_thread_controls(controls: object, *, boundary: str) -> None:
+    controls = _require_exact_keys(
+        controls,
+        set(_THREAD_CONTROL_NAMES),
+        boundary=boundary,
+    )
+    fit = _require_exact_keys(
+        controls.get("POPULACE_FIT_N_JOBS"),
+        {"configured", "resolved"},
+        boundary=f"{boundary} fit jobs",
+    )
+    predict = _require_exact_keys(
+        controls.get("POPULACE_FIT_PREDICT_WORKERS"),
+        {"configured", "resolved", "resolution"},
+        boundary=f"{boundary} predict workers",
+    )
+    if fit.get("configured") is not None and not isinstance(fit.get("configured"), str):
+        raise ValueError(f"{boundary} configured fit jobs must be a string or null.")
+    if predict.get("configured") is not None and not isinstance(
+        predict.get("configured"), str
+    ):
+        raise ValueError(
+            f"{boundary} configured predict workers must be a string or null."
+        )
+    if (
+        isinstance(fit.get("resolved"), bool)
+        or not isinstance(fit.get("resolved"), int)
+        or int(fit["resolved"]) < -1
+        or fit.get("resolved") == 0
+        or isinstance(predict.get("resolved"), bool)
+        or not isinstance(predict.get("resolved"), int)
+        or int(predict["resolved"]) < 1
+        or predict.get("resolution") not in _PREDICT_WORKERS_RESOLUTIONS
+    ):
+        raise ValueError(f"{boundary} thread controls are malformed.")
+
+
 def _validate_semantic_identity(
-    semantic: object, *, boundary: str
+    semantic: object,
+    *,
+    boundary: str,
+    schema_version: int = PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION,
 ) -> Mapping[str, object]:
     value = _require_exact_keys(
         semantic,
@@ -1565,9 +1707,12 @@ def _validate_semantic_identity(
     ]
     if value.get("argv_template") != expected_argv:
         raise ValueError(f"{boundary} semantic argv template changed.")
+    environment_keys = {"policy", "overrides", "bound_names"}
+    if schema_version == _SCHEMA_1_WORKER_IDENTITY_SCHEMA_VERSION:
+        environment_keys.add("semantic_controls")
     environment = _require_exact_keys(
         value.get("environment"),
-        {"policy", "overrides", "semantic_controls", "bound_names"},
+        environment_keys,
         boundary=f"{boundary} environment",
     )
     if (
@@ -1577,41 +1722,11 @@ def _validate_semantic_identity(
         or environment.get("bound_names") != list(_BOUND_ENVIRONMENT_NAMES)
     ):
         raise ValueError(f"{boundary} semantic environment policy changed.")
-    controls = _require_exact_keys(
-        environment.get("semantic_controls"),
-        set(_SEMANTIC_ENVIRONMENT_NAMES),
-        boundary=f"{boundary} semantic controls",
-    )
-    fit = _require_exact_keys(
-        controls.get("POPULACE_FIT_N_JOBS"),
-        {"configured", "resolved"},
-        boundary=f"{boundary} fit jobs",
-    )
-    predict = _require_exact_keys(
-        controls.get("POPULACE_FIT_PREDICT_WORKERS"),
-        {"configured", "resolved", "resolution"},
-        boundary=f"{boundary} predict workers",
-    )
-    if fit.get("configured") is not None and not isinstance(fit.get("configured"), str):
-        raise ValueError(f"{boundary} configured fit jobs must be a string or null.")
-    if predict.get("configured") is not None and not isinstance(
-        predict.get("configured"), str
-    ):
-        raise ValueError(
-            f"{boundary} configured predict workers must be a string or null."
+    if schema_version == _SCHEMA_1_WORKER_IDENTITY_SCHEMA_VERSION:
+        _validate_thread_controls(
+            environment.get("semantic_controls"),
+            boundary=f"{boundary} semantic controls",
         )
-    if (
-        isinstance(fit.get("resolved"), bool)
-        or not isinstance(fit.get("resolved"), int)
-        or int(fit["resolved"]) < -1
-        or fit.get("resolved") == 0
-        or isinstance(predict.get("resolved"), bool)
-        or not isinstance(predict.get("resolved"), int)
-        or int(predict["resolved"]) < 1
-        or predict.get("resolution")
-        not in {"environment_override", "os_cpu_count_fallback"}
-    ):
-        raise ValueError(f"{boundary} resolved worker controls are malformed.")
     return value
 
 
@@ -1620,25 +1735,42 @@ def validate_primary_qrf_worker_execution_binding(
     *,
     boundary: str,
 ) -> None:
-    """Validate the closed v1 worker identity and its semantic self-digest."""
+    """Validate a closed worker binding and its semantic self-digest.
 
+    Schema 2 is current. Schema-1 records, written before the thread counts
+    left the semantic identity, still validate so a loader can report them
+    as a changed identity rather than an unreadable one.
+    """
+
+    schema_version = (
+        binding.get("schema_version") if isinstance(binding, Mapping) else None
+    )
+    known_schema = (
+        isinstance(schema_version, int)
+        and not isinstance(schema_version, bool)
+        and schema_version in _WORKER_BINDING_KEYS_BY_SCHEMA
+    )
     worker = _require_exact_keys(
         binding,
-        {
-            "schema_version",
-            "semantic_identity",
-            "semantic_identity_sha256",
-            "audit_aliases",
-        },
+        set(
+            _WORKER_BINDING_KEYS_BY_SCHEMA[
+                schema_version
+                if known_schema
+                else PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION
+            ]
+        ),
         boundary=boundary,
     )
-    if worker.get("schema_version") != PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION:
+    if not known_schema:
         raise ValueError(
             f"{boundary} requires schema version "
-            f"{PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION}."
+            f"{PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION} (or "
+            f"{_SCHEMA_1_WORKER_IDENTITY_SCHEMA_VERSION}, recorded before)."
         )
     semantic = _validate_semantic_identity(
-        worker.get("semantic_identity"), boundary=f"{boundary} semantic_identity"
+        worker.get("semantic_identity"),
+        boundary=f"{boundary} semantic_identity",
+        schema_version=schema_version,
     )
     semantic_sha256 = _require_sha256(
         worker.get("semantic_identity_sha256"),
@@ -1655,6 +1787,11 @@ def validate_primary_qrf_worker_execution_binding(
         _require_string(value, boundary=f"{boundary} audit alias {name}")
         if name in {"sys_executable", "sys_prefix"} and not Path(value).is_absolute():
             raise ValueError(f"{boundary} audit alias {name} must be absolute.")
+    if schema_version == PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION:
+        _validate_thread_controls(
+            worker.get("audit_thread_controls"),
+            boundary=f"{boundary} audit thread controls",
+        )
 
 
 def _validated_primary_qrf_worker_semantic_identity(
@@ -1674,7 +1811,11 @@ def primary_qrf_worker_semantic_projection(
     *,
     boundary: str,
 ) -> dict[str, object]:
-    """Project a binding for identities that must never hash audit aliases."""
+    """Project a binding for identities that must never hash its audit fields.
+
+    The projection drops ``audit_aliases`` (interpreter paths) and
+    ``audit_thread_controls`` (fit-job and prediction-worker counts).
+    """
 
     semantic = _validated_primary_qrf_worker_semantic_identity(
         binding, boundary=boundary
@@ -1693,7 +1834,7 @@ def primary_qrf_worker_bindings_semantically_equal(
     *,
     boundary: str,
 ) -> bool:
-    """Compare validated semantic identities while ignoring launcher aliases."""
+    """Compare validated semantic identities, ignoring the audit fields."""
 
     return _validated_primary_qrf_worker_semantic_identity(
         left, boundary=f"{boundary} recorded worker"
@@ -1731,7 +1872,12 @@ def legacy_primary_qrf_worker_execution_binding(
     # semantic identity above still binds and enforces the current safe policy.
     environment["policy"] = "inherit_parent_environment_with_bound_fit_controls"
     environment["overrides"] = {}
-    environment["bound_names"] = list(_SEMANTIC_ENVIRONMENT_NAMES)
+    environment["bound_names"] = list(_THREAD_CONTROL_NAMES)
+    # The schema-4 shape keeps the thread counts beside the policy, as that
+    # code recorded them: an unset prediction-worker count as this host's
+    # os.cpu_count(). The sealed records compared with this projection hold
+    # those values, so this frozen comparison still includes the counts.
+    environment["semantic_controls"] = _schema_4_thread_controls()
     return {
         "module": worker_module["name"],
         "argv_template": [str(executable), *argv[1:]],

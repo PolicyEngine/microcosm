@@ -52,8 +52,11 @@ FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE: dict[str, dict[str, object]] = {
     FRS_HMRC_PAY_COLUMN: {
         "spi_concept": "PAY",
         "scope": "full",
-        "raw_sources": ["ADULT.INEARNS"],
-        "formula": "max(0, ADULT.INEARNS) * 52",
+        "raw_sources": ["ADULT.INEARNS", "CHILD.CHEARNS"],
+        "formula": (
+            "max(0, ADULT.INEARNS) * 52 on the adult tab, "
+            "max(0, CHILD.CHEARNS) * 52 on the child tab"
+        ),
     },
     FRS_HMRC_UBISJA_COLUMN: {
         "spi_concept": "UBISJA",
@@ -181,6 +184,7 @@ def _read_raw_frs_table(
 def _materialize_source_leaves(
     adult: pd.DataFrame,
     benefits: pd.DataFrame,
+    child: pd.DataFrame,
 ) -> pd.DataFrame:
     adult_ids = _raw_source_person_ids(adult, label="ADULT")
     if pd.Index(adult_ids).duplicated().any():
@@ -195,6 +199,30 @@ def _materialize_source_leaves(
         {FRS_HMRC_PAY_COLUMN: pay},
         index=pd.Index(adult_ids, name="source_person_id"),
     )
+    # A dependent child's pay is CHILD.CHEARNS, as ADULT.INEARNS is an
+    # adult's; frs_spine carries both into employment_income
+    # (PolicyEngine/microcosm#1663). Without it a child whose pay is above the
+    # personal allowance is a taxpayer with no pay in the HMRC rows (Vahid's
+    # final review of PolicyEngine/microcosm#1663, María's reply of 19
+    # November 2026).
+    child_ids = _raw_source_person_ids(child, label="CHILD")
+    if pd.Index(child_ids).duplicated().any():
+        duplicates = pd.Index(child_ids)[pd.Index(child_ids).duplicated()].unique()
+        raise ValueError(
+            "Raw FRS CHILD person identities must be unique; duplicate "
+            f"value(s): {duplicates[:5].tolist()}."
+        )
+    on_both = int(np.isin(child_ids, adult_ids).sum())
+    if on_both:
+        raise ValueError(
+            f"{on_both} raw FRS person identities are on both the ADULT and CHILD tabs."
+        )
+    child_earnings = _finite_numeric(child["chearns"], label="CHILD.CHEARNS")
+    child_leaf = pd.DataFrame(
+        {FRS_HMRC_PAY_COLUMN: np.maximum(child_earnings, 0.0) * FRS_WEEKS_IN_YEAR},
+        index=pd.Index(child_ids, name="source_person_id"),
+    )
+    pay_leaf = pd.concat([adult_leaf, child_leaf])
 
     benefit_ids = _raw_source_person_ids(benefits, label="BENEFITS")
     benefit_codes = _strict_integer_values(
@@ -235,13 +263,13 @@ def _materialize_source_leaves(
     benefit_leaf = benefit_leaf.groupby(level=0, sort=False).sum()
     benefit_leaf *= FRS_WEEKS_IN_YEAR
 
-    source_ids = adult_leaf.index.union(benefit_leaf.index, sort=False)
+    source_ids = pay_leaf.index.union(benefit_leaf.index, sort=False)
     result = pd.DataFrame(
         0.0,
         index=source_ids,
         columns=FRS_HMRC_RETAINED_LEAF_COLUMNS,
     )
-    result.loc[adult_leaf.index, FRS_HMRC_PAY_COLUMN] = adult_leaf[FRS_HMRC_PAY_COLUMN]
+    result.loc[pay_leaf.index, FRS_HMRC_PAY_COLUMN] = pay_leaf[FRS_HMRC_PAY_COLUMN]
     for column in benefit_leaf.columns:
         result.loc[benefit_leaf.index, column] = benefit_leaf[column]
     numeric = result.to_numpy(dtype=float)

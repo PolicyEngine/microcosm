@@ -28,6 +28,20 @@ emitter that cannot be used stops the builder before it reads any input.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+if __name__ == "__main__":
+    # The same start-up step as tools/build_us_acs_multispine_base.py, for a
+    # direct run of this file: it comes before numpy loads and does not run on
+    # import. The helper is in tools/, which a direct run does not have on its
+    # path. E402 is ignored for this file in pyproject for this block.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from us_build_thread_environment import set_build_thread_environment
+
+    del sys.path[0]
+    set_build_thread_environment()
+
 import argparse
 import gc
 import hashlib
@@ -35,7 +49,6 @@ import json
 import os
 from collections.abc import Mapping
 from dataclasses import replace
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -297,7 +310,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--max-targets-per-fit",
         default=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
         type=_positive_int,
-        help="Maximum chained QRF targets retained at once (default: 8).",
+        help="Maximum QRF targets chained together in one ACS transfer batch (default: 8).",
     )
     parser.add_argument(
         "--donor-channel",
@@ -2258,6 +2271,7 @@ def _write_dataset(
     back; the default writes none, so a legacy file is unchanged.
     """
 
+    frame.check_shared_columns()
     output = Path(path)
     output.unlink(missing_ok=True)
     try:

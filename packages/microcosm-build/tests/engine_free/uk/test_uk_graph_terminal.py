@@ -198,9 +198,15 @@ def test_export_roundtrip_preserves_dtype_weights_lineage_period_and_gate(tmp_pa
 def test_export_refuses_population_changed_after_descriptor(tmp_path):
     frame = _frame()
     descriptor = describe_uk_export(frame, bindings={}, solve_year=2025)
-    frame.table("person").loc[0, "income"] = 99.0
+    # Build the changed population as a new frame. Frame tables are
+    # read-only: describe_uk_export shared the person columns with a frame it
+    # has since freed, so a .loc write here would change that recorded memory
+    # in place and be refused by the shared-column check instead.
+    income = frame.table("person")["income"].copy()
+    income.loc[0] = 99.0
+    changed = frame.with_columns("person", income=income)
     with pytest.raises(ValueError, match="descriptor"):
-        materialize_uk_export(frame, descriptor, tmp_path / "changed.h5")
+        materialize_uk_export(changed, descriptor, tmp_path / "changed.h5")
 
 
 def test_export_readback_reports_changed_stored_values(tmp_path):
