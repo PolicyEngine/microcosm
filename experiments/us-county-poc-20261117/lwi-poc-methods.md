@@ -1,10 +1,12 @@
 ---
 kind: proposal
 client: "Living Wage Institute"
+title: "County Files proof of concept: methods — a PolicyEngine methods note"
 status: "draft v0.2 (2026-11-20): for María and Max to review, not for sending"
 pe-doc:
   psl_foundation: false
   split_tables: true
+  budget_widths: false
   pdf_name: "PolicyEngine - County Files proof of concept methods"
 ---
 
@@ -26,7 +28,7 @@ The PoC report gives the results, and the schema documentation lists the file's 
 We built the 2024 county file from two sets of household records and from published statistics, with PolicyEngine's US tax-benefit model. We list each source at the vintage the build read on 17–18 November 2026. The build records the SHA-256 digest of every input file; the appendix lists the main ones.
 
 | Source | Vintage | What the build uses it for |
-|---|---|---|
+|---------------------------|----------------|-------------------------------------|
 | ACS public-use microdata, household and person files | 2024 1-year | 1,529,668 ACS household records with 3,420,942 people. Of these, 181,260 are group-quarters records: one person each, living in a place such as a nursing home or college dormitory rather than a housing unit, and counting as a household of one. These counts come after staging drops group-quarters records of children under 15 (see "What we impute onto ACS households, and from which donors") |
 | PolicyEngine's national donor file: release `populace-us-2024-spm-receipts-20260923`, with five more person columns | See "Donor households" below the table | 57,240 donor household records with 166,321 person records; we train the imputation on their person records, tax units (the people on one tax return) and SPM units (the family unit of the Supplemental Poverty Measure) |
 | Current Population Survey Annual Social and Economic Supplement (CPS ASEC), person files `pppub23`–`pppub25` | Survey years 2023–2025 (income years 2022–2024) | The donor households' survey records, and three work columns on their person records |
@@ -155,7 +157,7 @@ In the table below, "ASEC" and "PUF" name the two roles a donor person record ca
 Staging imputed 101 columns in 25 families:
 
 | What staging imputes | Columns | Unit | ACS records filled | Donor records trained on |
-|---|---:|---|---:|---:|
+|--------------------------------|-------:|---------|---------------:|--------------:|
 | Usual weekly hours | 1 | person | 39,800 | 50,490 ASEC |
 | Child support received and paid | 2 | person | 3,420,942 | 66,001 ASEC |
 | Retirement-account distributions: 401(k), 403(b), simplified employee pension (SEP), Keogh and Roth IRA | 5 | person | 3,420,942 | 66,001 ASEC |
@@ -234,7 +236,7 @@ Only some targets equal published figures. The state SNAP and Medicaid targets e
 ### The targets
 
 | Targets | Level | Trained | Held out | Source |
-|---|---|---:|---:|---|
+|--------------------------|-----------|---------:|--------:|------------------------|
 | SOI, all returns: the return count, AGI, and 45 return counts and dollar amounts for 23 income, deduction, credit and tax items | State | 2,397 | 0 | SOI Historic Table 2, tax year 2022 |
 | SOI taxable interest: returns and dollars in 9 AGI bands | State | 912 | 0 | SOI Historic Table 2, tax year 2022 (the band under $1 has no row for 3 states) |
 | SOI EITC: claims and dollars, in total and by number of children | State | 510 | 0 | SOI Historic Table 2, tax year 2022 |
@@ -395,7 +397,7 @@ The `qa` stage loaded the calibrated file with Microcosm's own loader, not polic
 ## Appendix: build identifiers and settings
 
 | Item | Value |
-|---|---|
+|------------------|--------------------------------------------------------------|
 | Build | `populace-us-2024-buildo-acs-local-f8b1039f00-20261118T011728Z`, 17–18 November 2026 |
 | File | `populace_us_2024_acs_local.h5`, 10,637,811,669 bytes, SHA-256 `82314a3b5a6a95762faf6eb4f5b499ce56608ad6a39a27b75e11c75b4945bd3c` |
 | Code | Microcosm, commit `72b7072bf` (staging) and commit `f8b1039f0` (the release build) |
