@@ -30,24 +30,25 @@ the release's current build.
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 # microcosm#456 (#447 ops note): bound the default BLAS/OpenMP/joblib thread
 # pools instead of inheriting machine geometry — per-thread scratch buffers
 # scale the resident set with core count (measured 125 GB anon-RSS at 16 vCPU
 # vs 249 GB at 32 vCPU for the same build). OpenBLAS and torch read these at
-# library load, so this must precede the numpy/torch imports below; operator-
-# set values always win (setdefault only). E402 is ignored for this file in
-# pyproject for exactly this block.
-_THREAD_POOL_DEFAULT = str(min(os.cpu_count() or 1, 16))
-for _thread_pool_variable in (
-    "OMP_NUM_THREADS",
-    "OPENBLAS_NUM_THREADS",
-    "MKL_NUM_THREADS",
-    "NUMEXPR_NUM_THREADS",
-    "VECLIB_MAXIMUM_THREADS",
-    "LOKY_MAX_CPU_COUNT",
-):
-    os.environ.setdefault(_thread_pool_variable, _THREAD_POOL_DEFAULT)
+# library load, so this must precede the numpy/torch imports below. The one
+# thread setting of the US build commands, MICROCOSM_THREADS, replaces the
+# default of min(os.cpu_count(), 16), and variables already set keep their
+# values (tools/us_build_thread_environment.py). This also runs on import, as
+# it always has. The helper is loaded from this file's folder, which an import
+# does not always have on its path. E402 is ignored for this file in pyproject
+# for exactly this block.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from us_build_thread_environment import set_build_thread_environment
+
+del sys.path[0]
+set_build_thread_environment(default_count=min(os.cpu_count() or 1, 16))
 
 import argparse
 import dataclasses
@@ -62,7 +63,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import sys
 import time
 import tomllib
 import traceback
@@ -71,7 +71,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from importlib.resources import files as package_files
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from types import MethodType, SimpleNamespace
 from typing import Any
 
@@ -3261,6 +3261,7 @@ def _write_target_frame_checkpoint(
 ) -> dict[str, object]:
     import h5py
 
+    frame.check_shared_columns()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f"{path.name}.tmp")
     if tmp_path.exists():
@@ -18122,9 +18123,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "refit_initial_loss": _finite_or_none(result.initial_loss),
             "refit_final_loss": _finite_or_none(result.final_loss),
         }
-    # Frame.with_weights copies the target tables into each calibrated frame.
-    # Drop the input now and replace those result frames after building the
-    # clean export from base_frame and the calibrated weights below.
+    # A calibrated frame built from target_frame by Frame.with_weights (the
+    # dense result, an L0 selection) shares the target tables' memory with it,
+    # so the tables are freed only once both references are gone: drop the
+    # input now, and replace those result frames after building the clean
+    # export from base_frame and the calibrated weights below.
     del target_frame
     if telemetry is not None:
         telemetry.stage(

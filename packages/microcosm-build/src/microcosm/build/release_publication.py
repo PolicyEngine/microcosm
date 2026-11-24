@@ -37,8 +37,10 @@ the release's current build requested after it landed first.
 
 A publication names its build for the collector (:func:`collector_provenance`),
 so the emitter, whose collector submissions are on, submits the build's
-calibration diagnostics, with its build and release manifests, to the
-collector after the release commit, under the build's folder
+calibration diagnostics, with its build and release manifests and, when the
+release has them, its ``parent_build_manifest.json`` and
+``reform_validation.json`` (emitter 0.17.0 and later), to the collector after
+the release commit, under the build's folder
 ``releases/<release>/<build>``. Once the publication has landed, the command
 waits for the collector to accept them before it closes its emitter, which
 starts no new submission once it is closing, and prints the collector's

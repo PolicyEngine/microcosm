@@ -173,6 +173,7 @@ from microcosm.build.spec_engine import load_yaml12
 from microcosm.frame import concepts as frame_concepts
 from microcosm.frame.concept_mapping import MAPPING_FORMAT
 from microcosm.frame.input_closure import INPUT_CLOSURE_FORMAT
+from microcosm.frame.transport import DONOR_PROFILE_FORMAT
 from test_support.paths import paths_for
 
 _BUILD = paths_for("microcosm-build")
@@ -1019,7 +1020,7 @@ def _serialized_identifier(key: object, child: object) -> bool:
     """
 
     if key == "format":
-        return child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT}
+        return child in {INPUT_CLOSURE_FORMAT, MAPPING_FORMAT, DONOR_PROFILE_FORMAT}
     return (
         key == "type"
         and isinstance(child, Mapping)
@@ -3368,6 +3369,14 @@ class TestSourceCitations:
             INPUT_CLOSURE_FORMAT
         }
 
+    def test_the_donor_profile_format_identifier_is_not_a_python_symbol(self) -> None:
+        # donor_profile.json's format tag; outside a format key the scan reads
+        # its dotted prefix as a module that does not exist.
+        assert dotted_symbol_citations({"format": DONOR_PROFILE_FORMAT}) == set()
+        assert dotted_symbol_citations({"note": DONOR_PROFILE_FORMAT}) == {
+            "microcosm.donor"
+        }
+
     def test_a_declared_artifact_type_is_not_a_python_symbol(self) -> None:
         from microcosm.build.transport.income_evidence_kernels import (
             OMISSION_REGISTER_TYPE,
@@ -4217,6 +4226,50 @@ class TestDeclaredResources:
         assert artifact["size_bytes"] == 462915783
         assert {"donor_country_code", "support_stratum"} <= set(donor.outputs)
         assert "US donor support records" in donor.survey
+
+    def test_donor_profile_is_the_d3058_selection_for_the_pinned_donor(self) -> None:
+        from microcosm.frame.transport import parse_donor_profile
+        from microcosm.graph.canonical import canonical_json
+
+        document = _load("donor_profile.json")
+        # Composition hands CREATE the canonical text of the whole document
+        # (transport/compose.py's whole-resource json selection), and the
+        # shared parser accepts only that spelling.
+        text = canonical_json(document).decode("utf-8")
+        profile = parse_donor_profile(text)
+        assert profile.canonical_text == text
+        assert document["format"] == DONOR_PROFILE_FORMAT
+        assert (profile.name, profile.version) == ("populace-us-cps-asec", 1)
+        # d3058, rules 2 to 5, for one engineering measurement run: assisted
+        # renters stand in for public-authority tenants (the donor has no
+        # landlord signal), blank study answers read as not full time on this
+        # pinned donor only, and tenure wins over contradicting housing costs.
+        assert dict(profile.choices) == {
+            "assisted_renter_tenure": "rented_public_authority",
+            "blank_full_time_study": "read_false",
+            "housing_cost_contradicting_tenure": "tenure_wins",
+        }
+        stages = load_country_spec("nz").sources.stage_map()
+        (artifact,) = stages["load_populace_us_support_pool"].artifacts
+        assert profile.donor_sha256 == artifact["sha256"]
+        assert profile.donor_sha256 == _load("transport_inputs.json")["donor"]["sha256"]
+        # Whole-document selection trims documents with target_references,
+        # and the reference-closure scan reads "reference"/"target" keys.
+        assert not {"target_references", "reference", "target"} & set(
+            _nested_keys(document)
+        )
+
+    def test_donor_stage_reads_the_spm_unit_table_the_profile_stages(self) -> None:
+        from microcosm.frame.transport import _PROFILE_COLUMNS
+
+        stages = load_country_spec("nz").sources.stage_map()
+        (operation,) = stages["load_populace_us_support_pool"].operations
+        assert operation.kind == "read_tables"
+        assert operation.parameters["tables"] == ["person", "household", "spm_unit"]
+        # Placement ruling term 3: the stage declares every donor table the
+        # profile reader opens. CREATE sees only this file's digest
+        # (donor_pin_sha256), so nothing at run time checks the declaration.
+        assert set(_PROFILE_COLUMNS) <= set(operation.parameters["tables"])
 
 
 class TestReportingClassifiers:

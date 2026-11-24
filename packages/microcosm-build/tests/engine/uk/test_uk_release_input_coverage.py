@@ -526,6 +526,7 @@ class TestUKManifest:
                 "uc_limited_capability",
                 "pip_points",
                 "trading_allowance_receipts",
+                "uc_new_claimant_draw",
                 "company_cars",
                 "regional_property_uprating",
                 "high_value_home_support",

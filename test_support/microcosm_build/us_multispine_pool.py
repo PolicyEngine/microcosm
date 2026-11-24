@@ -102,6 +102,7 @@ from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
 )
+from test_support.microcosm_build.qrf_chain_doubles import FitPredictChainDouble
 
 _FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
 
@@ -610,7 +611,7 @@ class _ProducerDtypeFittedQRF:
         return predictions
 
 
-class _ProducerDtypeQRF:
+class _ProducerDtypeQRF(FitPredictChainDouble):
     """Tiny deterministic model beneath the real source-producer wrappers."""
 
     def __init__(

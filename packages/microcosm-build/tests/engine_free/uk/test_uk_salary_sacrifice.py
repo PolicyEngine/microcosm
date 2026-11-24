@@ -79,12 +79,14 @@ def _frame(
     weights=None,
     employment_income=None,
     bonus=None,
+    dependent_child=None,
 ):
     n = len(asked)
     ids = np.arange(1, n + 1, dtype="int64")
     channels = channels or ["frs"] * n
     clones = clones or [False] * n
     donors = donors or [False] * n
+    dependent_child = dependent_child or [False] * n
     person = pd.DataFrame(
         {
             "person_id": ids,
@@ -100,6 +102,7 @@ def _frame(
             SALSAC_OUTPUT: salary_sacrifice_values,
             "employee_pension_contributions": employee_pension,
             BONUS_SACRIFICE_SOURCE: np.zeros(n) if bonus is None else bonus,
+            "is_hbai_dependent_child": dependent_child,
         }
     )
     household = pd.DataFrame(
@@ -216,6 +219,65 @@ def test_qrf_predicts_only_for_people_not_asked_who_are_paid(
     # The headcount the conversion tops up starts from true users only: the
     # asked person without pay is no longer one of them.
     assert result.pre_headcount == 2.0
+
+
+def test_a_dependent_child_with_pay_takes_no_predicted_sacrifice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given an asked adult, and an adult and a dependent child who were not
+    # asked, both paid: the child's pay is CHILD.CHEARNS
+    # (PolicyEngine/microcosm#1663).
+    _FakeQRF.training_frames = []
+    _Fitted.value = 900.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 0, 0],
+        salary_sacrifice_values=[10.0, 0.0, 0.0],
+        employee_pension=[0.0] * 3,
+        employment_income=[30_000.0, 3_000.0, 3_000.0],
+        dependent_child=[False, False, True],
+        weights=np.asarray([1.0, 1.0, 4.0]),
+    )
+
+    result = impute_salary_sacrifice(frame)
+
+    # Then the forest predicts for the adult alone, and the child sacrifices
+    # none of their pay (Vahid's final review of PolicyEngine/microcosm#1663).
+    assert result.frame.table("person")[SALSAC_OUTPUT].tolist() == [10.0, 900.0, 0.0]
+    assert result.prediction_rows == 1
+    assert result.not_asked_dependent_child_rows == 1
+    assert result.not_asked_dependent_child_mass == 4.0
+    qrf = result.evidence()["qrf"]
+    assert qrf["not_asked_dependent_child_rows"] == 1
+    assert qrf["not_asked_dependent_child_mass"] == 4.0
+    assert "is_hbai_dependent_child" in qrf["target_population"]
+    # The headcount the conversion tops up counts the two adults alone.
+    assert result.pre_headcount == 2.0
+
+
+def test_the_stage_needs_every_persons_dependent_child_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    frame = _frame(
+        asked=[1, 0], salary_sacrifice_values=[0.0, 0.0], employee_pension=[0.0, 0.0]
+    )
+
+    def rebuilt(person: pd.DataFrame):
+        return uk_national_frame(
+            person=person,
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            household_weights=frame.weights_for("household").values,
+            time_period="2024",
+        )
+
+    person = frame.table("person")
+    with pytest.raises(ValueError, match="is_hbai_dependent_child"):
+        impute_salary_sacrifice(rebuilt(person.drop(columns="is_hbai_dependent_child")))
+    with pytest.raises(ValueError, match="is_hbai_dependent_child"):
+        impute_salary_sacrifice(rebuilt(person.assign(is_hbai_dependent_child=[0, 2])))
 
 
 def test_qrf_trains_only_on_asked_respondents_with_pay(
@@ -548,6 +610,7 @@ def test_draws_move_only_for_the_people_whose_inputs_move(
             SALSAC_OUTPUT: [10.0, 20.0, 0.0, 0.0, 0.0, 0.0],
             "employee_pension_contributions": np.zeros(rows),
             BONUS_SACRIFICE_SOURCE: np.zeros(rows),
+            "is_hbai_dependent_child": np.zeros(rows, dtype=bool),
         }
     )
     assert_draws_are_keyed_on_ids(
@@ -889,6 +952,46 @@ def test_the_stage_adds_bonus_sacrifice_beside_pay(
     assert receipt["projected_base"] == pytest.approx(90_000.0)
     assert receipt["candidate_support"] == "10-29"
     assert BONUS_SACRIFICE_OUTPUT in UKSalarySacrificeStageTransform.output_columns()
+
+
+def test_the_spi_bonus_draw_takes_adults_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Since PolicyEngine/microcosm#1663 a dependent child's CHILD.CHEARNS is
+    # their pay. The draw's donors are base-FRS adults and its drawers
+    # SPI-channel adults (BONUS_SACRIFICE_SPI_DRAW), so a paid child is
+    # neither: they no longer join the donors or move the pay cells' edges.
+    _Fitted.value = 0.0
+    monkeypatch.setattr(salary_sacrifice, "QRF", _FakeQRF)
+    seen: dict[str, np.ndarray] = {}
+    real = salary_sacrifice.draw_spi_bonuses
+
+    def spy(**kwargs):
+        seen["donors"] = np.asarray(kwargs["donors"]).copy()
+        seen["spi"] = np.asarray(kwargs["spi"]).copy()
+        return real(**kwargs)
+
+    monkeypatch.setattr(salary_sacrifice, "draw_spi_bonuses", spy)
+    frame = _frame(
+        asked=[1, 0, 0, 0],
+        salary_sacrifice_values=[0.0] * 4,
+        employee_pension=[0.0] * 4,
+        channels=["frs", "frs", "spi", "spi"],
+        employment_income=[60_000.0, 3_000.0, 70_000.0, 3_000.0],
+        dependent_child=[False, True, False, True],
+        bonus=[6_000.0, 0.0, 0.0, 0.0],
+    )
+
+    result = impute_salary_sacrifice(frame, bonus_anchor=_toy_bonus_anchor())
+
+    # The FRS adult is the one donor and the SPI-channel adult the one drawer;
+    # neither child is either.
+    assert seen["donors"].tolist() == [True, False, False, False]
+    assert seen["spi"].tolist() == [False, False, True, False]
+    assert result.frame.table("person")[BONUS_SACRIFICE_OUTPUT].tolist()[1::2] == [
+        0.0,
+        0.0,
+    ]
 
 
 def test_the_stage_refuses_a_frame_without_the_bonus_carrier(

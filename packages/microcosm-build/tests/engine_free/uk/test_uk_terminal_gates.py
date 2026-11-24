@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.national_frame import UK_TOTAL_COLUMNS
 from microcosm.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UKInputMassParityPolicy,
@@ -495,7 +496,8 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
     # in-household care hours carrier (microcosm#1418), the admin UC limited
     # capability carrier (microcosm#1095, Y1), the limiting condition carrier
-    # its imputation reads (PolicyEngine/microcosm#1663), the company car carriers
+    # its imputation reads (PolicyEngine/microcosm#1663), the UC claim recency
+    # carrier (microcosm#1095), the company car carriers
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value the
     # regional home values replaced (microcosm#1112) and the household ISA
     # totals policyengine-uk sums from the person balances (microcosm#1415),
@@ -511,6 +513,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN,
         FRS_LANDLORD_CARRIER_COLUMN,
         FRS_UC_CARER_ELEMENT_COLUMN,
+        FRS_UC_CLAIM_MONTHS_COLUMN,
         FRS_UC_LCW_STATUS_COLUMN,
     )
     from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
@@ -538,6 +541,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{FRS_UC_LCW_STATUS_COLUMN}"}
         | {f"person.{FRS_CONDITION_LIMITS_COLUMN}"}
         | {f"person.{FRS_UC_CARER_ELEMENT_COLUMN}"}
+        | {f"benunit.{FRS_UC_CLAIM_MONTHS_COLUMN}"}
         | {f"person.{column}" for column in FRS_COMPANY_CAR_CARRIER_COLUMNS}
         | {f"household.{RANK_BASIS_COLUMN}"}
         | {"household.cash_isa", "household.stocks_and_shares_isa"}
@@ -719,10 +723,8 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # fails the deferral as stale.
     assert set(register) == {
         "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_19_200_to_20_400@2025",
-        "hmrc.spi.employment_income.count_by_self_employment_income_band.band_1000_2000@2025",
         "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570@2025",
         "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000@2025",
-        "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000@2025",
         "hmrc.spi_region.taxpayers_by_region_200000_plus@S92000003@2025",
         "hmrc/dividend_income_income_band_20_000_to_30_000@2025",
         "hmrc/dividend_income_income_band_30_000_to_40_000@2025",
@@ -732,8 +734,6 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
         "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
         "hmrc/property_income_income_band_12_570_to_15_000@2025",
         "hmrc/property_income_income_band_15_000_to_20_000@2025",
-        "hmrc/state_pension_count_income_band_500_000_to_1_000_000@2025",
-        "ons.population.female_19@2025",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
 
@@ -758,39 +758,42 @@ def test_committed_local_target_fit_register_is_empty_and_well_formed() -> None:
         assert "%" not in record.reason, key
     assert uk_default_local_target_fit_reviewed_exclusions() is register
     assert set(register) == {
+        "age_structure/E06000018/age/20_30",
         "age_structure/E06000023/age/20_30",
         "age_structure/E07000008/age/20_30",
         "age_structure/E07000178/age/20_30",
-        "age_structure/E07000212/age/20_30",
-        "age_structure/E14001080/age/20_30",
-        "age_structure/E14001116/age/20_30",
-        "age_structure/E14001123/age/20_30",
+        "age_structure/E14001096/age/20_30",
         "age_structure/E14001131/age/20_30",
         "age_structure/E14001149/age/20_30",
         "age_structure/E14001182/age/20_30",
         "age_structure/E14001231/age/20_30",
         "age_structure/E14001319/age/20_30",
+        "age_structure/E14001327/age/20_30",
         "age_structure/E14001338/age/20_30",
         "age_structure/E14001352/age/20_30",
         "age_structure/E14001353/age/20_30",
         "age_structure/E14001410/age/20_30",
         "age_structure/E14001412/age/20_30",
-        "age_structure/E14001459/age/20_30",
+        "age_structure/E14001420/age/20_30",
         "age_structure/E14001467/age/20_30",
-        "age_structure/S14000085/age/20_30",
         "age_structure/W07000091/age/20_30",
         "council_tax/E06000014/council_tax/band_a",
         "council_tax/E08000028/council_tax/band_f",
-        "council_tax/E09000019/council_tax/band_b",
+        "council_tax/E09000017/council_tax/band_b",
         "council_tax/E09000020/council_tax/band_b",
         "council_tax/E09000020/council_tax/band_c",
+        "council_tax/E09000025/council_tax/band_g",
         "council_tax/E09000033/council_tax/band_b",
         "council_tax/E09000033/council_tax/band_f",
         "council_tax/S12000013/council_tax/band_c",
+        "domestic_energy/E14001352/energy/gas_connected_households",
         "hmrc_income_by_area/E09000020/hmrc/self_employment_income/amount",
-        "hmrc_income_by_area/E14001175/hmrc/self_employment_income/count",
+        "hmrc_income_by_area/E09000030/hmrc/pension_income/count",
         "hmrc_income_by_area/E14001310/hmrc/self_employment_income/amount",
+        "hmrc_income_by_area/E14001576/hmrc/self_employment_income/count",
+        "hmrc_income_by_area/S12000027/hmrc/self_employment_income/count",
         "tenure/E09000033/tenure/owned_mortgage",
+        "tenure/S12000050/tenure/private_rent",
         "uc_households/E14001098/uc_hh_3plus_children",
     }
     assert {record.release_lines for record in register.values()} == {("local",)}
@@ -1109,6 +1112,7 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
         "household.source_year",
         "person.tax_free_childcare_spend_routed_share",
         "person.trading_allowance_full_relief",
+        *(f"household.{column}" for column in UK_TOTAL_COLUMNS),
     }
     basis = register["household.atomic_area_basis"]
     assert basis.approved_by == "juaristi22"
@@ -1147,6 +1151,44 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     assert full_relief.expires_on == "2027-05-11"
     assert not full_relief.release_lines
     assert full_relief.reason.strip()
+    # The release boundary writes each UK total the same on every row
+    # (microcosm#1687), on both lines.
+    for column in UK_TOTAL_COLUMNS:
+        total = register[f"household.{column}"]
+        assert total.adjudication.startswith("microcosm#1687 ")
+        assert total.approved_by == "juaristi22"
+        assert total.approved_on == "2026-11-22"
+        assert total.expires_on == "2027-05-22"
+        assert not total.release_lines
+        assert total.reason.strip()
+
+
+def test_committed_register_admits_the_uk_totals_the_release_writes() -> None:
+    # microcosm#1687: every uk_total_* column the release writes is the same on
+    # every row, and the gate refuses a constant column the register lacks.
+    base = _dataset()
+    dataset = SimpleNamespace(
+        person=base.person,
+        benunit=base.benunit,
+        household=base.household.assign(
+            **{column: 1.0e12 for column in UK_TOTAL_COLUMNS}
+        ),
+    )
+    totals = sorted(f"household.{column}" for column in UK_TOTAL_COLUMNS)
+
+    refused = uk_degenerate_release_surface_gate(
+        dataset, reviewed_exclusions={}, now=date(2026, 11, 22)
+    )
+    admitted = uk_degenerate_release_surface_gate(
+        dataset,
+        reviewed_exclusions=uk_default_degenerate_reviewed_exclusions(),
+        now=date(2026, 11, 22),
+    )
+
+    assert not refused.passed
+    assert refused.details["constant_columns"] == totals
+    assert admitted.passed, admitted.failures
+    assert sorted(admitted.details["reviewed_exclusions"]) == totals
 
 
 def test_policy_of_record_is_immutable_and_loaded_once() -> None:
