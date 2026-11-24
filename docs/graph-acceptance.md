@@ -777,36 +777,49 @@ lock unchanged:
     a node that reads every row, and the single copy `.loc` makes of the
     selected rows for a node with a row mask. Kernels see the same columns,
     order, dtypes, index, values and `attrs`, so no node key or output
-    moves. Three cases are copied exactly as before: a column type with no
-    known view, a table with a strided column (BLAS products such as
-    `np.dot` can round differently when an operand's layout or alignment
-    changes), and a pandas subclass, which keeps its type and metadata only
-    through its own methods.
-    Each view's `.base` is a small object that exposes no array, so neither
-    `view.base` nor `setflags(write=True)` reaches the population's writable
-    block, which holds columns the node never declared. An item write into
+    moves. A column type with no known view is copied and frozen, a table
+    or strata with a strided column is viewed through the old deep copy
+    (BLAS products such as `np.dot` can round differently when an operand's
+    layout or alignment changes, and that copy keeps the old layout), a
+    pandas subclass gets the old frozen copy, since it keeps its type and
+    metadata only through its own methods, and a categorical column's
+    categories are copied.
+
+    Two rules hold for every column type and layout. A pandas write
+    (`.loc`, `.iloc`, `.at`, column assignment, `update`,
+    `clip(inplace=True)`, ...) lands only in the kernel's own table or
+    strata: each shares its memory with a second, kept-alive object, so
+    pandas copies a column before writing into it, and B4's before/after
+    comparison refuses the write if it changed a value. An item write into
     an array a column hands out (`to_numpy()`, `.values`, `.array`,
-    `np.asarray`, their `.base`, and `np.put`, `np.copyto`, `+=` into one)
-    raises. Each table shares its memory with a second, kept-alive table,
-    so pandas copies a column before any in-place write (`.loc`, `.iloc`,
-    `.at`, `update`, `clip(inplace=True)`, ...): the write lands only in the
-    kernel's own table, and B4's before/after comparison refuses it if it
-    changed a value, exactly as for a write into the old deep copy. A
-    validation kernel's write is therefore still a rejection, not a failed
-    verdict.
-    `np.<ufunc>.at` writes even into a read-only array, so with shared
-    memory it changes the population, within the declared column. B4's
-    comparison rejects that node before its result is applied or stored and
-    the run stops: the store is unchanged, the failed run's in-memory
-    population is not. The comparison now also hashes the raw bytes of a
-    NumPy bool column, whose value stream reads every non-zero byte as
-    `True`. Writes through private attributes (`_data`, `_ndarray`, `_mgr`,
-    the view object's `_owner`) and through raw pointers are not guarded and
-    can reach undeclared columns. A kernel that keeps an array and writes
-    into it with `ufunc.at` while a later node runs is caught only if that
-    later node reads the column. No workspace code writes into a column with
-    `ufunc.at`, and the shared-buffer source scan refuses one whose target
-    the function did not create.
+    `np.asarray`, `np.put`, `np.copyto`, `+=`), into its `.base`, or after
+    `setflags(write=True)` raises: each view's `.base` is a small object
+    that exposes no array, so neither reaches the population's writable
+    block, which holds columns the node never declared. A validation kernel
+    that raises this way stores a failed verdict, like any exception it
+    raises. On the old copy the outcome depended on the column type: a
+    pandas write into a nullable or string column or the strata raised, and
+    an item write into a NumPy column's `.array` landed in the copy.
+
+    `np.<ufunc>.at` writes even into a read-only array, and so do the
+    in-place routines of `scipy.linalg.blas` and in-place operations on a
+    `torch` tensor over the array. With shared memory these change the
+    population, within the declared column. B4's comparison rejects that
+    node before its result is applied or stored and the run stops: the
+    store is unchanged, the failed run's in-memory population is not. The
+    comparison now also hashes the raw bytes of a NumPy bool column, whose
+    value stream reads every non-zero byte as `True`. Writes through private
+    attributes (`_data`, `_ndarray`, `_mgr`, the view object's `_owner`),
+    raw pointers and pyarrow `Buffer` memoryviews are not guarded and can
+    reach undeclared columns; the pyarrow case predates this change. A
+    kernel that keeps an array and writes into it with one of these while a
+    later node runs is caught only if that later node reads the column. A
+    table a kernel derives from its context without copying and keeps after
+    the context is freed holds read-only memory nothing else refers to, so
+    pandas writes into it raise; copy it first. No workspace code writes
+    into a column with `ufunc.at`, and the shared-buffer source scan refuses
+    one whose target the function did not create.
+
     Two costs remain. A context table holds one pandas block per column, so
     inserting into a shallow copy of a wide one gives pandas'
     `PerformanceWarning`, and row-wise operations on it are slower; a deep

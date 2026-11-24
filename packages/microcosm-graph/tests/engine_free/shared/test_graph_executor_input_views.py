@@ -85,8 +85,43 @@ COLUMN_VALUES: dict[str, Callable[[], object]] = {
     "str": lambda: pd.array(["a", "b", "c", "d", "e", "f"], dtype="str"),
     "object": lambda: np.array(["a", 1, 2.5, "d", "e", "f"], dtype=object),
 }
-COLUMNS = tuple(COLUMN_VALUES)
-NUMPY_COLUMNS = ("float64", "float32", "int64", "int32", "bool", "object")
+#: Storage the executor has no read-only view for, so it copies and freezes it.
+COPIED_COLUMN_VALUES: dict[str, Callable[[], object]] = {
+    "datetime": lambda: pd.date_range("2020-01-01", periods=6, freq="7D").array,
+    "datetime_tz": lambda: (
+        pd.date_range("2020-01-01", periods=6, freq="7D", tz="Europe/London").array
+    ),
+}
+SHARED_COLUMNS = tuple(COLUMN_VALUES)
+COPIED_COLUMNS = tuple(COPIED_COLUMN_VALUES)
+COLUMNS = SHARED_COLUMNS + COPIED_COLUMNS
+STRATA_VALUES: dict[str, Callable[[], object]] = {
+    "object": lambda: np.array(["a", "a", "b", "b", "c", "c"], dtype=object),
+    "category": lambda: pd.Categorical(["a", "a", "b", "b", "c", "c"]),
+    "int64": lambda: np.array([1, 1, 2, 2, 3, 3], dtype=np.int64),
+    "bool": lambda: np.array([True, True, False, False, True, True]),
+}
+
+
+def _ufunc_at_ignores_read_only() -> bool:
+    """Whether this NumPy's ``np.add.at`` writes into a read-only array."""
+
+    values = np.zeros(1)
+    values.setflags(write=False)
+    try:
+        np.add.at(values, [0], 1)
+    except ValueError:
+        return False
+    return bool(values[0] == 1)
+
+
+#: NumPy 2.4.6 ignores the flag. Should a release enforce it, a ufunc.at write
+#: is refused like any item write, and the tests that expect it to land skip.
+UFUNC_AT_IGNORES_READ_ONLY = _ufunc_at_ignores_read_only()
+needs_ufunc_at_through_read_only = pytest.mark.skipif(
+    not UFUNC_AT_IGNORES_READ_ONLY,
+    reason="this NumPy refuses ufunc.at into a read-only array",
+)
 SELECTED = np.array([True, False, True, True, False, True])
 #: Declared out of the table's own order, so a projection that followed the
 #: table's layout instead of the declaration would be seen.
@@ -118,6 +153,7 @@ def _kinds_frame(
             "person_household_id": np.array([10, 10, 20, 20, 30, 30], dtype=np.int64),
             "selected": SELECTED.copy(),
             **{column: make() for column, make in COLUMN_VALUES.items()},
+            **{column: make() for column, make in COPIED_COLUMN_VALUES.items()},
         },
         index=row_index,
     )
@@ -125,16 +161,19 @@ def _kinds_frame(
         person.columns = pd.Index(list(person.columns), dtype=object, name="variable")
     person.attrs["provenance"] = {"source": "invented"}
     household = pd.DataFrame({"household_id": np.array([10, 20, 30], dtype=np.int64)})
+    # pandas would read an object array of strings as its ``str`` dtype.
+    strata = pd.Series(
+        STRATA_VALUES[strata_dtype](),
+        index=person.index,
+        name="stratum",
+        dtype=object if strata_dtype == "object" else None,
+    )
+    strata.attrs["kind"] = {"source": "invented"}
     return Frame(
         {"person": person, "household": household},
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.array([1.0, 2.0, 3.0]), WeightKind.DESIGN)},
-        pd.Series(
-            ["a", "a", "b", "b", "c", "c"],
-            index=person.index,
-            name="stratum",
-            dtype=strata_dtype,
-        ),
+        strata,
     )
 
 
@@ -188,6 +227,8 @@ def _storage(values: pd.Series | pd.Index) -> tuple[object, ...]:
         parts.extend((array._data.tobytes(), array._mask.tobytes()))
     elif isinstance(array, pd.Categorical):
         parts.extend((array.codes.tobytes(), _storage(array.categories)))
+    elif isinstance(array, pd.arrays.DatetimeArray):
+        parts.append(array.asi8.tobytes())
     elif _is_arrow_backed(array):
         parts.extend(
             None if buffer is None else buffer.to_pybytes()
@@ -224,6 +265,8 @@ def _memory_of(series: pd.Series) -> list[object]:
         return [array._data, array._mask]
     if isinstance(array, pd.Categorical):
         return [array.codes]
+    if isinstance(array, pd.arrays.DatetimeArray):
+        return [array.asi8]
     if _is_arrow_backed(array):
         return [
             buffer.address
@@ -290,8 +333,21 @@ def _writable_views(values: pd.Series | pd.Index) -> list[str]:
 # ----------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("column", COPIED_COLUMNS)
+def test_a_column_type_with_no_view_is_copied_and_read_only(column: str) -> None:
+    population = _kinds_population()
+    table = _project(population).tables["person"]
+    (ours,) = _memory_of(table[column])
+    (theirs,) = _memory_of(population.frame.table("person")[column])
+    assert not np.shares_memory(ours, theirs)
+    assert _writable_views(table[column]) == []
+    pd.testing.assert_series_equal(
+        table[column], population.frame.table("person")[column], check_exact=True
+    )
+
+
 @pytest.mark.parametrize("index", WRITE_INDEX_KINDS)
-@pytest.mark.parametrize("column", COLUMNS)
+@pytest.mark.parametrize("column", SHARED_COLUMNS)
 def test_an_every_row_context_shares_the_population_column_memory(
     column: str, index: str
 ) -> None:
@@ -318,7 +374,7 @@ def test_an_every_row_context_shares_the_population_index_memory(index: str) -> 
     )
 
 
-@pytest.mark.parametrize("strata_dtype", ["object", "category"])
+@pytest.mark.parametrize("strata_dtype", STRATA_VALUES)
 def test_an_every_row_context_shares_the_population_strata(strata_dtype: str) -> None:
     population = _kinds_population(strata_dtype=strata_dtype)
     context = _project(population)
@@ -333,7 +389,7 @@ def test_an_every_row_context_shares_the_population_strata(strata_dtype: str) ->
 def test_no_context_buffer_can_be_written_or_made_writable(
     rows: str, index: str
 ) -> None:
-    for strata_dtype in ("object", "category"):
+    for strata_dtype in STRATA_VALUES:
         context = _project(
             _kinds_population(strata_dtype=strata_dtype, index=index), rows=rows
         )
@@ -366,7 +422,7 @@ def test_a_masked_context_holds_only_its_own_copy_of_the_selected_rows() -> None
 @pytest.mark.parametrize("object_columns", [False, True])
 @pytest.mark.parametrize("index", INDEX_KINDS)
 @pytest.mark.parametrize("rows", [ROWS_ALL, "selected"])
-@pytest.mark.parametrize("strata_dtype", ["object", "category"])
+@pytest.mark.parametrize("strata_dtype", STRATA_VALUES)
 def test_a_context_holds_what_a_deep_copy_of_the_slice_holds(
     rows: str, strata_dtype: str, index: str, object_columns: bool
 ) -> None:
@@ -414,6 +470,12 @@ def test_a_context_holds_what_a_deep_copy_of_the_slice_holds(
         context.strata, expected_strata, check_exact=True, check_index_type=True
     )
     assert type(context.strata.index) is type(expected_strata.index)
+    assert (
+        context.strata.attrs
+        == expected_strata.attrs
+        == {"kind": {"source": "invented"}}
+    )
+    assert context.strata.attrs["kind"] is not frame.strata.attrs["kind"]
 
 
 def test_a_write_into_the_context_attrs_leaves_the_population_attrs() -> None:
@@ -601,16 +663,8 @@ def _refused(error: Exception) -> bool:
     """Whether ``error`` is NumPy or pandas refusing a write into read-only memory."""
 
     message = str(error)
-    return (
-        isinstance(error, ValueError)
-        and ("read-only" in message or "WRITEABLE" in message)
-    ) or (
-        isinstance(error, (AttributeError, TypeError))
-        and (
-            "item assignment" in message
-            or "subscriptable" in message
-            or "flat" in message
-        )
+    return isinstance(error, ValueError) and (
+        "read-only" in message or "WRITEABLE" in message
     )
 
 
@@ -632,9 +686,36 @@ def test_every_write_kind_and_column_kind_has_a_case_that_lands() -> None:
         assert any((write, column) in LANDING_WRITES for write in array_writes), column
 
 
-@pytest.mark.parametrize("index", WRITE_INDEX_KINDS)
-@pytest.mark.parametrize("rows", [ROWS_ALL, "selected"])
-@pytest.mark.parametrize(("write", "column"), LANDING_WRITES)
+#: Writes run under a row mask and under a buffer-backed index too. Under a row
+#: mask the context views ``.loc``'s own copy, and an int64 index matters only
+#: to writes that reach arrays or the index, so the rest run once.
+_ARRAY_AND_INDEX_WRITES = frozenset(
+    {
+        "item write through to_numpy()",
+        "item write through values",
+        "item write through array",
+        "item write through np.asarray(array)",
+        "item write through to_numpy().base",
+        "setflags(write=True) on to_numpy(), then an item write",
+        "item write through codes.base",
+        "item write into the index",
+    }
+)
+_WRITE_CASES = tuple(
+    (write, column, rows, index)
+    for write, column in LANDING_WRITES
+    for rows, index in (
+        (ROWS_ALL, "default range"),
+        *(
+            (("selected", "default range"), (ROWS_ALL, "int64"))
+            if write in _ARRAY_AND_INDEX_WRITES
+            else ()
+        ),
+    )
+)
+
+
+@pytest.mark.parametrize(("write", "column", "rows", "index"), _WRITE_CASES)
 def test_a_write_into_a_context_leaves_the_population_byte_identical(
     write: str, column: str, rows: str, index: str
 ) -> None:
@@ -650,28 +731,104 @@ def test_a_write_into_a_context_leaves_the_population_byte_identical(
     assert _population_storage(population) == before
 
 
-@pytest.mark.parametrize("strata_dtype", ["object", "category"])
-def test_a_write_into_the_context_strata_leaves_the_population_strata(
-    strata_dtype: str,
+def _strata_other(strata: pd.Series) -> object:
+    return strata.iloc[2]
+
+
+def _flat_write(values: np.ndarray, value: object) -> None:
+    values.flat[0] = value
+
+
+STRATA_WRITES: dict[str, Callable[[pd.Series], None]] = {
+    "iloc": lambda strata: strata.iloc.__setitem__(0, _strata_other(strata)),
+    "item write through np.asarray(array)": lambda strata: np.asarray(
+        strata.array
+    ).__setitem__(0, _strata_other(strata)),
+    "item write through values": lambda strata: strata.values.__setitem__(
+        0, _strata_other(strata)
+    ),
+    "item write through to_numpy()": lambda strata: strata.to_numpy().__setitem__(
+        0, _strata_other(strata)
+    ),
+    "item write through to_numpy().base": lambda strata: _flat_write(
+        strata.to_numpy().base, _strata_other(strata)
+    ),
+    "setflags(write=True), then an item write": lambda strata: (
+        np.asarray(strata.array).setflags(write=True),
+        np.asarray(strata.array).__setitem__(0, _strata_other(strata)),
+    ),
+}
+
+
+def _strata_write_lands(write: str, strata_dtype: str) -> bool:
+    strata = _kinds_frame(strata_dtype=strata_dtype).strata.copy(deep=True)
+    before = _storage(strata)
+    try:
+        STRATA_WRITES[write](strata)
+    except Exception:  # noqa: BLE001 - pandas or NumPy refused it on its own
+        return False
+    return _storage(strata) != before
+
+
+LANDING_STRATA_WRITES = tuple(
+    (write, strata_dtype)
+    for write in STRATA_WRITES
+    for strata_dtype in STRATA_VALUES
+    if _strata_write_lands(write, strata_dtype)
+)
+
+
+@pytest.mark.parametrize(("write", "strata_dtype"), LANDING_STRATA_WRITES)
+def test_a_write_into_the_context_strata_stays_local_or_is_refused(
+    write: str, strata_dtype: str
 ) -> None:
+    """The rules for tables hold for the strata: pandas writes stay local.
+
+    On the old frozen copy a pandas write into the strata raised; now it lands
+    in the kernel's own strata, which the before/after comparison sees, as a
+    write into a table does. Item writes into the arrays they hand out raise.
+    """
+
     population = _kinds_population(strata_dtype=strata_dtype)
     before = _population_storage(population)
-    for write in (
-        lambda strata: strata.__setitem__(0, strata.iloc[2]),
-        lambda strata: np.asarray(strata.array).__setitem__(0, strata.iloc[2]),
-        lambda strata: strata.values.__setitem__(0, strata.iloc[2]),
-        lambda strata: strata.to_numpy().__setitem__(0, strata.iloc[2]),
-        lambda strata: strata.to_numpy().base.__setitem__(0, strata.iloc[2]),
-        lambda strata: np.asarray(strata.array).setflags(write=True),
-    ):
-        context = _project(population)
-        try:
-            write(context.strata)
-        except (AttributeError, TypeError, ValueError):
-            pass
-        assert _population_storage(population) == before
+    context = _project(population)
+    digest = graph_executor._context_digest(context)
+    if write == "iloc":
+        STRATA_WRITES[write](context.strata)
+        assert graph_executor._context_digest(context) != digest
+    else:
+        with pytest.raises(ValueError) as refusal:
+            STRATA_WRITES[write](context.strata)
+        assert _refused(refusal.value), repr(refusal.value)
+    assert _population_storage(population) == before
 
 
+@pytest.mark.parametrize("rows", [ROWS_ALL, "selected"])
+def test_categorical_strata_hand_out_their_own_categories(rows: str) -> None:
+    population = _kinds_population(strata_dtype="category")
+    before = _population_storage(population)
+    context = _project(population, rows=rows)
+    categories = context.strata.cat.categories
+    categories.name = "renamed"
+    try:
+        np.asarray(categories).__setitem__(0, "z")
+    except ValueError:
+        pass
+    assert population.frame.strata.cat.categories.name is None
+    assert list(population.frame.strata.cat.categories) == ["a", "b", "c"]
+    assert _population_storage(population) == before
+
+
+def test_every_strata_kind_has_a_write_that_lands() -> None:
+    for strata_dtype in STRATA_VALUES:
+        assert any(kind == strata_dtype for _, kind in LANDING_STRATA_WRITES)
+    assert {write for write, _ in LANDING_STRATA_WRITES} >= {
+        "iloc",
+        "item write through to_numpy().base",
+    }
+
+
+@needs_ufunc_at_through_read_only
 @pytest.mark.parametrize(
     "column", ["float64", "float32", "int64", "int32", "Int64_no_missing"]
 )
@@ -683,6 +840,37 @@ def test_a_ufunc_at_write_into_a_context_changes_the_context_digest(
     context = _project(_kinds_population())
     before = graph_executor._context_digest(context)
     np.add.at(context.tables["person"][column].to_numpy(), [0], 1)
+    assert graph_executor._context_digest(context) != before
+
+
+_STRATA_UFUNC_WRITES: dict[str, Callable[[pd.Series], None]] = {
+    "object": lambda strata: np.add.at(strata.to_numpy(), [0], "z"),
+    "int64": lambda strata: np.add.at(strata.to_numpy(), [0], 1),
+    "bool": lambda strata: np.add.at(strata.to_numpy().view(np.uint8), [0], 1),
+}
+
+
+@needs_ufunc_at_through_read_only
+@pytest.mark.parametrize("strata_dtype", _STRATA_UFUNC_WRITES)
+def test_a_ufunc_at_write_into_the_strata_changes_the_context_digest(
+    strata_dtype: str,
+) -> None:
+    population = _kinds_population(strata_dtype=strata_dtype)
+    before_bytes = _storage(population.frame.strata)
+    context = _project(population)
+    before = graph_executor._context_digest(context)
+    _STRATA_UFUNC_WRITES[strata_dtype](context.strata)
+    assert _storage(population.frame.strata) != before_bytes, "the write landed"
+    assert graph_executor._context_digest(context) != before
+
+
+@needs_ufunc_at_through_read_only
+def test_a_ufunc_at_write_into_the_index_changes_the_context_digest() -> None:
+    population = _kinds_population(index="int64")
+    context = _project(population, ("float64",))
+    before = graph_executor._context_digest(context)
+    np.add.at(np.asarray(context.tables["person"].index), [0], 1)
+    assert population.frame.table("person").index[0] == 6, "the write landed"
     assert graph_executor._context_digest(context) != before
 
 
@@ -731,7 +919,7 @@ def _graph_frame(_context: KernelContext) -> KernelResult:
         {"person": person, "household": household},
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.array([1.0, 2.0, 3.0]), WeightKind.DESIGN)},
-        pd.Series(["a", "a", "b", "b", "c", "c"], name="stratum"),
+        pd.Series(["a", "a", "b", "b", "c", "c"], name="stratum", dtype=object),
     )
     return KernelResult(frame=frame)
 
@@ -892,6 +1080,7 @@ def test_a_kernel_that_writes_into_its_inputs_changes_nothing_it_reads(
         ("add", "Int64_no_missing"),
         ("maximum", "float64"),
         ("negative", "int64"),
+        ("add", "strata"),
     ],
 )
 def test_a_ufunc_at_write_is_rejected_and_the_store_keeps_the_source_bytes(
@@ -907,23 +1096,35 @@ def test_a_ufunc_at_write_is_rejected_and_the_store_keeps_the_source_bytes(
     landed: list[bool] = []
 
     def write_at(context: KernelContext) -> None:
-        values = context.tables["person"][column].to_numpy()
-        before = values.copy()
-        if ufunc == "negative":
-            np.negative.at(values, [0])
+        if column == "strata":
+            values = context.strata.to_numpy()
+            before = values.copy()
+            np.add.at(values, [0], "z")
         else:
-            getattr(np, ufunc).at(values, [0], 100)
+            values = context.tables["person"][column].to_numpy()
+            before = values.copy()
+            if ufunc == "negative":
+                np.negative.at(values, [0])
+            else:
+                getattr(np, ufunc).at(values, [0], 100)
         landed.append(not np.array_equal(values, before))
 
-    with pytest.raises(NodeRejected, match="mutated its input context"):
-        _run(_writer_graph(column), _registry(write_at), store, source)
-    assert landed == [True]
+    read = "float64" if column == "strata" else column
+    # A NumPy that enforced the read-only flag would refuse the write, which
+    # fails the node instead.
+    expected = "mutated its input context" if UFUNC_AT_IGNORES_READ_ONLY else "failed"
+    with pytest.raises(NodeRejected, match=expected):
+        _run(_writer_graph(read), _registry(write_at), store, source)
+    assert landed == ([True] if UFUNC_AT_IGNORES_READ_ONLY else [])
     assert _stored_objects(store) == stored_before
 
     again = _run(create_only, _registry(lambda context: None), store, source)
     assert again.nodes["survey"].hit
     reloaded = again.population("survey").person
     original = first.population("survey").person
+    pd.testing.assert_series_equal(
+        again.population("survey").strata, first.population("survey").strata
+    )
     for name in GRAPH_COLUMNS:
         # The store keeps values, not the bytes a nullable column's mask hides.
         pd.testing.assert_series_equal(
@@ -1018,8 +1219,11 @@ VALUE_PRESERVING_WRITES: dict[str, Callable[[pd.DataFrame, str], None]] = {
     "update with the same values": lambda table, column: table.update(
         pd.DataFrame({column: table[column].to_numpy().copy()}, index=table.index)
     ),
-    "clip(inplace=True) clipping nothing": lambda table, column: table.clip(
-        lower=-1e9, inplace=True
+    "at cell with its own value": lambda table, column: table.at.__setitem__(
+        (table.index[0], column), table[column].iloc[0]
+    ),
+    "loc[index, column] = the column": lambda table, column: table.loc.__setitem__(
+        (table.index, column), table[column].to_numpy().copy()
     ),
     "loc[:, column] *= 1": lambda table, column: table.loc.__setitem__(
         (slice(None), column), table.loc[:, column] * 1
@@ -1087,26 +1291,32 @@ def test_a_validation_kernel_that_writes_into_its_input_is_rejected(
     assert _population_storage(held[0]) == admitted[0]
 
 
-def _strided_population() -> Population:
-    """A population whose float columns are strided views of one C-order matrix."""
+_STRIDED_ROWS = 1_003
 
-    rows = 1_003
-    matrix = np.random.default_rng(5).normal(size=(rows, 3))
+
+def _strided_population(*, strided: bool = True) -> Population:
+    """Float columns stored as strided views of one C-order matrix, or not."""
+
+    matrix = np.random.default_rng(5).normal(size=(_STRIDED_ROWS, 3))
+    if not strided:
+        matrix = np.asfortranarray(matrix)
     person = pd.DataFrame(matrix, columns=["x0", "x1", "x2"], copy=False).assign(
-        person_id=np.arange(1, rows + 1, dtype=np.int64),
-        person_household_id=np.ones(rows, dtype=np.int64),
+        person_id=np.arange(1, _STRIDED_ROWS + 1, dtype=np.int64),
+        person_household_id=np.ones(_STRIDED_ROWS, dtype=np.int64),
+        count=pd.array(np.arange(_STRIDED_ROWS), dtype="Int64"),
     )
     frame = Frame.adopt(
         {"person": person, "household": pd.DataFrame({"household_id": [1]})},
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.array([1.0]), WeightKind.DESIGN)},
     )
-    assert not frame.table("person")["x0"].to_numpy().flags.c_contiguous
+    contiguous = frame.table("person")["x0"].to_numpy().flags.c_contiguous
+    assert contiguous is not strided
     return Population.from_frame(frame, "survey")
 
 
-def test_a_table_with_a_strided_column_is_copied_as_before() -> None:
-    """Kernels get the old contiguous deep copy, block for block.
+def test_a_table_with_a_strided_column_is_viewed_through_the_old_deep_copy() -> None:
+    """The columns sit side by side in one contiguous block, as in the old copy.
 
     ``np.dot`` can round differently when its operands' layout or alignment
     changes, so separate contiguous copies would not reproduce the old bytes.
@@ -1121,15 +1331,71 @@ def test_a_table_with_a_strided_column_is_copied_as_before() -> None:
         .copy(deep=True)
     )
     pd.testing.assert_frame_equal(table, expected, check_exact=True)
-    assert [(str(block.dtype), block.values.shape) for block in table._mgr.blocks] == [
-        (str(block.dtype), block.values.shape) for block in expected._mgr.blocks
+    addresses = [table[name].to_numpy().ctypes.data for name in ("x0", "x1", "x2")]
+    row_bytes = _STRIDED_ROWS * 8
+    assert addresses == [
+        addresses[0],
+        addresses[0] + row_bytes,
+        addresses[0] + 2 * row_bytes,
     ]
-    assert all(table[name].to_numpy().flags.c_contiguous for name in ("x0", "x1"))
     assert not np.shares_memory(
         table["x0"].to_numpy(), population.frame.table("person")["x0"].to_numpy()
     )
+    assert _writable_views(table["x0"]) == []
 
 
+def _set_own_value(table: pd.DataFrame, column: str, *, through_array: bool) -> None:
+    if through_array:
+        table[column].array[0] = table[column].iloc[0]
+    else:
+        table.loc[table.index[0], column] = table[column].iloc[0]
+
+
+@pytest.mark.parametrize("through_array", [False, True])
+@pytest.mark.parametrize("column", ["x0", "count"])
+def test_a_write_has_the_same_outcome_whatever_the_population_layout(
+    column: str, through_array: bool
+) -> None:
+    """A node key's verdict must not depend on how the population is stored."""
+
+    outcomes = []
+    for strided in (True, False):
+        table = _project(_strided_population(strided=strided), ("x0", "count")).tables[
+            "person"
+        ]
+        try:
+            _set_own_value(table, column, through_array=through_array)
+        except ValueError as error:
+            assert _refused(error), repr(error)
+            outcomes.append("refused")
+        else:
+            outcomes.append("ran")
+    assert outcomes[0] == outcomes[1]
+    assert outcomes[0] == ("refused" if through_array else "ran")
+
+
+def test_a_table_kept_after_its_context_is_freed_stays_read_only() -> None:
+    """Documented limit: a table sharing a context's memory must be copied to write.
+
+    While the kernel runs, pandas copies before writing. Once the context is
+    freed, a shallow table derived from it is the only owner of read-only
+    memory, so an in-place pandas write into it raises.
+    """
+
+    population = _kinds_population()
+    before = _population_storage(population)
+    context = _project(population, ("float64",))
+    derived = context.tables["person"].reset_index()
+    del context
+    gc.collect()
+    with pytest.raises(ValueError, match="read-only"):
+        derived.iloc[0, derived.columns.get_loc("float64")] = 99.0
+    copied = derived.copy()
+    copied.iloc[0, copied.columns.get_loc("float64")] = 99.0
+    assert _population_storage(population) == before
+
+
+@needs_ufunc_at_through_read_only
 def test_a_bool_byte_written_through_a_uint8_view_changes_the_digest() -> None:
     """``np.add.at`` can store a 2 that still reads as True; the digest sees it."""
 
@@ -1160,11 +1426,56 @@ def test_a_pandas_subclass_table_keeps_its_type_and_metadata() -> None:
         frame.strata,
     )
     for rows in (ROWS_ALL, "selected"):
-        table = _project(Population.from_frame(tagged, "survey"), rows=rows).tables[
-            "person"
-        ]
+        population = Population.from_frame(tagged, "survey")
+        before = _population_storage(population)
+        table = _project(population, rows=rows).tables["person"]
         assert type(table) is _TaggedFrame
         assert table.tag == "invented"
+        for column in ("float64", "Int64_no_missing", "string_python"):
+            assert not any(
+                isinstance(ours, np.ndarray) and np.shares_memory(ours, theirs)
+                for ours, theirs in zip(
+                    _memory_of(table[column]),
+                    _memory_of(population.frame.table("person")[column]),
+                    strict=True,
+                )
+            ), column
+            try:
+                _write_array(table, column)
+            except ValueError as error:
+                assert _refused(error), repr(error)
+        assert _population_storage(population) == before
+
+
+class _TaggedSeries(pd.Series):
+    _metadata = ["tag"]
+
+    @property
+    def _constructor(self) -> type[_TaggedSeries]:
+        return _TaggedSeries
+
+
+def test_pandas_subclass_strata_keep_their_type_and_metadata() -> None:
+    frame = _kinds_frame()
+    strata = _TaggedSeries(frame.strata)
+    strata.tag = "invented"
+    tagged = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        strata,
+    )
+    population = Population.from_frame(tagged, "survey")
+    before = _population_storage(population)
+    context = _project(population)
+    assert type(context.strata) is _TaggedSeries
+    assert context.strata.tag == "invented"
+    assert not np.shares_memory(
+        np.asarray(context.strata.array), np.asarray(population.frame.strata.array)
+    )
+    with pytest.raises(ValueError, match="read-only"):
+        context.strata.iloc[0] = "c"
+    assert _population_storage(population) == before
 
 
 # ----------------------------------------------------------------------

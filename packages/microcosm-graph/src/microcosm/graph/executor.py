@@ -351,11 +351,12 @@ def _freeze_series(series: pd.Series) -> None:
 # Kernel inputs (amendment 31). A kernel's tables and strata are new pandas
 # objects over read-only views of the memory they are projected from: the
 # population's own for a node that reads every row, and the single copy
-# ``.loc`` makes of the selected rows otherwise. Nothing else is copied. pandas
-# copies a column before writing into it, so a pandas write lands only in the
-# kernel's own table, where the before/after context digest sees it. An item
-# write into an array a column hands out, or into its ``.base``, raises, and
-# so does ``setflags(write=True)``. ``np.<ufunc>.at`` writes even into a
+# ``.loc`` makes of the selected rows otherwise. Nothing else is copied. The
+# same two rules hold for every column type and layout: pandas copies a column
+# before writing into it, so a pandas write lands only in the kernel's own
+# table, where the before/after context digest sees it; and an item write into
+# an array a column hands out, into its ``.base``, or after
+# ``setflags(write=True)`` raises. ``np.<ufunc>.at`` writes even into a
 # read-only array, so such a write reaches the population's memory; the digest
 # then rejects the node before its result is applied or stored.
 
@@ -393,7 +394,7 @@ class _StridedMemoryError(Exception):
     The deep copy kernels got before #1679 held each dtype's columns in one
     contiguous block, and BLAS products such as ``np.dot`` can round
     differently when an operand's layout or alignment changes. A table with
-    a strided column is therefore copied exactly as before.
+    a strided column is therefore deep-copied as before, and viewed.
     """
 
 
@@ -432,8 +433,13 @@ def _read_only_values(series: pd.Series) -> object | None:
     if isinstance(values, _MASKED_ARRAY_TYPES):
         return _read_only_masked(values)
     if isinstance(values, pd.Categorical):
+        # The categories are copied: the population's would be reachable, and
+        # writable, through ``.cat.categories``, and there are few of them.
+        dtype = pd.CategoricalDtype(
+            values.categories.copy(deep=True), ordered=values.ordered
+        )
         return pd.Categorical.from_codes(
-            _read_only_view(values.codes), dtype=values.dtype, validate=False
+            _read_only_view(values.codes), dtype=dtype, validate=False
         )
     if isinstance(values, pd.arrays.StringArray):
         # The public constructor validates by writing into the array it is
@@ -487,7 +493,7 @@ def _read_only_series(series: pd.Series, index: pd.Index) -> pd.Series:
         _freeze_series(copied)
         return copied
     return pd.Series(
-        values, index=index, name=series.name, dtype=series.dtype, copy=False
+        values, index=index, name=series.name, dtype=values.dtype, copy=False
     )
 
 
@@ -510,39 +516,52 @@ def _copied_before_written(built: pd.DataFrame | pd.Series):
     return shared
 
 
+def _views_of(table: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    index = _read_only_index(table.index)
+    projected = pd.DataFrame(
+        {column: _read_only_series(table[column], index) for column in columns},
+        index=index,
+        copy=False,
+    )
+    projected.columns = table.columns[table.columns.get_indexer(columns)]
+    return projected
+
+
 def _read_only_table(table: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    """``table[columns]`` over read-only views of the memory of ``table``."""
+    """``table[columns]`` over read-only views of the memory of ``table``.
+
+    A table with a strided column is viewed through the deep copy kernels got
+    before, whose blocks keep that copy's layout and alignment, so a write
+    has the same outcome whatever the population's layout.
+    """
 
     if type(table) is not pd.DataFrame:
         # A pandas subclass keeps its type and metadata only through its own
         # methods, so it is copied as before.
         return _frozen_copy(table.loc[:, columns])
     try:
-        index = _read_only_index(table.index)
-        projected = pd.DataFrame(
-            {column: _read_only_series(table[column], index) for column in columns},
-            index=index,
-            copy=False,
-        )
+        projected = _views_of(table, columns)
     except _StridedMemoryError:
-        return _frozen_copy(table.loc[:, columns])
-    projected.columns = table.columns[table.columns.get_indexer(columns)]
+        contiguous = table.loc[:, columns].copy(deep=True)
+        contiguous.index = contiguous.index.copy(deep=True)
+        projected = _views_of(contiguous, columns)
     return _copied_before_written(projected.__finalize__(table))
 
 
 def _read_only_strata(strata: pd.Series) -> pd.Series:
-    """The strata over read-only views, or a frozen copy as kernels got before."""
+    """The strata over read-only views, through a deep copy if strided."""
 
-    if type(strata) is pd.Series:
-        try:
-            viewed = _read_only_series(strata, _read_only_index(strata.index))
-        except _StridedMemoryError:
-            pass
-        else:
-            return _copied_before_written(viewed.__finalize__(strata))
-    copied = strata.copy()
-    _freeze_series(copied)
-    return copied
+    if type(strata) is not pd.Series:
+        copied = strata.copy()
+        _freeze_series(copied)
+        return copied
+    try:
+        viewed = _read_only_series(strata, _read_only_index(strata.index))
+    except _StridedMemoryError:
+        contiguous = strata.copy(deep=True)
+        contiguous.index = contiguous.index.copy(deep=True)
+        viewed = _read_only_series(contiguous, _read_only_index(contiguous.index))
+    return _copied_before_written(viewed.__finalize__(strata))
 
 
 def _detached_record(record):
