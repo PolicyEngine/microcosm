@@ -665,7 +665,20 @@ def documents(nz=NZ):
                 "baseline_scenario": "S0",
             },
             "package": {"id": "nz.package", "artifact_name": "bands"},
-            "checkpoints": ["nz.as.bands"],
+            # d3058: the nz.gates.terminal checkpoint writes the manifest of the
+            # terminal gate closure (calibration diagnostics, the six evidence
+            # nodes and the battery) before export.prepare refuses on a blocking
+            # gate report; no gate changes. The cell diagnostics collector feeds
+            # the terminal battery, so the document lists it just before
+            # nz.gates.terminal: it runs in its own checkpoint and writes its
+            # manifest even if a node only the battery's checkpoint runs then
+            # raises. entitlement.py appends the collector only when a document
+            # leaves it out.
+            "checkpoints": [
+                "nz.as.bands",
+                "nz.as.bands.cell_diagnostics",
+                "nz.gates.terminal",
+            ],
             # R2C-29 (G8-x1): R2C-3's VSI, VEX and VPT evidence is each variant's
             # own gap, which exists only when that variant's calibration and
             # entitlement branch ran.

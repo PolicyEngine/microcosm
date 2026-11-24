@@ -18,6 +18,9 @@ import yaml
 
 from microcosm.build.uk_runtime import hmrc_uprating
 from microcosm.build.uk_runtime.national_frame import (
+    UK_TOTAL_COLUMNS,
+    UK_TOTAL_COMPONENTS,
+    uk_household_totals,
     uk_national_frame,
     uk_release_export_frame,
     write_uk_national_frame,
@@ -136,3 +139,85 @@ def test_weights_written_as_solved_read_high_at_the_solve_year(tmp_path) -> None
     high = _engine_weights(as_solved, 2025)
     np.testing.assert_allclose(high, SOLVED * factor, rtol=1e-6)
     assert not np.allclose(high, SOLVED, rtol=1e-4, atol=0)
+
+
+def _frame_with_share_keys():
+    """The release frame with every share-key component on its households."""
+
+    frame = _frame()
+    household = frame.table("household").assign(
+        **{
+            component: np.asarray([1_000.0, 2_000.0, 5_000.0]) * (index + 1)
+            for index, component in enumerate(UK_TOTAL_COMPONENTS)
+        }
+    )
+    return uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.CALIBRATED,
+        household_weights=SOLVED,
+    )
+
+
+def test_the_release_totals_are_policyengine_uks_own() -> None:
+    from policyengine_uk.utils.uk_totals import uk_total_columns, uk_totals
+
+    assert list(UK_TOTAL_COLUMNS) == uk_total_columns()
+    household = _frame_with_share_keys().table("household")
+    ours = uk_household_totals(household, SOLVED)
+    theirs = uk_totals(household.assign(household_weight=SOLVED))
+    assert {column: float(ours[column].iloc[0]) for column in UK_TOTAL_COLUMNS} == (
+        pytest.approx(theirs, rel=1e-12)
+    )
+
+
+def test_a_household_subset_of_the_release_keeps_its_uk_share(tmp_path) -> None:
+    # With the totals carried, a simulation of part of the file gives each
+    # household its share of the UK's corporate wealth and consumption, as the
+    # whole file does (pe-uk#2896); without them the part's own households
+    # would share the totals out among themselves.
+    pytest.importorskip("tables")
+    import policyengine_uk
+    from policyengine_uk.data import UKSingleYearDataset
+
+    path = write_uk_national_frame(
+        uk_dataset_year_frame(
+            uk_release_export_frame(_frame_with_share_keys()), solve_year=2025
+        ),
+        tmp_path / "release.h5",
+    )
+    whole = UKSingleYearDataset(file_path=path)
+
+    def shares(dataset) -> dict[str, np.ndarray]:
+        simulation = policyengine_uk.Microsimulation(dataset=dataset)
+        return {
+            key: np.asarray(simulation.calculate(key, 2024), dtype=float)
+            for key in ("consumption_shareholding", "shareholding", "household_weight")
+        }
+
+    everyone = shares(whole)
+    kept = (
+        whole.household["household_id"] != whole.household["household_id"].iloc[0]
+    ).to_numpy()
+    households = whole.household[kept]
+    people = whole.person[
+        whole.person["person_household_id"].isin(households["household_id"])
+    ]
+    part = shares(
+        UKSingleYearDataset(
+            person=people,
+            benunit=whole.benunit[
+                whole.benunit["benunit_id"].isin(people["person_benunit_id"])
+            ],
+            household=households,
+            fiscal_year=2024,
+        )
+    )
+    for key in ("consumption_shareholding", "shareholding"):
+        # The whole file's shares weigh up to one at the weights it stores,
+        # to the engine's float32 rounding of the weights and amounts.
+        weighted = everyone[key] * everyone["household_weight"]
+        assert weighted.sum() == pytest.approx(1.0, rel=1e-6)
+        np.testing.assert_allclose(part[key], everyone[key][kept], rtol=1e-9)

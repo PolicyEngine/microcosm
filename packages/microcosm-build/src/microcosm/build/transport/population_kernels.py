@@ -12,6 +12,14 @@ reader's concept schema. Every other ``*_sha256`` parameter here
 (``donor_pin_sha256``, ``unit_rule_sha256``, ``mass_reference_sha256``,
 ``currency_sha256`` and ``bands_sha256``) is checked for format only: it
 moves the node key and authenticates nothing.
+
+An optional ``donor_profile`` carries a donor-decoding profile document
+(``microcosm.frame.transport.parse_donor_profile``). The reader refuses a
+document whose own ``donor_sha256`` differs from this kernel's
+``donor_sha256`` parameter and stages the profile's concepts; the receipt's
+``donor_profile`` key records what it staged.
+Without the parameter, CREATE reads the donor and writes its frame and
+receipt as before.
 """
 
 from __future__ import annotations
@@ -42,6 +50,7 @@ from microcosm.frame.concepts import (
 from microcosm.frame.transport import (
     currency_bridge,
     derive_transport_seed,
+    parse_donor_profile,
     quantile_map,
     read_populace_us_donor,
 )
@@ -142,6 +151,7 @@ class TransportCreateKernel(KernelBase):
             "seed_stream",
         }
     )
+    _optional = frozenset({"facts_sha256", "chronicle_feed_pin", "donor_profile"})
 
     def implementation_hash(self) -> str:
         return source_hash(
@@ -166,10 +176,13 @@ class TransportCreateKernel(KernelBase):
 
     def run(self, context: KernelContext) -> KernelResult:
         require_params(
-            context,
-            self.ref,
-            required=self._required,
-            optional=frozenset({"facts_sha256", "chronicle_feed_pin"}),
+            context, self.ref, required=self._required, optional=self._optional
+        )
+        # Parsed once, before any source is read; the reader stages it.
+        profile = (
+            parse_donor_profile(string_param(context, self.ref, "donor_profile"))
+            if "donor_profile" in context.params
+            else None
         )
         donor_source = string_param(context, self.ref, "donor_source")
         facts_source = string_param(context, self.ref, "facts_source")
@@ -220,6 +233,7 @@ class TransportCreateKernel(KernelBase):
             context.sources[donor_source],
             sha256=sha256_param(context, self.ref, "donor_sha256"),
             size=context.params["donor_size"],
+            profile=profile,
         )
         tables, dropped = split_for_transport(donor.tables)
         # pandas 3's inferred text dtype spells itself "str"; graph columns
@@ -315,6 +329,11 @@ class TransportCreateKernel(KernelBase):
                 else diagnostics,
                 "mass_reference": registry.specs[0].name,
                 "facts": dict(surface.facts),
+                **(
+                    {}
+                    if donor.donor_profile is None
+                    else {"donor_profile": donor.donor_profile}
+                ),
             },
         )
 

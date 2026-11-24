@@ -382,6 +382,16 @@ FRS_CONDITION_LIMITS_COLUMN = "frs_condition_limits_activities"
 FRS_CONDITION_LIMITS_CODES = {1: "A_LOT", 2: "A_LITTLE", 3: "NOT_AT_ALL"}
 FRS_CONDITION_NONE = "NO_CONDITION"
 FRS_CONDITION_NOT_ASKED = "NOT_ASKED"
+
+#: How recent a benefit unit's linked Universal Credit claim is: the completed
+#: calendar months from DWP's claim start (BENEFITS.UCSTART on the claim's UC
+#: row) to the interview (HOUSEHOL.INTDATE), as the start-up period counts
+#: them, or -1 where the unit has no linked claim start (no UC row, or UCSTART
+#: blank). The uc_new_claimant_draw stage orders the new-claimant health
+#: element draw by it (microcosm#1095); it is no engine input and leaves at
+#: the release boundary.
+FRS_UC_CLAIM_MONTHS_COLUMN = "frs_uc_claim_months"
+FRS_UC_CLAIM_MONTHS_NOT_LINKED = -1.0
 #: DWP's carer element on a benefit unit's linked Universal Credit claim:
 #: BENEFITS.UCCAREEL on the UC row, "Weekly Carer Element Amount (Admin UC)"
 #: in SN 9563's UKDA data dictionary, which gives it no value labels. The
@@ -563,6 +573,7 @@ OUTPUT_COLUMNS = (
     "widowed_parents_allowance_reported",
     "benunit_id",
     "frs_benunit_capital",
+    FRS_UC_CLAIM_MONTHS_COLUMN,
     "is_married",
     "dependent_children",
     "liable_for_share_of_household_rent",
@@ -990,6 +1001,9 @@ def _assemble_frame(
         household,
         job=frs["job"],
         benefits=frs["benefits"],
+    )
+    pe_benunit[FRS_UC_CLAIM_MONTHS_COLUMN] = frs_uc_claim_months(
+        frs["benefits"], pe_benunit, household
     )
     pe_person[FRS_UC_LCW_STATUS_COLUMN] = frs_uc_lcw_status(frs["benefits"], pe_person)
     pe_person[FRS_CONDITION_LIMITS_COLUMN] = frs_condition_limits_activities(
@@ -2567,6 +2581,54 @@ def frs_uc_start_up_period(
         unlinked & (draws < linked_share)
     )
     return self_employed & (claim_in_window[person_benunit] | (trade_years < 1))
+
+
+def frs_uc_claim_months(
+    benefits: pd.DataFrame, pe_benunit: pd.DataFrame, household: pd.DataFrame
+) -> np.ndarray:
+    """How recent each benefit unit's linked UC claim is (``FRS_UC_CLAIM_MONTHS_COLUMN``).
+
+    The completed calendar months from DWP's claim start (BENEFITS.UCSTART,
+    kept as ``ucstart_raw``) on the unit's UC row to its interview (INTDATE),
+    as :func:`frs_uc_start_up_period` counts them, and
+    ``FRS_UC_CLAIM_MONTHS_NOT_LINKED`` where the unit has no UC row or its
+    UCSTART is blank. A second UC row on one benefit unit, a UC row whose unit
+    isn't on the spine, and a claim that starts after the interview are
+    refused rather than guessed (microcosm#1095).
+    """
+
+    if "ucstart_raw" not in benefits.columns:
+        raise KeyError(
+            "The UC claim recency carrier needs the FRS column benefits.ucstart."
+        )
+    uc_rows = benefits.loc[
+        _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
+    ]
+    if uc_rows["benunit_id"].duplicated().any():
+        raise ValueError(
+            "A benefit unit has two FRS UC rows; UCSTART is read as one claim's start."
+        )
+    interview = frs_interview_dates(household)
+    months = completed_months(
+        interview.reindex(uc_rows["household_id"].to_numpy()),
+        parse_frs_uc_claim_start(uc_rows["ucstart_raw"]),
+    )
+    if (months < 0).any():
+        raise ValueError(
+            f"{int((months < 0).sum())} FRS UC claim(s) start after the interview."
+        )
+    benunit_ids = pe_benunit["benunit_id"].to_numpy()
+    absent = ~np.isin(uc_rows["benunit_id"].to_numpy(), benunit_ids)
+    if absent.any():
+        raise ValueError(
+            f"{int(absent.sum())} FRS UC row(s) name a benefit unit the spine does not hold."
+        )
+    by_unit = (
+        pd.Series(months, index=uc_rows["benunit_id"].to_numpy())
+        .reindex(benunit_ids)
+        .to_numpy(dtype=np.float64)
+    )
+    return np.where(np.isnan(by_unit), FRS_UC_CLAIM_MONTHS_NOT_LINKED, by_unit)
 
 
 def frs_uc_lcw_status(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.ndarray:

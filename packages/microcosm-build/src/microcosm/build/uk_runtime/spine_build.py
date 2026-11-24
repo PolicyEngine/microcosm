@@ -224,6 +224,9 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_limited_capability import (
     UKUCLimitedCapabilityStageTransform,
 )
+from microcosm.build.uk_runtime.uc_new_claimant_draw import (
+    UKUCNewClaimantDrawStageTransform,
+)
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
@@ -2018,6 +2021,11 @@ def prepare_uk_spine_execution(
             UKTradingAllowanceReceiptsStageTransform(
                 stage=stages_by_name["trading_allowance_receipts"]
             )
+        )
+    if "uc_new_claimant_draw" in stage_names:
+        implementations["uc_new_claimant_draw"] = UKUCNewClaimantDrawStageTransform(
+            stage=stages_by_name["uc_new_claimant_draw"],
+            engine=engine,
         )
     if "age_tail" in stage_names:
         implementations["age_tail"] = UKAgeTailStageTransform(

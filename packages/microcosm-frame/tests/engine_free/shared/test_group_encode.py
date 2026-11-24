@@ -1400,8 +1400,9 @@ class TestNewZealandMapping:
             assert table[name].tolist() == expected, name
         income = self.OWN_WEEKLY_INCOME
         amounts = {
-            # (15,600 + 5,200) / 52, on the family holding the reference person.
-            "accommodation_supplement_owner_weekly_required_payments": [400.0, 0, 0],
+            # 15,600 / 52, interest only: the 5,200 of principal is unmapped
+            # (d3058) and not read. On the family holding the reference person.
+            "accommodation_supplement_owner_weekly_required_payments": [300.0, 0, 0],
             # 15,600 / 52.
             "accommodation_supplement_weekly_rent_paid": [0, 0, 300.0],
             # Summed over each family's members.

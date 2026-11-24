@@ -219,6 +219,28 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # carer cares for a severely disabled person, policyengine-uk's input
     # (2.177.3, pe-uk#2860), which frs_disability writes from the FRS care tab.
     "person.cares_for_severely_disabled_person",
+    # microcosm#1095: Universal Credit's new-claimant health element draw,
+    # policyengine-uk's stored input (2.179.0, pe-uk#2877), which the
+    # uc_new_claimant_draw stage orders by claim recency.
+    "benunit.uc_new_claimant_health_element_draw",
+    # microcosm#1095 (PolicyEngine/microcosm#1687): the UK totals of the
+    # components of policyengine-uk's two share keys (2.178.0,
+    # pe-uk#2901), which the release boundary writes at the file's weights
+    # (national_frame.uk_household_totals).
+    "household.uk_total_corporate_wealth",
+    "household.uk_total_private_pension_wealth",
+    "household.uk_total_food_and_non_alcoholic_beverages_consumption",
+    "household.uk_total_alcohol_and_tobacco_consumption",
+    "household.uk_total_clothing_and_footwear_consumption",
+    "household.uk_total_housing_water_and_electricity_consumption",
+    "household.uk_total_household_furnishings_consumption",
+    "household.uk_total_health_consumption",
+    "household.uk_total_transport_consumption",
+    "household.uk_total_communication_consumption",
+    "household.uk_total_recreation_consumption",
+    "household.uk_total_education_consumption",
+    "household.uk_total_restaurants_and_hotels_consumption",
+    "household.uk_total_miscellaneous_consumption",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

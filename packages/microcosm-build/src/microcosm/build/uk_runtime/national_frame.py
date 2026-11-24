@@ -781,6 +781,12 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # drops one should it appear.
         "is_severely_disabled_for_benefits",
     ),
+    "benunit": (
+        # The UC claim recency carrier (frs_spine.FRS_UC_CLAIM_MONTHS_COLUMN)
+        # the uc_new_claimant_draw stage orders its draw by (microcosm#1095);
+        # it is no engine input.
+        "frs_uc_claim_months",
+    ),
     "household": (
         "property_wealth",
         # The value the spine's regional home values replaced (microcosm#1112):
@@ -1027,6 +1033,82 @@ def uk_build_identifier_frame(frame: Frame) -> Frame:
     )
 
 
+#: The components of policyengine-uk's two share keys, whose UK totals a
+#: release carries (policyengine-uk 2.178.0, PolicyEngine/policyengine-uk#2901):
+#: corporate_sector_wealth adds the first two and consumption the twelve
+#: spending categories (``policyengine_uk.utils.uk_totals.components``). The
+#: engine tier checks this list, and the sums, against policyengine-uk's own.
+UK_TOTAL_COMPONENTS: tuple[str, ...] = (
+    "corporate_wealth",
+    "private_pension_wealth",
+    "food_and_non_alcoholic_beverages_consumption",
+    "alcohol_and_tobacco_consumption",
+    "clothing_and_footwear_consumption",
+    "housing_water_and_electricity_consumption",
+    "household_furnishings_consumption",
+    "health_consumption",
+    "transport_consumption",
+    "communication_consumption",
+    "recreation_consumption",
+    "education_consumption",
+    "restaurants_and_hotels_consumption",
+    "miscellaneous_consumption",
+)
+UK_TOTAL_PREFIX = "uk_total_"
+UK_TOTAL_COLUMNS: tuple[str, ...] = tuple(
+    f"{UK_TOTAL_PREFIX}{component}" for component in UK_TOTAL_COMPONENTS
+)
+
+
+def uk_household_totals(household: pd.DataFrame, weights: Any) -> pd.DataFrame:
+    """The household table with the UK total of each share-key component.
+
+    policyengine-uk's ``shareholding`` and ``consumption_shareholding`` divide
+    a household's corporate wealth and spending by the UK's totals where the
+    data carries them, so a simulation of part of the file (a region, an
+    extract, a household subset) gives each household its share of the UK's
+    totals. Without them, each part shares the national totals out among its
+    own households. A release holds every UK household, so it carries them:
+    each ``uk_total_*`` column is the same on every row, its component's sum
+    at ``weights``, as ``policyengine_uk.utils.uk_totals.uk_totals`` sums it
+    (María's call of 19 November 2026; her ruling D-e on
+    PolicyEngine/policyengine-uk#2896). The table comes back as it is when it
+    already carries these totals, or holds none of the components (a test
+    frame); one holding only some of them is refused.
+    """
+
+    present = [column for column in UK_TOTAL_COMPONENTS if column in household]
+    if not present:
+        return household
+    if len(present) != len(UK_TOTAL_COMPONENTS):
+        missing = sorted(set(UK_TOTAL_COMPONENTS) - set(present))
+        raise ValueError(
+            "The UK totals need every component of policyengine-uk's share "
+            f"keys; the household table lacks {missing}."
+        )
+    weight = np.asarray(weights, dtype=np.float64)
+    if weight.shape != (len(household),):
+        raise ValueError("The UK totals need one household weight per household.")
+    totals: dict[str, float] = {}
+    for component in UK_TOTAL_COMPONENTS:
+        values = pd.to_numeric(household[component], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        if not np.isfinite(values).all():
+            raise ValueError(f"The UK total of {component} needs finite values.")
+        totals[f"{UK_TOTAL_PREFIX}{component}"] = float(np.sum(values * weight))
+    if all(
+        column in household
+        and np.array_equal(
+            household[column].to_numpy(dtype=np.float64),
+            np.full(len(household), total),
+        )
+        for column, total in totals.items()
+    ):
+        return household
+    return household.assign(**totals)
+
+
 def uk_release_export_frame(frame: Frame) -> Frame:
     """The frame the release boundary writes: reviewed export exclusions dropped.
 
@@ -1034,8 +1116,12 @@ def uk_release_export_frame(frame: Frame) -> Frame:
     ``geography_ladder.UK_EXPORT_AREA_CODE_COLUMNS``); a national frame
     carries none. The identifiers leave inside the 32-bit range the engine
     stores, with the build identifiers beside them (microcosm#1194,
-    :func:`uk_release_identifier_tables`). A frame that already left passes
-    unchanged. The tables are copied below, so shared columns are checked first.
+    :func:`uk_release_identifier_tables`). The households carry the UK totals
+    of the share keys' components at the frame's weights
+    (:func:`uk_household_totals`); the dataset-year division sums them again at
+    the weights the file stores (``weight_year.uk_dataset_year_frame``). A
+    frame that already left passes unchanged. The tables are copied below, so
+    shared columns are checked first.
     """
 
     from .geography_ladder import export_area_code_columns
@@ -1057,6 +1143,10 @@ def uk_release_export_frame(frame: Frame) -> Frame:
             renamed = export_area_code_columns(table)
             if renamed is not table:
                 table = renamed
+                changed = True
+            totalled = uk_household_totals(table, frame.weights_for("household").values)
+            if totalled is not table:
+                table = totalled
                 changed = True
         tables[entity] = table
     if not _uk_build_identifier_state(tables):
