@@ -33,10 +33,10 @@ def _load_builder():
 def _record_requests(builder):
     """Record OBBBA stacks and validation's missing-estimate fallback passes.
 
-    The release's engine-free dry run records each consumer's requests as
-    picklable descriptors (``_record_post_export_request_descriptors``): the
-    baseline plans, and one reform request per reform pass, which each worker
-    rebuilds its reforms from.
+    ``_record_post_export_request_descriptors`` returns each consumer's
+    requests from the release's engine-free dry run as picklable descriptors:
+    the baseline plans, and one reform request per reform pass, from which
+    each worker rebuilds the reforms it scores.
     """
     specs = builder.load_default_reform_specs(period=builder.PERIOD)
 

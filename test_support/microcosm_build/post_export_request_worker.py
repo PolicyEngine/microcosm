@@ -1,9 +1,11 @@
 """What a spawned pool worker receives of the post-export requests sent to it.
 
 This module imports nothing beyond the standard library, so a spawned process
-that runs it loads only what unpickling the requests needs. The release tool
-(``tools/build_us_fiscal_refresh_release.py``) is loaded by file path, outside
-``sys.modules``; a type defined there cannot be unpickled in such a process.
+that runs it loads what unpickling the requests needs and whatever the parent's
+main script imports (under pytest, not the release tool). The tests load the
+release tool (``tools/build_us_fiscal_refresh_release.py``) by file path,
+outside ``sys.modules``, so a type defined there cannot be unpickled in such a
+process.
 """
 
 from __future__ import annotations

@@ -449,9 +449,11 @@ one Microsimulation over the whole file.
   2025 state taxes after 2027 keys. It checks for the
   `md.msde.ccs.payment.informal.rates` error and warns if that error is absent;
   it does not require the upstream bug to persist.
-- The same dry run returns every request, baseline and reform, as a picklable
-  `PostExportRequest` (`microcosm.build.us_runtime.post_export_requests`),
-  which a process started with `spawn` can unpickle. A reform request holds
+- The same dry run sees every request, baseline and reform.
+  `_record_post_export_request_descriptors` returns them as picklable
+  `PostExportRequest`s (`microcosm.build.us_runtime.post_export_requests`),
+  which a process started with `spawn` can unpickle; the release itself still
+  takes only the baseline plans and reform-pass counts. A reform request holds
   the description its stage builds the reform from: the smoke probe, the
   reform-validation spec, or a cumulative OBBBA state's parameter changes. The
   dry run builds no reform, and refuses a reform it cannot describe or pickle.

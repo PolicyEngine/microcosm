@@ -5,8 +5,10 @@ each post-export consumer will ask policyengine-us for by running the consumer
 once against engine-free recorders (its "dry run"). The consumers call
 ``simulate(None)`` for the baseline simulation and ``simulate(reform)`` for a
 reformed one, then ``.calculate(variable, period, map_to=...)`` on each. The
-dry run returns every such request as a :class:`PostExportRequest`, which a
-process started with the ``spawn`` method can unpickle and run.
+release takes only each consumer's baseline plan and reform-pass count from the
+dry run; the tool's ``_record_post_export_request_descriptors`` returns every
+request of the same dry run as a :class:`PostExportRequest`, which a process
+started with the ``spawn`` method can unpickle and run.
 
 A built reform cannot cross a process boundary: ``Reform.from_dict`` returns a
 class defined inside a function, which pickle cannot name. So a consumer whose
@@ -23,11 +25,16 @@ the reform from that description with the consumer's own builder:
 - a :class:`ParameterChangesReform` (one of reform validation's cumulative
   OBBBA states), rebuilt by ``reform_validation._build_parameter_reform``.
 
-These types live here, in an importable package, because the release tool is
-loaded by file path, outside ``sys.modules``: a spawned process could not
-unpickle a type defined in it. Neither type can be hashed, because a reform
-description holds dictionaries; key a request's results by its
-``(consumer, position)``.
+These types live here, in an importable package, so that a spawned process
+can unpickle them however the release tool was started. The tests and the
+guard sweep load the tool by file path, outside ``sys.modules``, where a type
+defined in it cannot be unpickled at all. A release runs the tool as a script,
+where a spawned process would unpickle such a type only by running the whole
+tool again as its ``__mp_main__`` module (which a process started with
+``spawn`` does to the parent's main script in any case).
+
+Neither type can be hashed, because a reform description holds dictionaries;
+key a request's results by its ``(consumer, position)``.
 """
 
 from __future__ import annotations
@@ -87,9 +94,14 @@ class ParameterChangesReform:
                 "ParameterChangesReform needs at least one of its parameter "
                 "changes; the baseline is simulate(None)."
             )
-        object.__setattr__(
-            self, "parameter_changes", copy.deepcopy(dict(self.parameter_changes))
-        )
+        try:
+            copied = copy.deepcopy(dict(self.parameter_changes))
+        except Exception as error:
+            raise TypeError(
+                "ParameterChangesReform's parameter changes cannot be copied: "
+                f"{type(error).__name__}: {error}"
+            ) from error
+        object.__setattr__(self, "parameter_changes", copied)
 
 
 #: What a post-export request records as its reform: the description the
@@ -109,7 +121,8 @@ _POST_EXPORT_REFORM_TYPES = (
 def check_post_export_reform(reform: object) -> None:
     """Refuse a reform that is not a description a worker can rebuild.
 
-    The description must be one of the accepted types and must pickle, so a
+    The description must be exactly one of the accepted types, not a
+    subclass, whose module a worker might not have, and must pickle, so a
     failure shows in the release's pre-export plan rather than when a request
     is sent to a worker.
 
@@ -117,7 +130,7 @@ def check_post_export_reform(reform: object) -> None:
         TypeError: Naming the reform's type and the types accepted, or why
             the description cannot be pickled.
     """
-    if not isinstance(reform, _POST_EXPORT_REFORM_TYPES):
+    if type(reform) not in _POST_EXPORT_REFORM_TYPES:
         accepted = ", ".join(kind.__name__ for kind in _POST_EXPORT_REFORM_TYPES)
         raise TypeError(
             "Post-export scoring records each reform as the description a worker "
@@ -127,7 +140,7 @@ def check_post_export_reform(reform: object) -> None:
         )
     try:
         pickle.dumps(reform)
-    except (pickle.PicklingError, TypeError, AttributeError) as error:
+    except Exception as error:
         raise TypeError(
             f"Post-export scoring got a {type(reform).__qualname__} reform "
             "description that cannot be pickled for a worker process: "
@@ -151,6 +164,13 @@ def build_post_export_reform(reform: PostExportReform) -> Any:
 
         return reform_validation._build_parameter_reform(reform.parameter_changes)
     return reform.build_reform()
+
+
+def _require_name(name: str, value: object) -> None:
+    if not isinstance(value, str):
+        raise TypeError(f"PostExportRequest.{name} must be a string, got {value!r}.")
+    if not value:
+        raise ValueError(f"PostExportRequest.{name} must not be empty.")
 
 
 def _require_integer(name: str, value: object, *, minimum: int | None = None) -> None:
@@ -201,22 +221,12 @@ class PostExportRequest:
     __hash__ = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
-        for name in ("consumer", "variable"):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value:
-                raise ValueError(
-                    f"PostExportRequest.{name} must be a non-empty string, "
-                    f"got {value!r}."
-                )
+        _require_name("consumer", self.consumer)
+        _require_name("variable", self.variable)
         _require_integer("position", self.position, minimum=0)
         _require_integer("period", self.period)
-        if self.map_to is not None and (
-            not isinstance(self.map_to, str) or not self.map_to
-        ):
-            raise ValueError(
-                "PostExportRequest.map_to must be None or an entity name, got "
-                f"{self.map_to!r}."
-            )
+        if self.map_to is not None:
+            _require_name("map_to", self.map_to)
         if self.reform is None:
             if self.reformed_simulation is not None:
                 raise ValueError(
