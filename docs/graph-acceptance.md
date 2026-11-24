@@ -777,15 +777,20 @@ lock unchanged:
     a node that reads every row, and the single copy `.loc` makes of the
     selected rows for a node with a row mask. Kernels see the same columns,
     order, dtypes, index, values and `attrs`, so no node key or output
-    moves. A column type with no known view is copied and frozen, a table
-    or strata with a strided column is viewed through the old deep copy
-    (BLAS products such as `np.dot` can round differently when an operand's
-    layout or alignment changes, and that copy keeps the old layout), a
+    moves. A column type with no known view (datetime, timedelta, period,
+    none of which the store accepts as a graph column) and an index with no
+    view (for example a `DatetimeIndex`) are copied and frozen; a table or
+    strata with a strided column is viewed through the old deep copy (BLAS
+    products such as `np.dot` can round differently when an operand's
+    layout or alignment changes, and that copy keeps the old layout); a
     pandas subclass gets the old frozen copy, since it keeps its type and
-    metadata only through its own methods, and a categorical column's
-    categories are copied.
+    metadata only through its own methods; and a categorical column's
+    categories are copied. A subclass and a `CategoricalIndex` still share
+    their categories with the population, as before; the store accepts no
+    categorical column, so only a direct caller of `_project_context` can
+    hand one to a kernel.
 
-    Two rules hold for every column type and layout. A pandas write
+    Two rules hold for every viewed column and every layout. A pandas write
     (`.loc`, `.iloc`, `.at`, column assignment, `update`,
     `clip(inplace=True)`, ...) lands only in the kernel's own table or
     strata: each shares its memory with a second, kept-alive object, so
@@ -795,7 +800,9 @@ lock unchanged:
     `np.asarray`, `np.put`, `np.copyto`, `+=`), into its `.base`, or after
     `setflags(write=True)` raises: each view's `.base` is a small object
     that exposes no array, so neither reaches the population's writable
-    block, which holds columns the node never declared. A validation kernel
+    block, which holds columns the node never declared. In a copied column
+    or index, `setflags(write=True)` on the array behind `.base` succeeds,
+    and the write lands in the kernel's own copy. A validation kernel
     that raises this way stores a failed verdict, like any exception it
     raises. On the old copy the outcome depended on the column type: a
     pandas write into a nullable or string column or the strata raised, and

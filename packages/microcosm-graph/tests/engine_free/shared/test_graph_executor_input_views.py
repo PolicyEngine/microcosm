@@ -76,6 +76,9 @@ COLUMN_VALUES: dict[str, Callable[[], object]] = {
         [True, False, False, True, False, True], dtype="boolean"
     ),
     "category": lambda: pd.Categorical(["x", "y", "x", "z", "y", "x"]),
+    "category_ordered": lambda: pd.Categorical(
+        ["x", "y", "x", "z", "y", "x"], categories=["z", "y", "x"], ordered=True
+    ),
     "string_python": lambda: pd.array(
         ["a", "b", None, "d", "e", "f"], dtype=pd.StringDtype("python")
     ),
@@ -701,16 +704,30 @@ _ARRAY_AND_INDEX_WRITES = frozenset(
         "item write into the index",
     }
 )
+#: pandas writes land in the kernel's own table, so they must not raise, under
+#: a row mask too, where the context views ``.loc``'s copy.
+PANDAS_WRITES = frozenset(
+    {
+        "loc cell",
+        "iloc cell",
+        "iat cell",
+        "at cell",
+        "column assignment",
+        "new column",
+        "fillna(inplace=True)",
+        "update",
+        "sort_values(inplace=True)",
+    }
+)
 _WRITE_CASES = tuple(
     (write, column, rows, index)
     for write, column in LANDING_WRITES
+    # The index write does not depend on the column: once is enough.
+    if write != "item write into the index" or column == "float64"
     for rows, index in (
         (ROWS_ALL, "default range"),
-        *(
-            (("selected", "default range"), (ROWS_ALL, "int64"))
-            if write in _ARRAY_AND_INDEX_WRITES
-            else ()
-        ),
+        *((("selected", "default range"),) if write in PANDAS_WRITES else ()),
+        *(((ROWS_ALL, "int64"),) if write in _ARRAY_AND_INDEX_WRITES else ()),
     )
 )
 
@@ -719,15 +736,18 @@ _WRITE_CASES = tuple(
 def test_a_write_into_a_context_leaves_the_population_byte_identical(
     write: str, column: str, rows: str, index: str
 ) -> None:
-    """The write is refused as a write into read-only memory, or stays local."""
+    """A pandas write runs and stays local; any other is refused as read-only."""
 
     population = _kinds_population(index=index)
     before = _population_storage(population)
     context = _project(population, rows=rows)
-    try:
+    if write in PANDAS_WRITES:
         WRITES[write](context.tables["person"], column)
-    except Exception as error:  # noqa: BLE001 - checked just below
-        assert _refused(error), repr(error)
+    else:
+        try:
+            WRITES[write](context.tables["person"], column)
+        except Exception as error:  # noqa: BLE001 - checked just below
+            assert _refused(error), repr(error)
     assert _population_storage(population) == before
 
 
@@ -808,15 +828,21 @@ def test_categorical_strata_hand_out_their_own_categories(rows: str) -> None:
     population = _kinds_population(strata_dtype="category")
     before = _population_storage(population)
     context = _project(population, rows=rows)
-    categories = context.strata.cat.categories
-    categories.name = "renamed"
-    try:
-        np.asarray(categories).__setitem__(0, "z")
-    except ValueError:
-        pass
+    context.strata.cat.categories.name = "renamed"
     assert population.frame.strata.cat.categories.name is None
     assert list(population.frame.strata.cat.categories) == ["a", "b", "c"]
     assert _population_storage(population) == before
+
+
+@pytest.mark.parametrize("column", ["category", "category_ordered"])
+def test_a_categorical_column_hands_out_its_own_categories(column: str) -> None:
+    population = _kinds_population()
+    stored = population.frame.table("person")[column]
+    table = _project(population, (column,)).tables["person"]
+    assert table[column].dtype == stored.dtype
+    assert table[column].cat.ordered is stored.cat.ordered
+    table[column].cat.categories.name = "renamed"
+    assert stored.cat.categories.name is None
 
 
 def test_every_strata_kind_has_a_write_that_lands() -> None:
@@ -1298,9 +1324,16 @@ def _strided_population(*, strided: bool = True) -> Population:
     """Float columns stored as strided views of one C-order matrix, or not."""
 
     matrix = np.random.default_rng(5).normal(size=(_STRIDED_ROWS, 3))
+    # Row labels and strata from one C-order integer matrix are strided too.
+    labels = np.arange(2 * _STRIDED_ROWS, dtype=np.int64).reshape(_STRIDED_ROWS, 2)
+    labels[:, 1] %= 3
     if not strided:
         matrix = np.asfortranarray(matrix)
-    person = pd.DataFrame(matrix, columns=["x0", "x1", "x2"], copy=False).assign(
+        labels = np.asfortranarray(labels)
+    index = pd.Index(labels[:, 0], name="row", copy=False)
+    person = pd.DataFrame(
+        matrix, columns=["x0", "x1", "x2"], index=index, copy=False
+    ).assign(
         person_id=np.arange(1, _STRIDED_ROWS + 1, dtype=np.int64),
         person_household_id=np.ones(_STRIDED_ROWS, dtype=np.int64),
         count=pd.array(np.arange(_STRIDED_ROWS), dtype="Int64"),
@@ -1309,9 +1342,14 @@ def _strided_population(*, strided: bool = True) -> Population:
         {"person": person, "household": pd.DataFrame({"household_id": [1]})},
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.array([1.0]), WeightKind.DESIGN)},
+        pd.Series(labels[:, 1], index=index, name="stratum", copy=False),
     )
-    contiguous = frame.table("person")["x0"].to_numpy().flags.c_contiguous
-    assert contiguous is not strided
+    for stored in (
+        frame.table("person")["x0"].to_numpy(),
+        np.asarray(frame.table("person").index),
+        frame.strata.to_numpy(),
+    ):
+        assert stored.flags.c_contiguous is not strided
     return Population.from_frame(frame, "survey")
 
 
@@ -1342,6 +1380,26 @@ def test_a_table_with_a_strided_column_is_viewed_through_the_old_deep_copy() -> 
         table["x0"].to_numpy(), population.frame.table("person")["x0"].to_numpy()
     )
     assert _writable_views(table["x0"]) == []
+    assert _writable_views(table.index) == []
+    assert np.asarray(table.index).flags.c_contiguous
+
+
+def test_strided_strata_follow_the_rules_for_tables() -> None:
+    population = _strided_population()
+    before = _population_storage(population)
+    context = _project(population, ("x0",))
+    pd.testing.assert_series_equal(
+        context.strata, population.frame.strata.copy(deep=True), check_exact=True
+    )
+    assert context.strata.to_numpy().flags.c_contiguous
+    assert _writable_views(context.strata) == []
+    assert _writable_views(context.strata.index) == []
+    with pytest.raises(ValueError, match="read-only"):
+        context.strata.to_numpy()[0] = 2
+    digest = graph_executor._context_digest(context)
+    context.strata.iloc[0] = context.strata.iloc[0] + 7
+    assert graph_executor._context_digest(context) != digest
+    assert _population_storage(population) == before
 
 
 def _set_own_value(table: pd.DataFrame, column: str, *, through_array: bool) -> None:
@@ -1558,8 +1616,9 @@ def test_an_every_row_context_allocates_no_copy_of_its_tables() -> None:
 
     With the deep copy (before #1679) the context held 1.11 times the bytes of
     the input columns and the projection peaked at 1.18 times; with views it
-    holds 0.04 times and peaks at 0.11 times. What is left is the row mask,
-    the effective weights, which are still copied, and pandas' objects.
+    holds 0.04 times and peaks at 0.11 times. What is left is the effective
+    weights, which are still copied, and pandas' objects; the row mask and
+    the weights' temporaries add to the peak.
     """
 
     population = _wide_population()
