@@ -28,7 +28,7 @@ the reform from that description with the consumer's own builder:
 These types live here, in an importable package, so that a spawned process
 can unpickle them however the release tool was started. The tests and the
 guard sweep load the tool by file path, outside ``sys.modules``, where a type
-defined in it cannot be unpickled at all. A release runs the tool as a script,
+defined in it cannot even be pickled. A release runs the tool as a script,
 where a spawned process would unpickle such a type only by running the whole
 tool again as its ``__mp_main__`` module (which a process started with
 ``spawn`` does to the parent's main script in any case).
@@ -134,9 +134,10 @@ def check_post_export_reform(reform: object) -> None:
         accepted = ", ".join(kind.__name__ for kind in _POST_EXPORT_REFORM_TYPES)
         raise TypeError(
             "Post-export scoring records each reform as the description a worker "
-            f"rebuilds it from ({accepted}); got a {type(reform).__qualname__}. "
-            "A consumer whose simulate carries RECORDS_REQUESTS_ONLY must hand it "
-            "that description, not a built reform."
+            f"rebuilds it from ({accepted}); got a {type(reform).__module__}."
+            f"{type(reform).__qualname__}. A consumer whose simulate carries "
+            "RECORDS_REQUESTS_ONLY must hand it a description of one of those "
+            "types exactly, not a built reform or a subclass."
         )
     try:
         pickle.dumps(reform)
