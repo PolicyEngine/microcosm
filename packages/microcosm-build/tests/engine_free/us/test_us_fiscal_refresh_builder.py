@@ -7249,7 +7249,12 @@ def _run_green_register_release(
                 def simulate(reform):
                     return SimpleNamespace(calculate=calculate)
 
-            return SimpleNamespace(name=name, simulate=simulate, record=lambda: record)
+            return SimpleNamespace(
+                name=name,
+                simulate=simulate,
+                record=lambda: record,
+                baseline_from_merged_pass=False,
+            )
 
         def finish_consumer(self, scoring):
             captured.setdefault("finished_consumers", []).append(scoring.name)

@@ -2242,7 +2242,8 @@ def test_a_failed_merged_pass_frees_its_partial_values_before_the_fallback(
     builder, tmp_path
 ) -> None:
     """The fallback pass starts only after the failed merged pass's frame,
-    and the per-batch values it had collected, are released."""
+    and the per-batch values it had collected, are released, including
+    values held in a reference cycle, which only a full collection frees."""
     import weakref
 
     plans = {"first": (("age", 2024, None),), "second": (("ssi", 2024, None),)}
@@ -2258,6 +2259,7 @@ def test_a_failed_merged_pass_frees_its_partial_values_before_the_fallback(
     def failing_merged_score(keys, **options):
         if options["label"] == "merged baseline plan":
             collected = _PartialValues()
+            collected.cycle = collected
             partial_values.append(weakref.ref(collected))
             raise RuntimeError("the merged pass failed in its last batch")
         assert partial_values and partial_values[0]() is None, (
