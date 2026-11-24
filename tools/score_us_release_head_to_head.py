@@ -17,7 +17,8 @@ Artifacts differ only at the loading boundary. Both normalized frames pass
 through the same population repair, target materialization, constraint
 matrix, scoring, loss attribution, contract checks, and rendering path.
 Scoring defaults to sequential execution; optional spawned workers score
-independent slices. Every process refuses a peak at or above 20 GiB RSS.
+independent slices on the shared worker pool (microcosm.build.worker_pool).
+Every process refuses a peak at or above 20 GiB RSS.
 
 Memory design, from measurements on the live incumbent (57,240 households,
 166,321 persons): the unbatched full-frame base microsimulation alone peaks
@@ -56,13 +57,10 @@ import gc
 import hashlib
 import json
 import math
-import multiprocessing
 import resource
 import sys
 import time
-from collections import deque
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -106,6 +104,7 @@ from microcosm.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
 )
+from microcosm.build.worker_pool import WorkerPool, WorkerPoolSettings
 from microcosm.calibrate import TargetRegistry, score_targets
 from microcosm.calibrate.solve import relative_error_loss
 from microcosm.frame import US_SCHEMA, Frame
@@ -313,9 +312,6 @@ class _SliceWorkerState:
     slice_batches: tuple[np.ndarray, ...]
 
 
-_SLICE_WORKER_STATE: _SliceWorkerState | None = None
-
-
 def _positive_workers(value: str) -> int:
     workers = int(value)
     if workers < 1:
@@ -328,65 +324,6 @@ def _positive_worker_max_slices(value: str) -> int:
     if maximum < 1:
         raise argparse.ArgumentTypeError("--worker-max-slices must be at least 1.")
     return maximum
-
-
-# CPython could deadlock when ProcessPoolExecutor replaced a worker that had
-# reached max_tasks_per_child: the pool was left with no worker and a pending
-# task, so future.result() waited forever. Fixed in 3.13.15, 3.14.7 and
-# 3.15.0b4 (see the max_tasks_per_child notes in the concurrent.futures
-# documentation); every later minor ships the fix.
-_RELEASE_LEVEL_RANK = {"alpha": 0, "beta": 1, "candidate": 2, "final": 3}
-_RELEASE_LEVEL_SUFFIX = {"alpha": "a", "beta": "b", "candidate": "rc"}
-_WORKER_RECYCLING_FIXED_IN = {
-    (3, 13): (3, 13, 15, "final", 0),
-    (3, 14): (3, 14, 7, "final", 0),
-    (3, 15): (3, 15, 0, "beta", 4),
-}
-
-
-def _comparable_version(version: Sequence[object]) -> tuple[int, int, int, int, int]:
-    """Order a ``sys.version_info``-shaped value, prereleases before finals."""
-
-    parts = tuple(version)
-    major, minor, micro = (int(part) for part in parts[:3])
-    level = str(parts[3]) if len(parts) > 3 else "final"
-    serial = int(parts[4]) if len(parts) > 4 else 0
-    return (major, minor, micro, _RELEASE_LEVEL_RANK[level], serial)
-
-
-def _version_text(version: Sequence[object]) -> str:
-    parts = tuple(version)
-    text = ".".join(str(part) for part in parts[:3])
-    level = str(parts[3]) if len(parts) > 3 else "final"
-    if level == "final":
-        return text
-    serial = parts[4] if len(parts) > 4 else 0
-    return f"{text}{_RELEASE_LEVEL_SUFFIX[level]}{serial}"
-
-
-def _assert_worker_recycling_supported(
-    version_info: Sequence[object] | None = None,
-) -> None:
-    """Refuse worker recycling on an interpreter that can deadlock doing it."""
-
-    version = tuple(sys.version_info if version_info is None else version_info)
-    minor = (int(version[0]), int(version[1]))
-    fixed = _WORKER_RECYCLING_FIXED_IN.get(minor)
-    if fixed is None:
-        # Later minors ship the fix; earlier ones are below requires-python
-        # and never received it.
-        if minor > max(_WORKER_RECYCLING_FIXED_IN):
-            return
-        fixed_text = "3.13.15, 3.14.7 or 3.15.0b4"
-    elif _comparable_version(version) >= _comparable_version(fixed):
-        return
-    else:
-        fixed_text = _version_text(fixed)
-    raise RuntimeError(
-        f"--worker-max-slices needs Python {fixed_text} or later: on "
-        f"{_version_text(version)} replacing a recycled worker can deadlock "
-        "the pool. Run without --worker-max-slices, or use a fixed interpreter."
-    )
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -455,8 +392,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=_positive_worker_max_slices,
         default=None,
         help=(
-            "Replace each spawned worker after K household slices, including "
-            "across registry chunks; defaults to no recycling."
+            "Replace each spawned worker with a fresh one after K household "
+            "slices, including across registry chunks; defaults to no "
+            "replacement."
         ),
     )
     parser.add_argument(
@@ -1098,22 +1036,22 @@ def _initialize_slice_worker(
     artifact_name: str,
     chunk_size: int,
     maximum_microsim_batch_size: int | None,
-) -> None:
+) -> _SliceWorkerState:
     """Receive the parent's exact repaired frame and compiled specs once.
 
-    Spawn pickles initializer arguments once per process. Passing the already
-    normalized, authenticated, repaired frame avoids reopening the artifact or
-    repeating any loader/repair decisions in a worker. Tasks contain only two
-    indices; neither the full frame nor the registry is sent per slice.
+    Spawn pickles initializer arguments once per worker process. Passing the
+    already normalized, authenticated, repaired frame avoids reopening the
+    artifact or repeating any loader/repair decisions in a worker. Tasks contain
+    only two indices; neither the full frame nor the registry is sent per slice.
+    The returned state reaches every slice the worker scores.
     """
 
-    global _SLICE_WORKER_STATE
     slice_batches = tuple(
         release._household_position_batches(
             base_frame.n("household"), maximum_microsim_batch_size
         )
     )
-    _SLICE_WORKER_STATE = _SliceWorkerState(
+    state = _SliceWorkerState(
         base_frame=base_frame,
         specs=specs,
         loss_weights=loss_weights,
@@ -1123,14 +1061,12 @@ def _initialize_slice_worker(
         slice_batches=slice_batches,
     )
     _assert_rss_below_limit(f"after initializing {artifact_name} slice worker")
+    return state
 
 
-def _score_slice_worker(task: tuple[int, int]) -> ScoredSlice:
+def _score_slice_worker(state: _SliceWorkerState, task: tuple[int, int]) -> ScoredSlice:
     """Run every sequential per-slice contract in an isolated process."""
 
-    state = _SLICE_WORKER_STATE
-    if state is None:  # pragma: no cover - executor always initializes workers
-        raise RuntimeError("Slice worker was not initialized.")
     chunk_index, slice_index = task
     chunk_count = max(1, math.ceil(len(state.specs) / state.chunk_size))
     slice_label = (
@@ -1155,6 +1091,9 @@ def _score_slice_worker(task: tuple[int, int]) -> ScoredSlice:
         gc.collect()
         _assert_rss_below_limit(f"after scoring {label}")
         return scored_slice
+    except MemoryError:
+        # The shared pool runs the slice again in a fresh worker.
+        raise
     except Exception as error:
         raise RuntimeError(f"{label} worker failed: {error}") from error
 
@@ -1252,7 +1191,13 @@ def _score_chunks_parallel(
     workers: int,
     worker_max_slices: int | None = None,
 ) -> Iterator[ScoredChunk]:
-    """Stream bounded (chunk, slice) tasks through one spawn pool per artifact."""
+    """Stream (chunk, slice) tasks through one shared worker pool per artifact.
+
+    The pool returns slice results in task order, so each chunk reduces its
+    slices in the sequential order whatever order the workers finish in. A
+    slice whose worker dies or runs out of memory runs once more in a fresh
+    worker before the run stops.
+    """
 
     slice_count = len(
         tuple(
@@ -1268,16 +1213,25 @@ def _score_chunks_parallel(
         release._assert_medicaid_claiming_tax_units_local(base_frame)
     chunk_size = MATERIALIZE_SCORE_CHUNK_SPECS
     chunk_count = max(1, math.ceil(len(specs) / chunk_size))
-    tasks = iter(
+    # Tasks span chunk boundaries so short chunks still use the pool.
+    tasks = [
         (chunk_index, slice_index)
         for chunk_index in range(chunk_count)
         for slice_index in range(slice_count)
-    )
+    ]
+
+    def describe_task(index: int, task: tuple[int, int]) -> str:
+        chunk_index, slice_index = task
+        return (
+            f"{artifact_name} chunk {chunk_index + 1}/{chunk_count} "
+            f"slice {slice_index + 1}/{slice_count}"
+        )
+
     _assert_rss_below_limit(f"before starting {artifact_name} slice workers")
-    with ProcessPoolExecutor(
-        max_workers=workers,
-        mp_context=multiprocessing.get_context("spawn"),
-        max_tasks_per_child=worker_max_slices,
+    # At most 2 * workers slices run or wait with a result, which bounds the
+    # results held here even if an early slice stalls.
+    with WorkerPool(
+        WorkerPoolSettings(workers=workers, max_units_per_worker=worker_max_slices),
         initializer=_initialize_slice_worker,
         initargs=(
             base_frame,
@@ -1287,42 +1241,18 @@ def _score_chunks_parallel(
             chunk_size,
             maximum_microsim_batch_size,
         ),
-    ) as executor:
-        pending = deque()
-
-        def submit_next() -> None:
-            task = next(tasks, None)
-            if task is not None:
-                try:
-                    future = executor.submit(_score_slice_worker, task)
-                except Exception as error:
-                    chunk_index, slice_index = task
-                    raise RuntimeError(
-                        f"{artifact_name} chunk {chunk_index + 1}/{chunk_count} "
-                        f"slice {slice_index + 1}/{slice_count} worker submission "
-                        f"failed: {error}"
-                    ) from error
-                pending.append((task, future))
+        unit_function=_score_slice_worker,
+        describe_unit=describe_task,
+    ) as pool:
+        results = pool.map(tasks)
 
         def chunk_results() -> Iterator[ScoredSlice]:
             for _ in range(slice_count):
-                (chunk_index, slice_index), future = pending.popleft()
-                try:
-                    result = future.result()
-                except Exception as error:
-                    raise RuntimeError(
-                        f"{artifact_name} chunk {chunk_index + 1}/{chunk_count} "
-                        f"slice {slice_index + 1}/{slice_count} worker failed: {error}"
-                    ) from error
-                submit_next()
+                result = next(results)
                 _assert_rss_below_limit(f"after receiving {artifact_name} slice result")
                 yield result
 
         try:
-            # Bound futures and buffered results even if an early slice stalls.
-            # Tasks span chunk boundaries so short chunks still use the pool.
-            for _ in range(2 * workers):
-                submit_next()
             for chunk_index in range(chunk_count):
                 yield _reduce_scored_slices(
                     chunk_results(),
@@ -1332,8 +1262,7 @@ def _score_chunks_parallel(
                     maximum_microsim_batch_size=maximum_microsim_batch_size,
                 )
         finally:
-            for _, future in pending:
-                future.cancel()
+            results.close()
 
 
 def _spec_keys(specs: Sequence) -> tuple[tuple[str, object], ...]:
@@ -1895,8 +1824,6 @@ def score_loaded_artifact(
         raise ValueError("workers must be at least 1.")
     if worker_max_slices is not None and worker_max_slices < 1:
         raise ValueError("worker_max_slices must be at least 1.")
-    if worker_max_slices is not None:
-        _assert_worker_recycling_supported()
     cd_provenance = _validate_cd_provenance(artifact, yardstick)
     terminal_battery = _terminal_battery_payload(artifact)
     base_frame, mass_repair = release._with_base_population_mass_repair(artifact.frame)
@@ -2217,8 +2144,6 @@ def score_head_to_head(
         raise ValueError("workers must be at least 1.")
     if worker_max_slices is not None and worker_max_slices < 1:
         raise ValueError("worker_max_slices must be at least 1.")
-    if worker_max_slices is not None:
-        _assert_worker_recycling_supported()
     crosswalk = congressional_district_vintage_crosswalk or (
         release.default_congressional_district_vintage_crosswalk_path()
     )

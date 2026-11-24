@@ -36,7 +36,95 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-__all__ = ["release_engine_simulation", "temporary_engine_variable_modules"]
+__all__ = [
+    "EngineVariableModuleScope",
+    "release_engine_simulation",
+    "temporary_engine_variable_modules",
+]
+
+
+def _loaded_variables_dir() -> str | Path | None:
+    engine = sys.modules.get("policyengine_us")
+    system_cls = getattr(engine, "CountryTaxBenefitSystem", None)
+    return getattr(system_cls, "variables_dir", None)
+
+
+def _registrations(directory: Path | None) -> dict[str, ModuleType]:
+    """Core's per-system variable-module registrations under ``directory``."""
+    found = {}
+    for name, module in tuple(sys.modules.items()):
+        parts = name.split("_", 2)
+        if (
+            len(parts) != 3
+            or not parts[0].isdigit()
+            or not parts[1].removeprefix("-").isdigit()
+            or not isinstance(module, ModuleType)
+        ):
+            continue
+        filename = getattr(module, "__file__", None)
+        if not isinstance(filename, str):
+            continue
+        path = Path(filename).absolute()
+        if parts[2] == path.stem and (
+            directory is None or path.is_relative_to(directory)
+        ):
+            found[name] = module
+    return found
+
+
+class EngineVariableModuleScope:
+    """Remove Core's variable-module registrations made between open and close.
+
+    The explicit form of :func:`temporary_engine_variable_modules`, for a scope
+    that spans several calls: post-export scoring builds a reform's system on
+    the reform's first key and closes the scope when its consumer moves on. A
+    suspended context manager would run its cleanup whenever the garbage
+    collector closed it, at an arbitrary later moment, and remove modules a
+    later scope registered and still uses. A scope left unclosed here does
+    nothing when collected; its modules simply stay registered, as they would
+    without it. ``close`` does nothing the second time.
+    """
+
+    def __init__(self, variables_dir: str | Path | None = None) -> None:
+        self._variables_dir = variables_dir
+        self._previous: dict[str, ModuleType] | None = None
+        self._closed = False
+
+    def open(self) -> EngineVariableModuleScope:
+        """Take the snapshot of registrations that ``close`` keeps."""
+        if self._previous is not None or self._closed:
+            raise RuntimeError("An engine variable module scope opens only once.")
+        initial_directory = self._variables_dir or _loaded_variables_dir()
+        directory = (
+            None if initial_directory is None else Path(initial_directory).absolute()
+        )
+        self._previous = _registrations(directory)
+        return self
+
+    def close(self) -> None:
+        """Remove the registrations made since ``open``, except the shared system's."""
+        previous, self._previous = self._previous, None
+        if self._closed or previous is None:
+            self._closed = True
+            return
+        self._closed = True
+        final_directory = self._variables_dir or _loaded_variables_dir()
+        if final_directory is None:
+            return
+        # The first slice may import the engine lazily. Its newly built shared
+        # default system remains live for every later simulation; retain those
+        # registrations along with the entry snapshot.
+        engine = sys.modules.get("policyengine_us")
+        simulation_cls = getattr(engine, "Microsimulation", None)
+        shared_system = getattr(
+            simulation_cls, "default_tax_benefit_system_instance", None
+        )
+        shared_prefix = f"{id(shared_system)}_"
+        for name in _registrations(Path(final_directory).absolute()):
+            if name in previous:
+                sys.modules[name] = previous[name]
+            elif shared_system is None or not name.startswith(shared_prefix):
+                sys.modules.pop(name, None)
 
 
 @contextmanager
@@ -59,60 +147,15 @@ def temporary_engine_variable_modules(
 
     The default discovers an already imported US engine, so importing this
     helper remains engine-free. An explicit directory supports stand-ins.
-    Use only around a completed slice whose engine objects do not escape.
+    Use only around a completed slice whose engine objects do not escape; for
+    a scope that spans calls, use :class:`EngineVariableModuleScope`.
     """
 
-    def loaded_variables_dir():
-        engine = sys.modules.get("policyengine_us")
-        system_cls = getattr(engine, "CountryTaxBenefitSystem", None)
-        return getattr(system_cls, "variables_dir", None)
-
-    initial_directory = variables_dir or loaded_variables_dir()
-    directory = (
-        None if initial_directory is None else Path(initial_directory).absolute()
-    )
-
-    def registrations(directory: Path | None) -> dict[str, ModuleType]:
-        found = {}
-        for name, module in tuple(sys.modules.items()):
-            parts = name.split("_", 2)
-            if (
-                len(parts) != 3
-                or not parts[0].isdigit()
-                or not parts[1].removeprefix("-").isdigit()
-                or not isinstance(module, ModuleType)
-            ):
-                continue
-            filename = getattr(module, "__file__", None)
-            if not isinstance(filename, str):
-                continue
-            path = Path(filename).absolute()
-            if parts[2] == path.stem and (
-                directory is None or path.is_relative_to(directory)
-            ):
-                found[name] = module
-        return found
-
-    previous = registrations(directory)
+    scope = EngineVariableModuleScope(variables_dir).open()
     try:
         yield
     finally:
-        final_directory = variables_dir or loaded_variables_dir()
-        if final_directory is not None:
-            # The first slice may import the engine lazily. Its newly built
-            # shared default system remains live for every later simulation;
-            # retain those registrations along with the entry snapshot.
-            engine = sys.modules.get("policyengine_us")
-            simulation_cls = getattr(engine, "Microsimulation", None)
-            shared_system = getattr(
-                simulation_cls, "default_tax_benefit_system_instance", None
-            )
-            shared_prefix = f"{id(shared_system)}_"
-            for name in registrations(Path(final_directory).absolute()):
-                if name in previous:
-                    sys.modules[name] = previous[name]
-                elif shared_system is None or not name.startswith(shared_prefix):
-                    del sys.modules[name]
+        scope.close()
 
 
 #: Instance attributes whose only post-mortem job is to keep big object
