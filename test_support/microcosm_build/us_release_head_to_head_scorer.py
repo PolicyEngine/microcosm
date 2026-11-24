@@ -241,10 +241,10 @@ def _fixture_materialize(frame, specs, **kwargs):
     )
 
 
-def _initialize_fixture_slice_worker(*args) -> None:
+def _initialize_fixture_slice_worker(*args):
     """Install test seams explicitly because spawn inherits no monkeypatches."""
     module = _load_head_to_head_module()
-    module._initialize_slice_worker(*args)
+    state = module._initialize_slice_worker(*args)
     _patch_release_seams(module, pytest.MonkeyPatch())
     log_dir = os.environ.get("MICROCOSM_TEST_H2H_SLICE_LOG_DIR")
     if log_dir is not None:
@@ -257,6 +257,7 @@ def _initialize_fixture_slice_worker(*args) -> None:
             return result
 
         module._score_household_slice = record_slice
+    return state
 
 
 def _failing_fixture_materialize(frame, specs, **kwargs):
@@ -265,10 +266,11 @@ def _failing_fixture_materialize(frame, specs, **kwargs):
     return _fixture_materialize(frame, specs, **kwargs)
 
 
-def _initialize_failing_fixture_slice_worker(*args) -> None:
-    _initialize_fixture_slice_worker(*args)
+def _initialize_failing_fixture_slice_worker(*args):
+    state = _initialize_fixture_slice_worker(*args)
     module = _load_head_to_head_module()
     module.release._materialize_target_frame = _failing_fixture_materialize
+    return state
 
 
 def _three_household_fixture_artifact(module, *, sha256: str, measure_values):

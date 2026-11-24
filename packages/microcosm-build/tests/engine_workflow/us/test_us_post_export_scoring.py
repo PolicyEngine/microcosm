@@ -36,6 +36,7 @@ def test_watched_formula_lists_match_the_installed_engine(builder) -> None:
     for response, subtree in builder.POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS.items():
         assert f"parameters(period).{subtree}" in sources[response], response
 
+
 @pytest.mark.slow
 def test_batched_scoring_matches_whole_pool_policyengine_us(builder, tmp_path) -> None:
     """(l) On a small written H5 with Maryland households, three probes and
@@ -181,6 +182,7 @@ def test_batched_scoring_matches_whole_pool_policyengine_us(builder, tmp_path) -
     )
     scorer.close()
 
+
 @pytest.mark.slow
 def test_additivity_guards_fire_on_the_installed_engine(builder, tmp_path) -> None:
     """The three additivity guards refuse on policyengine-us itself.
@@ -265,6 +267,7 @@ def test_additivity_guards_fire_on_the_installed_engine(builder, tmp_path) -> No
     assert (record["reform_systems"], record["reform_passes"]) == (2, 1)
     scorer.close()
 
+
 @pytest.mark.slow
 def test_shipped_baseline_plans_match_whole_file_policyengine_us(
     builder, tmp_path
@@ -291,3 +294,63 @@ def test_shipped_baseline_plans_match_whole_file_policyengine_us(
         sweep._score_baselines(builder, scorer, path, plans)
     finally:
         scorer.close()
+
+
+@pytest.mark.slow
+def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
+    builder, tmp_path, monkeypatch
+) -> None:
+    """Each reform's rules build adds about 6,000 variable modules to
+    ``sys.modules`` that policyengine-core never removes (about 0.04 GiB a
+    reform pass on this fixture). The scorer removes them once the consumer
+    opens the next reform or finishes, and the scored arrays are byte-identical
+    to scoring without the removal."""
+    import contextlib
+
+    import policyengine_us
+
+    from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
+
+    source = _write_engine_h5(builder, tmp_path / "export", _GUARD_HOUSEHOLDS)
+    probes = {probe.id: probe for probe in us_release_reform_coverage_probes()}
+    chosen = [
+        probes["keogh_distribution_neutralization"],
+        probes["collectibles_gain_neutralization"],
+    ]
+    variables_dir = str(
+        Path(policyengine_us.CountryTaxBenefitSystem.variables_dir).absolute()
+    )
+
+    def rule_modules() -> set[str]:
+        return {
+            name
+            for name, module in tuple(sys.modules.items())
+            if re.fullmatch(r"\d+_-?\d+_\w+", name)
+            and str(getattr(module, "__file__", "")).startswith(variables_dir)
+        }
+
+    def score():
+        scorer = builder._HouseholdBatchedPostExportScorer(
+            source, maximum_microsim_batch_size=None
+        )
+        consumer = scorer.open_consumer("fixture", ())
+        before = rule_modules()
+        scored = []
+        for probe in chosen:
+            values = consumer.simulate(_build_reform(probe)).calculate(
+                probe.budget_measure, period=probe.period
+            )
+            scored.append((np.asarray(values).tobytes(), values.weights.tobytes()))
+        scorer.finish_consumer(consumer)
+        scorer.close()
+        return before, rule_modules(), scored
+
+    before, after, released = score()
+    assert after == before
+
+    monkeypatch.setattr(
+        builder, "temporary_engine_variable_modules", contextlib.nullcontext
+    )
+    kept_before, kept_after, kept = score()
+    assert len(kept_after - kept_before) >= 2 * 1_000
+    assert released == kept

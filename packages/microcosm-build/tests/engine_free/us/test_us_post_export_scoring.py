@@ -1928,3 +1928,111 @@ def test_scorer_dataset_keeps_the_engine_projection(
 
     assert scorer._dataset_from_frame(first_batch) is first_batch
     assert calls == [{"assert_no_formula_owned_columns": False}]
+
+
+# ---------------------------------------------------------------------------
+# Rule modules: each reform's are removed once the consumer moves on
+# ---------------------------------------------------------------------------
+
+
+def _stand_in_rule_modules_left(variables_dir) -> list[str]:
+    return [
+        name
+        for name, module in tuple(sys.modules.items())
+        if str(getattr(module, "__file__", "")).startswith(str(variables_dir))
+    ]
+
+
+def test_each_reform_releases_its_rule_modules_once_the_next_reform_opens(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    """policyengine-core never removes the variable modules a rules build adds
+    to ``sys.modules``. The scorer removes a reform's once its consumer opens
+    the next reform or finishes, refuses to score a finished reform again, and
+    scores the same values."""
+    frame = _nested_frame()
+    log = _EngineLog()
+    scorer = _scorer(
+        builder,
+        frame,
+        log,
+        3,
+        tmp_path / "released",
+        variables_dir=stand_in_rule_modules,
+    )
+    consumer = scorer.open_consumer("fixture", ())
+    first = consumer.simulate(_FakeReform("first"))
+    first_values = first.calculate("income_tax", builder.PERIOD)
+    first_module = _rule_module_name(log.systems[0])
+    assert first_module in sys.modules
+
+    second = consumer.simulate(_FakeReform("second"))
+    assert first_module not in sys.modules
+    with pytest.raises(RuntimeError, match="finished reform"):
+        first.calculate("income_tax", builder.PERIOD + 1)
+    second_values = second.calculate("income_tax", builder.PERIOD)
+    second_module = _rule_module_name(log.systems[1])
+    assert second_module in sys.modules
+
+    scorer.finish_consumer(consumer)
+    assert second_module not in sys.modules
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
+
+    reference = _scorer(builder, frame, _EngineLog(), 3, tmp_path / "reference")
+    reference_consumer = reference.open_consumer("fixture", ())
+    for label, values in (("first", first_values), ("second", second_values)):
+        expected = reference_consumer.simulate(_FakeReform(label)).calculate(
+            "income_tax", builder.PERIOD
+        )
+        assert np.asarray(values).tobytes() == np.asarray(expected).tobytes()
+        assert values.weights.tobytes() == expected.weights.tobytes()
+
+
+def test_closing_the_scorer_releases_an_unfinished_consumers_rule_modules(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    log = _EngineLog()
+    scorer = _scorer(
+        builder, _nested_frame(), log, 3, tmp_path, variables_dir=stand_in_rule_modules
+    )
+    consumer = scorer.open_consumer("fixture", ())
+    consumer.simulate(_FakeReform("only")).calculate("income_tax", builder.PERIOD)
+    assert _rule_module_name(log.systems[0]) in sys.modules
+
+    scorer.close()
+
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
+
+
+def test_the_shipped_consumers_leave_no_rule_modules_and_score_the_same(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    frame = _nested_frame()
+    reference, _, _, _ = _batched_run(builder, frame, 3, tmp_path / "reference")
+    log = _EngineLog()
+    scorer = _scorer(
+        builder,
+        frame,
+        log,
+        3,
+        tmp_path / "released",
+        variables_dir=stand_in_rule_modules,
+    )
+    consumers: dict[str, object] = {}
+
+    def simulate_for(name, consumer):
+        plan = builder._record_post_export_baseline_plan(consumer)
+        consumers[name] = scorer.open_consumer(name, plan)
+        return consumers[name].simulate
+
+    gate, payload, demographics = _run_consumers(builder, simulate_for)
+    for consumer in consumers.values():
+        scorer.finish_consumer(consumer)
+
+    reference_gate, reference_payload, reference_demographics = reference
+    assert gate.passed == reference_gate.passed
+    assert gate.details == reference_gate.details
+    assert payload == reference_payload
+    assert demographics == reference_demographics
+    assert len(log.systems) > 43
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
