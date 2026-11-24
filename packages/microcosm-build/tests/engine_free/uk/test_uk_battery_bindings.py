@@ -1840,10 +1840,13 @@ class TestPreflightBindings:
         # of them compiled, less the 40 the rounded-thousand floor defers
         # (microcosm#1420: the 20 count cells HMRC publishes at 5,000 or fewer
         # and their amounts). The pair built on microcosm#1535's merge defers
-        # Carmarthenshire's band-I cell, which the support check refused.
-        assert result.details["candidate_targets"] == 27_157
+        # Carmarthenshire's band-I cell, which the support check refused, and
+        # the geography-first K=15 spine of microcosm#1538 defers Wokingham's
+        # two-children and Stratford-on-Avon's three-or-more-children UC cells
+        # for the same reason (microcosm#931).
+        assert result.details["candidate_targets"] == 27_155
         assert result.details["reference_targets"] == 31_347
-        # Only the 4,190 signed area deferrals and absences remain (2,100
+        # Only the 4,192 signed area deferrals and absences remain (2,100
         # before microcosm#929 bound the Welsh and Scottish council-tax cells;
         # Shetland band H is the one Scottish support deferral and
         # Carmarthenshire band I the one Welsh; microcosm#1123
@@ -1855,10 +1858,11 @@ class TestPreflightBindings:
         # the two single adult discount cells and the Orkney and Shetland
         # seat's two gas cells above; microcosm#1418 the six pension cells of
         # the two authorities without SPI local measures and the City of
-        # London, and the 40 under the rounded-thousand floor); the 1,011
-        # household rows are ordinary Chronicle-compiled references.
+        # London, and the 40 under the rounded-thousand floor; microcosm#931
+        # the two UC child-bucket seats above); the 1,011 household rows are
+        # ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 4_190
+        assert len(exclusions) == 4_192
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]
