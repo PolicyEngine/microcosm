@@ -287,6 +287,77 @@ def test_obbba_mixed_measures_stack_per_group(monkeypatch):
     assert rows["obbba_estate"]["microcosm"]["budget_effect"] == pytest.approx(-20.0)
 
 
+def test_obbba_pre_baseline_state_is_one_simulation_for_every_group(monkeypatch):
+    # Every group stacks from the same pre-OBBBA state, so that state is
+    # simulated once. A simulation offering ``prefetch`` (the release tool's
+    # batched reform) gets every group's (measure, period) in one call before
+    # any total is read, so the release scores the state in one pass.
+    def spec(id_, path, measure):
+        return ReformValidationSpec(
+            id=id_,
+            name=id_,
+            category="OBBBA",
+            in_sample=False,
+            period=2026,
+            jct_score=-1.0,
+            jct_window="FY2026",
+            jct_source="JCX",
+            jct_source_url="",
+            parameter_changes={path: {"2026-01-01.2026-12-31": 0}},
+            effect_direction="baseline_minus_reform",
+            budget_measure=measure,
+        )
+
+    specs = (
+        spec("obbba_a", "gov.example.a", "income_tax"),
+        spec("obbba_b", "gov.example.b", "income_tax"),
+        spec("obbba_estate", "gov.example.estate", "estate_tax"),
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: frozenset(changes),
+    )
+    pre_obbba = frozenset({"gov.example.a", "gov.example.b", "gov.example.estate"})
+    totals = {
+        pre_obbba: {"income_tax": 1_000.0, "estate_tax": 50.0},
+        frozenset({"gov.example.b", "gov.example.estate"}): {"income_tax": 900.0},
+        frozenset({"gov.example.estate"}): {"income_tax": 960.0},
+        frozenset({"gov.example.a", "gov.example.b"}): {"estate_tax": 30.0},
+    }
+    simulated = []
+    prefetched = []
+
+    class _PrefetchingSim(_FakeSim):
+        def __init__(self, reform) -> None:
+            super().__init__(totals[reform])
+            self._reform = reform
+            self._read = []
+
+        def prefetch(self, requests):
+            assert not self._read
+            prefetched.append((self._reform, tuple(requests)))
+
+        def calculate(self, measure, period):
+            self._read.append(measure)
+            return super().calculate(measure, period)
+
+    def simulate(reform):
+        simulated.append(reform)
+        return _PrefetchingSim(reform)
+
+    payload = reform_validation_payload(specs, period=2026, simulate=simulate)
+    assert simulated.count(pre_obbba) == 1
+    assert [requests for reform, requests in prefetched if reform == pre_obbba] == [
+        (("income_tax", 2026), ("estate_tax", 2026))
+    ]
+    rows = {row["id"]: row for row in payload["reforms"]}
+    assert rows["obbba_a"]["microcosm"]["baseline_total"] == pytest.approx(1_000.0)
+    assert rows["obbba_b"]["microcosm"]["budget_effect"] == pytest.approx(60.0)
+    assert rows["obbba_estate"]["microcosm"]["baseline_total"] == pytest.approx(50.0)
+    assert rows["obbba_estate"]["microcosm"]["budget_effect"] == pytest.approx(-20.0)
+
+
 def test_obbba_stacked_scoring_releases_intermediate_simulations(monkeypatch):
     specs = tuple(
         ReformValidationSpec(

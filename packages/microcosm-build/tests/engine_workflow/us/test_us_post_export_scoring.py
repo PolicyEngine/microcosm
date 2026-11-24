@@ -291,3 +291,65 @@ def test_shipped_baseline_plans_match_whole_file_policyengine_us(
         sweep._score_baselines(builder, scorer, path, plans)
     finally:
         scorer.close()
+
+
+@pytest.mark.slow
+def test_merged_baseline_and_shared_pre_obbba_pass_are_byte_identical(
+    builder, tmp_path
+) -> None:
+    """On policyengine-us, in 3 household batches: the one merged baseline
+    pass serves every planned consumer the same bytes (values, weights and
+    dtypes) as that consumer's own pass, and the pre-OBBBA state scored once
+    for both OBBBA groups gives each group's total the bytes of a pass of its
+    own (microcosm#1595)."""
+    path = _write_engine_h5(builder, tmp_path, _GUARD_HOUSEHOLDS)
+    fit = _full_in_sample_fit(builder.PERIOD)
+    plan = builder._record_post_export_scoring_plan(
+        _plan_args(),
+        n_households=len(_GUARD_HOUSEHOLDS),
+        result=fit,
+        release_id="fixture-release",
+    )
+    assert plan.error is None and len(plan.baseline_plans) == 5
+    separate = builder._HouseholdBatchedPostExportScorer(
+        path, maximum_microsim_batch_size=3
+    )
+    merged = builder._HouseholdBatchedPostExportScorer(
+        path, maximum_microsim_batch_size=3, baseline_plans=plan.baseline_plans
+    )
+    assert merged.n_batches == separate.n_batches == 3
+    try:
+        for name in plan.baseline_plans:
+            expected = separate.open_consumer(name, plan.baseline_plan(name))
+            observed = merged.open_consumer(name, plan.baseline_plan(name))
+            for key in plan.baseline_plan(name):
+                assert _same_bytes(observed._baseline[key], expected._baseline[key]), (
+                    name,
+                    key,
+                )
+            del expected, observed
+        assert not merged._merged_baseline
+
+        specs = reform_validation_module.load_default_reform_specs(
+            period=builder.PERIOD
+        )
+        obbba = [
+            spec for spec in specs if reform_validation_module._is_obbba_spec(spec)
+        ]
+        reform = reform_validation_module._build_parameter_reform(
+            reform_validation_module._merged_parameter_changes(obbba)
+        )
+        requests = tuple(
+            dict.fromkeys((spec.budget_measure, spec.period) for spec in obbba)
+        )
+        assert len(requests) == 2
+        consumer = separate.open_consumer("pre-OBBBA state", ())
+        shared = consumer.simulate(reform)
+        shared.prefetch(requests)
+        for request in requests:
+            alone = consumer.simulate(reform).calculate(*request)
+            assert _same_bytes(shared.calculate(*request), alone), request
+        assert consumer.record()["reform_passes"] == 1 + len(requests)
+    finally:
+        separate.close()
+        merged.close()

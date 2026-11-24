@@ -477,7 +477,14 @@ def _written_h5(tmp_path: Path) -> Path:
     return path
 
 
-def _scorer(builder, frame, log, batch_size, tmp_path, *, loads=None):
+def _scorer(
+    builder, frame, log, batch_size, tmp_path, *, loads=None, baseline_plans=None
+):
+    """A scorer over ``frame`` on the fake engine.
+
+    ``baseline_plans`` registers consumers' plans for one shared baseline
+    pass, as ``_open_post_export_scorer`` does with the recorded plan.
+    """
     path = _written_h5(tmp_path)
 
     def load_frame(load_path, *, expected_sha256):
@@ -485,12 +492,75 @@ def _scorer(builder, frame, log, batch_size, tmp_path, *, loads=None):
             loads.append((Path(load_path), expected_sha256))
         return frame
 
+    registered = {} if baseline_plans is None else {"baseline_plans": baseline_plans}
     return builder._HouseholdBatchedPostExportScorer(
         path,
         maximum_microsim_batch_size=batch_size,
         microsimulation_cls=_fake_engine(log),
         dataset_from_frame=lambda batch_frame: batch_frame,
         load_frame=load_frame,
+        **registered,
+    )
+
+
+def _full_in_sample_fit(period: int):
+    """A calibration fit covering every in-sample JCT reform, as a release
+    fit does, so reform validation simulates only the out-of-sample specs."""
+    fitted = reform_validation_module.in_sample_reform_specs(period=period)
+    return SimpleNamespace(
+        diagnostics=[
+            SimpleNamespace(
+                final_estimate=-1_000.0 * (index + 1), target=-900.0 * (index + 1)
+            )
+            for index, _ in enumerate(fitted)
+        ],
+        problem=SimpleNamespace(
+            targets=[SimpleNamespace(name=spec.id) for spec in fitted]
+        ),
+    )
+
+
+def _run_planned_consumers(scorer, plan, consumers):
+    """Open, run and finish each planned consumer in run order, as ``_main``
+    does, with the plan's baseline keys and reform pass count. Returns each
+    consumer's output and served baseline values."""
+    outputs, served = {}, {}
+    for name, consumer in consumers.items():
+        scoring = scorer.open_consumer(
+            name,
+            plan.baseline_plan(name),
+            planned_reform_passes=plan.planned_reform_passes(name),
+        )
+        outputs[name] = consumer(scoring.simulate)
+        served[name] = dict(scoring._baseline)
+        scorer.finish_consumer(scoring)
+    return outputs, served
+
+
+def _comparable_output(output):
+    """A consumer's output in a form ``==`` compares exactly."""
+    if hasattr(output, "passed") and hasattr(output, "details"):
+        return (output.passed, tuple(output.failures), output.details)
+    if isinstance(output, tuple):
+        return tuple(np.asarray(item).tolist() for item in output)
+    return output
+
+
+def _same_bytes(observed, expected) -> bool:
+    """Values and weights of two scored results are byte-identical."""
+    values, reference = np.asarray(observed.values), np.asarray(expected.values)
+    if values.dtype != reference.dtype or values.shape != reference.shape:
+        return False
+    if values.dtype == object:
+        same_values = values.tolist() == reference.tolist()
+    else:
+        same_values = values.tobytes() == reference.tobytes()
+    weights = np.asarray(observed.weights)
+    reference_weights = np.asarray(expected.weights)
+    return (
+        same_values
+        and weights.dtype == reference_weights.dtype
+        and weights.tobytes() == reference_weights.tobytes()
     )
 
 
