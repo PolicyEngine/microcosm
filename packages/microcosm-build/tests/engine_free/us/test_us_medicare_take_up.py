@@ -1,7 +1,12 @@
 """Tests split from packages/microcosm-build/tests/test_us_medicare_take_up.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.us_runtime.one_population_contract import ACS_SUPPORT_CHANNEL
+from microcosm.build.us_runtime.support_provenance import support_channel_column
 from test_support.microcosm_build.us_medicare_take_up import *
+from test_support.microcosm_build.us_one_population_contract import (
+    mixed_origin_reader_population,
+)
 
 
 class TestManifestAndPlan:
@@ -163,6 +168,75 @@ class TestFrameStageAndGate:
         failed = us_medicare_take_up_signal_gate(stacked)
         assert not failed.passed
         assert any("MCARE" in failure for failure in failed.failures)
+
+    def test_acs_mcare_cells_never_move_medicare_reconciliation(self) -> None:
+        """On a mixed-origin frame, no ACS ``MCARE`` cell reaches the
+        reconciliation.
+
+        d2283's one-population join adds ACS rows, which hold no ``MCARE``
+        value, to Route A's CPS rows. The assembled source mask takes every
+        CPS row, native or clone, and leaves the ACS rows out, so the gate
+        reconciles the rows Route A reconciles. A null, an invalid code or
+        the enrolled code in every ACS cell leaves the verdict and every
+        statistic unchanged; inside the mask the first two would raise and
+        the third would count a mismatch.
+        """
+
+        mixed = mixed_origin_reader_population().mixed_origin
+        person = mixed.table("person")
+        channel = person[support_channel_column("person")]
+        acs = channel.eq(ACS_SUPPORT_CHANNEL).to_numpy()
+        assert 0 < int(acs.sum()) < len(person)
+        assert person.loc[acs, _SOURCE].isna().all()
+        # The enrolled code would mismatch these rows if the mask took them.
+        assert not person.loc[acs, _OUTPUT].all()
+
+        baseline = us_medicare_take_up_signal_gate(mixed)
+        assert baseline.passed, baseline.failures
+        assert baseline.details["source_rows"] == int(np.count_nonzero(~acs))
+        assert baseline.details["source_mismatch_count"] == 0
+
+        for value in (np.nan, 9, 1):
+            tables = {entity: mixed.table(entity).copy() for entity in mixed.entities}
+            tables["person"].loc[acs, _SOURCE] = value
+            changed = Frame(
+                tables,
+                mixed.schema,
+                {
+                    entity: mixed.weights_for(entity)
+                    for entity in mixed.weighted_entities
+                },
+                mixed.strata,
+                mass_log=mixed.mass_log,
+                metadata=mixed.metadata,
+            )
+
+            summary = us_medicare_take_up_summary(changed)
+            gate = us_medicare_take_up_signal_gate(changed)
+
+            assert summary == baseline.details, value
+            assert (gate.passed, gate.failures, gate.details) == (
+                baseline.passed,
+                baseline.failures,
+                baseline.details,
+            ), value
+
+    def test_assembled_frame_without_cps_rows_refuses(self) -> None:
+        """An assembled frame whose stored channels name no CPS origin leaves
+        the source mask empty, and the gate fails with the refusal alone."""
+
+        for label in ("acs", ACS_SUPPORT_CHANNEL):
+            stacked = _stacked_frame()
+            person = stacked.table("person")
+            person[support_channel_column("person")] = label
+            person[_SOURCE] = np.nan
+
+            gate = us_medicare_take_up_signal_gate(stacked)
+
+            assert not gate.passed, label
+            assert gate.failures == (
+                "US Medicare take-up support has no physical ASEC source rows.",
+            ), label
 
     def test_gate_rejects_missing_constant_bad_share_and_mismatch(self) -> None:
         missing = _frame()

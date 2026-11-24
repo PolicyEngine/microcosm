@@ -1,7 +1,55 @@
 """Tests split from packages/microcosm-build/tests/test_us_weeks_unemployed.py."""
 
 # ruff: noqa: F403, F405
+from functools import cache
+
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime.one_population_contract import ACS_SUPPORT_CHANNEL
+from microcosm.build.us_runtime.support_provenance import (
+    support_channel_column,
+    support_clone_index_column,
+)
+from test_support.microcosm_build.us_one_population_contract import (
+    MixedOriginReaderPopulation,
+    mixed_origin_reader_population,
+)
 from test_support.microcosm_build.us_weeks_unemployed import *
+
+#: The weeks gate's one line for d2283's ACS channel until a reviewed rule
+#: lands (lead call P3-L2).
+_ACS_PLACEHOLDER = (
+    "acs_2024_1yr weeks_unemployed has no reviewed rule yet (d2283 spike)."
+)
+_UC_FAILURE = (
+    "weeks_unemployed has 1 row(s) positive outside the "
+    "unemployment-compensation constraint."
+)
+#: The stored channels of CPS rows: physical ASEC rows and their clones.
+_CPS_CHANNELS = ("asec", "puf_tax_detail")
+
+
+@cache
+def _mixed_origin() -> MixedOriginReaderPopulation:
+    return mixed_origin_reader_population()
+
+
+@cache
+def _mixed_origin_gate() -> GateResult:
+    return us_weeks_unemployed_signal_gate(_mixed_origin().mixed_origin)
+
+
+def _acs_person_rows(frame: Frame) -> np.ndarray:
+    channel = frame.table("person")[support_channel_column("person")]
+    return channel.eq(ACS_SUPPORT_CHANNEL).to_numpy()
+
+
+def _with_person_column(frame: Frame, column: str, values: np.ndarray) -> Frame:
+    person = frame.table("person").copy()
+    person[column] = values
+    return module._replace_person_table(frame, person)
 
 
 def test_public_stage_contract_is_exactly_manifest_pinned() -> None:
@@ -409,6 +457,24 @@ def test_signal_gate_derives_stacked_asec_acs_roster_and_reviewed_scopes() -> No
     assert summary["uc_constraint_rows"] == 1_500
     assert summary["uc_constraint_mismatch_count"] == 0
 
+    # The UC rule takes the 500 ASEC clones and the 1,000 ACS natives; the
+    # 500 ASEC natives and the 1,000 ACS natives would give the same count.
+    person = frame.table("person")
+    asec = person["person_support_channel"].eq("asec").to_numpy()
+    native = person["person_support_clone_index"].eq(0).to_numpy()
+    uc_constraint_rows = module._weeks_unemployed_gate_scopes(person)[4]
+    np.testing.assert_array_equal(
+        uc_constraint_rows, (asec & ~native) | (~asec & native)
+    )
+    # The stacked pool's acs keeps the PUF bands; only d2283's acs_2024_1yr
+    # loses them.
+    assert summary["channels"]["acs"]["positive_share_band"] == list(
+        module._CHANNEL_POSITIVE_SHARE_BANDS["puf_tax_detail"]
+    )
+    assert summary["channels"]["acs"]["weighted_mean_weeks_band"] == list(
+        module._CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS["puf_tax_detail"]
+    )
+
 
 def test_signal_gate_stacked_source_and_uc_checks_ignore_unowned_rows() -> None:
     frame = _stacked_gate_frame()
@@ -438,6 +504,236 @@ def test_signal_gate_stacked_source_and_uc_checks_ignore_unowned_rows() -> None:
     )
     assert not uc_mismatch.passed
     assert uc_mismatch.details["uc_constraint_mismatch_count"] == 1
+
+
+@st.composite
+def _assembled_people(
+    draw: st.DrawFn, *, channels: tuple[str, ...], with_asec: bool
+) -> pd.DataFrame:
+    """An assembled person table: spine and source ids, a stored channel and
+    a clone index on every row, and nothing else."""
+
+    rows = draw(st.integers(min_value=1, max_value=60))
+    channel = draw(st.lists(st.sampled_from(channels), min_size=rows, max_size=rows))
+    if with_asec:
+        channel[draw(st.integers(min_value=0, max_value=rows - 1))] = "asec"
+    ids = st.lists(
+        st.integers(min_value=0, max_value=2**40), min_size=rows, max_size=rows
+    )
+    clone = st.lists(st.sampled_from((0, 1, 2)), min_size=rows, max_size=rows)
+    return pd.DataFrame(
+        {
+            "person_spine_source_id": np.asarray(draw(ids), dtype=np.int64),
+            "person_source_id": np.asarray(draw(ids), dtype=np.int64),
+            "person_support_channel": pd.Series(channel, dtype=object),
+            "person_support_clone_index": np.asarray(draw(clone), dtype=np.int64),
+        }
+    )
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    person=_assembled_people(
+        channels=("asec", "puf_tax_detail", ACS_SUPPORT_CHANNEL, "acs"),
+        with_asec=True,
+    )
+)
+def test_no_acs_row_enters_lkweeks_reconciliation(person: pd.DataFrame) -> None:
+    """On any assembled person table (P1, d2283 DESIGN :324), the scope
+    takes only stored ``asec`` rows as source rows and reconciles only the
+    native ones to ``LKWEEKS``, so no ACS row (``acs_2024_1yr`` or the
+    stacked pool's ``acs``) enters either check. The UC rule takes every CPS
+    clone, with a stored channel of ``asec`` or ``puf_tax_detail``, and
+    every native of another channel.
+    """
+
+    channel = person["person_support_channel"].to_numpy(dtype=object)
+    native = person["person_support_clone_index"].to_numpy() == 0
+    asec = channel == "asec"
+    cps = np.isin(channel, _CPS_CHANNELS)
+
+    (
+        source_channel,
+        roster,
+        source_rows,
+        source_reconciliation_rows,
+        uc_constraint_rows,
+    ) = module._weeks_unemployed_gate_scopes(person)
+
+    np.testing.assert_array_equal(source_channel, channel)
+    assert roster == ("asec", *sorted(set(channel) - {"asec"}))
+    np.testing.assert_array_equal(source_rows, asec)
+    np.testing.assert_array_equal(source_reconciliation_rows, asec & native)
+    assert not ((source_rows | source_reconciliation_rows) & ~asec).any()
+    np.testing.assert_array_equal(uc_constraint_rows, (cps & ~native) | (~cps & native))
+
+
+@settings(max_examples=100, deadline=None)
+@given(
+    person=_assembled_people(
+        channels=("puf_tax_detail", ACS_SUPPORT_CHANNEL, "acs"), with_asec=False
+    )
+)
+def test_an_assembled_table_without_asec_rows_refuses(person: pd.DataFrame) -> None:
+    """An assembled table with no stored ``asec`` row has no source rows,
+    and the scope refuses it (P1's second property)."""
+
+    with pytest.raises(ValueError, match="has no ASEC source rows"):
+        module._weeks_unemployed_gate_scopes(person)
+
+
+#: Values an ACS row's ``LKWEEKS`` cell might hold: null, the
+#: not-in-universe code, a valid week count, out of range, fractional, text.
+_ACS_LKWEEKS_VALUES = st.one_of(
+    st.sampled_from((np.nan, -1.0, 99.0, 3.5, "not a week count")),
+    st.integers(min_value=0, max_value=52).map(float),
+)
+
+
+@settings(max_examples=50, deadline=None)
+@given(data=st.data())
+def test_acs_lkweeks_cells_never_move_the_source_checks(data: st.DataObject) -> None:
+    """On the mixed-origin frame (P2), whatever the ACS rows' ``LKWEEKS``
+    cells hold, the gate's source rows, reconciliation rows, invalid count,
+    mismatch count, every other statistic and its failures keep their
+    values. The source checks read only the rows the scope returns."""
+
+    mixed = _mixed_origin().mixed_origin
+    baseline = _mixed_origin_gate()
+    acs = np.flatnonzero(_acs_person_rows(mixed))
+    assert len(acs) > 0
+    assert mixed.table("person")["LKWEEKS"].iloc[acs].isna().all()
+    assert baseline.details["source_rows"] > 0
+    assert baseline.details["source_reconciliation_rows"] > 0
+
+    rows = data.draw(st.lists(st.sampled_from(acs.tolist()), min_size=1, unique=True))
+    lkweeks = mixed.table("person")["LKWEEKS"].to_numpy(dtype=object, copy=True)
+    for row in rows:
+        lkweeks[row] = data.draw(_ACS_LKWEEKS_VALUES)
+    gate = us_weeks_unemployed_signal_gate(
+        _with_person_column(mixed, "LKWEEKS", lkweeks)
+    )
+
+    for key in (
+        "source_rows",
+        "source_reconciliation_rows",
+        "source_invalid",
+        "source_mismatch_count",
+    ):
+        assert gate.details[key] == baseline.details[key], key
+    assert gate.details == baseline.details
+    assert (gate.passed, gate.failures) == (baseline.passed, baseline.failures)
+
+
+def test_acs_native_weeks_channel_fails_closed_until_reviewed() -> None:
+    """The gate fails d2283's ACS channel with one line until a reviewed
+    rule lands (lead call P3-L2), and keeps the channel's statistics in its
+    details.
+
+    Its two bands read None; the ``asec`` and ``puf_tax_detail`` entries keep
+    their keys, in order, and their bands. The line stands in for the
+    default-only and band checks: ACS weeks far outside the PUF bands still
+    give that one line.
+    """
+
+    mixed = _mixed_origin().mixed_origin
+    acs = _acs_person_rows(mixed)
+    gate = _mixed_origin_gate()
+
+    assert not gate.passed
+    assert gate.failures == (_ACS_PLACEHOLDER,)
+    channels = gate.details["channels"]
+    assert gate.details["channel_roster"] == [
+        "asec",
+        ACS_SUPPORT_CHANNEL,
+        "puf_tax_detail",
+    ]
+    acs_channel = channels[ACS_SUPPORT_CHANNEL]
+    assert acs_channel["rows"] == int(acs.sum())
+    assert acs_channel["positive_rows"] == 0
+    assert acs_channel["positive_share_band"] is None
+    assert acs_channel["weighted_mean_weeks_band"] is None
+    for name in _CPS_CHANNELS:
+        assert list(channels[name]) == list(acs_channel), name
+        assert channels[name]["positive_share_band"] == list(
+            module._CHANNEL_POSITIVE_SHARE_BANDS[name]
+        ), name
+        assert channels[name]["weighted_mean_weeks_band"] == list(
+            module._CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS[name]
+        ), name
+
+    person = mixed.table("person")
+    compensated = acs & (person["unemployment_compensation"].to_numpy() > 0.0)
+    weeks = person["weeks_unemployed"].to_numpy(dtype=np.float64, copy=True)
+    weeks[compensated] = 52.0
+    busy = us_weeks_unemployed_signal_gate(
+        _with_person_column(mixed, "weeks_unemployed", weeks)
+    )
+
+    assert busy.failures == (_ACS_PLACEHOLDER,)
+    busy_acs = busy.details["channels"][ACS_SUPPORT_CHANNEL]
+    assert busy_acs["positive_rows"] == int(compensated.sum()) > 0
+    share_high = module._CHANNEL_POSITIVE_SHARE_BANDS["puf_tax_detail"][1]
+    mean_high = module._CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS["puf_tax_detail"][1]
+    assert busy_acs["positive_share"] > share_high
+    assert busy_acs["weighted_mean_weeks"] > mean_high
+
+
+def test_acs_native_rows_keep_the_uc_rule() -> None:
+    """An ACS native with weeks unemployed and no unemployment compensation
+    breaks the UC rule, as a native of any non-CPS channel does: the gate
+    counts one mismatch and reports it beside the ACS channel's line."""
+
+    mixed = _mixed_origin().mixed_origin
+    baseline = _mixed_origin_gate()
+    person = mixed.table("person")
+    clone_index = person[support_clone_index_column("person")].to_numpy()
+    uncompensated = _acs_person_rows(mixed) & (
+        person["unemployment_compensation"].to_numpy() == 0.0
+    )
+    row = int(np.flatnonzero(uncompensated)[0])
+    assert clone_index[row] == 0
+    assert baseline.details["uc_constraint_mismatch_count"] == 0
+
+    weeks = person["weeks_unemployed"].to_numpy(dtype=np.float64, copy=True)
+    weeks[row] = 3.0
+    gate = us_weeks_unemployed_signal_gate(
+        _with_person_column(mixed, "weeks_unemployed", weeks)
+    )
+
+    assert gate.details["uc_constraint_mismatch_count"] == 1
+    assert gate.details["uc_constraint_rows"] == baseline.details["uc_constraint_rows"]
+    assert gate.failures == (_UC_FAILURE, _ACS_PLACEHOLDER)
+
+
+def test_cps_clones_are_in_the_uc_rule_on_every_form() -> None:
+    """The UC rule takes every CPS clone on Route A's frame, on its ASEC-only
+    assembled form (where clones keep the ``puf_tax_detail`` label) and on the
+    mixed-origin frame, and on the last also every ACS row, all native."""
+
+    population = _mixed_origin()
+    for form in ("route_a", "assembled", "mixed_origin"):
+        frame = getattr(population, form)
+        person = frame.table("person")
+        clone = person[support_clone_index_column("person")].to_numpy() > 0
+        acs = _acs_person_rows(frame)
+        assert clone.any(), form
+        assert acs.any() == (form == "mixed_origin"), form
+
+        uc_constraint_rows = module._weeks_unemployed_gate_scopes(person)[4]
+        summary = module.us_weeks_unemployed_summary(frame)
+
+        np.testing.assert_array_equal(uc_constraint_rows, clone | acs)
+        assert not (clone & acs).any(), form
+        assert summary["uc_constraint_rows"] == int(clone.sum() + acs.sum()), form
+
+
+def test_weeks_acs_channel_label_matches_the_contract() -> None:
+    """The weeks gate names d2283's ACS channel without importing the
+    contract; the two labels must agree. The contract's tests pin
+    ``acs_pums``'s spine tag to the same label."""
+
+    assert module._ACS_NATIVE_CHANNEL == ACS_SUPPORT_CHANNEL
 
 
 def test_signal_gate_rejects_collapsed_puf_share_and_weighted_weeks() -> None:

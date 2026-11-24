@@ -404,8 +404,13 @@ EXPECTED_HASHES = {
     # the builder's arms by flag; no draw, RNG rule, QRF target or solve changes.
     # The in-place QRF leaf array in microcosm.fit.qrf moves both again: the
     # forests' leaf arrays are byte-identical, and no draw changes.
-    "seed_map": "afbe93ebeb8d48294581d860aed690c168eb4c2c92461353676a794cefd22584",
-    "seed_protocol": "05fb40521ffef194cec9c2fe4dfedbbfd02e64ddddfd69f1a591961b61804176",
+    # microcosm#1702 moves both again: on an assembled frame the
+    # weeks-unemployed and both retirement gates check the CPS rows Route A
+    # checks, under either CPS label, and the weeks gate refuses the
+    # acs_2024_1yr channel until that channel has a reviewed rule. No draw,
+    # RNG rule or QRF target changes.
+    "seed_map": "d79f736aea0042c6e93511d2f0159388b8a13f3ed62cadb376653d619f8e36fa",
+    "seed_protocol": "24e52e423cc6b44009826e1fab1187fe986079ce95450191329f02edf1ac0538",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

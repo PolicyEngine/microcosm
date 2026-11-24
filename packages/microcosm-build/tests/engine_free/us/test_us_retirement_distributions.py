@@ -1,6 +1,14 @@
 """Tests split from packages/microcosm-build/tests/test_us_retirement_distributions.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.us_runtime.one_population_contract import ACS_SUPPORT_CHANNEL
+from microcosm.build.us_runtime.support_provenance import (
+    support_channel_column,
+    support_clone_index_column,
+)
+from test_support.microcosm_build.us_one_population_contract import (
+    mixed_origin_reader_population,
+)
 from test_support.microcosm_build.us_retirement_distributions import *
 
 
@@ -162,6 +170,69 @@ def test_stacked_gate_validates_physical_source_and_reconciles_direct_role() -> 
     person.loc[person.index[asec_puf_role][0], "DST_SC1"] = np.nan
     with pytest.raises(SourceRuntimeError, match="account codes"):
         us_retirement_distributions_summary(stacked)
+
+
+def test_acs_dst_cells_never_move_distribution_reconciliation() -> None:
+    """On a mixed-origin frame, no ACS ``DST_*`` slot reaches the source
+    checks or the reconciliation.
+
+    d2283's one-population join adds ACS rows, which hold no ``DST_*``
+    value, to Route A's CPS rows. The assembled source mask takes every CPS
+    row, native or clone, and leaves the ACS rows out; the reconciliation
+    keeps the CPS natives. A null, an invalid code, a negative amount, an
+    amount on the not-in-universe code or a valid code with an amount in
+    every ACS slot leaves the verdict and every statistic unchanged. Inside
+    the source mask the first four would raise and the last would count
+    mismatches, since every ACS row is a native with 0 in each output.
+    """
+
+    mixed = mixed_origin_reader_population().mixed_origin
+    person = mixed.table("person")
+    acs = person[support_channel_column("person")].eq(ACS_SUPPORT_CHANNEL).to_numpy()
+    native = person[support_clone_index_column("person")].to_numpy() == 0
+    slots = list(US_RETIREMENT_DISTRIBUTION_REQUIRED_SOURCE_COLUMNS)
+    assert 0 < int(acs.sum()) < len(person)
+    assert native[acs].all()
+    assert person.loc[acs, slots].isna().all().all()
+    assert (person.loc[acs, list(_OUTPUTS)] == 0.0).all().all()
+
+    baseline = us_retirement_distributions_signal_gate(mixed)
+    assert baseline.passed, baseline.failures
+    assert baseline.details["source_rows"] == int(np.count_nonzero(~acs))
+    assert baseline.details["source_reconciliation_rows"] == int(
+        np.count_nonzero(~acs & native)
+    )
+    assert not any(baseline.details["source_mismatches"].values())
+
+    for code, amount in (
+        (np.nan, np.nan),
+        (99, 0.0),
+        (1, -5.0),
+        (0, 250.0),
+        (1, 1_000.0),
+    ):
+        tables = {entity: mixed.table(entity).copy() for entity in mixed.entities}
+        for suffix in _SLOT_SUFFIXES:
+            tables["person"].loc[acs, f"DST_SC{suffix}"] = code
+            tables["person"].loc[acs, f"DST_VAL{suffix}"] = amount
+        changed = Frame(
+            tables,
+            mixed.schema,
+            {entity: mixed.weights_for(entity) for entity in mixed.weighted_entities},
+            mixed.strata,
+            mass_log=mixed.mass_log,
+            metadata=mixed.metadata,
+        )
+
+        summary = us_retirement_distributions_summary(changed)
+        gate = us_retirement_distributions_signal_gate(changed)
+
+        assert summary == baseline.details, (code, amount)
+        assert (gate.passed, gate.failures, gate.details) == (
+            baseline.passed,
+            baseline.failures,
+            baseline.details,
+        ), (code, amount)
 
 
 def test_puf_half_uses_qrf_and_asec_half_remains_exact(

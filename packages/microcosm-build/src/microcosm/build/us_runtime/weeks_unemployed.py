@@ -154,6 +154,13 @@ _SOURCE = "LKWEEKS"
 _PERSON_WEIGHT_COLUMN = "person_weight"
 _ASEC_CHANNEL = "asec"
 _PUF_CHANNEL = "puf_tax_detail"
+#: d2283's ACS channel, the stored channel of an ACS row on a one-population
+#: frame. It equals ``one_population_contract.ACS_SUPPORT_CHANNEL``, which a
+#: test pins; this module does not import the contract, since it sits in the
+#: multispine pool tool's import graph. The gate fails this channel closed
+#: until a reviewed rule lands. The stacked pool's ACS rows store ``acs`` and
+#: keep the PUF bands.
+_ACS_NATIVE_CHANNEL = "acs_2024_1yr"
 _PREDICTOR_PREFIX = "weeks_unemployed_predictor_"
 _REQUIRED_PUF_PREDICTORS: tuple[str, ...] = (
     "age",
@@ -1235,6 +1242,9 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
         mask = channel == name
         channel_weight = float(weights[mask].sum())
         plausibility_role = _ASEC_CHANNEL if name == _ASEC_CHANNEL else _PUF_CHANNEL
+        # d2283's ACS channel has no reviewed band yet: it keeps its
+        # statistics, its bands read None, and the gate fails it closed.
+        reviewed = name != _ACS_NATIVE_CHANNEL
         channels[name] = {
             "rows": int(np.count_nonzero(mask)),
             "positive_rows": int(np.count_nonzero(mask & positive)),
@@ -1250,11 +1260,15 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
                 if channel_weight > 0.0
                 else 0.0
             ),
-            "positive_share_band": list(
-                _CHANNEL_POSITIVE_SHARE_BANDS[plausibility_role]
+            "positive_share_band": (
+                list(_CHANNEL_POSITIVE_SHARE_BANDS[plausibility_role])
+                if reviewed
+                else None
             ),
-            "weighted_mean_weeks_band": list(
-                _CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS[plausibility_role]
+            "weighted_mean_weeks_band": (
+                list(_CHANNEL_WEIGHTED_MEAN_WEEKS_BANDS[plausibility_role])
+                if reviewed
+                else None
             ),
         }
 
@@ -1365,12 +1379,16 @@ def _weeks_unemployed_gate_scopes(
     )
     native = clone_index == 0
     source_rows = source_channel == _ASEC_CHANNEL
-    # Native ASEC rows are the direct LKWEEKS carry. Non-native ASEC rows are
-    # the reviewed PUF-detail imputation; native non-ASEC rows are the reviewed
-    # post-transfer calibration scope. Other non-native source rows have no UC
-    # zero rule in either producer contract.
+    cps_origin = source_rows | (source_channel == _PUF_CHANNEL)
+    # Native ASEC rows carry LKWEEKS directly. CPS clones carry the reviewed
+    # PUF-detail imputation, whether the frame stores them as asec (the
+    # stacked pool) or as puf_tax_detail (Route A's clone label, which
+    # d2283's one-population frame keeps). Natives of any other channel fall
+    # in the reviewed post-transfer calibration scope, which on that frame
+    # takes the ACS natives. Other non-native rows have no UC zero rule in
+    # either producer contract.
     source_reconciliation_rows = source_rows & native
-    uc_constraint_rows = (source_rows & ~native) | (~source_rows & native)
+    uc_constraint_rows = (cps_origin & ~native) | (~cps_origin & native)
     return (
         source_channel,
         roster,
@@ -1381,7 +1399,12 @@ def _weeks_unemployed_gate_scopes(
 
 
 def us_weeks_unemployed_signal_gate(frame: Frame) -> GateResult:
-    """Require exact ASEC carry and integer signal on every support channel."""
+    """Require exact ASEC carry and integer signal on every support channel.
+
+    d2283's ACS channel (``acs_2024_1yr``) has no reviewed rule yet: the
+    gate fails it with one line of its own and skips its default-only and
+    band checks. Any other channel name keeps the rule it had.
+    """
 
     person = frame.table("person")
     if _OUTPUT not in person:
@@ -1430,6 +1453,10 @@ def us_weeks_unemployed_signal_gate(frame: Frame) -> GateResult:
         channel = channels[name]
         if int(channel["rows"]) == 0:
             failures.append(f"{name} weeks-unemployed support is empty.")
+        elif name == _ACS_NATIVE_CHANNEL:
+            failures.append(
+                f"{name} weeks_unemployed has no reviewed rule yet (d2283 spike)."
+            )
         elif (
             int(channel["positive_rows"]) == 0 or float(channel["weighted_weeks"]) <= 0
         ):

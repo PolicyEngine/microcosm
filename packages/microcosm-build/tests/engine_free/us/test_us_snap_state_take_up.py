@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import cache
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,12 +17,22 @@ from microcosm.build.us_runtime import (
     us_snap_state_take_up_gate,
     with_us_snap_state_take_up,
 )
+from microcosm.build.us_runtime.cps_carried import reported_snap_receipt_by_spm_unit
+from microcosm.build.us_runtime.one_population_contract import ACS_SUPPORT_CHANNEL
 from microcosm.build.us_runtime.snap_state_take_up import (
     US_SNAP_ELIGIBILITY_COLUMN,
     us_snap_source_spm_unit_table,
     with_us_snap_state_take_up_rate,
 )
+from microcosm.build.us_runtime.support_provenance import (
+    support_channel_column,
+    support_source_id_column,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from test_support.microcosm_build.us_one_population_contract import (
+    assembled_frame,
+    generate_population,
+)
 
 TIME_PERIOD = 2024
 
@@ -88,6 +100,65 @@ def _state_targets(rows: list[tuple[str, float]]) -> pd.DataFrame:
     )
 
 
+def _with_person(frame: Frame, person: pd.DataFrame) -> Frame:
+    """Rebuild ``frame`` with ``person`` as its person table."""
+
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+@cache
+def _one_population_frame() -> Frame:
+    """The one-population contract's CPS-and-ACS frame for seed 0 (d2283)."""
+
+    return assembled_frame(generate_population(0))
+
+
+def _one_population_snap_frame(acs_subsidy: float) -> Frame:
+    """The one-population frame with ``SPM_SNAPSUB`` on every person row.
+
+    The CPS repeats ``SPM_SNAPSUB``, an annual SPM-unit amount, on every
+    member's row. A CPS row carries 2,400 when its SPM unit's source id
+    divides evenly by three and 0 otherwise, so a clone carries its native's
+    amount. An ACS row carries ``acs_subsidy``: ACS records no CPS reported
+    subsidy.
+    """
+
+    frame = _one_population_frame()
+    person = frame.table("person").copy()
+    spm_unit = frame.table("spm_unit")
+    unit_source = pd.Series(
+        spm_unit[support_source_id_column("spm_unit")].to_numpy(),
+        index=spm_unit["spm_unit_id"].to_numpy(),
+    )
+    source = person["person_spm_unit_id"].map(unit_source).to_numpy()
+    acs = person[support_channel_column("person")].eq(ACS_SUPPORT_CHANNEL)
+    person["SPM_SNAPSUB"] = np.where(
+        acs.to_numpy(), acs_subsidy, np.where(source % 3 == 0, 2_400.0, 0.0)
+    )
+    return _with_person(frame, person)
+
+
+def _source_table(frame: Frame) -> pd.DataFrame:
+    """The state stage's source table, every unit eligible in one state."""
+
+    count = len(frame.table("spm_unit"))
+    return us_snap_source_spm_unit_table(
+        frame,
+        is_snap_eligible=np.ones(count, dtype=bool),
+        state_fips=np.full(count, 6),
+        seed=0,
+    )
+
+
 class TestManifestDeclaration:
     def test_stage_is_declared_with_calibrated_ops(self) -> None:
         stage = US_SOURCE_MANIFEST.stage_map()[US_SNAP_STATE_TAKE_UP_STAGE]
@@ -147,6 +218,71 @@ class TestSourceTable:
                 state_fips=np.asarray(["06", "06"]),
                 seed=0,
             )
+
+    def test_a_null_reported_subsidy_is_not_anchored_on_a_mixed_frame(self) -> None:
+        """A null ``SPM_SNAPSUB`` anchors no ACS SPM unit (d2283).
+
+        The one-population join adds ACS rows, which carry no CPS reported
+        subsidy, to Route A's CPS rows. The state stage's source table and
+        the shared receipt helper both read a null subsidy as 0, so neither
+        anchors an ACS SPM unit, and each returns the same output as with
+        0.0 in the ACS cells.
+        """
+
+        frame = _one_population_snap_frame(np.nan)
+        person = frame.table("person")
+        spm_unit = frame.table("spm_unit")
+        units = set(spm_unit["spm_unit_id"])
+        acs = person[support_channel_column("person")].eq(ACS_SUPPORT_CHANNEL)
+        acs_units = set(
+            spm_unit.loc[
+                spm_unit[support_channel_column("spm_unit")].eq(ACS_SUPPORT_CHANNEL),
+                "spm_unit_id",
+            ]
+        )
+        # Each ACS SPM unit holds ACS persons only, and each ACS person sits in one.
+        assert acs_units
+        assert set(person.loc[acs, "person_spm_unit_id"]) == acs_units
+        assert acs_units.isdisjoint(person.loc[~acs, "person_spm_unit_id"])
+        assert person.loc[acs, "SPM_SNAPSUB"].isna().all()
+        positive = set(person.loc[person["SPM_SNAPSUB"].gt(0), "person_spm_unit_id"])
+        assert positive
+        assert positive < units - acs_units
+
+        table = _source_table(frame)
+        receipt = reported_snap_receipt_by_spm_unit(person)
+        anchor = pd.Series(
+            table[US_SNAP_STATE_TAKE_UP_ANCHOR].to_numpy(),
+            index=table["spm_unit_id"].to_numpy(),
+        )
+        assert sorted(anchor.index) == sorted(units)
+        assert sorted(receipt.index) == sorted(units)
+        assert [unit for unit in sorted(acs_units) if anchor[unit]] == []
+        assert [unit for unit in sorted(acs_units) if receipt[unit]] == []
+        # The CPS units' anchors follow their subsidy.
+        assert set(anchor.index[anchor.to_numpy()]) == positive
+        assert set(receipt.index[receipt.to_numpy()]) == positive
+
+        zero = _one_population_snap_frame(0.0)
+        assert zero.table("person").loc[acs, "SPM_SNAPSUB"].eq(0.0).all()
+        pd.testing.assert_frame_equal(_source_table(zero), table, check_exact=True)
+        pd.testing.assert_series_equal(
+            reported_snap_receipt_by_spm_unit(zero.table("person")),
+            receipt,
+            check_exact=True,
+        )
+
+    def test_a_mixed_frame_without_the_reported_subsidy_is_refused(self) -> None:
+        """Both readers refuse the mixed frame without ``SPM_SNAPSUB``."""
+
+        frame = _one_population_snap_frame(np.nan)
+        stripped = _with_person(
+            frame, frame.table("person").drop(columns=["SPM_SNAPSUB"])
+        )
+        with pytest.raises(ValueError, match="raw 'SPM_SNAPSUB' reported-subsidy"):
+            _source_table(stripped)
+        with pytest.raises(ValueError, match="Reported SNAP receipt requires"):
+            reported_snap_receipt_by_spm_unit(stripped.table("person"))
 
 
 class TestRatePrior:
