@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "identity": [
+    "household_id"
+  ],
+  "stream": [
+    "sha256-u53-v1",
+    "be-commune-geography",
+    0,
+    0
+  ],
+  "outputs": {
+    "area": "be_atomic_area",
+    "system": "be_area_system",
+    "basis": "be_area_basis"
+  },
+  "systems": [
+    {
+      "id": "be-commune",
+      "level": "commune",
+      "code_system": "be_nis",
+      "vintage": "nis_2025",
+      "source": "be_chronicle_facts",
+      "selector": {},
+      "constraints": [],
+      "observed_area": null,
+      "stages": [
+        {
+          "level": "area",
+          "weight": "population"
+        }
+      ],
+      "layers": [
+        {
+          "input": "commune_nis",
+          "output": "commune_nis",
+          "vintage": "nis_2025",
+          "relation": "exact",
+          "source": "Statbel registered population on 1 January 2025 by NIS 2025 commune, Chronicle record set statbel.population_structure.cy2025.people.by_commune_nis2025.total"
+        },
+        {
+          "input": "province_nis",
+          "output": "province_nis",
+          "vintage": "province_2025",
+          "relation": "exact",
+          "source": "statbel-population-structure-2025@sha256:33910ea36437e39cfffd82ad82c759a2a8d1f2ab7662d45ce71c8ec9f336716c#CD_PROV_REFNIS, Statbel's 2025 province code; the 19 Brussels-Capital Region communes belong to no province and Statbel codes them 04000"
+        },
+        {
+          "input": "region_nuts1",
+          "output": "region_nuts1",
+          "vintage": "nuts1_2025",
+          "relation": "exact",
+          "source": "statbel-population-structure-2025@sha256:33910ea36437e39cfffd82ad82c759a2a8d1f2ab7662d45ce71c8ec9f336716c#CD_RGN_REFNIS, renamed one to one to NUTS 2024 level 1 (02000 BE2, 03000 BE3, 04000 BE1) by eurostat-lau-2024-nuts-2024@sha256:1528df47dfc8fa6815e3e7b9fca78b38d40c1142c6b4748ff5fa512f281b5446#BE/NUTS3 via statbel-nis-2025-commune-crosswalk@sha256:717b0fecc3d78ee072a07f35ada4280f2ae4595ef2366b23d02e96efd872b1ba"
+        },
+        {
+          "input": "community_code",
+          "output": "community_code",
+          "vintage": "community_2025",
+          "relation": "exact",
+          "source": "language region: german for the 9 communes in NUTS 2024 BE336 'Bezirk Verviers — Deutschsprachige Gemeinschaft' (beside BE335 'Arr. Verviers — communes francophones') by eurostat-lau-2024-nuts-2024@sha256:1528df47dfc8fa6815e3e7b9fca78b38d40c1142c6b4748ff5fa512f281b5446#BE/NUTS3 via statbel-nis-2025-commune-crosswalk@sha256:717b0fecc3d78ee072a07f35ada4280f2ae4595ef2366b23d02e96efd872b1ba, labels eurostat-nuts-2021-2024@sha256:1c46016ce209e1cf61cfb66535374dba58851485a72006c6db72676d5dcd9623#NUTS2024; otherwise from statbel-population-structure-2025@sha256:33910ea36437e39cfffd82ad82c759a2a8d1f2ab7662d45ce71c8ec9f336716c#CD_RGN_REFNIS (02000 dutch, 03000 french, 04000 brussels_bilingual); inferred, as no pinned file states it: BE336's communes are the German-speaking Community's territory, that territory is the German language region, and each Region's territory is its language region or regions (Constitution art. 4 names the four language regions)"
+        }
+      ]
+    }
+  ]
+}

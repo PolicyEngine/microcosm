@@ -24,6 +24,7 @@ from microcosm.build.us_runtime.support_provenance import (
     support_source_id_column,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from test_support.microcosm_build.qrf_chain_doubles import FitPredictChainDouble
 
 
 def _frame(
@@ -349,7 +350,7 @@ def test_local_pipeline_uses_native_hours_then_asec_fallback_and_puf_tax_donor(
     )
     fit_targets = []
 
-    class MeanQRF:
+    class MeanQRF(FitPredictChainDouble):
         def __init__(self, **kwargs):
             pass
 

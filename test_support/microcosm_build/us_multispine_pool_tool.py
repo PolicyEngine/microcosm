@@ -60,6 +60,7 @@ from microcosm.build.us_runtime.take_up_contract import (
     take_up_contract_identity,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, read_frame_table
+from test_support.microcosm_build.qrf_chain_doubles import FitPredictChainDouble
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -367,7 +368,7 @@ def _with_object_backed_strings(frame: Frame) -> Frame:
     )
 
 
-class _MeanQRF:
+class _MeanQRF(FitPredictChainDouble):
     def __init__(self, *, n_estimators: int, seed: int) -> None:
         self.n_estimators = n_estimators
         self.seed = seed

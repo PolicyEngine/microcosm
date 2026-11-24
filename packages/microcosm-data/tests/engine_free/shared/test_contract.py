@@ -213,16 +213,16 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "6b58c92b17862758f0d994e7ef72d4fad270c3db9667ad84b92cf552c5fc581e"
+    "e09318c248025d06054a9becc5d899e9cdec5059e713d7cbb908983d0aed574b"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "6d54957d276c2738833b27f4cfe67450d430e39267356dc8964c506a25e9904d"
+    "579d7c867d32d815849d65d19d5c7ab579e882088be4c3d2537259cb59f74db9"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e0504f39332bce9be72529e1836a6c5079820ab22a6add5208a0390f589a2ce0"
+    "172723901c9bcbba984518cb62fcf12918bf1316256bd22f6019dc26d6db47c9"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "a6ebc171cadf45b691a2b83632bc1f87f3116ad31aebf073e3786ce90ecc0307"
+    "7906286f9ca7eacea56276d2f63f37746031866c6edd8e5c29adbd3749e90e52"
 )
 # The input-mass evidence digest covers the reference build's own totals, so
 # it is not pinned (microcosm#1095); a fixture value stands in.

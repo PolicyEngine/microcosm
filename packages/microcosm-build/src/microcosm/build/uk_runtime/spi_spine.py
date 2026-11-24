@@ -528,13 +528,21 @@ class UKFRSHMRCSpineLeavesStageTransform:
     def __call__(self, frame: Frame) -> Frame:
         validate_uk_national_frame(frame)
         artifacts = _artifact_by_table(
-            self.stage, expected=("adult", "benefits", "job", "penprov")
+            self.stage, expected=("adult", "benefits", "child", "job", "penprov")
         )
         adult, adult_identity = _read_raw_frs_table(
             self.frs_raw_dir / str(artifacts["adult"]["locator"]),
             expected_filename="adult.tab",
             source_vintage=str(artifacts["adult"].get("vintage", "unspecified")),
             required_columns=("sernum", "person", "inearns"),
+        )
+        # A dependent child's pay, CHILD.CHEARNS, for the HMRC pay leaf
+        # (PolicyEngine/microcosm#1663).
+        child, child_identity = _read_raw_frs_table(
+            self.frs_raw_dir / str(artifacts["child"]["locator"]),
+            expected_filename="child.tab",
+            source_vintage=str(artifacts["child"].get("vintage", "unspecified")),
+            required_columns=("sernum", "person", "chearns"),
         )
         benefits, benefits_identity = _read_raw_frs_table(
             self.frs_raw_dir / str(artifacts["benefits"]["locator"]),
@@ -555,6 +563,7 @@ class UKFRSHMRCSpineLeavesStageTransform:
             required_columns=("sernum", "person", "jobsect"),
         )
         _assert_identity_matches_artifact(adult_identity.evidence(), artifacts["adult"])
+        _assert_identity_matches_artifact(child_identity.evidence(), artifacts["child"])
         _assert_identity_matches_artifact(
             benefits_identity.evidence(), artifacts["benefits"]
         )
@@ -562,7 +571,7 @@ class UKFRSHMRCSpineLeavesStageTransform:
             penprov_identity.evidence(), artifacts["penprov"]
         )
         _assert_identity_matches_artifact(job_identity.evidence(), artifacts["job"])
-        source_leaves = _materialize_source_leaves(adult, benefits)
+        source_leaves = _materialize_source_leaves(adult, benefits, child)
         person = frame.table("person").copy()
         missing_ids = sorted(set(source_leaves.index) - set(person["person_id"]))
         if missing_ids and not self.sampled_rung:

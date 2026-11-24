@@ -53,12 +53,22 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "geography_assignment.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "geography_spine.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
     {
       "path": "holdout_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "mass_references.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -109,6 +119,21 @@
     },
     {
       "path": "target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "transport_atomic_geography_support.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "transport_inputs.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "unit_declarations.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

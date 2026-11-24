@@ -1,0 +1,11 @@
+{
+  "format": "microcosm.donor-profile/1",
+  "profile": "populace-us-cps-asec",
+  "version": 1,
+  "donor_sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+  "choices": {
+    "assisted_renter_tenure": "rented_public_authority",
+    "blank_full_time_study": "read_false",
+    "housing_cost_contradicting_tenure": "tenure_wins"
+  }
+}

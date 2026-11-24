@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -48,7 +49,7 @@ from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclara
 from microcosm.frame import WeightKind
 
 
-def _base_frame(*, time_period: str = "2023") -> object:
+def _base_frame(*, time_period: str = "2023", with_child: bool = False) -> object:
     person = pd.DataFrame(
         {
             "person_id": [2001, 1001],
@@ -87,6 +88,12 @@ def _base_frame(*, time_period: str = "2023") -> object:
             },
         }
     )
+    if with_child:
+        # A dependent child in household 1, paid CHILD.CHEARNS (microcosm#1663).
+        child = person.loc[person["person_id"] == 1001].assign(
+            person_id=1002, age=17, employment_income=15.0 * 52.0
+        )
+        person = pd.concat([person, child], ignore_index=True)
     benunit = pd.DataFrame({"benunit_id": [101, 201]})
     household = pd.DataFrame(
         {
@@ -108,6 +115,7 @@ def _leaves_stage(
     tmp_path: Path,
     *,
     extra_adult_rows: tuple[dict[str, object], ...] = (),
+    child_rows: tuple[dict[str, object], ...] = (),
 ) -> SourceStageSpec:
     adult = pd.DataFrame(
         [
@@ -116,6 +124,7 @@ def _leaves_stage(
             *extra_adult_rows,
         ]
     )
+    child = pd.DataFrame(list(child_rows), columns=["sernum", "person", "chearns"])
     benefits = pd.DataFrame(
         {
             "sernum": [1, 2, 2],
@@ -130,10 +139,12 @@ def _leaves_stage(
     penprov = pd.DataFrame({"sernum": [1, 2], "person": [1, 1], "stemppen": [2, 5]})
     job = pd.DataFrame({"sernum": [1, 2], "person": [1, 1], "jobsect": [2, 1]})
     adult_path = tmp_path / "adult.tab"
+    child_path = tmp_path / "child.tab"
     benefits_path = tmp_path / "benefits.tab"
     penprov_path = tmp_path / "penprov.tab"
     job_path = tmp_path / "job.tab"
     adult.to_csv(adult_path, sep="\t", index=False)
+    child.to_csv(child_path, sep="\t", index=False)
     benefits.to_csv(benefits_path, sep="\t", index=False)
     penprov.to_csv(penprov_path, sep="\t", index=False)
     job.to_csv(job_path, sep="\t", index=False)
@@ -160,6 +171,7 @@ def _leaves_stage(
             "grain": "person",
             "artifacts": [
                 artifact(adult_path, "adult"),
+                artifact(child_path, "child"),
                 artifact(benefits_path, "benefits"),
                 artifact(penprov_path, "penprov"),
                 artifact(job_path, "job"),
@@ -205,6 +217,35 @@ def test_spine_leaves_align_by_raw_person_id_not_position(tmp_path: Path) -> Non
     assert 0.0 <= employer[1] <= 3.0
     evidence = transform.last_result.evidence()["employer_pension_contributions"]
     assert evidence["members_with_earnings"] == 1
+
+
+def test_spine_leaves_give_a_dependent_child_their_pay(tmp_path: Path) -> None:
+    # A dependent child's pay is CHILD.CHEARNS (PolicyEngine/microcosm#1663),
+    # and the HMRC pay leaf carries it as it carries an adult's ADULT.INEARNS
+    # (Vahid's final review of PolicyEngine/microcosm#1663).
+    stage = _leaves_stage(
+        tmp_path, child_rows=({"sernum": 1, "person": 2, "chearns": 15.0},)
+    )
+
+    result = UKFRSHMRCSpineLeavesStageTransform(tmp_path, stage=stage)(
+        _base_frame(with_child=True)
+    )
+    pay = result.table("person").set_index("person_id")["hmrc_spi_pay"]
+
+    assert pay.loc[1002] == pytest.approx(15.0 * 52.0)
+    assert pay.loc[1001] == pytest.approx(4.0 * 52.0)
+    assert pay.loc[2001] == pytest.approx(5.0 * 52.0)
+
+
+def test_spine_leaves_need_the_child_tab(tmp_path: Path) -> None:
+    stage = _leaves_stage(tmp_path)
+    stage = replace(
+        stage,
+        artifacts=tuple(a for a in stage.artifacts if a.get("table") != "child"),
+    )
+
+    with pytest.raises(ValueError, match="child"):
+        UKFRSHMRCSpineLeavesStageTransform(tmp_path, stage=stage)(_base_frame())
 
 
 def test_spine_leaves_fail_closed_on_unknown_raw_person(tmp_path: Path) -> None:

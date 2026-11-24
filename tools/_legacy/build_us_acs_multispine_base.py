@@ -310,7 +310,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--max-targets-per-fit",
         default=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
         type=_positive_int,
-        help="Maximum chained QRF targets retained at once (default: 8).",
+        help="Maximum QRF targets chained together in one ACS transfer batch (default: 8).",
     )
     parser.add_argument(
         "--donor-channel",
