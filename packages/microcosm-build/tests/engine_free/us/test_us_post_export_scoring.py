@@ -1,6 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_us_post_export_scoring.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.us_runtime.post_export_requests import (
+    ParameterChangesReform,
+    PostExportRequest,
+)
 from test_support.microcosm_build.us_post_export_scoring import *
 
 
@@ -1581,29 +1585,35 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
         "reform_validation": 75,
         "demographics": 1,
     }
+    # The sweep records the release's descriptors: each names its consumer and
+    # rebuilds its reform from the description the consumer recorded.
+    assert all(isinstance(request, PostExportRequest) for request in requests)
+    assert all(request.reform is not None for request in requests)
     smoke_requests = [
-        request for request in requests if request[0] == "reform_coverage_smoke"
+        request for request in requests if request.consumer == "reform_coverage_smoke"
     ]
-    assert [reform.label for _, reform, _ in smoke_requests] == [
-        probe.id for probe in us_release_reform_coverage_probes()
-    ]
+    assert [request.reform for request in smoke_requests] == list(
+        us_release_reform_coverage_probes()
+    )
     validation_requests = [
-        request for request in requests if request[0] == "reform_validation"
+        request for request in requests if request.consumer == "reform_validation"
     ]
     ordinary_specs = [
         spec for spec in specs if not reform_validation_module._is_obbba_spec(spec)
     ]
-    assert {spec.id for spec in ordinary_specs}.issubset(
-        {reform.label for _, reform, _ in validation_requests}
-    )
+    assert [
+        request.reform
+        for request in validation_requests
+        if isinstance(request.reform, ReformValidationSpec)
+    ] == ordinary_specs
     obbba_specs = [
         spec for spec in specs if reform_validation_module._is_obbba_spec(spec)
     ]
-    pre_baseline = reform_validation_module._merged_parameter_changes(obbba_specs)
+    pre_baseline = ParameterChangesReform(
+        reform_validation_module._merged_parameter_changes(obbba_specs)
+    )
     pre_baseline_requests = [
-        key
-        for _, reform, key in validation_requests
-        if reform.label == json.dumps(pre_baseline, sort_keys=True, default=str)
+        request.key for request in validation_requests if request.reform == pre_baseline
     ]
     obbba_groups = {(spec.budget_measure, spec.period) for spec in obbba_specs}
     assert {(key[0], key[1]) for key in pre_baseline_requests} == obbba_groups
