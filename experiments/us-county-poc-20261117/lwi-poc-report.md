@@ -2,7 +2,7 @@
 kind: proposal
 client: "Living Wage Institute"
 title: "County Files proof of concept: 2024 county file — a PolicyEngine report"
-status: "draft v0.3 (2026-11-20): for María and Max to review, not for sending"
+status: "draft v0.4 (2026-11-24): for María and Max to review, not for sending"
 pe-doc:
   psl_foundation: false
   split_tables: false
@@ -42,7 +42,7 @@ A PolicyEngine report · for the Living Wage Institute · November 2026
 |------------------|----------------------------------------------------------------|
 | Year | 2024 |
 | Geography | 3,144 counties and county-equivalents on the 2023 county codes, including Connecticut's nine planning regions; 436 congressional districts. Puerto Rico is not included. |
-| Household records | 1,586,908: 1,529,668 from the 2024 American Community Survey (ACS), of which 181,260 are one-person group-quarters records (for example, in nursing homes or college dormitories), and 57,240 national donor households |
+| Household records | 1,586,908: 1,529,668 from the 2024 American Community Survey (ACS), of which 181,260 are one-person group-quarters records (for example, in nursing homes or college dormitories), and 57,240 from 47,277 national donor households |
 | Person records | 3,587,263: 3,420,942 ACS and 166,321 donor |
 | Weighted totals | About 122.5 million households and 331 million people |
 | Model | policyengine-us 2.2.1 |
@@ -55,7 +55,7 @@ Every county has at least one household. Counting households in housing units (A
 The method has four steps. The methods documentation, delivered with this report, gives the detail, and our working papers explain the main choices.
 
 1. **Households and their counties.** We start from the 2024 ACS 1-year public-use microdata. The ACS gives each household's PUMA, not its county. So we draw a county for each ACS household within its PUMA, with odds in proportion to the population each county shares with that PUMA. Each household keeps its whole weight in the county it draws.
-2. **National donor households.** The ACS does not collect detailed tax items. We add 57,240 donor households from PolicyEngine's published 2024 national file, built on 28 July 2026 from the Current Population Survey (CPS ASEC), with tax detail imputed from the IRS public-use file. These households keep the county that the national file gives them.
+2. **National donor households.** The ACS does not collect detailed tax items. We add 47,277 donor households from PolicyEngine's published 2024 national file, built on 28 July 2026 from the Current Population Survey (CPS ASEC), with tax detail imputed from the IRS public-use file. These households keep the county that the national file gives them.
 3. **Imputation.** We give ACS households most of the characteristics the ACS lacks, such as detailed tax items, from the donor households, with quantile regression forests (working paper: [microcosm.institute/support/paper](https://microcosm.institute/support/paper)). A few come from elsewhere: the household's own ACS answer sets SNAP receipt, a model trained on the Survey of Income and Program Participation sets SSI disability status, and rules and seeded random draws set immigration status and program take-up. Inputs still blank after that take the model's default values, such as zero tips and zero net worth. Imputation gives records their characteristics. It does not change how many households each record represents.
 4. **Calibration.** We then adjust the household weights so that the file comes close to 16,440 targets at once: 4,482 for states, 436 for congressional districts and 11,522 for counties. The targets come from official statistics, but not all of them equal a published figure: we age IRS dollar amounts to 2024, split each state's IRS totals of returns and adjusted gross income across its counties by the counties' shares in the IRS county data, and take every population target from 2020 Census block populations. A cap keeps each household's final weight at most five times its starting weight. A paper on this calibration method is in preparation.
 
@@ -148,7 +148,7 @@ Most D grades have both causes: 2,905 counties have an effective sample below 30
 
 **Why the effective samples are small.** There are three reasons:
 
-1. **Donor households carry most of the weight.** The 57,240 national donor households are 3.6% of the records, but they carry 77% of the household weight. Before calibration they carried half. In each county, a few of them hold most of the weight.
+1. **Donor households carry most of the weight.** The 47,277 national donor households account for 3.6% of the records, but they carry 77% of the household weight. Before calibration they carried half. In each county, a few of them hold most of the weight.
 2. **Calibration concentrates the weight further.** After calibration, 1% of the household records hold 81% of the weight. Before calibration, they held 51%.
 3. **The calibration gives most of its weight to state targets.** Before the solve, state and district targets make up 94% of the calibration's weighting and county targets 6%. At the final weights, county targets carry 27% of the remaining error. The fit is close for state totals and looser for counties. We have not yet tested other weightings.
 
