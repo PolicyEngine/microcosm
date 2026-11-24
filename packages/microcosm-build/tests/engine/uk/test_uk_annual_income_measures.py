@@ -160,6 +160,16 @@ def test_the_annual_measures_tax_each_persons_year(tmp_path) -> None:
         "employment_income_with_benefits_in_kind"
     )
     np.testing.assert_allclose(with_cars, annual_pay, rtol=1e-6)
+    # CenTax's parent cells band on the year's adjusted net income
+    # (microcosm#1399): the leaver's spell raises it, the entrant's half year
+    # lowers it, and a year paid in full leaves it as it is.
+    ani, _ = resolver.compute("person", "adjusted_net_income")
+    annual_ani, route = resolver.compute("person", "adjusted_net_income_annual")
+    assert route.startswith("annual_income_simulation:")
+    ani, annual_ani = np.asarray(ani, dtype=float), np.asarray(annual_ani, dtype=float)
+    assert annual_ani[1] > ani[1]
+    assert annual_ani[2] < ani[2]
+    np.testing.assert_allclose(annual_ani[[0, 4]], ani[[0, 4]], rtol=1e-6)
     receipt = resolver.receipt()["annual_income_measures"]
     assert receipt["route"] == "annual_income_simulation"
     factors = receipt["other_spells_engine_factors"]
