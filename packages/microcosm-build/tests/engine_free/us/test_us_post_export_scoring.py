@@ -2272,6 +2272,41 @@ def test_a_failed_merged_pass_frees_its_partial_values_before_the_fallback(
     assert first.simulate(None).calculate("age", 2024).sum() > 0.0
 
 
+def test_a_merged_pass_error_that_cannot_be_printed_still_falls_back(
+    builder, tmp_path, capsys
+) -> None:
+    """The fallback holds when the merged pass's error cannot be turned into
+    text: the consumer scores its own plan, and the merged pass is not tried
+    again for the next consumer."""
+    plans = {"first": (("age", 2024, None),), "second": (("ssi", 2024, None),)}
+    scorer = _scorer(
+        builder, _nested_frame(), _EngineLog(), 3, tmp_path, baseline_plans=plans
+    )
+    passes = _record_pass_labels(scorer)
+    score = scorer._score
+
+    class _UnprintableError(RuntimeError):
+        def __str__(self) -> str:
+            raise ValueError("this error has no text")
+
+    def failing_merged_score(keys, **options):
+        if options["label"] == "merged baseline plan":
+            raise _UnprintableError()
+        return score(keys, **options)
+
+    scorer._score = failing_merged_score
+    first = scorer.open_consumer("first", plans["first"])
+    second = scorer.open_consumer("second", plans["second"])
+    assert first.simulate(None).calculate("age", 2024).sum() > 0.0
+    assert second.simulate(None).calculate("ssi", 2024).sum() > 0.0
+    assert passes == [
+        "merged baseline plan",
+        "first baseline plan",
+        "second baseline plan",
+    ]
+    assert "_UnprintableError" in capsys.readouterr().out
+
+
 def test_the_consumer_log_names_the_merged_pass(builder, tmp_path, capsys) -> None:
     """A consumer served from the merged pass says so in the build log; its
     recorded ``baseline_passes`` stays 1."""
