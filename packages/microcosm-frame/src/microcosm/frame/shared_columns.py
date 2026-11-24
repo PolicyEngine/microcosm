@@ -17,7 +17,12 @@ this process and are dropped when the array that owns the memory is freed.
 **Comparing.** :func:`check_shared_columns` hashes each recorded array again and
 raises :class:`SharedColumnChangedError` naming every column that differs. The
 :class:`~microcosm.frame.bundle.Frame` constructor, ``engine_tables`` and the
-writers of checkpoints and outputs call it before copying or writing.
+writers of checkpoints and outputs call it before copying or writing. A column
+that leaves a frame would take the evidence of a raw write with it, while a
+column derived from it carries the changed values on, so
+:func:`check_columns_leaving` compares each recorded column that
+``replace_tables`` or ``with_columns`` drops or replaces before the new frame
+is built.
 
 A column is compared only while it is still stored in the memory that was
 recorded. Replacing, adding or dropping a column through pandas moves it to
@@ -32,7 +37,11 @@ Not covered:
 - pyarrow-backed columns, whose buffers are immutable, and any other extension
   type :func:`_column_buffers` does not list;
 - a copy taken after the change, for example ``table.copy()`` or a ``select``
-  that drops rows, which carries the changed values into new memory.
+  that drops rows, which carries the changed values into new memory;
+- a recorded column that leaves every checked frame other than through
+  ``replace_tables`` or ``with_columns``, for example when a new ``Frame`` is
+  built from tables without it, or when values derived from it are written
+  without a frame.
 """
 
 from __future__ import annotations
@@ -277,5 +286,48 @@ def check_shared_columns(
         for table_name, column_name, column in _named_columns(tables, strata)
         if any(_buffer_changed(stored) for stored in _column_buffers(column))
     ]
+    if changed_columns:
+        raise SharedColumnChangedError(changed_columns)
+
+
+def check_columns_leaving(
+    tables: Mapping[str, pd.DataFrame], replacements: Mapping[str, pd.DataFrame]
+) -> None:
+    """Refuse recorded columns of ``tables`` that their replacements do not keep.
+
+    A column leaves when its replacement table no longer stores every array the
+    column is stored in, because the column was dropped or replaced. Only
+    leaving columns are hashed: columns the replacement keeps stay in the new
+    frame, and later checks of that frame compare them.
+
+    Args:
+        tables: The current DataFrames by table name.
+        replacements: Their replacements by the same names. A name with no
+            current table is skipped.
+
+    Raises:
+        SharedColumnChangedError: If any leaving column has changed.
+    """
+
+    if not _owner_records:
+        return
+    changed_columns = []
+    for table_name, replacement in replacements.items():
+        table = tables.get(table_name)
+        if not isinstance(table, pd.DataFrame) or not isinstance(
+            replacement, pd.DataFrame
+        ):
+            continue
+        kept = {
+            _buffer_key(stored)
+            for _column_name, column in replacement.items()
+            for stored in _column_buffers(column)
+        }
+        for column_name, column in table.items():
+            stored_arrays = _column_buffers(column)
+            if all(_buffer_key(stored) in kept for stored in stored_arrays):
+                continue
+            if any(_buffer_changed(stored) for stored in stored_arrays):
+                changed_columns.append((str(table_name), str(column_name)))
     if changed_columns:
         raise SharedColumnChangedError(changed_columns)

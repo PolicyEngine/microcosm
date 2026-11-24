@@ -42,7 +42,11 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame.schema import EntitySchema
-from microcosm.frame.shared_columns import check_shared_columns, record_shared_columns
+from microcosm.frame.shared_columns import (
+    check_columns_leaving,
+    check_shared_columns,
+    record_shared_columns,
+)
 from microcosm.frame.weights import (
     MassChange,
     MassChangeRecord,
@@ -1014,7 +1018,9 @@ class Frame:
         DataFrames it passed. Raw writes into the shared memory are not
         protected (see :meth:`adopt`). A replacement's columns are recorded
         for :meth:`check_shared_columns` only once a later operation shares
-        them. Weights, strata, the mass log and
+        them. Each recorded column of a replaced table that the replacement
+        drops or replaces is compared first, because the new frame no longer
+        holds it for a later check to see. Weights, strata, the mass log and
         metadata are carried unchanged. When copy-on-write is off, every
         table is deep-copied instead.
 
@@ -1031,9 +1037,12 @@ class Frame:
             ValueError: If a name is neither a declared entity nor a declared
                 link, or the new tables break any constructor invariant (for
                 example, the weights or strata no longer align with them).
+            SharedColumnChangedError: If a raw write changed a shared column
+                that the replacements drop or replace.
         """
 
         _require_dataframes(changed_tables)
+        check_columns_leaving({**self._tables, **self._link_tables}, changed_tables)
         tables = self._shallow_table_copies()
         tables.update(
             {name: table.copy(deep=False) for name, table in changed_tables.items()}
@@ -1057,7 +1066,7 @@ class Frame:
         copies a NumPy array on assignment, so the frame does not alias the
         caller's array. The table's other columns and every other table are
         shared with this frame as in :meth:`replace_tables`, with the same
-        limits.
+        limits, and a recorded column it replaces is compared first.
 
         Args:
             entity: An entity declared by the schema (not a link).
@@ -1075,6 +1084,8 @@ class Frame:
                 name another table already carries, a reserved
                 ``{entity}_weight`` name, a duplicated or missing id, or
                 broken linkage).
+            SharedColumnChangedError: If a raw write changed a shared column
+                that ``columns`` replaces.
         """
 
         table = self.table(entity).copy(deep=False)
