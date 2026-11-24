@@ -4,6 +4,7 @@
       "benunit_id": "int64",
       "dependent_children": "int64",
       "frs_benunit_capital": "float64",
+      "frs_uc_claim_months": "float64",
       "is_married": "bool",
       "liable_for_share_of_household_rent": "bool"
     },
@@ -60,6 +61,7 @@
       "frs_company_car_fuel_code": "int64",
       "frs_company_car_price_band": "int64",
       "frs_company_car_private_fuel": "bool",
+      "frs_condition_limits_activities": "string",
       "frs_uc_carer_element": "string",
       "frs_uc_lcw_status": "string",
       "gender": "string",

@@ -2,7 +2,7 @@
 
 The stage's rule is tested engine-free in
 tests/engine_free/uk/test_uk_uc_limited_capability.py. Here, on the locked
-engine (2.177.7), the stage asks the engine for its proxy and stores both
+engine (2.179.2), the stage asks the engine for its proxy and stores both
 flags; unlinked people keep the engine's own answer exactly, and the LCWRA
 element follows DWP's status on linked claims, in the survey year and in the
 calibration year the engine projects the stored values to.
@@ -14,7 +14,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.country_spec import load_country_spec
-from microcosm.build.uk_runtime.frs_spine import FRS_UC_LCW_STATUS_COLUMN
+from microcosm.build.uk_runtime.frs_spine import (
+    FRS_CONDITION_LIMITS_COLUMN,
+    FRS_UC_LCW_STATUS_COLUMN,
+)
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.uc_limited_capability import (
     UC_LCW,
@@ -41,6 +44,9 @@ def _frame():
             "is_household_head": [True, True, True],
             "is_disabled_for_benefits": [False, True, True],
             FRS_UC_LCW_STATUS_COLUMN: ["LCWRA", "NONE", "NOT_LINKED"],
+            # No one reports a condition that limits their activities a lot,
+            # so the imputation's cells are the no-condition side.
+            FRS_CONDITION_LIMITS_COLUMN: ["NO_CONDITION"] * 3,
         }
     )
     household = pd.DataFrame(

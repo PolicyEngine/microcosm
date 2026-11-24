@@ -197,6 +197,9 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_limited_capability import (
     UKUCLimitedCapabilityStageTransform,
 )
+from microcosm.build.uk_runtime.uc_new_claimant_draw import (
+    UKUCNewClaimantDrawStageTransform,
+)
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
@@ -223,7 +226,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 56
+UK_FIXTURE_STAGE_COUNT = 57
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -260,6 +263,9 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # DWP's admin-linked UC limited capability status, the carrier the
         # uc_limited_capability stage reads (microcosm#1095, Y1).
         "frs_uc_lcw_status",
+        # ADULT.CONDIT, the limiting condition carrier the same stage's
+        # imputation cells read (PolicyEngine/microcosm#1663).
+        "frs_condition_limits_activities",
         # DWP's admin-linked UC carer element, the carrier frs_disability
         # checks the carer link against (microcosm#1095, A3 (f)).
         "frs_uc_carer_element",
@@ -571,6 +577,12 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "GRTDIR2": 3.0,
             "HEARTVAL": 5.0,
             "HOURTOT": care_band,
+            # ADULT.HEALTH1 and CONDIT, which frs_spine carries for the
+            # uc_limited_capability imputation (PolicyEngine/microcosm#1663):
+            # every third adult reports a long-standing illness, at each of
+            # CONDIT's three codes in turn.
+            "HEALTH1": 1 if household_id % 3 == 0 else 2,
+            "CONDIT": 1 + (household_id // 3) % 3 if household_id % 3 == 0 else "",
         }
         adults.append(adult)
         if has_child:
@@ -600,6 +612,9 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "FSBVAL": 2.0,
                     "HEARTVAL": 4.0,
                     "SPCREG1": 1 if household_id % 9 == 0 else 2,
+                    # A dependent child's pay, CHILD.CHEARNS (PolicyEngine/
+                    # microcosm#1663): a spare-time job in every fifth household.
+                    "CHEARNS": 15.0 if household_id % 5 == 0 else 0.0,
                 }
             )
         accounts.extend(
@@ -2216,8 +2231,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 34:
-        raise RuntimeError("The legacy normalization audit is not exactly 34 cells.")
+    if observed != expected_order or len(observed) != 35:
+        raise RuntimeError("The legacy normalization audit is not exactly 35 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -2474,6 +2489,9 @@ def _build_implementations(
         ),
         "uc_limited_capability": UKUCLimitedCapabilityStageTransform(
             stage=stages["uc_limited_capability"], engine=engine
+        ),
+        "uc_new_claimant_draw": UKUCNewClaimantDrawStageTransform(
+            stage=stages["uc_new_claimant_draw"], engine=engine
         ),
         "uc_take_up": UKUCTakeUpStageTransform(
             stage=stages["uc_take_up"], engine=engine

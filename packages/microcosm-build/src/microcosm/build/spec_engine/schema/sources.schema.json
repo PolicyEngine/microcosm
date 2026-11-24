@@ -7030,9 +7030,17 @@
       "not_linked",
       "claimant",
       "carer",
+      "esa_award",
       "linked_scope",
+      "age",
+      "age_bands",
+      "condition",
+      "condition_cell",
+      "seed",
+      "salt",
       "rule",
       "joint_claim_rule",
+      "imputation_rule",
       "scope"
      ],
      "properties": {
@@ -7066,7 +7074,52 @@
       "carer": {
        "type": "string"
       },
+      "esa_award": {
+       "type": "string"
+      },
       "linked_scope": {
+       "type": "string"
+      },
+      "age": {
+       "type": "string"
+      },
+      "age_bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "band",
+         "low",
+         "high"
+        ],
+        "properties": {
+         "band": {
+          "type": "string"
+         },
+         "low": {
+          "type": "integer"
+         },
+         "high": {
+          "type": [
+           "integer",
+           "null"
+          ]
+         }
+        }
+       }
+      },
+      "condition": {
+       "type": "string"
+      },
+      "condition_cell": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
        "type": "string"
       },
       "rule": {
@@ -7075,7 +7128,107 @@
       "joint_claim_rule": {
        "type": "string"
       },
+      "imputation_rule": {
+       "type": "string"
+      },
       "scope": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "order_draw",
+      "claim_months_draw",
+      "seed",
+      "claim_months",
+      "not_linked",
+      "linked_scope",
+      "age_role",
+      "age_bands",
+      "minimum_pool_sources",
+      "weight_mapping",
+      "population",
+      "order",
+      "imputation",
+      "rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_uc_new_claimant_draw"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "order_draw": {
+       "type": "string"
+      },
+      "claim_months_draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "claim_months": {
+       "type": "string"
+      },
+      "not_linked": {
+       "type": "number"
+      },
+      "linked_scope": {
+       "type": "string"
+      },
+      "age_role": {
+       "type": "string"
+      },
+      "age_bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "lower"
+        ],
+        "properties": {
+         "lower": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "upper": {
+          "type": "integer",
+          "minimum": 0
+         }
+        }
+       }
+      },
+      "minimum_pool_sources": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "weight_mapping": {
+       "enum": [
+        "household_to_benunit"
+       ]
+      },
+      "population": {
+       "type": "string"
+      },
+      "order": {
+       "type": "string"
+      },
+      "imputation": {
+       "type": "string"
+      },
+      "rule": {
        "type": "string"
       }
      }

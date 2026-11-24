@@ -745,6 +745,11 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "household_is_spi_synthetic"),
         }
     ),
+    # One engine materialization of the Universal Credit award and its LCWRA
+    # element over the whole frame, beside the claim recency carrier, the
+    # claimants' ages and the source lineage its pools and receipt count by:
+    # an open surface (microcosm#1095).
+    "uc_new_claimant_draw": None,
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.
@@ -801,6 +806,7 @@ _ROOT_PERSON_STRING = {
     "gender",
     "marital_status",
     "frs_uc_lcw_status",
+    "frs_condition_limits_activities",
     "frs_uc_carer_element",
 }
 _ROOT_PERSON_BOOL = {
@@ -834,6 +840,8 @@ _ROOT_PERSON_INT = {
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
     "frs_benunit_capital": "float64",
+    # The claim recency carrier (frs_spine.FRS_UC_CLAIM_MONTHS_COLUMN).
+    "frs_uc_claim_months": "float64",
     "is_married": "bool",
     "dependent_children": "int64",
     "liable_for_share_of_household_rent": "bool",
@@ -1409,6 +1417,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "trading_allowance_receipts": (
         _Cell("person", "trading_allowance_claim_status", "string"),
         _Cell("person", "trading_allowance_full_relief", "bool"),
+    ),
+    "uc_new_claimant_draw": (
+        _Cell("benunit", "uc_new_claimant_health_element_draw", "float64"),
     ),
     "company_cars": (
         _Cell("person", "company_car_list_price", "float64"),

@@ -223,8 +223,10 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
         "axiom_rules_bindings.json",
         "chronicle_feed.json",
         "gates.json",
+        "geography_assignment.json",
         "geography_spine.json",
         "holdout_references.json",
+        "mass_references.json",
         "money_normalization.json",
         "precal_references.json",
         "quantile_surfaces.json",
@@ -235,6 +237,9 @@ def test_be_generation_zero_views_still_come_from_the_country_spec_seam() -> Non
         "release_contract.json",
         "source_stages.json",
         "target_references.json",
+        "transport_atomic_geography_support.json",
+        "transport_inputs.json",
+        "unit_declarations.json",
     }
 
 
@@ -262,6 +267,7 @@ def test_nz_generation_zero_views_come_from_the_country_spec_seam() -> None:
         "chronicle_feed.json",
         "concept_mapping.json",
         "currency_bridge.json",
+        "donor_profile.json",
         "earnings_bands.json",
         "entitlement_graph.json",
         "export_contract.json",

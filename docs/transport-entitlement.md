@@ -15,7 +15,7 @@ driver install it automatically. Its fields are:
 | `scenario_gap`, `variant_gap` | Gap producer id templates for the two tiers. |
 | `bands` | `id`, `population`, `baseline_scenario`; all declared scenario gaps become typed inputs. |
 | `package` | Final skeleton receipt `id`, bands `artifact_name`, optional additional `inputs` in the ordinary artifact-edge grammar. |
-| `sources`, `checkpoints` | Additional sources with new names and ordered pre-export endpoints. The bands node is the default checkpoint. |
+| `sources`, `checkpoints` | Additional sources with new names and ordered pre-export endpoints. The bands node is the default checkpoint. With an applicable cell-support gate, `<bands id>.cell_diagnostics` is also a checkpoint: the final one unless the document lists it. The run writes one manifest per checkpoint in the listed order, named `checkpoint-extension-<index>.json`. |
 
 Activation checks resource selections in the common nodes and each scenario's
 selected nodes, using the entitlement factory's row selection. A scenario's

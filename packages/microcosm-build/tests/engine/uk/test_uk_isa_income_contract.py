@@ -173,7 +173,7 @@ def test_a_2024_frame_read_at_2025_projects_each_component(tmp_path) -> None:
 
     The written file declares the producer's savings income rule, so the
     engine grows savings interest by the OBR's savings income per person
-    (1.0032 to 2025 on policyengine-uk 2.174.1). Under legacy_gross it grows
+    (1.0032 to 2025 on policyengine-uk 2.179.2). Under legacy_gross it grows
     gross interest and takes off the stored ISA part unchanged: 1,000 x 1.0032
     - 300 and 300 x 0.0032 outside ISAs. The additive contract grows non-ISA
     and ISA interest each by the rule, so the ISA-only saver has no interest

@@ -58,8 +58,11 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_COMPANY_CAR_PRICE_BAND_BOUNDS,
     FRS_COMPANY_CAR_PRICE_BAND_OPEN,
     FRS_COMPANY_CAR_PRICE_BANDS,
+    FRS_CONDITION_LIMITS_COLUMN,
     FRS_SPINE_TABLES,
     FRS_UC_CARER_ELEMENT_COLUMN,
+    FRS_UC_CLAIM_MONTHS_COLUMN,
+    FRS_UC_CLAIM_MONTHS_NOT_LINKED,
     FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -75,10 +78,12 @@ from microcosm.build.uk_runtime.frs_spine import (
     completed_months,
     frs_care_recipients,
     frs_claimant_or_partner,
+    frs_condition_limits_activities,
     frs_council_tax_band,
     frs_dwp_carer_care_hours,
     frs_lcwra_proxy,
     frs_uc_carer_element,
+    frs_uc_claim_months,
     frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
@@ -290,6 +295,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TOTHOURS": 40,
         # HOURTOT 5 = 35-49 hours of care a week (#882).
         "HOURTOT": 5,
+        # No long-standing illness, so CONDIT is blank (PolicyEngine/microcosm#1663).
+        "HEALTH1": 2,
+        "CONDIT": "",
         "HRPID": 1,
         "UPERSON": 1,
         # #791 household grid: the HRP carries a blank relhrp and the parent
@@ -387,6 +395,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "FSFVVAL": 1.0,
         "FSBVAL": 2.0,
         "HEARTVAL": 4.0,
+        "CHEARNS": 0.0,
     }
     return {
         "adult": [adult_2, adult_1],
@@ -1436,7 +1445,9 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
     or UPERSON, which place a person in their benefit unit: a child raised to
     UPERSON 1 would head the unit beside its adult head, which the spine
     refuses. Nor are the household codes mapped through their data
-    dictionary, which refuse a raised code outside it (uk-data#636).
+    dictionary, which refuse a raised code outside it (uk-data#636), nor
+    ADULT's HEALTH1 and CONDIT, refused the same way (PolicyEngine/
+    microcosm#1663).
     """
 
     tables = _fixture_tables()
@@ -1455,6 +1466,8 @@ def test_no_frs_field_feeds_two_income_columns(tmp_path: Path) -> None:
             "GVTREGNO",
             "PTENTYP2",
             "TYPEACC",
+            "HEALTH1",
+            "CONDIT",
         }
     ]
     copies: dict[str, list[dict[str, object]]] = {table: [] for table in tables}
@@ -5233,6 +5246,73 @@ class TestUCLimitedCapabilityCarrier:
         }
 
 
+class TestUCClaimRecencyCarrier:
+    """How recent a linked UC claim is, for the new-claimant draw (microcosm#1095)."""
+
+    @staticmethod
+    def _tables(rows):
+        benefits = pd.DataFrame(
+            rows, columns=["benunit_id", "household_id", "benefit", "ucstart_raw"]
+        )
+        household = pd.DataFrame(
+            {"intdate": [float(_FIXTURE_INTERVIEW_SAS_DATE)] * 4},
+            index=pd.Index([1, 2, 3, 4], name="household_id"),
+        )
+        benunit = pd.DataFrame({"benunit_id": [101, 201, 301, 401, 402]})
+        return benefits, benunit, household
+
+    def test_each_linked_claim_carries_its_months_and_every_other_unit_none(
+        self,
+    ) -> None:
+        benefits, benunit, household = self._tables(
+            [
+                (101, 1, 95, "07/15/2024"),  # three months before the interview
+                (201, 2, 95, "09/15/2022"),  # 25 months
+                (301, 3, 95, " "),  # no linked record
+                (401, 4, 96, "01/15/2020"),  # PIP daily living, not UC
+            ]
+        )
+
+        assert frs_uc_claim_months(benefits, benunit, household).tolist() == [
+            3.0,
+            25.0,
+            FRS_UC_CLAIM_MONTHS_NOT_LINKED,
+            FRS_UC_CLAIM_MONTHS_NOT_LINKED,
+            FRS_UC_CLAIM_MONTHS_NOT_LINKED,
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        benefits, benunit, household = self._tables([(101, 1, 95, "07/15/2024")])
+        with pytest.raises(KeyError, match="ucstart"):
+            frs_uc_claim_months(
+                benefits.drop(columns=["ucstart_raw"]), benunit, household
+            )
+        twice, _, _ = self._tables(
+            [(101, 1, 95, "07/15/2024"), (101, 1, 95, "07/15/2024")]
+        )
+        with pytest.raises(ValueError, match="two FRS UC rows"):
+            frs_uc_claim_months(twice, benunit, household)
+        later, _, _ = self._tables([(101, 1, 95, "11/15/2024")])
+        with pytest.raises(ValueError, match="after the interview"):
+            frs_uc_claim_months(later, benunit, household)
+        stray, _, _ = self._tables([(999, 1, 95, "07/15/2024")])
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_claim_months(stray, benunit, household)
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append(_uc_row(1, "07/15/2024", 2))
+        tables["benefits"].append(_uc_row(2, "", ""))
+        stage = _write_fixture(tmp_path, tables)
+        benunit = build_uk_frs_spine_frame(tmp_path, stage=stage).table("benunit")
+
+        months = benunit.set_index("benunit_id")[FRS_UC_CLAIM_MONTHS_COLUMN]
+        assert months.dtype == np.float64
+        assert months.to_dict() == {101: 3.0, 201: FRS_UC_CLAIM_MONTHS_NOT_LINKED}
+
+
 class TestUCCarerElementCarrier:
     """DWP's admin-linked UC carer element on a linked claim (microcosm#1095, A3 (f))."""
 
@@ -5768,3 +5848,67 @@ def test_a_spine_build_that_must_send_telemetry_stops_before_any_input_without_a
 
     assert raised.value.reason == "command_not_found"
     assert sorted(path.name for path in tmp_path.iterdir()) == ["raw"]
+
+
+def test_the_limiting_condition_carrier_reads_health1_and_condit() -> None:
+    """ADULT.CONDIT's three codes, NO_CONDITION and NOT_ASKED (PolicyEngine/microcosm#1663)."""
+
+    person = pd.DataFrame({"health1": [1, 1, 1, 2, 0], "condit": [1, 2, 3, 0, 0]})
+    adult = np.array([True, True, True, True, False])
+
+    assert frs_condition_limits_activities(person, adult).tolist() == [
+        "A_LOT",
+        "A_LITTLE",
+        "NOT_AT_ALL",
+        "NO_CONDITION",
+        "NOT_ASKED",
+    ]
+    with pytest.raises(KeyError, match="CONDIT"):
+        frs_condition_limits_activities(person[["health1"]], adult)
+    with pytest.raises(ValueError, match="HEALTH1 outside"):
+        frs_condition_limits_activities(person.assign(health1=[1, 1, 1, 3, 0]), adult)
+    with pytest.raises(ValueError, match="codes 1 to 3"):
+        frs_condition_limits_activities(person.assign(condit=[1, 2, 0, 0, 0]), adult)
+    with pytest.raises(ValueError, match="without a long-standing"):
+        frs_condition_limits_activities(person.assign(condit=[1, 2, 3, 1, 0]), adult)
+    with pytest.raises(ValueError, match="align"):
+        frs_condition_limits_activities(person, adult[:-1])
+
+
+def test_the_spine_carries_the_limiting_condition() -> None:
+    from microcosm.build.uk_runtime.frs_spine import OUTPUT_COLUMNS
+
+    assert FRS_CONDITION_LIMITS_COLUMN in OUTPUT_COLUMNS
+
+
+def test_a_dependent_childs_pay_is_its_chearns(tmp_path: Path) -> None:
+    # Vahid's review of PolicyEngine/microcosm#1663: a dependent aged 16 to 19
+    # in full-time non-advanced education sits on the child tab, whose pay is
+    # CHEARNS, never INEARNS.
+    tables = _fixture_tables()
+    tables["child"][0].update({"AGE": 17, "CHEARNS": 40.0})
+    plain = UKFRSSpineStageTransform(
+        tmp_path / "plain", stage=_write_fixture(tmp_path / "plain")
+    )(uk_frs_spine_seed_frame()).table("person")
+    paid = UKFRSSpineStageTransform(
+        tmp_path / "paid", stage=_write_fixture(tmp_path / "paid", tables)
+    )(uk_frs_spine_seed_frame()).table("person")
+
+    child = paid["is_hbai_dependent_child"].to_numpy(dtype=bool)
+    assert child.sum() == 1
+    assert paid.loc[child, "employment_income"].tolist() == [40.0 * 52]
+    assert plain.loc[child, "employment_income"].tolist() == [0.0]
+    # Adults keep their INEARNS pay.
+    assert (
+        paid.loc[~child, "employment_income"].tolist()
+        == plain.loc[~child, "employment_income"].tolist()
+    )
+
+
+def test_a_child_tab_without_chearns_is_refused(tmp_path: Path) -> None:
+    tables = _fixture_tables()
+    for child in tables["child"]:
+        child.pop("CHEARNS")
+    stage = _write_fixture(tmp_path, tables)
+    with pytest.raises(KeyError, match="CHEARNS"):
+        UKFRSSpineStageTransform(tmp_path, stage=stage)(uk_frs_spine_seed_frame())

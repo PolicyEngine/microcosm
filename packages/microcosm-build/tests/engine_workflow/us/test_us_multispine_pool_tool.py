@@ -364,7 +364,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1641 moves it again: docstring and comment wording in
             # solve and ssi_take_up, and the calibration contract's renamed modes.
             # microcosm#1585's us/gates.json row in country_package.json moves it.
-            "spec_sha256": "5fec6942fad4ffa719c5fe3fc567a5b01de077e2953c5a33e0ba0a9a262f8914",
+            # The in-place QRF leaf array in microcosm.fit.qrf moves it again.
+            # microcosm#1686's shared SIPP person-file read moves it again.
+            "spec_sha256": "1721b4f5e732c2def257cee991bd068c4fa765982017225864501a9334746ab8",
         },
     }
 

@@ -75,6 +75,7 @@ from . import (
     uc_capital_coherence,
     uc_deduction_attributes,
     uc_relationships,
+    uc_take_up,
     was_wealth,
 )
 from .national_frame import UK_NATIONAL_SCHEMA
@@ -148,6 +149,7 @@ _STAGE_MODULES = {
     "isa_subscriptions": "isa_subscriptions",
     "pip_points": "pip_points",
     "trading_allowance_receipts": "trading_allowance_receipts",
+    "uc_new_claimant_draw": "uc_new_claimant_draw",
     "company_cars": "company_cars",
     "childcare_copy_take_up": "childcare_copy_take_up",
     "age_tail": "age_tail",
@@ -210,10 +212,19 @@ _STAGE_HELPER_MODULES = {
     ),
     "uc_capital_coherence": (uc_relationships,),
     # The Universal Credit redraw reads the award through the adapter, the
-    # One engine materialization of the proxy, the claimant role and carer
-    # status; the frs_spine carrier's codes; the receipt's support counts
-    # (microcosm#1095, Y1).
-    "uc_limited_capability": (uk_engine_adapter, frs_spine, receipt_counts),
+    # One engine materialization of the proxy, the claimant role, carer status
+    # and own ESA awards; the frs_spine carrier's codes; the receipt's support
+    # counts (microcosm#1095, Y1); the imputation's age source, the take-up
+    # redraw's young ages and its identity-keyed draw (María's call of
+    # 2026-11-17).
+    "uc_limited_capability": (
+        uk_engine_adapter,
+        frs_spine,
+        receipt_counts,
+        frs_take_up,
+        uc_take_up,
+        stochastic_assignment,
+    ),
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
     # its pools and receipt on the source lineage (microcosm#1334).
@@ -261,6 +272,17 @@ _STAGE_HELPER_MODULES = {
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
     "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
+    # The new-claimant draw reads the award through the adapter, the claim
+    # recency carrier's sentinel, the UC stages' household-to-benefit-unit
+    # weight mapping, and keys its draws on identity and counts its receipt on
+    # the source lineage (microcosm#1095).
+    "uc_new_claimant_draw": (
+        uk_engine_adapter,
+        frs_spine,
+        uc_capital_coherence,
+        receipt_counts,
+        stochastic_assignment,
+    ),
     # The company cars read their carriers' names and codes from frs_spine,
     # HMRC's company car tables through their typed loader, the engine's CPI
     # index and contribution cap, the SPI channel's EPB and tape-row flag, and
@@ -341,6 +363,7 @@ _COUNTING_STAGES = frozenset(
         "childcare_copy_take_up",
         "isa_subscriptions",
         "trading_allowance_receipts",
+        "uc_new_claimant_draw",
         "frs_spine",
         "frs_council_tax",
         "frs_disability",
@@ -717,6 +740,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
     from .uc_limited_capability import UKUCLimitedCapabilityStageTransform
+    from .uc_new_claimant_draw import UKUCNewClaimantDrawStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
     from .uc_take_up import UKUCTakeUpStageTransform
     from .was_lisa import UKWASLISAStageTransform
@@ -1002,6 +1026,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "pip_points": UKPIPPointsStageTransform(stage=stages["pip_points"]),
             "trading_allowance_receipts": UKTradingAllowanceReceiptsStageTransform(
                 stage=stages["trading_allowance_receipts"]
+            ),
+            "uc_new_claimant_draw": UKUCNewClaimantDrawStageTransform(
+                stage=stages["uc_new_claimant_draw"], engine=engine
             ),
             "company_cars": UKCompanyCarsStageTransform(
                 stage=stages["company_cars"],

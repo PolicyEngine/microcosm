@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "dwp_uc_young_lcwra_people_facts.json",
+  "purpose": "DWP, Young people and work: interim report (28 May 2026; file replaced 10 August 2026), analytical annex Table 28, the UC health element (LCWRA) and PIP caseloads of people aged 16 to 24 in England and Wales in financial years 2024-25 (outturn) and 2025-26 (DWP's projection), PolicyEngine/chronicle#443. Consumed by the uc_take_up stage's young LCWRA fit, which takes the calendar-2025 window of the UC health caseload (three twelfths of 2024-25 and nine of 2025-26, Mar\u00eda's rule of 2026-09-22) as the young people with the element its third odds ratio aims at on the spine's design weights (PolicyEngine/microcosm#1663, part 3). No value is derived here.",
+  "consumers": [
+    "uk_runtime.uc_take_up"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "15040ea53a131ee09f713459554f5f22a4afc6bd",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 2160350,
+    "facts_sha256": "9fc0715e59c561ca3838cbd95fd24afbf85d5c8ad2d5316769db52cf23524b62",
+    "manifest_sha256": "4b05b3b637bec0ebcfbac0d358af0da8429f3d77b68ad0eba215036324c9198e"
+  },
+  "selections": [
+    {
+      "label": "young_people_lcwra_pip_england_and_wales_fy2024",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
+        "geography_id": "K04000001"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "young_people_lcwra_pip_england_and_wales_fy2025",
+      "selector": {
+        "source_name": "dwp",
+        "record_set_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2025",
+        "geography_id": "K04000001"
+      },
+      "row_count": 2
+    }
+  ],
+  "row_count": 4,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f65d7a6234e05f7fa4fcc048",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b00b2aaeccfdf911f85ac5c0",
+      "source_record_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2024.personal_independence_payment.caseload_2024",
+      "concept": "dwp.benefit_caseload_count",
+      "measure_id": "caseload_2024",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "claimant"
+      },
+      "geography": {
+        "id": "K04000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
+        "groupby_dimension": "health_and_disability_benefit",
+        "groupby_value_id": "personal_independence_payment",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "16_to_24",
+        "health_and_disability_benefit": "personal_independence_payment"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Young people and work: interim report, analytical annex data tables, Table 28: PIP and UCH-LCWRA caseload and expenditure projections, aged 16-24",
+        "source_file": "analytical-annex-data-tables.ods",
+        "source_sha256": "8a3270e36cfb85481297a34cbb2dadbe6375333f12215e0fcc4d18109c858971",
+        "vintage": "young_people_work_interim_annex_2026_08_10",
+        "raw_r2_key": "raw/uk/dwp/dwp-young-people-pip-lcwra-projections-2026/2026/8a3270e36cfb85481297a34cbb2dadbe6375333f12215e0fcc4d18109c858971/analytical-annex-data-tables.ods"
+      },
+      "value": 416000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_948bc7899993fda770d0c305",
+      "semantic_fact_key": "ledger_semantic_fact_v2_794023241acf726096fe0b5b",
+      "source_record_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2024.uc_health_lcwra.caseload_2024",
+      "concept": "dwp.benefit_caseload_count",
+      "measure_id": "caseload_2024",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "claimant"
+      },
+      "geography": {
+        "id": "K04000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
+        "groupby_dimension": "health_and_disability_benefit",
+        "groupby_value_id": "uc_health_lcwra",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "16_to_24",
+        "health_and_disability_benefit": "uc_health_lcwra"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Young people and work: interim report, analytical annex data tables, Table 28: PIP and UCH-LCWRA caseload and expenditure projections, aged 16-24",
+        "source_file": "analytical-annex-data-tables.ods",
+        "source_sha256": "8a3270e36cfb85481297a34cbb2dadbe6375333f12215e0fcc4d18109c858971",
+        "vintage": "young_people_work_interim_annex_2026_08_10",
+        "raw_r2_key": "raw/uk/dwp/dwp-young-people-pip-lcwra-projections-2026/2026/8a3270e36cfb85481297a34cbb2dadbe6375333f12215e0fcc4d18109c858971/analytical-annex-data-tables.ods"
+      },
+      "value": 161000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4219ce35459984671196865c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_55ce9f04a2082425800654e4",
+      "source_record_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2025.personal_independence_payment.caseload_2025",
+      "concept": "dwp.benefit_caseload_count",
+      "measure_id": "caseload_2025",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "claimant"
+      },
+      "geography": {
+        "id": "K04000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2025",
+        "groupby_dimension": "health_and_disability_benefit",
+        "groupby_value_id": "personal_independence_payment",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "16_to_24",
+        "health_and_disability_benefit": "personal_independence_payment"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Young people and work: interim report, analytical annex data tables, Table 28: PIP and UCH-LCWRA caseload and expenditure projections, aged 16-24",
+        "source_file": "analytical-annex-data-tables.ods",
+        "source_sha256": "8a3270e36cfb85481297a34cbb2dadbe6375333f12215e0fcc4d18109c858971",
+        "vintage": "young_people_work_interim_annex_2026_08_10",
+        "raw_r2_key": "raw/uk/dwp/dwp-young-people-pip-lcwra-projections-2026/2026/8a3270e36cfb85481297a34cbb2dadbe6375333f12215e0fcc4d18109c858971/analytical-annex-data-tables.ods"
+      },
+      "value": 465000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_22db2044adca8add76d96f18",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3b4b1bb6cbfc15d15a5378e7",
+      "source_record_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2025.uc_health_lcwra.caseload_2025",
+      "concept": "dwp.benefit_caseload_count",
+      "measure_id": "caseload_2025",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "claimant"
+      },
+      "geography": {
+        "id": "K04000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dwp.young_people_work_interim_2026.table_28.caseload.fy2025",
+        "groupby_dimension": "health_and_disability_benefit",
+        "groupby_value_id": "uc_health_lcwra",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "16_to_24",
+        "health_and_disability_benefit": "uc_health_lcwra"
+      },
+      "source": {
+        "source_name": "dwp",
+        "source_table": "Young people and work: interim report, analytical annex data tables, Table 28: PIP and UCH-LCWRA caseload and expenditure projections, aged 16-24",
+        "source_file": "analytical-annex-data-tables.ods",
+        "source_sha256": "8a3270e36cfb85481297a34cbb2dadbe6375333f12215e0fcc4d18109c858971",
+        "vintage": "young_people_work_interim_annex_2026_08_10",
+        "raw_r2_key": "raw/uk/dwp/dwp-young-people-pip-lcwra-projections-2026/2026/8a3270e36cfb85481297a34cbb2dadbe6375333f12215e0fcc4d18109c858971/analytical-annex-data-tables.ods"
+      },
+      "value": 181000
+    }
+  ]
+}
