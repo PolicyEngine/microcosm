@@ -2169,12 +2169,17 @@ def plan_minimum_support(
     stores it, in ``households`` order) the step also gives every county's
     SOI rows support (microcosm#1661). A county whose households all store an
     AGI of 0 gets an empty county AGI row, which ``attach_surface`` refuses
-    after the engine pass. After the first pass, each such county with
-    support receives ``per_county`` more households, chosen as above but with
-    a positive AGI (``soi_support`` in the receipt; their moves carry
-    ``"reason": "soi_support"``). The first pass ranks households with a
-    positive AGI first, and no move leaves a donor county without a household
-    whose AGI is nonzero. Without it, nothing differs from before.
+    after the engine pass. In the first pass, when none of a county's
+    ``per_county`` picks has a positive AGI, the last pick is swapped for the
+    next eligible household in rank order that has one (its move carries
+    ``"reason": "positive_agi"``), so the other picks keep their PUMA's AGI
+    mix; ``soi_support["first_pass"]`` reports the movers' share with a
+    positive AGI beside their PUMAs' share. After the first pass, each county
+    with support and no household whose AGI is nonzero receives
+    ``per_county`` more households, chosen as above but with a positive AGI
+    (``soi_support`` in the receipt; their moves carry
+    ``"reason": "soi_support"``). No move leaves a donor county without a
+    household whose AGI is nonzero. Without it, nothing differs from before.
     """
     if per_county < 0:
         raise ValueError("Minimum county support must be nonnegative.")
@@ -2223,6 +2228,25 @@ def plan_minimum_support(
                 "eligible as above, with a positive AGI; the donor county "
                 "keeps a household with a nonzero AGI"
             ),
+            "first_pass": {
+                "rule": (
+                    "the households_per_county eligible households first in "
+                    "rank order; when none of them has a positive AGI, the "
+                    "last is swapped for the next eligible household in rank "
+                    'order that has one (its move carries "reason": '
+                    '"positive_agi")'
+                ),
+                "movers": 0,
+                "movers_with_positive_agi": 0,
+                "mover_share_with_positive_agi": None,
+                "puma_share_with_positive_agi": None,
+                "puma_share_basis": (
+                    "for each first-pass mover, the share of its PUMA's "
+                    "eligible households with a positive AGI before any "
+                    "move, averaged over the movers"
+                ),
+                "swapped_counties": [],
+            },
             "needed": [],
             "counties": {},
             "still_without_agi": [],
@@ -2306,9 +2330,13 @@ def plan_minimum_support(
 
     moved = np.zeros(len(households), dtype=bool)
     moves = []
-    for county in unsupported:
-        order = overlaps.get(county, [])
-        tried, taken = [], []
+
+    def visit(county, order, tried):
+        """Eligible unmoved households of ``county``'s PUMAs, in rank order.
+
+        PUMAs come largest ladder overlap first, each one's households in
+        :func:`support_rank` order; ``tried`` names the PUMAs reached.
+        """
         for puma, _population in order:
             if puma // 100_000 != county // 1000:
                 raise ValueError(
@@ -2317,36 +2345,64 @@ def plan_minimum_support(
                 )
             tried.append(f"{puma:07d}")
             positions = by_puma.get(puma, np.empty(0, dtype=np.int64))
-            candidates = sorted(
+            for position in sorted(
                 (
                     position
                     for position in positions.tolist()
                     if eligible[position] and not moved[position]
                 ),
                 key=lambda position: (
-                    agi is not None and not positive[position],
                     support_rank(key, county, ids[position]),
                     position,
                 ),
-            )
-            for position in candidates:
+            ):
+                yield puma, position
+
+    def can_take(position, donor, taken):
+        """Whether ``donor`` keeps both floors once ``position`` moves too."""
+        pending = sum(1 for _p, from_county, _r in taken if from_county == donor)
+        if counts[donor] - pending - 1 < per_county:
+            return False
+        return keeps_agi(position, donor, taken)
+
+    first_movers = []
+    for county in unsupported:
+        order = overlaps.get(county, [])
+        tried, taken = [], []
+        candidates = visit(county, order, tried)
+        for puma, position in candidates:
+            donor = int(codes[position])
+            if can_take(position, donor, taken):
+                taken.append((position, donor, puma))
                 if len(taken) == per_county:
                     break
+        swapped = None
+        if (
+            agi is not None
+            and len(taken) == per_county
+            and not any(positive[position] for position, _d, _p in taken)
+        ):
+            # The county's AGI row needs a household with an AGI. The last
+            # pick gives way to the next one in rank order that has one, and
+            # the other picks keep their PUMA's AGI mix.
+            kept = taken[:-1]
+            for puma, position in candidates:
                 donor = int(codes[position])
-                pending = sum(
-                    1 for _p, from_county, _r in taken if from_county == donor
-                )
-                if counts[donor] - pending - 1 < per_county:
-                    continue
-                if not keeps_agi(position, donor, taken):
-                    continue
-                taken.append((position, donor, puma))
-            if len(taken) == per_county:
-                break
+                if positive[position] and can_take(position, donor, kept):
+                    taken = [*kept, (position, donor, puma)]
+                    swapped = position
+                    break
         status = "moved" if len(taken) == per_county else "insufficient_eligible_donors"
         if status == "moved":
             for position, donor, puma in taken:
-                record_move(position, donor, county, puma)
+                record_move(
+                    position,
+                    donor,
+                    county,
+                    puma,
+                    reason="positive_agi" if position == swapped else None,
+                )
+                first_movers.append((position, puma))
         receipt["counties"][f"{county:05d}"] = {
             "ladder_population": float(county_populations[county]),
             "pumas_by_overlap": [f"{puma:07d}" for puma, _population in order],
@@ -2354,7 +2410,18 @@ def plan_minimum_support(
             "moved": per_county if status == "moved" else 0,
             "status": status,
         }
+        if swapped is not None:
+            receipt["soi_support"]["first_pass"]["swapped_counties"].append(
+                f"{county:05d}"
+            )
     if agi is not None:
+        _report_first_pass_agi(
+            receipt["soi_support"]["first_pass"],
+            first_movers,
+            positive=positive,
+            eligible=eligible,
+            by_puma=by_puma,
+        )
         _plan_soi_support(
             receipt["soi_support"],
             county_populations,
@@ -2375,6 +2442,29 @@ def plan_minimum_support(
     receipt["moves_sha256"] = _moves_digest(moves)
     receipt["moved_counties"] = sorted({move["to_county"] for move in moves})
     return moves, receipt
+
+
+def _report_first_pass_agi(report, movers, *, positive, eligible, by_puma):
+    """Fill ``soi_support["first_pass"]``: the first-pass movers' share with a
+    positive AGI beside the share their PUMAs would give a random draw.
+
+    ``movers`` is ``[(position, puma), ...]``. A PUMA's share is that of its
+    eligible households (``eligible`` before any move) with a positive AGI.
+    """
+    shares = {}
+    for _position, puma in movers:
+        if puma not in shares:
+            pool = by_puma[puma][eligible[by_puma[puma]]]
+            shares[puma] = float(positive[pool].mean()) if len(pool) else 0.0
+    count = len(movers)
+    with_positive = sum(bool(positive[position]) for position, _puma in movers)
+    report["movers"] = count
+    report["movers_with_positive_agi"] = with_positive
+    if count:
+        report["mover_share_with_positive_agi"] = round(with_positive / count, 6)
+        report["puma_share_with_positive_agi"] = round(
+            sum(shares[puma] for _position, puma in movers) / count, 6
+        )
 
 
 def _plan_soi_support(

@@ -1159,36 +1159,97 @@ def test_soi_support_keeps_each_donor_county_an_agi_household() -> None:
     assert soi["still_without_agi"] == ["01003"]
 
 
-def test_first_pass_ranks_households_with_agi_first() -> None:
-    county = _county()
-    cells = [(100001, 1001)] * 12
-    households = _support_households(cells)
-    # Two of 01001's eligible households carry an AGI.
-    agi = np.zeros(len(households))
-    agi[[4, 10]] = 1_000.0
+def _first_pass_fixture(county):
+    """01001's twelve eligible households in the one PUMA it shares with the
+    unsupported 01003, and their order in 01003's rank."""
+    households = _support_households([(100001, 1001)] * 12)
     populations = {1001: 90.0, 1003: 10.0}
     overlaps = county.puma_overlaps([100001, 100001], [1001, 1003], [90.0, 10.0])
+    ranked = sorted(
+        households["household_id"].tolist(),
+        key=lambda household_id: county.support_rank(
+            county.COUNTY_MIN_SUPPORT_KEY, 1003, household_id
+        ),
+    )
+    return households, populations, overlaps, ranked
 
-    without, _ = county.plan_minimum_support(
-        households, populations, overlaps, per_county=2
+
+def _agi_on(households, household_ids):
+    return np.where(households["household_id"].isin(household_ids), 1_000.0, 0.0)
+
+
+def test_first_pass_keeps_the_rank_when_a_pick_has_agi() -> None:
+    county = _county()
+    households, populations, overlaps, ranked = _first_pass_fixture(county)
+    agi = _agi_on(households, [ranked[0], ranked[5]])
+
+    without, plain = county.plan_minimum_support(
+        households, populations, overlaps, per_county=3
     )
     moves, receipt = county.plan_minimum_support(
-        households, populations, overlaps, per_county=2, household_agi=agi
+        households, populations, overlaps, per_county=3, household_agi=agi
     )
 
-    # Moving both would leave 01001 without an AGI household, so one of them
-    # moves, ranked first, and the second move is the best-ranked other one.
-    moved = {move["household_id"] for move in moves}
-    assert len(moved & {1004, 1010}) == 1
+    # The AGI changes nothing when one of the rank's picks has one.
+    assert [move["household_id"] for move in without] == ranked[:3]
+    assert moves == without
+    assert "soi_support" not in plain
+    first = receipt["soi_support"]["first_pass"]
+    assert first["swapped_counties"] == []
+    assert (first["movers"], first["movers_with_positive_agi"]) == (3, 1)
+    assert first["mover_share_with_positive_agi"] == pytest.approx(1 / 3, abs=1e-6)
+    assert first["puma_share_with_positive_agi"] == pytest.approx(2 / 12, abs=1e-6)
     assert receipt["soi_support"]["needed"] == []
-    assert receipt["soi_support"]["still_without_agi"] == []
-    assert (
-        "soi_support"
-        not in county.plan_minimum_support(
-            households, populations, overlaps, per_county=2
-        )[1]
+
+
+def test_first_pass_swaps_its_last_pick_for_one_with_agi() -> None:
+    county = _county()
+    households, populations, overlaps, ranked = _first_pass_fixture(county)
+    agi = _agi_on(households, [ranked[5], ranked[8]])
+
+    moves, receipt = county.plan_minimum_support(
+        households, populations, overlaps, per_county=3, household_agi=agi
     )
-    assert {move["to_county"] for move in without} == {"01003"}
+
+    # None of the rank's three picks has an AGI: the first two stay, and the
+    # third gives way to the next household in rank order that has one.
+    assert [move["household_id"] for move in moves] == [
+        ranked[0],
+        ranked[1],
+        ranked[5],
+    ]
+    assert [move.get("reason") for move in moves] == [None, None, "positive_agi"]
+    soi = receipt["soi_support"]
+    first = soi["first_pass"]
+    assert first["swapped_counties"] == ["01003"]
+    assert (first["movers"], first["movers_with_positive_agi"]) == (3, 1)
+    assert first["puma_share_with_positive_agi"] == pytest.approx(2 / 12, abs=1e-6)
+    # The county has its AGI support, so the second pass has nothing to do.
+    assert soi["needed"] == [] and soi["still_without_agi"] == []
+    assert receipt["moved_counties"] == ["01003"]
+
+
+def test_first_pass_keeps_its_picks_when_no_household_with_agi_can_move() -> None:
+    county = _county()
+    households, populations, overlaps, ranked = _first_pass_fixture(county)
+    # 01001's only household with an AGI: moving it would leave 01001 without
+    # one, so neither pass can move it.
+    agi = _agi_on(households, [ranked[5]])
+
+    without, _ = county.plan_minimum_support(
+        households, populations, overlaps, per_county=3
+    )
+    moves, receipt = county.plan_minimum_support(
+        households, populations, overlaps, per_county=3, household_agi=agi
+    )
+
+    assert moves == without
+    soi = receipt["soi_support"]
+    assert soi["first_pass"]["swapped_counties"] == []
+    assert soi["first_pass"]["movers_with_positive_agi"] == 0
+    assert soi["needed"] == ["01003"]
+    assert soi["counties"]["01003"]["status"] == "insufficient_eligible_donors"
+    assert soi["still_without_agi"] == ["01003"]
 
 
 def test_check_support_refuses_a_county_without_agi_before_the_engine_pass(

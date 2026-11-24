@@ -259,8 +259,13 @@ gets an empty county AGI row, which `attach_surface` refuses after the engine
 pass. So materialize first computes each household's AGI as the state SOI AGI
 row stores it, with the engine pass's own input projection and reviewed-null
 fill, one 100,000-household chunk at a time (in the build's year the AGI reads
-no county column, so the moves leave it unchanged). The first pass then ranks
-households with a positive AGI first. A second pass moves K more same-PUMA
+no county column, so the moves leave it unchanged). In the first pass, when
+none of a county's K picks has a positive AGI, the K-th gives way to the next
+eligible household in rank order that has one (its move carries
+`"reason": "positive_agi"`), so the other picks keep their PUMA's AGI mix.
+`minimum_support.soi_support.first_pass` reports the first-pass movers' share
+with a positive AGI beside the share among their PUMAs' eligible households,
+and names the counties where the swap happened. A second pass moves K more same-PUMA
 households with a positive AGI, chosen and ranked as above, into each county
 that has supporting households but none with a nonzero AGI. These moves carry
 `"reason": "soi_support"`, and `county_support.json` records the pass under
