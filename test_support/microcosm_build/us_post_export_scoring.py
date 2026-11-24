@@ -506,7 +506,11 @@ def _scorer(
 def _full_in_sample_fit(period: int):
     """A calibration fit covering every in-sample JCT reform, as a release
     fit does, so reform validation simulates only the out-of-sample specs."""
-    fitted = reform_validation_module.in_sample_reform_specs(period=period)
+    fitted = [
+        spec
+        for spec in reform_validation_module.load_default_reform_specs(period=period)
+        if spec.in_sample
+    ]
     return SimpleNamespace(
         diagnostics=[
             SimpleNamespace(

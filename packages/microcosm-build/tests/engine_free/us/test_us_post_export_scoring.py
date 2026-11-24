@@ -2116,6 +2116,8 @@ def test_a_registered_consumer_opened_with_another_plan_is_refused(
     scorer = _scorer(builder, _nested_frame(), log, 3, tmp_path, baseline_plans=plans)
     with pytest.raises(ValueError, match="demographics: .* registered baseline plan"):
         scorer.open_consumer("demographics", (("age", 2024, None), ("ssi", 2024, None)))
+    with pytest.raises(ValueError, match="demographics: .* registered baseline plan"):
+        scorer.open_consumer("demographics", ())
     assert log.constructions == []
 
 

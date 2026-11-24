@@ -443,7 +443,14 @@ one Microsimulation over the whole file.
   (`US_RELEASE_SPM_SELECTION`, county geography) and is released before the
   next batch builds.
 - Each stage's baseline requests are learned before export by an engine-free
-  dry run and scored in one pass over the batches, in ascending period order.
+  dry run. The scorer computes every stage's recorded keys together in one
+  pass over the batches, in ascending period order, and gives each stage only
+  the keys it recorded (microcosm#1595). Before, each of the five stages (the
+  smoke, reform validation, demographics and the two held-out reports) ran a
+  pass of its own: five passes over 177 batches on a national export. If the
+  shared pass raises, every stage runs its own pass as before, so a key that
+  only one held-out report asks for still fails that report alone. Each
+  stage's recorded `baseline_passes` stays 1, now counting the shared pass.
   One engine refuses a period earlier than one it has already computed.
   The real-engine test probes the MD CCS request-order premise by requesting
   2025 state taxes after 2027 keys. It checks for the
@@ -457,9 +464,14 @@ one Microsimulation over the whole file.
   `_dataset_from_frame(..., period_only=True)`. By default it keeps the
   projection, so a new caller that reads a later year gets the engine's own
   projected inputs.
-- Each reform builds one tax-benefit system and scores its measure batch by
-  batch. Each batch engine gets that system alone, without `reform=`: given
-  both, policyengine-us creates a baseline branch, which clones the system.
+- Each reform builds one tax-benefit system and scores its measures batch by
+  batch: one pass per measure, or one pass for the measures a stage asks for
+  together (`prefetch`). Reform validation asks the pre-OBBBA state (every
+  OBBBA provision reverted) for both OBBBA groups' starting totals, income tax
+  and estate tax in 2026, together, so that state costs one pass instead of
+  two (microcosm#1595). Each batch engine gets that system alone, without
+  `reform=`: given both, policyengine-us creates a baseline branch, which
+  clones the system.
 - Every statistic reads full-length values with their engine weights.
 
 The totals equal a whole-file simulation's up to floating-point summation order
@@ -484,8 +496,11 @@ known violations at run time:
 
 Tests pin the watched lists against the installed engine's formula sources,
 exercise each guard on a real engine, and compare the shipped baseline plans
-(18 smoke keys, 75 validation keys and 1 demographics key) against whole-file
-values on a small written H5 in three batches.
+(20 smoke keys, 75 validation keys and 1 demographics key), served from the
+shared pass, against whole-file values on a small written H5 in three
+batches. On the same H5 another test checks that the shared baseline pass and
+the shared pre-OBBBA pass give the same bytes (values, weights and dtypes) as
+separate passes.
 
 On 2026-09-24, the sweep below completed on a written fixture containing eight
 households across five states, with Medicaid enrollees, under policyengine-us
@@ -509,7 +524,10 @@ records the shipped consumers' requests, including every out-of-sample
 validation reform and the OBBBA pre-baseline and stacked states. It also
 exercises the fallback simulations used when an in-sample estimate is absent.
 It scores at most four reform passes per worker, serially, and compares all
-baseline values and four reform passes with whole-file engines. Workers stop
+baseline values and four reform passes with whole-file engines. Its baseline
+worker serves the plans from one shared pass, as the release does; its reform
+workers score each recorded request in a pass of its own, so the pre-OBBBA
+state's two requests are two passes there. Workers stop
 at a sampled 7 GiB RSS threshold and report their peak RSS, elapsed time,
 counts and the scored H5 digest.
 Run this fixture sweep before R4's full-export timing steps, and repeat it

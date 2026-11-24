@@ -269,7 +269,8 @@ def test_additivity_guards_fire_on_the_installed_engine(builder, tmp_path) -> No
 def test_shipped_baseline_plans_match_whole_file_policyengine_us(
     builder, tmp_path
 ) -> None:
-    """The smoke, validation and demographics baseline values match in 3 batches.
+    """The smoke, validation and demographics baseline values, served from
+    one merged pass in 3 batches, match a whole-file engine.
 
     The complete reform sweep runs separately through
     ``tools/sweep_us_post_export_scoring.py`` in bounded worker processes.
@@ -284,11 +285,12 @@ def test_shipped_baseline_plans_match_whole_file_policyengine_us(
         "demographics": 1,
     }
     scorer = builder._HouseholdBatchedPostExportScorer(
-        path, maximum_microsim_batch_size=3
+        path, maximum_microsim_batch_size=3, baseline_plans=plans
     )
     assert scorer.n_batches == 3
     try:
         sweep._score_baselines(builder, scorer, path, plans)
+        assert not scorer._registered_baseline_plans
     finally:
         scorer.close()
 

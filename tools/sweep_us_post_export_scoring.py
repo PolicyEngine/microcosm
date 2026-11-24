@@ -179,8 +179,12 @@ def _worker(args):
     started = time.monotonic()
     builder = _load_builder()
     plans, requests, counts = _record_requests(builder)
+    # The baseline worker registers its plans, so its scorer serves them from
+    # one merged pass, as the release's scorer does.
     scorer = builder._HouseholdBatchedPostExportScorer(
-        args.dataset_path, maximum_microsim_batch_size=args.batch_size
+        args.dataset_path,
+        maximum_microsim_batch_size=args.batch_size,
+        baseline_plans=plans if args.worker_start is None else None,
     )
     if scorer.n_batches < 2:
         raise ValueError("The guard sweep needs at least two household batches")
