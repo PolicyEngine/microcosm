@@ -61,6 +61,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     semp_covered_partnership_cells,
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from test_support.microcosm_build.qrf_chain_doubles import FitPredictChainDouble
 
 _P = "partnership_income"
 _S = "s_corp_income"
@@ -953,7 +954,7 @@ def _recipient() -> Frame:
     return _frame(person, np.asarray([5.0, 7.0, 3.0, 4.0]), WeightKind.DESIGN)
 
 
-class _DonorMeanQRF:
+class _DonorMeanQRF(FitPredictChainDouble):
     def __init__(self, *, n_estimators: int, seed: int) -> None:
         del n_estimators, seed
 

@@ -98,9 +98,10 @@ ASEC_PUF_DONOR_SPINE = "asec_puf"
 # ``None`` remains the deliberate whole-donor escape hatch.
 ACS_DONOR_CHANNEL_AUTO = "auto"
 
-# QRF retains one gated forest set per target in a fitted family. Bounding the
-# chain length keeps production transfer below the launch worker's memory
-# budget while continuing to use microcosm-fit's canonical chained QRF API.
+# Families wider than this are split into batches of chained targets. Each
+# target is fitted, drawn and freed before the next, so the bound no longer
+# sets how many forests are in memory; it still decides which targets are
+# chained together, and so the draws, which is why it stays fixed.
 DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT = 8
 
 # Required ACS predictor columns. State is broadcast from the household table
@@ -1778,9 +1779,14 @@ def transfer_acs_inputs(
     observes. Existing non-null target cells remain unchanged.
 
     Families wider than ``max_targets_per_fit`` are deterministically split
-    into bounded chained-QRF batches so fitted forests cannot grow linearly
-    across the full model-input inventory. Joint categorical codecs remain in
-    one batch even when their two exported columns cross the nominal limit.
+    into bounded chained-QRF batches. Joint categorical codecs remain in one
+    batch even when their two exported columns cross the nominal limit.
+
+    Every availability-pattern QRF fits and draws one target at a time
+    through the chain API, and frees each target's forests and sign
+    classifier before fitting the next, so one target's forests are in
+    memory at once. The draws equal fitting every target and then
+    predicting.
 
     ``donor_channel="auto"`` is the safe default: it selects the
     ``puf_tax_detail`` clone role when support-role metadata exists and
@@ -1789,11 +1795,11 @@ def transfer_acs_inputs(
     donor row. The resolved role, patterns, seeds, row counts, and weight kind
     are recorded outside the returned frame.
 
-    When ``target_bank`` is provided, every availability-pattern QRF uses the
-    target-at-a-time chain API. Raw draws and advanced RNG states are banked
-    after each ordered model target, so a retry can continue without changing
-    the monolithic chained-QRF result. The ordinary in-memory fit remains the
-    default for library callers that do not request durable banking.
+    When ``target_bank`` is provided, raw draws and advanced RNG states are
+    banked after each ordered model target, so a retry can continue without
+    changing the monolithic chained-QRF result. Without one, each pattern's
+    chain runs in memory, which is the default for library callers that do
+    not request durable banking.
 
     ``regime_evidence_targets`` is an explicit ``(entity, target)`` audit
     selection. Only those targets incur donor-regime detection, fitted-result
@@ -2719,38 +2725,6 @@ def _model_target_regimes(
     )
 
 
-def _verify_fitted_target_regimes(
-    fitted: object,
-    *,
-    expected: tuple[tuple[str, str], ...],
-    entity: str,
-    family: str,
-    pattern: str,
-) -> None:
-    """Verify a fitted QRF's reported regimes when its API exposes them."""
-
-    if not expected:
-        return
-    regimes = getattr(fitted, "regimes", None)
-    if not callable(regimes):
-        # Lightweight test doubles need only implement the fit/predict surface.
-        return
-    reported = regimes()
-    if not isinstance(reported, Mapping):
-        raise TypeError(
-            f"ACS transfer {entity!r}/{family!r}/{pattern!r} QRF regimes "
-            "must be a mapping."
-        )
-    expected_targets = tuple(target for target, _regime in expected)
-    actual = tuple((target, reported.get(target)) for target in expected_targets)
-    if any(target not in reported for target in expected_targets) or actual != expected:
-        raise RuntimeError(
-            f"ACS transfer {entity!r}/{family!r}/{pattern!r} QRF reported "
-            f"regimes {actual!r}, expected exact donor-support regimes "
-            f"{expected!r}."
-        )
-
-
 def _verify_chain_target_regime(
     result: object,
     *,
@@ -2764,7 +2738,7 @@ def _verify_chain_target_regime(
 
     reported = getattr(result, "regime", None)
     if reported is None:
-        # Lightweight bank-path test doubles may omit QRF diagnostics.
+        # Lightweight test doubles may omit QRF diagnostics.
         return
     if reported != expected:
         raise RuntimeError(
@@ -2772,6 +2746,72 @@ def _verify_chain_target_regime(
             f"{model_target!r} reported regime {reported!r}, expected exact "
             f"donor-support regime {expected!r}."
         )
+
+
+def _require_chain_api(model: object) -> None:
+    """Refuse a QRF without the one-target-at-a-time chain methods."""
+
+    if not hasattr(model, "start_chain") or not hasattr(model, "fit_draw_next"):
+        raise TypeError(
+            "ACS transfer requires a QRF with start_chain and fit_draw_next support."
+        )
+
+
+def _fit_draw_pattern_target(
+    model: Any,
+    model_frame: Frame,
+    recipient_pattern: pd.DataFrame,
+    raw_priors: pd.DataFrame,
+    *,
+    state: QRFChainState,
+    weight_kind: str,
+    model_target: str,
+    expected_regime: str | None,
+    entity: str,
+    family: str,
+    pattern: str,
+) -> tuple[np.ndarray, QRFChainState]:
+    """Fit and draw one availability pattern's next chained model target.
+
+    Returns the raw draw (one value per ``recipient_pattern`` row) and the
+    advanced chain state. The step result, which holds the target's forests
+    and sign classifier, is dropped on return, so they are freed before the
+    caller fits the next target.
+    """
+
+    result = model.fit_draw_next(
+        model_frame,
+        recipient_pattern,
+        raw_priors,
+        state=state,
+        weights=weight_kind,
+    )
+    if result.target != model_target:
+        raise AssertionError(
+            f"ACS transfer chain returned {result.target!r}, expected {model_target!r}."
+        )
+    if result.weight_kind != weight_kind:
+        raise RuntimeError(
+            f"ACS transfer {entity!r}/{family!r}/{pattern!r} "
+            f"resolved weight kind {result.weight_kind!r}, expected "
+            f"{weight_kind!r}."
+        )
+    if expected_regime is not None:
+        _verify_chain_target_regime(
+            result,
+            expected=expected_regime,
+            entity=entity,
+            family=family,
+            pattern=pattern,
+            model_target=model_target,
+        )
+    _validate_prediction_values(
+        pd.DataFrame({model_target: result.raw_draw}, index=recipient_pattern.index),
+        entity=entity,
+        family=family,
+        pattern=pattern,
+    )
+    return result.raw_draw, result.state
 
 
 def _fit_family_patterns(
@@ -2887,41 +2927,48 @@ def _fit_family_patterns(
             if evidence_model_targets
             else ()
         )
-        fitted = model.fit(
+        # One target at a time: each is fitted, drawn and freed before the
+        # next is fitted, so one target's forests are in memory at once. The
+        # draws equal fitting every target and then predicting (the chain API
+        # keeps the fit and draw random streams apart).
+        _require_chain_api(model)
+        state = model.start_chain(
             model_frame,
             list(predictors),
             list(model_targets),
             weights=resolved_kind,
         )
-        if fitted.weight_kind != resolved_kind:
+        if state.weight_kind != resolved_kind:
             raise RuntimeError(
                 f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} resolved "
-                f"weight kind {fitted.weight_kind!r}, expected the donor "
+                f"weight kind {state.weight_kind!r}, expected the donor "
                 f"Frame's {resolved_kind!r}."
-            )
-        if target_regimes:
-            _verify_fitted_target_regimes(
-                fitted,
-                expected=target_regimes,
-                entity=entity,
-                family=family,
-                pattern=pattern_name,
             )
 
         recipient_pattern = _encoded_predictor_frame(
             surface.recipient.iloc[recipient_positions],
             predictors=predictors,
         )
-        drawn = fitted.predict(recipient_pattern)
-        _validate_prediction_values(
-            drawn,
-            entity=entity,
-            family=family,
-            pattern=pattern_name,
-        )
+        expected_regimes = dict(target_regimes)
+        raw_draws = pd.DataFrame(index=recipient_pattern.index)
+        for model_target in model_targets:
+            draw, state = _fit_draw_pattern_target(
+                model,
+                model_frame,
+                recipient_pattern,
+                raw_draws,
+                state=state,
+                weight_kind=resolved_kind,
+                model_target=model_target,
+                expected_regime=expected_regimes.get(model_target),
+                entity=entity,
+                family=family,
+                pattern=pattern_name,
+            )
+            raw_draws[model_target] = draw
         for target in targets:
             model_target = target_encodings[target].model_target
-            predictions[target][recipient_positions] = drawn[model_target].to_numpy(
+            predictions[target][recipient_positions] = raw_draws[model_target].to_numpy(
                 dtype=np.float64
             )
 
@@ -2930,7 +2977,7 @@ def _fit_family_patterns(
             observed_optional_predictors=observed_optional,
             predictors=predictors,
             seed=pattern_seed,
-            weight_kind=fitted.weight_kind,
+            weight_kind=state.weight_kind,
             donor_rows=donor_rows,
             recipient_rows=len(recipient_positions),
             target_regimes=target_regimes,
@@ -2939,7 +2986,7 @@ def _fit_family_patterns(
         fit_records.append(
             FitWeightRecord(
                 f"acs_transfer:{entity}:{family}:{pattern_name}",
-                fitted.weight_kind,
+                state.weight_kind,
             )
         )
 
@@ -3087,11 +3134,7 @@ def _fit_family_patterns_banked(
             if evidence_model_targets
             else ()
         )
-        if not hasattr(model, "start_chain") or not hasattr(model, "fit_draw_next"):
-            raise TypeError(
-                "Banked ACS transfer requires a QRF with start_chain and "
-                "fit_draw_next support."
-            )
+        _require_chain_api(model)
         state = model.start_chain(
             model_frame,
             list(predictors),
@@ -3172,52 +3215,25 @@ def _fit_family_patterns_banked(
                     surface.recipient.iloc[context.recipient_positions],
                     predictors=pattern.predictors,
                 )
-                result = _qrf()(
-                    n_estimators=n_estimators,
-                    seed=pattern.seed,
-                ).fit_draw_next(
+                pattern_draw, state_after = _fit_draw_pattern_target(
+                    _qrf()(n_estimators=n_estimators, seed=pattern.seed),
                     model_frame,
                     recipient_pattern,
                     raw_priors[pattern.name],
                     state=state_before,
-                    weights=pattern.weight_kind,
-                )
-                if result.target != model_target:
-                    raise AssertionError(
-                        f"ACS transfer chain returned {result.target!r}, "
-                        f"expected {model_target!r}."
-                    )
-                if result.weight_kind != pattern.weight_kind:
-                    raise RuntimeError(
-                        f"ACS transfer {entity!r}/{family!r}/{pattern.name!r} "
-                        f"resolved weight kind {result.weight_kind!r}, expected "
-                        f"{pattern.weight_kind!r}."
-                    )
-                expected_regime = dict(pattern.target_regimes).get(model_target)
-                if expected_regime is not None:
-                    _verify_chain_target_regime(
-                        result,
-                        expected=expected_regime,
-                        entity=entity,
-                        family=family,
-                        pattern=pattern.name,
-                        model_target=model_target,
-                    )
-                raw_draw[context.recipient_positions] = result.raw_draw
-                _validate_prediction_values(
-                    pd.DataFrame(
-                        {model_target: result.raw_draw},
-                        index=recipient_pattern.index,
-                    ),
+                    weight_kind=pattern.weight_kind,
+                    model_target=model_target,
+                    expected_regime=dict(pattern.target_regimes).get(model_target),
                     entity=entity,
                     family=family,
                     pattern=pattern.name,
                 )
+                raw_draw[context.recipient_positions] = pattern_draw
                 steps.append(
                     AcsTransferBankPatternStep(
                         pattern=pattern.name,
                         state_before=state_before,
-                        state_after=result.state,
+                        state_after=state_after,
                     )
                 )
             checkpoint = AcsTransferTargetCheckpoint(
@@ -4115,7 +4131,7 @@ def _split_large_target_families(
     *,
     max_targets_per_fit: int,
 ) -> list[tuple[str, str, tuple[str, ...]]]:
-    """Bound retained QRF forests and isolate hard-domain target draws."""
+    """Split families into bounded chained batches; isolate hard-domain draws."""
 
     bounded: list[tuple[str, str, tuple[str, ...]]] = []
     immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)

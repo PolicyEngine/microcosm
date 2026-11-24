@@ -1030,7 +1030,9 @@
     "artifact_name": "bands"
   },
   "checkpoints": [
-    "nz.as.bands"
+    "nz.as.bands",
+    "nz.as.bands.cell_diagnostics",
+    "nz.gates.terminal"
   ],
   "gate_evidence": [
     {

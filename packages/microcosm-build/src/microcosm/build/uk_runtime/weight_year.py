@@ -32,7 +32,14 @@ from microcosm.build.uk_runtime.hmrc_uprating import (
     UK_ENGINE_PINS_TOOL,
     engine_parameter_pins,
 )
-from microcosm.build.uk_runtime.national_frame import uk_time_period
+from microcosm.build.uk_runtime.national_frame import (
+    uk_household_totals,
+    uk_household_weight_kind,
+    uk_isa_income_contract,
+    uk_national_frame,
+    uk_savings_income_projection,
+    uk_time_period,
+)
 from microcosm.frame import Frame, MassChange, WeightKind, Weights
 
 #: The engine parameter policyengine-uk projects ``household_weight`` by: the
@@ -118,6 +125,11 @@ def uk_weights_are_at_dataset_year(frame: Frame) -> bool:
 def uk_dataset_year_frame(frame: Frame, *, solve_year: int) -> Frame:
     """The release frame: solved household weights at the dataset's year.
 
+    The households' UK totals of the share keys' components are summed again
+    at the divided weights (``national_frame.uk_household_totals``): they are
+    the totals at the weights the file stores, which policyengine-uk projects
+    by population as it projects the weights.
+
     Idempotent: a frame that already carries the division is returned as it
     is. Only calibrated weights are divided, since the division undoes the
     engine's projection of a solve; anything else refuses.
@@ -132,10 +144,25 @@ def uk_dataset_year_frame(frame: Frame, *, solve_year: int) -> Frame:
             f"these are {weights.kind.value!r}."
         )
     factor = uk_weight_projection_factor(int(uk_time_period(frame)), solve_year)
-    return frame.with_weights(
+    divided = frame.with_weights(
         "household",
         Weights(np.asarray(weights.values, dtype=np.float64) / factor, weights.kind),
         mass=MassChange(factor=1.0 / factor, reason=UK_WEIGHT_YEAR_MASS_REASON),
+    )
+    household = divided.table("household")
+    totalled = uk_household_totals(household, divided.weights_for("household").values)
+    if totalled is household:
+        return divided
+    return uk_national_frame(
+        person=divided.table("person"),
+        benunit=divided.table("benunit"),
+        household=totalled,
+        time_period=uk_time_period(divided),
+        weight_kind=uk_household_weight_kind(divided),
+        household_weights=divided.weights_for("household").values,
+        mass_log=divided.mass_log,
+        isa_income_contract=uk_isa_income_contract(divided),
+        savings_income_projection=uk_savings_income_projection(divided),
     )
 
 

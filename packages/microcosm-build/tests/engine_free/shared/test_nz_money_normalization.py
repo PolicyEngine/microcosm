@@ -196,16 +196,25 @@ def test_normalized_routes_follow_the_design_table_and_the_concept_schema():
         ("person", "private_pension_income"): "pensions",
         ("person", "liquid_financial_assets"): "consumer_prices",
         ("household", "mortgage_interest"): "owner_housing_costs",
-        ("household", "mortgage_principal"): "owner_housing_costs",
         ("household", "property_tax"): "owner_housing_costs",
     }
     rosters = money_column_rosters(declaration)
     assert {key for key, (route, _) in rosters.items() if route != "normalized"} == {
         ("person", "employment_income"),
         ("household", "rent"),
+        ("household", "mortgage_principal"),
     }
-    assert {route for route, _ in rosters.values()} == {"normalized", "quantile_mapped"}
-    assert declaration["pending"] == {}
+    assert {route for route, _ in rosters.values()} == {
+        "normalized",
+        "quantile_mapped",
+        "pending",
+    }
+    # Rule 1 (d3058): the pinned donor carries no principal, so it waits.
+    assert set(declaration["pending"]) == {"household"}
+    assert set(declaration["pending"]["household"]) == {"mortgage_principal"}
+    route, awaits = rosters["household", "mortgage_principal"]
+    assert route == "pending"
+    assert awaits[0].startswith("Rule 1 (d3058):")
     assert rosters["person", "employment_income"][1][0].startswith("P1:")
     assert rosters["household", "rent"][1][0].startswith("C1:")
     assert rosters["person", "liquid_financial_assets"] == ("normalized", ())
