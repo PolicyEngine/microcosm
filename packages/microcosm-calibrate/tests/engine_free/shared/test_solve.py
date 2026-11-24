@@ -9,6 +9,7 @@ a record budget with L0.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import importlib.util
 import inspect
@@ -2356,3 +2357,113 @@ def test_best_iterate_preserves_pre_change_excluded_paths(case_id: str) -> None:
         assert np.all(
             (result.gate_open_probabilities > 0) & (result.gate_open_probabilities < 1)
         )
+
+
+def _assert_results_equal_except_frame(
+    frameless: CalibrationResult, framed: CalibrationResult
+) -> None:
+    """Every field but ``frame`` holds the same values in both results."""
+
+    for field in dataclasses.fields(CalibrationResult):
+        if field.name == "frame":
+            continue
+        actual = getattr(frameless, field.name)
+        expected = getattr(framed, field.name)
+        if isinstance(expected, np.ndarray):
+            np.testing.assert_array_equal(actual, expected, err_msg=field.name)
+        elif field.name == "problem":
+            assert actual.names == expected.names
+            assert actual.targets == expected.targets
+            assert actual.weight_entity == expected.weight_entity
+            np.testing.assert_array_equal(actual.target_vector, expected.target_vector)
+            np.testing.assert_array_equal(
+                actual.initial_weights.values, expected.initial_weights.values
+            )
+            assert (actual.matrix != expected.matrix).nnz == 0
+        else:
+            assert actual == expected, field.name
+
+
+@pytest.mark.parametrize("mass", ["conserve", "free"])
+def test_calibrate_without_a_frame_returns_the_same_result_otherwise(
+    feasible_frame, mass: str
+) -> None:
+    """``return_frame=False`` changes only that the result carries no frame."""
+    frame, truths = feasible_frame(n=60)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.1),
+        )
+    )
+
+    framed = calibrate(frame, targets, epochs=25, seed=0, mass=mass)
+    frameless = calibrate(
+        frame, targets, epochs=25, seed=0, mass=mass, return_frame=False
+    )
+
+    assert framed.frame is not None
+    assert frameless.frame is None
+    _assert_results_equal_except_frame(frameless, framed)
+
+
+@pytest.mark.parametrize("return_frame", [True, False])
+def test_calibrate_checks_the_weights_whether_or_not_it_returns_a_frame(
+    feasible_frame, monkeypatch, return_frame: bool
+) -> None:
+    """``return_frame=False`` keeps the checks ``Frame.with_weights`` makes.
+
+    A solver that broke mass conservation is refused with the same error
+    whether or not the calibrated frame is built.
+    """
+    frame, truths = feasible_frame(n=40)
+    targets = TargetSet((_income_target(truths["income"], 1.1),))
+
+    def unconserving_optimize(*arguments, **options):
+        initial_weights = arguments[5]
+        return initial_weights * 1.5, np.zeros(options["epochs"]), None
+
+    monkeypatch.setattr(solve_module, "_optimize", unconserving_optimize)
+
+    with pytest.raises(ValueError, match="violates mass conservation"):
+        calibrate(
+            frame,
+            targets,
+            epochs=3,
+            seed=0,
+            mass="conserve",
+            return_frame=return_frame,
+        )
+
+
+def test_calibrate_refuses_a_return_frame_that_is_not_a_bool(feasible_frame) -> None:
+    frame, truths = feasible_frame(n=20)
+    targets = TargetSet((_income_target(truths["income"], 1.0),))
+
+    with pytest.raises(TypeError, match="return_frame must be a bool"):
+        calibrate(frame, targets, epochs=2, return_frame="False")
+
+
+def test_refit_l0_selection_refuses_a_selection_without_a_frame(
+    feasible_frame,
+) -> None:
+    """The thresholded refit selects survivors from the selection's frame."""
+    frame, truths = feasible_frame(n=60)
+    targets = TargetSet(
+        (
+            _population_target(truths["population"], 1.0),
+            _income_target(truths["income"], 1.0),
+        )
+    )
+    selection = calibrate(
+        frame,
+        targets,
+        epochs=20,
+        seed=0,
+        target_records=20,
+        mass="conserve",
+        return_frame=False,
+    )
+
+    with pytest.raises(ValueError, match="calibrated with return_frame=False"):
+        refit_l0_selection(frame, targets, selection, epochs=5, mass="conserve")

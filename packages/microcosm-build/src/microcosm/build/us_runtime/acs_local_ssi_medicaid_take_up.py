@@ -853,9 +853,10 @@ def with_acs_local_ssi_medicaid_take_up(
         medicaid_eligibility=medicaid_eligibility,
     )
 
-    # Engine pre-pass over the ACS households only. ``select`` copied every
-    # table, so the view is this stage's own: its missing take-up cells read
-    # True, as the engine default would, and neither variable reads its flag.
+    # Engine pre-pass over the ACS households only. ``select`` gives the view
+    # its own DataFrame objects, so columns assigned here stay on it: its
+    # missing take-up cells read True, as the engine default would, and
+    # neither variable reads its flag.
     view = frame.select(acs)
     view_person = view.table("person")
     if not np.array_equal(view_person["person_id"].to_numpy(), person_ids):

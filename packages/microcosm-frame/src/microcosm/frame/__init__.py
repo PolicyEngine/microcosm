@@ -27,6 +27,10 @@ from microcosm.frame.materialize import (
 from microcosm.frame.rules import ExportContract, RulesEngine
 from microcosm.frame.scaling import ScaleFactor, SignedScale, apply_scale
 from microcosm.frame.schema import EntitySchema, LinkSpec, VariableMetadata
+from microcosm.frame.shared_columns import (
+    SharedColumnChangedError,
+    check_shared_columns,
+)
 from microcosm.frame.units import (
     MICROUNIT_REQUIRED_COLUMNS,
     TAX_UNIT_FILING_STATUS_COLUMN,
@@ -60,6 +64,7 @@ __all__ = [
     "PyTablesBooleanMaterialization",
     "RulesEngine",
     "ScaleFactor",
+    "SharedColumnChangedError",
     "SignedScale",
     "VariableMetadata",
     "WeightKind",
@@ -67,6 +72,7 @@ __all__ = [
     "assert_kind_transition",
     "apply_scale",
     "assign_us_unit_structure",
+    "check_shared_columns",
     "engine_tables",
     "gini",
     "groupby_wsum",

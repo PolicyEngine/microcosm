@@ -3261,6 +3261,7 @@ def _write_target_frame_checkpoint(
 ) -> dict[str, object]:
     import h5py
 
+    frame.check_shared_columns()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f"{path.name}.tmp")
     if tmp_path.exists():
@@ -18122,9 +18123,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "refit_initial_loss": _finite_or_none(result.initial_loss),
             "refit_final_loss": _finite_or_none(result.final_loss),
         }
-    # Frame.with_weights copies the target tables into each calibrated frame.
-    # Drop the input now and replace those result frames after building the
-    # clean export from base_frame and the calibrated weights below.
+    # A calibrated frame built from target_frame by Frame.with_weights (the
+    # dense result, an L0 selection) shares the target tables' memory with it,
+    # so the tables are freed only once both references are gone: drop the
+    # input now, and replace those result frames after building the clean
+    # export from base_frame and the calibrated weights below.
     del target_frame
     if telemetry is not None:
         telemetry.stage(
