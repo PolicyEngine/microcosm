@@ -353,7 +353,10 @@ def _undescribable_reform(kind: str, monkeypatch):
         monkeypatch.setitem(sys.modules, module.__name__, module)
         reform = module.RegisteredChanges({"gov.fixture": {"2024-01-01": 1}})
         pickle.dumps(reform)
-        return reform, "got a RegisteredChanges"
+        return (
+            reform,
+            r"got a registered_only_in_this_process\.RegisteredChanges\. .* exactly",
+        )
     if kind == "read-only mapping":
         proxied = dataclasses.replace(
             spec, parameter_changes=MappingProxyType(dict(spec.parameter_changes))
