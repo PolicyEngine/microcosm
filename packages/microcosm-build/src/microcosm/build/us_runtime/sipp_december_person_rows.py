@@ -42,9 +42,15 @@ from pathlib import Path
 import pandas as pd
 
 __all__ = [
+    "SIPP_PERSON_FILE_CHUNK_ROWS",
     "SippDecemberPersonRows",
     "read_sipp_december_person_rows",
 ]
+
+# Rows per chunk. Column types are inferred per chunk, and the old per-donor
+# loaders all read 100,000-row chunks, so the donor tables equal theirs only at
+# this size. Changing it, for example to lower memory, can change inferred types.
+SIPP_PERSON_FILE_CHUNK_ROWS = 100_000
 
 _DELIMITER = "|"
 _IDENTIFIER_COLUMN = "SSUID"
@@ -183,7 +189,7 @@ def read_sipp_december_person_rows(
     columns: Iterable[str],
     expected_sha256: str | None = None,
     expected_size_bytes: int | None = None,
-    chunksize: int = 100_000,
+    chunksize: int = SIPP_PERSON_FILE_CHUNK_ROWS,
 ) -> SippDecemberPersonRows:
     """Verify the file, then read it once and keep its December rows."""
 

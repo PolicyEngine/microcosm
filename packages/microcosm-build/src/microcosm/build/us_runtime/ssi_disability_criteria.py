@@ -45,6 +45,7 @@ import pandas as pd
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.sipp_december_person_rows import (
+    SIPP_PERSON_FILE_CHUNK_ROWS,
     SippDecemberPersonRows,
     read_sipp_december_person_rows,
 )
@@ -519,7 +520,7 @@ def load_sipp_2023_ssi_disability_donor(
     *,
     expected_sha256: str | None = None,
     expected_size_bytes: int | None = SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
-    chunksize: int = 100_000,
+    chunksize: int = SIPP_PERSON_FILE_CHUNK_ROWS,
     time_period: int = 2024,
 ) -> pd.DataFrame:
     """Read the SIPP file and build the SSI disability training frame from it."""
