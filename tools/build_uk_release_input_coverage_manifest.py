@@ -104,7 +104,7 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "reason": ENGINE_DERIVED_EXCLUSION_REASON,
         "tracking_note": (
             "microcosm#1095 (P1 of the November event-data plan): "
-            "policyengine-uk 2.179.2 derives pip_dl_category from "
+            "policyengine-uk 2.180.0 derives pip_dl_category from "
             "pip_dl_points (8 points for the standard rate, 12 for the "
             "enhanced) where no category is supplied for the year; the "
             "pip_points stage stores the points within the stored award, and "
@@ -118,7 +118,7 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "reason": ENGINE_DERIVED_EXCLUSION_REASON,
         "tracking_note": (
             "microcosm#1095 (P1 of the November event-data plan): "
-            "policyengine-uk 2.179.2 derives pip_m_category from pip_m_points "
+            "policyengine-uk 2.180.0 derives pip_m_category from pip_m_points "
             "(8 points for the standard rate, 12 for the enhanced) where no "
             "category is supplied for the year; the pip_points stage stores "
             "the points within the stored award, and the release and "
@@ -132,7 +132,7 @@ ENGINE_DERIVED_EXCLUSIONS: dict[str, dict[str, str]] = {
         "reason": ENGINE_DERIVED_EXCLUSION_REASON,
         "tracking_note": (
             "microcosm#1095 (A4 of the November event-data plan's PR3): "
-            "policyengine-uk 2.179.2 derives is_severely_disabled_for_benefits "
+            "policyengine-uk 2.180.0 derives is_severely_disabled_for_benefits "
             "from the DLA care, PIP daily living and Attendance Allowance "
             "categories and Armed Forces Independence Payment; frs_disability "
             "no longer stores it, so a change to PIP's points thresholds "
@@ -170,12 +170,12 @@ EFFECTIVE_MASS_COVERAGE = {
 #: these beyond the reference's own list (microcosm#1095, P1).
 ENGINE_DERIVED_SINCE_REFERENCE: dict[str, str] = {
     "pip_dl_category": (
-        "policyengine-uk 2.179.2, variables/input/pip_dl_category.py through "
+        "policyengine-uk 2.180.0, variables/input/pip_dl_category.py through "
         "utils/pip.py pip_category: from pip_dl_points where no category is "
         "supplied for the year"
     ),
     "pip_m_category": (
-        "policyengine-uk 2.179.2, variables/input/pip_m_category.py through "
+        "policyengine-uk 2.180.0, variables/input/pip_m_category.py through "
         "utils/pip.py pip_category: from pip_m_points where no category is "
         "supplied for the year"
     ),

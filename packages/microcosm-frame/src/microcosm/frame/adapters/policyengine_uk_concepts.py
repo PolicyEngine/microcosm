@@ -35,7 +35,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 #
 # Which PolicyEngine-UK inputs each engine-neutral concept feeds
-# (microcosm.frame.concepts), reviewed against policyengine-uk 2.179.2. Every
+# (microcosm.frame.concepts), reviewed against policyengine-uk 2.180.0. Every
 # target is a pure input (in ``PolicyEngineUKEngine.variables``). The UK
 # loader also accepts some formula-owned variables as overrides
 # (``employment_income``, ``state_pension_reported``, ``is_household_head``);
@@ -208,6 +208,16 @@ UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {
         "and the same in every year. The survey year's loans, which the "
         "student_loans stage writes, do not move (microcosm#1095; María's "
         "signature of 19 November 2026, pending review)."
+    ),
+    "would_claim_uc_housing_costs_element": (
+        "Whether a family's Universal Credit award includes the housing costs "
+        "element where the engine finds it entitled (policyengine-uk 2.180.0, "
+        "policyengine-uk#2951). The build stores none, so it stays true and "
+        "every renting claimant the engine finds entitled is paid the element, "
+        "as before 2.180.0. On linked FRS 2024-25 claims, DWP's award statement "
+        "carries no housing costs element for some renters the engine pays "
+        "one, so their Universal Credit, and the benefit cap's reach, are "
+        "overstated (microcosm#1710; for María's signature)."
     ),
 }
 
@@ -535,7 +545,7 @@ UK_ENGINE_DEFAULT_INPUTS: dict[str, str] = {
         "funding and whom no exception covers. It is understated for an 18- or "
         "19-year-old on the FRS adult table on such a course who reports no "
         "Universal Credit, JSA or ESA of their own and is without parental "
-        "support: policyengine-uk 2.179.2 has no input for parental support, "
+        "support: policyengine-uk 2.180.0 has no input for parental support, "
         "so it doesn't apply reg. 14(1)(a), and such a person counts as a "
         "qualifying young person. Such records are mostly young people living "
         "away from their parents (microcosm#1095, microcosm#1535; for María's "
@@ -635,7 +645,7 @@ def _uk_take_up(program: str, entity: str) -> InputBinding:
 
 POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
     engine="policyengine-uk",
-    engine_version="2.179.2",
+    engine_version="2.180.0",
     entity_correspondence={"person": "person", "household": "household"},
     input_declaration=InputDeclaration.ENGINE_TYPED,
     bindings=(
