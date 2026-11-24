@@ -2,7 +2,7 @@
 kind: proposal
 client: "Living Wage Institute"
 title: "County Files proof of concept: 2024 county file — a PolicyEngine report"
-status: "draft v0.4 (2026-11-24): for María and Max to review, not for sending"
+status: "draft v0.5 (2026-11-24): for María and Max to review, not for sending"
 pe-doc:
   psl_foundation: false
   split_tables: false
@@ -18,7 +18,7 @@ A PolicyEngine report · for the Living Wage Institute · November 2026
 
 ## Summary
 
-- **We are delivering a 2024 county file.** It is one microdata file of synthetic households that covers all 3,144 US counties and county-equivalents. It is weighted to represent about 122.5 million households and 331 million people, and it runs in PolicyEngine's US tax-benefit model (policyengine-us 2.2.1).
+- **We are delivering a 2024 county file.** It is one household microdata file that covers all 3,144 US counties and county-equivalents. Its records come from the 2024 American Community Survey (ACS) public-use microdata and from PolicyEngine's national file. We draw a county for each ACS household, impute most of what the ACS lacks and calibrate the weights (see "How we built it"). The file's weights represent about 122.5 million households and 331 million people. The file runs in PolicyEngine's US tax-benefit model (policyengine-us 2.2.1).
 - **State results are strong.** After calibration, 96% of the 4,227 IRS state tax targets are within 10% of their target value, and every SNAP, Medicaid and state population target is within 10%.
 - **County totals are useful, but county distributions are not yet reliable.** Two-thirds of the county targets used in calibration are within 10%. Against county statistics the calibration never saw, the file estimates total earnings and total household income better than a simple population-share split. It is worse than that split for the number of households with earnings and for the income distribution.
 - **The main limit is the effective sample in each county.** In the median county, the weights behave like a sample of about 6 households. National donor households make up 3.6% of the records but carry 77% of the weight, so a few of them dominate each county.
@@ -33,8 +33,8 @@ A PolicyEngine report · for the Living Wage Institute · November 2026
 | This report: the fit and the limits | Delivered as this document, in the same repository. |
 | Methods documentation | Delivered as a document in the same repository. |
 | Schema documentation | Delivered as a document in the same repository. It lists every table and column of the file, with its type and its missing values, and the changes from the sample column list sent with the agreement. |
-| The 2026 and 2027 county files | A stretch goal, not yet produced. |
-| Household measures (earnings, gross income and net income for each household) | A stretch goal, not yet produced. |
+| The 2026 and 2027 county files | Not yet produced; the agreement lists them in the MVP. |
+| Household measures (earnings, gross income and net income for each household) | Not yet produced; the agreement lists them in the MVP. |
 
 ## The 2024 county file
 
@@ -178,14 +178,14 @@ Most D grades have both causes: 2,905 counties have an effective sample below 30
   - S-corporation income is not separated from partnership income. The national data holds both as one combined partnership amount, so the separate S-corporation items are zero.
   - We left out the 1,946 ACS group-quarters records of children under 15, which carry 0.04% of the ACS household weight. Each would form a poverty-measure unit with no adult, and one such unit stops the model version we use from computing poverty measures for the whole file.
 - **Model use.** The file loads with policyengine-us 2.2.1's standard dataset loader. On a computer with 32 GB of memory, the national simulation built in 90 seconds and used at most 18 GB, and it computed 2024 totals of population, employment income and adjusted gross income. For one state, the model also computed income tax, SNAP and household net income, with no missing values. We have not run full-model calculations, such as household net income, for the whole country at once. On a 32 GB computer, run them state by state or in chunks, or use a larger machine. The model ignores 254 extra columns: 213 raw survey fields, 29 build identifiers and 12 derived columns, among them `county_fips_2023`. The schema documentation says which is which.
-- **One year only.** The file is for 2024. The 2026 and 2027 files are a stretch goal.
+- **One year only.** The file is for 2024. We have not yet produced the 2026 and 2027 files, which the agreement lists in the MVP.
 
 ## Next steps
 
 1. **Raise the effective sample in each county.** Spread each county's weight over more households, mainly by lowering the share of the weight that donor households carry. We will measure progress with the effective sample per county and the share of the population in counties at grade C or better.
 2. **Balance the contribution of cloned records to the calibration.** Keep any single source household, together with its copies, from dominating the weights that the calibration chooses.
 3. **Improve the calibration fit.** Give the county targets more weight, so that held-out county targets beat the population-share baseline, and fix the national tax outliers listed above. We will also improve the fit to congressional district population.
-4. **Complete the stretch goals.** Produce the 2026 and 2027 county files and the household measures.
+4. **Add the files and measures the agreement lists in the MVP.** Produce the 2026 and 2027 county files and the household measures.
 5. **Build the final County Files.** Remove the shortcuts this proof of concept uses.
 
 ## Appendix: file provenance
