@@ -15,7 +15,7 @@ from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_DISABILITY_ITEMS,
     ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
     ACS_NATIVE_PROVENANCE,
-    WEEKS_WORKED_EXPORT_BLOCKER,
+    WEEKS_WORKED_INPUT_CHANGE,
     acs_local_work_disability_signal_gate,
     map_acs_local_work_disability_inputs,
     record_acs_local_work_disability_transfer,
@@ -341,8 +341,9 @@ def test_weeks_worked_follows_the_hours_universe_and_is_staging_only() -> None:
     assert receipt["source_universe_unavailable_rows"] == 2
     assert receipt["source_unresolved_rows"] == 0
     assert receipt["hours_paired_rows"] == 3
-    assert receipt["exported"] is False
-    assert receipt["export_blocker"] == WEEKS_WORKED_EXPORT_BLOCKER
+    assert receipt["exported"] is True
+    assert receipt["input_since"] == WEEKS_WORKED_INPUT_CHANGE
+    assert "2.145.3" in receipt["export_note"]
     assert result.native_inputs["weeks_worked"]["missing_rows"] == 2
 
 
@@ -536,7 +537,7 @@ def test_gate_requires_native_paired_weeks_at_staging_only(staged) -> None:
     )
     assert finalize.passed, finalize.failures
     assert finalize.details["weeks_worked"]["evaluated"] is False
-    assert WEEKS_WORKED_EXPORT_BLOCKER in finalize.details["weeks_worked"]["reason"]
+    assert WEEKS_WORKED_INPUT_CHANGE in finalize.details["weeks_worked"]["reason"]
 
     changed = list(_EXPECTED_WEEKS)
     changed[1] = 30.0

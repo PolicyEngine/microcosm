@@ -56,13 +56,41 @@ export PYTHONUNBUFFERED=1
 
 ## 3. Before you start
 
-The checkout must hold these two data entries, both María's rulings:
+Two data entries, both María's rulings, must be committed before R2's
+calibrate starts. Calibrate fixes the commit that package accepts, so commit
+them before calibrate, never while it runs:
 
 - the reviewed-fill register re-reviewed on 2.145.3 (microcosm#1675),
-  with `reviewed_against` at the installed engine;
+  with `reviewed_against` at the installed engine. Finalize refuses without
+  it.
 - the national donor's entry in `REVIEWED_DONOR_LINEAGES`
-  (`tools/build_us_acs_local_release.py`). Without it, materialize refuses
-  the staging in its first minutes.
+  (`tools/build_us_acs_local_release.py`), from the review below. Calibrate
+  refuses the staging without it, and finalize does again. R1 and
+  materialize do not need it, so they can run while the donor's evidence is
+  reviewed.
+
+### The donor's lineage review
+
+R2's inherited limitations describe the Build O donor. For a new national
+build, each one is kept or dropped from that build's own evidence, one ruling
+per item. The entry lists the ones that hold; the release drops the others:
+
+- `ssi_aged_band_collapse_inherited` (microcosm#507): the aged SSI
+  baseline. Compare the build's weighted SSI recipients aged 65 and over with
+  SSA's count. It holds if the aged band still falls well short of it.
+- `miscellaneous_income_loss_side_donor_defect` (microcosm#393): the
+  prevalence of a negative `miscellaneous_income` against SOI's loss-return
+  prevalence. It holds while that distortion remains.
+- `tips_return_count_carrier_deficit_inherited`: the tip-return count
+  against its ledger target, in the build's calibration diagnostics. It holds
+  if the build still misses it by a material margin.
+- `donor_sparse_selection_training_set`: the donor manifest's microdata
+  artifact. It holds only for a sparse selection, and drops for a dense
+  full-row donor.
+- `social_security_cps_reporters_erased_inherited` (microcosm#1178): whether
+  the build's PUF-support records keep their CPS-reported Social Security,
+  which microcosm#1186 fixed where a national base is built. It drops when
+  they do.
 
 ## 4. Steps
 
@@ -87,9 +115,17 @@ uv run --no-sync python tools/build_us_acs_multispine_base.py \
   the proof of concept. The summary records the donor's rule
   (`base.location`) and the engine (`engine_versions`).
 - R1 checks the donor in its first minutes: the work columns,
-  `strike_benefits`, the partnership and S-corp split, the SPM role and the
-  take-up inputs. A refusal there means the donor lacks one. Stop and send
-  the log.
+  `strike_benefits`, the partnership and S-corp split, the SPM role, the
+  take-up inputs, complete WIC take-up decisions, and the ESI employer
+  premium with the raw ASEC coverage fields and CPS record id on every donor
+  row (microcosm#454). A refusal there means the donor lacks one. Stop and
+  send the log.
+- Never pass `--allow-esi-premium-gaps`, to R1 or R2: it records red ESI
+  gates instead of failing, for diagnostic runs only, and a release built
+  with it cannot be published as the County Files.
+- R1 transfers the ESI premium onto ACS rows and draws their WIC take-up with
+  the national generator before pooling (microcosm#1154); R2 draws the ACS
+  tax units' EITC take-up in its take-up stage. None of them needs a flag.
 
 ### Step 2: the two checks (minutes)
 
@@ -127,10 +163,14 @@ $R2 --stage finalize $C
 clean && $R2 --stage package $C --out "$RUN/release"
 ```
 
-- Materialize refuses a staging made on another engine and an unreviewed
-  donor in its first minutes. It then computes each household's AGI (minutes)
-  and runs minimum support, SOI support included (`county_support.json`). The
-  engine pass takes about 3 hours.
+- Materialize refuses a staging made on another engine in its first
+  minutes. It then computes each household's AGI (minutes) and runs minimum
+  support, SOI support included (`county_support.json`). The engine pass
+  takes about 3 hours.
+- If the register or the donor's lineage entry is not in the checkout yet,
+  commit it after materialize and before calibrate (section 3). The `clean`
+  check before calibrate then holds, and calibrate refuses a donor without
+  its entry before it solves.
 - One stage per process, so a stop resumes at its stage.
 
 ### Step 4: the publisher's preflight (seconds; publishes nothing)
@@ -148,8 +188,13 @@ uv run --no-sync microcosm-publish-release-build "$RUN/release/releases/microcos
 
 Follow [the projection guide](us-local-annual-projection.md#running-it-on-the-2024-county-build)
 with `$PKG=$RUN/release`, on policyengine-us 2.145.3 (the build's
-`built_with_model_package`). Step 4 there, the acceptance report, has no
-runner yet.
+`built_with_model_package`). Two of its steps are not automated (#1627):
+step 3, each projected year's household measures, and step 4, the acceptance
+report. The report needs six passing checks per year (schema, source
+identity, year, demographics, input aggregates and runtime), and their
+criteria are not set yet, a tolerance for county and state share drift among
+them. Until they are, the 2024 county release can be published without the
+projected years.
 
 ## 5. The rehearsal, before certification ends (files only)
 
@@ -158,9 +203,9 @@ Run steps 1 to 4 on the built but not yet certified national H5, without
 so its staging and both checks' results are the final run's. Expected
 differences from the final run:
 
-- The staging records `donor_release: null`. So materialize does not ask for
-  the donor's `REVIEWED_DONOR_LINEAGES` entry, and finalize writes the Build
-  O limitations.
+- The staging records `donor_release: null`. So neither calibrate nor
+  finalize asks for the donor's `REVIEWED_DONOR_LINEAGES` entry, and
+  finalize writes the Build O limitations.
 - The preflight refuses `donor_release` null. Any other refusal is a finding.
 - Until the re-reviewed register is in the checkout, finalize refuses the
   engine mismatch. It writes `gate_summary.json` first, so read the other

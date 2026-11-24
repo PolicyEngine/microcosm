@@ -27,12 +27,11 @@ release's own values; they are never touched here.
   codes must be 1 or 2, and a code below the minimum age is refused.
 - **weeks_worked** is ``WKWN`` under the ``WKHP`` universe rules
   (:func:`~microcosm.build.us_runtime.acs_inputs.acs_weeks_worked_values`),
-  and must be blank exactly where ``WKHP`` is. It is carried on the staging
-  ACS spine only. Under the pinned policyengine-us, ``weeks_worked`` has a
-  ``formula_2025``, so the consumer export's ``project_input_only`` holds it
-  back as formula-owned. Exporting it needs policyengine-us#9660 (part A1
-  deletes that formula) and a pin/ABI bump; until then staging records it
-  and this module's gate checks it, and nothing downstream reads it.
+  and must be blank exactly where ``WKHP`` is. On policyengine-us 2.145.3 it
+  is an input (policyengine-us#9660 part A1 deleted its ``formula_2025``), so
+  the consumer export carries it, and the reviewed fill gives its blank cells
+  the value 0, which the donor gives its own not-in-universe rows. Staging
+  grades it here.
 
 Not exported (see the receipt's ``not_exported``):
 
@@ -84,7 +83,7 @@ __all__ = [
     "ACS_LOCAL_WORK_DISABILITY_ISSUE",
     "ACS_NATIVE_PROVENANCE",
     "WEEKS_WORKED_COLUMN",
-    "WEEKS_WORKED_EXPORT_BLOCKER",
+    "WEEKS_WORKED_INPUT_CHANGE",
     "AcsLocalWorkDisabilityResult",
     "acs_local_work_disability_signal_gate",
     "map_acs_local_work_disability_inputs",
@@ -107,7 +106,9 @@ ACS_LOCAL_WORK_DISABILITY_COLUMNS: tuple[str, ...] = (
     WEEKS_WORKED_COLUMN,
 )
 #: What must land before ``weeks_worked`` can reach the consumer export.
-WEEKS_WORKED_EXPORT_BLOCKER = "policyengine-us#9660"
+#: The engine change that made ``weeks_worked`` an input: part A1 deleted
+#: its ``formula_2025``, so the consumer export carries it.
+WEEKS_WORKED_INPUT_CHANGE = "policyengine-us#9660"
 
 _AGE = "age"
 _USUAL_HOURS = "weekly_hours_worked_before_lsr"
@@ -338,14 +339,14 @@ def map_acs_local_work_disability_inputs(frame: Frame) -> AcsLocalWorkDisability
                     "hours_paired_rows",
                 )
             },
-            "exported": False,
-            "export_blocker": WEEKS_WORKED_EXPORT_BLOCKER,
+            "exported": True,
+            "input_since": WEEKS_WORKED_INPUT_CHANGE,
             "export_note": (
-                "Carried on the staging ACS spine only: the pinned "
-                "policyengine-us gives weeks_worked a formula_2025, so the "
-                "consumer export holds it back as formula-owned until "
-                f"{WEEKS_WORKED_EXPORT_BLOCKER} deletes that formula and the "
-                "pin and ABI lock are bumped. Under-16 rows stay missing."
+                "Exported: on policyengine-us 2.145.3 weeks_worked is an "
+                f"input ({WEEKS_WORKED_INPUT_CHANGE} deleted its formula_2025). "
+                "Its blank cells, under-16 rows among them, take the reviewed "
+                "fill 0, the value the donor gives its own not-in-universe "
+                "rows."
             ),
         },
         "not_exported": {key: dict(value) for key, value in _NOT_EXPORTED.items()},
@@ -635,8 +636,9 @@ def acs_local_work_disability_signal_gate(
     a native source with zero transfer-imputed cells. With
     ``require_weeks_worked`` (staging), the ACS spine must also carry
     ``weeks_worked`` equal to its native ``WKWN`` mapping, non-constant, and
-    paired with usual hours. The finalize run passes ``False``: the consumer
-    export holds ``weeks_worked`` back until ``WEEKS_WORKED_EXPORT_BLOCKER``.
+    paired with usual hours. The finalize run passes ``False``: staging grades
+    ``weeks_worked`` where its blanks are the ACS universe's, and the packaged
+    file carries the reviewed fill in those cells.
 
     Details report, informationally, the ACS difficulty-only share (ACS DIS),
     the SSI increment and the ``is_disabled``/``is_blind`` shares by age band
@@ -696,9 +698,9 @@ def acs_local_work_disability_signal_gate(
         details[WEEKS_WORKED_COLUMN] = {
             "evaluated": False,
             "reason": (
-                "The consumer export holds weeks_worked back as formula-owned "
-                f"under the pinned policyengine-us until "
-                f"{WEEKS_WORKED_EXPORT_BLOCKER}; staging graded it."
+                "Staging graded weeks_worked where its blanks are the ACS "
+                "universe's; the packaged file carries the reviewed fill in "
+                f"those cells ({WEEKS_WORKED_INPUT_CHANGE} made it an input)."
             ),
         }
     if set(person[tag].unique()) - {ASEC_PUF_DONOR_SPINE, ACS_2024_1YR_SPINE}:

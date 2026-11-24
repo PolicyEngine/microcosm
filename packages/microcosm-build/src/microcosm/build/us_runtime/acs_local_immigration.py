@@ -54,16 +54,15 @@ ASEC donor records the date qualified status was granted. The proxy therefore
 runs long, and can clear the five-year bar early, for anyone who adjusted
 status after arriving: a person who arrived in 2014 and obtained qualified
 status in 2023 gets 10 modeled years in 2024 but has one qualifying year
-(policyengine-us#9658). That matters for the policyengine-us 2.2.1 tests
-that read the clock. The Medicaid immigration-status test (CHIP follows it,
-because CHIP excludes Medicaid-eligible children) and Washington TANF read
-it against a five-year bar, so the long clock can clear the bar early.
-Washington RCA reads it the other way, as a window that closes
-(``years_since_us_entry < window_years``), so the long clock can wrongly
-exclude a recently qualified person from RCA. Under the statute the SNAP
-five-year bar also runs from entry with
-qualified status, but the pinned engine's federal SNAP status test reads
-the status, not this clock, so any SNAP effect is indirect. The receipt's
+(policyengine-us#9658). That matters for the policyengine-us 2.145.3 tests
+that read the clock. SNAP's qualified-alien waiting period, the federal
+Medicaid and CHIP immigration-status tests (CHIP also excludes
+Medicaid-eligible children), Medicare Part B for permanent residents,
+Washington TANF, Missouri and New Hampshire SSP, Nevada LIHEAP and Utah HEAT
+read it against a bar, five years for SNAP and Medicaid, so the long clock
+can clear the bar early. Washington RCA reads it the other way, as a window
+that closes (``years_since_us_entry < window_years``), so the long clock can
+wrongly exclude a recently qualified person from RCA. The receipt's
 ``adjustment_lag_sensitivity`` block reports the size of the affected group
 under each lag in :data:`ADJUSTMENT_LAG_YEARS` (one to ten, 15 and 20 years):
 the ACS weight assigned a status the bar applies to
@@ -301,25 +300,26 @@ _ENTRY_CLOCK = {
         "status, so for a person who adjusted status after arriving the "
         "proxy runs long and can clear the bar early (arrival in 2014, "
         "status in 2023: 10 modeled years in 2024, one qualifying year; "
-        "policyengine-us#9658). That affects the policyengine-us 2.2.1 "
-        "tests that read the clock: Medicaid (CHIP follows it) and "
-        "Washington TANF read it against a five-year bar, so the long "
-        "clock can clear the bar early; Washington RCA reads it as a "
-        "window that closes (years_since_us_entry < window_years), so "
-        "the long clock can wrongly exclude a recently qualified person "
-        "from RCA. Under the statute the SNAP five-year "
-        "bar also runs from entry with qualified status, but the pinned "
-        "engine's federal SNAP status test reads the status, not this "
-        "clock, so any SNAP effect is indirect. adjustment_lag_sensitivity "
+        "policyengine-us#9658). That affects the policyengine-us 2.145.3 "
+        "tests that read the clock. SNAP's qualified-alien waiting period, "
+        "the federal Medicaid and CHIP immigration-status tests, Medicare "
+        "Part B for permanent residents, Washington TANF, Missouri and New "
+        "Hampshire SSP, Nevada LIHEAP and Utah HEAT read it against a bar, "
+        "five years for SNAP and Medicaid, so the long clock can clear the "
+        "bar early; Washington RCA reads it as a window that closes "
+        "(years_since_us_entry < window_years), so the long clock can "
+        "wrongly exclude a recently qualified person from RCA. "
+        "adjustment_lag_sensitivity "
         "reports the size of the affected group under each lag; the "
         "real-data check is microcosm#1093."
     ),
     "engine_readers": (
-        "policyengine-us 2.2.1 reads the clock in the Medicaid "
-        "immigration-status test (CHIP follows it, because CHIP excludes "
-        "Medicaid-eligible children) and in Washington TANF, as a "
-        "five-year bar, and in Washington RCA, as a closing window; its "
-        "federal SNAP status test reads the status alone"
+        "policyengine-us 2.145.3 reads the clock in SNAP's qualified-alien "
+        "waiting period, the federal Medicaid and CHIP immigration-status "
+        "tests (CHIP also excludes Medicaid-eligible children), Medicare "
+        "Part B for permanent residents, Missouri and New Hampshire SSP, "
+        "Nevada LIHEAP and Utah HEAT, each as a bar, in Washington TANF, as "
+        "a five-year bar, and in Washington RCA, as a closing window"
     ),
 }
 

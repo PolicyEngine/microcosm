@@ -667,7 +667,9 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in ("PEDIS*", "SERIALNO:SPORDER", "acs_local_ssi_medicaid_take_up"):
         assert fragment in ssi["reason"]
     defaults = by_id["acs_take_up_engine_defaults"]["reason"]
-    assert "EITC, ACA, Early Head Start" in defaults
+    assert "(ACA, Early Head Start and the rest)" in defaults
+    assert "EITC take-up is the take-up contract's seeded draw" in defaults
+    assert "WIC take-up the national generator's draw" in defaults
     assert "Medicare take-up is native ACS HINS3" in defaults
     assert "Head Start take-up a keyed draw" in defaults
     assert "acs_local_ssi_medicaid_take_up" in defaults
@@ -1962,7 +1964,8 @@ def test_disability_inputs_are_never_default_filled() -> None:
     module = _load_tool_module()
     for column in ("is_disabled", "is_blind"):
         assert ("person", column) in module.NEVER_DEFAULT_FILLED
-    # weeks_worked is held back from the export, never filled (#9660).
+    # weeks_worked is an input since policyengine-us#9660 and takes its
+    # reviewed fill in its blank cells, so it is not never-default.
     assert ("person", "weeks_worked") not in module.NEVER_DEFAULT_FILLED
 
 

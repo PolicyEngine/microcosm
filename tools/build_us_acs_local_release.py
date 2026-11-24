@@ -211,7 +211,7 @@ from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
     ACS_LOCAL_WORK_DISABILITY_ISSUE,
     ACS_NATIVE_PROVENANCE,
-    WEEKS_WORKED_EXPORT_BLOCKER,
+    WEEKS_WORKED_INPUT_CHANGE,
     acs_local_work_disability_signal_gate,
 )
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
@@ -2434,7 +2434,11 @@ def do_materialize(args) -> None:
     _require_local_ssi_disability(staging_summary)
     _require_local_receipt_anchors(staging_summary)
     _require_staging_engine(staging_summary)
-    _require_reviewed_donor_lineage(staging_summary)
+    # microcosm#1661: the donor's REVIEWED_DONOR_LINEAGES entry is required
+    # from calibrate on, not here. Materialize writes nothing the entry
+    # decides, so it can run while the new donor's evidence is reviewed;
+    # calibrate fixes the commit package accepts, so the entry must be in
+    # the checkout before calibrate starts, and finalize checks it again.
     # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
     # and compile path, before the staging frame is loaded.
     ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
@@ -3174,6 +3178,10 @@ def do_calibrate(args) -> None:
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
     _require_local_receipt_anchors(staging_summary)
+    # microcosm#1661: and a donor of another lineage whose inherited
+    # limitations nobody reviewed. Calibrate fixes the commit package accepts,
+    # so the entry must be in the checkout before the solve starts.
+    _require_reviewed_donor_lineage(staging_summary)
     # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
     # take-up the export must apply.
     _recorded_ssi_medicaid_take_up(identity, args.checkpoint_dir)
@@ -3608,12 +3616,9 @@ def _write_calibrated_artifact(
             f"{len(staging_ids)} households."
         )
 
-    # TODO(policyengine-us#9660): the staging ACS rows carry native
-    # weeks_worked (microcosm#1021), but the pinned policyengine-us gives it a
-    # formula_2025, so this projection holds it back as formula-owned. Once
-    # #9660 part A1 deletes that formula and the pin/ABI lock are bumped, it
-    # becomes an input and ships; the donor rows then need weeks_worked from
-    # WKSWORK too (US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS).
+    # On policyengine-us 2.145.3 weeks_worked is an input (policyengine-us#9660
+    # part A1), so this projection keeps it: ACS rows carry native WKWN weeks
+    # (microcosm#1021), and donor rows the national's WKSWORK weeks.
     projected, dropped = project_input_only(frame, period=PERIOD)
     del frame
     gc.collect()
@@ -4436,10 +4441,13 @@ def finalize_reviewed_limitations(
                 "donor spine's share among ages 3-5 "
                 "(acs_engine_free_default_fills), and SSI and Medicaid "
                 "take-up are assigned after an engine pre-pass "
-                "(acs_local_ssi_medicaid_take_up). The other runtime-owned "
-                "takes_up_* flags (EITC, ACA, Early Head Start and the rest) "
-                "are neither transferred nor seeded on ACS rows, so they ship "
-                "at the engine default, universal take-up; the reviewed-fill "
+                "(acs_local_ssi_medicaid_take_up). EITC take-up is the take-up "
+                "contract's seeded draw by number of qualifying children "
+                "(microcosm#1675), and WIC take-up the national generator's "
+                "draw, made in staging (microcosm#1154). The other "
+                "runtime-owned takes_up_* flags (ACA, Early Head Start and the "
+                "rest) are neither transferred nor seeded on ACS rows, so they "
+                "ship at the engine default, universal take-up; the reviewed-fill "
                 "consumer register records their known biases "
                 "(acs_reviewed_default_fill_consumers). The QA "
                 "probe's SNAP take-up table is a December-eligible snapshot "
@@ -4517,21 +4525,24 @@ def finalize_reviewed_limitations(
                 "at home and available to the household, long-term leased and "
                 "employer-provided ones included, while the donor's SIPP "
                 "TVEH_NUM and the engine count vehicles owned. policyengine-us "
-                "2.2.1 reads the owned count on its own in San Francisco CAAP's "
-                "one-vehicle limit for a single person "
+                "2.145.3 reads the owned count on its own only in San "
+                "Francisco CAAP's one-vehicle limit for a single person "
                 "(ca_sf_caap_vehicle_eligible), Los Angeles General Relief's "
                 "vehicle cap (la_general_relief_motor_vehicle_value_eligible) "
                 "and lives_in_vehicle, which Los Angeles and Marin General "
                 "Relief read, so VEH as the owned count would deny a single San "
-                "Francisco applicant who leases two cars and owns none. The "
-                "engine has no vehicles-available input, so VEH is recorded in "
+                "Francisco applicant who leases two cars and owns none. Its "
+                "other readers only scale exemptions of the value by the count "
+                "or average the value over it, which the zero value leaves at "
+                "zero. The engine has no vehicles-available input, so VEH is "
+                "recorded in "
                 "the take-up receipt as availability only. A zero count always "
                 "passes the San Francisco CAAP and Los Angeles General Relief "
                 "count caps, so they overstate eligibility for households that "
                 "own more vehicles than the cap, the same direction as the zero "
                 "value; lives_in_vehicle is never true on ACS rows, which only "
                 "picks Los Angeles's value limit and Marin's vehicle exemption, "
-                "both applied to the zero value. In policyengine-us 2.2.1 the "
+                "both applied to the zero value. In policyengine-us 2.145.3 the "
                 "value's only SNAP consumer is Texas's broad-based categorical "
                 "eligibility asset test (meets_tanf_non_cash_asset_test), which "
                 "counts vehicle value above $22,500 for the first vehicle and "
@@ -4599,16 +4610,16 @@ def finalize_reviewed_limitations(
                 "arriving (arrival in 2014 and status in 2023 gives 10 "
                 "modeled years in 2024, against one qualifying year; "
                 "policyengine-us#9658). That affects the policyengine-us "
-                "2.2.1 tests that read the clock: Medicaid (CHIP follows "
-                "it) and Washington TANF read it against a five-year bar, "
-                "so the long clock can clear the bar early; Washington RCA "
-                "reads it as a window that closes (years_since_us_entry < "
-                "window_years), so the long clock can wrongly exclude a "
-                "recently qualified person from RCA. Under the statute the "
-                "SNAP five-year bar also runs from entry with qualified "
-                "status, but the pinned engine's federal SNAP status test "
-                "reads the status, not this clock, so any SNAP effect is "
-                "indirect. The receipt "
+                "2.145.3 tests that read the clock. SNAP's qualified-alien "
+                "waiting period, the federal Medicaid and CHIP "
+                "immigration-status tests, Medicare Part B for permanent "
+                "residents, Washington TANF, Missouri and New Hampshire SSP, "
+                "Nevada LIHEAP and Utah HEAT read it against a bar, five years "
+                "for SNAP and Medicaid, so the long clock can clear the bar "
+                "early; Washington RCA reads it as a window that closes "
+                "(years_since_us_entry < window_years), so the long clock can "
+                "wrongly exclude a recently qualified person from RCA. The "
+                "receipt "
                 "reports the size of the affected group under each lag of "
                 "one to ten, 15 and 20 years; the real-data check is "
                 "microcosm#1093."
@@ -4639,10 +4650,11 @@ def finalize_reviewed_limitations(
                 "definition), and is_blind is DEYE == 1. An item below its "
                 "minimum question age (5 for DPHY/DREM/DDRS, 15 for DOUT) is "
                 "blank and reads as no difficulty. Native ACS weeks_worked "
-                "(WKWN, under the WKHP universe rules) is carried on the "
-                "staging ACS spine only: the pinned policyengine-us gives "
-                "weeks_worked a formula_2025, so the export holds it back as "
-                f"formula-owned until {WEEKS_WORKED_EXPORT_BLOCKER}. is_veteran "
+                "(WKWN, under the WKHP universe rules) is exported on ACS "
+                "rows: on policyengine-us 2.145.3 it is an input "
+                f"({WEEKS_WORKED_INPUT_CHANGE}). Its blank cells, persons "
+                "under 16 among them, take the reviewed fill 0, the value the "
+                "donor gives its own not-in-universe rows. is_veteran "
                 "(ACS MIL == 2) is not exported because policyengine-us "
                 "computes it from veterans_benefits for every year; "
                 "is_incapable_of_self_care stays on the ASEC transfer."
@@ -4776,7 +4788,7 @@ def finalize_reviewed_limitations(
                 "probability residual / anchored eligible weight on a keyed "
                 "draw, and the state's excess is recorded. The treatment is "
                 "state-level because the CMS counts carry no child/adult "
-                "split; policyengine-us 2.2.1 keeps CHIP take-up separate "
+                "split; policyengine-us 2.145.3 keeps CHIP take-up separate "
                 "and CHIP eligibility exclusive of Medicaid eligibility. "
                 "Draws are keyed on acs_2024_1yr:SERIALNO:SPORDER and the "
                 "build seed. The targets bind the pre-calibration frame; the "
@@ -6037,7 +6049,8 @@ def do_finalize(args) -> None:
     # microcosm#1021: refuse ACS disability flags that are missing, constant,
     # or not the native ACS difficulty items on the packaged bytes, or a
     # staging receipt that shows them imputed. weeks_worked is graded at
-    # staging only: the export holds it back until policyengine-us#9660.
+    # staging, where its blanks are the ACS universe's; the packaged file
+    # carries it with the reviewed fill in those cells.
     work_disability_gate = shadow_gate(
         "us_local_work_disability",
         lambda frame=frame: acs_local_work_disability_signal_gate(
@@ -6363,8 +6376,8 @@ def do_finalize(args) -> None:
                 "row, gated by acs_local_work_disability_signal "
                 "(microcosm#1021; reviewed limitation "
                 "acs_work_disability_inputs). Native ACS weeks_worked is "
-                "staged but held back from the export until "
-                f"{WEEKS_WORKED_EXPORT_BLOCKER}. ACS child support "
+                "exported: on policyengine-us 2.145.3 it is an input "
+                f"({WEEKS_WORKED_INPUT_CHANGE}). ACS child support "
                 "received/paid, workers' compensation, disability benefits "
                 "and 401(k)/403(b)/SEP/Keogh/Roth-IRA distributions come from "
                 "a separate local QRF pass on the donor's ASEC observation "
