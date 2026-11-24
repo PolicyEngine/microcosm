@@ -9,7 +9,7 @@ import os
 import tempfile
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, is_dataclass, replace
 from enum import Enum
 from pathlib import Path
 
@@ -578,19 +578,24 @@ def _load_pattern_steps(
             raise ValueError(
                 f"ACS transfer target carries unexpected pattern {pattern!r}."
             )
-        state_before = expected_states[pattern]
-        expected_before_sha256 = _mapping_sha256(state_before.to_dict())
-        if raw_step.get("state_before_sha256") != expected_before_sha256:
-            raise ValueError(
-                f"ACS transfer target pattern {pattern!r} does not continue the "
-                "expected predecessor state."
-            )
         state_after_payload = raw_step.get("state_after")
         if not isinstance(state_after_payload, Mapping):
             raise ValueError(
                 f"ACS transfer target pattern {pattern!r} lacks state_after."
             )
         state_after = QRFChainState.from_dict(state_after_payload)
+        # A chain started in this process carries this process's fit-job count,
+        # and the saved digest covers the count the saved chain started with.
+        # The count changes no draw, so the digest is checked with the saved one.
+        state_before = replace(
+            expected_states[pattern], fit_n_jobs=state_after.fit_n_jobs
+        )
+        expected_before_sha256 = _mapping_sha256(state_before.to_dict())
+        if raw_step.get("state_before_sha256") != expected_before_sha256:
+            raise ValueError(
+                f"ACS transfer target pattern {pattern!r} does not continue the "
+                "expected predecessor state."
+            )
         _validate_state_transition(
             state_before,
             state_after,

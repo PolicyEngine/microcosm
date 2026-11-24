@@ -221,6 +221,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     us_late_producer_schedule_receipt,
 )
 from microcosm.fit import Regime
+from microcosm.fit.qrf import default_predict_workers
 from microcosm.frame import US_SCHEMA, Frame, WeightKind
 
 __all__ = [
@@ -5678,10 +5679,13 @@ def _validate_late_resource_binding(
                     f"{boundary}: attested legacy primary-QRF worker changed."
                 )
         else:
+            # Outside the ``try``: a live environment that cannot be bound
+            # reports its own error, not a malformed recorded binding.
+            live_worker = _late_primary_qrf_worker_execution_binding()
             try:
                 semantically_equal = worker_identity_runtime.primary_qrf_worker_bindings_semantically_equal(
                     recorded_worker,
-                    _late_primary_qrf_worker_execution_binding(),
+                    live_worker,
                     boundary=f"{boundary}: late primary-QRF worker",
                 )
             except ValueError as exc:
@@ -6028,8 +6032,8 @@ def _legacy_primary_qrf_worker_execution_binding() -> dict[str, object]:
             )
     predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
     if predict_workers_raw is None or not predict_workers_raw.strip():
-        predict_workers = os.cpu_count() or 1
-        predict_workers_source = "os_cpu_count_fallback"
+        predict_workers = default_predict_workers()
+        predict_workers_source = "joblib_cpu_count_fallback"
     else:
         try:
             predict_workers = int(predict_workers_raw)
@@ -6083,7 +6087,7 @@ def _legacy_primary_qrf_worker_execution_binding() -> dict[str, object]:
 
 
 def _late_primary_qrf_worker_execution_binding() -> dict[str, object]:
-    """Bind portable semantics and retain absolute launch paths for audit."""
+    """Bind portable semantics; keep launch paths and thread counts for audit."""
 
     return worker_identity_runtime.primary_qrf_worker_execution_binding()
 
@@ -6394,7 +6398,11 @@ def _late_primary_resource_receipts_semantic_projection(
     *,
     boundary: str,
 ) -> dict[str, object]:
-    """Normalize only primary-worker audit aliases out of authentication."""
+    """Normalize only the primary-worker audit fields out of authentication.
+
+    Those are the interpreter paths and the thread counts; see
+    ``worker_identity.primary_qrf_worker_semantic_projection``.
+    """
 
     normalized = _json_ready(resources)
     if not isinstance(normalized, dict):  # pragma: no cover - Mapping normalized
@@ -6425,7 +6433,7 @@ def _late_primary_resource_receipts_semantically_equal(
     *,
     boundary: str,
 ) -> bool:
-    """Compare checkpoint resources without authenticating launcher aliases."""
+    """Compare checkpoint resources without authenticating worker audit fields."""
 
     return _late_primary_resource_receipts_semantic_projection(
         left, boundary=f"{boundary} recorded"
@@ -11958,8 +11966,9 @@ def _run_stacked_puf_pass_evaluate(
             resume_status = "resumed"
             # The sidecar's bytes are retained on resume, so the receipt must
             # carry the sidecar's own authenticated self-digest: the live
-            # binding's digest hashes the current audit aliases, which may
-            # differ from the relocated sidecar's without changing meaning.
+            # binding's digest hashes the current audit aliases and thread
+            # controls, which may differ from the sidecar's without changing
+            # meaning.
             reported_input_binding_sha256 = observed_input_binding["sha256"]
         else:
             if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):

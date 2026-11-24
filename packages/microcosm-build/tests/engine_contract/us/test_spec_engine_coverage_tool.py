@@ -44,7 +44,7 @@ def _reuse_real_worker_binding_for_pin_checks() -> object:
             cached(
                 os.environ.get("POPULACE_FIT_N_JOBS"),
                 os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-                os.cpu_count(),
+                worker_identity_module._default_predict_workers(),
             )
         )
 
