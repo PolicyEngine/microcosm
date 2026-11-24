@@ -8,6 +8,7 @@ kept. The comparison needs that copy; nothing else should use it.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -1055,3 +1056,20 @@ def test_source_table_refuses_a_column_the_read_did_not_keep(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match="TAGE"):
         shared_rows.source_table(("SSUID", "TAGE"))
+
+
+def test_every_sipp_person_file_read_defaults_to_the_old_loaders_chunk_rows() -> None:
+    # The old per-donor loaders all read 100,000-row chunks, and the release
+    # tool and the ACS local-area build pass no chunk size. Column types are
+    # inferred per chunk, so the tests above show equal donor tables only when
+    # the chunk sizes match; a different default could change inferred types.
+    chunk_rows = person_rows_module.SIPP_PERSON_FILE_CHUNK_ROWS
+    assert chunk_rows == 100_000
+    for read_function in (
+        read_sipp_december_person_rows,
+        load_sipp_2023_ssi_disability_donor,
+    ):
+        default_chunk_rows = (
+            inspect.signature(read_function).parameters["chunksize"].default
+        )
+        assert default_chunk_rows == chunk_rows, read_function.__name__
