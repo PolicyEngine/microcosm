@@ -45,6 +45,10 @@ from microcosm.build.us_runtime.acs_local_receipt_anchors import (
     require_acs_receipt_anchor_sources,
     with_acs_local_snap_receipt_anchor,
 )
+from microcosm.build.us_runtime.acs_local_wic_take_up import (
+    require_complete_us_wic_take_up,
+    with_acs_local_wic_take_up,
+)
 from microcosm.build.us_runtime.acs_local_work_disability import (
     map_acs_local_work_disability_inputs,
     record_acs_local_work_disability_transfer,
@@ -121,6 +125,7 @@ def build_optional_acs_multispine(
     work_disability_inputs: bool = False,
     income_transfer: bool = False,
     native_receipt_anchors: bool = False,
+    wic_take_up: bool = False,
     semp_covers_partnership_income: bool = False,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
@@ -165,6 +170,13 @@ def build_optional_acs_multispine(
     public-assistance counts it records against ``receives_tanf``) is
     ``provenance["acs_local_receipt_anchors"]``. The source is checked before
     any fit.
+    ``wic_take_up`` (the ACS local lane, microcosm#1154, the design of
+    microcosm#1156) draws the ACS rows' ``takes_up_wic_if_eligible`` with the
+    national generator after the shared transfer, which completes the
+    pregnancy and own-children inputs it reads, and before pooling, while the
+    loader's source identity keys each draw. The donor's decisions are kept:
+    they must be complete before the ACS spine is loaded, and the pooled frame
+    after assembly. Its receipt is ``provenance["wic_take_up"]``.
     ``semp_covers_partnership_income`` (the ACS local lane, microcosm#1387)
     tells the shared transfer that ACS ``SEMP`` already includes
     own-partnership income, so a ``partnership_income`` draw is kept at zero
@@ -211,6 +223,10 @@ def build_optional_acs_multispine(
             donor_location_rule=donor_location_rule,
         )
 
+    if wic_take_up:
+        # microcosm#1154: the donor's WIC decisions are kept, never redrawn,
+        # so they must be complete before any ACS record is loaded.
+        require_complete_us_wic_take_up(base.table("person"), what="ACS pool donor")
     raw_acs, loader_metadata = build_acs_pums_unit_frame(
         source,
         chunksize=chunksize,
@@ -414,6 +430,15 @@ def build_optional_acs_multispine(
         transferred_frame, receipt_anchors = with_acs_local_snap_receipt_anchor(
             transferred_frame
         )
+    # microcosm#1154 (the design of microcosm#1156): the transfer has completed
+    # the pregnancy and own-children inputs, and the frame still holds ACS
+    # rows only with the loader's source identity, so the national generator
+    # draws the ACS rows' WIC decisions here, before pooling.
+    wic_take_up_receipt = None
+    if wic_take_up:
+        transferred_frame, wic_take_up_receipt = with_acs_local_wic_take_up(
+            transferred_frame, seed=seed, time_period=source.vintage
+        )
 
     pool_options: dict[str, Any] = {"acs_share": acs_share}
     if block_location:
@@ -442,6 +467,8 @@ def build_optional_acs_multispine(
         )
     pooled = with_optional_acs_spine(base, transferred_frame, **pool_options)
     del transferred_frame
+    if wic_take_up:
+        require_complete_us_wic_take_up(pooled.table("person"), what="ACS pool")
 
     provenance = {
         "enabled": True,
@@ -465,6 +492,8 @@ def build_optional_acs_multispine(
             "max_targets_per_fit": max_targets_per_fit,
         },
     }
+    if wic_take_up_receipt is not None:
+        provenance["wic_take_up"] = _json_ready(wic_take_up_receipt)
     if hours_donor is not None or hours_donor_factory is not None:
         provenance["fit_configuration"]["hours_donor_channel"] = hours_donor_channel
         provenance["local_hours_source"] = hours_source

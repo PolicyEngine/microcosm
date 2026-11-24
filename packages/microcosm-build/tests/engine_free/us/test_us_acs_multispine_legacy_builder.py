@@ -628,6 +628,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "work_disability_inputs": True,
         "income_transfer": True,
         "native_receipt_anchors": True,
+        "wic_take_up": True,
         "semp_covers_partnership_income": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,

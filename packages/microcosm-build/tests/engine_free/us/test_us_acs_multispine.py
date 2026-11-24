@@ -825,3 +825,118 @@ def _raw_acs_frame() -> Frame:
         {"household": Weights(np.asarray([50.0]), WeightKind.DESIGN)},
         pd.Series("acs_2024_1yr", index=person.index, dtype=object),
     )
+
+
+def test__given_wic_take_up__then_acs_decisions_are_drawn_before_pooling(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """microcosm#1154 (the design of microcosm#1156): the donor's decisions are
+    checked before the ACS spine is loaded, the ACS rows' are drawn on the
+    ACS-only frame after the shared transfer, and the pooled frame is checked
+    after assembly."""
+
+    events: list[tuple[Any, ...]] = []
+    raw_acs = object()
+    mapped_acs = object()
+    transferred_acs = SimpleNamespace(table=lambda entity: pd.DataFrame())
+    drawn_acs = object()
+    pooled = SimpleNamespace(table=lambda entity: pd.DataFrame())
+    base = SimpleNamespace(table=lambda entity: pd.DataFrame())
+    receipt = {"issue": "microcosm#1154", "weighted_take_up_share": np.float64(0.03)}
+    source = AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip")
+
+    def fake_load(source, *, chunksize):
+        events.append(("load",))
+        return raw_acs, {"spine": "acs_2024_1yr"}
+
+    def fake_require(person, *, what):
+        events.append(("require", what))
+
+    def fake_map(frame):
+        events.append(("map", frame))
+        return SimpleNamespace(frame=mapped_acs, native_inputs={})
+
+    def fake_transfer(recipient, donor, **kwargs):
+        events.append(("transfer", recipient))
+        return SimpleNamespace(
+            frame=transferred_acs,
+            imputed_inputs=(),
+            fit_records=(),
+            deferred_inputs=(),
+            resolved_donor_channel="puf_support",
+        )
+
+    def fake_draw(frame, *, seed, time_period):
+        events.append(("wic", frame, seed, time_period))
+        return drawn_acs, receipt
+
+    def fake_pool(actual_base, actual_acs, **kwargs):
+        events.append(("pool", actual_base, actual_acs))
+        return pooled
+
+    monkeypatch.setattr(acs_multispine, "build_acs_pums_unit_frame", fake_load)
+    monkeypatch.setattr(acs_multispine, "require_complete_us_wic_take_up", fake_require)
+    monkeypatch.setattr(acs_multispine, "map_acs_native_inputs", fake_map)
+    monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", fake_transfer)
+    monkeypatch.setattr(acs_multispine, "with_acs_local_wic_take_up", fake_draw)
+    monkeypatch.setattr(acs_multispine, "with_optional_acs_spine", fake_pool)
+
+    result = acs_multispine.build_optional_acs_multispine(
+        cast(Frame, base), source, wic_take_up=True, seed=5
+    )
+
+    assert events == [
+        ("require", "ACS pool donor"),
+        ("load",),
+        ("map", raw_acs),
+        ("transfer", mapped_acs),
+        ("wic", transferred_acs, 5, source.vintage),
+        ("pool", base, drawn_acs),
+        ("require", "ACS pool"),
+    ]
+    assert result.provenance["wic_take_up"] == {
+        "issue": "microcosm#1154",
+        "weighted_take_up_share": 0.03,
+    }
+    json.dumps(result.provenance, allow_nan=False)
+
+
+def test__given_no_wic_take_up__then_no_wic_step_runs(monkeypatch, tmp_path) -> None:
+    """The flag is the ACS local lane's; without it the pool builder is unchanged."""
+
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda source, *, chunksize: (object(), {"spine": "acs_2024_1yr"}),
+    )
+    monkeypatch.setattr(
+        acs_multispine, "require_complete_us_wic_take_up", _must_not_run
+    )
+    monkeypatch.setattr(acs_multispine, "with_acs_local_wic_take_up", _must_not_run)
+    monkeypatch.setattr(
+        acs_multispine,
+        "map_acs_native_inputs",
+        lambda frame: SimpleNamespace(frame=object(), native_inputs={}),
+    )
+    monkeypatch.setattr(
+        acs_multispine,
+        "transfer_acs_inputs",
+        lambda recipient, donor, **kwargs: SimpleNamespace(
+            frame=SimpleNamespace(table=lambda entity: pd.DataFrame()),
+            imputed_inputs=(),
+            fit_records=(),
+            deferred_inputs=(),
+            resolved_donor_channel="puf_support",
+        ),
+    )
+    monkeypatch.setattr(
+        acs_multispine, "with_optional_acs_spine", lambda *args, **kwargs: object()
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        cast(Frame, SimpleNamespace(table=lambda entity: pd.DataFrame())),
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+    )
+
+    assert "wic_take_up" not in result.provenance

@@ -1,7 +1,8 @@
 """ACS-row SNAP/TANF take-up (microcosm#1019), the engine-free
 discretionary-exemption, housing-receipt, Medicare and Head Start fills
-(microcosm#1022) and the ACS VEH vehicle-availability receipt (the #1064
-review) for the retained ACS local lane."""
+(microcosm#1022), the ACS VEH vehicle-availability receipt (the #1064
+review), EITC take-up (microcosm#1675) and the WIC take-up check
+(microcosm#1154) for the retained ACS local lane."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import pytest
 
 from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_TAKE_UP_GATE_NAME,
+    US_EITC_TAKE_UP_OUTPUT_COLUMN,
     US_TANF_TAKE_UP_OUTPUT_COLUMN,
     acs_local_take_up_signal_gate,
     with_acs_local_take_up_inputs,
@@ -26,13 +28,16 @@ from microcosm.build.us_runtime.snap_take_up import (
     US_SNAP_TAKE_UP_OUTPUT_COLUMN,
     us_snap_take_up_stage_spec,
 )
-from microcosm.build.us_runtime.take_up import _seed_program
+from microcosm.build.us_runtime.take_up import US_TAKE_UP_SHARE_BAND, _seed_program
 from microcosm.build.us_runtime.take_up_contract import seeded_take_up_programs
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 SNAP = US_SNAP_TAKE_UP_OUTPUT_COLUMN
 TANF = US_TANF_TAKE_UP_OUTPUT_COLUMN
+EITC = US_EITC_TAKE_UP_OUTPUT_COLUMN
+WIC = "takes_up_wic_if_eligible"
 TAG = spine_column("spm_unit")
+TAX_TAG = spine_column("tax_unit")
 PERSON_TAG = spine_column("person")
 DISCRETIONARY = "is_snap_abawd_discretionary_exempt"
 HOUSING = "receives_housing_assistance"
@@ -65,7 +70,9 @@ def _frame(
     quarters), ACS persons ``SPORDER`` 1 and a native ``HINS3``; the housing
     take-up flag is transferred on both spines. Donor households carry a
     vehicle count, and donor positions 100-129 are children aged 3-5, a few
-    of them taking up Head Start.
+    of them taking up Head Start. Tax units carry donor EITC flags and NaN on
+    ACS rows; persons carry WIC decisions on both spines, since staging
+    draws the ACS rows' (microcosm#1154).
     """
 
     n = n_asec + n_acs
@@ -115,6 +122,12 @@ def _frame(
         asec, np.nan
     )
     person[PERSON_TAG] = spm_unit[TAG].to_numpy()
+    tax_unit = tables["tax_unit"]
+    tax_unit[TAX_TAG] = spm_unit[TAG].to_numpy()
+    tax_unit[EITC] = pd.Series(
+        np.where(position < int(0.7 * n_asec), True, False), dtype=object
+    ).where(asec, np.nan)
+    person[WIC] = position % 30 == 0
     age = rng.integers(0, 91, n).astype(float)
     children = asec & (position >= 100) & (position < 130)
     age[children] = np.resize([3.0, 4.0, 5.0], int(children.sum()))
@@ -290,7 +303,7 @@ def test_a_filled_frame_passes_through_unchanged() -> None:
     assert again_receipt["assigned_sha256"] == receipt["assigned_sha256"]
 
 
-@pytest.mark.parametrize("column", [SNAP, TANF, "receives_snap", TAG])
+@pytest.mark.parametrize("column", [SNAP, TANF, "receives_snap", TAG, EITC, TAX_TAG])
 def test_missing_inputs_are_refused(column: str) -> None:
     with pytest.raises(ValueError, match="ACS local take-up requires"):
         with_acs_local_take_up_inputs(_frame(drop=(column,)), seed=0)
@@ -304,7 +317,6 @@ def test_gate_passes_on_the_seeded_surface_and_ignores_other_flags() -> None:
     frame = _filled()
     # Other take-up flags remain engine defaults on ACS rows (microcosm#1022).
     tables = {entity: frame.table(entity) for entity in frame.entities}
-    tables["tax_unit"] = tables["tax_unit"].assign(takes_up_eitc=True)
     tables["person"] = tables["person"].assign(takes_up_ssi_if_eligible=True)
     frame = Frame(tables, frame.schema, {"household": frame.weights_for("household")})
     gate = acs_local_take_up_signal_gate(frame)
@@ -320,7 +332,11 @@ def test_gate_passes_on_the_seeded_surface_and_ignores_other_flags() -> None:
         MEDICARE,
         VEHICLES,
         HEAD_START,
+        EITC,
+        WIC,
     }
+    assert acs[EITC]["entity"] == "tax_unit"
+    assert acs[WIC]["entity"] == "person"
     assert acs[VEHICLES]["not_default_rows"] == 0
     assert acs[VEHICLES]["vehicles_available"]["housing_units_without_veh"] == 0
     assert acs[HEAD_START]["take_up_outside_ages"] == 0
@@ -1033,3 +1049,144 @@ def test_gate_reports_but_does_not_grade_donor_vehicles_or_head_start() -> None:
     assert donor_columns[HEAD_START]["take_up_outside_ages"] == 1
     assert "vehicles_available" not in donor_columns[VEHICLES]
     assert "not_default_rows" not in donor_columns[VEHICLES]
+
+
+# ---------------------------------------------------------------------------
+# EITC take-up (microcosm#1675) and the WIC take-up check (microcosm#1154)
+# ---------------------------------------------------------------------------
+
+
+def _acs_tax_units(frame: Frame) -> np.ndarray:
+    return frame.table("tax_unit")[TAX_TAG].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
+
+
+def _eitc_program():
+    return next(p for p in seeded_take_up_programs() if p.variable == EITC)
+
+
+def test_eitc_take_up_is_the_contracts_draw_on_acs_tax_units() -> None:
+    frame = _frame()
+    result, receipt = with_acs_local_take_up_inputs(frame, seed=3)
+    seeded, _ = _seed_program(frame, _eitc_program(), seed=3)
+    acs = _acs_tax_units(frame)
+    tax_unit = result.table("tax_unit")
+    np.testing.assert_array_equal(
+        tax_unit.loc[acs, EITC].to_numpy(dtype=bool),
+        np.asarray(seeded[EITC], dtype=bool)[acs],
+    )
+    assert (
+        tax_unit.loc[~acs, EITC].tolist()
+        == frame.table("tax_unit").loc[~acs, EITC].tolist()
+    )
+    entry = receipt["programs"][EITC]
+    assert entry["entity"] == "tax_unit"
+    assert entry["filled_rows"] == int(acs.sum())
+    assert entry["preserved_rows"] == 0
+    assert (
+        entry["rates_by_num_children"]
+        == (_eitc_program().rate["values_by_num_children"])
+    )
+    low, high = US_TAKE_UP_SHARE_BAND[EITC]
+    assert low <= entry["weighted_take_up_share"] <= high
+    assert set(entry["by_num_children"]) == {"0", "1", "2", "3+"}
+    assert receipt["acs_tax_units"] == int(acs.sum())
+
+
+def test_a_stored_acs_eitc_cell_is_kept_and_enters_the_digest() -> None:
+    frame = _frame()
+    plain, plain_receipt = with_acs_local_take_up_inputs(frame, seed=3)
+    acs = _acs_tax_units(frame)
+    first = int(np.flatnonzero(acs)[0])
+    drawn = bool(plain.table("tax_unit")[EITC].iloc[first])
+    tax_unit = frame.table("tax_unit").copy()
+    tax_unit[EITC] = tax_unit[EITC].astype(object)
+    tax_unit.loc[tax_unit.index[first], EITC] = not drawn
+    stored = Frame(
+        {
+            entity: tax_unit if entity == "tax_unit" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    result, receipt = with_acs_local_take_up_inputs(stored, seed=3)
+    assert bool(result.table("tax_unit")[EITC].iloc[first]) is (not drawn)
+    assert receipt["programs"][EITC]["preserved_rows"] == 1
+    assert receipt["programs"][EITC]["filled_rows"] == int(acs.sum()) - 1
+    assert receipt["assigned_sha256"] != plain_receipt["assigned_sha256"]
+
+
+@pytest.mark.parametrize("change", ["drop", "missing", "object"])
+def test_the_stage_refuses_an_incomplete_wic_column(change: str) -> None:
+    frame = _frame()
+    person = frame.table("person").copy()
+    if change == "drop":
+        person = person.drop(columns=WIC)
+    elif change == "missing":
+        person[WIC] = person[WIC].astype(object)
+        person.loc[person.index[-1], WIC] = np.nan
+    else:
+        person[WIC] = person[WIC].astype(object)
+    incomplete = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    with pytest.raises(ValueError, match="WIC take-up"):
+        with_acs_local_take_up_inputs(incomplete, seed=0)
+
+
+def _with_entity(frame: Frame, entity: str, table: pd.DataFrame) -> Frame:
+    return Frame(
+        {
+            name: table if name == entity else frame.table(name)
+            for name in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+
+def test_gate_fails_on_universal_eitc_take_up_on_acs_rows() -> None:
+    frame = _filled()
+    acs = _acs_tax_units(frame)
+    tax_unit = frame.table("tax_unit").copy()
+    tax_unit[EITC] = tax_unit[EITC].where(~acs, True)
+    failures = _gate_failures(_with_entity(frame, "tax_unit", tax_unit))
+    assert f"{ACS_2024_1YR_SPINE}: {EITC} is constant" in failures
+    assert "outside plausibility band" in failures
+
+
+def test_gate_fails_on_a_missing_eitc_cell() -> None:
+    frame = _filled()
+    tax_unit = frame.table("tax_unit").copy()
+    tax_unit[EITC] = tax_unit[EITC].astype(object)
+    tax_unit.loc[tax_unit.index[-1], EITC] = np.nan
+    failures = _gate_failures(_with_entity(frame, "tax_unit", tax_unit))
+    assert f"{ACS_2024_1YR_SPINE}: {EITC} has missing rows" in failures
+    assert "every eligible tax unit claims the EITC" in failures
+
+
+@pytest.mark.parametrize("spine", [ASEC_PUF_DONOR_SPINE, ACS_2024_1YR_SPINE])
+def test_gate_fails_on_missing_or_constant_wic_take_up(spine: str) -> None:
+    frame = _filled()
+    person = frame.table("person").copy()
+    rows = person[PERSON_TAG].eq(spine).to_numpy(dtype=bool)
+    constant = person.assign(**{WIC: person[WIC].where(~rows, True)})
+    failures = _gate_failures(_with_entity(frame, "person", constant))
+    assert f"{spine}: {WIC} is constant" in failures
+    missing = person.copy()
+    missing[WIC] = missing[WIC].astype(object)
+    missing.loc[missing.index[np.flatnonzero(rows)[0]], WIC] = np.nan
+    failures = _gate_failures(_with_entity(frame, "person", missing))
+    assert f"{spine}: {WIC} has missing rows" in failures
+
+
+def test_gate_requires_tax_unit_origin_tags() -> None:
+    frame = _filled()
+    tax_unit = frame.table("tax_unit").drop(columns=TAX_TAG)
+    failures = _gate_failures(_with_entity(frame, "tax_unit", tax_unit))
+    assert f"Missing tax-unit origin tags: {TAX_TAG}." in failures

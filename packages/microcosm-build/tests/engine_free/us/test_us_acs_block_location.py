@@ -985,6 +985,7 @@ def test__legacy_tool__block_v1_main_records_rule_seed_gate_and_attributes(
         "work_disability_inputs": True,
         "income_transfer": True,
         "native_receipt_anchors": True,
+        "wic_take_up": True,
         "drop_group_quarters_children": False,
         "location_rule": "block_v1",
         "location_seed": 5,

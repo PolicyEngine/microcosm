@@ -4304,6 +4304,15 @@ def _take_up_gate_frame(*, spm_columns=(), person_columns=()):
             **dict(person_columns),
         }
     )
+    # microcosm#1675: the ACS tax units' EITC draw, inside the contract's
+    # band; microcosm#1154: WIC decisions on both spines, which staging draws.
+    tax_unit = frame.table("tax_unit").assign(
+        **{
+            spine_column("tax_unit"): spines,
+            "takes_up_eitc": [True, False, True, True, True, True, True, False],
+        }
+    )
+    person = person.assign(takes_up_wic_if_eligible=[False, False, False, True] * 2)
     household = frame.table("household").assign(
         **{
             spine_column("household"): spines,
@@ -4313,7 +4322,12 @@ def _take_up_gate_frame(*, spm_columns=(), person_columns=()):
             "household_vehicles_owned": [1, 2, 0, 1, 0, 0, 0, 0],
         }
     )
-    replaced = {"spm_unit": spm_unit, "person": person, "household": household}
+    replaced = {
+        "spm_unit": spm_unit,
+        "person": person,
+        "household": household,
+        "tax_unit": tax_unit,
+    }
     return Frame(
         {
             entity: replaced.get(entity, frame.table(entity))

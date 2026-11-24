@@ -600,6 +600,8 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
         work_disability_inputs=True,
         income_transfer=True,
         native_receipt_anchors=True,
+        # microcosm#1154: the ACS rows' WIC decisions, drawn before pooling.
+        wic_take_up=True,
         # microcosm#1387: ACS SEMP already includes own-partnership income.
         semp_covers_partnership_income=True,
         donor_channel=args.donor_channel,

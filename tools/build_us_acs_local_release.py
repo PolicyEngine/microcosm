@@ -195,6 +195,10 @@ from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
     US_VEHICLES_OWNED_COLUMN,
     US_VEHICLES_VALUE_COLUMN,
 )
+from microcosm.build.us_runtime.acs_local_wic_take_up import (
+    ACS_LOCAL_WIC_TAKE_UP_ISSUE,
+    US_WIC_TAKE_UP_COLUMN,
+)
 from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_LOCAL_DISABILITY_COLUMNS,
     ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
@@ -939,6 +943,14 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS, ("SSI", "Medicaid"), strict=True
         )
     },
+    # microcosm#1154: the WIC take-up default, True, is universal take-up;
+    # staging draws the ACS rows' decisions with the national generator and
+    # the donor release carries its own.
+    ("person", US_WIC_TAKE_UP_COLUMN): (
+        "the engine default is universal WIC take-up "
+        f"({ACS_LOCAL_WIC_TAKE_UP_ISSUE}); re-run staging with the current "
+        "builder"
+    ),
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
 
