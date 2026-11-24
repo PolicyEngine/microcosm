@@ -775,29 +775,51 @@ lock unchanged:
     the strata are now new pandas objects whose buffers are read-only views
     of the memory they are projected from: the population's own memory for
     a node that reads every row, and the single copy `.loc` makes of the
-    selected rows for a node with a row mask. A column type with no known
-    view is copied as before. Kernels see the same columns, order, dtypes,
-    index, values and `attrs`, so no node key, output or digest moves.
-    B4 holds as stated: a pandas write (`.loc`, `.iloc`, `.iat`, `.at`,
-    column assignment, in-place methods) and an item write into an array a
-    column hands out (`to_numpy()`, `.values`, `.array`, `np.asarray`, and
-    `np.put`, `np.copyto`, `+=` into one) raise, or change only the kernel's
-    own objects, which the before/after comparison then refuses. The
-    kernel's `RangeIndex` is a new object: a view would share the cache that
-    holds its materialized values, which `np.asarray(index)` returns
-    writable, so before this a write into it changed the population's index.
+    selected rows for a node with a row mask. Kernels see the same columns,
+    order, dtypes, index, values and `attrs`, so no node key or output
+    moves. Three cases are copied exactly as before: a column type with no
+    known view, a table with a strided column (BLAS products such as
+    `np.dot` can round differently when an operand's layout or alignment
+    changes), and a pandas subclass, which keeps its type and metadata only
+    through its own methods.
+    Each view's `.base` is a small object that exposes no array, so neither
+    `view.base` nor `setflags(write=True)` reaches the population's writable
+    block, which holds columns the node never declared. An item write into
+    an array a column hands out (`to_numpy()`, `.values`, `.array`,
+    `np.asarray`, their `.base`, and `np.put`, `np.copyto`, `+=` into one)
+    raises. Each table shares its memory with a second, kept-alive table,
+    so pandas copies a column before any in-place write (`.loc`, `.iloc`,
+    `.at`, `update`, `clip(inplace=True)`, ...): the write lands only in the
+    kernel's own table, and B4's before/after comparison refuses it if it
+    changed a value, exactly as for a write into the old deep copy. A
+    validation kernel's write is therefore still a rejection, not a failed
+    verdict.
     `np.<ufunc>.at` writes even into a read-only array, so with shared
-    memory it changes the population. The before/after comparison rejects
-    that node before its result is applied or stored and the run stops: the
-    store is unchanged, the failed run's in-memory population is not. A
-    kernel that keeps an array and writes into it while a later node runs
-    is caught only if that later node reads the column. No workspace code
-    writes into a column with `ufunc.at`, and the shared-buffer source scan
-    refuses one whose target the function did not create. Adopted
-    2026-11-25 for #1679 (the 15-clone UK spine holds about 6 GiB per copy);
-    checking digests of every handed-out buffer before each node's result
-    is applied, which would also catch the kept array, was declined for its
-    cost of about one SHA-256 pass over the population per node.
+    memory it changes the population, within the declared column. B4's
+    comparison rejects that node before its result is applied or stored and
+    the run stops: the store is unchanged, the failed run's in-memory
+    population is not. The comparison now also hashes the raw bytes of a
+    NumPy bool column, whose value stream reads every non-zero byte as
+    `True`. Writes through private attributes (`_data`, `_ndarray`, `_mgr`,
+    the view object's `_owner`) and through raw pointers are not guarded and
+    can reach undeclared columns. A kernel that keeps an array and writes
+    into it with `ufunc.at` while a later node runs is caught only if that
+    later node reads the column. No workspace code writes into a column with
+    `ufunc.at`, and the shared-buffer source scan refuses one whose target
+    the function did not create.
+    Two costs remain. A context table holds one pandas block per column, so
+    inserting into a shallow copy of a wide one gives pandas'
+    `PerformanceWarning`, and row-wise operations on it are slower; a deep
+    copy merges the blocks into the layout the old copy had, which is what
+    the UK and US graph kernels make before calling their runtimes. And a
+    kernel that runs a BLAS product directly on input columns sees them at
+    their offsets in the population's blocks rather than in a fresh copy,
+    which on Apple's Accelerate can move the last bit of `np.dot`.
+    Adopted 2026-11-25 for #1679 (the 15-clone UK spine holds about 6 GiB
+    per copy); checking digests of every handed-out buffer before each
+    node's result is applied, which would also catch the kept array, was
+    declined for its cost of about one SHA-256 pass over the population per
+    node.
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and

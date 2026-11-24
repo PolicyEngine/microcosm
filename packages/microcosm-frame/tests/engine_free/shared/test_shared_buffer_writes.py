@@ -165,9 +165,11 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "values._data",
         "f08675645fa1",
     ): (
-        "Read only: the graph executor wraps a nullable column's values in a "
-        "new view marked read-only, so a kernel's item write into it raises "
-        "instead of reaching the stored population (graph amendment 31)."
+        "Read only: the graph executor passes a nullable column's values to "
+        "_read_only_view, which builds a read-only array whose base is a "
+        "_ReadOnlyMemory, so a kernel's item write into it, into its .base or "
+        "after setflags(write=True) raises instead of reaching the stored "
+        "population (graph amendment 31). Review again if either changes."
     ),
     (
         "packages/microcosm-graph/src/microcosm/graph/executor.py",
@@ -176,9 +178,11 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "values._mask",
         "f08675645fa1",
     ): (
-        "Read only: the graph executor wraps a nullable column's mask in a "
-        "new view marked read-only, so a kernel's item write into it raises "
-        "instead of reaching the stored population (graph amendment 31)."
+        "Read only: the graph executor passes a nullable column's mask to "
+        "_read_only_view, which builds a read-only array whose base is a "
+        "_ReadOnlyMemory, so a kernel's item write into it, into its .base or "
+        "after setflags(write=True) raises instead of reaching the stored "
+        "population (graph amendment 31). Review again if either changes."
     ),
 }
 
@@ -194,6 +198,14 @@ _REVIEWED_HELPERS: dict[tuple[str, str], str] = {
         "tools/verify_uk_identity_stability.py",
         "_pre_residential_household_weights",
     ): "e39cc12da417",
+    (
+        "packages/microcosm-graph/src/microcosm/graph/executor.py",
+        "_read_only_view",
+    ): "9e403641598e",
+    (
+        "packages/microcosm-graph/src/microcosm/graph/executor.py",
+        "_ReadOnlyMemory",
+    ): "fa358510ff88",
 }
 
 _MAKES_ARRAY_WRITABLE = "makes-array-writable"

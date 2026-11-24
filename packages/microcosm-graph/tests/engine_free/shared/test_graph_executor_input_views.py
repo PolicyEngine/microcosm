@@ -3,12 +3,15 @@
 The executor hands each kernel new pandas objects whose buffers are read-only
 views of the population's buffers, so a node that reads every row holds no
 second copy of its input tables and a node with a row mask holds only the
-selected rows. A write through pandas, or an item write into an array a column
-hands out, raises or changes only the kernel's own objects; the population's
-bytes stay the same. ``np.<ufunc>.at`` ignores the read-only flag: such a write
-reaches the population's memory, and the executor's before/after comparison of
-the context rejects the node before anything derived from it is applied or
-stored. Every frame here is invented.
+selected rows. A write through pandas, an item write into an array a column
+hands out or into its ``.base``, and ``setflags(write=True)`` raise or change
+only the kernel's own objects; the population's bytes stay the same. pandas
+copies a column before writing into it, so a pandas write that changes no
+value still runs, as it did on the deep copy kernels got before.
+``np.<ufunc>.at`` writes even into a read-only array: such a write reaches the
+population's memory, and the executor's before/after comparison of the context
+rejects the node before anything derived from it is applied or stored. Every
+frame here is invented.
 """
 
 from __future__ import annotations
@@ -42,6 +45,7 @@ from microcosm.graph.kernel import (
     KernelContext,
     KernelRegistry,
     KernelResult,
+    KernelRole,
 )
 from microcosm.graph.population import Population
 from microcosm.graph.store import ContentStore
@@ -84,29 +88,58 @@ COLUMN_VALUES: dict[str, Callable[[], object]] = {
 COLUMNS = tuple(COLUMN_VALUES)
 NUMPY_COLUMNS = ("float64", "float32", "int64", "int32", "bool", "object")
 SELECTED = np.array([True, False, True, True, False, True])
+#: Declared out of the table's own order, so a projection that followed the
+#: table's layout instead of the declaration would be seen.
+DECLARED = tuple(reversed(COLUMNS))
+INDEX_KINDS: dict[str, Callable[[], pd.Index | None]] = {
+    "default range": lambda: None,
+    "named range from 1": lambda: pd.RangeIndex(1, 7, name="row"),
+    "int64": lambda: pd.Index(np.array([5, 3, 9, 1, 7, 2]), name="row"),
+    "object": lambda: pd.Index(list("uvwxyz"), dtype=object, name="row"),
+    "multi": lambda: pd.MultiIndex.from_tuples(
+        [("a", 1), ("a", 2), ("b", 3), ("b", 4), ("c", 5), ("c", 6)],
+        names=["part", "row"],
+    ),
+}
+#: The index kinds the write tests run under: one with no buffer, one with.
+WRITE_INDEX_KINDS = ("default range", "int64")
 
 
-def _kinds_frame(*, strata_dtype: str = "object") -> Frame:
+def _kinds_frame(
+    *,
+    strata_dtype: str = "object",
+    index: str = "default range",
+    object_columns: bool = False,
+) -> Frame:
+    row_index = INDEX_KINDS[index]()
     person = pd.DataFrame(
         {
             "person_id": np.arange(1, 7, dtype=np.int64),
             "person_household_id": np.array([10, 10, 20, 20, 30, 30], dtype=np.int64),
             "selected": SELECTED.copy(),
             **{column: make() for column, make in COLUMN_VALUES.items()},
-        }
+        },
+        index=row_index,
     )
+    if object_columns:
+        person.columns = pd.Index(list(person.columns), dtype=object, name="variable")
     person.attrs["provenance"] = {"source": "invented"}
     household = pd.DataFrame({"household_id": np.array([10, 20, 30], dtype=np.int64)})
     return Frame(
         {"person": person, "household": household},
         EntitySchema(group_entities=("household",)),
         {"household": Weights(np.array([1.0, 2.0, 3.0]), WeightKind.DESIGN)},
-        pd.Series(["a", "a", "b", "b", "c", "c"], name="stratum", dtype=strata_dtype),
+        pd.Series(
+            ["a", "a", "b", "b", "c", "c"],
+            index=person.index,
+            name="stratum",
+            dtype=strata_dtype,
+        ),
     )
 
 
-def _kinds_population(*, strata_dtype: str = "object") -> Population:
-    return Population.from_frame(_kinds_frame(strata_dtype=strata_dtype), "survey")
+def _kinds_population(**options: object) -> Population:
+    return Population.from_frame(_kinds_frame(**options), "survey")
 
 
 def _reader(columns: tuple[str, ...], rows: str = ROWS_ALL) -> Node:
@@ -207,27 +240,49 @@ def _shares(context_part: object, population_part: object) -> bool:
     return context_part == population_part
 
 
-def _writable_views(series: pd.Series) -> list[str]:
-    """Names of the arrays a column hands out that share its memory and are writable."""
+def _writable_views(values: pd.Series | pd.Index) -> list[str]:
+    """Arrays a column or index hands out that share its memory and can be written.
 
-    array = series.array
-    stored = [part for part in _memory_of(series) if isinstance(part, np.ndarray)]
+    Each array's chain of ``.base`` arrays is followed, and each is also asked
+    to become writable with ``setflags(write=True)``.
+    """
+
+    if isinstance(values, (pd.RangeIndex, pd.MultiIndex)):
+        # A RangeIndex stores no values: the array it materializes is its
+        # own. A MultiIndex is copied for each context.
+        return []
+    array = values.array
+    if isinstance(values, pd.Index):
+        stored = [np.asarray(values)] if isinstance(values.dtype, np.dtype) else []
+    else:
+        stored = [part for part in _memory_of(values) if isinstance(part, np.ndarray)]
     candidates: dict[str, object] = {
-        "to_numpy()": series.to_numpy(),
-        "values": series.values,
+        "to_numpy()": values.to_numpy(),
+        "values": values.values,
         "np.asarray(array)": np.asarray(array),
     }
     if isinstance(array, _MASKED_ARRAY_TYPES):
         candidates.update({"_data": array._data, "_mask": array._mask})
     if isinstance(array, pd.Categorical):
         candidates.update({"_ndarray": array._ndarray, "codes": array.codes})
-    return [
-        name
-        for name, candidate in candidates.items()
-        if isinstance(candidate, np.ndarray)
-        and candidate.flags.writeable
-        and any(np.shares_memory(candidate, part) for part in stored)
-    ]
+    found = []
+    for name, candidate in candidates.items():
+        depth = 0
+        while isinstance(candidate, np.ndarray):
+            label = name + ".base" * depth
+            if any(np.shares_memory(candidate, part) for part in stored):
+                if candidate.flags.writeable:
+                    found.append(label)
+                else:
+                    try:
+                        candidate.view().setflags(write=True)
+                    except ValueError:
+                        pass
+                    else:
+                        found.append(f"{label}.setflags(write=True)")
+            candidate = candidate.base
+            depth += 1
+    return found
 
 
 # ----------------------------------------------------------------------
@@ -235,11 +290,12 @@ def _writable_views(series: pd.Series) -> list[str]:
 # ----------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("index", WRITE_INDEX_KINDS)
 @pytest.mark.parametrize("column", COLUMNS)
 def test_an_every_row_context_shares_the_population_column_memory(
-    column: str,
+    column: str, index: str
 ) -> None:
-    population = _kinds_population()
+    population = _kinds_population(index=index)
     context = _project(population)
     shared = zip(
         _memory_of(context.tables["person"][column]),
@@ -247,6 +303,19 @@ def test_an_every_row_context_shares_the_population_column_memory(
         strict=True,
     )
     assert all(_shares(ours, theirs) for ours, theirs in shared)
+
+
+@pytest.mark.parametrize("index", ["int64", "object"])
+def test_an_every_row_context_shares_the_population_index_memory(index: str) -> None:
+    population = _kinds_population(index=index)
+    context = _project(population)
+    assert np.shares_memory(
+        np.asarray(context.tables["person"].index),
+        np.asarray(population.frame.table("person").index),
+    )
+    assert np.shares_memory(
+        np.asarray(context.strata.index), np.asarray(population.frame.strata.index)
+    )
 
 
 @pytest.mark.parametrize("strata_dtype", ["object", "category"])
@@ -259,16 +328,21 @@ def test_an_every_row_context_shares_the_population_strata(strata_dtype: str) ->
     assert all(_shares(ours, theirs) for ours, theirs in shared)
 
 
+@pytest.mark.parametrize("index", INDEX_KINDS)
 @pytest.mark.parametrize("rows", [ROWS_ALL, "selected"])
-def test_no_context_buffer_is_writable(rows: str) -> None:
+def test_no_context_buffer_can_be_written_or_made_writable(
+    rows: str, index: str
+) -> None:
     for strata_dtype in ("object", "category"):
-        context = _project(_kinds_population(strata_dtype=strata_dtype), rows=rows)
+        context = _project(
+            _kinds_population(strata_dtype=strata_dtype, index=index), rows=rows
+        )
         table = context.tables["person"]
         for column in table.columns:
             assert _writable_views(table[column]) == [], column
         assert _writable_views(context.strata) == []
-        if not isinstance(table.index, pd.RangeIndex):
-            assert not np.asarray(table.index).flags.writeable
+        assert _writable_views(table.index) == []
+        assert _writable_views(context.strata.index) == []
 
 
 def test_a_masked_context_holds_only_its_own_copy_of_the_selected_rows() -> None:
@@ -289,33 +363,45 @@ def test_a_masked_context_holds_only_its_own_copy_of_the_selected_rows() -> None
                 ), column
 
 
+@pytest.mark.parametrize("object_columns", [False, True])
+@pytest.mark.parametrize("index", INDEX_KINDS)
 @pytest.mark.parametrize("rows", [ROWS_ALL, "selected"])
 @pytest.mark.parametrize("strata_dtype", ["object", "category"])
 def test_a_context_holds_what_a_deep_copy_of_the_slice_holds(
-    rows: str, strata_dtype: str
+    rows: str, strata_dtype: str, index: str, object_columns: bool
 ) -> None:
-    """Kernels see the same columns, order, dtypes, index, values and attrs."""
+    """Kernels see the same columns, order, dtypes, index, values and attrs.
 
-    population = _kinds_population(strata_dtype=strata_dtype)
+    The slice is what the executor handed out before #1679:
+    ``table.loc[mask, columns].copy(deep=True)``, columns in declaration
+    order after the structural ones.
+    """
+
+    population = _kinds_population(
+        strata_dtype=strata_dtype, index=index, object_columns=object_columns
+    )
     frame = population.frame
-    context = _project(population, rows=rows)
+    context = _project(population, DECLARED, rows=rows)
     mask = (
         np.ones(frame.n("person"), dtype=bool)
         if rows == ROWS_ALL
         else frame.table("person")[rows].to_numpy()
     )
-    columns = ["person_id", "person_household_id", *COLUMNS]
+    columns = ["person_id", "person_household_id", *DECLARED]
     if rows != ROWS_ALL:
         columns.append(rows)
     expected = frame.table("person").loc[mask, columns].copy(deep=True)
     table = context.tables["person"]
+    assert list(table.columns) == columns
     pd.testing.assert_frame_equal(
         table, expected, check_exact=True, check_index_type=True
     )
     assert type(table.index) is type(expected.index)
+    assert table.index.names == expected.index.names
     assert table.columns.equals(expected.columns)
     assert table.columns.dtype == expected.columns.dtype
-    assert table.attrs == expected.attrs
+    assert table.columns.name == expected.columns.name
+    assert table.attrs == expected.attrs == {"provenance": {"source": "invented"}}
     assert table.attrs is not frame.table("person").attrs
     for column in columns:
         ours = hashlib.sha256()
@@ -327,6 +413,17 @@ def test_a_context_holds_what_a_deep_copy_of_the_slice_holds(
     pd.testing.assert_series_equal(
         context.strata, expected_strata, check_exact=True, check_index_type=True
     )
+    assert type(context.strata.index) is type(expected_strata.index)
+
+
+def test_a_write_into_the_context_attrs_leaves_the_population_attrs() -> None:
+    population = _kinds_population()
+    context = _project(population)
+    context.tables["person"].attrs["provenance"]["source"] = "changed"
+    context.tables["person"].attrs["added"] = True
+    assert population.frame.table("person").attrs == {
+        "provenance": {"source": "invented"}
+    }
 
 
 # ----------------------------------------------------------------------
@@ -414,6 +511,33 @@ def _write_index(table: pd.DataFrame, column: str) -> None:
     values[0] = values[1]
 
 
+def _write_base_of_to_numpy(table: pd.DataFrame, column: str) -> None:
+    owner = table[column].to_numpy().base
+    owner.flat[0] = owner.flat[1]
+
+
+def _write_asarray_of_base(table: pd.DataFrame, column: str) -> None:
+    owner = np.asarray(table[column].to_numpy().base)
+    owner.flat[0] = owner.flat[1]
+
+
+def _write_after_setflags(table: pd.DataFrame, column: str) -> None:
+    values = table[column].to_numpy()
+    values.setflags(write=True)
+    values[0] = values[1]
+
+
+def _write_asarray_after_setflags(table: pd.DataFrame, column: str) -> None:
+    values = np.asarray(table[column].array)
+    values.setflags(write=True)
+    values[0] = values[1]
+
+
+def _write_base_of_codes(table: pd.DataFrame, column: str) -> None:
+    owner = table[column].array.codes.base
+    owner[0] = owner[1]
+
+
 WRITES: dict[str, Callable[[pd.DataFrame, str], None]] = {
     "loc cell": _write_loc,
     "iloc cell": _write_iloc,
@@ -432,22 +556,97 @@ WRITES: dict[str, Callable[[pd.DataFrame, str], None]] = {
     "update": _update,
     "sort_values(inplace=True)": _sort_in_place,
     "item write into the index": _write_index,
+    "item write through to_numpy().base": _write_base_of_to_numpy,
+    "item write through np.asarray(to_numpy().base)": _write_asarray_of_base,
+    "setflags(write=True) on to_numpy(), then an item write": _write_after_setflags,
+    "setflags(write=True) on np.asarray(array), then an item write": (
+        _write_asarray_after_setflags
+    ),
+    "item write through codes.base": _write_base_of_codes,
 }
 
 
+def _table_storage(table: pd.DataFrame) -> tuple[object, ...]:
+    return (
+        tuple(table.columns),
+        _storage(table.index),
+        tuple(_storage(table[column]) for column in table.columns),
+    )
+
+
+def _lands_on_a_writable_table(write: str, column: str) -> bool:
+    """Whether ``write`` changes a table that shares no memory with anything."""
+
+    table = _kinds_frame().table("person").copy(deep=True)
+    before = _table_storage(table)
+    try:
+        WRITES[write](table, column)
+    except Exception:  # noqa: BLE001 - pandas or NumPy refused it on its own
+        return False
+    return _table_storage(table) != before
+
+
+#: The (write, column) pairs that change bytes when nothing is read-only. The
+#: others pandas or NumPy refuses or redirects on any table, so they would pass
+#: whatever the executor did.
+LANDING_WRITES = tuple(
+    (write, column)
+    for write in WRITES
+    for column in COLUMNS
+    if _lands_on_a_writable_table(write, column)
+)
+
+
+def _refused(error: Exception) -> bool:
+    """Whether ``error`` is NumPy or pandas refusing a write into read-only memory."""
+
+    message = str(error)
+    return (
+        isinstance(error, ValueError)
+        and ("read-only" in message or "WRITEABLE" in message)
+    ) or (
+        isinstance(error, (AttributeError, TypeError))
+        and (
+            "item assignment" in message
+            or "subscriptable" in message
+            or "flat" in message
+        )
+    )
+
+
+def test_every_write_kind_and_column_kind_has_a_case_that_lands() -> None:
+    """The write tests are not vacuous for any kind of write or column."""
+
+    writes = {write for write, _ in LANDING_WRITES}
+    assert writes == set(WRITES)
+    array_writes = {
+        "item write through to_numpy()",
+        "item write through values",
+        "item write through array",
+        "item write through np.asarray(array)",
+        "item write through to_numpy().base",
+        "setflags(write=True) on to_numpy(), then an item write",
+        "item write through codes.base",
+    }
+    for column in COLUMNS:
+        assert any((write, column) in LANDING_WRITES for write in array_writes), column
+
+
+@pytest.mark.parametrize("index", WRITE_INDEX_KINDS)
 @pytest.mark.parametrize("rows", [ROWS_ALL, "selected"])
-@pytest.mark.parametrize("column", COLUMNS)
-@pytest.mark.parametrize("write", WRITES)
+@pytest.mark.parametrize(("write", "column"), LANDING_WRITES)
 def test_a_write_into_a_context_leaves_the_population_byte_identical(
-    write: str, column: str, rows: str
+    write: str, column: str, rows: str, index: str
 ) -> None:
-    population = _kinds_population()
+    """The write is refused as a write into read-only memory, or stays local."""
+
+    population = _kinds_population(index=index)
     before = _population_storage(population)
     context = _project(population, rows=rows)
     try:
         WRITES[write](context.tables["person"], column)
-    except (TypeError, ValueError, AssertionError):
-        pass  # refusing the write is one of the two accepted outcomes
+    except Exception as error:  # noqa: BLE001 - checked just below
+        assert _refused(error), repr(error)
     assert _population_storage(population) == before
 
 
@@ -462,11 +661,13 @@ def test_a_write_into_the_context_strata_leaves_the_population_strata(
         lambda strata: np.asarray(strata.array).__setitem__(0, strata.iloc[2]),
         lambda strata: strata.values.__setitem__(0, strata.iloc[2]),
         lambda strata: strata.to_numpy().__setitem__(0, strata.iloc[2]),
+        lambda strata: strata.to_numpy().base.__setitem__(0, strata.iloc[2]),
+        lambda strata: np.asarray(strata.array).setflags(write=True),
     ):
         context = _project(population)
         try:
             write(context.strata)
-        except (TypeError, ValueError):
+        except (AttributeError, TypeError, ValueError):
             pass
         assert _population_storage(population) == before
 
@@ -477,7 +678,7 @@ def test_a_write_into_the_context_strata_leaves_the_population_strata(
 def test_a_ufunc_at_write_into_a_context_changes_the_context_digest(
     column: str,
 ) -> None:
-    """``np.add.at`` ignores the read-only flag; the digest comparison sees it."""
+    """``np.add.at`` writes into a read-only array; the digest comparison sees it."""
 
     context = _project(_kinds_population())
     before = graph_executor._context_digest(context)
@@ -503,6 +704,9 @@ GRAPH_COLUMNS = {
     "string_python": "string",
     "string_pyarrow": "string",
 }
+#: int64 shares its pandas block with the id columns, so a write through
+#: ``.base`` would reach columns the node did not declare.
+GRAPH_COLUMNS_FOR_WRITES = frozenset(GRAPH_COLUMNS) - {"float32"}
 CREATE = Node(
     "survey",
     "source@1",
@@ -570,8 +774,13 @@ def _writer_graph(column: str) -> Graph:
     return Graph("toy", (SOURCE,), (CREATE, writer))
 
 
-def _registry(write: Callable[[KernelContext], None]) -> KernelRegistry:
-    def compute(context: KernelContext) -> KernelResult:
+def _registry(
+    write: Callable[[KernelContext], None],
+    *,
+    compute: Callable[[KernelContext], KernelResult] | None = None,
+    capabilities: Capabilities | None = None,
+) -> KernelRegistry:
+    def written_then_zeros(context: KernelContext) -> KernelResult:
         write(context)
         return _zeros(context.tables["person"])
 
@@ -584,7 +793,11 @@ def _registry(write: Callable[[KernelContext], None]) -> KernelRegistry:
         )
     )
     registry.register(
-        _Kernel("writer@1", Capabilities(Determinism.DETERMINISTIC), compute)
+        _Kernel(
+            "writer@1",
+            capabilities or Capabilities(Determinism.DETERMINISTIC),
+            compute or written_then_zeros,
+        )
     )
     return registry
 
@@ -628,35 +841,36 @@ def _run(
     )
 
 
-@pytest.mark.parametrize(
-    "column", ["float64", "int32", "bool", "Int64", "boolean", "string_python"]
+_RUN_GRAPH_WRITES = (
+    "loc cell",
+    "column assignment",
+    "item write through to_numpy()",
+    "item write through values",
+    "item write through array",
+    "item write through np.asarray(array)",
+    "item write through to_numpy().base",
+    "setflags(write=True) on to_numpy(), then an item write",
 )
+
+
 @pytest.mark.parametrize(
-    "write",
+    ("write", "column"),
     [
-        "loc cell",
-        "column assignment",
-        "item write through to_numpy()",
-        "item write through values",
-        "item write through array",
-        "item write through np.asarray(array)",
+        (write, column)
+        for write, column in LANDING_WRITES
+        if write in _RUN_GRAPH_WRITES and column in GRAPH_COLUMNS_FOR_WRITES
     ],
 )
 def test_a_kernel_that_writes_into_its_inputs_changes_nothing_it_reads(
     tmp_path: Path, write: str, column: str
 ) -> None:
-    """The write raises, lands in the kernel's own copy, or rejects the node.
-
-    ``to_numpy()`` and ``np.asarray(array)`` of a nullable column with a
-    missing value return a converted copy, so a write into one is the
-    kernel's own and the run completes.
-    """
+    """The write raises, which fails the node, or the comparison rejects it."""
 
     def vandal(context: KernelContext) -> None:
         WRITES[write](context.tables["person"], column)
 
     observe, held, admitted = _watch_create()
-    try:
+    with pytest.raises(NodeRejected, match="'writer'"):
         _run(
             _writer_graph(column),
             _registry(vandal),
@@ -664,19 +878,26 @@ def test_a_kernel_that_writes_into_its_inputs_changes_nothing_it_reads(
             _source_directory(tmp_path / "source"),
             observe,
         )
-    except NodeRejected as error:
-        assert "'writer'" in str(error)
     (population,) = held
     assert _population_storage(population) == admitted[0]
 
 
 @pytest.mark.parametrize(
-    "column", ["float64", "int64", "int32", "float32", "Int64_no_missing"]
+    ("ufunc", "column"),
+    [
+        ("add", "float64"),
+        ("add", "int64"),
+        ("add", "int32"),
+        ("add", "float32"),
+        ("add", "Int64_no_missing"),
+        ("maximum", "float64"),
+        ("negative", "int64"),
+    ],
 )
 def test_a_ufunc_at_write_is_rejected_and_the_store_keeps_the_source_bytes(
-    tmp_path: Path, column: str
+    tmp_path: Path, ufunc: str, column: str
 ) -> None:
-    """The one write that passes a read-only view: rejected, and nothing stored."""
+    """``ufunc.at`` writes into a read-only array: rejected, and nothing stored."""
 
     source = _source_directory(tmp_path / "source")
     store = ContentStore(tmp_path / "store")
@@ -685,17 +906,19 @@ def test_a_ufunc_at_write_is_rejected_and_the_store_keeps_the_source_bytes(
     stored_before = _stored_objects(store)
     landed: list[bool] = []
 
-    def add_at(context: KernelContext) -> None:
+    def write_at(context: KernelContext) -> None:
         values = context.tables["person"][column].to_numpy()
         before = values.copy()
-        np.add.at(values, [0], 1)
+        if ufunc == "negative":
+            np.negative.at(values, [0])
+        else:
+            getattr(np, ufunc).at(values, [0], 100)
         landed.append(not np.array_equal(values, before))
 
     with pytest.raises(NodeRejected, match="mutated its input context"):
-        _run(_writer_graph(column), _registry(add_at), store, source)
+        _run(_writer_graph(column), _registry(write_at), store, source)
     assert landed == [True]
-    stored_after = _stored_objects(store)
-    assert {name: stored_after.get(name) for name in stored_before} == stored_before
+    assert _stored_objects(store) == stored_before
 
     again = _run(create_only, _registry(lambda context: None), store, source)
     assert again.nodes["survey"].hit
@@ -785,6 +1008,165 @@ def test_a_kernel_that_writes_only_its_own_copy_runs_and_changes_nothing(
     assert _population_storage(held[0]) == admitted[0]
 
 
+VALUE_PRESERVING_WRITES: dict[str, Callable[[pd.DataFrame, str], None]] = {
+    "loc into an empty selection": lambda table, column: table.loc.__setitem__(
+        (table[column] < -1e9, column), 0.0
+    ),
+    "iloc cell with its own value": lambda table, column: table.iloc.__setitem__(
+        (0, table.columns.get_loc(column)), table[column].iloc[0]
+    ),
+    "update with the same values": lambda table, column: table.update(
+        pd.DataFrame({column: table[column].to_numpy().copy()}, index=table.index)
+    ),
+    "clip(inplace=True) clipping nothing": lambda table, column: table.clip(
+        lower=-1e9, inplace=True
+    ),
+    "loc[:, column] *= 1": lambda table, column: table.loc.__setitem__(
+        (slice(None), column), table.loc[:, column] * 1
+    ),
+}
+
+
+@pytest.mark.parametrize("write", VALUE_PRESERVING_WRITES)
+def test_a_pandas_write_that_changes_no_value_still_runs(
+    tmp_path: Path, write: str
+) -> None:
+    """As on the deep copy: pandas copies the column first, and nothing changed."""
+
+    def same_values(context: KernelContext) -> None:
+        VALUE_PRESERVING_WRITES[write](context.tables["person"], "float64")
+
+    observe, held, admitted = _watch_create()
+    manifest = _run(
+        _writer_graph("float64"),
+        _registry(same_values),
+        ContentStore(tmp_path / "store"),
+        _source_directory(tmp_path / "source"),
+        observe,
+    )
+    assert manifest.population("survey").person["out"].tolist() == [0.0] * 6
+    assert _population_storage(held[0]) == admitted[0]
+
+
+_VALIDATION_WRITES: dict[str, Callable[[pd.DataFrame], None]] = {
+    "loc cell": lambda table: table.loc.__setitem__((table.index[0], "float64"), 99.0),
+    "clip(inplace=True)": lambda table: table.clip(lower=2.0, inplace=True),
+}
+
+
+@pytest.mark.parametrize("write", _VALIDATION_WRITES)
+def test_a_validation_kernel_that_writes_into_its_input_is_rejected(
+    tmp_path: Path, write: str
+) -> None:
+    """Rejected as before, not stored as a failed verdict from a read-only error."""
+
+    def check(context: KernelContext) -> KernelResult:
+        table = context.tables["person"]
+        _VALIDATION_WRITES[write](table)
+        ids = pd.Index(table["person_id"].to_numpy(copy=True), name="person_id")
+        return KernelResult(
+            columns={("person", "out"): pd.Series(0.0, index=ids, dtype="float64")},
+            receipt={"outcome": "pass", "evidence": {}},
+        )
+
+    observe, held, admitted = _watch_create()
+    with pytest.raises(NodeRejected, match="mutated its input context"):
+        _run(
+            _writer_graph("float64"),
+            _registry(
+                lambda context: None,
+                compute=check,
+                capabilities=Capabilities(
+                    Determinism.DETERMINISTIC, role=KernelRole.GATE
+                ),
+            ),
+            ContentStore(tmp_path / "store"),
+            _source_directory(tmp_path / "source"),
+            observe,
+        )
+    assert _population_storage(held[0]) == admitted[0]
+
+
+def _strided_population() -> Population:
+    """A population whose float columns are strided views of one C-order matrix."""
+
+    rows = 1_003
+    matrix = np.random.default_rng(5).normal(size=(rows, 3))
+    person = pd.DataFrame(matrix, columns=["x0", "x1", "x2"], copy=False).assign(
+        person_id=np.arange(1, rows + 1, dtype=np.int64),
+        person_household_id=np.ones(rows, dtype=np.int64),
+    )
+    frame = Frame.adopt(
+        {"person": person, "household": pd.DataFrame({"household_id": [1]})},
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.array([1.0]), WeightKind.DESIGN)},
+    )
+    assert not frame.table("person")["x0"].to_numpy().flags.c_contiguous
+    return Population.from_frame(frame, "survey")
+
+
+def test_a_table_with_a_strided_column_is_copied_as_before() -> None:
+    """Kernels get the old contiguous deep copy, block for block.
+
+    ``np.dot`` can round differently when its operands' layout or alignment
+    changes, so separate contiguous copies would not reproduce the old bytes.
+    """
+
+    population = _strided_population()
+    context = _project(population, ("x0", "x1", "x2"))
+    table = context.tables["person"]
+    expected = (
+        population.frame.table("person")
+        .loc[:, ["person_id", "person_household_id", "x0", "x1", "x2"]]
+        .copy(deep=True)
+    )
+    pd.testing.assert_frame_equal(table, expected, check_exact=True)
+    assert [(str(block.dtype), block.values.shape) for block in table._mgr.blocks] == [
+        (str(block.dtype), block.values.shape) for block in expected._mgr.blocks
+    ]
+    assert all(table[name].to_numpy().flags.c_contiguous for name in ("x0", "x1"))
+    assert not np.shares_memory(
+        table["x0"].to_numpy(), population.frame.table("person")["x0"].to_numpy()
+    )
+
+
+def test_a_bool_byte_written_through_a_uint8_view_changes_the_digest() -> None:
+    """``np.add.at`` can store a 2 that still reads as True; the digest sees it."""
+
+    population = _kinds_population()
+    context = _project(population, ("bool",))
+    before = graph_executor._context_digest(context)
+    np.add.at(context.tables["person"]["bool"].to_numpy().view(np.uint8), [0], 1)
+    assert population.frame.table("person")["bool"].to_numpy().view(np.uint8)[0] == 2
+    assert graph_executor._context_digest(context) != before
+
+
+class _TaggedFrame(pd.DataFrame):
+    _metadata = ["tag"]
+
+    @property
+    def _constructor(self) -> type[_TaggedFrame]:
+        return _TaggedFrame
+
+
+def test_a_pandas_subclass_table_keeps_its_type_and_metadata() -> None:
+    frame = _kinds_frame()
+    person = _TaggedFrame(frame.table("person"))
+    person.tag = "invented"
+    tagged = Frame(
+        {"person": person, "household": frame.table("household")},
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+    for rows in (ROWS_ALL, "selected"):
+        table = _project(Population.from_frame(tagged, "survey"), rows=rows).tables[
+            "person"
+        ]
+        assert type(table) is _TaggedFrame
+        assert table.tag == "invented"
+
+
 # ----------------------------------------------------------------------
 # Peak memory
 # ----------------------------------------------------------------------
@@ -834,14 +1216,17 @@ def _input_bytes(population: Population) -> int:
     return total
 
 
-def _traced_projection(population: Population, rows: str) -> tuple[int, int]:
+def _traced_projection(
+    population: Population, rows: str, columns: tuple[str, ...] | None = None
+) -> tuple[int, int]:
     """Bytes the context holds after projection, and the peak during it."""
 
-    columns = tuple(
-        column
-        for column in population.frame.table("person").columns
-        if column not in {"person_id", "person_household_id"}
-    )
+    if columns is None:
+        columns = tuple(
+            column
+            for column in population.frame.table("person").columns
+            if column not in {"person_id", "person_household_id"}
+        )
     gc.collect()
     tracemalloc.start()
     try:
@@ -886,3 +1271,17 @@ def test_a_masked_context_allocates_one_copy_of_the_selected_rows() -> None:
     input_bytes = _input_bytes(population)
     assert held < 0.65 * input_bytes
     assert peak < 0.8 * input_bytes
+
+
+def test_a_masked_context_copies_only_the_columns_it_reads() -> None:
+    """Two of 31 columns under a row mask: no copy of the other columns' rows.
+
+    Copying every column's selected rows first would cost 0.5 times the input
+    columns on its own.
+    """
+
+    population = _wide_population()
+    held, peak = _traced_projection(population, "half", ("float64_0", "half"))
+    input_bytes = _input_bytes(population)
+    assert held < 0.2 * input_bytes
+    assert peak < 0.3 * input_bytes

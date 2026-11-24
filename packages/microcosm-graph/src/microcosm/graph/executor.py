@@ -8,6 +8,7 @@ import pickle
 import socket
 import stat
 import time
+import weakref
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, fields, replace
@@ -350,12 +351,13 @@ def _freeze_series(series: pd.Series) -> None:
 # Kernel inputs (amendment 31). A kernel's tables and strata are new pandas
 # objects over read-only views of the memory they are projected from: the
 # population's own for a node that reads every row, and the single copy
-# ``.loc`` makes of the selected rows otherwise. Nothing else is copied. A
-# pandas write raises or stays on the kernel's own objects, and so does an
-# item write into an array a column hands out. ``np.<ufunc>.at`` writes even
-# into a read-only array, so such a write reaches the population's memory;
-# the before/after context digest then rejects the node before its result is
-# applied or stored.
+# ``.loc`` makes of the selected rows otherwise. Nothing else is copied. pandas
+# copies a column before writing into it, so a pandas write lands only in the
+# kernel's own table, where the before/after context digest sees it. An item
+# write into an array a column hands out, or into its ``.base``, raises, and
+# so does ``setflags(write=True)``. ``np.<ufunc>.at`` writes even into a
+# read-only array, so such a write reaches the population's memory; the digest
+# then rejects the node before its result is applied or stored.
 
 _MASKED_ARRAY_TYPES = (
     pd.arrays.BooleanArray,
@@ -364,12 +366,46 @@ _MASKED_ARRAY_TYPES = (
 )
 
 
-def _read_only_view(values: np.ndarray) -> np.ndarray:
-    """A new view of the memory of ``values`` that item assignment refuses."""
+class _ReadOnlyMemory:
+    """Memory another array owns, offered to NumPy as read-only.
 
-    view = values.view()
-    view.setflags(write=False)
-    return view
+    ``ndarray.view()`` keeps the array it views as its ``base``. For a kernel
+    input that base is the population's own writable array, often the whole
+    block holding every column of one dtype, so a kernel could write through
+    ``view.base`` into columns it never declared, or make the view writable
+    again with ``setflags(write=True)``. An array NumPy builds from this
+    object's array interface has this object as its ``base`` instead. It
+    exposes no array, so NumPy refuses both.
+    """
+
+    __slots__ = ("__array_interface__", "_owner")
+
+    def __init__(self, owner: np.ndarray) -> None:
+        interface = dict(owner.__array_interface__)
+        interface["data"] = (interface["data"][0], True)
+        self.__array_interface__ = interface
+        self._owner = owner  # keeps the memory alive
+
+
+class _StridedMemoryError(Exception):
+    """Raised for memory that is not one contiguous run.
+
+    The deep copy kernels got before #1679 held each dtype's columns in one
+    contiguous block, and BLAS products such as ``np.dot`` can round
+    differently when an operand's layout or alignment changes. A table with
+    a strided column is therefore copied exactly as before.
+    """
+
+
+def _read_only_view(values: np.ndarray) -> np.ndarray:
+    """An array over the memory of ``values`` that cannot be written or unlocked.
+
+    Raises :class:`_StridedMemoryError` for a strided ``values``.
+    """
+
+    if not values.flags.c_contiguous:
+        raise _StridedMemoryError
+    return np.asarray(_ReadOnlyMemory(values))
 
 
 def _read_only_masked(values: pd.api.extensions.ExtensionArray) -> object:
@@ -432,6 +468,16 @@ def _read_only_index(index: pd.Index) -> pd.Index:
     return index.copy(deep=True)
 
 
+def _frozen_copy(table: pd.DataFrame) -> pd.DataFrame:
+    """A deep copy with its buffers marked read-only, as kernels got before."""
+
+    frozen = table.copy(deep=True)
+    for column in frozen.columns:
+        _freeze_series(frozen[column])
+    _set_read_only(frozen.index.to_numpy(copy=False))
+    return frozen
+
+
 def _read_only_series(series: pd.Series, index: pd.Index) -> pd.Series:
     values = _read_only_values(series)
     if values is None:
@@ -445,17 +491,58 @@ def _read_only_series(series: pd.Series, index: pd.Index) -> pd.Series:
     )
 
 
+def _keep_until_freed(_held: object) -> None:
+    """``weakref.finalize`` callback; holding its argument was the purpose."""
+
+
+def _copied_before_written(built: pd.DataFrame | pd.Series):
+    """A shallow copy of ``built`` that pandas copies before writing into.
+
+    pandas writes in place into memory no other live object shares, which
+    over read-only views raises. The copy shares its memory with ``built``,
+    which is kept alive until the copy is freed, so pandas copies a column
+    first and the write lands in the kernel's own table, as a write into the
+    deep copy kernels got before did.
+    """
+
+    shared = built.copy(deep=False)
+    weakref.finalize(shared, _keep_until_freed, built)
+    return shared
+
+
 def _read_only_table(table: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     """``table[columns]`` over read-only views of the memory of ``table``."""
 
-    index = _read_only_index(table.index)
-    projected = pd.DataFrame(
-        {column: _read_only_series(table[column], index) for column in columns},
-        index=index,
-        copy=False,
-    )
+    if type(table) is not pd.DataFrame:
+        # A pandas subclass keeps its type and metadata only through its own
+        # methods, so it is copied as before.
+        return _frozen_copy(table.loc[:, columns])
+    try:
+        index = _read_only_index(table.index)
+        projected = pd.DataFrame(
+            {column: _read_only_series(table[column], index) for column in columns},
+            index=index,
+            copy=False,
+        )
+    except _StridedMemoryError:
+        return _frozen_copy(table.loc[:, columns])
     projected.columns = table.columns[table.columns.get_indexer(columns)]
-    return projected.__finalize__(table)
+    return _copied_before_written(projected.__finalize__(table))
+
+
+def _read_only_strata(strata: pd.Series) -> pd.Series:
+    """The strata over read-only views, or a frozen copy as kernels got before."""
+
+    if type(strata) is pd.Series:
+        try:
+            viewed = _read_only_series(strata, _read_only_index(strata.index))
+        except _StridedMemoryError:
+            pass
+        else:
+            return _copied_before_written(viewed.__finalize__(strata))
+    copied = strata.copy()
+    _freeze_series(copied)
+    return copied
 
 
 def _detached_record(record):
@@ -657,6 +744,19 @@ def _update_series(digest: hashlib._Hash, series: pd.Series) -> None:
     _update_array(digest, series.index.to_numpy(copy=False))
 
 
+def _update_bool_bytes(digest: hashlib._Hash, series: pd.Series) -> None:
+    """Add a NumPy bool column's stored bytes, which its value stream loses.
+
+    ``_update_series`` boxes each value, so every non-zero byte reads as
+    ``True``. A kernel input shares the population's memory (amendment 31),
+    and ``np.add.at`` through a ``uint8`` view of it can store a 2 that the
+    value stream would not see.
+    """
+
+    if series.dtype == np.bool_:
+        digest.update(np.ascontiguousarray(series.to_numpy()).view(np.uint8).tobytes())
+
+
 def _context_digest(context: KernelContext) -> bytes:
     digest = hashlib.sha256(b"microcosm-graph/kernel-context/1\0")
     for entity in sorted(context.tables):
@@ -665,12 +765,14 @@ def _context_digest(context: KernelContext) -> bytes:
         for column in table.columns:
             digest.update(str(column).encode("utf-8") + b"\0")
             _update_series(digest, table[column])
+            _update_bool_bytes(digest, table[column])
     for entity in sorted(context.weights):
         weights = context.weights[entity]
         digest.update(entity.encode("utf-8") + b"\0")
         digest.update(weights.kind.value.encode("ascii") + b"\0")
         _update_array(digest, weights.values)
     _update_series(digest, context.strata)
+    _update_bool_bytes(digest, context.strata)
     for name, value in sorted(context.artifacts.items()):
         digest.update(
             canonical_json(
@@ -896,9 +998,7 @@ def _project_context(
         np.ones(frame.n(frame.schema.person_entity), dtype=np.bool_),
     )
     strata_source = frame.strata if person_mask.all() else frame.strata.loc[person_mask]
-    strata = _read_only_series(
-        strata_source, _read_only_index(strata_source.index)
-    ).__finalize__(strata_source)
+    strata = _read_only_strata(strata_source)
     # The projection above orders each table by declaration, not by the
     # version's own layout, so a consumer rebuilding the version's tables
     # needs that layout separately -- restricted to what it was given, so it
