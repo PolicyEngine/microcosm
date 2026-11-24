@@ -170,6 +170,39 @@ def test_runtime_requires_the_exact_predecessor_prefix(tmp_path: Path) -> None:
         StageRuntime(tmp_path, _pipeline(), run_config={"seed": 43})
 
 
+def test_resume_skips_only_the_named_run_config_values(tmp_path: Path) -> None:
+    ignored_paths = (("threads", "fit_jobs"),)
+    first_config = {"seed": 42, "threads": {"fit_jobs": "1", "numeric": "1"}}
+    StageRuntime(
+        tmp_path,
+        _pipeline(),
+        run_config=first_config,
+        resume_ignored_run_config_paths=ignored_paths,
+    )
+
+    resumed = StageRuntime(
+        tmp_path,
+        _pipeline(),
+        run_config={"seed": 42, "threads": {"fit_jobs": "8", "numeric": "1"}},
+        resume_ignored_run_config_paths=ignored_paths,
+    )
+    assert resumed.context.run_config == first_config
+
+    with pytest.raises(ValueError, match="locked run context"):
+        StageRuntime(
+            tmp_path,
+            _pipeline(),
+            run_config={"seed": 42, "threads": {"fit_jobs": "1", "numeric": "2"}},
+            resume_ignored_run_config_paths=ignored_paths,
+        )
+    with pytest.raises(ValueError, match="locked run context"):
+        StageRuntime(
+            tmp_path,
+            _pipeline(),
+            run_config={"seed": 42, "threads": {"fit_jobs": "8", "numeric": "1"}},
+        )
+
+
 def test_runtime_carries_a_checkpoint_without_rewriting_it(tmp_path: Path) -> None:
     runtime = StageRuntime(tmp_path, _pipeline())
     source = runtime.complete("source", _source_frame(), metadata={"source": "pool"})

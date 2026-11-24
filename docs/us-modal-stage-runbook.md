@@ -1161,11 +1161,14 @@ without checkpoints would lose the whole run. With them, `--stage all`
 resumes from the last completed outer stage (`_run_staged_all`). The tool
 locks its whole run config in `stage_run_context.json` (input paths and
 digests, settings, its code identity and the thread variables it sees) and
-refuses a resume whose config differs. Every path in it is the same in
+refuses a resume whose config differs. Code newer than the pinned
+`4b57d15a2` that contains the QRF thread-count change records
+`POPULACE_FIT_N_JOBS` and `POPULACE_FIT_PREDICT_WORKERS` without comparing
+them. Every path in the config is the same in
 every attempt of the run, and so are the image, the plan's environment and
 the class, so a relaunch of the same plan should resume. If Modal gave the
-new container different thread variables, the tool would refuse, and the
-run would need a new `run_id`. The cost has three parts:
+new container different compared thread variables, the tool would refuse,
+and the run would need a new `run_id`. The cost has three parts:
 
 - one copy of about 46 GB when the tool stops, hashed as it is copied;
 - the same pulled back by a resuming attempt, hashed and verified in that
@@ -1544,9 +1547,10 @@ archives.
 - *CPU.* `full-staging-a3` in
   `experiments/us-acs-local-hours-rebuild-20260922/run-resources-and-staging-excerpt.json`
   measured 103,104.6 CPU-s over 7,218.1 s of wall, 14.3 cores on average.
-  The QRF forest uses `n_jobs=-1` when `POPULACE_FIT_N_JOBS` is unset, and
-  prediction sizes its pool from `os.cpu_count()` when
-  `POPULACE_FIT_PREDICT_WORKERS` is unset (`microcosm.fit.qrf`). Sixteen
+  The QRF forest uses `n_jobs=-1` when `POPULACE_FIT_N_JOBS` is unset. With
+  `POPULACE_FIT_PREDICT_WORKERS` unset, prediction sizes its pool from
+  `os.cpu_count()` at this plan's pinned commit `74f5e6123`, and from
+  `joblib.cpu_count()` in later code (`microcosm.fit.qrf`). Sixteen
   cores accommodate the observed average with 1.7 cores of headroom; the
   limit throttles use above sixteen. Neither the average nor the request
   establishes the container's visible CPU count. The receipt records
