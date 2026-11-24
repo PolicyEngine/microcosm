@@ -6,9 +6,9 @@ Advani, Flew, Pepin-Hall and Summers (CenTax, September 2026), *Removing the
 ``AdvaniFlewPepinhallSummers2026_ChildcareThreshold_data.xlsx``, which Chronicle
 registers raw-only as ``centax-childcare-cliff-edge-2026``. This tool checks a
 local copy of the workbook against that registration's pins
-(``microcosm.build.pinned_inputs``), reads Figures 3.1, 3.3, 3.6 and 3.7 from it
-and writes six derived facts (see ``uk_runtime/centax_childcare_parents.py``):
-three ANI band shares of the parents in (£50k, £200k], and three splits of the
+(``microcosm.build.pinned_inputs``), reads Figures 3.1, 3.6 and 3.7 from it and
+writes five derived facts (see ``uk_runtime/centax_childcare_parents.py``):
+three ANI band shares of the parents in (£50k, £200k], and two splits of the
 parents in (£80k, £150k], each times ``parent_count``.
 
 ``parent_count`` is the baseline build's own number of parents in the aged
@@ -21,8 +21,8 @@ agree with the diagnostics'.
 Never read into the resource: CenTax's model outputs (Tables 3.1, 3.2 and 4.1,
 the frictions, elasticities, marginal bunchers and every cost) and the figures
 kept as diagnostics (Table A.1's levels, Figures 2.1 and 3.12, the band below
-£50k and the region groups outside London), which the diagnostic reads from the
-registered workbook itself.
+£50k, the region groups outside London and Figure 3.3's non-employees), which the
+diagnostic reads from the registered workbook itself.
 
     uv run --no-sync python tools/build_uk_centax_childcare_parent_facts.py \\
         --manifest <chronicle>/db/data/centax/childcare_cliff_edge_2026/manifest.yaml \\
@@ -128,9 +128,6 @@ _CELL_LABELS = {
     "ani_80k_to_120k": "ANI over £80,000 to £120,000",
     "ani_120k_to_200k": "ANI over £120,000 to £200,000",
     "female_ani_80k_to_150k": "women, ANI over £80,000 to £150,000",
-    "non_employee_ani_80k_to_150k": (
-        "main income source other than employment, ANI over £80,000 to £150,000"
-    ),
     "london_ani_80k_to_150k": "London, ANI over £80,000 to £150,000",
 }
 _CELL_FIGURES = {
@@ -250,7 +247,6 @@ def centax_shares(workbook: Any) -> tuple[dict[str, float], float]:
     """Each bound cell's share of the parents in (£50k, £200k], and the split band's."""
 
     fig31 = read_series(workbook, "Fig. 3.1")["Number of Taxpayer in Income Bin"]
-    fig33 = read_series(workbook, "Fig. 3.3")
     fig36 = read_series(workbook, "Fig. 3.6")
     regions = england_region_columns(workbook)
     base_lower, base_upper = CENTAX_SHARE_BASE_2022
@@ -265,9 +261,6 @@ def centax_shares(workbook: Any) -> tuple[dict[str, float], float]:
     split_within = {
         "female": within_split_band(
             fig36, "Number of Taxpayers in Income Bin (Females)"
-        ),
-        "non_employee": within_split_band(
-            fig33, "Number of Taxpayers in Income Bin (Non-Employees)"
         ),
         **{
             group: within_split_band(regions, group)
@@ -426,7 +419,7 @@ def build_resource(
             "source_page": manifest.get("source_page"),
             "licence": licence,
             "report_url": CENTAX_REPORT_URL,
-            "figures": ["Fig. 3.1", "Fig. 3.3", "Fig. 3.6", "Fig. 3.7"],
+            "figures": ["Fig. 3.1", "Fig. 3.6", "Fig. 3.7"],
         },
         "baseline": {
             "dataset": baseline["dataset"],

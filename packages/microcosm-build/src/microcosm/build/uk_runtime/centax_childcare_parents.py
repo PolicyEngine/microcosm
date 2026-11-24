@@ -9,21 +9,20 @@ one term of the year (Figure 3.1), split by main source of income (3.3), sex
 is registered raw-only in Chronicle as ``centax-childcare-cliff-edge-2026``;
 ``tools/build_uk_centax_childcare_parent_facts.py`` checks the workbook's bytes
 against that registration and writes the committed resource
-``uk/centax_childcare_parent_facts.json``: six counts at England grain.
+``uk/centax_childcare_parent_facts.json``: five counts at England grain.
 
 - Three ANI bands, (£50k, £80k], (£80k, £120k] and (£120k, £200k] in 2021-22
   pounds, each Figure 3.1's share of the parents in (£50k, £200k].
-- Three splits of the parents in (£80k, £150k], the widest band every split
-  figure covers: female (3.6), main source other than employment (3.3), and
-  London (3.7).
+- Two splits of the parents in (£80k, £150k], the widest band every split
+  figure covers: female (3.6) and London (3.7).
 
 Microcosm targets are sums, so each share becomes a count: the share times
 ``parent_count``, the baseline build's own parents with ANI in the aged
 (£50k, £200k] at the calibration year. The targets set the shape of the
 distribution above £50k and leave its level where the baseline put it.
 
-Two cells of the first design are diagnostics, reported by
-``tools/diagnose_uk_centax_parents.py`` and never bound (Vahid's review of
+Three cells of the first design are diagnostics, reported by
+``tools/diagnose_uk_centax_parents.py`` and never bound (Vahid's reviews of
 microcosm#1399):
 
 - ANI up to £50k. CenTax counts taxpayers that HMRC's PAYE and Self Assessment
@@ -35,6 +34,9 @@ microcosm#1399):
   list its regions; the East of England's place in the South is inferred
   (``CENTAX_REGION_GROUP_CODES``). London binds; the diagnostic reports the
   other two groups under both placements of the East.
+- Main source other than employment (Figure 3.3). The cell rests on fewer than
+  3 FRS source households, too few to bind (María's ruling of 24 November
+  2026).
 
 Only the published tabulations are used. CenTax's model outputs (bunching
 estimates, frictions, elasticities, marginal bunchers, costs) never enter the
@@ -50,10 +52,11 @@ whose edges differ. ANI is the year's annual concept
 in the tax year.
 
 This module is the one place that knows the resource's shape and the two
-measures the targets read: ``centax_parent_of_eligible_3_4_year_old`` (an
+measures the cells read: ``centax_parent_of_eligible_3_4_year_old`` (an
 adult in a benefit unit with such a child, as policyengine-uk dates its
 terms) and ``centax_employment_main_income_source`` (employment is the
-largest income source in the year).
+largest income source in the year), which only the diagnostic's
+non-employee cell reads.
 """
 
 from __future__ import annotations
@@ -82,6 +85,7 @@ __all__ = [
     "CENTAX_DATA_TAX_YEAR",
     "CENTAX_DERIVED_FACT_KEY_PREFIX",
     "CENTAX_DIAGNOSTIC_BAND_2022",
+    "CENTAX_DIAGNOSTIC_SPLITS",
     "CENTAX_EAST_OF_ENGLAND",
     "CENTAX_ELIGIBLE_DFE_AGES",
     "CENTAX_EMPLOYEE_MAIN_SOURCE",
@@ -108,6 +112,7 @@ __all__ = [
     "centax_cell_filters",
     "centax_cell_ids",
     "centax_cell_measurement_filters",
+    "centax_diagnostic_cell_ids",
     "centax_region_codes",
     "employment_main_income_source",
     "load_uk_centax_childcare_parent_facts",
@@ -190,12 +195,14 @@ CENTAX_REGION_GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
 #: The region groups the targets bind: London, the one group the figure names
 #: without doubt (Vahid's review, item 3).
 CENTAX_BOUND_REGION_GROUPS: tuple[str, ...] = ("london",)
-#: The split cells, each with the workbook figure it reads.
+#: The split cells the targets bind, each with the workbook figure it reads.
 CENTAX_SPLITS: tuple[tuple[str, str], ...] = (
     ("female", "Fig. 3.6"),
-    ("non_employee", "Fig. 3.3"),
     ("london", "Fig. 3.7"),
 )
+#: The split the diagnostic reports and the targets never bind: its cell rests
+#: on fewer than 3 FRS source households (María's ruling of 24 November 2026).
+CENTAX_DIAGNOSTIC_SPLITS: tuple[tuple[str, str], ...] = (("non_employee", "Fig. 3.3"),)
 
 CENTAX_PARENT_OF_ELIGIBLE_3_4 = "centax_parent_of_eligible_3_4_year_old"
 CENTAX_EMPLOYEE_MAIN_SOURCE = "centax_employment_main_income_source"
@@ -341,11 +348,17 @@ def centax_ani_uprating(calibration_year: int) -> float:
 
 
 def centax_cell_ids() -> tuple[str, ...]:
-    """Every bound cell of the resource: the three bands, then the three splits."""
+    """Every bound cell of the resource: the three bands, then the bound splits."""
 
     return tuple(band for band, _, _ in CENTAX_ANI_BANDS_2022) + tuple(
         f"{split}_ani_80k_to_150k" for split, _ in CENTAX_SPLITS
     )
+
+
+def centax_diagnostic_cell_ids() -> tuple[str, ...]:
+    """The split cells the diagnostic reports and the targets never bind."""
+
+    return tuple(f"{split}_ani_80k_to_150k" for split, _ in CENTAX_DIAGNOSTIC_SPLITS)
 
 
 def centax_region_codes(

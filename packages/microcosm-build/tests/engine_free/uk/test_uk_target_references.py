@@ -144,9 +144,10 @@ _TEST_PATHS = paths_for("microcosm-build")
 # PolicyEngine/microcosm#1663: RTI's pay of employees aged 18 to 24 and
 # England's PIP cases aged 16 to 24 at each component's enhanced rate, three
 # checks held out of the solve, and DWP's young people with the UC health
-# element in England and Wales (Table 28), bound; microcosm#1399: + 6, CenTax's
-# parent cells of age-eligible 3- and 4-year-olds in England
-ACTIVE_REFERENCE_COUNT = 1720
+# element in England and Wales (Table 28), bound; microcosm#1399: + 5, CenTax's
+# parent cells of age-eligible 3- and 4-year-olds in England (its non-employee
+# cell is a diagnostic, María's ruling of 2026-11-24)
+ACTIVE_REFERENCE_COUNT = 1719
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 
 

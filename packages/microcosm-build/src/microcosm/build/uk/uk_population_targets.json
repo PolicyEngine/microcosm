@@ -1102,7 +1102,6 @@
       "microcosm.centax_childcare_parents.ani_80k_to_120k": "Microcosm-derived fact family (parents of age-eligible 3- and 4-year-olds in England by adjusted net income, from CenTax's HMRC tabulations; uk/centax_childcare_parent_facts.json, microcosm#1399), no uk-data metric. Bound on the national line only (calibration_lines).",
       "microcosm.centax_childcare_parents.ani_120k_to_200k": "Microcosm-derived fact family (parents of age-eligible 3- and 4-year-olds in England by adjusted net income, from CenTax's HMRC tabulations; uk/centax_childcare_parent_facts.json, microcosm#1399), no uk-data metric. Bound on the national line only (calibration_lines).",
       "microcosm.centax_childcare_parents.female_ani_80k_to_150k": "Microcosm-derived fact family (parents of age-eligible 3- and 4-year-olds in England by adjusted net income, from CenTax's HMRC tabulations; uk/centax_childcare_parent_facts.json, microcosm#1399), no uk-data metric. Bound on the national line only (calibration_lines).",
-      "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k": "Microcosm-derived fact family (parents of age-eligible 3- and 4-year-olds in England by adjusted net income, from CenTax's HMRC tabulations; uk/centax_childcare_parent_facts.json, microcosm#1399), no uk-data metric. Bound on the national line only (calibration_lines).",
       "microcosm.centax_childcare_parents.london_ani_80k_to_150k": "Microcosm-derived fact family (parents of age-eligible 3- and 4-year-olds in England by adjusted net income, from CenTax's HMRC tabulations; uk/centax_childcare_parent_facts.json, microcosm#1399), no uk-data metric. Bound on the national line only (calibration_lines)."
     },
     "suppressed_ancestors": {
@@ -1742,7 +1741,6 @@
       "microcosm.centax_childcare_parents.ani_80k_to_120k",
       "microcosm.centax_childcare_parents.ani_120k_to_200k",
       "microcosm.centax_childcare_parents.female_ani_80k_to_150k",
-      "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k",
       "microcosm.centax_childcare_parents.london_ani_80k_to_150k"
     ]
   },
@@ -50777,84 +50775,6 @@
       },
       "category_id": "microcosm.centax_childcare_parents",
       "label": "Parents of age-eligible 3- and 4-year-olds, women, ANI over £80,000 to £150,000 (2021-22 pounds)",
-      "selector_note": "Microcosm-derived counts (uk/centax_childcare_parent_facts.json, built by tools/build_uk_centax_childcare_parent_facts.py from CenTax's data for the charts of Advani, Flew, Pepin-Hall and Summers 2026, Removing the £100,000 childcare cliff-edge, which Chronicle registers raw-only as centax-childcare-cliff-edge-2026; the builder checks the workbook's bytes against that registration). Each value is a share CenTax published from HMRC's 2021-22 tabulations (Figures 3.1, 3.3, 3.6 and 3.7) of the parents with ANI in (£50k, £200k], times the baseline build's own parents in that range aged to the calibration year, so the cells set the shape of the distribution above £50k and leave its level where the baseline put it. The range starts at £50k because CenTax counts the taxpayers HMRC's PAYE and Self Assessment data hold: a parent whose only income is savings interest or a taxable benefit has positive ANI in the model but no such record, and almost all of them sit below £50k, so a share of (0, £200k] would have scaled every cell up with them. The band up to £50k is a diagnostic (tools/diagnose_uk_centax_parents.py), not a target. The bands are wide on purpose: in 2021-22, with the cliff at £100k, the (£80k, £120k] band held both the parents who bunched below it and those they came from above it, and the FRS has too few effective households above £80k to bind narrower bins. Aged to the calibration year, though, that band and the split band start at £98,698 while the cliff stays at £100k, so a parent who bunches that year to below £98,698 leaves them for the band below. Their counts therefore assume no bunching under the frozen cliff, and lean high by about the parents who bunch below that edge: CenTax estimates 2,610 bunching parents of 3- and 4-year-olds in 2022 (p. 22). The edges are aged by average earnings because the spine's incomes are, so each cell keeps its place in the distribution. The three splits cover (£80k, £150k], the widest band every split figure covers. Its top edge was the additional-rate threshold in 2021-22, and Figures 3.3 and 3.7 show a spike in the last bin; aged to £185,059 it marks no 2025-26 threshold, while the £125,140 additional-rate threshold falls inside the band, so the band holds that bin's extra mass. London binds; the South excluding London and the North and Midlands are diagnostics, because Figure 3.7 does not list its regions and the East of England's place in the South is inferred. Figure 3.7 pools the tax years 2018-19 to 2021-22 in nominal pounds, so London's share of the band is a pooled share held for 2021-22's band. England only: CenTax tabulates England's free hours. CenTax finds parents through childcare accounts (2018-2025), PAYE parental leave (from 2014-15) and address matching of partners (pp. 12-13 and Appendix A, Figure A.1), so it misses couples with none of these, mostly self-employed or company-owning parents over £100k; the report says this understates parents above £100k relative to those below, so the upper cells may lean low. CenTax's model outputs (the bunching estimates of Tables 3.1, 3.2 and 4.1, frictions, elasticities, marginal bunchers and costs) never enter. Bound on the national line only (calibration_lines); the local line drops the rows."
-    },
-    {
-      "target_id": "microcosm.centax_childcare_parents.non_employee_ani_80k_to_150k",
-      "family": "centax_childcare_parents",
-      "geography_levels": [
-        "country"
-      ],
-      "calibration_lines": [
-        "national"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "observation_basis": "fiscal_year_flow",
-        "filters": [
-          {
-            "concept": "uk.childcare.centax_parent_of_eligible_3_4_year_old",
-            "equals": 1
-          },
-          {
-            "concept": "uk.income.adjusted_net.amount",
-            "operator": ">",
-            "value": 98698
-          },
-          {
-            "concept": "uk.income.adjusted_net.amount",
-            "operator": "<=",
-            "value": 185059
-          },
-          {
-            "concept": "uk.income.employment.main_source",
-            "equals": 0
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "microcosm/centax_childcare_parents/non_employee_ani_80k_to_150k",
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "filters": [
-            {
-              "variable": "centax_parent_of_eligible_3_4_year_old",
-              "equals": 1
-            },
-            {
-              "variable": "adjusted_net_income_annual",
-              "operator": ">",
-              "value": 98698
-            },
-            {
-              "variable": "adjusted_net_income_annual",
-              "operator": "<=",
-              "value": 185059
-            },
-            {
-              "variable": "centax_employment_main_income_source",
-              "equals": 0
-            }
-          ],
-          "notes": "One of the six CenTax parent cells (microcosm#1399). centax_parent_of_eligible_3_4_year_old is 1 for an adult (not an HBAI dependent child) of a benefit unit with a dependent child in England whose DfE age (the model year less birth_year, as uk_runtime/dfe_spring_term.py keys it) is 3, 4 or 5 and whose early_years_term_share_before_school exceeds a sixth: a child age-eligible for the universal hours in at least one of the year's three terms, as CenTax counts it. The DfE caseloads read the same age and term share but count the spring term only (share above a half). adjusted_net_income_annual is the year's ANI on the annual-income simulation, because HMRC's data count what each parent received in the tax year. The edges are CenTax's 2021-22 pounds aged to the calibration year by the OBR average earnings index policyengine-uk carries, rounded to whole pounds; the derived-facts loader refuses a resource whose edges differ. centax_employment_main_income_source is 1 where the year's pay plus taxable benefits in kind is positive and at least each other component of the year's ANI: self-employment profit, private pension, each taxable benefit, property income, savings interest, other investment income, dividends and miscellaneous income. The report says only that the main source of income is employment (Figure 3.3's notes), not whether that is the largest single source or more than half of income; this reads the largest single source, and a tie goes to employment."
-        },
-        "axiom": {
-          "metric_name": "microcosm/centax_childcare_parents/non_employee_ani_80k_to_150k",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "microcosm",
-        "source_measure_id": "parents_of_eligible_3_4_year_olds",
-        "record_set_spec_id": "uk.centax_childcare_parents.non_employee_ani_80k_to_150k.v1"
-      },
-      "category_id": "microcosm.centax_childcare_parents",
-      "label": "Parents of age-eligible 3- and 4-year-olds, main income source other than employment, ANI over £80,000 to £150,000 (2021-22 pounds)",
       "selector_note": "Microcosm-derived counts (uk/centax_childcare_parent_facts.json, built by tools/build_uk_centax_childcare_parent_facts.py from CenTax's data for the charts of Advani, Flew, Pepin-Hall and Summers 2026, Removing the £100,000 childcare cliff-edge, which Chronicle registers raw-only as centax-childcare-cliff-edge-2026; the builder checks the workbook's bytes against that registration). Each value is a share CenTax published from HMRC's 2021-22 tabulations (Figures 3.1, 3.3, 3.6 and 3.7) of the parents with ANI in (£50k, £200k], times the baseline build's own parents in that range aged to the calibration year, so the cells set the shape of the distribution above £50k and leave its level where the baseline put it. The range starts at £50k because CenTax counts the taxpayers HMRC's PAYE and Self Assessment data hold: a parent whose only income is savings interest or a taxable benefit has positive ANI in the model but no such record, and almost all of them sit below £50k, so a share of (0, £200k] would have scaled every cell up with them. The band up to £50k is a diagnostic (tools/diagnose_uk_centax_parents.py), not a target. The bands are wide on purpose: in 2021-22, with the cliff at £100k, the (£80k, £120k] band held both the parents who bunched below it and those they came from above it, and the FRS has too few effective households above £80k to bind narrower bins. Aged to the calibration year, though, that band and the split band start at £98,698 while the cliff stays at £100k, so a parent who bunches that year to below £98,698 leaves them for the band below. Their counts therefore assume no bunching under the frozen cliff, and lean high by about the parents who bunch below that edge: CenTax estimates 2,610 bunching parents of 3- and 4-year-olds in 2022 (p. 22). The edges are aged by average earnings because the spine's incomes are, so each cell keeps its place in the distribution. The three splits cover (£80k, £150k], the widest band every split figure covers. Its top edge was the additional-rate threshold in 2021-22, and Figures 3.3 and 3.7 show a spike in the last bin; aged to £185,059 it marks no 2025-26 threshold, while the £125,140 additional-rate threshold falls inside the band, so the band holds that bin's extra mass. London binds; the South excluding London and the North and Midlands are diagnostics, because Figure 3.7 does not list its regions and the East of England's place in the South is inferred. Figure 3.7 pools the tax years 2018-19 to 2021-22 in nominal pounds, so London's share of the band is a pooled share held for 2021-22's band. England only: CenTax tabulates England's free hours. CenTax finds parents through childcare accounts (2018-2025), PAYE parental leave (from 2014-15) and address matching of partners (pp. 12-13 and Appendix A, Figure A.1), so it misses couples with none of these, mostly self-employed or company-owning parents over £100k; the report says this understates parents above £100k relative to those below, so the upper cells may lean low. CenTax's model outputs (the bunching estimates of Tables 3.1, 3.2 and 4.1, frictions, elasticities, marginal bunchers and costs) never enter. Bound on the national line only (calibration_lines); the local line drops the rows."
     },
     {

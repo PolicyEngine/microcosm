@@ -631,6 +631,15 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
             FULL_PROBLEM,
             NATIONAL,
         ),
+        # microcosm#1683: the frame bundle imports the shared-column check,
+        # which compares column digests before a write and raises
+        # SharedColumnChangedError on a mismatch. It changes no column, so no
+        # target value comes from it.
+        "microcosm.frame.bundle -> microcosm.frame.shared_columns": (
+            FULL_TARGETS,
+            FULL_PROBLEM,
+            NATIONAL,
+        ),
         "microcosm.build.gates -> microcosm.frame.weights": (
             FULL_TARGETS,
             FULL_PROBLEM,

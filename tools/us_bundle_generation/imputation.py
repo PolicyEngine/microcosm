@@ -954,7 +954,7 @@ def _worker_execution_template() -> dict[str, object]:
         "surface": "execution_profile",
         "resolve_as": "worker_execution",
         "template": {
-            "schema_version": 1,
+            "schema_version": 2,
             "semantic_identity": {
                 "resolver_op": "primary_qrf_worker_semantic_identity"
             },
@@ -962,6 +962,9 @@ def _worker_execution_template() -> dict[str, object]:
                 "resolver_op": "primary_qrf_worker_semantic_identity_sha256"
             },
             "audit_aliases": {"resolver_op": "primary_qrf_worker_audit_aliases"},
+            "audit_thread_controls": {
+                "resolver_op": "primary_qrf_worker_audit_thread_controls"
+            },
         },
     }
 

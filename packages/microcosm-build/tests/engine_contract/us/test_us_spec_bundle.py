@@ -301,7 +301,7 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
         "surface": "execution_profile",
         "resolve_as": "worker_execution",
         "template": {
-            "schema_version": 1,
+            "schema_version": 2,
             "semantic_identity": {
                 "resolver_op": "primary_qrf_worker_semantic_identity"
             },
@@ -309,6 +309,9 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
                 "resolver_op": "primary_qrf_worker_semantic_identity_sha256"
             },
             "audit_aliases": {"resolver_op": "primary_qrf_worker_audit_aliases"},
+            "audit_thread_controls": {
+                "resolver_op": "primary_qrf_worker_audit_thread_controls"
+            },
         },
     }
     runtime_bands = primary_binding["capital_gains_tail"]["soi_e19200_agi_bands"][

@@ -445,6 +445,27 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
             QUANTILE_MAP_1,
             QUANTILE_MAP_2,
         ),
+        # microcosm#1683: the frame bundle imports the shared-column check.
+        # takeup.compare, takeup.gap, targets.problem and transport.create
+        # hash it beside the bundle, as they hash the bundle's schema and
+        # weights, so target_kernels and population_kernels import it. These
+        # groups hash those modules or reach the bundle only through the
+        # compile list's exclusion, and leave the frame modules unhashed, as
+        # for schema above.
+        "microcosm.build.transport.population_kernels -> microcosm.frame.shared_columns": (
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.build.transport.target_kernels -> microcosm.frame.shared_columns": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
+        "microcosm.frame.bundle -> microcosm.frame.shared_columns": (
+            COMPILE,
+            QUANTILE_MAP_1,
+            QUANTILE_MAP_2,
+        ),
         "microcosm.build.transport.population_kernels -> microcosm.frame.unit_construction": (
             QUANTILE_MAP_1,
             QUANTILE_MAP_2,
