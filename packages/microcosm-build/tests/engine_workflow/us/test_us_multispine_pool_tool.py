@@ -365,8 +365,10 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # solve and ssi_take_up, and the calibration contract's renamed modes.
             # microcosm#1585's us/gates.json row in country_package.json moves it.
             # The in-place QRF leaf array in microcosm.fit.qrf moves it again.
+            # The ACS transfer fitting and drawing one QRF target at a time
+            # moves it again (acs_transfer's attested bytes; no draw changes).
             # microcosm#1686's shared SIPP person-file read moves it again.
-            "spec_sha256": "1721b4f5e732c2def257cee991bd068c4fa765982017225864501a9334746ab8",
+            "spec_sha256": "d9e7ca4c17b639b0689d4db279acd3452f7ea1eed68bf265848dcfaf36b1d710",
         },
     }
 

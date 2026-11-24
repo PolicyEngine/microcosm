@@ -51,6 +51,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     ACS_SELF_EMPLOYMENT_COMPONENT_INPUTS,
     keep_measured_self_employment_totals,
 )
+from test_support.microcosm_build.qrf_chain_doubles import FitPredictChainDouble
 
 _TOTAL = "self_employment_income_before_lsr"
 _SSTB = "sstb_self_employment_income_before_lsr"
@@ -519,7 +520,7 @@ def _transfer_case():
     return recipient, donor
 
 
-class _DonorMeanQRF:
+class _DonorMeanQRF(FitPredictChainDouble):
     def __init__(self, *, n_estimators: int, seed: int) -> None:
         del n_estimators, seed
 

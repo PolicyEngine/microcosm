@@ -47,6 +47,7 @@ import urllib.request
 import zipfile
 from importlib.resources import files
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -59,6 +60,9 @@ from microcosm.build.us_runtime.asec_census_person_columns import (
 )
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
+
+if TYPE_CHECKING:
+    from microcosm.fit import QRFChainState, RegimeGatedQRF
 
 __all__ = [
     "BLS_STATE_UNION_REPRESENTATION_RATE_2024",
@@ -792,6 +796,29 @@ def _assign_union(features: pd.DataFrame) -> np.ndarray:
     return result
 
 
+def _fit_draw_next_org_target(
+    model: RegimeGatedQRF,
+    donor: pd.DataFrame,
+    features: pd.DataFrame,
+    prior_draws: pd.DataFrame,
+    state: QRFChainState,
+) -> tuple[str, np.ndarray, QRFChainState]:
+    """Fit and draw the chain's next ORG target: ``(target, draw, next state)``.
+
+    The step result, which holds the target's forests and sign classifier, is
+    dropped on return, so they are freed before the next target is fitted.
+    """
+
+    step = model.fit_draw_next(
+        donor,
+        features,
+        prior_draws,
+        state=state,
+        weights=_DONOR_WEIGHT_COLUMN,
+    )
+    return step.target, step.raw_draw, step.state
+
+
 def impute_us_org_wages(
     frame: Frame,
     donor: pd.DataFrame,
@@ -799,7 +826,14 @@ def impute_us_org_wages(
     seed: int,
     n_estimators: int = _DEFAULT_N_ESTIMATORS,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """QRF-impute hourly inputs and return them with direct ASEC carries."""
+    """QRF-impute hourly inputs and return them with direct ASEC carries.
+
+    The QRF fits and draws one target at a time through its chain API and
+    frees each target's forests before fitting the next, so only one target's
+    forests are in memory at once. The draws are the same as fitting every
+    target and then predicting: fitting and drawing use separate random
+    streams, and each target is drawn on the recipients' earlier draws.
+    """
 
     from microcosm.fit import QRF
 
@@ -809,13 +843,20 @@ def impute_us_org_wages(
     missing = [column for column in required if column not in donor]
     if missing:
         raise ValueError(f"CPS ORG donor missing column(s): {missing}.")
-    fitted = QRF(n_estimators=int(n_estimators), seed=int(seed)).fit(
-        donor.loc[:, required],
+    fit_donor = donor.loc[:, required]
+    model = QRF(n_estimators=int(n_estimators), seed=int(seed))
+    state = model.start_chain(
+        fit_donor,
         predictors=list(ORG_PREDICTORS),
         targets=list(ORG_QRF_TARGETS),
         weights=_DONOR_WEIGHT_COLUMN,
     )
-    predicted = fitted.predict(features)
+    predicted = pd.DataFrame(index=features.index)
+    while not state.is_complete:
+        target, draw, state = _fit_draw_next_org_target(
+            model, fit_donor, features, predicted, state
+        )
+        predicted[target] = draw
     inactive = (features["employment_income"].to_numpy() <= 0) | (
         features["weekly_hours_worked"].to_numpy() <= 0
     )
