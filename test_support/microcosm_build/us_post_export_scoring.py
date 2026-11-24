@@ -8,7 +8,8 @@ the age distribution) against a fake engine on a small nested frame and pin
 the plan's contract: output identical to the unbatched path, batches that
 partition the pool, one live engine at a time, the SPM selection on every
 construction, one reform system per reform (handed to each batch engine
-without ``reform=``), one baseline pass per plan, ascending periods per engine,
+without ``reform=``), one baseline pass per plan (one merged pass for
+registered plans), ascending periods per engine,
 engine-free recording, the ``_main`` and writer wiring, the scored-sha
 binding, the nesting, order and weight premises, the additivity guards
 (population aggregates, baseline-branch readers, behavioral-response

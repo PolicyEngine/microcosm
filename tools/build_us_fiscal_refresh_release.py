@@ -5100,7 +5100,9 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 # a batch-local aggregate.
 
 #: Recorded in ``post_export_scoring`` blocks; bump with any change to how the
-#: written H5 is scored.
+#: written H5 is scored that can change a scored value. Regrouping keys into
+#: fewer passes while every value stays byte-identical (the merged baseline
+#: pass and the shared pre-OBBBA pass, microcosm#1595) keeps it.
 POST_EXPORT_SCORING_METHOD = "household_batched_written_h5"
 
 #: One scored request: (variable, period, map_to).
@@ -5869,13 +5871,16 @@ class _HouseholdBatchedPostExportScorer:
             try:
                 self._merged_baseline = self._score(union, label="merged baseline plan")
             except Exception as error:
+                self._merged_baseline_failed = True
+                try:
+                    reason = f"{type(error).__name__}: {error}"
+                except Exception:
+                    reason = type(error).__name__
                 print(
-                    "Post-export merged baseline plan failed "
-                    f"({type(error).__name__}: {error}); each consumer scores its "
-                    "own baseline plan instead.",
+                    f"Post-export merged baseline plan failed ({reason}); each "
+                    "consumer scores its own baseline plan instead.",
                     flush=True,
                 )
-                self._merged_baseline_failed = True
             if self._merged_baseline_failed:
                 # Outside the handler, so the failed pass's traceback and the
                 # per-batch values its frame collected are no longer

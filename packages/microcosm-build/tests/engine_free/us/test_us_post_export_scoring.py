@@ -2282,7 +2282,6 @@ def test_a_merged_pass_error_that_cannot_be_printed_still_falls_back(
     scorer = _scorer(
         builder, _nested_frame(), _EngineLog(), 3, tmp_path, baseline_plans=plans
     )
-    passes = _record_pass_labels(scorer)
     score = scorer._score
 
     class _UnprintableError(RuntimeError):
@@ -2295,6 +2294,7 @@ def test_a_merged_pass_error_that_cannot_be_printed_still_falls_back(
         return score(keys, **options)
 
     scorer._score = failing_merged_score
+    passes = _record_pass_labels(scorer)
     first = scorer.open_consumer("first", plans["first"])
     second = scorer.open_consumer("second", plans["second"])
     assert first.simulate(None).calculate("age", 2024).sum() > 0.0
