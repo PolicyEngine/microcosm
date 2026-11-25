@@ -1,0 +1,417 @@
+{
+ "version": 1,
+ "country": "us",
+ "description": "The targets each US release calibrates to, for each product and mode: the compiled families and levels it keeps, the tests that pick them, and the rows the tool builds itself (microcosm#1728). microcosm.calibrate.target_sets reads this file; docs/us-target-sets.md explains it.",
+ "level_keys": [
+  "ledger_geography_level",
+  "geography_level"
+ ],
+ "products": {
+  "national": {
+   "tool": "tools/build_us_fiscal_refresh_release.py",
+   "option": "--target-surface",
+   "default_mode": "full",
+   "modes": {
+    "full": {
+     "description": "Every compiled target.",
+     "compiled": [
+      {
+       "id": "compiled",
+       "families": "*",
+       "levels": "*",
+       "rationale": "The tool's default: the release calibrates to the whole compiled registry."
+      }
+     ]
+    },
+    "national_state": {
+     "description": "The country and state rows of every compiled family, except the rows classified as congressional-district. The production national builds use this mode.",
+     "compiled": [
+      {
+       "id": "country_and_state",
+       "families": "*",
+       "levels": "*",
+       "exclude": [
+        "congressional_district"
+       ],
+       "rationale": "District targets belong in the local solve: when microcosm#449 put small-area targets into the national solve, the share of targets within 10% fell by half (microcosm#625). The exclusion also drops the country and state rows of the IRS SOI congressional-district file. The target-parity and profile-coverage gates run on the full compiled registry before this selection."
+      }
+     ]
+    }
+   }
+  },
+  "local": {
+   "tool": "tools/build_us_acs_local_release.py",
+   "option": "--soi-mode",
+   "default_mode": "state",
+   "modes": {
+    "state": {
+     "description": "State SNAP, state Medicaid enrollment and the IRS SOI state rows outside the congressional-district file, with population totals from the PUMA ladder.",
+     "compiled": [
+      {
+       "id": "snap",
+       "families": [
+        "usda_snap"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        }
+       },
+       "rationale": "State SNAP rows (--families snap)."
+      },
+      {
+       "id": "medicaid",
+       "families": [
+        "cms_medicaid"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        },
+        "target_role": {
+         "equals": "medicaid_enrollment"
+        }
+       },
+       "rationale": "State Medicaid enrollment after the reviewed Rhode Island substitution (--families medicaid)."
+      },
+      {
+       "id": "soi",
+       "families": [
+        "irs_soi"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        },
+        "ledger_layout_record_set_spec_id": {
+         "not_prefix": "irs_soi.congressional_district_"
+        }
+       },
+       "rationale": "The SOI state rows of every target role, AGI bands included, outside the congressional-district file (--families soi). This is the default mode; docs/us-acs-local-soi-target-surface.md has its history."
+      }
+     ],
+     "built": [
+      {
+       "id": "population",
+       "family": "census_population",
+       "option": "--geographies",
+       "levels": {
+        "state": "state",
+        "cd": "congressional_district",
+        "county": "county"
+       },
+       "source": "US Census Bureau 2020 PUMA population ladder (--ladder)",
+       "rationale": "One population total for each state, 119th-Congress district and county that --geographies names (default state,cd)."
+      }
+     ]
+    },
+    "totals": {
+     "description": "As state, but the SOI rows are every state-bearing row whose target role is not soi_fiscal_distribution, at state and district level.",
+     "compiled": [
+      {
+       "id": "snap",
+       "families": [
+        "usda_snap"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        }
+       },
+       "rationale": "State SNAP rows (--families snap)."
+      },
+      {
+       "id": "medicaid",
+       "families": [
+        "cms_medicaid"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        },
+        "target_role": {
+         "equals": "medicaid_enrollment"
+        }
+       },
+       "rationale": "State Medicaid enrollment after the reviewed Rhode Island substitution (--families medicaid)."
+      },
+      {
+       "id": "soi",
+       "families": [
+        "irs_soi"
+       ],
+       "levels": [
+        "state",
+        "congressional_district"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        },
+        "target_role": {
+         "not_equals": "soi_fiscal_distribution"
+        }
+       },
+       "rationale": "An explicit opt-in: the jetsam-safe Option B of the Build L runbook. Every SOI fact without a named role has the role soi_fiscal_distribution, so this mode drops the AGI bands and the all-income state and district rows."
+      }
+     ],
+     "built": [
+      {
+       "id": "population",
+       "family": "census_population",
+       "option": "--geographies",
+       "levels": {
+        "state": "state",
+        "cd": "congressional_district",
+        "county": "county"
+       },
+       "source": "US Census Bureau 2020 PUMA population ladder (--ladder)",
+       "rationale": "One population total for each state, 119th-Congress district and county that --geographies names (default state,cd)."
+      }
+     ]
+    },
+    "full": {
+     "description": "As state, but the SOI rows are every state-bearing row at state and district level, the congressional-district file included, with both vintages of each state concept.",
+     "compiled": [
+      {
+       "id": "snap",
+       "families": [
+        "usda_snap"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        }
+       },
+       "rationale": "State SNAP rows (--families snap)."
+      },
+      {
+       "id": "medicaid",
+       "families": [
+        "cms_medicaid"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        },
+        "target_role": {
+         "equals": "medicaid_enrollment"
+        }
+       },
+       "rationale": "State Medicaid enrollment after the reviewed Rhode Island substitution (--families medicaid)."
+      },
+      {
+       "id": "soi",
+       "families": [
+        "irs_soi"
+       ],
+       "levels": [
+        "state",
+        "congressional_district"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        }
+       },
+       "rationale": "An explicit opt-in that keeps every state-bearing SOI row. It does not fit in memory on one 128 GB machine (microcosm#1728)."
+      }
+     ],
+     "built": [
+      {
+       "id": "population",
+       "family": "census_population",
+       "option": "--geographies",
+       "levels": {
+        "state": "state",
+        "cd": "congressional_district",
+        "county": "county"
+       },
+       "source": "US Census Bureau 2020 PUMA population ladder (--ladder)",
+       "rationale": "One population total for each state, 119th-Congress district and county that --geographies names (default state,cd)."
+      }
+     ]
+    },
+    "state_cd": {
+     "description": "As state, plus the congressional-district file's district rows as within-state shares of the Historic Table 2 state level, with one vintage for each state concept.",
+     "compiled": [
+      {
+       "id": "snap",
+       "families": [
+        "usda_snap"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        }
+       },
+       "rationale": "State SNAP rows (--families snap)."
+      },
+      {
+       "id": "medicaid",
+       "families": [
+        "cms_medicaid"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        },
+        "target_role": {
+         "equals": "medicaid_enrollment"
+        }
+       },
+       "rationale": "State Medicaid enrollment after the reviewed Rhode Island substitution (--families medicaid)."
+      },
+      {
+       "id": "soi",
+       "families": [
+        "irs_soi"
+       ],
+       "levels": [
+        "state",
+        "congressional_district"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        }
+       },
+       "rule": "state_cd_district_shares",
+       "rationale": "An explicit opt-in. The rule (tools/us_acs_local_cd_surface.py state_cd_soi_surface) takes the state mode's SOI rows as the state level and keeps the district file's district rows only as shares of it. --cd-holdout-fraction holds a block of district rows out of the solve."
+      }
+     ],
+     "built": [
+      {
+       "id": "population",
+       "family": "census_population",
+       "option": "--geographies",
+       "levels": {
+        "state": "state",
+        "cd": "congressional_district",
+        "county": "county"
+       },
+       "source": "US Census Bureau 2020 PUMA population ladder (--ladder)",
+       "rationale": "One population total for each state, 119th-Congress district and county that --geographies names (default state,cd)."
+      }
+     ]
+    },
+    "state_county": {
+     "description": "As state, plus county rows from the pinned county facts: SOI shares of each state row, ACS households, and county population.",
+     "compiled": [
+      {
+       "id": "snap",
+       "families": [
+        "usda_snap"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        }
+       },
+       "rationale": "State SNAP rows (--families snap)."
+      },
+      {
+       "id": "medicaid",
+       "families": [
+        "cms_medicaid"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        },
+        "target_role": {
+         "equals": "medicaid_enrollment"
+        }
+       },
+       "rationale": "State Medicaid enrollment after the reviewed Rhode Island substitution (--families medicaid)."
+      },
+      {
+       "id": "soi",
+       "families": [
+        "irs_soi"
+       ],
+       "levels": [
+        "state"
+       ],
+       "metadata": {
+        "state_fips": {
+         "present": true
+        },
+        "ledger_layout_record_set_spec_id": {
+         "not_prefix": "irs_soi.congressional_district_"
+        }
+       },
+       "rationale": "The state mode's SOI rows: the county rows split them, so they stay the state level (docs/us-acs-local-county-rung.md)."
+      }
+     ],
+     "built": [
+      {
+       "id": "population",
+       "family": "census_population",
+       "option": "--geographies",
+       "levels": {
+        "state": "state",
+        "cd": "congressional_district",
+        "county": "county"
+       },
+       "source": "US Census Bureau 2020 PUMA population ladder (--ladder)",
+       "rationale": "One population total for each state, 119th-Congress district and county that --geographies names (the County Files runbook uses state,cd,county)."
+      },
+      {
+       "id": "county_soi",
+       "family": "irs_soi",
+       "levels": {
+        "county": "county"
+       },
+       "source": "IRS SOI county file in the pinned county facts (--county-facts, us/chronicle_county_facts.json)",
+       "rationale": "County SOI facts give shares of their state row, never a second state level (tools/us_acs_local_county_surface.py)."
+      },
+      {
+       "id": "acs_households",
+       "family": "acs_households",
+       "levels": {
+        "state": "state",
+        "county": "county"
+       },
+       "source": "ACS household counts in the pinned county facts (--county-facts)",
+       "rationale": "Each state's ACS household total and its county rows (tools/us_acs_local_county_surface.py acs_household_surface)."
+      }
+     ]
+    }
+   }
+  }
+ }
+}

@@ -10013,25 +10013,35 @@ def _select_target_surface(
 ) -> tuple[tuple[TargetSpec, ...], dict[str, object]]:
     """Return the specs the release calibrates to and a receipt of the choice.
 
-    ``full`` keeps every compiled spec. ``national_state`` drops every spec
-    ``is_congressional_district_target`` classifies as congressional-district
-    (CD geography rows and rows sourced from the SOI CD file, whatever their
-    geography). The target-parity and profile-coverage gates run on the full
-    compiled surface before this selection, so a dropped family is still
-    proven compiled.
+    Each mode is declared in ``us/target_sets.json``, product ``national``
+    (microcosm#1728). ``full`` keeps every compiled spec. ``national_state``
+    drops every spec ``is_congressional_district_target`` classifies as
+    congressional-district (CD geography rows and rows sourced from the SOI
+    CD file, whatever their geography), which leaves the country and state
+    rows of every family. The target-parity and profile-coverage gates run on
+    the full compiled surface before this selection, so a dropped family is
+    still proven compiled.
     """
+
+    from microcosm.build.us_runtime.target_sets import (
+        CONGRESSIONAL_DISTRICT_PREDICATE,
+        NATIONAL_PRODUCT,
+        us_target_set_declaration,
+    )
+    from microcosm.calibrate.target_sets import select_target_set
 
     if mode not in TARGET_SURFACE_MODES:
         raise ValueError(
             f"Unknown target surface {mode!r}; expected one of {TARGET_SURFACE_MODES}."
         )
     specs = tuple(target_specs)
-    if mode == TARGET_SURFACE_FULL:
-        kept = specs
-    else:
-        kept = tuple(
-            spec for spec in specs if not _target_is_congressional_district(spec)
-        )
+    kept = select_target_set(
+        us_target_set_declaration(NATIONAL_PRODUCT, mode),
+        specs,
+        predicates={
+            CONGRESSIONAL_DISTRICT_PREDICATE: _target_is_congressional_district
+        },
+    ).specs
     if not kept:
         raise ValueError(f"Target surface {mode!r} keeps no targets.")
     return kept, {

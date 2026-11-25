@@ -630,6 +630,11 @@ def _load_json(path: Path) -> dict:
 def soi_surface_predicate(soi_mode: str):
     """The ``irs_soi`` spec filter for one ``--soi-mode``.
 
+    It is the level and metadata tests of the mode's ``soi`` clause in
+    ``us/target_sets.json``, product ``local`` (microcosm#1728); the caller
+    selects the family. A spec's level is its ``ledger_geography_level``
+    (else its ``geography_level``), which every compiled spec carries.
+
     Every mode keeps only specs carrying ``state_fips`` (state rows, and the
     congressional-district rows that also carry their state).
 
@@ -645,34 +650,19 @@ def soi_surface_predicate(soi_mode: str):
     - ``full`` keeps them all.
     - ``state_cd`` is not a filter: this returns the ``full`` candidates it
       starts from, and :func:`state_admin_surface` reconciles them.
+    - ``state_county`` keeps the ``state`` rows; the county rows split them.
     """
 
+    from microcosm.build.us_runtime.target_sets import (
+        LOCAL_PRODUCT,
+        us_target_set_declaration,
+    )
+    from microcosm.calibrate.target_sets import clause_predicate
+
     _require_soi_mode(soi_mode)
-    if soi_mode == SOI_MODE_STATE_CD:
-        soi_mode = SOI_MODE_FULL
-    elif soi_mode == SOI_MODE_STATE_COUNTY:
-        soi_mode = SOI_MODE_STATE
-
-    def selected(spec) -> bool:
-        metadata = spec.metadata
-        if "state_fips" not in metadata:
-            return False
-        if soi_mode == SOI_MODE_STATE:
-            record_set_spec = metadata.get("ledger_layout_record_set_spec_id")
-            return (
-                metadata.get("ledger_geography_level") == "state"
-                and isinstance(record_set_spec, str)
-                and bool(record_set_spec)
-                and not record_set_spec.startswith(
-                    CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX
-                )
-            )
-        return (
-            soi_mode == SOI_MODE_FULL
-            or metadata.get("target_role") != "soi_fiscal_distribution"
-        )
-
-    return selected
+    return clause_predicate(
+        us_target_set_declaration(LOCAL_PRODUCT, soi_mode), "soi", test_family=False
+    )
 
 
 def _compiled_fiscal_registry(feed: str | Path):
@@ -737,7 +727,10 @@ def state_admin_surface(
 
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44) -> state-level
-    {usda_snap, cms_medicaid[enrollment], irs_soi}. The SOI slice follows
+    {usda_snap, cms_medicaid[enrollment], irs_soi}. The clauses ``snap``,
+    ``medicaid`` and ``soi`` of the mode's declaration in
+    ``us/target_sets.json`` (product ``local``, microcosm#1728) pick them, in
+    that order; ``families`` turns clauses on by id. The SOI slice follows
     :func:`soi_surface_predicate` for ``state`` (the default), ``totals`` and
     ``full``; ``state_cd`` adds the reconciled congressional-district rows
     (:func:`us_acs_local_cd_surface.state_cd_soi_surface`).
@@ -757,7 +750,13 @@ def state_admin_surface(
     from microcosm.build.us_runtime.medicaid_take_up import (
         apply_us_medicaid_enrollment_substitutions,
     )
+    from microcosm.build.us_runtime.target_sets import (
+        LOCAL_PRODUCT,
+        STATE_CD_RULE,
+        us_target_set_declaration,
+    )
     from microcosm.calibrate.registry import TargetRegistry
+    from microcosm.calibrate.target_sets import select_target_set
 
     artifact = load_ledger_consumer_artifact(str(feed))
     crosswalk_path = default_congressional_district_vintage_crosswalk_path()
@@ -770,39 +769,33 @@ def state_admin_surface(
     )
     registry, ri_substitutions = apply_us_medicaid_enrollment_substitutions(registry)
 
-    def state_level(spec) -> bool:
-        return "state_fips" in spec.metadata
+    def state_cd_district_shares(candidates):
+        surface = cd_surface.state_cd_soi_surface(
+            candidates,
+            state_surface_predicate=soi_surface_predicate(SOI_MODE_STATE),
+            crosswalk=crosswalk,
+            crosswalk_sha256=_sha256(crosswalk_path),
+        )
+        return surface.specs, surface.receipt
 
-    picked = []
-    if "snap" in families:
-        picked += registry.select(family="usda_snap", predicate=state_level).specs
-    if "medicaid" in families:
-        picked += registry.select(
-            family="cms_medicaid",
-            predicate=lambda spec: (
-                state_level(spec)
-                and spec.metadata.get("target_role") == "medicaid_enrollment"
-            ),
-        ).specs
+    declaration = us_target_set_declaration(LOCAL_PRODUCT, soi_mode)
+    selection = select_target_set(
+        declaration,
+        registry.specs,
+        clause_ids=[
+            clause_id for clause_id in declaration.clause_ids if clause_id in families
+        ],
+        rules={STATE_CD_RULE: state_cd_district_shares},
+    )
     soi_receipt: dict = {"soi_mode": soi_mode}
-    if "soi" in families:
-        candidates = registry.select(
-            family="irs_soi", predicate=soi_surface_predicate(soi_mode)
-        ).specs
-        if soi_mode == SOI_MODE_STATE_CD:
-            surface = cd_surface.state_cd_soi_surface(
-                candidates,
-                state_surface_predicate=soi_surface_predicate(SOI_MODE_STATE),
-                crosswalk=crosswalk,
-                crosswalk_sha256=_sha256(crosswalk_path),
-            )
-            picked += list(surface.specs)
-            soi_receipt.update(surface.receipt)
-        else:
-            picked += candidates
-            soi_receipt["counts"] = {"total": len(candidates)}
+    if "soi" in selection.rule_receipts:
+        soi_receipt.update(selection.rule_receipts["soi"])
+    elif "soi" in selection.clause_counts:
+        soi_receipt["counts"] = {"total": selection.clause_counts["soi"]}
     return AdminSurface(
-        TargetRegistry(list(picked), country="us"), ri_substitutions, soi_receipt
+        TargetRegistry(list(selection.specs), country="us"),
+        ri_substitutions,
+        soi_receipt,
     )
 
 
