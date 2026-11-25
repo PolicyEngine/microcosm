@@ -13,22 +13,26 @@ draws, and none may reach a later target. The fixture reaches two of them:
 
 The whole production batches these tests run reach two more, on
 supplemental donor columns: the passive partnership/S-corp subset, set to zero
-where the row's line 32 is zero (``reconcile_acs_passive_partnership_s_corp``),
-and, on the ACS local lane, ``partnership_income``, kept at zero where the
-row's ACS ``SEMP`` already counts it (``semp_covers_partnership_income``).
+where the row's line 32 is zero or its tax unit's line 32 is zero
+(``reconcile_acs_passive_partnership_s_corp``), and, on the ACS local lane,
+``partnership_income``, kept at zero where the row's ACS ``SEMP`` already
+counts it (``semp_covers_partnership_income``).
 They reach one more on the recipient side: where a row already observes an
 earlier target, the export keeps the observed value (the transfer fills only
 null cells), while the later targets are drawn on the row's raw draw. ASEC
 clone-0 rows hold the source-written
 ``self_employed_pension_contributions_desired`` before post-PUF batch 3 and
 lack its later targets, so that batch runs with the pension observed on some
-rows.
+rows. In no other post-PUF batch does a target that a producer role writes
+precede a later target that the same role does not produce. That inventory
+concerns what ``transfer_acs_inputs`` itself exports; stacked calibration,
+such as the child-support step, runs after that call.
 
 No other decode or export rule changes a value ahead of a later target in the
 plans these tests read: boolean raw draws are exactly 0 or 1, which the
 boolean decode keeps; the immigration pair, ``weeks_unemployed``, the
 second-home year and the adult-care expense never precede a later target;
-and no int-typed target does.
+and no integer-typed target other than the year does.
 
 The fixture (:mod:`test_support.microcosm_build.qrf_raw_priors`) puts the
 year ahead of ``health_savings_account_ald``, and the components ahead of
@@ -65,9 +69,13 @@ production's declared ACS plan draws them. These tests pin that:
   in the plan's order, each target on the earlier raw draws, and the
   patterns together cover every recipient row. Where the batch draws the
   passive subset, some rows draw a zero line 32 under a nonzero passive
-  draw, which the export zeroes. In post-PUF batch 3 the rows that observe
-  the pension are still drawn, some draw a pension other than the observed
-  one, and the export keeps the observed value there;
+  draw, and some draw a nonzero line 32 that the other person in their tax
+  unit offsets; the export zeroes the passive subset on both. In post-PUF
+  batch 3 the rows that observe the pension are still drawn, some draw a
+  pension other than the observed one, and the export keeps the observed
+  value there. A retry of that batch from its bank, with the pension loaded
+  from its checkpoint and every later target rebuilt, draws them on the
+  checkpoint's raw pension draw and reproduces the cold run's outputs;
 - the ACS local lane's run of the declared batch that holds
   ``partnership_income`` draws every later target on the raw partnership
   draws, in memory and banked, while the export zeroes some of them;
@@ -794,14 +802,23 @@ def _active_plan(
     """
 
     activation_filter = acs_transfer_module._missing_target_families
-    filtered: list[list[_Batch]] = []
-    widened: list[list[_Batch]] = []
+    filtered: list[tuple[_Batch, ...]] = []
+    widened: list[tuple[_Batch, ...]] = []
+
+    def snapshot(plan: Sequence[Sequence[object]]) -> tuple[_Batch, ...]:
+        return tuple(
+            (str(entity), str(family), tuple(targets))
+            for entity, family, targets in plan
+        )
 
     def record_plan(families: Sequence[_Batch], *, recipient: Frame) -> list[_Batch]:
-        filtered.append(activation_filter(families, recipient=recipient))
+        planned = activation_filter(families, recipient=recipient)
+        # A snapshot: production goes on with the filter's own list, so an
+        # edit the widening makes to it in place cannot move this baseline.
+        filtered.append(snapshot(planned))
         if not regime_evidence_targets:
             raise _PlanRecordedError
-        return filtered[-1]
+        return planned
 
     def record_first_fit(
         *_args: object, targets: tuple[str, ...], **_kwargs: object
@@ -809,7 +826,7 @@ def _active_plan(
         # The transfer's loop fits the batches of its local ``active`` plan.
         # This reads production's local variable by name, so renaming it
         # raises a KeyError here: the check fails loudly rather than passing.
-        active = list(inspect.currentframe().f_back.f_locals["active"])
+        active = snapshot(inspect.currentframe().f_back.f_locals["active"])
         assert active[0][2] == targets
         widened.append(active)
         raise _PlanRecordedError
@@ -829,10 +846,12 @@ def _active_plan(
     (active,) = filtered
     if regime_evidence_targets:
         assert widened == [active], (
-            "the regime-evidence widening changed the planned batches to "
-            f"{[batch for batch in widened[0] if batch not in active]}"
+            "the regime-evidence widening changed the planned batches: the "
+            f"filter planned {[batch[1] for batch in active]}, the first fit's "
+            f"loop holds {[batch[1] for batch in widened[0]]}, and these differ "
+            f"from the filter's: {[batch for batch in widened[0] if batch not in active]}"
         )
-    return active
+    return list(active)
 
 
 def _regime_evidence(
@@ -879,12 +898,19 @@ def _production_batches() -> dict[str, list[_Batch]]:
 #: Seed of the supplemental donor columns.
 _SUPPLEMENT_SEED = 1723
 #: The line-32 components, and the passive subset of line 32 that the export
-#: zeroes where they sum to zero.
+#: zeroes where they sum to zero for the person or for the person's tax unit.
 _LINE_32 = ("partnership_income", "s_corp_income")
 _PASSIVE = "passive_partnership_s_corp_income"
-#: Seed and share of the zeros in the supplemental line-32 columns.
-_LINE_32_ZERO_SEED = 20261125
-_LINE_32_ZERO_SHARE = 0.6
+#: The recipient's tax-unit link, which the export's line-32 rule sums over.
+_TAX_UNIT = "person_tax_unit_id"
+#: Seed of the supplemental line-32 columns, and each one's values and shares.
+#: Each sign regime holds one value, so a person's line 32 can be zero and two
+#: people's can cancel exactly, and two signs keep each sign gate binary.
+_LINE_32_SEED = 20261125
+_LINE_32_SUPPORT: dict[str, tuple[tuple[float, ...], tuple[float, ...]]] = {
+    "partnership_income": ((0.0, 100.0), (0.6, 0.4)),
+    "s_corp_income": ((-100.0, 100.0), (0.5, 0.5)),
+}
 #: A target some recipients already observe ahead of later targets in its
 #: batch. Canonical post-PUF execution requires ASEC rows to hold the
 #: source-written pension before batch 3, while only PUF clones produce the
@@ -902,10 +928,13 @@ def _with_batch_columns(donor: Frame, entity: str, targets: Sequence[str]) -> Fr
 
     The fixture has donor columns for its own targets only. Each supplemental
     column is a positive amount from one seeded stream, so most of these
-    targets have one sign regime and their fits stay cheap. The line-32
-    columns are also zero on about 60% of donor rows, from a second seeded
-    stream, so some recipients draw a zero line 32 under a nonzero passive
-    subset and the export's passive reconciliation fires. The fixture's
+    targets have one sign regime and their fits stay cheap. The two line-32
+    columns instead come from a second seeded stream: ``partnership_income``
+    is 0 or 100 and ``s_corp_income`` is -100 or 100. Each of their sign
+    regimes holds one value, which its forest draws exactly, so recipients
+    draw a zero line 32 under a nonzero passive subset, either on their own
+    or with the other person in their tax unit offsetting them, and both
+    branches of the export's passive reconciliation fire. The fixture's
     columns are unchanged.
     """
 
@@ -917,10 +946,11 @@ def _with_batch_columns(donor: Frame, entity: str, targets: Sequence[str]) -> Fr
         ),
         2,
     )
-    zeros = np.random.default_rng(_LINE_32_ZERO_SEED)
+    line_32 = np.random.default_rng(_LINE_32_SEED)
     for column, target in zip(amounts, missing, strict=True):
-        if target in _LINE_32:
-            column[zeros.random(len(table)) < _LINE_32_ZERO_SHARE] = 0.0
+        if target in _LINE_32_SUPPORT:
+            values, shares = _LINE_32_SUPPORT[target]
+            column[:] = line_32.choice(values, len(table), p=shares)
     return donor.with_columns(entity, **dict(zip(missing, amounts, strict=True)))
 
 
@@ -1017,6 +1047,69 @@ def _raw_draws(
     return raw
 
 
+def _assert_resume_after_the_pension(
+    batch: _Batch,
+    frames: tuple[Frame, Frame],
+    cold: tuple[
+        dict[tuple, list[ChainStep]], AcsTransferResult, AcsTransferTargetBankStore
+    ],
+    observed: pd.Series,
+    *,
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Resume ``batch`` from a copy of its cold bank that keeps the pension only.
+
+    The retry loads the pension from its checkpoint, on a recipient that
+    observes it on some rows, and rebuilds every later target. Each must be
+    drawn on the checkpoint's raw pension draw, not the observed value, and
+    the outputs must equal the cold run's.
+    """
+
+    entity, family, targets = batch
+    patterns, cold_result, cold_bank = cold
+    order = _bank_order(cold_bank)
+    rebuilt = order[order.index(_OBSERVED_PENSION) + 1 :]
+    assert rebuilt, order
+    shutil.copytree(cold_bank.root, root)
+    copied = _bank_store(root)
+    for index, target in enumerate(order):
+        if target in rebuilt:
+            copied.target_path(index, target).unlink()
+
+    steps: list[ChainStep] = []
+    monkeypatch.setattr(acs_transfer_module, "QRF", prior_recording_qrf(steps))
+    resumed_bank = _bank_store(root)
+    resumed = _transfer(
+        target_bank=resumed_bank,
+        target_families={entity: {family: targets}},
+        frames=frames,
+    )
+    _assert_resume_reuses_raw_draws(
+        resumed,
+        resumed_bank,
+        steps,
+        (
+            [step for chain in patterns.values() for step in chain],
+            cold_result,
+            cold_bank,
+        ),
+        loaded=_OBSERVED_PENSION,
+        rebuilt=rebuilt,
+    )
+    # On the rows that observe the pension, the first rebuilt target was fed
+    # the checkpoint's raw draw, and on some of them that is not the observed
+    # value, so a retry that fed the observed value would fail above.
+    fed = pd.concat(
+        [step.priors[_OBSERVED_PENSION] for step in steps if step.target == rebuilt[0]]
+    )
+    held = observed.loc[fed.index].notna()
+    assert (fed[held] != observed.loc[fed.index][held]).any(), (
+        "on resume, every observed pension equals the raw draw fed forward, so "
+        "the check cannot tell which one reached the later targets"
+    )
+
+
 def test_production_draws_the_fixture_targets_in_the_fixture_order(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1078,6 +1171,8 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
                 run=run,
                 monkeypatch=monkeypatch,
             )
+            if bank is not None:
+                cold = (patterns, result, bank)
             # The fixture's targets reach the draw boundary in the fixture's
             # order.
             for chain in patterns.values():
@@ -1116,9 +1211,33 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
                 "subset, so the passive reconciliation never fired"
             )
             assert (exported.loc[cleared, _PASSIVE] == 0.0).all(), run
+            # The export also zeroes it where the row's own line 32 is nonzero
+            # but its tax unit's sums to zero, the other person offsetting it,
+            # and the chain check reached that branch too.
+            unit_line_32 = line_32.groupby(exported[_TAX_UNIT]).transform("sum")
+            offset = (line_32 != 0.0) & (unit_line_32 == 0.0) & (passive != 0.0)
+            assert offset.any(), (
+                f"{run}no row drew a nonzero line 32 that its tax unit offsets, "
+                "under a nonzero passive subset, so the tax-unit branch of the "
+                "passive reconciliation never fired"
+            )
+            assert (exported.loc[offset, _PASSIVE] == 0.0).all(), run
+
+        if observed is not None:
+            # A retry from the bank loads the pension from its checkpoint,
+            # beside the observed values, and rebuilds the later targets.
+            _assert_resume_after_the_pension(
+                (entity, batch, targets),
+                frames,
+                cold,
+                observed,
+                root=tmp_path / f"resumed_{number}",
+                monkeypatch=monkeypatch,
+            )
+            observed_runs.append(f"the resumed transfer of {entity} batch {batch!r}")
 
     # Post-PUF batch 3 draws the pension ahead of later targets, so the
-    # observed case ran, in memory and banked.
+    # observed case ran, in memory, banked and resumed from the bank.
     assert observed_runs, (
         f"no whole batch draws {_OBSERVED_PENSION!r} ahead of a later target; "
         "revisit the observed case"
