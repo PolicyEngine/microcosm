@@ -708,22 +708,22 @@ def us_repository(download_dir: Path) -> FakeDatasetRepository:
 UNTAGGED_REPOSITORY = "example-owner/untagged-releases"
 #: The two untagged builds' folder names under ``releases/``, which the
 #: switch keeps as their build names.
-OLDER_UNTAGGED_FOLDER = "example-2026-chronicle-aaaaaaa-20260823T134247Z"
-NEWER_UNTAGGED_FOLDER = "example-2025-chronicle-bbbbbbb-20260823T204826Z"
+OLDER_UNTAGGED_FOLDER = "example-2026-chronicle-aaaaaaa-20260101T010101Z"
+NEWER_UNTAGGED_FOLDER = "example-2025-chronicle-bbbbbbb-20260102T020202Z"
 #: The releases the two untagged builds move into.
 OLDER_UNTAGGED_RELEASE = "example-2026-national"
 NEWER_UNTAGGED_RELEASE = "example-2025-national"
 #: When each untagged folder's files last changed on ``main``: the older
 #: folder was first published earlier and rewritten in a later commit.
-UNTAGGED_FIRST_PUBLISHED_AT = datetime(2026, 8, 23, 15, 38, 14, tzinfo=UTC)
+UNTAGGED_FIRST_PUBLISHED_AT = datetime(2026, 1, 3, 3, 0, 0, tzinfo=UTC)
 UNTAGGED_LAST_CHANGED_AT = {
-    OLDER_UNTAGGED_FOLDER: datetime(2026, 8, 23, 16, 13, 38, tzinfo=UTC),
-    NEWER_UNTAGGED_FOLDER: datetime(2026, 8, 23, 21, 15, 44, tzinfo=UTC),
+    OLDER_UNTAGGED_FOLDER: datetime(2026, 1, 3, 4, 0, 0, tzinfo=UTC),
+    NEWER_UNTAGGED_FOLDER: datetime(2026, 1, 4, 5, 0, 0, tzinfo=UTC),
 }
 #: When each untagged build was built, as its manifests record it.
 UNTAGGED_BUILT_AT = {
-    OLDER_UNTAGGED_FOLDER: "2026-08-23T13:42:47.070381+00:00",
-    NEWER_UNTAGGED_FOLDER: "2026-08-23T20:48:26.610956+00:00",
+    OLDER_UNTAGGED_FOLDER: "2026-01-01T01:01:01.000001+00:00",
+    NEWER_UNTAGGED_FOLDER: "2026-01-02T02:02:02.000002+00:00",
 }
 _UNTAGGED_DESCRIPTION = "An example synthetic population."
 
@@ -817,7 +817,7 @@ def untagged_repository(download_dir: Path) -> FakeDatasetRepository:
     hub = FakeDatasetRepository(UNTAGGED_REPOSITORY, download_dir)
     hub.seed(
         {".gitattributes": b"*.h5 filter=lfs\n", "README.md": b"# Example\n"},
-        date=datetime(2026, 8, 23, 15, 38, 13, tzinfo=UTC),
+        date=datetime(2026, 1, 3, 2, 0, 0, tzinfo=UTC),
     )
     older = {
         "year": 2026,
@@ -841,7 +841,7 @@ def untagged_repository(download_dir: Path) -> FakeDatasetRepository:
     )
     hub.seed(
         {"README.md": b"# Example, reframed\n"},
-        date=datetime(2026, 8, 23, 16, 13, 39, tzinfo=UTC),
+        date=datetime(2026, 1, 3, 4, 0, 1, tzinfo=UTC),
     )
     hub.seed(
         {

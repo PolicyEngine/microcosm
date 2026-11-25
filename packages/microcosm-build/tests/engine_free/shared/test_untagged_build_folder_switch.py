@@ -534,3 +534,76 @@ def test_delete_old_layout_removes_the_untagged_folders_and_reports_them(hub, ca
     }
     # No tag keeps them; they stay in main's history at the head it read.
     assert report.get("untagged_folders") == [NEWER_SOURCE, OLDER_SOURCE]
+
+
+def test_a_release_name_the_interface_refuses_names_the_untagged_folder(hub, capsys):
+    exit_code, report, error_output = run(
+        hub,
+        capsys,
+        "copy",
+        "--include-untagged",
+        f"{NEWER_UNTAGGED_FOLDER}=not a release name",
+    )
+
+    assert exit_code == 1
+    problems = report.get("problems", [])
+    assert any(problem.startswith(f"{NEWER_SOURCE}/") for problem in problems), (
+        error_output
+    )
+    assert not any(problem.startswith("None") for problem in problems), problems
+
+
+def test_copy_refuses_an_untagged_folder_whose_files_were_deleted_since(hub, capsys):
+    """The commit that last changed the folder's remaining files still held a
+    file deleted later, so it is not a commit at which the folder held what it
+    holds now."""
+    hub.seed(
+        {
+            f"{NEWER_SOURCE}/calibration_diagnostics.json": b'{"rewritten": true}',
+            f"{NEWER_SOURCE}/notes.json": b"{}",
+        },
+        date=LATER,
+    )
+    hub.seed({}, date=LATER.replace(hour=13))
+    del hub.commits[hub.main][f"{NEWER_SOURCE}/notes.json"]
+
+    exit_code, report, error_output = run(hub, capsys, "copy", *INCLUDES)
+
+    assert exit_code == 1
+    assert any(
+        problem.startswith(f"{NEWER_SOURCE}/") and "notes.json" in problem
+        for problem in report.get("problems", [])
+    ), error_output
+
+
+@pytest.mark.parametrize(
+    "includes",
+    [
+        pytest.param(
+            ("--include-untagged", f"{NEWER_UNTAGGED_FOLDER}={NEWER_UNTAGGED_FOLDER}"),
+            id="its own folder's name",
+        ),
+        pytest.param(
+            (
+                "--include-untagged",
+                f"{NEWER_UNTAGGED_FOLDER}={OLDER_UNTAGGED_FOLDER}",
+                "--include-untagged",
+                f"{OLDER_UNTAGGED_FOLDER}={OLDER_UNTAGGED_RELEASE}",
+            ),
+            id="another moving folder's name",
+        ),
+    ],
+)
+def test_copy_refuses_a_release_named_like_a_moving_untagged_folder(
+    hub, capsys, includes
+):
+    """Its build folder would be inside that old folder, which could then
+    never move."""
+    exit_code, report, error_output = run(hub, capsys, "copy", "--write", *includes)
+
+    assert exit_code == 1
+    assert any(
+        f"{NEWER_SOURCE}/" in problem and "--include-untagged" in problem
+        for problem in report.get("problems", [error_output])
+    ), error_output
+    assert hub.made == []
