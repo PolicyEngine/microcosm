@@ -137,15 +137,6 @@ def linked_upstream_names(
     return sorted(name for name in names if _UPSTREAM_FILE.fullmatch(name))
 
 
-def _checked_upstream_file(directory: Path, name: str) -> Path:
-    """An upstream file beside the schema whose bytes match its name's digest."""
-
-    source = directory / name
-    if file_artifact(source)["sha256"] != _UPSTREAM_FILE.fullmatch(name)[1]:
-        raise ValueError(f"Upstream graph evidence digest mismatch: {name}.")
-    return source
-
-
 def recorded_overlay(
     schema: Mapping[str, object],
     index_path: Path,
@@ -212,7 +203,7 @@ def _graph_files(args: Namespace, output: Path) -> list[str]:
         )
         names.append(EXECUTION_OVERLAY_NAME)
     for name in linked_upstream_names(schema, execution):
-        _checked_upstream_file(output, name)
+        _read_upstream_file(output, name)
         names.append(name)
     return list(dict.fromkeys(names))
 

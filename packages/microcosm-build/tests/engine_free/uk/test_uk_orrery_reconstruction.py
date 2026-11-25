@@ -1,4 +1,4 @@
-"""Declaration-only Orrery publications for UK builds from before run bindings.
+"""Declaration-only graph schemas for UK builds from before run bindings.
 
 Fixtures replay the files a UK dense or national build wrote before
 microcosm#1144, in the order that era's ``full_build_cli`` wrote them: the
@@ -729,8 +729,7 @@ def test_cli_prints_the_resolved_output_path_it_wrote(tmp_path, capsys):
 
     printed = capsys.readouterr().out
     assert (
-        f"Wrote a reconstructed Orrery publication (declaration only) to "
-        f"{written_output}\n"
+        f"Wrote a reconstructed graph schema (declaration only) to {written_output}\n"
     ) in printed
     assert f"  report: {written_output / REPORT_NAME}" in printed.splitlines()
     assert str(given_output) not in printed

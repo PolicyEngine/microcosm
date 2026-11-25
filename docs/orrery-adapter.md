@@ -363,8 +363,10 @@ uv run python -m microcosm.build.uk_runtime.orrery_inputs \
   figures or a check's failure lines, as the build's graph step does.
 - **Upstream files:** each `upstream-<sha256>.json` file that the schema's
   extensions or the overlay link is read from beside the schema and copied
-  unchanged. The command refuses one that is missing or whose bytes no
-  longer match the digest in its name.
+  unchanged. The command reads each one once and refuses one that is
+  missing, is a symbolic link or not a regular file, is over 64 MiB (the
+  collector's bound on one upstream file), or whose bytes no longer match the
+  digest in its name.
 - **`--output`:** a new directory. It must not exist, either as given or
   once resolved. The files are written into a hidden sibling directory, which
   is moved into place only once every file is written, and the command prints
