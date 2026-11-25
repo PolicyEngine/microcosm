@@ -279,7 +279,10 @@ from microcosm.build.us_runtime.demographics import (
     population_by_age_from_sim,
     write_demographics,
 )
-from microcosm.build.us_runtime.engine_lifecycle import release_engine_simulation
+from microcosm.build.us_runtime.engine_lifecycle import (
+    EngineVariableModuleScope,
+    release_engine_simulation,
+)
 from microcosm.build.us_runtime.exact_k_ladder import (
     ExactKLadderCalibration,
     assert_exact_k_realized_count,
@@ -5722,6 +5725,11 @@ class _HouseholdBatchedPostExportScorer:
         # Each finished consumer's scoring record, for the manifests' block.
         # Records, not consumers: a finished consumer's arrays must be freed.
         self.consumer_records: dict[str, dict[str, object]] = {}
+        # The reform last handed to any consumer. Consumers run one after
+        # another, so at most one reform's system and rule modules are held;
+        # opening the next reform, finishing its consumer or closing the scorer
+        # releases it.
+        self._open_reform: _BatchedPostExportReform | None = None
 
     def open_consumer(
         self,
@@ -5747,6 +5755,8 @@ class _HouseholdBatchedPostExportScorer:
             raise ValueError(f"{scoring.name} was not opened on this scorer.")
         if scoring.name in self.consumer_records:
             raise ValueError(f"{scoring.name} already finished on this scorer.")
+        if self._open_reform is not None and self._open_reform._consumer is scoring:
+            self._finish_open_reform()
         record = scoring.record()
         self.consumer_records[scoring.name] = record
         return record
@@ -5782,8 +5792,26 @@ class _HouseholdBatchedPostExportScorer:
         }
 
     def close(self) -> None:
+        self._finish_open_reform()
         self._batch_frames = None
         _collect_family_garbage()
+
+    def _open_reform_for(
+        self, consumer: _PostExportConsumer, reform
+    ) -> _BatchedPostExportReform:
+        """Hand ``consumer`` a reform, finishing the one handed out before.
+
+        Each shipped consumer scores one reform completely before it opens the
+        next, and consumers run one after another.
+        """
+        self._finish_open_reform()
+        self._open_reform = _BatchedPostExportReform(consumer, reform)
+        return self._open_reform
+
+    def _finish_open_reform(self) -> None:
+        reform, self._open_reform = self._open_reform, None
+        if reform is not None:
+            reform.finish()
 
     def _batches(self) -> tuple[Frame, ...]:
         if self._batch_frames is None:
@@ -5975,7 +6003,7 @@ class _PostExportConsumer:
     def simulate(self, reform):
         if reform is None:
             return _PlannedPostExportBaseline(self)
-        return _BatchedPostExportReform(self, reform)
+        return self._scorer._open_reform_for(self, reform)
 
     def record(self) -> dict[str, object]:
         scorer = self._scorer
@@ -6039,6 +6067,14 @@ class _BatchedPostExportReform:
     The reform's tax-benefit system is built once, on the first key, and
     handed to every batch engine (microcosm#456). The engines get that system
     alone (see ``_HouseholdBatchedPostExportScorer._construct``).
+
+    Building the system makes policyengine-core add every variable module of
+    it to ``sys.modules`` (about 6,000 entries) under names it never removes;
+    on the eight-household guard fixture they hold about 0.04 GiB per reform.
+    The build opens an ``EngineVariableModuleScope``, which stays open until
+    the scorer hands out its next reform, the consumer finishes or the scorer
+    closes (:meth:`finish`), and then removes those modules. A finished reform
+    refuses further keys.
     """
 
     def __init__(self, consumer: _PostExportConsumer, reform) -> None:
@@ -6046,18 +6082,45 @@ class _BatchedPostExportReform:
         self._reform = reform
         self._system = None
         self._results: dict[PostExportKey, _PostExportValues] = {}
+        self._rule_modules: EngineVariableModuleScope | None = None
+        self._finished = False
 
     def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
         key = _post_export_key(variable, period, map_to)
+        if self._finished:
+            raise RuntimeError(
+                f"{self._consumer.name} asked a finished reform for {key}. A "
+                "post-export consumer scores each reform completely before it "
+                "opens the next one, which finishes and releases the earlier."
+            )
         if key not in self._results:
             if self._system is None:
                 scorer = self._consumer._scorer
-                self._system = scorer._microsimulation_cls.default_tax_benefit_system(
-                    reform=self._reform
-                )
+                rule_modules = EngineVariableModuleScope().open()
+                try:
+                    self._system = (
+                        scorer._microsimulation_cls.default_tax_benefit_system(
+                            reform=self._reform
+                        )
+                    )
+                except BaseException:
+                    rule_modules.close()
+                    raise
+                self._rule_modules = rule_modules
                 self._consumer.reform_systems += 1
             self._results[key] = self._consumer._reform_values(self._system, key)
         return self._results[key]
+
+    def finish(self) -> None:
+        """Drop the reform's system and remove the modules its build added."""
+        if self._finished:
+            return
+        self._finished = True
+        self._system = None
+        self._results = {}
+        rule_modules, self._rule_modules = self._rule_modules, None
+        if rule_modules is not None:
+            rule_modules.close()
 
 
 def _reform_household_income_tax(
