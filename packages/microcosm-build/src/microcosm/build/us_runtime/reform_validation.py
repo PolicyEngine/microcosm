@@ -716,6 +716,13 @@ def default_simulate_factory(dataset_path: Path) -> SimulateFn:
     return simulate
 
 
+def _request_period(request: tuple[str, int]) -> int:
+    """The period of a ``(measure, period)`` weighted-total request."""
+
+    measure, at_period = request
+    return at_period
+
+
 def reform_validation_payload(
     specs: Sequence[ReformValidationSpec],
     *,
@@ -784,9 +791,7 @@ def reform_validation_payload(
         name dies (system backref, branch-clone cycles). Release it and sweep
         so the smoke phase runs at one-simulation footprint.
         """
-        ascending = tuple(
-            sorted(dict.fromkeys(requests), key=lambda request: request[1])
-        )
+        ascending = tuple(sorted(dict.fromkeys(requests), key=_request_period))
         try:
             prefetch = getattr(transient_simulation, "prefetch", None)
             if prefetch is not None:
