@@ -23,11 +23,19 @@ production's declared ACS plan draws them. These tests pin that:
 - they equal ``FitThenPredictQRF``'s outputs, the real model run the old
   in-memory way, on every platform;
 - every prior the chain feeds forward is byte-equal to the earlier raw draw,
-  in chain order, also when a retry resumes a banked transfer from a
-  checkpoint and draws the later targets fresh; the year is snapped and the
-  components zeroed only on export, and each exported year is the donor
-  support point nearest its raw draw;
-- production draws the fixture's targets in the fixture's order;
+  in chain order. That holds too when a banked transfer is interrupted right
+  after the checkpoint of any fixture target that has a later target in its
+  family (both components, ``farm_rent_income``,
+  ``first_home_mortgage_balance`` and the year) and resumed: the retry loads
+  that target and the ones before it from their checkpoints and draws the
+  later targets fresh;
+- the year is snapped and the components zeroed only on export. Each
+  exported year is the donor support point nearest its raw draw, and the
+  decoder sends an exact midpoint between two support points to the lower one;
+- production's plans put the fixture's targets in the fixture's order. For
+  each production batch that holds two or more of them, a transfer of those
+  targets run under the batch's name draws them in that order, in memory and
+  banked;
 - the fixture would catch the change on the running platform: a chain fed
   the snapped year, the zeroed components or the zeroed partnership earnings
   alone draws different later targets.
@@ -50,6 +58,7 @@ passing.
 from __future__ import annotations
 
 import platform
+from collections.abc import Mapping
 from importlib.metadata import version
 from pathlib import Path
 
@@ -147,13 +156,17 @@ def _pre_1667_digests() -> dict[str, str]:
 
 
 def _transfer(
-    *, target_bank: AcsTransferTargetBankStore | None = None
+    *,
+    target_bank: AcsTransferTargetBankStore | None = None,
+    target_families: Mapping[
+        str, Mapping[str, tuple[str, ...]]
+    ] = RAW_PRIOR_FIXTURE_FAMILIES,
 ) -> AcsTransferResult:
     recipient, donor = acs_raw_prior_fixture()
     return transfer_acs_inputs(
         recipient,
         donor,
-        target_families=RAW_PRIOR_FIXTURE_FAMILIES,
+        target_families=target_families,
         seed=RAW_PRIOR_FIXTURE_SEED,
         n_estimators=RAW_PRIOR_FIXTURE_N_ESTIMATORS,
         target_bank=target_bank,
@@ -296,9 +309,9 @@ def test_banked_raw_prior_transfer_matches_fitting_every_target_first(
 def _nearest_support_point(value: float, support: np.ndarray) -> int:
     """The support point nearest ``value``, the lower one on a tie.
 
-    This is written apart from the transfer's decoder but copies its tie rule:
-    ``_snap_to_support`` takes the upper of the two neighbouring points only
-    when it is strictly nearer.
+    This is written apart from the transfer's decoder but copies its tie rule,
+    which the export test pins on the decoder: it takes the upper of the two
+    neighbouring points only when it is strictly nearer.
     """
 
     return int(min(support.tolist(), key=lambda point: (abs(point - value), point)))
@@ -330,9 +343,26 @@ def test_transfer_snaps_the_year_and_zeroes_the_components_on_export(
     assert all(len(record.patterns) > 1 for record in production.imputed_inputs)
 
     # The decoder sends a draw halfway between two support points to the
-    # lower one, as the independent reference below does.
+    # lower one, as the independent reference below does. The fixture draws
+    # no exact midpoint, so this pins the tie rule on the decoder itself.
     midpoints = (support[:-1] + support[1:]) / 2
     lower = support[:-1].astype(np.int64).tolist()
+    decoded = acs_transfer_module._prediction_values(
+        midpoints,
+        encoding=acs_transfer_module._TargetEncoding(
+            model_values=pd.Series(support),
+            kind="discrete_numeric",
+            support=support,
+            model_target=ORIGINATION_YEAR,
+        ),
+        entity="tax_unit",
+        target=ORIGINATION_YEAR,
+    )
+    assert decoded.dtype == np.dtype(np.int64)
+    assert decoded.tolist() == lower, (
+        "the decoder no longer sends a year halfway between two donor support "
+        "points to the lower one"
+    )
     assert acs_transfer_module._snap_to_support(midpoints, support).tolist() == lower
     assert [_nearest_support_point(value, support) for value in midpoints] == lower
 
@@ -483,7 +513,14 @@ def _interrupt_after_writing(
     monkeypatch.setattr(bank, "write_target", write_then_interrupt)
 
 
-@pytest.mark.parametrize("loaded", [ORIGINATION_YEAR, *SELF_EMPLOYMENT_COMPONENTS])
+#: Every checkpoint after which a resumed transfer feeds a loaded prior to a
+#: fresh fit: each fixture target that has a later target in its family.
+_RESUME_POINTS: tuple[str, ...] = tuple(
+    target for targets in _FAMILY_TARGETS.values() for target in targets[:-1]
+)
+
+
+@pytest.mark.parametrize("loaded", _RESUME_POINTS)
 def test_resumed_bank_draws_later_targets_on_loaded_raw_draws(
     loaded: str,
     recorded_banked: tuple[
@@ -552,7 +589,8 @@ def test_resumed_bank_draws_later_targets_on_loaded_raw_draws(
             == reference_receipt[str(index)]["raw_draw_sha256"]
         ), order[index]
 
-    # The loaded prior reached a fresh fit, with values its export changes.
+    # The loaded prior reached a fresh fit. Where the export changes it (the
+    # year and the components), it did so with values the export changes.
     fed_loaded = [
         step.priors[loaded].to_numpy() for step in steps if loaded in step.priors
     ]
@@ -561,7 +599,7 @@ def test_resumed_bank_draws_later_targets_on_loaded_raw_draws(
         _recipient, donor = acs_raw_prior_fixture()
         support = origination_year_support(donor)
         assert (~np.isin(np.concatenate(fed_loaded), support)).any()
-    else:
+    elif loaded in SELF_EMPLOYMENT_COMPONENTS:
         assert (np.concatenate(fed_loaded) != 0.0).any()
 
     _assert_same_transfer(resumed, uninterrupted)
@@ -573,7 +611,7 @@ def test_resumed_bank_draws_later_targets_on_loaded_raw_draws(
 
 
 def _production_batches() -> dict[str, list[tuple[str, str, tuple[str, ...]]]]:
-    """Each production plan's chained batches, as the transfer draws them."""
+    """Each production plan's chained batches, in the plan's order."""
 
     def split(
         families: dict[str, dict[str, tuple[str, ...]]],
@@ -597,21 +635,60 @@ def _production_batches() -> dict[str, list[tuple[str, str, tuple[str, ...]]]]:
     }
 
 
-def test_production_draws_the_fixture_targets_in_the_fixture_order() -> None:
+def _pattern_orders(steps: list[ChainStep]) -> set[tuple[str, ...]]:
+    """The targets each availability pattern drew, in call order, in one run."""
+
+    orders: dict[tuple, list[str]] = {}
+    for step in steps:
+        orders.setdefault(tuple(step.index), []).append(step.target)
+    return {tuple(order) for order in orders.values()}
+
+
+def test_production_draws_the_fixture_targets_in_the_fixture_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # The fixture's cases exist only where production chains the year ahead
     # of the HSA deduction and the components ahead of the farm rent and the
     # estate flag. Each batch is one chain; separate batches never condition
     # on each other.
     plans = _production_batches()
+    runtime_batches: set[tuple[str, str, tuple[str, ...]]] = set()
     for plan, batches in plans.items():
         for entity, batch, targets in batches:
             for chain in RAW_PRIOR_FIXTURE_FAMILIES.get(entity, {}).values():
                 shared = [target for target in chain if target in targets]
+                if not shared:
+                    continue
                 drawn = sorted(shared, key=targets.index)
                 assert drawn == shared, (
-                    f"the {plan} draws {drawn} in that order in {entity} batch "
+                    f"the {plan} plans {drawn} in that order in {entity} batch "
                     f"{batch!r}; the fixture chains {list(chain)}"
                 )
+                # The transfer's model-target order for the whole batch is
+                # the batch's order.
+                assert acs_transfer_module._model_target_names(targets) == targets
+                if len(shared) > 1:
+                    runtime_batches.add((entity, batch, tuple(shared)))
+
+    # The transfer draws each such batch in that order at runtime. The order
+    # matters only where a batch holds two or more fixture targets; the
+    # fixture has donor columns for those targets only, so each run holds
+    # the batch's fixture targets, under the batch's production name.
+    assert runtime_batches
+    for number, (entity, batch, shared) in enumerate(sorted(runtime_batches)):
+        for path, bank in (
+            ("in memory", None),
+            ("banked", _bank_store(tmp_path / f"order_{number}")),
+        ):
+            steps: list[ChainStep] = []
+            monkeypatch.setattr(acs_transfer_module, "QRF", prior_recording_qrf(steps))
+            _transfer(target_bank=bank, target_families={entity: {batch: shared}})
+            orders = _pattern_orders(steps)
+            assert orders == {shared}, (
+                f"the transfer, {path}, draws {entity} batch {batch!r} as "
+                f"{sorted(orders)}; the plan orders it {list(shared)}"
+            )
 
     # The declared ACS plan chains each fixture family whole in one batch.
     declared = plans["declared ACS plan"]
