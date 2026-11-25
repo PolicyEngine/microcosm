@@ -38,6 +38,7 @@ def _frame(weights: np.ndarray) -> Frame:
                 {
                     "household_id": np.arange(n),
                     "heavy": [1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                    "first": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     "light": [0.0, 0.0, 1.0, 1.0, 1.0, 1.0],
                 }
             ),
@@ -183,3 +184,222 @@ def test_the_report_measures_and_refuses_bad_inputs() -> None:
             weight_bound_report(weights, starting, **arguments)
     with pytest.raises(ValueError, match="do not align"):
         weight_bound_report(weights[:3], starting, max_weight_ratio=5.0)
+
+
+# ---------------------------------------------------------------------------
+# A declared reference, enforced by the solver
+# ---------------------------------------------------------------------------
+
+
+def _targets_first(value: float) -> TargetSet:
+    """A target on the first heavy row alone."""
+
+    return TargetSet(
+        [
+            Target(
+                name="first",
+                entity="household",
+                measure="first",
+                value=value,
+                period=2024,
+            )
+        ]
+    )
+
+
+def test_the_starting_weights_as_the_reference_are_the_default_solve() -> None:
+    frame = _frame(STARTING)
+    default = _solve(frame)
+    declared = _solve(frame, max_weight_reference=STARTING.copy())
+    # The same bytes: the reference only replaces what the ratio multiplies.
+    assert declared.weights.tobytes() == default.weights.tobytes()
+    assert declared.loss_trajectory.tobytes() == default.loss_trajectory.tobytes()
+    assert "weight_bound" not in default.options
+    assert declared.options["weight_bound"] == {
+        "reference": "declared",
+        "records_started_above_bound": 0,
+        "realized_max_ratio_to_reference": pytest.approx(RATIO),
+    }
+
+
+def test_a_shared_reference_gives_every_record_one_absolute_bound() -> None:
+    frame = _frame(STARTING)
+    shared = weight_bound_reference(STARTING, "mean")  # 58 / 6 for every record
+    # The target asks 50 of the first heavy row, which starts at 27.
+    solve = dict(
+        weight_entity="household",
+        epochs=400,
+        learning_rate=0.05,
+        mass="conserve",
+        max_weight_ratio=3.0,
+    )
+    own = calibrate(frame, _targets_first(50.0), **solve)
+    result = calibrate(
+        frame, _targets_first(50.0), **solve, max_weight_reference=shared
+    )
+    bound = 3.0 * shared
+    # Against its own starting weight the row may reach 81, so it reaches 50.
+    assert own.weights[0] == pytest.approx(50.0, rel=0.02)
+    # Against the shared weight every record has the bound 29, and the row
+    # stops there.
+    assert (result.weights <= bound * (1 + 1e-12)).all()
+    assert result.weights[0] == pytest.approx(29.0, rel=1e-6)
+    assert result.weights.sum() == pytest.approx(STARTING.sum())
+    assert result.options["weight_bound"] == {
+        "reference": "declared",
+        "records_started_above_bound": 0,
+        "realized_max_ratio_to_reference": pytest.approx(3.0),
+    }
+    # The frame's weights are still the solve's starting point and record.
+    np.testing.assert_array_equal(result.initial_weights, STARTING)
+    report = weight_bound_report(
+        result.weights, STARTING, max_weight_ratio=3.0, reference=shared
+    )
+    assert report["records_above_bound"] == 0
+
+
+def test_a_record_that_starts_above_its_bound_starts_from_the_bound() -> None:
+    frame = _frame(STARTING)
+    shared = weight_bound_reference(STARTING, "mean")
+    # Two times the mean (19.3) is below the heavy rows' starting weight (27).
+    result = calibrate(
+        frame,
+        _targets(4.0),  # the light rows already hit it: nothing to fit
+        weight_entity="household",
+        epochs=5,
+        mass="conserve",
+        max_weight_ratio=2.0,
+        max_weight_reference=shared,
+    )
+    bound = 2.0 * shared
+    assert result.options["weight_bound"]["records_started_above_bound"] == 2
+    assert (result.weights <= bound * (1 + 1e-12)).all()
+    assert result.weights.sum() == pytest.approx(STARTING.sum())
+    # The mass the heavy rows gave up went to the light rows.
+    assert (result.weights[2:] > STARTING[2:]).all()
+    # Free mass: the heavy rows are held to the bound and nothing is refilled.
+    free = calibrate(
+        frame,
+        _targets(4.0),
+        weight_entity="household",
+        epochs=5,
+        mass="free",
+        max_weight_ratio=2.0,
+        max_weight_reference=shared,
+    )
+    assert (free.weights <= bound * (1 + 1e-12)).all()
+    assert free.weights.sum() < STARTING.sum()
+
+
+def test_a_warm_start_keeps_the_declared_bound() -> None:
+    frame = _frame(STARTING)
+    shared = weight_bound_reference(STARTING, "mean")
+    options = dict(max_weight_reference=shared)
+    first = _solve(frame, **options)
+    second = _solve(frame, warm_start_weights=first.weights, **options)
+    assert (second.weights <= RATIO * shared * (1 + 1e-12)).all()
+    assert second.weights.sum() == pytest.approx(STARTING.sum())
+
+
+def test_the_softmax_parametrization_holds_the_declared_bound() -> None:
+    shared = weight_bound_reference(STARTING, "mean")
+    result = calibrate(
+        _frame(STARTING),
+        _targets_first(50.0),
+        weight_entity="household",
+        epochs=400,
+        learning_rate=0.05,
+        mass="conserve",
+        mass_parametrization="softmax",
+        max_weight_ratio=3.0,
+        max_weight_reference=shared,
+    )
+    assert (result.weights <= 3.0 * shared * (1 + 1e-12)).all()
+    assert result.weights[0] == pytest.approx(29.0, rel=1e-5)
+    assert result.weights.sum() == pytest.approx(STARTING.sum())
+
+
+def test_bounds_that_cannot_hold_the_mass_are_refused() -> None:
+    frame = _frame(STARTING)
+    small = np.full(6, 1.0)  # 5 x 6 = 30 admitted, 58 to conserve
+    with pytest.raises(ValueError, match="mass cannot be conserved"):
+        _solve(frame, max_weight_reference=small)
+    # Free mass has no total to hold.
+    free = calibrate(
+        frame,
+        _targets(4.0),
+        weight_entity="household",
+        epochs=3,
+        mass="free",
+        max_weight_ratio=RATIO,
+        max_weight_reference=small,
+    )
+    assert (free.weights <= RATIO * small * (1 + 1e-12)).all()
+    # A ratio below one is admitted when the reference is large enough.
+    large = np.full(6, 100.0)
+    below_one = calibrate(
+        frame,
+        _targets(4.0),
+        weight_entity="household",
+        epochs=3,
+        mass="conserve",
+        max_weight_ratio=0.5,
+        max_weight_reference=large,
+    )
+    assert below_one.weights.sum() == pytest.approx(STARTING.sum())
+    # Without a reference a ratio below one cannot conserve the mass.
+    with pytest.raises(ValueError, match="is infeasible"):
+        calibrate(
+            frame,
+            _targets(4.0),
+            weight_entity="household",
+            epochs=3,
+            mass="conserve",
+            max_weight_ratio=0.5,
+        )
+
+
+@pytest.mark.parametrize(
+    ("options", "match"),
+    [
+        (dict(max_weight_ratio=None), "pass max_weight_ratio too"),
+        (dict(method="prox"), "Adam solve without L0 gates"),
+        (dict(l0_lambda=0.01), "Adam solve without L0 gates"),
+        (dict(target_records=3), "Adam solve without L0 gates"),
+        (dict(max_weight_reference=np.ones(5)), "must match"),
+        (dict(max_weight_reference=np.zeros(6)), "strictly positive"),
+        (dict(max_weight_reference=np.full(6, np.nan)), "strictly positive"),
+    ],
+)
+def test_an_invalid_declared_reference_is_refused(options, match) -> None:
+    call = dict(
+        weight_entity="household",
+        epochs=3,
+        mass="conserve",
+        max_weight_ratio=RATIO,
+        max_weight_reference=np.full(6, 20.0),
+    )
+    call.update(options)
+    with pytest.raises(ValueError, match=match):
+        calibrate(_frame(STARTING), _targets(4.0), **call)
+
+
+def test_the_prebuilt_system_solve_takes_the_reference_too() -> None:
+    import torch
+
+    from microcosm.calibrate.solve import solve_constraint_system
+
+    operator = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]], dtype=torch.float32)
+    shared = weight_bound_reference(STARTING, "mean")
+    arguments = dict(
+        mass="conserve", max_weight_ratio=3.0, epochs=400, learning_rate=0.05
+    )
+    weights, _trajectory = solve_constraint_system(
+        operator, np.asarray([50.0]), STARTING, max_weight_reference=shared, **arguments
+    )
+    assert (weights <= 3.0 * shared * (1 + 1e-12)).all()
+    assert weights[0] == pytest.approx(29.0, rel=1e-6)
+    own, _ = solve_constraint_system(
+        operator, np.asarray([50.0]), STARTING, **arguments
+    )
+    assert own[0] == pytest.approx(50.0, rel=0.02)

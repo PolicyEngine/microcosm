@@ -27,8 +27,14 @@ caller of :func:`microcosm.calibrate.calibrate`:
 **A declared reference.** Point 3 is a choice, not a law. A build may want
 the bound against a weight it declares instead of each record's own start:
 one shared weight, or the mean weight of the record's area
-(:func:`weight_bound_reference`). The solver does not enforce a declared
-reference yet: it bounds against the frame's weights only.
+(:func:`weight_bound_reference`). ``calibrate(max_weight_reference=...)``
+enforces it: no returned weight exceeds ``max_weight_ratio x`` the declared
+reference. Points 1 and 2 hold for a declared reference too. The frame's
+weights still set the starting point, the mass and the L2 anchor; a record
+that starts above its bound starts from the bound, with the mass it gives up
+spread below the bounds. It is opt-in: without it the bound is against the
+frame's weights, as before.
+
 :func:`weight_bound_report` measures any weight vector against a declared
 reference, report-only, so the effect of such a bound can be read from a
 finished solve before a solve enforces it.
