@@ -958,3 +958,16 @@ def test_v2_activation_refuses_cyclic_exclusion_groups():
     ]
     with pytest.raises(ValueError, match="cyclic order"):
         compose.validate_transport_activation(spec)
+
+
+def test_v2_preflight_accepts_only_the_declared_mass_rule():
+    spec, _ = _v2_spec()
+    receipts = spec["resources"]["receipt_contract"]["receipts"]
+    receipts["target_exceeds_eligible_mass"] = "assign_all_eligible"
+    compose.validate_transport_activation(spec)
+    receipts["target_exceeds_eligible_mass"] = "refuse"
+    with pytest.raises(
+        ValueError,
+        match="target_exceeds_eligible_mass must be declared as assign_all_eligible",
+    ):
+        compose.validate_transport_activation(spec)

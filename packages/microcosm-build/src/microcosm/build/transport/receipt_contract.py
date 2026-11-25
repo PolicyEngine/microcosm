@@ -77,7 +77,8 @@ def validate_receipt_v2(contract):
         "exclusion_groups",
     }
     if not required <= set(contract) or set(contract) - required - {
-        "unmodelled_programs"
+        "unmodelled_programs",
+        "target_exceeds_eligible_mass",
     }:
         raise ValueError("Receipt v2 contract has missing or unknown fields.")
     if (
@@ -220,6 +221,14 @@ def validate_receipt_v2(contract):
     if set(unmodelled) & identities:
         raise ValueError(
             "Receipt unmodelled_programs must not name produced outputs or programs."
+        )
+    # Optional. Without it, a target above its eligible weighted mass refuses.
+    if "target_exceeds_eligible_mass" in contract and (
+        type(contract["target_exceeds_eligible_mass"]) is not str
+        or contract["target_exceeds_eligible_mass"] != "assign_all_eligible"
+    ):
+        raise ValueError(
+            "Receipt target_exceeds_eligible_mass must be declared as assign_all_eligible."
         )
     return seed, parsed, groups
 
@@ -470,7 +479,20 @@ def assign_receipts_v2(
     knobs=None,
     tables=None,
 ):
+    """Assign version-two receipt flags stratum by stratum, in exclusion order.
+
+    A stratum whose target exceeds the weighted mass left in its pool refuses,
+    unless the contract declares ``target_exceeds_eligible_mass`` as
+    ``assign_all_eligible``. Then everyone in that pool receives: draws are
+    still derived, but no draw decides who receives. The stratum's rate is 1,
+    its numerical check compares the expected mass with the pool's mass and
+    passes, and its audit adds ``shortfall``, the target less that mass. The
+    shortfall never moves to another stratum or program, and a later program in
+    the same exclusion group loses that whole pool.
+    """
     seed, rows, declared_groups = validate_receipt_v2(contract)
+    # Read here, so validate_receipt_v2 keeps its three-part result.
+    assign_all = contract.get("target_exceeds_eligible_mass") == "assign_all_eligible"
     if not isinstance(knobs, Mapping) or contract["assignment_knob"] not in knobs:
         raise ValueError(
             "Receipt assignment_knob must be present in the resolved knobs."
@@ -681,13 +703,24 @@ def assign_receipts_v2(
                 "rate": rate,
             }
             stratum_audits.append(detail)
-            if target > mass:
+            capped = target > mass
+            if capped and not assign_all:
                 _refuse_assignment(
                     f"Receipt target {name!r} exceeds eligible weighted mass in {order} order.",
                     audit,
                     out,
                 )
-            chosen = pool & (draws < rate)
+            if capped:
+                # The whole pool receives. Draws are still derived, but none
+                # decides who receives, so a None rate (zero mass) is never
+                # compared. Rate 1 makes the expected mass the pool's mass, so
+                # the numerical check below compares it with that mass and
+                # passes, while shortfall records the gap to the target.
+                rate = detail["rate"] = 1.0
+                detail["shortfall"] = target - mass
+                chosen = pool
+            else:
+                chosen = pool & (draws < rate)
             assigned |= chosen
             expected = math.fsum([rate * mass])
             detail.update(
@@ -697,7 +730,7 @@ def assign_receipts_v2(
                     "numerical_check": {
                         "passed": math.isclose(
                             expected,
-                            target,
+                            mass if capped else target,
                             rel_tol=RECEIPT_RELATIVE_TOLERANCE,
                             abs_tol=0,
                         ),
