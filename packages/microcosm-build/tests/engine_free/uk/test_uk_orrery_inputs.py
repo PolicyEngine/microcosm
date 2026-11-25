@@ -241,7 +241,7 @@ def test_inputs_command_writes_what_a_finished_build_hands_over(
             "--evidence",
             str(args.out / EVIDENCE_INDEX_NAME),
             "--store",
-            str(args.graph_store),
+            str(args.out / ".graph-store"),
             "--output",
             str(output),
         ]
@@ -343,7 +343,7 @@ def test_inputs_command_refuses_summaries_a_build_would_not_hand_over(
                 "--evidence",
                 str(args.out / EVIDENCE_INDEX_NAME),
                 "--store",
-                str(args.graph_store),
+                str(args.out / ".graph-store"),
                 "--output",
                 str(output),
             ]
@@ -670,3 +670,67 @@ def test_inputs_command_refuses_an_invalid_presentation_contract(tmp_path, capsy
     assert refusal.value.code == 2
     assert "unknown group member" in capsys.readouterr().err
     assert not output.exists()
+
+
+def test_a_graph_step_that_registers_nothing_drops_an_earlier_evidence_record(
+    tmp_path,
+):
+    """A refused build may reuse an output directory; its evidence record
+    must never stand in for one this attempt did not write."""
+    out = plain_build_directory(tmp_path)
+    break_presentation_contract(out)
+    args = graph_step_arguments(tmp_path, out)
+    args.published_out.mkdir()
+    earlier = args.published_out / orrery_inputs.EVIDENCE_MANIFEST_NAME
+    earlier.write_text('{"outputs": {"graph.schema.json": {}}}')
+
+    result = orrery_inputs.finalize_graph(args, manifest=None)
+
+    assert result.files == ()
+    assert not earlier.exists()
+    assert not (out / orrery_inputs.EVIDENCE_MANIFEST_NAME).exists()
+
+
+def test_inputs_command_refuses_a_schema_with_a_duplicate_key(tmp_path, capsys):
+    out = plain_build_directory(tmp_path)
+    schema_path = out / SCHEMA_NAME
+    schema_path.write_text(
+        schema_path.read_text().replace("{", '{"protocol": "duplicate", ', 1)
+    )
+    output = tmp_path / "inputs"
+
+    with pytest.raises(SystemExit) as refusal:
+        orrery_inputs.main(["--schema", str(schema_path), "--output", str(output)])
+
+    assert refusal.value.code == 2
+    assert "Duplicate JSON key" in capsys.readouterr().err
+    assert not output.exists()
+
+
+def test_inputs_command_refuses_a_schema_behind_a_symbolic_link(tmp_path):
+    out = plain_build_directory(tmp_path)
+    link = tmp_path / "linked.schema.json"
+    link.symlink_to(out / SCHEMA_NAME)
+    output = tmp_path / "inputs"
+
+    with pytest.raises(SystemExit) as refusal:
+        orrery_inputs.main(["--schema", str(link), "--output", str(output)])
+
+    assert refusal.value.code == 2
+    assert not output.exists()
+
+
+def test_inputs_command_refuses_a_missing_upstream_file(tmp_path, capsys):
+    out = build_directory_with_upstream_files(tmp_path)
+    (out / upstream_names(out)[0]).unlink()
+    output = tmp_path / "inputs"
+
+    with pytest.raises(SystemExit) as refusal:
+        orrery_inputs.main(
+            ["--schema", str(out / SCHEMA_NAME), "--output", str(output)]
+        )
+
+    assert refusal.value.code == 2
+    assert "not a regular file" in capsys.readouterr().err
+    assert not output.exists()
+    assert not any(tmp_path.glob(".inputs.*.partial"))
