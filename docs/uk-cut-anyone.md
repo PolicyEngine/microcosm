@@ -523,15 +523,15 @@ A dense build binds the uploaded spine with `--input-h5`, `--input-sha256`
 The bound spine's gate digests, resource pins and policyengine-uk must be
 the checkout's, so build the dense line at the spine's commit.
 
-**Cost.** No full-sample spine at 15 clones has run yet. The one-clone
-full-sample spine took 46 minutes, 21 GB of peak memory and a 15 GB
-checkpoint store (17 Nov), and its frame measures 0.39 GiB in memory; a 10%
-sample at 15 clones peaked at 18 GiB, most of it the donor fits, which do
-not grow with the clones (11 Nov). At 15 clones the frame is about 6 GiB,
-and a stage holds about three copies of it: the stored population, the
-executor's frozen copy and the kernel's own frame. So expect about 30 to 40
-GiB of peak memory (64 GiB of RAM is comfortable), 6 to 14 hours, and about
-300 GB of checkpoint store. The profile records the real figures.
+**Cost.** The first full-sample spine at 15 clones (24 Nov) peaked at 68.4
+GiB of memory in `hmrc_spi_income_spine`, with 54.6 GiB in `nts_bus_travel`
+and 43.7 GiB in `salary_sacrifice`. Its stage nodes took 2.7 hours in all,
+and its H5 is 6.9 GB. So build it on a machine with more than 64 GiB of RAM;
+96 GiB or more leaves room for the rest of the system. For scale, the
+one-clone full-sample spine took 46 minutes, 21 GB of peak memory and a 15
+GB checkpoint store (17 Nov). The command checks for 400 GB of free disk
+(`--min-free-gb` sets another floor). The profile records each build's own
+figures.
 
 ## Regions: the dense cut
 
