@@ -415,6 +415,20 @@ LABEL_KINDS: dict[str, Callable[[], pd.Index | None]] = {
 }
 
 
+def test_an_index_over_read_only_memory_is_viewed():
+    # The executor's kernel inputs hold such indexes. Viewing costs nothing,
+    # and an item write into the view raises; np.add.at ignores the read-only
+    # flag, as it does for input columns, and reaches the viewed memory.
+    source = _one_block_per_column(index=_read_only_index(np.array([5, 3, 9, 1, 7, 2])))
+
+    copied = copy_table(source)
+
+    _assert_same_as_pandas_copy(copied, source)
+    assert np.shares_memory(np.asarray(copied.index), np.asarray(source.index))
+    with pytest.raises(ValueError, match="read-only"):
+        np.asarray(copied.index)[0] = 0
+
+
 @pytest.mark.parametrize("path", COPY_PATHS)
 @pytest.mark.parametrize("axis", ["index", "columns"])
 @pytest.mark.parametrize("labels", LABEL_KINDS)
@@ -435,8 +449,10 @@ def test_a_write_into_the_copy_s_labels_leaves_the_source_s_unchanged(
             target, source_labels[: len(target)], exact=True, check_categorical=True
         )
         for array in _label_arrays(target):
-            # np.add.at writes even into a read-only array.
-            if array.dtype.kind in "iuf":
+            # A read-only array is the executor's view, which an item write
+            # cannot change; np.add.at would write into it anyway, and the
+            # executor's context comparison rejects that (amendment 31).
+            if array.dtype.kind in "iuf" and array.flags.writeable:
                 np.add.at(array, [0], 1)
             try:
                 array[0] = array[-1]
@@ -611,7 +627,7 @@ def test_a_series_copy_equals_pandas_deep_copy_and_shares_no_memory(kind, index_
     _label_arrays(source.index)  # materializes a RangeIndex's cached values
     index_before = _label_values(source.index)
     for array in _label_arrays(copied.index):
-        if array.dtype.kind in "iuf":
+        if array.dtype.kind in "iuf" and array.flags.writeable:
             np.add.at(array, [0], 1)
     assert _label_values(source.index) == index_before
 

@@ -448,7 +448,7 @@ def _add_at_into_index(table):
     np.add.at(np.asarray(table.index), [0], 1000)
 
 
-#: Writes into a table's index; both land in the kernel's own copy.
+#: Writes into a table's index.
 INDEX_WRITES: dict[str, Callable[[pd.DataFrame], None]] = {
     "item": lambda table: _write_into_index(table, None),
     "np.add.at": _add_at_into_index,
@@ -463,8 +463,11 @@ def test_a_write_into_a_table_index_changes_neither_context_nor_population(
     builder, entity, person_index, write
 ):
     # A view of a RangeIndex shares the cache holding its values once
-    # materialized, which np.asarray returns writable; np.add.at writes even
-    # into the read-only view the executor makes of an int64 index.
+    # materialized, which np.asarray returns writable, so the Frame gets a new
+    # RangeIndex. An int64 index stays a view of the executor's read-only
+    # view: an item write into it raises, and np.add.at, which ignores the
+    # read-only flag, changes the context, so the executor rejects the node
+    # before its result is applied or stored (amendment 31).
     build, _ = BUILDERS[builder]
     population = _population(person_index=person_index)
     context = _context(population)
@@ -474,9 +477,17 @@ def test_a_write_into_a_table_index_changes_neither_context_nor_population(
     table = frame.table(entity)
     index_before = np.asarray(table.index).tolist()
 
-    INDEX_WRITES[write](table)
-
-    assert np.asarray(table.index).tolist() != index_before, "the write did not land"
+    if not np.asarray(table.index).flags.writeable:
+        if write == "item":
+            with pytest.raises(ValueError, match="read-only"):
+                INDEX_WRITES[write](table)
+        else:
+            INDEX_WRITES[write](table)
+            assert graph_executor._context_digest(context) != context_before[0]
+            return
+    else:
+        INDEX_WRITES[write](table)
+        assert np.asarray(table.index).tolist() != index_before, "did not land"
 
     assert _context_digests(context) == context_before
     assert _population_digests(population) == population_before

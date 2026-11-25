@@ -22,15 +22,17 @@ each leaves the copy further from its source than pandas' copy does:
 - A categorical column's categories are copied too, where pandas' copy shares
   them with the source, so a write into them (``.cat.categories.values[0] =``,
   for example) changes only the copy. The codes keep their integer type.
-- The index and the column labels are copied, where pandas' copy views them.
-  ``np.<ufunc>.at`` writes even into a read-only array, so a view of the
-  executor's read-only index would let it reach the context, and through a
-  node that reads every row the stored population. A ``RangeIndex``, as an
-  index, a level of a ``MultiIndex`` or categories, is rebuilt, because even a
-  deep copy of one shares the cache holding its values once materialized, and
-  ``np.asarray`` returns that cached array writable; a ``CategoricalIndex``
-  gets copied categories. This costs one array per table whose index is not a
-  ``RangeIndex``.
+- The index and the column labels share no writable memory with the source's,
+  where pandas' copy views them. A plain index over read-only NumPy memory, as
+  the executor's kernel inputs have, is still a view, which costs nothing; any
+  other index is copied. A ``RangeIndex``, as an index, a level of a
+  ``MultiIndex`` or categories, is rebuilt, because even a deep copy of one
+  shares the cache holding its values once materialized, and ``np.asarray``
+  returns that cached array writable; a ``CategoricalIndex`` gets copied
+  categories. ``np.<ufunc>.at`` writes even into a read-only array, so such a
+  write through a viewed index reaches the memory it views, as a write through
+  an input column does; the executor's before/after comparison of the context
+  then rejects the node before its result is applied or stored (amendment 31).
 - pandas' internal list of blocks is in the order its consolidation gives
   (one-dimensional extension blocks, then NumPy blocks, each by dtype name and
   then column position). That is the order of ``copy(deep=True)`` whenever
@@ -207,13 +209,20 @@ def _pandas_copy(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
 
 
 def _copied_index(index: pd.Index) -> pd.Index:
-    """An index equal to ``index`` that shares no memory with it.
+    """An index equal to ``index`` that shares no writable memory with it.
 
-    ``copy(deep=True)`` would do, except that it keeps a ``RangeIndex``'s cache
-    of materialized values, also as a level of a ``MultiIndex``, and a
-    ``CategoricalIndex``'s categories; those are rebuilt.
+    A plain index over read-only NumPy memory is viewed, as pandas' copy views
+    it. Otherwise ``copy(deep=True)`` would do, except that it keeps a
+    ``RangeIndex``'s cache of materialized values, also as a level of a
+    ``MultiIndex``, and a ``CategoricalIndex``'s categories; those are rebuilt.
     """
 
+    if (
+        type(index) is pd.Index
+        and isinstance(index.dtype, np.dtype)
+        and not np.asarray(index).flags.writeable
+    ):
+        return index.view()
     if type(index) is pd.RangeIndex:
         return pd.RangeIndex(index.start, index.stop, index.step, name=index.name)
     if type(index) is pd.MultiIndex:
