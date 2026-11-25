@@ -152,6 +152,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1074: us_runtime.fiscal_targets imports the FSA student
         # loan targets.
         "microcosm.build.us_runtime.fsa_student_loan_targets",
+        # microcosm#1030: us_runtime.fiscal_targets imports the source-vintage
+        # corrections for restamped Chronicle facts.
+        "microcosm.build.us_runtime.source_vintage",
         # microcosm#1585: the US keyed draws call
         # stochastic_assignment.stable_identity_uniforms.
         "microcosm.build.stochastic_assignment",

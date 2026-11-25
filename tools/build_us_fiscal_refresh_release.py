@@ -122,6 +122,7 @@ from microcosm.build.us_runtime import (
     SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_MEDICAID_ENROLLMENT_TARGET_TABLE,
@@ -19703,6 +19704,16 @@ def _certify_us_build(
         {"source_record_id": source_record_id, "reason": reason}
         for source_record_id, reason in sorted(
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
+        )
+    ]
+    coverage["fiscal_target_source_column_exclusions"] = [
+        {
+            "measure_id": measure_id,
+            "source_column_id": source_column_id,
+            "reason": reason,
+        }
+        for (measure_id, source_column_id), reason in sorted(
+            US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS.items()
         )
     ]
     coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt
