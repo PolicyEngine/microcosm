@@ -2645,8 +2645,12 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
     """
 
     multipliers = dict(args.target_family_loss_multipliers)
+    default_rule = loss_weighting.US_ACS_LOCAL_TARGET_WEIGHT_RULE
+    rule = getattr(args, "target_weight_rule", default_rule)
     try:
-        weights = county_surface.target_loss_weights(train_specs, multipliers)
+        weights = county_surface.target_loss_weights(
+            train_specs, multipliers, rule=rule
+        )
     except ValueError as error:
         raise SystemExit(f"Target loss weights: {error}") from error
     stamp = {
@@ -2661,6 +2665,11 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
             [loss_weighting.target_row_name(spec) for spec in train_specs], weights
         ),
     }
+    if rule != default_rule:
+        # Only a run that asks for another declared rule records it, so the
+        # default stamp, and every resume that compares it, is unchanged.
+        stamp["weighting"] = rule
+        stamp["rule"] = loss_weighting.acs_local_target_weight_rule(rule).to_json()
     return weights, stamp
 
 
@@ -7176,6 +7185,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "then renormalize to mean 1 (repeatable). Calibrate fails if FAMILY "
             "matches no training target. Recorded in the solver settings, the "
             "calibration summary and the diagnostics."
+        ),
+    )
+    parser.add_argument(
+        "--target-weight-rule",
+        choices=sorted(loss_weighting.US_ACS_LOCAL_TARGET_WEIGHT_RULES),
+        default=loss_weighting.US_ACS_LOCAL_TARGET_WEIGHT_RULE,
+        help=(
+            "The declared target loss-weight rule (microcosm.calibrate."
+            "target_loss_rules). 'concept_budget' (default) is the national "
+            "release's formula, which every build has used. "
+            "'level_family_equal_sqrt_count' gives each geography level one "
+            "equal share of the loss and each family one equal share of its "
+            "level; it changes the weights. Recorded in the solver settings "
+            "when it is not the default."
         ),
     )
     parser.add_argument("--l2-lambda", type=float, default=0.0)
