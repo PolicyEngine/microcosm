@@ -120,6 +120,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # re-application and per-origin gate (#1022); exact boundary
         # functions are pinned below.
         "acs_local_ssi_medicaid_take_up.py",
+        # Legacy local-lane ACS-row ACA take-up and plan-ratio assignment,
+        # recorded re-application and report-only gate (#1720); exact
+        # boundary functions are pinned below.
+        "acs_local_aca_take_up.py",
         # Legacy local-lane per-origin native SNAP receipt-anchor gate
         # (#1022); the exact boundary function is pinned below.
         "acs_local_receipt_anchors.py",
@@ -278,6 +282,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane SSI/Medicaid take-up assignment and release gate
         # (#1022); outside the registry.
         "acs_local_ssi_medicaid_take_up.py",
+        # Legacy local-lane ACA take-up and plan-ratio assignment and its
+        # report-only gate (#1720); outside the registry.
+        "acs_local_aca_take_up.py",
         # Legacy local-lane native FS receipt anchor and release gate (#1022);
         # outside the registry.
         "acs_local_receipt_anchors.py",
@@ -3757,6 +3764,40 @@ def test_acs_local_ssi_medicaid_take_up_provenance_is_limited_to_reviewed_bounda
         "with_acs_local_ssi_medicaid_take_up",
         "with_recorded_acs_local_ssi_medicaid_take_up",
     )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
+def test_acs_local_aca_take_up_provenance_is_limited_to_reviewed_boundaries() -> None:
+    """Pin the ACS-row ACA take-up boundaries (#1720).
+
+    The residual accounting, draw keys, stage tables, receipt grading and
+    digest read no origin tag. Only ``_acs_masks``, which the stage, the
+    recorded re-application, the assignment export and the gate call to pick
+    the ACS persons and tax units, and the gate's own spine check do.
+    """
+
+    source = (_US_RUNTIME / "acs_local_aca_take_up.py").read_text()
+    boundaries = ("_acs_masks", "acs_local_aca_take_up_signal_gate")
     assert (
         tuple(
             sorted(
