@@ -872,8 +872,13 @@ repository that has no `releases.json`.
   BE release is tied to a role in `releases.json`: a build takes the role its
   `dataset_role` gives it, and the collector provenance names a BE build with
   the country code `BE` and `licensed_data` true, as it names a UK build with
-  `UK`, so the collector keeps BE builds' Orrery graph files private. The
-  function reads the registry on each call. `validate_release_dir` and
+  `UK`. BE's inputs carry no restricting licence, so for BE the flag is a
+  privacy setting: it keeps the collector's Orrery graph files of BE builds
+  private while BE's repository stays private. Under the collector's rules a
+  build's calibration tree may be public either way. A BE build declares each
+  file its release contract adds as an artifact, as a US build declares its
+  source coverage (`_check_be_release_artifacts`). The function reads the
+  registry on each call. `validate_release_dir` and
   `validate_evidence_release_dir` refuse every layout of a local-area name
   that no entry names, and neither publisher takes one (microcosm#1586).
   `microcosm-us-2024-national` holds every national build:

@@ -273,10 +273,13 @@ def collector_provenance(release: str, build: str) -> CollectorProvenance | None
     dense releases, and each local-area release that the dataset registry
     names) used licensed microdata, so the collector keeps its Orrery outputs
     private; a US build is published in the public US repository, so it used
-    none whose licence keeps its outputs private. A BE build is published in
-    BE's private repository, and making any of it public is Max's decision,
-    so it is reported as a UK build is: the collector keeps its Orrery
-    outputs private. None for a release whose builds do not publish into
+    none whose licence keeps its outputs private. A BE build is named with
+    BE's own country code. Its inputs carry no restricting licence, but it
+    is published in BE's private repository and making any of it public is
+    Max's decision, so it too is reported with ``licensed_data`` true: here
+    the flag keeps the collector's Orrery outputs of the build private, as
+    for a UK build. Under the collector's rules a build's calibration tree
+    may be public either way. None for a release whose builds do not publish into
     their own folders, a UK local-area release that the registry does not
     name among them. The interface raises ``ValueError`` for a build ID it
     does not accept.

@@ -1,8 +1,9 @@
 """Publish a release and move its approved repository pointer.
 
-**No UK or US release publishes here.** The UK national and dense releases,
-each UK local-area release that the dataset registry names, and the US
-releases (:data:`~microcosm.data.contract.US_RELEASES`) publish each build into its
+**No UK, US or BE release publishes here.** The UK national and dense
+releases, each UK local-area release that the dataset registry names, the US
+releases (:data:`~microcosm.data.contract.US_RELEASES`) and BE's releases
+(:data:`~microcosm.data.contract.BE_RELEASES`) publish each build into its
 own folder, ``releases/<release>/<build>/``, through the emitter's
 ``publish_release`` call (``microcosm-publish-release-build``, in
 ``microcosm-build``), and the repository's ``releases.json`` records which

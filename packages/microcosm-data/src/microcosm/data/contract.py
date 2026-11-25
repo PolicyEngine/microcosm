@@ -319,17 +319,21 @@ def is_us_release(release_id: str) -> bool:
 BE_RELEASES: frozenset[str] = frozenset(
     {"microcosm-be-2025-national", "microcosm-be-2026-national"}
 )
-#: The files every build of a BE release carries: the base set and the three
-#: that BE's release contract adds (``microcosm/build/be/release_contract.json``
-#: in the build shard, which this shard cannot import; a build-shard test
-#: holds the two lists equal). As with a UK release's files, the name of the
-#: release decides them.
-BE_REQUIRED_RELEASE_FILES = (
-    *REQUIRED_RELEASE_FILES,
+#: The files BE's release contract adds to the base set
+#: (``microcosm/build/be/release_contract.json`` in the build shard, which
+#: this shard cannot import), each of which a BE build also declares as an
+#: artifact.
+_BE_ADDED_RELEASE_FILES = (
     "source_coverage.json",
     "demographics.json",
     "reform_validation.json",
 )
+#: The files a build of a BE release in the national-default role carries:
+#: the base set and :data:`_BE_ADDED_RELEASE_FILES`. A build-shard test holds
+#: this list equal to the release contract's. As with a UK release's files,
+#: the name of the release decides them; a build in the local-area role is
+#: held to the local-area list instead, as a UK one is.
+BE_REQUIRED_RELEASE_FILES = (*REQUIRED_RELEASE_FILES, *_BE_ADDED_RELEASE_FILES)
 
 
 def is_be_release(release_id: str) -> bool:
@@ -2083,6 +2087,8 @@ def _check_release_manifest(
             _check_us_release_dataset_file(
                 artifacts, release_id, failures, manifest=manifest
             )
+        if is_be_release(release_id):
+            _check_be_release_artifacts(manifest, failures)
     else:
         _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
@@ -2165,6 +2171,22 @@ def _check_us_release_artifacts(
             "release_manifest.json artifacts must include "
             f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
         )
+
+
+def _check_be_release_artifacts(manifest: Mapping, failures: list[str]) -> None:
+    """A BE build declares each file its release contract adds to the base set.
+
+    The publisher hands the emitter only the two manifests and the declared
+    artifacts, so a file the contract requires that is present but not
+    declared would not be published. The calibration diagnostics are
+    declared already (:func:`_check_calibration_diagnostics_declaration`).
+    """
+    for filename in _BE_ADDED_RELEASE_FILES:
+        if _artifact_by_path(manifest, filename) is None:
+            failures.append(
+                f"release_manifest.json artifacts must include {filename!r} for "
+                "BE releases."
+            )
 
 
 def _check_us_release_dataset_file(

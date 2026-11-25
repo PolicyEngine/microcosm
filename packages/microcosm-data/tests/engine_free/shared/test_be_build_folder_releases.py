@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from microcosm.data import contract
 from microcosm.data import release as release_module
 from microcosm.data.contract import (
     REQUIRED_RELEASE_FILES,
@@ -40,12 +41,12 @@ BE_REQUIRED_FILES = (
     "reform_validation.json",
 )
 #: BE names outside the two releases: another population year, another
-#: line, and the old folder name of BE's 2025 build, which was its own
-#: release before the move.
+#: kind of release, and a folder name in the form of BE's builds published
+#: before the move, each of which was its own release.
 OTHER_BE_IDS = (
     "microcosm-be-2024-national",
     "microcosm-be-2025-local",
-    "microcosm-be-2025-chronicle-b6cdee2-20260823T204826Z",
+    "microcosm-be-2025-chronicle-0000000-20260101T000000Z",
 )
 
 
@@ -56,6 +57,11 @@ def _contract_failures(release_directory: Path) -> list[str]:
     except ReleaseContractError as refusal:
         return refusal.failures
     return []
+
+
+def test_the_be_releases_are_a_closed_list_of_two_names() -> None:
+    """The fixtures name the same two releases the contract does."""
+    assert contract.BE_RELEASES == frozenset(BE_RELEASE_IDS)
 
 
 @pytest.mark.parametrize("release_id", BE_RELEASE_IDS)

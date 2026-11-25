@@ -32,7 +32,7 @@ OFFLINE_VARIABLES = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
 BE_CURRENT_BUILD = "microcosm-be-2025-chronicle-0000000-20261101T000000Z"
 
 
-def _be_build(release: str, build: str = BE_BUILD) -> CollectorProvenance:
+def _be_provenance(release: str, build: str = BE_BUILD) -> CollectorProvenance:
     """The collector's provenance of a build of a BE release."""
     return CollectorProvenance(
         country_code="BE", build_id=build, licensed_data=True, release=release
@@ -73,9 +73,9 @@ def test_the_command_takes_a_be_release(tmp_path, monkeypatch, capsys) -> None:
 def test_every_be_release_names_its_builds_as_licensed_be_builds(release) -> None:
     """The collector registers BE under ``be`` with its private release
     repository, and keeps a licensed build's Orrery graph files private."""
-    assert release_publication.collector_provenance(release, BE_BUILD) == _be_build(
-        release
-    )
+    assert release_publication.collector_provenance(
+        release, BE_BUILD
+    ) == _be_provenance(release)
 
 
 @pytest.mark.usefixtures("on_a_build_machine")
@@ -102,7 +102,7 @@ def test_a_be_publication_hands_its_files_over_and_names_its_build(
     assert {"source_coverage.json", "demographics.json", "reform_validation.json"} <= (
         set(files)
     )
-    assert request.collector == _be_build(BE_RELEASE_IDS[0])
+    assert request.collector == _be_provenance(BE_RELEASE_IDS[0])
     record = json.loads(client.hub_files[(BE_FIXTURE_REPO_ID, "releases.json")])
     assert list(record["releases"][BE_RELEASE_IDS[0]]["builds"]) == [BE_BUILD]
     assert outcome.published and outcome.succeeded
@@ -127,7 +127,7 @@ def test_a_be_promotion_names_its_build_for_the_collector(
     outcome = release_publication.promote_release_build(be_release_dir, client=client)
 
     (promotion,) = client.release_requests
-    assert promotion.collector == _be_build(release)
+    assert promotion.collector == _be_provenance(release)
     assert client.collector_receipt_requests == [promotion.handover_id()]
     assert outcome.current
 
@@ -142,6 +142,6 @@ def test_a_be_withdrawal_names_its_build_for_the_collector() -> None:
     )
 
     (withdrawal,) = client.release_requests
-    assert withdrawal.collector == _be_build(release)
+    assert withdrawal.collector == _be_provenance(release)
     assert client.collector_receipt_requests == [withdrawal.handover_id()]
     assert outcome.withdrawn
