@@ -5,6 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    read_sipp_december_person_rows,
+)
 from microcosm.build.us_runtime.sipp_financial_assets import (
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS,
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
@@ -18,9 +21,9 @@ from microcosm.build.us_runtime.sipp_financial_assets import (
     SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS,
     SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS,
     _target_balanced_cap,
+    build_sipp_2023_financial_asset_donor,
     fetch_sipp_2023_financial_asset_donor,
     impute_us_sipp_financial_assets,
-    load_sipp_2023_financial_asset_donor,
 )
 
 
@@ -177,13 +180,16 @@ def test_pinned_sipp_source_and_final_archived_predictor_contract() -> None:
     }
 
 
-def test_loader_filters_december_and_matches_archived_transforms(tmp_path) -> None:
+def test_donor_keeps_december_rows_and_matches_archived_transforms(tmp_path) -> None:
     raw = _raw_sipp()
     path = tmp_path / "pu2023.csv"
     raw.to_csv(path, sep="|", index=False)
-    donor = load_sipp_2023_financial_asset_donor(
-        path,
-        chunksize=3,
+    donor = build_sipp_2023_financial_asset_donor(
+        read_sipp_december_person_rows(
+            path,
+            columns=SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+            chunksize=3,
+        ),
         max_train_samples=None,
     )
 

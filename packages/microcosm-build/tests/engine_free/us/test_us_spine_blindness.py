@@ -418,6 +418,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # stage shaped like scf_auto_loans.
         "scf_education_debt.py",
         "scf_wealth.py",
+        # Reads the December rows of the SIPP person file once for the five
+        # SIPP donor builders; reads no frame and treats no population.
+        "sipp_december_person_rows.py",
         "sipp_financial_assets.py",
         "sipp_tips.py",
         "sipp_vehicles.py",
@@ -3871,8 +3874,10 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # --location-rule block_v1 household location reaches (#696). 86 adds
         # battery_bindings.py, gate_scopes.py and gate_shadow.py, the gate
         # battery the pool runs in shadow beside its gates (#1585 item 11).
-        assert len(runtime_graph) == 86, (
-            f"{tool.name} must reach the pinned 86-module runtime graph; "
+        # 87 adds sipp_december_person_rows.py, the shared SIPP person-file
+        # read that sipp_financial_assets.py now builds its donor from.
+        assert len(runtime_graph) == 87, (
+            f"{tool.name} must reach the pinned 87-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

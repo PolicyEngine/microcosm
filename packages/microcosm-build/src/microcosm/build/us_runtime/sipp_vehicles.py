@@ -35,6 +35,9 @@ from sklearn.ensemble import RandomForestClassifier
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    SippDecemberPersonRows,
+)
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -51,9 +54,9 @@ __all__ = [
     "SIPP_VEHICLE_SOURCE_COLUMNS",
     "US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS",
     "US_SIPP_VEHICLE_OUTPUT_COLUMNS",
+    "build_sipp_2023_vehicle_donor",
     "fetch_sipp_2023_vehicle_donor",
     "impute_us_sipp_vehicles",
-    "load_sipp_2023_vehicle_donor",
     "us_sipp_vehicles_signal_gate",
     "us_sipp_vehicles_stage_spec",
     "us_sipp_vehicles_summary",
@@ -365,52 +368,15 @@ def _cap_vehicle_training_sample(donor: pd.DataFrame) -> pd.DataFrame:
     return donor.iloc[positions].copy().reset_index(drop=True)
 
 
-def load_sipp_2023_vehicle_donor(
-    path: str | Path,
-    *,
-    expected_sha256: str | None = None,
-    expected_size_bytes: int | None = SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
-    chunksize: int = 100_000,
+def build_sipp_2023_vehicle_donor(
+    person_rows: SippDecemberPersonRows,
 ) -> pd.DataFrame:
-    """Load and transform the pinned person-month file to household donors."""
+    """Transform the person-month file's December rows to household donors."""
 
-    path = Path(path)
-    if expected_size_bytes is not None and path.stat().st_size != expected_size_bytes:
-        raise ValueError(
-            "SIPP 2023 vehicle donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {path.stat().st_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(path)
-        if actual_sha256 != expected_sha256:
-            raise ValueError(
-                "SIPP 2023 vehicle donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
-            )
-    if chunksize < 1:
-        raise ValueError("chunksize must be a positive integer")
-
-    header = pd.read_csv(path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_VEHICLE_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP 2023 vehicle donor missing column(s): {missing}.")
-
-    december_parts: list[pd.DataFrame] = []
-    reader = pd.read_csv(
-        path,
-        delimiter="|",
-        usecols=list(SIPP_VEHICLE_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        low_memory=True,
+    person = person_rows.source_table(
+        SIPP_VEHICLE_SOURCE_COLUMNS,
+        read_in_parser_blocks=True,
     )
-    for chunk in reader:
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            december_parts.append(december)
-    if not december_parts:
-        raise ValueError("SIPP 2023 vehicle donor has no December person records.")
-    person = pd.concat(december_parts, ignore_index=True)
 
     for column in SIPP_VEHICLE_SOURCE_COLUMNS:
         if column != "SSUID":
