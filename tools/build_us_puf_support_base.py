@@ -46,6 +46,7 @@ import subprocess
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
+from typing import NamedTuple, NoReturn
 
 import numpy as np
 import pandas as pd
@@ -964,7 +965,12 @@ def _run_staged_all(
     """
 
     pipeline_steps = _pipeline_steps_for(args)
-    runtime = _open_stage_runtime(args)
+    run_config = _stage_run_config(args)
+    runtime = _open_stage_runtime(args, run_config)
+    # Each step process takes the input and builder source digests from this
+    # run config, which the resume check just compared with the locked one,
+    # instead of hashing the files again.
+    digests_environment = _parent_digests_environment(run_config)
     completed_prefix = runtime.context.completed
     remaining = pipeline_steps[len(completed_prefix) :]
     if not remaining and completed_prefix == pipeline_steps:
@@ -991,7 +997,7 @@ def _run_staged_all(
                     *_stage_cli_args(args, stage),
                 ],
                 check=False,
-                env=_staged_subprocess_environment(),
+                env={**_staged_subprocess_environment(), **digests_environment},
             )
             if completed.returncode != 0:
                 raise SystemExit(
@@ -1306,13 +1312,18 @@ def _blas_threads_in_use() -> list[list[object]]:
     )
 
 
-def _open_stage_runtime(args: argparse.Namespace) -> StageRuntime:
-    """Open the checkpoint directory, refusing a resume with changed settings."""
+def _open_stage_runtime(
+    args: argparse.Namespace, run_config: Mapping[str, object] | None = None
+) -> StageRuntime:
+    """Open the checkpoint directory, refusing a resume with changed settings.
+
+    ``run_config`` is ``_stage_run_config(args)``, when the caller has it.
+    """
 
     return StageRuntime(
         args.checkpoint_dir,
         _pipeline_for(args),
-        run_config=_stage_run_config(args),
+        run_config=_stage_run_config(args) if run_config is None else run_config,
         resume_ignored_run_config_paths=_RESUME_IGNORED_RUN_CONFIG_PATHS,
     )
 
@@ -1321,11 +1332,18 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
     """Return the canonical inputs and settings recorded by the first run.
 
     A resume must supply equal values, except for
-    ``_RESUME_IGNORED_RUN_CONFIG_PATHS``.
+    ``_RESUME_IGNORED_RUN_CONFIG_PATHS``. A step process of a ``--stage all``
+    run takes the PUF and builder source digests its parent passed
+    (``PARENT_DIGESTS_VARIABLE``) instead of hashing those files again.
     """
 
     def path(value: Path | None) -> str | None:
         return None if value is None else str(value.resolve())
+
+    parent_digests = _parent_digests(args)
+    parent_source_sha256 = (
+        None if parent_digests is None else parent_digests.builder_source_sha256
+    )
 
     asec_sources: list[str] | None = None
     if args.asec_h5 is not None:
@@ -1382,7 +1400,11 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "assign_congressional_districts": bool(args.assign_congressional_districts),
         "base_h5": path(args.base_h5),
         "block_ladder_artifact": path(args.block_ladder_artifact),
-        "builder_code_identity": _builder_code_identity(),
+        "builder_code_identity": (
+            _builder_code_identity()
+            if parent_source_sha256 is None
+            else _builder_code_identity(source_sha256=parent_source_sha256)
+        ),
         "congressional_district_seed": args.congressional_district_seed,
         "congressional_district_vintage_crosswalk": path(
             args.congressional_district_vintage_crosswalk
@@ -1396,13 +1418,13 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "out": path(args.out),
         "puf_h5": path(args.puf_h5),
         "puf_h5_sha256": (
-            _sha256(args.puf_h5)
+            _input_sha256(args.puf_h5, parent_digests)
             if args.puf_h5 is not None and Path(args.puf_h5).is_file()
             else None
         ),
         "puf_source_year_csv": path(args.puf_source_year_csv),
         "puf_source_year_csv_sha256": (
-            _sha256(args.puf_source_year_csv)
+            _input_sha256(args.puf_source_year_csv, parent_digests)
             if args.puf_source_year_csv is not None
             else None
         ),
@@ -1439,14 +1461,19 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
     return config
 
 
-def _builder_code_identity() -> dict[str, object]:
-    """Fingerprint executable sources and dependency versions for safe resume."""
+def _builder_code_identity(*, source_sha256: str | None = None) -> dict[str, object]:
+    """Fingerprint executable sources and dependency versions for safe resume.
+
+    ``source_sha256`` is the parent's digest of the sources, which are then
+    not read again; ``None`` hashes them here.
+    """
 
     from microcosm.build.code_identity import builder_code_identity
 
+    tool = _builder_tool_path()
     return builder_code_identity(
-        Path(__file__).resolve().parents[1],
-        tool_path=Path(__file__).resolve(),
+        tool.parents[1],
+        tool_path=tool,
         distributions=(
             "h5py",
             "numpy",
@@ -1455,7 +1482,176 @@ def _builder_code_identity() -> dict[str, object]:
             "quantile-forest",
             "scikit-learn",
         ),
+        source_sha256=source_sha256,
     )
+
+
+def _builder_tool_path() -> Path:
+    """This tool's file; its repository root is ``parents[1]``."""
+
+    return Path(__file__).resolve()
+
+
+#: The variable in which a ``--stage all`` parent passes each step process the
+#: digests of its run config, as JSON: the SHA-256 of the PUF H5 and CSV under
+#: each file's resolved path, and the builder source digest with the
+#: repository root and tool file it covers, so the step's own run config
+#: (``_stage_run_config``) does not read those files again. A step process
+#: uses a digest only for the same path, and only when the process that set
+#: the variable is its parent, so the QRF processes a step starts and a named
+#: ``--stage`` run by hand hash everything themselves. The parent ignores the
+#: variable and hashes everything at every start, comparing the result with
+#: the locked run config before it starts a step, so a resume after an input
+#: or the builder's code changed is still refused. What goes unnoticed is a
+#: file that changes while the run is under way.
+PARENT_DIGESTS_VARIABLE = "MICROCOSM_US_BASE_PARENT_DIGESTS"
+_PARENT_DIGESTS_SCHEMA_VERSION = 1
+_PARENT_DIGESTS_KEYS = frozenset(
+    {"builder_source_sha256", "file_sha256", "parent_pid", "schema_version"}
+)
+_PARENT_SOURCE_DIGEST_KEYS = frozenset({"repo_root", "sha256", "tool_path"})
+#: The run-config keys of each input path the parent passes a digest for,
+#: and of that digest.
+_PARENT_DIGEST_FILE_KEYS = (
+    ("puf_h5", "puf_h5_sha256"),
+    ("puf_source_year_csv", "puf_source_year_csv_sha256"),
+)
+
+
+class _ParentDigests(NamedTuple):
+    """The digests a step process's parent passed it.
+
+    ``file_sha256`` maps resolved paths to digests. ``builder_source_sha256``
+    is ``None`` unless the parent's source digest covers this tool file and
+    repository root.
+    """
+
+    file_sha256: Mapping[str, str]
+    builder_source_sha256: str | None
+
+
+def _parent_digests_environment(run_config: Mapping[str, object]) -> dict[str, str]:
+    """``PARENT_DIGESTS_VARIABLE`` carrying ``run_config``'s digests."""
+
+    file_sha256 = {}
+    for path_key, digest_key in _PARENT_DIGEST_FILE_KEYS:
+        path, digest = run_config.get(path_key), run_config.get(digest_key)
+        if isinstance(path, str) and isinstance(digest, str):
+            file_sha256[path] = digest
+    identity = run_config.get("builder_code_identity")
+    source_sha256 = (
+        identity.get("source_sha256") if isinstance(identity, Mapping) else None
+    )
+    tool = _builder_tool_path()
+    payload = {
+        "builder_source_sha256": (
+            {
+                "repo_root": str(tool.parents[1]),
+                "sha256": source_sha256,
+                "tool_path": str(tool),
+            }
+            if isinstance(source_sha256, str)
+            else None
+        ),
+        "file_sha256": file_sha256,
+        "parent_pid": os.getpid(),
+        "schema_version": _PARENT_DIGESTS_SCHEMA_VERSION,
+    }
+    return {PARENT_DIGESTS_VARIABLE: json.dumps(payload, sort_keys=True)}
+
+
+def _parent_digests(args: argparse.Namespace) -> _ParentDigests | None:
+    """The digests this step process's parent passed it, or ``None``.
+
+    ``None`` for a ``--stage all`` run, which hashes its own inputs, and for
+    a process whose parent did not set ``PARENT_DIGESTS_VARIABLE``.
+    """
+
+    if getattr(args, "stage", "all") == "all":
+        return None
+    raw = os.environ.get(PARENT_DIGESTS_VARIABLE)
+    if raw is None:
+        return None
+    payload = _parse_parent_digests(raw)
+    if payload["parent_pid"] != os.getppid():
+        return None
+    source = payload["builder_source_sha256"]
+    tool = _builder_tool_path()
+    covers_this_tool = (
+        source is not None
+        and source["tool_path"] == str(tool)
+        and source["repo_root"] == str(tool.parents[1])
+    )
+    return _ParentDigests(
+        file_sha256=payload["file_sha256"],
+        builder_source_sha256=source["sha256"] if covers_this_tool else None,
+    )
+
+
+def _parse_parent_digests(raw: str) -> dict[str, object]:
+    """Validate ``PARENT_DIGESTS_VARIABLE``, refusing what no parent writes."""
+
+    def refuse(problem: str) -> NoReturn:
+        raise SystemExit(
+            f"{PARENT_DIGESTS_VARIABLE} {problem}. A --stage all run sets it "
+            "for its step processes; unset it to run a named --stage by hand."
+        )
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        refuse(f"is not JSON ({error})")
+    if not isinstance(payload, dict) or set(payload) != _PARENT_DIGESTS_KEYS:
+        refuse(
+            f"is not a JSON object with exactly the keys {sorted(_PARENT_DIGESTS_KEYS)}"
+        )
+    if payload["schema_version"] != _PARENT_DIGESTS_SCHEMA_VERSION:
+        refuse(
+            f"has schema_version {payload['schema_version']!r}; this tool "
+            f"reads {_PARENT_DIGESTS_SCHEMA_VERSION}"
+        )
+    if type(payload["parent_pid"]) is not int:
+        refuse("has a parent_pid that is not an integer")
+    files = payload["file_sha256"]
+    if not isinstance(files, dict) or not all(
+        Path(path).is_absolute() and _is_sha256(digest)
+        for path, digest in files.items()
+    ):
+        refuse(
+            "has a file_sha256 that does not map absolute paths to lowercase "
+            "SHA-256 digests"
+        )
+    source = payload["builder_source_sha256"]
+    if source is not None and not (
+        isinstance(source, dict)
+        and set(source) == _PARENT_SOURCE_DIGEST_KEYS
+        and isinstance(source["repo_root"], str)
+        and isinstance(source["tool_path"], str)
+        and _is_sha256(source["sha256"])
+    ):
+        refuse(
+            "has a builder_source_sha256 that is neither null nor an object "
+            "with a repo_root, a tool_path and a lowercase SHA-256 sha256"
+        )
+    return payload
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and set(value) <= set("0123456789abcdef")
+    )
+
+
+def _input_sha256(path: Path, parent_digests: _ParentDigests | None) -> str:
+    """``path``'s SHA-256: the parent's digest for its resolved path, else hashed."""
+
+    if parent_digests is not None:
+        digest = parent_digests.file_sha256.get(str(Path(path).resolve()))
+        if digest is not None:
+            return digest
+    return _sha256(path)
 
 
 class _EquivalenceBoundaryObserver:
