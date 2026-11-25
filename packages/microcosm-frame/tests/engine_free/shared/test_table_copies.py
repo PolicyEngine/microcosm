@@ -88,6 +88,13 @@ INDEX_KINDS: dict[str, Callable[[], pd.Index | None]] = {
         [("a", 1), ("a", 2), ("b", 3), ("b", 4), ("c", 5), ("c", 6)],
         names=["part", "row"],
     ),
+    "multi with a range level": lambda: pd.MultiIndex(
+        levels=[pd.RangeIndex(3), pd.Index(["u", "v"])],
+        codes=[[0, 0, 1, 1, 2, 2], [0, 1, 0, 1, 0, 1]],
+        names=["row", "part"],
+    ),
+    "datetime with freq": lambda: pd.date_range("2020-01-01", periods=6, name="row"),
+    "categorical": lambda: pd.CategoricalIndex(list("uvwuvw"), name="row"),
 }
 
 
@@ -366,51 +373,79 @@ def _read_only_index(values: np.ndarray) -> pd.Index:
     return pd.Index(values, name="row", copy=False)
 
 
-#: Labels the copy must not let a write reach. A RangeIndex view would share
-#: the cache holding its materialized values, which np.asarray returns
-#: writable; a view of an index over writable memory would share it.
-WRITABLE_LABELS: dict[str, Callable[[], pd.Index]] = {
-    "range": lambda: pd.RangeIndex(1, 7, name="row"),
-    "int64": lambda: pd.Index(np.array([5, 3, 9, 1, 7, 2]), name="row"),
-    "object": lambda: pd.Index(list("uvwxyz"), dtype=object, name="row"),
-    "datetime": lambda: pd.DatetimeIndex(
-        pd.date_range("2020-01-01", periods=6), name="row"
+class _SubclassedFrame(pd.DataFrame):
+    _metadata = ["note"]
+
+    @property
+    def _constructor(self):
+        return _SubclassedFrame
+
+
+def _label_arrays(labels: pd.Index) -> list[np.ndarray]:
+    """The arrays ``np.asarray`` returns for ``labels`` and its parts.
+
+    A RangeIndex returns its cached materialized values, writable; ``list()``
+    would iterate the range instead and miss a write into the cache.
+    """
+
+    arrays = [np.asarray(labels)]
+    if isinstance(labels, pd.MultiIndex):
+        arrays.extend(np.asarray(level) for level in labels.levels)
+    if isinstance(labels, pd.CategoricalIndex):
+        arrays.append(np.asarray(labels.categories))
+    return arrays
+
+
+def _label_values(labels: pd.Index) -> list[list[object]]:
+    return [array.tolist() for array in _label_arrays(labels)]
+
+
+#: Ways copy_table builds a copy: its own, and two through copy(deep=True).
+COPY_PATHS: dict[str, Callable[[pd.DataFrame, pytest.MonkeyPatch], pd.DataFrame]] = {
+    "one copy": lambda table, monkeypatch: table,
+    "no block constructor": lambda table, monkeypatch: (
+        monkeypatch.setattr(table_copies, "create_dataframe_from_blocks", None) or table
     ),
+    "subclass": lambda table, monkeypatch: _SubclassedFrame(table),
+}
+#: Labels for both axes, over writable and read-only memory.
+LABEL_KINDS: dict[str, Callable[[], pd.Index | None]] = {
+    **{name: kind for name, kind in INDEX_KINDS.items() if name != "default range"},
+    "read-only int64": lambda: _read_only_index(np.array([5, 3, 9, 1, 7, 2])),
 }
 
 
+@pytest.mark.parametrize("path", COPY_PATHS)
 @pytest.mark.parametrize("axis", ["index", "columns"])
-@pytest.mark.parametrize("labels", WRITABLE_LABELS)
-def test_a_write_into_the_copy_s_labels_leaves_the_source_s_unchanged(axis, labels):
+@pytest.mark.parametrize("labels", LABEL_KINDS)
+def test_a_write_into_the_copy_s_labels_leaves_the_source_s_unchanged(
+    path, axis, labels, monkeypatch
+):
     source = _one_block_per_column(names=COLUMNS[:6])
-    source = source.set_axis(WRITABLE_LABELS[labels](), axis=axis)
-    before = list(getattr(source, axis))
+    source = source.set_axis(LABEL_KINDS[labels](), axis=axis)
+    source = COPY_PATHS[path](source, monkeypatch)
+    source_labels = getattr(source, axis)
+    _label_arrays(source_labels)  # materializes a RangeIndex's cached values
+    values_before = _label_values(source_labels)
+    names_before = list(source_labels.names)
 
     for copied in (copy_table(source), copy_table(source.iloc[:, [0, 1]])):
         target = getattr(copied, axis)
         pd.testing.assert_index_equal(
-            target, getattr(source, axis)[: len(target)], exact=True
+            target, source_labels[: len(target)], exact=True, check_categorical=True
         )
-        values = np.asarray(target)
-        try:
-            values[0] = values[1]
-        except ValueError:
-            pass
-        target.name = "renamed"
+        for array in _label_arrays(target):
+            # np.add.at writes even into a read-only array.
+            if array.dtype.kind in "iuf":
+                np.add.at(array, [0], 1)
+            try:
+                array[0] = array[-1]
+            except ValueError:
+                pass
+        target.names = ["renamed"] * target.nlevels
 
-    assert list(getattr(source, axis)) == before
-    assert getattr(source, axis).name == "row"
-
-
-def test_an_index_over_read_only_memory_is_viewed():
-    # The executor's kernel inputs hold such indexes; a write into them raises.
-    source = _one_block_per_column(index=_read_only_index(np.array([5, 3, 9, 1, 7, 2])))
-
-    copied = copy_table(source)
-
-    assert np.shares_memory(np.asarray(copied.index), np.asarray(source.index))
-    with pytest.raises(ValueError, match="read-only"):
-        np.asarray(copied.index)[0] = 0
+    assert _label_values(source_labels) == values_before
+    assert list(source_labels.names) == names_before
 
 
 @pytest.mark.parametrize("column", PANDAS_COPIED_VALUES)
@@ -463,21 +498,14 @@ def test_numpy_dtypes_sharing_a_name_are_copied_by_pandas():
 
 
 def test_a_pandas_subclass_is_copied_by_pandas():
-    class Subclassed(pd.DataFrame):
-        _metadata = ["note"]
-
-        @property
-        def _constructor(self):
-            return Subclassed
-
-    source = Subclassed(
+    source = _SubclassedFrame(
         _columns(("float64", "float64_second", "Int64", "category")), copy=False
     )
     source.note = "kept"
 
     copied = copy_table(source)
 
-    assert type(copied) is Subclassed
+    assert type(copied) is _SubclassedFrame
     assert copied.note == "kept"
     pd.testing.assert_frame_equal(copied, source.copy(deep=True), check_exact=True)
     _assert_categories_and_range_index_are_new(copied, source)
@@ -545,10 +573,21 @@ SERIES_VALUES: dict[str, Callable[[], object]] = {
 
 
 @pytest.mark.parametrize("kind", SERIES_VALUES)
-@pytest.mark.parametrize("index_kind", ["default range", "named range from 1", "int64"])
+@pytest.mark.parametrize(
+    "index_kind",
+    [
+        "default range",
+        "named range from 1",
+        "int64",
+        "read-only int64",
+        "datetime with freq",
+    ],
+)
 def test_a_series_copy_equals_pandas_deep_copy_and_shares_no_memory(kind, index_kind):
     source = pd.Series(
-        SERIES_VALUES[kind](), index=INDEX_KINDS[index_kind](), name="stratum"
+        SERIES_VALUES[kind](),
+        index={**INDEX_KINDS, **LABEL_KINDS}[index_kind](),
+        name="stratum",
     )
     source.attrs["receipt"] = "invented"
 
@@ -569,9 +608,12 @@ def test_a_series_copy_equals_pandas_deep_copy_and_shares_no_memory(kind, index_
     )
     if kind == "category":
         assert copied.cat.categories.array is not source.cat.categories.array
-    if isinstance(source.index, pd.RangeIndex):
-        np.asarray(copied.index)[0] = 99
-        assert np.asarray(source.index)[0] != 99
+    _label_arrays(source.index)  # materializes a RangeIndex's cached values
+    index_before = _label_values(source.index)
+    for array in _label_arrays(copied.index):
+        if array.dtype.kind in "iuf":
+            np.add.at(array, [0], 1)
+    assert _label_values(source.index) == index_before
 
 
 class _SubclassedSeries(pd.Series):

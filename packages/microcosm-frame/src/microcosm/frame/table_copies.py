@@ -10,44 +10,53 @@ each column copied once, straight into its row of the new block, and the caller
 can pass the copies to :meth:`~microcosm.frame.bundle.Frame.adopt`, which stores
 them without copying again.
 
-The result matches ``table.copy(deep=True)`` block for block: the same blocks
-with the same dtype, columns, shape and strides, so each column lies at the same
-offset within its block, and BLAS products such as ``np.dot``, whose rounding on
-some platforms depends on how an operand is aligned, see the same layout. The
-values, index and column labels, ``attrs`` and flags are equal. Three things
-differ, and each leaves the copy further from its source than pandas' copy does:
+The result matches ``table.copy(deep=True)`` block for block when each block of
+``table`` lists its columns in position order, as the blocks of tables built by
+pandas' own operations and the executor's inputs do: the same blocks with the
+same dtype, columns, shape and strides, so each column lies at the same offset
+within its block, and BLAS products such as ``np.dot``, whose rounding on some
+platforms depends on how an operand is aligned, see the same layout. The values,
+index and column labels, ``attrs`` and flags are equal. Three things differ, and
+each leaves the copy further from its source than pandas' copy does:
 
 - A categorical column's categories are copied too, where pandas' copy shares
   them with the source, so a write into them (``.cat.categories.values[0] =``,
   for example) changes only the copy. The codes keep their integer type.
-- The index and the column labels share no writable memory with the source's.
-  A ``RangeIndex`` (also as categories) is rebuilt, because a view of one
-  shares the cache that holds its values once materialized, and
-  ``np.asarray(index)`` returns that cached array writable. A plain index over
-  read-only NumPy memory, as the graph executor's kernel inputs have, is a view
-  of the source's, as in pandas' copy, and any other index is deep-copied. A
-  ``CategoricalIndex`` still shares its categories, as in pandas' copy.
+- The index and the column labels are copied, where pandas' copy views them.
+  ``np.<ufunc>.at`` writes even into a read-only array, so a view of the
+  executor's read-only index would let it reach the context, and through a
+  node that reads every row the stored population. A ``RangeIndex``, as an
+  index, a level of a ``MultiIndex`` or categories, is rebuilt, because even a
+  deep copy of one shares the cache holding its values once materialized, and
+  ``np.asarray`` returns that cached array writable; a ``CategoricalIndex``
+  gets copied categories. This costs one array per table whose index is not a
+  ``RangeIndex``.
 - pandas' internal list of blocks is in the order its consolidation gives
   (one-dimensional extension blocks, then NumPy blocks, each by dtype name and
   then column position). That is the order of ``copy(deep=True)`` whenever
-  pandas has to merge blocks, as for a kernel input holding two or more columns
-  of one NumPy dtype, and may differ otherwise. Nothing reads a table block by
-  block in that order: values, layout and every column's memory are the same.
+  pandas has to merge the blocks of a table that holds them in column order, as
+  for a kernel input with two or more columns of one NumPy dtype, and may differ
+  otherwise. Nothing reads a table block by block in that order: values, layout
+  and every column's memory are the same.
 
 A pyarrow-backed column is copied as pandas copies it, sharing its Arrow
 buffers with the source. pyarrow treats them as immutable, but ``np.<ufunc>.at``
 writes through the read-only array ``to_numpy()`` returns for a numeric one.
 The graph store accepts no pyarrow-backed column, so no kernel input holds one.
 
-A table this module cannot build block for block is copied with
-``copy(deep=True)``, and then its categorical columns' categories and its index
-and column labels are copied as above, so only the third difference does not
-apply. These are a pandas subclass, whose type and metadata only its own methods
-keep; a table with a column whose block pandas stores in two dimensions but
-builds from an extension array (``datetime64``, ``timedelta64``, timezone-aware
-datetimes and periods); a table with two NumPy dtypes of one name; and any table
-under a pandas without ``pandas.api.internals.create_dataframe_from_blocks``
-(added in pandas 3.0).
+Some tables are copied with ``copy(deep=True)``, and then their categories and
+labels are copied as above, so only the third difference does not apply:
+
+- a pandas subclass, whose type and metadata only its own methods keep;
+- a table with a ``datetime64``, ``timedelta64``, timezone-aware datetime or
+  period column, whose blocks pandas builds from extension arrays in two
+  dimensions; on pandas 3.0.3 the one-copy build would give the same blocks,
+  but this module leaves them to pandas rather than depend on how a pandas
+  version merges them;
+- a table with two NumPy dtypes of one name, which pandas merges into one
+  block;
+- any table under a pandas without
+  ``pandas.api.internals.create_dataframe_from_blocks`` (added in pandas 3.0).
 """
 
 from __future__ import annotations
@@ -139,11 +148,11 @@ def copy_series(series: pd.Series) -> pd.Series:
         pyarrow buffers.
     """
 
+    if type(series) is not pd.Series:
+        return _pandas_copy(series)
     dtype = series.dtype
-    if (
-        type(series) is not pd.Series
-        or (isinstance(dtype, np.dtype) and dtype.kind not in _BLOCK_KINDS)
-        or isinstance(dtype, _TWO_DIMENSIONAL_EXTENSION_DTYPES)
+    if (isinstance(dtype, np.dtype) and dtype.kind not in _BLOCK_KINDS) or isinstance(
+        dtype, _TWO_DIMENSIONAL_EXTENSION_DTYPES
     ):
         return _pandas_copy(series)
     values = _copied_values(series)
@@ -164,10 +173,18 @@ def _copied_values(column: pd.Series) -> np.ndarray | ExtensionArray:
         return column.to_numpy().copy()
     values = column.array
     if isinstance(values, pd.Categorical):
-        # rename_categories copies the codes in their own integer type and
-        # keeps the categories it is given; from_codes would narrow the codes.
-        return values.rename_categories(_copied_index(values.categories))
+        return _copied_categorical(values)
     return values.copy()
+
+
+def _copied_categorical(values: pd.Categorical) -> pd.Categorical:
+    """A copy of ``values`` with its categories copied too.
+
+    ``rename_categories`` copies the codes in their own integer type and keeps
+    the categories it is given; ``from_codes`` would narrow the codes.
+    """
+
+    return values.rename_categories(_copied_index(values.categories))
 
 
 def _pandas_copy(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
@@ -190,19 +207,23 @@ def _pandas_copy(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
 
 
 def _copied_index(index: pd.Index) -> pd.Index:
-    """An index equal to ``index`` that shares no writable memory with it.
+    """An index equal to ``index`` that shares no memory with it.
 
-    A ``RangeIndex`` is rebuilt; a view of one would share the cache holding
-    its materialized values. A plain index over read-only NumPy memory is
-    viewed, as pandas' copy views it, and any other index is deep-copied.
+    ``copy(deep=True)`` would do, except that it keeps a ``RangeIndex``'s cache
+    of materialized values, also as a level of a ``MultiIndex``, and a
+    ``CategoricalIndex``'s categories; those are rebuilt.
     """
 
     if type(index) is pd.RangeIndex:
         return pd.RangeIndex(index.start, index.stop, index.step, name=index.name)
-    if (
-        type(index) is pd.Index
-        and isinstance(index.dtype, np.dtype)
-        and not np.asarray(index).flags.writeable
-    ):
-        return index.view()
+    if type(index) is pd.MultiIndex:
+        return pd.MultiIndex(
+            levels=[_copied_index(level) for level in index.levels],
+            codes=[np.array(codes, copy=True) for codes in index.codes],
+            names=index.names,
+            sortorder=index.sortorder,
+            verify_integrity=False,
+        )
+    if type(index) is pd.CategoricalIndex:
+        return pd.CategoricalIndex(_copied_categorical(index.array), name=index.name)
     return index.copy(deep=True)

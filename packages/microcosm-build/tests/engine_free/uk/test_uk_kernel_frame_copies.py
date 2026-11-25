@@ -84,18 +84,31 @@ _MASS_LOG = (
 )
 
 
-def _population(strata_kind: str = "object") -> Population:
+#: Person index kinds. The executor views a RangeIndex through a new one and
+#: an int64 index through a read-only view of the population's memory.
+PERSON_INDEXES: dict[str, Callable[[], pd.Index | None]] = {
+    "range": lambda: None,
+    "int64": lambda: pd.Index(np.arange(100, 100 + _PERSONS, dtype=np.int64)),
+}
+
+
+def _population(strata_kind: str = "object", person_index: str = "range") -> Population:
     """Twelve persons in six benefit units and three households."""
 
+    index = PERSON_INDEXES[person_index]()
     person = pd.DataFrame(
         {
             "person_id": np.arange(_PERSONS, dtype=np.int64),
             "person_benunit_id": np.arange(_PERSONS, dtype=np.int64) // 2,
             "person_household_id": np.arange(_PERSONS, dtype=np.int64) // 4,
             **{name: values() for name, values in PERSON_VALUES.items()},
-        }
-    )
+        },
+        index=index,
+    ).set_flags(allows_duplicate_labels=False)
     person.attrs["receipt"] = {"stage": "invented"}
+    strata = STRATA_VALUES[strata_kind]().rename("stratum")
+    if index is not None:
+        strata.index = index
     frame = Frame(
         {
             "person": person,
@@ -117,7 +130,7 @@ def _population(strata_kind: str = "object") -> Population:
         },
         UK_NATIONAL_SCHEMA,
         {"household": Weights(np.array([1.5, 2.0, 0.5]), WeightKind.DESIGN)},
-        STRATA_VALUES[strata_kind]().rename("stratum"),
+        strata,
         metadata=_POPULATION_METADATA,
     )
     return Population.from_frame(frame, "survey")
@@ -200,11 +213,14 @@ BUILDERS: dict[str, tuple[Callable, Callable]] = {
 }
 
 
+@pytest.mark.parametrize("person_index", PERSON_INDEXES)
 @pytest.mark.parametrize("strata_kind", STRATA_VALUES)
 @pytest.mark.parametrize("builder", BUILDERS)
-def test_the_kernel_frame_equals_the_frame_built_before(builder, strata_kind):
+def test_the_kernel_frame_equals_the_frame_built_before(
+    builder, strata_kind, person_index
+):
     build, build_before = BUILDERS[builder]
-    context = _context(_population(strata_kind))
+    context = _context(_population(strata_kind, person_index))
 
     frame = build(context)
     before = build_before(context)
@@ -234,10 +250,11 @@ def test_the_kernel_frame_equals_the_frame_built_before(builder, strata_kind):
     assert frame.mass_log == before.mass_log
 
 
+@pytest.mark.parametrize("person_index", PERSON_INDEXES)
 @pytest.mark.parametrize("builder", BUILDERS)
-def test_the_kernel_frame_shares_no_memory_with_its_context(builder):
+def test_the_kernel_frame_shares_no_memory_with_its_context(builder, person_index):
     build, _ = BUILDERS[builder]
-    context = _context(_population("category"))
+    context = _context(_population("category", person_index))
 
     frame = build(context)
 
@@ -427,24 +444,39 @@ def test_a_write_into_a_person_column_changes_neither_context_nor_population(
     assert _population_digests(population) == population_before
 
 
+def _add_at_into_index(table):
+    np.add.at(np.asarray(table.index), [0], 1000)
+
+
+#: Writes into a table's index; both land in the kernel's own copy.
+INDEX_WRITES: dict[str, Callable[[pd.DataFrame], None]] = {
+    "item": lambda table: _write_into_index(table, None),
+    "np.add.at": _add_at_into_index,
+}
+
+
+@pytest.mark.parametrize("write", INDEX_WRITES)
+@pytest.mark.parametrize("person_index", PERSON_INDEXES)
 @pytest.mark.parametrize("entity", UK_NATIONAL_SCHEMA.entities)
 @pytest.mark.parametrize("builder", BUILDERS)
 def test_a_write_into_a_table_index_changes_neither_context_nor_population(
-    builder, entity
+    builder, entity, person_index, write
 ):
-    # The tables here have a RangeIndex. A view of one shares the cache holding
-    # its values once materialized, which np.asarray returns writable.
+    # A view of a RangeIndex shares the cache holding its values once
+    # materialized, which np.asarray returns writable; np.add.at writes even
+    # into the read-only view the executor makes of an int64 index.
     build, _ = BUILDERS[builder]
-    population = _population()
+    population = _population(person_index=person_index)
     context = _context(population)
     population_before = _population_digests(population)
     context_before = _context_digests(context)
     frame = build(context)
+    table = frame.table(entity)
+    index_before = np.asarray(table.index).tolist()
 
-    try:
-        _write_into_index(frame.table(entity), None)
-    except ValueError:
-        pass
+    INDEX_WRITES[write](table)
+
+    assert np.asarray(table.index).tolist() != index_before, "the write did not land"
 
     assert _context_digests(context) == context_before
     assert _population_digests(population) == population_before
