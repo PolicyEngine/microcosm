@@ -624,9 +624,10 @@ def test_the_committed_register_is_sound() -> None:
 
 def test_the_committed_register_carries_the_triage_verdicts_for_snap() -> None:
     """microcosm#1022's triage: these defaults are harmless for SNAP (SNAP is
-    no consumer, or its note says harmless), and the vehicle value is not. On
-    policyengine-us 2.145.3 weeks unemployed are not harmless either
-    (microcosm#1675)."""
+    no consumer, or its note says harmless), and the vehicle value is not.
+    Weeks unemployed, not harmless on policyengine-us 2.145.3 (microcosm#1675),
+    and the self-employed premium left the register when staging began to
+    write them on ACS rows (microcosm#1720)."""
 
     document = load_reviewed_fill_consumer_register()
     entries = {entry["column"]: entry for entry in document["entries"]}
@@ -641,16 +642,14 @@ def test_the_committed_register_carries_the_triage_verdicts_for_snap() -> None:
     for column in (
         "spm_unit_energy_subsidy",
         "net_worth",
-        "health_insurance_premiums",
         "real_estate_taxes",
         "tenure_type",
         "spm_unit_tenure_type",
     ):
         assert snap_verdict(column) in {"harmless", "not a consumer"}, column
     assert snap_verdict("household_vehicles_value") == "known_bias"
-    # The weeks set the months of UC receipt, which exempt a recipient from the
-    # ABAWD time limit only in those months (policyengine-us 2.145.3).
-    assert snap_verdict("weeks_unemployed") == "known_bias"
+    for column in ("weeks_unemployed", "health_insurance_premiums"):
+        assert column not in entries, column
     # microcosm#1071 review: residents of noninstitutional group quarters who
     # pay for shelter lose the shelter deduction at 0 rent.
     assert snap_verdict("pre_subsidy_rent") == "known_bias"

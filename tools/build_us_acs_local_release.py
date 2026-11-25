@@ -182,6 +182,10 @@ from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
     load_reviewed_fill_consumer_register,
     reviewed_fill_register_summary,
 )
+from microcosm.build.us_runtime.acs_local_se_health_premiums import (
+    ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
+    ACS_LOCAL_SE_HEALTH_PREMIUMS_ISSUE,
+)
 from microcosm.build.us_runtime.acs_local_ssi_disability import (
     ACS_LOCAL_SSI_DISABILITY_COLUMN,
     ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
@@ -199,6 +203,10 @@ from microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up import (
     with_acs_local_ssi_medicaid_take_up,
     with_recorded_acs_local_ssi_medicaid_take_up,
 )
+from microcosm.build.us_runtime.acs_local_status_inputs import (
+    ACS_LOCAL_STATUS_INPUTS_COLUMNS,
+    ACS_LOCAL_STATUS_INPUTS_ISSUE,
+)
 from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_EITC_TAKE_UP_ISSUE,
     ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
@@ -213,6 +221,14 @@ from microcosm.build.us_runtime.acs_local_take_up import (
 from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
     US_VEHICLES_OWNED_COLUMN,
     US_VEHICLES_VALUE_COLUMN,
+)
+from microcosm.build.us_runtime.acs_local_voluntary_filing import (
+    ACS_LOCAL_VOLUNTARY_FILING_COLUMN,
+    ACS_LOCAL_VOLUNTARY_FILING_ISSUE,
+)
+from microcosm.build.us_runtime.acs_local_weeks_deferrals import (
+    ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+    ACS_LOCAL_WEEKS_DEFERRALS_ISSUE,
 )
 from microcosm.build.us_runtime.acs_local_wic_take_up import (
     ACS_LOCAL_WIC_TAKE_UP_ISSUE,
@@ -1032,6 +1048,55 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
     ("person", US_WIC_TAKE_UP_COLUMN): (
         "the engine default is universal WIC take-up "
         f"({ACS_LOCAL_WIC_TAKE_UP_ISSUE}); re-run staging with the current "
+        "builder"
+    ),
+    # microcosm#1720: staging maps the ACS rows' marital, military and
+    # occupation status from MAR, MIL and OCCP, and the donor release carries
+    # its own; the default False would ignore the measured item.
+    **{
+        ("person", column): (
+            "the engine default False ignores the ACS rows' measured MAR, MIL "
+            f"or OCCP item ({ACS_LOCAL_STATUS_INPUTS_ISSUE}); re-run staging "
+            "with the current builder"
+        )
+        for column in ACS_LOCAL_STATUS_INPUTS_COLUMNS
+    },
+    # microcosm#1720: staging runs the donor's self-employed premium
+    # attribution on the ACS rows; the defaults (False, 0) deny every ACS
+    # person the self-employed health insurance deduction.
+    **{
+        ("person", column): (
+            "the engine default denies every ACS person the self-employed "
+            f"health insurance deduction ({ACS_LOCAL_SE_HEALTH_PREMIUMS_ISSUE}); "
+            "re-run staging with the current builder"
+        )
+        for column in ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS
+    },
+    # microcosm#1720: staging draws weeks unemployed and three retirement
+    # deferrals on the ACS rows from the donor's ASEC observations.
+    **{
+        ("person", column): (
+            f"the engine default 0 drops {reason} for every ACS person "
+            f"({ACS_LOCAL_WEEKS_DEFERRALS_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column, reason in zip(
+            ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+            (
+                "the months of UC receipt (SNAP's work-registration exemption)",
+                "traditional 401(k) deferrals, so AGI includes deferred wages",
+                "Roth 401(k) deferrals and their saver's credit",
+                "Roth IRA contributions and their saver's credit",
+            ),
+            strict=True,
+        )
+    },
+    # microcosm#1720: staging runs the donor's SIPP voluntary-filing model on
+    # the ACS tax units.
+    ("tax_unit", ACS_LOCAL_VOLUNTARY_FILING_COLUMN): (
+        "the engine default False makes no ACS tax unit a voluntary filer, so "
+        "Medicaid's non-filer rules apply to more of them "
+        f"({ACS_LOCAL_VOLUNTARY_FILING_ISSUE}); re-run staging with the current "
         "builder"
     ),
 }
@@ -4831,8 +4896,9 @@ def finalize_reviewed_limitations(
                 "receives_housing_assistance copies the transferred "
                 "takes_up_housing_assistance_if_eligible (equal on the donor by "
                 "construction) and is False in TYPEHUGQ 2/3 group quarters, "
-                "whose transferred take-up flag is the open transfer-side fix "
-                "microcosm#975. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
+                "where staging also sets the transferred take-up flag False "
+                "(microcosm#975; reviewed limitation acs_local_staged_inputs). "
+                "takes_up_medicare_if_eligible is ACS HINS3 == 1 "
                 "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
                 "blank or invalid HINS3 reads as not covered. "
                 "takes_up_head_start_if_eligible is True for a person aged 3-5 "
@@ -5275,6 +5341,83 @@ def finalize_reviewed_limitations(
                 "ACS rows hold. The "
                 "weighted FS == 1 share of ACS housing units is reported "
                 "against the 2023 ACS figure (12.2%), not graded."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_staged_inputs",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [
+                *ACS_LOCAL_STATUS_INPUTS_COLUMNS,
+                *ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
+                *ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+                ACS_LOCAL_VOLUNTARY_FILING_COLUMN,
+                "takes_up_housing_assistance_if_eligible",
+            ],
+            "reason": (
+                "Staging writes these inputs on ACS rows from ACS items or the "
+                "donor's own rules instead of leaving the engine default "
+                f"({ACS_LOCAL_STATUS_INPUTS_ISSUE}). is_separated and "
+                "is_surviving_spouse follow the donor's relationship_inputs "
+                "rule on the ACS rows' A_MARITL (ACS MAR 4, separated, and MAR "
+                "2, widowed; as on the donor, widowed is wider than the "
+                "surviving-spouse tax status). is_military is ACS MIL == 1, now "
+                "on active duty, and MIL's blank under 17 reads False; the "
+                "donor reads a military occupation (POCCU2 52), which on ACS "
+                "rows would also mark a veteran whose last job was military. "
+                "has_never_worked, is_computer_scientist, is_farmer_fisher and "
+                "is_executive_administrative_professional follow the donor's "
+                "org_wages rule on the native detailed_occupation_recode. "
+                "is_self_employed and health_insurance_premiums come from the "
+                "donor's own attribution (attribute_us_se_health_premiums), run "
+                "on the ACS rows after the shared transfer: the flag marks "
+                "positive Schedule C income (SEMP plus the transferred SSTB "
+                "leaf), not ACS COW 6 or 7, and the premium is the transferred "
+                "non-Part-B premium of a flagged person under 65 with no Social "
+                "Security disability and no employer coverage. The ACS rows' "
+                "MAGI is then final before materialize assigns Medicaid take-up; "
+                "the national build applies the attribution in another order "
+                "(microcosm#1689). weeks_unemployed and the traditional and "
+                "Roth 401(k) and Roth IRA deferrals come from a separate local "
+                "QRF pass on the donor's ASEC observation role (measured "
+                "LKWEEKS, and RETCB_VAL split by the archived shares), run after "
+                "the shared transfer so the weeks read its "
+                "unemployment_compensation, with the donor's own "
+                "post-processing: weeks 0 without UC, 401(k) deferrals 0 "
+                "without wages. The shared plan keeps the traditional IRA and "
+                "self-employed pension leaves. The deferrals lower the ACS rows' "
+                "AGI. would_file_taxes_voluntarily (tax unit) comes from the "
+                "donor release's own SIPP model (voluntary_filing: the weighted "
+                "QRF on the pinned full SIPP 2023 file's December filing "
+                "answers), run on the ACS tax units with tax-unit wages, the "
+                "head's age and sex, JOINT filing status and the household's "
+                "persons under 18 as predictors; it reads the file staging "
+                "already verifies for the SSI disability model. Last, staging "
+                "sets the transferred takes_up_housing_assistance_if_eligible "
+                "False on every group-quarters SPM unit (TYPEHUGQ 2/3), which "
+                "has no housing unit (microcosm#975): a lane-own step after "
+                "the shared transfer, whose plan is unchanged, rather than the "
+                "structural policy inside the shared transfer that "
+                "microcosm#975 proposed."
+            ),
+            "treatment": (
+                "Written at staging only in missing ACS cells, except the "
+                "group-quarters housing take-up flag, which overrides the "
+                "shared transfer's draw; donor rows keep the donor release's "
+                "values. The staging summary's receipts record each rule, its "
+                "source columns and the filled and true rows "
+                "(acs_local_status_inputs: also the agreement of is_military "
+                "with POCCU2 52 and ESR 4 or 5; acs_local_se_health_premiums: "
+                "also the premiums the Medicare proxy and employer coverage "
+                "withheld, and the agreement of the flag with COW 6 or 7; "
+                "acs_local_weeks_deferrals: the donor's ASEC coverage and the "
+                "post-processing counts; acs_local_voluntary_filing: the SIPP "
+                "identity and the ACS and donor true shares; "
+                "acs_local_group_quarters_housing: the units turned False by "
+                "TYPEHUGQ). Recorded, not graded. A null in any column but the "
+                "housing flag stops materialize (NEVER_DEFAULT_FILLED), so a "
+                "staging run from before them is refused there."
             ),
             "calibration_blocker": False,
         },

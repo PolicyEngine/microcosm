@@ -40,7 +40,9 @@ __all__ = [
     "US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS",
     "US_RELATIONSHIP_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_RELATIONSHIP_INPUTS_STAGE_NAME",
+    "US_MARITAL_STATUS_INPUT_A_MARITL_CODES",
     "derive_us_relationship_inputs_from_manifest",
+    "us_marital_status_inputs",
     "us_relationship_inputs_signal_gate",
     "us_relationship_inputs_stage_spec",
     "us_relationship_inputs_summary",
@@ -71,6 +73,37 @@ _SEPARATED_SHARE_BAND = (0.003, 0.04)
 _SURVIVING_SPOUSE_SHARE_BAND = (0.02, 0.08)
 _VALID_A_MARITL_CODES = frozenset(range(1, 8))
 _DERIVE_RELATIONSHIP_INPUTS_PARAMETER_KEYS = frozenset()
+#: The CPS ``A_MARITL`` code of each marital-status leaf (the archived eCPS
+#: rule, ``datasets/cps/cps.py`` lines 1212-1213): 4 is widowed, 6 separated.
+#: The ACS local lane applies the same rule to its ACS rows, whose loader maps
+#: ACS ``MAR`` onto these codes (microcosm#1720).
+US_MARITAL_STATUS_INPUT_A_MARITL_CODES: dict[str, int] = {
+    "is_separated": 6,
+    "is_surviving_spouse": 4,
+}
+
+
+def us_marital_status_inputs(marital_status: np.ndarray) -> dict[str, np.ndarray]:
+    """The marital-status leaves from exact CPS ``A_MARITL`` codes.
+
+    One rule for every spine: the donor stage calls it on ASEC rows, and the
+    ACS local lane on the ACS rows' loader-mapped ``A_MARITL``.
+
+    Raises:
+        ValueError: If a code is not an integer in 1-7.
+    """
+
+    codes = np.asarray(marital_status, dtype=np.float64)
+    valid = np.isfinite(codes) & np.isin(codes, sorted(_VALID_A_MARITL_CODES))
+    if not valid.all():
+        rows = np.flatnonzero(~valid)[:5].tolist()
+        raise ValueError(
+            f"Marital-status inputs require A_MARITL codes 1-7; invalid row(s): {rows}."
+        )
+    return {
+        column: codes == code
+        for column, code in US_MARITAL_STATUS_INPUT_A_MARITL_CODES.items()
+    }
 
 
 def us_relationship_inputs_stage_spec() -> SourceStageSpec:
@@ -177,8 +210,8 @@ def derive_us_relationship_inputs_from_manifest(
 
     result = frame.copy(deep=True)
     result["is_household_head"] = is_head
-    result["is_separated"] = marital_status == 6
-    result["is_surviving_spouse"] = marital_status == 4
+    for column, values in us_marital_status_inputs(marital_status).items():
+        result[column] = values
     return result
 
 
