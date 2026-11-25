@@ -171,9 +171,11 @@ EVIDENCE_KERNEL_MODULES: Mapping[str, tuple[str, ...]] = MappingProxyType(
             # The kernel types its engines by frame.rules' RulesEngine, and
             # reads an AxiomEngine's compiled programs (engine_root_inputs),
             # whose class builds its tables through frame.materialize
-            # (microcosm#931).
+            # (microcosm#931), which checks the frame's shared columns before
+            # it writes (frame.shared_columns, microcosm#1683).
             "microcosm.frame.rules",
             "microcosm.frame.materialize",
+            "microcosm.frame.shared_columns",
             _CANONICAL,
             _LEAF,
         ),

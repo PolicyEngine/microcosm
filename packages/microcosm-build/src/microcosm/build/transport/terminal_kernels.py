@@ -59,6 +59,7 @@ import microcosm.frame.adapters.axiom as axiom_adapter_module
 import microcosm.frame.bundle as frame_bundle_module
 import microcosm.frame.materialize as materialize_module
 import microcosm.frame.schema as frame_schema_module
+import microcosm.frame.shared_columns as frame_shared_columns_module
 import microcosm.frame.weights as frame_weights_module
 from microcosm.build.artifact_files import file_artifact
 from microcosm.calibrate import diagnostics_payload
@@ -666,9 +667,11 @@ class ExportReadbackKernel(KernelBase):
             axiom_adapter_module,
             # file_artifact digests the exported file through
             # trace.sha256_file, and the report is encoded as canonical JSON
-            # (microcosm#931).
+            # (microcosm#931); materialize checks the frame's shared columns
+            # before it writes (microcosm#1683).
             trace_module,
             canonical_json,
+            frame_shared_columns_module,
             dependencies=self.capabilities.dependencies,
         )
 
