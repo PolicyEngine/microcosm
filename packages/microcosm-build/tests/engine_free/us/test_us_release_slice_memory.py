@@ -280,3 +280,44 @@ def test_closing_an_earlier_scope_keeps_a_later_open_scopes_modules(tmp_path) ->
     finally:
         sys.modules.pop(earlier_name, None)
         sys.modules.pop(later_name, None)
+
+
+def test_a_scope_collected_while_another_holds_the_lock_does_not_hang(
+    monkeypatch, tmp_path
+) -> None:
+    """A suspended ``with`` scope in a reference cycle can be freed by a garbage
+    collection that runs while another scope, in the same thread, holds the
+    scopes' lock; its cleanup must not wait for that lock for ever."""
+    import threading
+
+    import microcosm.build.us_runtime.engine_lifecycle as lifecycle
+
+    variables_dir = tmp_path / "variables"
+
+    class Holder:
+        pass
+
+    holder = Holder()
+    context = temporary_engine_variable_modules(variables_dir)
+    context.__enter__()
+    holder.context = context
+    holder.itself = holder
+    del holder, context
+
+    real_registrations = lifecycle._registrations
+
+    def collecting_registrations(directory):
+        gc.collect()  # Frees the suspended scope while ``open`` holds the lock.
+        return real_registrations(directory)
+
+    monkeypatch.setattr(lifecycle, "_registrations", collecting_registrations)
+    finished = threading.Event()
+
+    def open_and_close() -> None:
+        EngineVariableModuleScope(variables_dir).open().close()
+        finished.set()
+
+    thread = threading.Thread(target=open_and_close, daemon=True)
+    thread.start()
+    thread.join(10)
+    assert finished.is_set()

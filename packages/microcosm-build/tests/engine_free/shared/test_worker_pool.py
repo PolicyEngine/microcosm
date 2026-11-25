@@ -862,3 +862,71 @@ def test_canonical_bytes_keep_field_types_array_kinds_and_pandas_metadata() -> N
     assert canonical_result_bytes(
         pd.Series([1.0], index=pd.Index([0], name="household"))
     ) != canonical_result_bytes(pd.Series([1.0], index=pd.Index([0], name="person")))
+
+
+def test_canonical_bytes_are_equal_for_equal_structured_arrays_with_object_fields() -> (
+    None
+):
+    import pickle
+
+    record_type = [("name", object), ("value", "<f8")]
+    first = np.array([("household-" + "a" * 20, 1.0)], dtype=record_type)
+    second = np.array([("household-" + "a" * 20, 1.0)], dtype=record_type)
+    assert canonical_result_bytes(first) == canonical_result_bytes(second)
+    assert canonical_result_bytes(first) == canonical_result_bytes(
+        pickle.loads(pickle.dumps(first))
+    )
+    assert canonical_result_bytes(first) != canonical_result_bytes(
+        np.array([("household-b", 1.0)], dtype=record_type)
+    )
+
+
+def test_canonical_bytes_keep_what_pandas_reprs_and_numpy_copies_lose() -> None:
+    import pandas as pd
+
+    categories = [f"category-{number:03d}" for number in range(150)]
+    reordered = categories[:60] + categories[60:90][::-1] + categories[90:]
+    assert canonical_result_bytes(
+        pd.Series(["category-000"], dtype=pd.CategoricalDtype(categories, ordered=True))
+    ) != canonical_result_bytes(
+        pd.Series(["category-000"], dtype=pd.CategoricalDtype(reordered, ordered=True))
+    )
+    int32_levels = pd.MultiIndex.from_arrays([np.array([1, 2], dtype=np.int32)])
+    int64_levels = pd.MultiIndex.from_arrays([np.array([1, 2], dtype=np.int64)])
+    assert canonical_result_bytes(int32_levels) != canonical_result_bytes(int64_levels)
+    not_a_number = pd.Series(np.array([0.0]) / np.array([0.0])).astype("Float64")
+    missing = pd.Series([None], dtype="Float64")
+    assert canonical_result_bytes(not_a_number) != canonical_result_bytes(missing)
+    plain, labelled = pd.DataFrame({"a": [1.0]}), pd.DataFrame({"a": [1.0]})
+    labelled.attrs["source"] = "fixture"
+    assert canonical_result_bytes(plain) != canonical_result_bytes(labelled)
+    assert canonical_result_bytes(
+        pd.date_range("2024-01-01", periods=3, freq="D")
+    ) != canonical_result_bytes(
+        pd.DatetimeIndex(["2024-01-01", "2024-01-02", "2024-01-03"])
+    )
+
+
+def test_the_identity_helper_names_nan_keys_frame_cells_and_scalar_arrays() -> None:
+    import pandas as pd
+
+    def runs(left, right):
+        return lambda workers: left if workers == 1 else right
+
+    with pytest.raises(AssertionError, match=r"at result\[nan\]\.$"):
+        assert_identical_across_worker_counts(
+            runs({float("nan"): 1.0}, {float("nan"): 2.0}), worker_counts=(1, 2)
+        )
+    with pytest.raises(AssertionError, match=r"at result\['b'\]\.iloc\[1\]\.$"):
+        assert_identical_across_worker_counts(
+            runs(
+                pd.DataFrame({"a": [1.0, 2.0], "b": [3.0, 4.0]}),
+                pd.DataFrame({"a": [1.0, 2.0], "b": [3.0, 5.0]}),
+            ),
+            worker_counts=(1, 2),
+        )
+    with pytest.raises(AssertionError, match=r"at result\['total'\]\.$"):
+        assert_identical_across_worker_counts(
+            runs({"total": np.array(1.0)}, {"total": np.array(2.0)}),
+            worker_counts=(1, 2),
+        )
