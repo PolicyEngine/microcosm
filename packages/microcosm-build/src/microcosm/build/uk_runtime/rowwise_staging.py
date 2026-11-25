@@ -525,15 +525,15 @@ def close_run_blocked(
                 blocking_failure_count=block.blocking_failure_count,
                 gate_statuses=statuses,
             )
-        except StagingContractError as error:
-            refusal = error
+        except StagingContractError as contract_refusal:
+            refusal = contract_refusal
             _warn_telemetry(
                 "could not record the gate block; closing the staging run as failed",
-                error,
+                contract_refusal,
             )
             try:
                 staging_bundle.fail(
-                    error,
+                    contract_refusal,
                     error_code=UNRECORDED_GATE_BLOCK.error_code,
                     failure_class=UNRECORDED_GATE_BLOCK.failure_class,
                 )

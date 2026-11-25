@@ -905,6 +905,9 @@ class StagingRunBundleWriterV2:
         self._artifacts: list[dict[str, Any]] = []
         self._events: list[dict[str, Any]] = []
         self._calibration_events: list[dict[str, Any]] = []
+        #: Whether completion, failure or a block handed the final state
+        #: over; until then there is no final commit to check.
+        self._final_state_handed_over = False
         self._delivery = {
             "contract_version": STAGING_CONTRACT_VERSION,
             "enabled": True,
@@ -1206,9 +1209,19 @@ class StagingRunBundleWriterV2:
             raise StagingContractError(
                 "Only a completed, blocked or failed staging run has a final commit."
             )
-        check = self._hand_over.confirm_final_commit(
-            wait_seconds=wait_seconds, read_back=read_back
-        )
+        if not self._final_state_handed_over:
+            # Closing the run failed before its final state was handed over
+            # (its documents could not be written, say), so the emitter's
+            # last commit is an earlier state of the run.
+            check = FinalCommitCheck(
+                confirmed=False,
+                reason="not_handed_over",
+                method="read_back" if read_back else "receipt",
+            )
+        else:
+            check = self._hand_over.confirm_final_commit(
+                wait_seconds=wait_seconds, read_back=read_back
+            )
         if not check.confirmed:
             warn_final_commit_unconfirmed(self._hand_over.repository, check)
         return check
@@ -1443,6 +1456,7 @@ class StagingRunBundleWriterV2:
             return
         self._hand_over.reopen()
         self._hand_over_run()
+        self._final_state_handed_over = True
         if self._hand_over.last_accepted is False:
             print(
                 "warning: the staging run's final state was not handed over to "

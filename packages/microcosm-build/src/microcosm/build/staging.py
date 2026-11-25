@@ -125,6 +125,9 @@ class StagingRunBundleWriter:
         #: it has already committed.
         self._artifact_files: dict[str, Path] = {}
         self._too_large_warned: set[str] = set()
+        #: Whether completion or failure handed the run's final state over;
+        #: until then there is no final commit to check.
+        self._final_state_handed_over = False
         self._progress: dict[str, Any] = {
             "schema_version": STAGING_SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -216,18 +219,20 @@ class StagingRunBundleWriter:
             )
             if (self.run_dir / filename).exists()
         ]
+        pointer = self._write_latest_pointer()
+        self._write_runs_index()
         # A result file named like one of the run's documents is not sent in
-        # its place: the documents describe the run.
+        # its place: the documents describe the run. The emitter totals the
+        # files and the pointer against its request limit.
         documents = {filename for filename, _ in files}
         files.extend(
             self._sendable_result_files(
                 exclude=documents,
                 budget=_MAX_RUN_REQUEST_BYTES
-                - sum(local.stat().st_size for _, local in files),
+                - sum(local.stat().st_size for _, local in files)
+                - pointer.stat().st_size,
             )
         )
-        pointer = self._write_latest_pointer()
-        self._write_runs_index()
         # The emitter merges this run's entry into the repository's runs.json
         # when it commits, keeping every other run.
         self._hand_over_files(
@@ -253,10 +258,16 @@ class StagingRunBundleWriter:
             if size > _MAX_RUN_FILE_BYTES or size > budget:
                 if filename not in self._too_large_warned:
                     self._too_large_warned.add(filename)
+                    limit = (
+                        "the emitter's limit for one file"
+                        if size > _MAX_RUN_FILE_BYTES
+                        else "what is left of the emitter's limit for one hand-over"
+                    )
                     print(
-                        f"warning: the staging result file {filename} is too "
-                        f"large for the emitter ({size} bytes); it stays in the "
-                        "local staging files.",
+                        f"warning: the staging result file {filename} "
+                        f"({size} bytes) is larger than {limit}; it stays in "
+                        "the local staging files, though the run manifest "
+                        "names it.",
                         file=sys.stderr,
                     )
                 continue
@@ -436,6 +447,7 @@ class StagingRunBundleWriter:
             traceback=traceback.format_exc(),
         )
         self._hand_over_run()
+        self._final_state_handed_over = True
 
     def complete(self) -> None:
         self._reopen_for_final_state()
@@ -445,6 +457,7 @@ class StagingRunBundleWriter:
             message="Staging run completed.",
         )
         self._hand_over_run()
+        self._final_state_handed_over = True
 
     def confirm_final_commit(
         self, *, wait_seconds: float, read_back: bool = True
@@ -463,9 +476,16 @@ class StagingRunBundleWriter:
             raise RuntimeError(
                 "Only a completed or failed staging run has a final commit."
             )
-        check = self._hand_over.confirm_final_commit(
-            wait_seconds=wait_seconds, read_back=read_back
-        )
+        if not self._final_state_handed_over:
+            check = FinalCommitCheck(
+                confirmed=False,
+                reason="not_handed_over",
+                method="read_back" if read_back else "receipt",
+            )
+        else:
+            check = self._hand_over.confirm_final_commit(
+                wait_seconds=wait_seconds, read_back=read_back
+            )
         if not check.confirmed:
             warn_final_commit_unconfirmed(self._hand_over.repository, check)
         return check
