@@ -1,0 +1,625 @@
+"""Declared target sets: which compiled targets a product calibrates to.
+
+A release tool calibrates to a subset of the targets its country compiles.
+Each country declares that subset as data, for each product and mode: the
+families, the levels and the rule. This module reads the declarations and
+selects by them (microcosm#1728). It holds no country code: a country passes
+the named predicates and rules its declarations use as callables.
+
+A declaration file has this form::
+
+    {
+      "version": 1,
+      "country": "<country>",
+      "level_keys": ["<metadata key>", ...],
+      "products": {
+        "<product>": {
+          "tool": "<path of the tool>",
+          "option": "<the option that picks the mode>",
+          "default_mode": "<mode>",
+          "modes": {
+            "<mode>": {
+              "description": "<what the product calibrates to>",
+              "compiled": [<clause>, ...],
+              "built": [<built rows>, ...]
+            }
+          }
+        }
+      }
+    }
+
+**Families and levels.** A target's family is ``spec.family``. Its level is
+the first truthy value of the ``level_keys`` in its metadata, else
+``"unspecified"``. These are the labels the shared target-loss rule reads
+(``microcosm.calibrate.target_loss_rules``, microcosm#1729), so a target has
+one family and one level everywhere.
+
+**Compiled clauses.** A clause keeps the compiled specs that pass all of its
+tests, in compile order:
+
+- ``families``: family names, or ``"*"`` for any family;
+- ``levels``: level names, or ``"*"`` for any level;
+- ``metadata`` (optional): one test for each named key, one of
+  ``{"present": true}`` (the key is in the metadata), ``{"equals": v}``,
+  ``{"not_equals": v}`` (a missing key is not equal), or
+  ``{"not_prefix": "text"}`` (the key holds a nonempty string that does not
+  start with ``text``);
+- ``exclude`` (optional): names of country predicates; a spec that any of
+  them accepts is dropped;
+- ``rule`` (optional): the name of a country rule. It takes the clause's
+  specs and returns the specs it keeps (for example a reconciliation) and a
+  receipt.
+
+Each clause has an ``id``. A tool can turn on only some clauses by id (for
+example from a ``--families`` option). The selection is the output of each
+clause in declaration order. A spec that two clauses keep is an error in the
+declaration.
+
+**Built rows.** A tool also makes rows that are not compiled (for example
+population marginals from a ladder). A ``built`` entry names their family and
+the level that each value of its option gives, so that the declaration states
+the whole target set. The selector does not make these rows.
+
+**Rationale.** Each clause and built entry has a ``rationale``: why the
+product keeps those rows. The UK membership files give a signed rationale for
+each exclusion in the same way.
+"""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any
+
+__all__ = [
+    "ANY",
+    "DECLARATION_VERSION",
+    "UNSPECIFIED_LEVEL",
+    "BuiltRows",
+    "MetadataTest",
+    "ProductDeclaration",
+    "TargetSetClause",
+    "TargetSetDeclaration",
+    "TargetSetDeclarationError",
+    "TargetSetDeclarations",
+    "TargetSetSelection",
+    "clause_predicate",
+    "load_target_set_declarations",
+    "select_target_set",
+    "target_level",
+    "target_set_census",
+    "undeclared_cells",
+]
+
+ANY = "*"
+DECLARATION_VERSION = 1
+UNSPECIFIED_LEVEL = "unspecified"
+
+_TOP_KEYS = frozenset({"version", "country", "description", "level_keys", "products"})
+_PRODUCT_KEYS = frozenset({"tool", "option", "default_mode", "modes"})
+_MODE_KEYS = frozenset({"description", "compiled", "built"})
+_CLAUSE_KEYS = frozenset(
+    {"id", "families", "levels", "metadata", "exclude", "rule", "rationale"}
+)
+_BUILT_KEYS = frozenset({"id", "family", "levels", "option", "source", "rationale"})
+_TEST_KINDS = frozenset({"present", "equals", "not_equals", "not_prefix"})
+
+Predicate = Callable[[Any], bool]
+Rule = Callable[[tuple[Any, ...]], tuple[Sequence[Any], Any]]
+
+
+class TargetSetDeclarationError(ValueError):
+    """A declaration that does not have the declared form."""
+
+
+# ---------------------------------------------------------------------------
+# The declaration
+# ---------------------------------------------------------------------------
+
+
+def target_level(spec: Any, level_keys: Sequence[str]) -> str:
+    """A spec's level: the first truthy ``level_keys`` value, else unspecified."""
+
+    metadata = spec.metadata
+    for key in level_keys:
+        value = metadata.get(key)
+        if value:
+            return str(value)
+    return UNSPECIFIED_LEVEL
+
+
+@dataclass(frozen=True)
+class MetadataTest:
+    """One test on one metadata key."""
+
+    key: str
+    kind: str
+    value: Any = None
+
+    def accepts(self, metadata: Mapping[str, Any]) -> bool:
+        if self.kind == "present":
+            return (self.key in metadata) is bool(self.value)
+        if self.kind == "equals":
+            return metadata.get(self.key) == self.value
+        if self.kind == "not_equals":
+            return metadata.get(self.key) != self.value
+        held = metadata.get(self.key)
+        return isinstance(held, str) and bool(held) and not held.startswith(self.value)
+
+
+@dataclass(frozen=True)
+class TargetSetClause:
+    """Compiled specs of some families and levels that pass every test."""
+
+    clause_id: str
+    families: frozenset[str] | None
+    levels: frozenset[str] | None
+    metadata: tuple[MetadataTest, ...]
+    exclude: tuple[str, ...]
+    rule: str | None
+    rationale: str
+
+    def accepts(
+        self, spec: Any, level: str, predicates: Mapping[str, Predicate]
+    ) -> bool:
+        if self.families is not None and spec.family not in self.families:
+            return False
+        return self.accepts_level_and_metadata(spec, level, predicates)
+
+    def accepts_level_and_metadata(
+        self, spec: Any, level: str, predicates: Mapping[str, Predicate]
+    ) -> bool:
+        """Every test but the family one, for a caller that selected the family."""
+
+        if self.levels is not None and level not in self.levels:
+            return False
+        metadata = spec.metadata
+        if not all(test.accepts(metadata) for test in self.metadata):
+            return False
+        return not any(predicates[name](spec) for name in self.exclude)
+
+
+@dataclass(frozen=True)
+class BuiltRows:
+    """Rows a tool makes outside the compile, and the level each option gives."""
+
+    built_id: str
+    family: str
+    levels: Mapping[str, str]
+    option: str | None
+    source: str
+    rationale: str
+
+
+@dataclass(frozen=True)
+class TargetSetDeclaration:
+    """What one product calibrates to in one mode."""
+
+    country: str
+    product: str
+    mode: str
+    description: str
+    level_keys: tuple[str, ...]
+    compiled: tuple[TargetSetClause, ...]
+    built: tuple[BuiltRows, ...]
+
+    @property
+    def clause_ids(self) -> tuple[str, ...]:
+        return tuple(clause.clause_id for clause in self.compiled)
+
+    def clause(self, clause_id: str) -> TargetSetClause:
+        for clause in self.compiled:
+            if clause.clause_id == clause_id:
+                return clause
+        raise KeyError(
+            f"{self.product}/{self.mode} declares no compiled clause {clause_id!r}; "
+            f"it declares {list(self.clause_ids)}."
+        )
+
+    def built_rows(self, built_id: str) -> BuiltRows:
+        for built in self.built:
+            if built.built_id == built_id:
+                return built
+        raise KeyError(
+            f"{self.product}/{self.mode} declares no built rows {built_id!r}."
+        )
+
+    def level_of(self, spec: Any) -> str:
+        return target_level(spec, self.level_keys)
+
+
+@dataclass(frozen=True)
+class ProductDeclaration:
+    """One product: the option that picks its mode, and each mode's target set."""
+
+    product: str
+    tool: str
+    option: str
+    default_mode: str
+    modes: Mapping[str, TargetSetDeclaration]
+
+    @property
+    def mode_names(self) -> tuple[str, ...]:
+        return tuple(self.modes)
+
+    def mode(self, name: str) -> TargetSetDeclaration:
+        try:
+            return self.modes[name]
+        except KeyError:
+            raise KeyError(
+                f"{self.product} declares no mode {name!r}; it declares "
+                f"{list(self.modes)}."
+            ) from None
+
+
+@dataclass(frozen=True)
+class TargetSetDeclarations:
+    """Every product's declared target sets for one country."""
+
+    country: str
+    level_keys: tuple[str, ...]
+    products: Mapping[str, ProductDeclaration]
+
+    def product(self, name: str) -> ProductDeclaration:
+        try:
+            return self.products[name]
+        except KeyError:
+            raise KeyError(
+                f"{self.country} declares no product {name!r}; it declares "
+                f"{list(self.products)}."
+            ) from None
+
+    def declaration(self, product: str, mode: str) -> TargetSetDeclaration:
+        return self.product(product).mode(mode)
+
+
+# ---------------------------------------------------------------------------
+# Loading
+# ---------------------------------------------------------------------------
+
+
+def _fail(where: str, message: str) -> TargetSetDeclarationError:
+    return TargetSetDeclarationError(f"{where}: {message}")
+
+
+def _require_keys(
+    where: str,
+    raw: object,
+    allowed: frozenset[str],
+    required: Iterable[str],
+) -> Mapping[str, Any]:
+    if not isinstance(raw, Mapping):
+        raise _fail(where, "must be an object.")
+    unknown = sorted(set(raw) - allowed)
+    if unknown:
+        raise _fail(where, f"unknown keys {unknown}.")
+    missing = sorted(set(required) - set(raw))
+    if missing:
+        raise _fail(where, f"missing keys {missing}.")
+    return raw
+
+
+def _text(where: str, value: object) -> str:
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise _fail(where, "must be a nonempty string without outer spaces.")
+    return value
+
+
+def _names(where: str, value: object) -> frozenset[str] | None:
+    if value == ANY:
+        return None
+    if not isinstance(value, list) or not value:
+        raise _fail(where, f"must be {ANY!r} or a nonempty list of names.")
+    names = [_text(where, item) for item in value]
+    if len(set(names)) != len(names):
+        raise _fail(where, "repeats a name.")
+    return frozenset(names)
+
+
+def _metadata_tests(where: str, raw: object) -> tuple[MetadataTest, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, Mapping):
+        raise _fail(where, "must be an object of key tests.")
+    tests = []
+    for key, test in raw.items():
+        _text(f"{where}.{key}", key)
+        if not isinstance(test, Mapping) or len(test) != 1:
+            raise _fail(f"{where}.{key}", "must hold exactly one test.")
+        ((kind, value),) = test.items()
+        if kind not in _TEST_KINDS:
+            raise _fail(
+                f"{where}.{key}",
+                f"unknown test {kind!r}; use one of {sorted(_TEST_KINDS)}.",
+            )
+        if kind == "present" and not isinstance(value, bool):
+            raise _fail(f"{where}.{key}", "present takes true or false.")
+        if kind == "not_prefix":
+            _text(f"{where}.{key}", value)
+        tests.append(MetadataTest(key, kind, value))
+    return tuple(tests)
+
+
+def _clause(where: str, raw: object) -> TargetSetClause:
+    clause = _require_keys(
+        where, raw, _CLAUSE_KEYS, ("id", "families", "levels", "rationale")
+    )
+    exclude = clause.get("exclude", [])
+    if not isinstance(exclude, list):
+        raise _fail(f"{where}.exclude", "must be a list of predicate names.")
+    rule = clause.get("rule")
+    return TargetSetClause(
+        clause_id=_text(f"{where}.id", clause["id"]),
+        families=_names(f"{where}.families", clause["families"]),
+        levels=_names(f"{where}.levels", clause["levels"]),
+        metadata=_metadata_tests(f"{where}.metadata", clause.get("metadata")),
+        exclude=tuple(_text(f"{where}.exclude", name) for name in exclude),
+        rule=None if rule is None else _text(f"{where}.rule", rule),
+        rationale=_text(f"{where}.rationale", clause["rationale"]),
+    )
+
+
+def _built(where: str, raw: object) -> BuiltRows:
+    built = _require_keys(
+        where, raw, _BUILT_KEYS, ("id", "family", "levels", "source", "rationale")
+    )
+    levels = built["levels"]
+    if not isinstance(levels, Mapping) or not levels:
+        raise _fail(f"{where}.levels", "must map each option value to a level.")
+    option = built.get("option")
+    return BuiltRows(
+        built_id=_text(f"{where}.id", built["id"]),
+        family=_text(f"{where}.family", built["family"]),
+        levels=MappingProxyType(
+            {
+                _text(f"{where}.levels", value): _text(f"{where}.levels", level)
+                for value, level in levels.items()
+            }
+        ),
+        option=None if option is None else _text(f"{where}.option", option),
+        source=_text(f"{where}.source", built["source"]),
+        rationale=_text(f"{where}.rationale", built["rationale"]),
+    )
+
+
+def load_target_set_declarations(
+    source: str | Path | Mapping[str, Any],
+) -> TargetSetDeclarations:
+    """Read and check one country's declarations (a path or a parsed object)."""
+
+    if isinstance(source, Mapping):
+        raw, where = source, "target sets"
+    else:
+        path = Path(source)
+        raw, where = json.loads(path.read_text(encoding="utf-8")), str(path)
+    top = _require_keys(
+        where, raw, _TOP_KEYS, ("version", "country", "level_keys", "products")
+    )
+    if top["version"] != DECLARATION_VERSION:
+        raise _fail(where, f"version must be {DECLARATION_VERSION}.")
+    country = _text(f"{where}.country", top["country"])
+    level_keys = top["level_keys"]
+    if not isinstance(level_keys, list) or not level_keys:
+        raise _fail(f"{where}.level_keys", "must be a nonempty list of metadata keys.")
+    level_keys = tuple(_text(f"{where}.level_keys", key) for key in level_keys)
+    products_raw = top["products"]
+    if not isinstance(products_raw, Mapping) or not products_raw:
+        raise _fail(f"{where}.products", "must name at least one product.")
+    products: dict[str, ProductDeclaration] = {}
+    for product_name, product_raw in products_raw.items():
+        at = f"{where}.products.{product_name}"
+        product = _require_keys(at, product_raw, _PRODUCT_KEYS, _PRODUCT_KEYS)
+        modes_raw = product["modes"]
+        if not isinstance(modes_raw, Mapping) or not modes_raw:
+            raise _fail(f"{at}.modes", "must name at least one mode.")
+        modes: dict[str, TargetSetDeclaration] = {}
+        for mode_name, mode_raw in modes_raw.items():
+            mode_at = f"{at}.modes.{mode_name}"
+            mode = _require_keys(
+                mode_at, mode_raw, _MODE_KEYS, ("description", "compiled")
+            )
+            compiled_raw = mode["compiled"]
+            if not isinstance(compiled_raw, list) or not compiled_raw:
+                raise _fail(f"{mode_at}.compiled", "must list at least one clause.")
+            compiled = tuple(
+                _clause(f"{mode_at}.compiled[{index}]", clause)
+                for index, clause in enumerate(compiled_raw)
+            )
+            built_raw = mode.get("built", [])
+            if not isinstance(built_raw, list):
+                raise _fail(f"{mode_at}.built", "must be a list.")
+            built = tuple(
+                _built(f"{mode_at}.built[{index}]", entry)
+                for index, entry in enumerate(built_raw)
+            )
+            ids = [clause.clause_id for clause in compiled] + [
+                b.built_id for b in built
+            ]
+            if len(set(ids)) != len(ids):
+                raise _fail(mode_at, "repeats a clause or built id.")
+            modes[_text(mode_at, mode_name)] = TargetSetDeclaration(
+                country=country,
+                product=product_name,
+                mode=mode_name,
+                description=_text(f"{mode_at}.description", mode["description"]),
+                level_keys=level_keys,
+                compiled=compiled,
+                built=built,
+            )
+        default_mode = _text(f"{at}.default_mode", product["default_mode"])
+        if default_mode not in modes:
+            raise _fail(
+                f"{at}.default_mode", f"{default_mode!r} is not a declared mode."
+            )
+        products[_text(at, product_name)] = ProductDeclaration(
+            product=product_name,
+            tool=_text(f"{at}.tool", product["tool"]),
+            option=_text(f"{at}.option", product["option"]),
+            default_mode=default_mode,
+            modes=MappingProxyType(modes),
+        )
+    return TargetSetDeclarations(
+        country=country,
+        level_keys=level_keys,
+        products=MappingProxyType(products),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Selection
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TargetSetSelection:
+    """The selected specs, in order, with each clause's count and rule receipt."""
+
+    declaration: TargetSetDeclaration
+    specs: tuple[Any, ...]
+    clause_counts: Mapping[str, int]
+    rule_receipts: Mapping[str, Any]
+
+
+def select_target_set(
+    declaration: TargetSetDeclaration,
+    specs: Iterable[Any],
+    *,
+    clause_ids: Iterable[str] | None = None,
+    predicates: Mapping[str, Predicate] | None = None,
+    rules: Mapping[str, Rule] | None = None,
+) -> TargetSetSelection:
+    """Select the declared target set from compiled ``specs``.
+
+    Each compiled clause (only those in ``clause_ids``, when given) keeps the
+    specs it accepts, in compile order; a clause with a rule passes them to
+    the rule. The selection is the clauses' outputs in declaration order.
+
+    Raises:
+        KeyError: If ``clause_ids`` names a clause the declaration lacks.
+        ValueError: If a clause names a predicate or rule not passed, or if
+            two clauses keep the same spec.
+    """
+
+    specs = tuple(specs)
+    predicates = dict(predicates or {})
+    rules = dict(rules or {})
+    if clause_ids is None:
+        clauses = declaration.compiled
+    else:
+        wanted = set(clause_ids)
+        for clause_id in sorted(wanted):
+            declaration.clause(clause_id)
+        clauses = tuple(c for c in declaration.compiled if c.clause_id in wanted)
+    for clause in clauses:
+        missing = [name for name in clause.exclude if name not in predicates]
+        if missing:
+            raise ValueError(
+                f"{declaration.product}/{declaration.mode} clause "
+                f"{clause.clause_id!r} excludes by {missing}, which the caller "
+                "did not pass."
+            )
+        if clause.rule is not None and clause.rule not in rules:
+            raise ValueError(
+                f"{declaration.product}/{declaration.mode} clause "
+                f"{clause.clause_id!r} names rule {clause.rule!r}, which the "
+                "caller did not pass."
+            )
+    levels = [declaration.level_of(spec) for spec in specs]
+    kept: list[Any] = []
+    counts: dict[str, int] = {}
+    receipts: dict[str, Any] = {}
+    seen: dict[int, str] = {}
+    for clause in clauses:
+        picked: Sequence[Any] = [
+            spec
+            for spec, level in zip(specs, levels, strict=True)
+            if clause.accepts(spec, level, predicates)
+        ]
+        if clause.rule is not None:
+            picked, receipts[clause.clause_id] = rules[clause.rule](tuple(picked))
+        for spec in picked:
+            other = seen.setdefault(id(spec), clause.clause_id)
+            if other != clause.clause_id:
+                raise ValueError(
+                    f"{declaration.product}/{declaration.mode}: clauses {other!r} "
+                    f"and {clause.clause_id!r} both keep {spec.name!r}."
+                )
+        counts[clause.clause_id] = len(picked)
+        kept.extend(picked)
+    return TargetSetSelection(
+        declaration=declaration,
+        specs=tuple(kept),
+        clause_counts=MappingProxyType(counts),
+        rule_receipts=MappingProxyType(receipts),
+    )
+
+
+def clause_predicate(
+    declaration: TargetSetDeclaration,
+    clause_id: str,
+    *,
+    predicates: Mapping[str, Predicate] | None = None,
+    test_family: bool = True,
+) -> Predicate:
+    """One compiled clause as a spec predicate; its rule is not applied.
+
+    With ``test_family=False`` the predicate skips the family test, for a
+    caller that has already selected the family.
+    """
+
+    clause = declaration.clause(clause_id)
+    predicates = dict(predicates or {})
+    missing = [name for name in clause.exclude if name not in predicates]
+    if missing:
+        raise ValueError(
+            f"{declaration.product}/{declaration.mode} clause {clause_id!r} "
+            f"excludes by {missing}, which the caller did not pass."
+        )
+
+    def accepted(spec: Any) -> bool:
+        level = declaration.level_of(spec)
+        if test_family:
+            return clause.accepts(spec, level, predicates)
+        return clause.accepts_level_and_metadata(spec, level, predicates)
+
+    return accepted
+
+
+def target_set_census(
+    specs: Iterable[Any], level_keys: Sequence[str]
+) -> dict[tuple[str, str], int]:
+    """Spec counts by (family, level), sorted."""
+
+    census = Counter(
+        (str(spec.family), target_level(spec, level_keys)) for spec in specs
+    )
+    return dict(sorted(census.items()))
+
+
+def undeclared_cells(
+    declaration: TargetSetDeclaration, specs: Iterable[Any]
+) -> dict[tuple[str, str], int]:
+    """(family, level) cells of ``specs`` that no clause or built entry declares.
+
+    Metadata tests, exclusions and rules are not applied: a cell is declared
+    when some compiled clause names its family and level (or any), or some
+    built entry gives its family that level.
+    """
+
+    def declared(family: str, level: str) -> bool:
+        for clause in declaration.compiled:
+            if (clause.families is None or family in clause.families) and (
+                clause.levels is None or level in clause.levels
+            ):
+                return True
+        return any(
+            built.family == family and level in built.levels.values()
+            for built in declaration.built
+        )
+
+    census = target_set_census(specs, declaration.level_keys)
+    return {cell: n for cell, n in census.items() if not declared(*cell)}
