@@ -351,13 +351,24 @@ def test_a_range_index_is_rebuilt_and_other_indexes_are_viewed():
 def test_two_dimensional_extension_columns_are_copied_by_pandas(column):
     values = {**COLUMN_VALUES, **PANDAS_COPIED_VALUES}
     source = _one_block_per_column(
-        names=("float64", column, "float64_second", "Int64"), values=values
+        names=("float64", column, "float64_second", "Int64", "category"),
+        values=values,
     )
 
     copied = copy_table(source)
 
     _assert_same_as_pandas_copy(copied, source)
     assert block_layout(copied) == block_layout(source.copy(deep=True))
+    _assert_categories_and_range_index_are_new(copied, source)
+
+
+def _assert_categories_and_range_index_are_new(copied, source):
+    assert shares_memory(copied, source) == []
+    assert copied["category"].cat.categories.array is not (
+        source["category"].cat.categories.array
+    )
+    np.asarray(copied.index)[0] = 99
+    assert np.asarray(source.index)[0] != 99
 
 
 def test_numpy_dtypes_sharing_a_name_are_copied_by_pandas():
@@ -383,7 +394,9 @@ def test_a_pandas_subclass_is_copied_by_pandas():
         def _constructor(self):
             return Subclassed
 
-    source = Subclassed(_columns(("float64", "float64_second", "Int64")), copy=False)
+    source = Subclassed(
+        _columns(("float64", "float64_second", "Int64", "category")), copy=False
+    )
     source.note = "kept"
 
     copied = copy_table(source)
@@ -391,7 +404,7 @@ def test_a_pandas_subclass_is_copied_by_pandas():
     assert type(copied) is Subclassed
     assert copied.note == "kept"
     pd.testing.assert_frame_equal(copied, source.copy(deep=True), check_exact=True)
-    assert shares_memory(copied, source) == []
+    _assert_categories_and_range_index_are_new(copied, source)
 
 
 def test_without_the_pandas_block_constructor_tables_are_copied_by_pandas(
@@ -404,6 +417,7 @@ def test_without_the_pandas_block_constructor_tables_are_copied_by_pandas(
 
     _assert_same_as_pandas_copy(copied, source)
     assert block_layout(copied) == block_layout(source.copy(deep=True))
+    _assert_categories_and_range_index_are_new(copied, source)
 
 
 def test_copying_a_table_of_one_block_per_column_holds_one_copy_at_its_peak():
