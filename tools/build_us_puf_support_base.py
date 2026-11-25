@@ -1498,12 +1498,17 @@ def _builder_tool_path() -> Path:
 #: repository root and tool file it covers, so the step's own run config
 #: (``_stage_run_config``) does not read those files again. A step process
 #: uses a digest only for the same path, and only when the process that set
-#: the variable is its parent, so the QRF processes a step starts and a named
-#: ``--stage`` run by hand hash everything themselves. The parent ignores the
-#: variable and hashes everything at every start, comparing the result with
-#: the locked run config before it starts a step, so a resume after an input
-#: or the builder's code changed is still refused. What goes unnoticed is a
-#: file that changes while the run is under way.
+#: the variable is its parent (the recorded process ID equals
+#: ``os.getppid()``); otherwise it hashes the file itself, as a named
+#: ``--stage`` run by hand does when the variable is unset. A malformed
+#: variable stops the process. The parent ignores the variable and hashes
+#: everything at every start, comparing the result with the locked run
+#: config before it starts a step, so a resume after an input or the
+#: builder's code changed is still refused. What goes unnoticed is a PUF or
+#: source file that changes while the run is under way, a ``git pull`` in
+#: the same checkout included. The process-ID comparison does not identify
+#: the run: a copy of the variable used where process IDs repeat (a fresh
+#: container) can match, as ``MICROCOSM_TELEMETRY_PARENT_PID`` can.
 PARENT_DIGESTS_VARIABLE = "MICROCOSM_US_BASE_PARENT_DIGESTS"
 _PARENT_DIGESTS_SCHEMA_VERSION = 1
 _PARENT_DIGESTS_KEYS = frozenset(

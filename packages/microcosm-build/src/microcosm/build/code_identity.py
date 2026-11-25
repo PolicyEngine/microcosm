@@ -16,6 +16,10 @@ on a root without packaged sources rather than returning a hollow identity.
 Reading and hashing the sources is most of the cost (about 200 MB in this
 repository). A caller that already holds the digest for the same root and
 tool file passes it as ``source_sha256``, and only the versions are read.
+The sources are then not read at all, so a change made after the digest was
+computed (a ``git pull`` while a run is under way) is not detected by that
+call; the US base builder's step processes accept that, and its parent
+hashes the sources again at every start.
 """
 
 from __future__ import annotations

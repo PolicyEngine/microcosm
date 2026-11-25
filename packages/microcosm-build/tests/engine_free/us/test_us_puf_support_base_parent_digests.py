@@ -12,9 +12,11 @@ tool file it covers. A step process uses a digest only for the same path,
 and only when the process that set the variable is its parent; it hashes
 everything else itself.
 
-These tests replace ``subprocess.run`` with a stand-in that records each step
-command and environment, then compute each step's run config in this
-process, as that step process would, while recording what gets hashed.
+Most of these tests replace ``subprocess.run`` with a stand-in that records
+each step command and environment, then compute each step's run config in
+this process, as that step process would, while recording what gets hashed.
+One starts a real step process to show that it finds this process as its
+parent.
 """
 
 from __future__ import annotations
@@ -35,12 +37,12 @@ from microcosm.build.outer_stage_runtime import OUTER_STAGE_CONTEXT_FILENAME
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
+_TOOL = _TEST_PATHS.repository / "tools" / "build_us_puf_support_base.py"
 _DIGESTS_VARIABLE = "MICROCOSM_US_BASE_PARENT_DIGESTS"
 
 
 def _load_builder() -> ModuleType:
-    path = _TEST_PATHS.repository / "tools" / "build_us_puf_support_base.py"
-    spec = importlib.util.spec_from_file_location("build_us_puf_support_base", path)
+    spec = importlib.util.spec_from_file_location("build_us_puf_support_base", _TOOL)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -114,7 +116,12 @@ class _StepProcesses:
 def _as_step_process(
     monkeypatch: pytest.MonkeyPatch, environment: Mapping[str, str]
 ) -> Iterator[None]:
-    """Run the body as a step process this process started with ``environment``."""
+    """Give the body the digests variable a step process started with
+    ``environment`` would see, and make this process its parent.
+
+    Only that variable and ``os.getppid`` change; the rest of this process's
+    environment stays as it is.
+    """
 
     with monkeypatch.context() as step:
         if _DIGESTS_VARIABLE in environment:
@@ -135,14 +142,12 @@ def _write_inputs(tmp_path: Path) -> SimpleNamespace:
     return SimpleNamespace(puf_h5=puf_h5, puf_csv=puf_csv)
 
 
-def _parent_argv(
-    tmp_path: Path, inputs: SimpleNamespace, *, puf_h5: Path | None = None
-) -> list[str]:
+def _parent_argv(tmp_path: Path, inputs: SimpleNamespace) -> list[str]:
     return [
         "--base-h5",
         str(tmp_path / "base.h5"),
         "--puf-h5",
-        str(inputs.puf_h5 if puf_h5 is None else puf_h5),
+        str(inputs.puf_h5),
         "--puf-source-year-csv",
         str(inputs.puf_csv),
         "--out",
@@ -235,9 +240,8 @@ def test_a_step_process_started_without_digests_hashes_its_inputs(
 def test_digests_set_by_a_process_other_than_the_parent_are_not_used(
     builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # The variable reaches the QRF worker processes a step starts, and it
-    # could be left exported in a shell; only the parent's own step
-    # processes use it.
+    # Every process a step starts inherits the variable, and it could be
+    # left exported in a shell; only the parent's own step processes use it.
     inputs = _write_inputs(tmp_path)
     hashing = _Hashing(builder, monkeypatch)
     steps = _StepProcesses(builder, monkeypatch)
@@ -361,6 +365,75 @@ def test_the_parent_hashes_its_inputs_whatever_its_own_environment_holds(
     assert _locked_run_config(builder, builder._parse_args(argv))[
         "puf_h5_sha256"
     ] == _sha256(inputs.puf_h5)
+    # Each step process gets the new digests, not the ones left over.
+    puf_path = str(inputs.puf_h5.resolve())
+    for _command, step_environment in steps.started[len(builder.PIPELINE_STEPS) :]:
+        passed = json.loads(step_environment[_DIGESTS_VARIABLE])
+        assert passed["file_sha256"][puf_path] == _sha256(inputs.puf_h5)
+        assert passed["parent_pid"] == os.getpid()
+
+
+#: Run in a real step process: load the builder, refuse any hashing, and
+#: print the step's run config.
+_STEP_PROBE = """
+import importlib.util
+import json
+import sys
+
+from microcosm.build import code_identity
+
+spec = importlib.util.spec_from_file_location("base_tool_step_probe", sys.argv[1])
+builder = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(builder)
+
+
+def refuse_hashing(*_args, **_kwargs):
+    raise AssertionError("the step process hashed a file")
+
+
+builder._sha256 = refuse_hashing
+code_identity._source_sha256 = refuse_hashing
+config = builder._stage_run_config(builder._parse_args(sys.argv[2:]))
+print("RUN_CONFIG " + json.dumps(config))
+"""
+
+
+def test_a_real_step_process_finds_its_parent_and_reuses_the_digests(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # No stand-in for the process ID or the code identity: the first step
+    # is a real process started from this one with the environment
+    # _run_staged_all gives it.
+    inputs = _write_inputs(tmp_path)
+    start_process = builder.subprocess.run
+    step_runs = []
+
+    def probe_the_first_step(command, *, check, env):
+        if not step_runs:
+            step_runs.append(
+                start_process(
+                    [command[0], "-c", _STEP_PROBE, str(_TOOL), *_step_argv(command)],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            )
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(builder.subprocess, "run", probe_the_first_step)
+    parent = builder._parse_args(_parent_argv(tmp_path, inputs))
+
+    builder._run_staged_all(parent)
+
+    [step] = step_runs
+    assert step.returncode == 0, step.stderr
+    [printed] = [
+        line for line in step.stdout.splitlines() if line.startswith("RUN_CONFIG ")
+    ]
+    assert json.loads(printed.removeprefix("RUN_CONFIG ")) == _locked_run_config(
+        builder, parent
+    )
 
 
 def _relative_file_path(payload: dict, puf_path: str) -> object:

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from microcosm.build import code_identity
 from microcosm.build.code_identity import builder_code_identity
 
 _DISTRIBUTIONS = ("numpy", "not-an-installed-distribution")
@@ -42,8 +43,12 @@ def test_a_given_source_digest_is_used_without_reading_any_source(
     def refuse_read(path: Path) -> bytes:
         raise AssertionError(f"read {path} although its digest was given")
 
+    def refuse_hashing(*_args: object) -> str:
+        raise AssertionError("hashed the sources although their digest was given")
+
     with monkeypatch.context() as no_reads:
         no_reads.setattr(Path, "read_bytes", refuse_read)
+        no_reads.setattr(code_identity, "_source_sha256", refuse_hashing)
         given = builder_code_identity(
             root,
             tool_path=tool,
