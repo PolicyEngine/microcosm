@@ -61,6 +61,9 @@ def staged() -> Frame:
         np.where(rng.random(len(tax_unit)) < 0.3, 0.8, 1.0)
     ).where(~acs_units, np.nan)
     person["has_marketplace_health_coverage_at_interview"] = False
+    # Pinned, so the eligible pool never rests on a drawn has_esi: staging
+    # writes it from HINS1 (microcosm#1720, A6), which this fixture lacks.
+    person["has_esi"] = False
     person["SPORDER"] = np.where(acs_persons, 1.0, np.nan)
     household["SERIALNO"] = pd.Series(
         [f"2024HU{value:07d}" for value in household["household_id"]], dtype=object

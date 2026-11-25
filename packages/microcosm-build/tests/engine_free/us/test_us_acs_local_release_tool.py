@@ -728,6 +728,8 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "closest to the residual average",
         "microcosm#168",
         "no unit is anchored",
+        "reported_has_subsidized_marketplace_health_coverage_at_interview",
+        "records the excess",
         "clipped to 0.5-1.5",
         "no bronze count",
         "HIMRKS",

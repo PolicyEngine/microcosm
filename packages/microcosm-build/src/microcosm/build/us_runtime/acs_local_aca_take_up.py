@@ -53,14 +53,18 @@ cells; donor values and any stored ACS value are kept.
   ratio is (premium + credit) / SLCSP for takers, clipped to 0.5-1.5, and
   1.0 otherwise; without a bronze table the stage stops after the clip, as
   the fiscal lane does.
-- **Anchor.** Staging does not load the PUMS item that separates
-  subsidized Marketplace coverage (``HIMRKS``, direct purchase with or
-  without a premium subsidy). When that anchor is absent the fiscal lane
-  preserves none, because observed Marketplace coverage is broader than
-  subsidized coverage (``_aca_source_person_table``); this stage follows
-  that rule, so every ACS taker is drawn. A stored ACS take-up cell
-  (staging writes none) is kept: a stored ``True`` is a preserved anchor,
-  and a unit stored ``False`` stays out of the stage.
+- **Anchor.** The anchor is the manifest stage's own column,
+  ``reported_has_subsidized_marketplace_health_coverage_at_interview``,
+  where staging writes it on the ACS persons. The fiscal lane reads it as
+  False where the column is absent, because observed Marketplace coverage
+  is broader than subsidized coverage (``_aca_source_person_table``), and
+  so does this stage. Staging writes none today: it does not load the PUMS
+  item that separates subsidized Marketplace coverage (``HIMRKS``), so
+  every ACS taker is drawn. Where anchors exist they take up even above a
+  state's residual (the stage's ``preserve_true_anchors``), and the receipt
+  records the excess. A stored ACS take-up cell (staging writes none) is
+  kept: a stored ``True`` is an anchor too, and a unit stored ``False``
+  stays out of the stage.
 - **Draws** come from seeded blake2b uniforms on the donor stage's stream
   (``aca:takes_up_aca_if_eligible``), keyed on
   ``acs_2024_1yr:SERIALNO:<lowest SPORDER of the unit>``, so a unit's draw
@@ -151,11 +155,14 @@ _TARGET_BASIS = (
     "operation that reads the table), floored at 0"
 )
 _ANCHOR_RULE = (
-    "none: staging does not load the PUMS subsidy item HIMRKS, and the "
-    "fiscal lane preserves no anchor when that item is absent "
-    "(_aca_source_person_table: observed Marketplace coverage is broader "
-    "than subsidized coverage); a stored ACS take-up True is kept as an "
-    "anchor and a stored False stays out of the stage"
+    "the manifest stage's own anchor column where staging writes it on the "
+    "ACS persons, read as the fiscal lane reads it (False where the column "
+    "is absent: observed Marketplace coverage is broader than subsidized "
+    "coverage, _aca_source_person_table); staging writes none today, since "
+    "it does not load the PUMS subsidy item HIMRKS. A stored ACS take-up "
+    "True is also an anchor, and a stored False stays out of the stage. "
+    "Anchors take up even above a state's residual (preserve_true_anchors), "
+    "and the excess is recorded"
 )
 #: The columns of the fiscal lane's ACA tax-unit table the stage reads.
 _ENGINE_TABLE_COLUMNS = (
@@ -569,6 +576,7 @@ def _rows(
             residual = max(target - donor, 0.0)
             capacity = sums["capacity"][name].get(state, 0.0)
             delivered = sums["delivered"][name].get(state, 0.0)
+            anchored = sums["anchored"][name].get(state, 0.0)
             pooled = donor + delivered
             rows.append(
                 {
@@ -580,6 +588,10 @@ def _rows(
                     "acs_capacity": capacity,
                     "acs_delivered": delivered,
                     "acs_max_unit_weight": sums["max_unit"][name].get(state, 0.0),
+                    # Anchors take up even above the residual (the stage's
+                    # preserve_true_anchors); recorded, not graded.
+                    "acs_anchored": anchored,
+                    "anchor_excess": max(anchored - residual, 0.0),
                     "pooled": pooled,
                     "pooled_relative_error": (
                         (pooled - target) / target if target > 0 else None
@@ -782,7 +794,7 @@ def with_acs_local_aca_take_up(
     }
     sums: dict[str, dict[str, dict[str, float]]] = {
         kind: {name: {} for name in tables}
-        for kind in ("donor", "capacity", "delivered", "max_unit")
+        for kind in ("donor", "capacity", "delivered", "max_unit", "anchored")
     }
     if donor_units.any():
         view = frame.select(~acs_persons)
@@ -843,7 +855,18 @@ def with_acs_local_aca_take_up(
     acs_ratio_present = ratio_present[acs_units]
     acs_stored_ratio = stored_ratio[acs_units]
     staged = ~acs_flag_present | acs_stored
-    anchored = acs_flag_present & acs_stored
+    # The manifest stage's own anchor column, where staging writes it on the
+    # ACS persons; absent, it reads False, as the fiscal lane's person table
+    # does. A unit is anchored where a member reports it or its stored cell
+    # is True; a unit stored False stays out of the stage.
+    units_of = person.loc[acs_persons, _PERSON_TAX_UNIT]
+    reported = (
+        person.loc[acs_persons, plan.anchor].fillna(False).astype(bool).to_numpy()
+        if plan.anchor in person
+        else np.zeros(len(units_of), dtype=bool)
+    )
+    reported_units = np.isin(acs_ids, units_of.to_numpy()[reported])
+    anchored = (acs_flag_present & acs_stored) | (~acs_flag_present & reported_units)
 
     stage_units = engine.loc[staged, list(_ENGINE_TABLE_COLUMNS)].reset_index(drop=True)
     stage_units[plan.draw_column] = stable_identity_uniforms(
@@ -853,7 +876,6 @@ def with_acs_local_aca_take_up(
     # Marketplace coverage (the fiscal lane falls back on the deprecated
     # alias, as here) and the anchor. Built column by column, so the ACS
     # person rows are never copied whole.
-    units_of = person.loc[acs_persons, _PERSON_TAX_UNIT]
     coverage: dict[str, np.ndarray] = {}
     lacking: list[str] = []
     for column in plan.aggregates:
@@ -926,6 +948,10 @@ def with_acs_local_aca_take_up(
         sums["delivered"][name] = _state_sums(evaluated, chosen, role.weight)
         sums["capacity"][name] = _state_sums(evaluated, domain, role.weight)
         sums["max_unit"][name] = _state_max(evaluated, domain, role.weight)
+        if role.variable == _TAKE_UP:
+            sums["anchored"][name] = _state_sums(
+                evaluated, domain & anchored, role.weight
+            )
 
     missing_take_up = np.zeros(len(tax_unit), dtype=bool)
     missing_take_up[acs_units] = ~acs_flag_present
@@ -976,7 +1002,12 @@ def with_acs_local_aca_take_up(
         "target_basis": _TARGET_BASIS,
         "anchor": {
             "rule": _ANCHOR_RULE,
-            "stored_true_tax_units": int(anchored.sum()),
+            "column": plan.anchor,
+            "column_on_acs_persons": bool(plan.anchor in person),
+            "reported_acs_persons": int(reported.sum()),
+            "reported_tax_units": int(reported_units.sum()),
+            "stored_true_tax_units": int((acs_flag_present & acs_stored).sum()),
+            "anchored_tax_units": int(anchored.sum()),
         },
         "engine_prepass": {
             "rows": "donor_households_then_acs_households",
@@ -1160,11 +1191,16 @@ def _binding_grades(rows: list) -> tuple[list[str], list[dict[str, Any]]]:
         capacity = _finite(row.get("acs_capacity"))
         delivered = _finite(row.get("acs_delivered"))
         step = _finite(row.get("acs_max_unit_weight"))
+        anchored = _finite(row.get("acs_anchored", 0.0))
         if not all(np.isfinite([residual, capacity, delivered])):
             continue
         error = (delivered - residual) / residual if residual > 0 else None
         if residual <= 0:
             status = "donor_meets_count"
+        elif np.isfinite(anchored) and anchored >= residual:
+            # Every anchor takes up (preserve_true_anchors), even above the
+            # residual: the excess is reported, not failed.
+            status = "anchor_excess"
         elif capacity <= 0:
             status = "no_acs_capacity"
         elif capacity <= residual:
@@ -1192,6 +1228,9 @@ def _binding_grades(rows: list) -> tuple[list[str], list[dict[str, Any]]]:
                 "status": status,
                 "relative_error": error,
                 "capacity_shortfall": max(residual - capacity, 0.0),
+                "anchor_excess": (
+                    max(anchored - residual, 0.0) if np.isfinite(anchored) else None
+                ),
             }
         )
     return failures, graded
@@ -1266,6 +1305,7 @@ def acs_local_aca_take_up_signal_gate(
     :data:`ACS_LOCAL_ACA_RETURNS_RELATIVE_TOLERANCE` of its residual, or of
     one unit's weight, where the ACS capacity exceeds it, and equal to the
     capacity where it does not. States the donor rows already meet, states
+    whose anchors alone meet the residual (every anchor takes up), states
     without ACS capacity, shortfalls, excesses, the CMS people, the amounts
     and the people per return are reported, not failed.
 

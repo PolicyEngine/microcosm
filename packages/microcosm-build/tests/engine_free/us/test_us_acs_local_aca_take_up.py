@@ -29,6 +29,8 @@ CMS = "cms_aca_aptc_recipients_by_state"
 RETURNS = "irs_soi_premium_tax_credit_returns_by_state"
 AMOUNT = "irs_soi_premium_tax_credit_amount_by_state"
 COVERAGE = "has_marketplace_health_coverage_at_interview"
+#: The manifest stage's anchor column; staging writes none today.
+ANCHOR = "reported_has_subsidized_marketplace_health_coverage_at_interview"
 STATES = (6, 36, 48)
 #: Stub engine values ride the tax-unit table, so the pre-pass view carries
 #: them: eligibility, the credit before the filing gate, the SLCSP, the
@@ -594,3 +596,99 @@ def test_malformed_inputs_are_refused(frame) -> None:
     units = frame.table("tax_unit").drop(columns=[TAKE_UP])
     with pytest.raises(ValueError, match="universal take-up"):
         _assign(_with_tax_unit(frame, units), tables)
+
+
+def _with_reported_anchor(frame: Frame, units: set) -> Frame:
+    """The frame with the anchor column True for every member of ``units``."""
+
+    person = frame.table("person").copy()
+    person[ANCHOR] = person["person_tax_unit_id"].isin(units).to_numpy()
+    return Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+
+def _eligible_acs_units(frame: Frame) -> np.ndarray:
+    acs = _acs_units(frame)
+    values = _unit_values(frame, flags=np.ones(len(acs), dtype=bool))
+    eligible = values["is_aca_ptc_eligible"].to_numpy()
+    return frame.table("tax_unit")["tax_unit_id"].to_numpy()[acs & eligible]
+
+
+def _takers(result: Frame) -> set:
+    units = result.table("tax_unit")
+    acs = _acs_units(result)
+    flags = units.loc[acs, TAKE_UP].astype(bool).to_numpy()
+    return set(units.loc[acs, "tax_unit_id"].to_numpy()[flags])
+
+
+def test_the_manifest_anchor_column_anchors_acs_units(frame) -> None:
+    """The stage reads the manifest's own anchor column where staging writes
+    it on ACS persons (as the fiscal lane does), so a staged subsidy item
+    needs no new rule here. A unit stored False stays out."""
+
+    candidates = _eligible_acs_units(frame)
+    anchored = set(candidates[::3])
+    excluded = candidates[1]
+    units = frame.table("tax_unit").copy()
+    flags = units[TAKE_UP].astype(object)
+    flags[units["tax_unit_id"].eq(excluded).to_numpy()] = False
+    units[TAKE_UP] = flags
+    staged = _with_reported_anchor(_with_tax_unit(frame, units), anchored | {excluded})
+
+    # Every residual is 0, so only the anchors take up.
+    result, receipt = _assign(staged, _targets(frame, fraction=0.0))
+
+    assert _takers(result) == anchored
+    assert receipt["anchor"]["column"] == ANCHOR
+    assert receipt["anchor"]["column_on_acs_persons"] is True
+    assert receipt["anchor"]["reported_tax_units"] == len(anchored) + 1
+    assert receipt["anchor"]["anchored_tax_units"] == len(anchored)
+    for row in receipt["tables"][RETURNS]["states"]:
+        assert row["residual"] == 0.0
+        assert row["acs_delivered"] == pytest.approx(row["acs_anchored"])
+        assert row["anchor_excess"] == pytest.approx(row["acs_anchored"])
+    gate = acs_local_aca_take_up_signal_gate(result, receipt=receipt)
+    assert gate.passed, gate.failures
+
+
+def test_anchors_above_a_residual_all_take_up_and_the_excess_is_reported(
+    frame,
+) -> None:
+    """With an anchor, a state's anchored mass can exceed its residual: every
+    anchor takes up (preserve_true_anchors), no other ACS unit does, and the
+    receipt and the grade report the excess without failing."""
+
+    anchored = set(_eligible_acs_units(frame)[::3])
+    staged = _with_reported_anchor(frame, anchored)
+    _measured, first = _assign(staged, _targets(frame, fraction=0.0))
+    tables = {
+        name: pd.DataFrame(
+            {
+                "state_fips": [row["state_fips"] for row in entry["states"]],
+                "target": [
+                    row["donor"] + 0.5 * row["acs_anchored"] for row in entry["states"]
+                ],
+            }
+        )
+        for name, entry in first["tables"].items()
+    }
+
+    result, receipt = _assign(staged, tables)
+
+    assert _takers(result) == anchored
+    rows = receipt["tables"][RETURNS]["states"]
+    assert all(row["acs_anchored"] > 0 for row in rows)
+    for row in rows:
+        assert row["residual"] == pytest.approx(0.5 * row["acs_anchored"])
+        assert row["anchor_excess"] == pytest.approx(0.5 * row["acs_anchored"])
+    gate = acs_local_aca_take_up_signal_gate(result, receipt=receipt)
+    assert gate.passed, gate.failures
+    assert {row["status"] for row in gate.details["binding_states"]} == {
+        "anchor_excess"
+    }
