@@ -641,7 +641,6 @@ def test_the_committed_register_carries_the_triage_verdicts_for_snap() -> None:
     for column in (
         "spm_unit_energy_subsidy",
         "net_worth",
-        "health_insurance_premiums",
         "real_estate_taxes",
         "tenure_type",
         "spm_unit_tenure_type",

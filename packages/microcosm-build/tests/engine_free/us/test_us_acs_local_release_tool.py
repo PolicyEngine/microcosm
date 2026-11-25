@@ -591,7 +591,18 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     assert staged["status"] == "reviewed_modeling_decision"
     assert staged["calibration_blocker"] is False
     assert set(module.ACS_LOCAL_STATUS_INPUTS_COLUMNS) <= set(staged["columns"])
-    for fragment in ("microcosm#1720", "A_MARITL", "MIL == 1", "POCCU2 52"):
+    assert {"is_self_employed", "health_insurance_premiums"} <= set(
+        staged["columns"]
+    )
+    for fragment in (
+        "microcosm#1720",
+        "A_MARITL",
+        "MIL == 1",
+        "POCCU2 52",
+        "attribute_us_se_health_premiums",
+        "not ACS COW 6 or 7",
+        "microcosm#1689",
+    ):
         assert fragment in staged["reason"], fragment
     assert "NEVER_DEFAULT_FILLED" in staged["treatment"]
     # microcosm#1021: native ACS disability is a reviewed method; weeks worked
@@ -6640,7 +6651,7 @@ _REVIEWED_FILLS_RETIRED_SINCE_767312D60 = {
 
 
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
-    """Release 767312d60 default-filled 79 columns; the stack now fills 28 of
+    """Release 767312d60 default-filled 79 columns; the stack now fills 30 of
     them (NEVER_DEFAULT_FILLED), and every other one has a register entry,
     except one the reviewed engine no longer defines, as does each reviewed
     fill added since."""
@@ -6661,12 +6672,13 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     assert len(released) == 79
     now_filled = released & set(module.NEVER_DEFAULT_FILLED)
     registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
-    # 28 are filled natively, 1 is retired and 50 are registered. The ACS
+    # 30 are filled natively, 1 is retired and 48 are registered. The ACS
     # vehicle count returned to a reviewed fill after the microcosm#1064 review
     # (VEH counts vehicles available, not owned): it left NEVER_DEFAULT_FILLED
     # and gained an entry together, so this still holds. microcosm#1720:
-    # staging maps the ACS rows' marital, military and occupation status.
-    assert len(now_filled) == 28
+    # staging maps the ACS rows' marital, military and occupation status and
+    # attributes their self-employed health premiums.
+    assert len(now_filled) == 30
     assert _REVIEWED_FILLS_RETIRED_SINCE_767312D60 <= released - now_filled
     assert (
         registered

@@ -172,6 +172,10 @@ from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
     load_reviewed_fill_consumer_register,
     reviewed_fill_register_summary,
 )
+from microcosm.build.us_runtime.acs_local_se_health_premiums import (
+    ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
+    ACS_LOCAL_SE_HEALTH_PREMIUMS_ISSUE,
+)
 from microcosm.build.us_runtime.acs_local_ssi_disability import (
     ACS_LOCAL_SSI_DISABILITY_COLUMN,
     ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
@@ -981,6 +985,17 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             "with the current builder"
         )
         for column in ACS_LOCAL_STATUS_INPUTS_COLUMNS
+    },
+    # microcosm#1720: staging runs the donor's self-employed premium
+    # attribution on the ACS rows; the defaults (False, 0) deny every ACS
+    # person the self-employed health insurance deduction.
+    **{
+        ("person", column): (
+            "the engine default denies every ACS person the self-employed "
+            f"health insurance deduction ({ACS_LOCAL_SE_HEALTH_PREMIUMS_ISSUE}); "
+            "re-run staging with the current builder"
+        )
+        for column in ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS
     },
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
@@ -4908,7 +4923,10 @@ def finalize_reviewed_limitations(
             "id": "acs_local_staged_inputs",
             "status": "reviewed_modeling_decision",
             "affected_spines": ["acs_2024_1yr"],
-            "columns": [*ACS_LOCAL_STATUS_INPUTS_COLUMNS],
+            "columns": [
+                *ACS_LOCAL_STATUS_INPUTS_COLUMNS,
+                *ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
+            ],
             "reason": (
                 "Staging writes these inputs on ACS rows from ACS items or the "
                 "donor's own rules instead of leaving the engine default "
@@ -4922,14 +4940,27 @@ def finalize_reviewed_limitations(
                 "rows would also mark a veteran whose last job was military. "
                 "has_never_worked, is_computer_scientist, is_farmer_fisher and "
                 "is_executive_administrative_professional follow the donor's "
-                "org_wages rule on the native detailed_occupation_recode."
+                "org_wages rule on the native detailed_occupation_recode. "
+                "is_self_employed and health_insurance_premiums come from the "
+                "donor's own attribution (attribute_us_se_health_premiums), run "
+                "on the ACS rows after the shared transfer: the flag marks "
+                "positive Schedule C income (SEMP plus the transferred SSTB "
+                "leaf), not ACS COW 6 or 7, and the premium is the transferred "
+                "non-Part-B premium of a flagged person under 65 with no Social "
+                "Security disability and no employer coverage. The ACS rows' "
+                "MAGI is then final before materialize assigns Medicaid take-up; "
+                "the national build applies the attribution in another order "
+                "(microcosm#1689)."
             ),
             "treatment": (
                 "Written at staging only in missing ACS cells; donor rows keep "
                 "the donor release's values. The staging summary's receipts "
                 "record each rule, its source columns and the filled and true "
                 "rows (acs_local_status_inputs: also the agreement of "
-                "is_military with POCCU2 52 and ESR 4 or 5). Recorded, not "
+                "is_military with POCCU2 52 and ESR 4 or 5; "
+                "acs_local_se_health_premiums: also the premiums the Medicare "
+                "proxy and employer coverage withheld, and the agreement of "
+                "the flag with COW 6 or 7). Recorded, not "
                 "graded. A null in any of these columns stops materialize "
                 "(NEVER_DEFAULT_FILLED), so a staging run from before them is "
                 "refused there."

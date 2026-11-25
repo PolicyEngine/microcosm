@@ -638,6 +638,8 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
         # microcosm#1720: ACS MAR, MIL and OCCP under the donor's rules.
         status_inputs=True,
         income_transfer=True,
+        # microcosm#1720: the donor's self-employed premium attribution.
+        se_health_premiums=True,
         native_receipt_anchors=True,
         # microcosm#1154: the ACS rows' WIC decisions, drawn before pooling.
         wic_take_up=True,
@@ -797,9 +799,13 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     }
     summary.update(receipt_anchors)
     # microcosm#1720: the ACS rows' marital, military and occupation status,
-    # mapped before the transfer; recorded, never graded.
+    # mapped before the transfer, and their self-employed premium inputs,
+    # attributed after it; recorded, never graded.
     summary["acs_local_status_inputs"] = result.provenance.get(
         "acs_local_status_inputs"
+    )
+    summary["acs_local_se_health_premiums"] = result.provenance.get(
+        "acs_local_se_health_premiums"
     )
     summary.update(immigration)
     summary.update(work_disability)

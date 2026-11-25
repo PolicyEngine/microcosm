@@ -49,6 +49,9 @@ from microcosm.build.us_runtime.acs_local_receipt_anchors import (
     require_acs_receipt_anchor_sources,
     with_acs_local_snap_receipt_anchor,
 )
+from microcosm.build.us_runtime.acs_local_se_health_premiums import (
+    with_acs_local_se_health_premiums,
+)
 from microcosm.build.us_runtime.acs_local_status_inputs import (
     map_acs_local_status_inputs,
 )
@@ -134,6 +137,7 @@ def build_optional_acs_multispine(
     work_disability_inputs: bool = False,
     status_inputs: bool = False,
     income_transfer: bool = False,
+    se_health_premiums: bool = False,
     native_receipt_anchors: bool = False,
     wic_take_up: bool = False,
     semp_covers_partnership_income: bool = False,
@@ -179,6 +183,13 @@ def build_optional_acs_multispine(
     ACS-aligned ``RETP`` analog for disability and account distributions);
     the shared transfer and its execution contract are unchanged. Its receipt
     is ``provenance["acs_local_income_transfer"]``.
+    ``se_health_premiums`` (the ACS local lane, microcosm#1720) runs the
+    donor's self-employed premium attribution
+    (:func:`~.other_health_insurance.attribute_us_se_health_premiums`) on the
+    ACS rows after the shared transfer, whose post-transfer structure has
+    settled the self-employment components it reads, and before pooling; it
+    fills only missing ``is_self_employed`` and ``health_insurance_premiums``
+    cells. Its receipt is ``provenance["acs_local_se_health_premiums"]``.
     ``native_receipt_anchors`` (the ACS local lane, microcosm#1022) replaces
     the transferred ``receives_snap`` with native household ``FS`` on every
     ACS SPM unit after the shared transfer, whose plan is unchanged, and
@@ -493,6 +504,15 @@ def build_optional_acs_multispine(
     fit_provenance = _json_ready_sequence(fit_records)
     transferred_frame = transferred.frame
     del transferred
+    se_health_receipt = None
+    if se_health_premiums:
+        # Local lane only (microcosm#1720): the donor's rule, unchanged, after
+        # the post-transfer structure has kept the drawn self-employment
+        # components at zero where SEMP stands; before pooling, so donor rows
+        # keep their own attribution.
+        transferred_frame, se_health_receipt = with_acs_local_se_health_premiums(
+            transferred_frame
+        )
     receipt_anchors = None
     if native_receipt_anchors:
         # Local lane only (microcosm#1022): after the shared transfer, so the
@@ -573,6 +593,10 @@ def build_optional_acs_multispine(
         provenance["wic_take_up"] = _json_ready(wic_take_up_receipt)
     if status_inputs_receipt is not None:
         provenance["acs_local_status_inputs"] = status_inputs_receipt
+    if se_health_receipt is not None:
+        provenance["acs_local_se_health_premiums"] = _json_ready_mapping(
+            se_health_receipt
+        )
     if hours_donor is not None or hours_donor_factory is not None:
         provenance["fit_configuration"]["hours_donor_channel"] = hours_donor_channel
         provenance["local_hours_source"] = hours_source
