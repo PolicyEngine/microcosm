@@ -5273,18 +5273,33 @@ class _RecordingPostExportSimulation:
     ``asked`` is shared by every recorder of one dry run: it collects
     ``(simulation, key)`` in the order of first asks, where ``simulation`` is
     the reformed simulation's number, or ``None`` for the baseline.
+    ``reforms`` is the dry run's list of the reforms opened so far, also
+    shared, so a reformed simulation's recorder refuses every key once a later
+    one is opened, as the scorer refuses a finished ``_BatchedPostExportReform``.
     """
 
     def __init__(
         self,
         asked: dict[tuple[int | None, PostExportKey], None],
         simulation: int | None,
+        reforms: Sequence[object],
     ) -> None:
         self._asked = asked
         self._simulation = simulation
+        self._reforms = reforms
 
     def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
         key = _post_export_key(variable, period, map_to)
+        latest = len(self._reforms) - 1
+        if self._simulation is not None and self._simulation != latest:
+            raise RuntimeError(
+                f"A post-export consumer asked reformed simulation "
+                f"{self._simulation} for {key} after opening reformed simulation "
+                f"{latest}. The scorer finishes a reformed simulation when the "
+                "consumer opens the next one and refuses it further keys, so a "
+                "consumer asks each reformed simulation for all its keys before "
+                "opening the next."
+            )
         self._asked.setdefault((self._simulation, key), None)
         return _PostExportValues(np.zeros(0), np.zeros(0))
 
@@ -5313,16 +5328,18 @@ def _dry_run_post_export_requests(
     state's parameter changes), and the dry run resolves no list edit against
     an engine. A reform given as anything else is refused
     (``check_post_export_reform``): a worker process could not rebuild it.
+    So is a key asked of a reformed simulation after the consumer opened the
+    next one, which the scorer refuses too (``_BatchedPostExportReform``).
     """
     asked: dict[tuple[int | None, PostExportKey], None] = {}
     reforms: list[object] = []
 
     def simulate(reform):
         if reform is None:
-            return _RecordingPostExportSimulation(asked, None)
+            return _RecordingPostExportSimulation(asked, None, reforms)
         check_post_export_reform(reform)
         reforms.append(reform)
-        return _RecordingPostExportSimulation(asked, len(reforms) - 1)
+        return _RecordingPostExportSimulation(asked, len(reforms) - 1, reforms)
 
     setattr(simulate, RECORDS_REQUESTS_ONLY, True)
     consumer(simulate)

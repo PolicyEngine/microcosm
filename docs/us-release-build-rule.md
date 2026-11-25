@@ -457,6 +457,9 @@ one Microsimulation over the whole file.
   the description its stage builds the reform from: the smoke probe, the
   reform-validation spec, or a cumulative OBBBA state's parameter changes. The
   dry run builds no reform, and refuses a reform it cannot describe or pickle.
+  It also refuses a key asked of a reformed simulation after its stage opened
+  the next one: the scorer finishes a reformed simulation when the next opens
+  and refuses it further keys, so the plan fails before the export instead.
   Nothing records the descriptors; the guard sweep below rebuilds each reform
   from its descriptor in the worker that scores it.
 - Each batch engine keeps policyengine-us's projection of the release year to
