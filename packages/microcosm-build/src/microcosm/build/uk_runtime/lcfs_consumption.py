@@ -1126,6 +1126,7 @@ class UKLCFSConsumptionStageTransform:
             n_estimators=_draw_n_estimators(self.stage),
             record_ids=frame.table("household")["household_id"].to_numpy(),
             targets=lcfs_draw_targets(self.stage, shares),
+            support_exempt=support_clip_exempt(self.stage),
         )
         clip_result = support_clip_to_donor(
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
@@ -5650,6 +5651,7 @@ def impute_lcfs_consumption(
     n_estimators: int,
     record_ids: Sequence[object] | np.ndarray,
     targets: Sequence[str] = UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
+    support_exempt: Collection[str] = UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT,
 ) -> UKLCFSConsumptionImputationResult:
     """Draw each household's budget from a forest and its spending mix from a donor.
 
@@ -5673,6 +5675,13 @@ def impute_lcfs_consumption(
        spend target times the budget over the donor's total, so the divisions
        sum to the budget and each part (fuels, fares, energy) keeps the donor's
        share of its division. The excise shares are the donor's own.
+    4. The basket stays inside the donor's range on every spend target the
+       support clip bounds, so the clip that follows changes nothing. A
+       household whose donor's basket, scaled to its budget, would leave that
+       range keeps its budget and takes a donor drawn afresh, at a third keyed
+       uniform, from the neighbours whose scaled basket stays inside. A
+       household none of whose neighbours fits keeps its donor and takes the
+       budget nearest its own that the donor's basket allows.
 
     On the holdout this puts every decile within 5% of its actual (the bottom
     at 0.97), keeps the spread of spending among similar households and the
@@ -5685,6 +5694,8 @@ def impute_lcfs_consumption(
     so a household's spending moves only when its own predictors do.
     ``targets`` is the spend targets, optionally followed by the declared
     excise shares (microcosm#1359). A donor with no spending gives no mix.
+    ``support_exempt`` names the spend targets the support clip leaves
+    unbounded (the declared ``support_clip`` exemptions).
     """
 
     from microcosm.fit.donors import (
@@ -5761,9 +5772,25 @@ def impute_lcfs_consumption(
         mix_neighbourhoods,
         stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:mix"),
     )
+    donor_spend = donor.loc[:, list(spend)].to_numpy(dtype=float)
+    exempt = set(support_exempt)
+    bounded = [
+        position for position, column in enumerate(spend) if column not in exempt
+    ]
+    lower, upper = _donor_support_bounds(donor, [spend[p] for p in bounded])
+    chosen, budget = _keep_baskets_in_support(
+        mix_neighbourhoods,
+        chosen,
+        budget,
+        donor_spend=donor_spend[:, bounded],
+        donor_total=donor_total,
+        lower=lower,
+        upper=upper,
+        uniforms=stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:mix-support"),
+    )
     scale = budget / donor_total[chosen]
     draws = pd.DataFrame(
-        donor.loc[:, list(spend)].to_numpy(dtype=float)[chosen] * scale[:, None],
+        donor_spend[chosen] * scale[:, None],
         columns=list(spend),
         index=recipient_encoded.index,
     )
@@ -5776,6 +5803,141 @@ def impute_lcfs_consumption(
             FitWeightRecord(f"{UK_LCFS_CONSUMPTION_FIT_NAME}:mix", EXPLICIT_KIND),
         ),
     )
+
+
+#: Candidate baskets checked against the donor's range at a time (memory bound).
+_SUPPORT_CHECK_CHUNK = 1 << 16
+
+
+def _donor_support_bounds(
+    donor: pd.DataFrame, columns: Sequence[str]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each column's donor range, read as ``support_clip_to_donor`` reads it.
+
+    The finite minimum and maximum over every donor row; a column with no
+    finite value has no bounds.
+    """
+
+    lower = np.full(len(columns), -np.inf)
+    upper = np.full(len(columns), np.inf)
+    for position, column in enumerate(columns):
+        values = pd.to_numeric(donor[column], errors="coerce")
+        finite = values[np.isfinite(values)]
+        if not finite.empty:
+            lower[position] = float(finite.min())
+            upper[position] = float(finite.max())
+    return lower, upper
+
+
+def _outside_support(
+    donor_spend: np.ndarray,
+    donor_total: np.ndarray,
+    donors: np.ndarray,
+    budgets: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> np.ndarray:
+    """Whether each donor's basket, scaled to its budget, leaves the bounds.
+
+    The scaling is the draw's own, so the test reads the values the draw writes.
+    """
+
+    values = donor_spend[donors] * (budgets / donor_total[donors])[:, None]
+    return ((values < lower) | (values > upper)).any(axis=1)
+
+
+def _nearest_supported_budget(
+    donor_spend: np.ndarray,
+    donor_total: np.ndarray,
+    donors: np.ndarray,
+    budgets: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> np.ndarray:
+    """Each budget moved to the nearest one its donor's basket allows.
+
+    Every bounded target the donor spends on bounds the scale of its basket
+    on both sides; the donor's own total meets every bound.
+    """
+
+    values = donor_spend[donors]
+    total = donor_total[donors][:, None]
+    binding = np.isfinite(values) & (values != 0)
+    safe = np.where(binding, values, 1.0)
+    at_lower = lower * total / safe
+    at_upper = upper * total / safe
+    low = np.where(binding, np.minimum(at_lower, at_upper), -np.inf).max(axis=1)
+    high = np.where(binding, np.maximum(at_lower, at_upper), np.inf).min(axis=1)
+    return np.minimum(np.maximum(budgets, low), high)
+
+
+def _keep_baskets_in_support(
+    neighbourhoods: Any,
+    chosen: np.ndarray,
+    budget: np.ndarray,
+    *,
+    donor_spend: np.ndarray,
+    donor_total: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    uniforms: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Mix donors and budgets whose scaled baskets stay inside the donor's range.
+
+    Step 4 of :func:`impute_lcfs_consumption`. A household whose donor's basket,
+    scaled to its budget, leaves the range on some bounded spend target is
+    redrawn, at its own ``uniforms`` entry, from the neighbours whose scaled
+    basket stays inside. Redrawing only those households draws each from its
+    neighbourhood restricted to the donors that fit, as restricting every
+    neighbourhood would, and a household whose first donor fits keeps it. A
+    household none of whose neighbours fits keeps its donor and takes the
+    budget nearest its own that the donor's basket allows. Rounding at a bound
+    can leave that basket a hair outside; the household then takes its donor's
+    own total, whose basket is the donor's own and so inside.
+    """
+
+    from scipy import sparse
+
+    from microcosm.fit.donors import keyed_neighbour_donors
+
+    chosen, budget = chosen.copy(), budget.copy()
+    leaving = np.flatnonzero(
+        _outside_support(donor_spend, donor_total, chosen, budget, lower, upper)
+    )
+    if leaving.size == 0:
+        return chosen, budget
+    candidates = sparse.csr_matrix(neighbourhoods)[leaving]
+    rows = np.repeat(np.arange(leaving.size), np.diff(candidates.indptr))
+    fits = np.empty(candidates.nnz, dtype=bool)
+    for start in range(0, candidates.nnz, _SUPPORT_CHECK_CHUNK):
+        part = slice(start, start + _SUPPORT_CHECK_CHUNK)
+        fits[part] = ~_outside_support(
+            donor_spend,
+            donor_total,
+            candidates.indices[part],
+            budget[leaving[rows[part]]],
+            lower,
+            upper,
+        )
+    candidates.data = np.where(fits, candidates.data, 0.0)
+    candidates.eliminate_zeros()
+    redrawn = np.diff(candidates.indptr) > 0
+    if redrawn.any():
+        chosen[leaving[redrawn]] = keyed_neighbour_donors(
+            candidates[redrawn], uniforms[leaving[redrawn]]
+        )
+    stuck = leaving[~redrawn]
+    if stuck.size:
+        budget[stuck] = _nearest_supported_budget(
+            donor_spend, donor_total, chosen[stuck], budget[stuck], lower, upper
+        )
+        rounded = stuck[
+            _outside_support(
+                donor_spend, donor_total, chosen[stuck], budget[stuck], lower, upper
+            )
+        ]
+        budget[rounded] = donor_total[chosen[rounded]]
+    return chosen, budget
 
 
 def support_clip_to_donor(

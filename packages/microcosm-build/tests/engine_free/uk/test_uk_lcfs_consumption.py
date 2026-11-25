@@ -567,6 +567,94 @@ def test_draw_budgets_fall_between_the_donors_totals() -> None:
     assert drawn.duplicated(keep=False).mean() < 0.05
 
 
+def test_draw_keeps_every_basket_inside_the_donors_range() -> None:
+    """The support clip after the draw has nothing to clip.
+
+    Scaling a donor's basket to a household's budget can take a spend target
+    past the donor survey's range. Those households are redrawn from the
+    neighbours whose basket fits, nearly all at their own budget, and every
+    household whose first basket fitted keeps it (microcosm#1717).
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT,
+        support_clip_to_donor,
+    )
+
+    donor = clean_lcfs_consumption_table(*_synthetic_lcfs_donor())
+    recipient = pd.concat(
+        [donor.loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]] * 3, ignore_index=True
+    )
+    ids = np.arange(1, len(recipient) + 1)
+    spend = list(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)
+
+    def draw(**kwargs) -> pd.DataFrame:
+        return impute_lcfs_consumption(
+            donor, recipient, seed=0, n_estimators=8, record_ids=ids, **kwargs
+        ).draws
+
+    unbounded, kept = draw(support_exempt=set(spend)), draw()
+    bounded = [c for c in spend if c not in UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT]
+    lower, upper = donor[bounded].min(), donor[bounded].max()
+
+    def outside(drawn: pd.DataFrame) -> pd.Series:
+        return ((drawn[bounded] < lower) | (drawn[bounded] > upper)).any(axis=1)
+
+    assert outside(unbounded).any()
+    assert not outside(kept).any()
+    receipt = support_clip_to_donor(
+        kept, donor, exempt=set(UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT)
+    ).receipt
+    for column in bounded:
+        assert receipt.columns[column]["clipped_low_rows"] == 0
+        assert receipt.columns[column]["clipped_high_rows"] == 0
+    unchanged = (kept == unbounded).all(axis=1)
+    assert unchanged[~outside(unbounded)].all()
+    divisions = list(UK_LCFS_COICOP_DIVISION_COLUMNS)
+    same_budget = np.isclose(
+        kept[divisions].sum(axis=1), unbounded[divisions].sum(axis=1), rtol=1e-12
+    )
+    assert same_budget[~unchanged].mean() > 0.9
+
+
+def test_support_step_redraws_among_the_neighbours_that_fit() -> None:
+    """A basket that leaves the range is redrawn among the neighbours that fit.
+
+    Two bounded targets, ranged over four donors: food 10 to 90, clothing 10
+    to 160. The first household's food-heavy donor at 150 takes food to 135,
+    so it is redrawn and takes the clothing-heavy neighbour at its own budget.
+    The second household's only neighbour fits no budget above 150, which it
+    takes. The third household's basket fits and is kept.
+    """
+
+    from scipy import sparse
+
+    from microcosm.build.uk_runtime.lcfs_consumption import _keep_baskets_in_support
+
+    spend = np.array([[90.0, 10.0], [10.0, 90.0], [40.0, 160.0], [60.0, 40.0]])
+    total = np.array([100.0, 100.0, 200.0, 100.0])
+    neighbourhoods = sparse.csr_matrix(
+        (
+            [0.5, 0.5, 1.0, 1.0],
+            ([0, 0, 1, 2], [0, 1, 3, 0]),
+        ),
+        shape=(3, 4),
+    )
+    chosen, budget = _keep_baskets_in_support(
+        neighbourhoods,
+        np.array([0, 3, 0]),
+        np.array([150.0, 200.0, 100.0]),
+        donor_spend=spend,
+        donor_total=total,
+        lower=spend.min(axis=0),
+        upper=spend.max(axis=0),
+        uniforms=np.array([0.1, 0.5, 0.9]),
+    )
+    assert chosen.tolist() == [1, 3, 0]
+    assert budget == pytest.approx([150.0, 150.0, 100.0])
+
+
 def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> None:
     """Each survey ranked on its own equivalised income, shaped on deciles 4-7.
 
