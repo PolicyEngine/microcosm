@@ -9,7 +9,9 @@ import io
 import json
 import os
 import re
+import shlex
 import zipfile
+from collections.abc import Mapping
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -17,7 +19,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from microcosm.build import telemetry_emitter
+from microcosm.build import release_publication, telemetry_emitter
 from tools import run_uk_cut as cut
 
 REPO = Path(cut.__file__).resolve().parents[1]
@@ -173,6 +175,8 @@ def _paths(tmp_path: Path) -> cut.CutPaths:
 
 
 REFERENCE_BUILD = "uk-frs-calibration-attempt-20261107T020434Z-eeb6093e"
+#: The build the fake assembler reports, as the real one names it.
+ASSEMBLED_BUILD = "uk-frs-calibration-attempt-20261126T000000Z-0123abcd"
 
 
 def _reference(paths: cut.CutPaths, *, build: str = REFERENCE_BUILD, data=b"ref"):
@@ -313,31 +317,91 @@ def test_score_argv_names_only_flags_the_scorer_declares(tmp_path, capsys):
         assert flag in help_text
 
 
-@given(tag=st.text(min_size=1, max_size=80))
-def test_publication_is_always_inspection_only(tag):
-    """Whatever the tag, the publisher is told not to move main or a pointer."""
+@pytest.mark.parametrize("preflight", [True, False])
+def test_publication_hands_the_build_to_the_emitter_without_making_it_current(
+    tmp_path, preflight
+):
+    """The build-folder publisher, which publishes through the emitter, lists
+    the build in ``releases.json`` and leaves the release's current build."""
 
-    paths = cut.CutPaths(Path("/w"), "t", "a" * 40)
-    for preflight in (True, False):
-        argv = cut.publish_argv(paths, python="py", tag=tag, preflight_only=preflight)
-        assert "--no-latest" in argv and "--tag-only" in argv
-        assert "--promote-line" not in argv
-        assert argv[argv.index("--repo-id") + 1] == cut.PUBLISH_REPO
-        assert argv[argv.index("--tag-name") + 1] == tag
+    paths = _paths(tmp_path)
+    argv = cut.publish_argv(paths, python="py", preflight_only=preflight)
+    assert argv[:3] == ["py", "-m", "microcosm.build.release_publication"]
+    args = release_publication._parser().parse_args(argv[3:])
+    assert args.release_dir == paths.release_dir
+    assert args.repo_id == cut.PUBLISH_REPO
+    # The assembler leaves the dataset and its calibration beside the
+    # candidate, outside the release directory.
+    assert args.artifact_root == paths.candidate_h5.parent
+    assert args.preflight_only is preflight
+    assert not args.make_current and not args.promote
 
 
-def test_publication_argv_uses_only_declared_flags(capsys):
-    from microcosm.data import publish_cli
+def test_the_printed_promotion_makes_the_published_build_current(tmp_path):
+    paths = _paths(tmp_path)
+    argv = shlex.split(cut.promote_command(paths))
+    module = argv.index("-m") + 1
+    assert argv[module] == "microcosm.build.release_publication"
+    args = release_publication._parser().parse_args(argv[module + 1 :])
+    assert args.release_dir == paths.release_dir
+    assert args.repo_id == cut.PUBLISH_REPO
+    assert args.promote
 
-    paths = cut.CutPaths(Path("/w"), "t", "a" * 40)
-    argv = cut.publish_argv(paths, python="py", tag="x", preflight_only=True)
-    assert argv[1:3] == ["-m", "microcosm.data.publish_cli"]
-    assert argv[3] == str(paths.release_dir)
-    with pytest.raises(SystemExit):
-        publish_cli.main(["--help"])
-    help_text = capsys.readouterr().out
-    for flag in (a for a in argv[4:] if a.startswith("--")):
-        assert flag in help_text
+
+def _releases_json(tmp_path: Path, builds: Mapping[str, bool]) -> Path:
+    """A ``releases.json`` listing ``builds`` (name: withdrawn) of the release."""
+
+    path = tmp_path / "releases.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "default": cut.RELEASE_ID,
+                "releases": {
+                    cut.RELEASE_ID: {
+                        "role": "national",
+                        "current": None,
+                        "builds": {
+                            build: {
+                                "published_at": "2026-11-26T00:00:00Z",
+                                "withdrawn": withdrawn,
+                            }
+                            for build, withdrawn in builds.items()
+                        },
+                    }
+                },
+            }
+        )
+    )
+    return path
+
+
+@pytest.mark.parametrize(
+    ("listed", "published"),
+    [
+        ({}, False),
+        ({"uk-frs-calibration-attempt-other": False}, False),
+        ({ASSEMBLED_BUILD: False}, True),
+        # A withdrawn build stays listed, and publishing it again changes nothing.
+        ({ASSEMBLED_BUILD: True}, True),
+    ],
+)
+def test_a_build_is_published_once_releases_json_lists_it(tmp_path, listed, published):
+    record = _releases_json(tmp_path, listed)
+    requests = []
+
+    def hub_download(**request):
+        requests.append(request)
+        return str(record)
+
+    assert cut.build_published(ASSEMBLED_BUILD, hub_download=hub_download) is published
+    assert requests == [
+        {
+            "repo_id": cut.PUBLISH_REPO,
+            "filename": "releases.json",
+            "repo_type": "dataset",
+        }
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -493,6 +557,8 @@ class FakeBuild:
         self.env: dict[str, dict[str, str]] = {}
         self.fail = fail or set()
         self.signer = signer
+        #: Builds the fake publisher listed, as ``releases.json`` would.
+        self.published: list[str] = []
 
     def _report(self, **payload) -> str:
         """A gate report, signed by ``signer``'s fingerprint when one is set."""
@@ -513,8 +579,10 @@ class FakeBuild:
             "score_uk_national_candidate.py": "score",
             "certify_uk_release_cut.py": "certify",
             "assemble_uk_release_dir.py": "assemble",
-            "microcosm.data.publish_cli": "publish",
+            "microcosm.build.release_publication": "publish",
         }[tool]
+        if step == "publish" and "--preflight-only" in argv:
+            step = "publish-preflight"
         self.calls.append(step)
         self.argv[step] = argv
         self.env[step] = env
@@ -581,13 +649,26 @@ class FakeBuild:
     def assemble(self, log_path):
         self.paths.release_dir.mkdir(parents=True)
         (self.paths.release_dir / "release_manifest.json").write_text("{}")
+        # What tools/assemble_uk_release_dir.py prints: the release and the
+        # build, never a tag.
         log_path.write_text(
             "assembling...\n"
-            + json.dumps({"cut_tag": "microcosm-uk-2024-25-national-x", "n": 1})
+            + json.dumps(
+                {
+                    "release_id": cut.RELEASE_ID,
+                    "release": cut.RELEASE_ID,
+                    "build": ASSEMBLED_BUILD,
+                    "release_dir": str(self.paths.release_dir),
+                },
+                indent=2,
+            )
         )
 
-    def publish(self, log_path):
+    def publish_preflight(self, log_path):
         pass
+
+    def publish(self, log_path):
+        self.published.append(ASSEMBLED_BUILD)
 
 
 @pytest.fixture(autouse=True)
@@ -648,7 +729,8 @@ def test_certification_needs_exactly_one_build_row(tmp_path, rows):
 def test_a_complete_run_executes_each_step_once_and_resumes_to_nothing(tmp_path):
     runner, fake = _runner(tmp_path)
     summary = _all(runner)
-    assert summary["tag"] == "microcosm-uk-2024-25-national-x"
+    assert summary["build"] == ASSEMBLED_BUILD
+    assert summary["release"] == cut.RELEASE_ID
     assert fake.calls == [
         "spine",
         "national-dry-run",
@@ -671,6 +753,31 @@ def test_a_complete_run_executes_each_step_once_and_resumes_to_nothing(tmp_path)
             "assemble",
         )
     }
+
+
+def test_the_assembled_build_publishes_once_through_the_emitter(tmp_path, monkeypatch):
+    runner, fake = _runner(tmp_path)
+    build = _all(runner)["build"]
+    monkeypatch.setattr(cut, "build_published", lambda name: name in fake.published)
+    cut.run_publish(runner, build, publish=True)
+    assert fake.published == [build]
+    # Once releases.json lists the build, a rerun checks it and publishes nothing.
+    cut.run_publish(runner, build, publish=True)
+    assert fake.published == [build]
+    assert fake.calls[-3:] == ["publish-preflight", "publish", "publish-preflight"]
+
+
+def test_without_publish_only_the_publication_preflight_runs(tmp_path, monkeypatch):
+    runner, fake = _runner(tmp_path)
+    build = _all(runner)["build"]
+
+    def never_asked(name):
+        raise AssertionError("a run without --publish reads no releases.json")
+
+    monkeypatch.setattr(cut, "build_published", never_asked)
+    cut.run_publish(runner, build, publish=False)
+    assert fake.calls[-1] == "publish-preflight"
+    assert fake.published == []
 
 
 @pytest.mark.parametrize(
@@ -1019,7 +1126,7 @@ def test_the_receipt_names_the_cut_signer(tmp_path, two_builders, monkeypatch):
     _all(runner)
     for name, value in _env(KEY_B).items():
         monkeypatch.setenv(name, value)
-    cut.write_receipt(runner, {"tag": "t", "published": False})
+    cut.write_receipt(runner, {"build": ASSEMBLED_BUILD, "published": False})
     receipt = json.loads(runner.paths.receipt.read_text())
     assert receipt["signing_key_sha256"] == _fp(KEY_A)
 
@@ -1152,26 +1259,19 @@ def test_the_preflight_test_runs_never_get_the_key(monkeypatch):
 # --------------------------------------------------------------------------- #
 
 
-class _Refs:
-    def __init__(self, branches=()):
-        self.branches = [type("Ref", (), {"name": name}) for name in branches]
-        self.tags = []
-
-
 @pytest.fixture
 def hub(monkeypatch):
-    """A token, the Hub online, and an ``HfApi`` that lists no branches."""
+    """A token and the Hub online. The checks ask the emitter, never ``HfApi``."""
 
     import huggingface_hub
+
+    def no_hub_client(*args, **kwargs):
+        raise AssertionError("the Hub checks list nothing on the Hub themselves")
 
     for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HF_TOKEN", "hf_test")
-    monkeypatch.setattr(
-        huggingface_hub,
-        "HfApi",
-        lambda: type("Api", (), {"list_repo_refs": lambda self, *a, **k: _Refs()})(),
-    )
+    monkeypatch.setattr(huggingface_hub, "HfApi", no_hub_client)
 
 
 def _with_emitter(monkeypatch, emitter):
@@ -1196,10 +1296,10 @@ def test_the_hub_checks_ask_the_builds_emitter(hub, monkeypatch):
     emitter = FakeEmitterClient()
     started = _with_emitter(monkeypatch, emitter)
     checks = cut.hub_checks()
+    # The emitter's publisher uses no release-staging branch, so none is checked.
     assert [c.name for c in checks] == [
         f"write {cut.PUBLISH_REPO}",
         f"write {cut.TELEMETRY_REPO}",
-        "no leftover release-staging branch",
     ]
     assert all(c.ok for c in checks), checks
     assert emitter.calls.count("check_write_access") == 2 and emitter.closed
@@ -1396,7 +1496,7 @@ def test_status_says_when_the_current_build_has_moved(tmp_path):
 def test_the_receipt_records_the_reference(tmp_path):
     runner, _ = _runner(tmp_path)
     _all(runner)
-    cut.write_receipt(runner, {"tag": "t", "published": False})
+    cut.write_receipt(runner, {"build": ASSEMBLED_BUILD, "published": False})
     receipt = json.loads(runner.paths.receipt.read_text())
     assert receipt["reference"]["build"] == REFERENCE_BUILD
     assert "incumbent_efrs" not in receipt["inputs"]
@@ -1494,7 +1594,7 @@ def test_a_reference_withdrawn_after_certification_stops_the_cut(tmp_path, monke
     with pytest.raises(cut.CutError, match="withdrawn since the cut resolved it"):
         cut.run_certify(runner)
     with pytest.raises(cut.CutError, match="withdrawn since the cut resolved it"):
-        cut.run_publish(runner, "microcosm-uk-2024-25-national-x", publish=True)
+        cut.run_publish(runner, ASSEMBLED_BUILD, publish=True)
     assert not {"publish-preflight", "publish"} & set(fake.calls)
 
 
