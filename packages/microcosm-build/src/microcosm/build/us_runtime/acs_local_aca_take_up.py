@@ -53,13 +53,14 @@ cells; donor values and any stored ACS value are kept.
   ratio is (premium + credit) / SLCSP for takers, clipped to 0.5-1.5, and
   1.0 otherwise; without a bronze table the stage stops after the clip, as
   the fiscal lane does.
-- **Anchor.** The ACS asks no item that separates subsidized Marketplace
-  coverage. When that anchor is absent the fiscal lane preserves none,
-  because observed Marketplace coverage is broader than subsidized coverage
-  (``_aca_source_person_table``); this stage follows that rule, so every
-  ACS taker is drawn. A stored ACS take-up cell (staging writes none) is
-  kept: a stored ``True`` is a preserved anchor, and a unit stored ``False``
-  stays out of the stage.
+- **Anchor.** Staging does not load the PUMS item that separates
+  subsidized Marketplace coverage (``HIMRKS``, direct purchase with or
+  without a premium subsidy). When that anchor is absent the fiscal lane
+  preserves none, because observed Marketplace coverage is broader than
+  subsidized coverage (``_aca_source_person_table``); this stage follows
+  that rule, so every ACS taker is drawn. A stored ACS take-up cell
+  (staging writes none) is kept: a stored ``True`` is a preserved anchor,
+  and a unit stored ``False`` stays out of the stage.
 - **Draws** come from seeded blake2b uniforms on the donor stage's stream
   (``aca:takes_up_aca_if_eligible``), keyed on
   ``acs_2024_1yr:SERIALNO:<lowest SPORDER of the unit>``, so a unit's draw
@@ -150,7 +151,7 @@ _TARGET_BASIS = (
     "operation that reads the table), floored at 0"
 )
 _ANCHOR_RULE = (
-    "none: the ACS asks no subsidized Marketplace coverage item, and the "
+    "none: staging does not load the PUMS subsidy item HIMRKS, and the "
     "fiscal lane preserves no anchor when that item is absent "
     "(_aca_source_person_table: observed Marketplace coverage is broader "
     "than subsidized coverage); a stored ACS take-up True is kept as an "

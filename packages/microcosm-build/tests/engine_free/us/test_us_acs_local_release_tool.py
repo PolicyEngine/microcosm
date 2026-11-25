@@ -730,7 +730,9 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "no unit is anchored",
         "clipped to 0.5-1.5",
         "no bronze count",
-        "HINS1 and HINS2",
+        "HIMRKS",
+        "from ACS HINS1",
+        "acs_local_staged_inputs",
     ):
         assert fragment in aca["reason"], fragment
     for fragment in ("report-only", "us_local_aca_take_up_materialize", "digest"):
