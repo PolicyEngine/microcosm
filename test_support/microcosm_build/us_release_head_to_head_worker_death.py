@@ -9,8 +9,8 @@ class OneHouseholdFrame:
 
 
 def initialize_slice_worker(*args) -> None:
-    pass
+    return None
 
 
-def exit_slice_worker(task: tuple[int, int]) -> None:
+def exit_slice_worker(state, task: tuple[int, int]) -> None:
     os._exit(97)

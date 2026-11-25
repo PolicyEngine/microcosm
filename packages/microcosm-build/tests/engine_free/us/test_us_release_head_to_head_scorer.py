@@ -3,14 +3,18 @@
 # ruff: noqa: F403, F405
 import json
 import multiprocessing
+import re
 import signal
 import time
-from concurrent.futures import ProcessPoolExecutor
-from concurrent.futures.process import BrokenProcessPool
 
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.worker_pool import (
+    WorkerPool,
+    WorkerPoolError,
+    WorkerPoolUnitError,
+)
 from test_support.microcosm_build.us_release_head_to_head_scorer import *
 
 
@@ -32,63 +36,14 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
     }
 
 
-@pytest.mark.parametrize(
-    ("version", "supported"),
-    [
-        ((3, 13, 9), False),
-        ((3, 13, 14), False),
-        ((3, 13, 15), True),
-        ((3, 14, 0), False),
-        ((3, 14, 6), False),
-        ((3, 14, 7), True),
-        ((3, 15, 0), True),
-        ((3, 12, 11), False),
-        # 3.15 prereleases: the fix landed in beta 4.
-        ((3, 15, 0, "alpha", 7), False),
-        ((3, 15, 0, "beta", 3), False),
-        ((3, 15, 0, "beta", 4), True),
-        ((3, 15, 0, "candidate", 1), True),
-        ((3, 15, 0, "final", 0), True),
-        # A prerelease of a fixed patch is not yet the fixed release.
-        ((3, 14, 7, "candidate", 1), False),
-        ((3, 14, 7, "final", 0), True),
-        ((3, 16, 0, "alpha", 1), True),
-    ],
-)
-def test_worker_recycling_refuses_interpreters_that_can_deadlock(
-    version: tuple, supported: bool
-) -> None:
+def test_parallel_scoring_runs_on_the_shared_worker_pool() -> None:
     module = _load_head_to_head_module()
 
-    if supported:
-        module._assert_worker_recycling_supported(version)
-    else:
-        with pytest.raises(RuntimeError, match="--worker-max-slices needs Python"):
-            module._assert_worker_recycling_supported(version)
-
-
-def test_scoring_checks_the_interpreter_only_when_recycling_is_requested(
-    monkeypatch,
-) -> None:
-    module = _load_head_to_head_module()
-    calls: list[str] = []
-
-    def refuse(version_info=None) -> None:
-        calls.append("checked")
-        raise RuntimeError("--worker-max-slices needs Python 3.13.15 or later")
-
-    monkeypatch.setattr(module, "_assert_worker_recycling_supported", refuse)
-
-    with pytest.raises(RuntimeError, match="--worker-max-slices needs Python"):
-        module.score_loaded_artifact(
-            artifact=None,
-            artifact_name="incumbent",
-            yardstick=None,
-            maximum_microsim_batch_size=2,
-            workers=2,
-            worker_max_slices=1,
-        )
-    assert calls == ["checked"]
+    assert module.WorkerPool is WorkerPool
+    assert not hasattr(module, "ProcessPoolExecutor")
+    # Worker replacement needs no interpreter check: the shared pool replaces
+    # workers itself instead of through ProcessPoolExecutor.
+    assert not hasattr(module, "_assert_worker_recycling_supported")
 
 
 def _parallel_fixture(module, monkeypatch):
@@ -136,13 +91,6 @@ def test_spawned_workers_score_identically_to_sequential_cli(
     # Six tasks per artifact force a replacement even for two workers with K=2.
     # The single-worker recycling case also verifies K opts into spawn by itself.
     configurations = [(1, None), (3, None), (2, 1), (2, 2), (1, 2)]
-    try:
-        module._assert_worker_recycling_supported()
-    except RuntimeError:
-        # This interpreter can deadlock replacing a recycled worker, so the CLI
-        # refuses --worker-max-slices on it, as the refusal tests above check.
-        # The configurations without recycling still run.
-        configurations = [config for config in configurations if config[1] is None]
     for workers, worker_max_slices in configurations:
         prefix = tmp_path / f"workers-{workers}-max-slices-{worker_max_slices}"
         worker_log_dir = tmp_path / f"{prefix.name}-slice-logs"
@@ -244,7 +192,54 @@ def test_spawned_worker_failure_includes_chunk_and_slice_label(monkeypatch) -> N
         )
 
 
-def test_abrupt_worker_death_is_labelled_and_leaves_no_children(monkeypatch) -> None:
+def test_a_workers_own_memory_limit_stops_the_run_without_scoring_the_slice_again(
+    monkeypatch,
+) -> None:
+    """The scorer's 20 GiB check stays fatal in a worker, as in one process."""
+    module = _load_head_to_head_module()
+    _parallel_fixture(module, monkeypatch)
+    monkeypatch.setattr(
+        module, "_initialize_slice_worker", _initialize_low_limit_fixture_slice_worker
+    )
+    with pytest.raises(
+        WorkerPoolUnitError,
+        match=r"incumbent chunk 1/2 slice 1/2 .*scoring limit",
+    ) as failure:
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+            maximum_microsim_batch_size=2,
+            workers=1,
+            worker_max_slices=100,
+        )
+    assert len(failure.value.causes) == 1
+
+
+def test_a_worker_start_failure_names_the_artifact(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    _parallel_fixture(module, monkeypatch)
+    monkeypatch.setattr(
+        module, "_initialize_slice_worker", _initialize_refusing_fixture_slice_worker
+    )
+    with pytest.raises(
+        WorkerPoolError,
+        match=r"incumbent slice workers failed: .*fixture worker start refused",
+    ):
+        module.score_head_to_head(
+            incumbent=Path("/fixture/incumbent.h5"),
+            candidate=None,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+            maximum_microsim_batch_size=2,
+            workers=2,
+        )
+
+
+def test_abrupt_worker_death_is_labelled_and_leaves_no_children(
+    monkeypatch, capsys
+) -> None:
     from test_support.microcosm_build.us_release_head_to_head_worker_death import (
         OneHouseholdFrame,
         exit_slice_worker,
@@ -252,48 +247,13 @@ def test_abrupt_worker_death_is_labelled_and_leaves_no_children(monkeypatch) -> 
     )
 
     module = _load_head_to_head_module()
-    executors = []
-
-    class TrackingExecutor(ProcessPoolExecutor):
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            self.children = {}
-            self.shutdown_completed = False
-            self.shutdown_waited = False
-            executors.append(self)
-
-        def submit(self, *args, **kwargs):
-            try:
-                return super().submit(*args, **kwargs)
-            finally:
-                self.children.update(self._processes or {})
-
-        def shutdown(self, wait=True, *, cancel_futures=False):
-            self.children.update(self._processes or {})
-            self.shutdown_waited = wait
-            super().shutdown(wait=wait, cancel_futures=cancel_futures)
-            self.shutdown_completed = True
-
     monkeypatch.setattr(module, "MATERIALIZE_SCORE_CHUNK_SPECS", 1)
-    monkeypatch.setattr(module, "ProcessPoolExecutor", TrackingExecutor)
     monkeypatch.setattr(module, "_initialize_slice_worker", initialize_slice_worker)
     monkeypatch.setattr(module, "_score_slice_worker", exit_slice_worker)
 
-    def kill_alive_workers() -> None:
-        for executor in executors:
-            for process in executor.children.values():
-                try:
-                    if process.is_alive():
-                        process.kill()
-                except ProcessLookupError:
-                    pass
-
-    timed_out = False
-
     def timeout_handler(signum, frame) -> None:
-        nonlocal timed_out
-        timed_out = True
-        kill_alive_workers()
+        for process in multiprocessing.active_children():
+            process.kill()
         raise TimeoutError("worker death pool did not shut down within 60 seconds")
 
     old_handler = signal.getsignal(signal.SIGALRM)
@@ -302,8 +262,8 @@ def test_abrupt_worker_death_is_labelled_and_leaves_no_children(monkeypatch) -> 
         signal.signal(signal.SIGALRM, timeout_handler)
         signal.setitimer(signal.ITIMER_REAL, 60)
         with pytest.raises(
-            RuntimeError,
-            match=r"fixture chunk [12]/2 slice 1/1 worker (?:submission )?failed:",
+            WorkerPoolUnitError,
+            match=r"fixture chunk [12]/2 slice 1/1 failed on all 2 attempts",
         ) as failure:
             list(
                 module._score_chunks_parallel(
@@ -316,31 +276,23 @@ def test_abrupt_worker_death_is_labelled_and_leaves_no_children(monkeypatch) -> 
                 )
             )
 
-        # Check production shutdown before our defensive cleanup can run.
-        assert timed_out is False
-        assert isinstance(failure.value.__cause__, BrokenProcessPool)
-        assert len(executors) == 1
-        executor = executors[0]
-        assert executor.shutdown_completed is True
-        assert executor.shutdown_waited is True
-        children = list(executor.children.values())
-        assert children
-        assert any(process.exitcode == 97 for process in children)
-        assert all(
-            not process.is_alive() and process.exitcode is not None
-            for process in children
-        )
+        assert len(failure.value.causes) == 2
+        assert all("exited with code 97" in cause for cause in failure.value.causes)
         assert multiprocessing.active_children() == []
+        # Each failed attempt is reported on stderr, as the memory receipts are.
+        stderr = capsys.readouterr().err
+        assert re.search(
+            r"fixture chunk [12]/2 slice 1/1: attempt 1 ended without a result "
+            r"\(the worker exited with code 97\)",
+            stderr,
+        )
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
-        try:
-            kill_alive_workers()
-            for executor in executors:
-                for process in executor.children.values():
-                    process.join(timeout=5)
-        finally:
-            signal.signal(signal.SIGALRM, old_handler)
-            signal.setitimer(signal.ITIMER_REAL, *old_timer)
+        for process in multiprocessing.active_children():
+            process.kill()
+            process.join(timeout=5)
+        signal.signal(signal.SIGALRM, old_handler)
+        signal.setitimer(signal.ITIMER_REAL, *old_timer)
 
 
 @pytest.mark.parametrize("workers", [0, -1])
@@ -412,11 +364,10 @@ def test_worker_full_household_slice_matches_sequential(monkeypatch) -> None:
     monkeypatch.setattr(
         module.release, "_materialize_target_frame", assert_full_slice_guard
     )
-    monkeypatch.setattr(module, "_SLICE_WORKER_STATE", None)
-    module._initialize_slice_worker(
+    state = module._initialize_slice_worker(
         frame, yardstick.registry.specs, yardstick.loss_weights, "fixture", 2, None
     )
-    worker_result = module._score_slice_worker((0, 0))
+    worker_result = module._score_slice_worker(state, (0, 0))
     parallel = module._reduce_scored_slices(
         [worker_result],
         slice_count=1,

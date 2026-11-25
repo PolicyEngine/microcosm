@@ -36,7 +36,7 @@ import sys
 import warnings
 import zlib
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -347,7 +347,20 @@ class _EngineLog:
         self.stored_inputs: dict[str, tuple[int, ...]] = {}
 
 
-def _fake_engine(log: _EngineLog):
+def _rule_module_name(system) -> str:
+    """The name policyengine-core gives a system's variable module."""
+    return f"{id(system)}_-1_income_tax"
+
+
+def _fake_engine(log: _EngineLog, *, variables_dir: Path | None = None):
+    """A fake engine; with ``variables_dir``, each rules build registers a module.
+
+    policyengine-core registers every variable module of every system it builds
+    in ``sys.modules`` under ``<system id>_<path hash>_<file stem>`` and never
+    removes it. A fake system built with ``variables_dir`` registers one such
+    module, whose file is under ``variables_dir``.
+    """
+
     class FakeSystem:
         def __init__(self, reform=None) -> None:
             self.reform = reform
@@ -355,6 +368,10 @@ def _fake_engine(log: _EngineLog):
                 {} if reform is None else reform.parameters
             )
             log.systems.append(self)
+            if variables_dir is not None:
+                module = ModuleType(_rule_module_name(self))
+                module.__file__ = str(variables_dir / "income_tax.py")
+                sys.modules[module.__name__] = module
 
     class FakeHolder:
         def __init__(self, periods) -> None:
@@ -422,6 +439,29 @@ def _fake_engine(log: _EngineLog):
 
 
 @pytest.fixture
+def stand_in_rule_modules(monkeypatch, tmp_path):
+    """A stand-in installed policyengine-us whose variables live in a fixture dir.
+
+    The module-removal helper finds the installed engine's variables directory
+    through ``sys.modules["policyengine_us"]``. Returns that directory, to pass
+    as ``_scorer(..., variables_dir=...)``.
+    """
+    variables_dir = tmp_path / "stand-in-variables"
+    engine = ModuleType("policyengine_us")
+    engine.CountryTaxBenefitSystem = SimpleNamespace(variables_dir=variables_dir)
+    engine.Microsimulation = SimpleNamespace(
+        default_tax_benefit_system_instance=SimpleNamespace()
+    )
+    monkeypatch.setitem(sys.modules, "policyengine_us", engine)
+    registered_before = set(sys.modules)
+    yield variables_dir
+    for name in set(sys.modules) - registered_before:
+        module = sys.modules.get(name)
+        if str(getattr(module, "__file__", "")).startswith(str(variables_dir)):
+            del sys.modules[name]
+
+
+@pytest.fixture
 def fake_reforms(monkeypatch, builder):
     """Engine-free reform objects for the shipped probes and specs.
 
@@ -477,7 +517,9 @@ def _written_h5(tmp_path: Path) -> Path:
     return path
 
 
-def _scorer(builder, frame, log, batch_size, tmp_path, *, loads=None):
+def _scorer(
+    builder, frame, log, batch_size, tmp_path, *, loads=None, variables_dir=None
+):
     path = _written_h5(tmp_path)
 
     def load_frame(load_path, *, expected_sha256):
@@ -488,7 +530,7 @@ def _scorer(builder, frame, log, batch_size, tmp_path, *, loads=None):
     return builder._HouseholdBatchedPostExportScorer(
         path,
         maximum_microsim_batch_size=batch_size,
-        microsimulation_cls=_fake_engine(log),
+        microsimulation_cls=_fake_engine(log, variables_dir=variables_dir),
         dataset_from_frame=lambda batch_frame: batch_frame,
         load_frame=load_frame,
     )
