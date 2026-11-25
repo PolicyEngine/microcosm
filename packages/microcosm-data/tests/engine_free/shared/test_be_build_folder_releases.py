@@ -117,6 +117,80 @@ def test_a_be_build_folder_that_does_not_declare_a_contract_file_is_refused(
     ) in _contract_failures(be_release_dir)
 
 
+def test_a_be_build_without_its_engines_record_is_refused(
+    release_dir: Path,  # noqa: F811
+) -> None:
+    """A BE build runs on the Axiom rules engine and EUROMOD, not on
+    PolicyEngine packages, so it records the engines it ran on instead of
+    the PolicyEngine package versions a UK or US build records."""
+    be_release_dir = _as_be_build_folder_release(release_dir, engines=None)
+
+    assert (
+        "build_manifest.json 'engines' must be a non-empty object naming each "
+        "engine a BE build ran on."
+    ) in _contract_failures(be_release_dir)
+
+
+@pytest.mark.parametrize(
+    "engine",
+    [
+        {"python": "3.14.0"},
+        {"packages": {}},
+        {"packages": {"numpy": ""}},
+        {"model": ""},
+    ],
+    ids=["neither", "no-packages", "unversioned-package", "empty-model"],
+)
+def test_a_be_engine_must_record_its_packages_or_its_model(
+    release_dir: Path,  # noqa: F811
+    engine: dict,
+) -> None:
+    be_release_dir = _as_be_build_folder_release(
+        release_dir, engines={"axiom_rules_engine": engine}
+    )
+
+    assert (
+        "build_manifest.json 'engines.axiom_rules_engine' must record its "
+        "'packages' (each package's version) or its 'model'."
+    ) in _contract_failures(be_release_dir)
+
+
+def test_a_be_build_still_records_its_python(
+    release_dir: Path,  # noqa: F811
+) -> None:
+    """Only the PolicyEngine package records are BE's to leave out."""
+    be_release_dir = _as_be_build_folder_release(release_dir)
+    build_path = be_release_dir / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest["runtime"] = {}
+    build_path.write_text(json.dumps(build_manifest))
+
+    assert (
+        "build_manifest.json 'runtime.python' must be a resolved version, not "
+        "missing or unknown."
+    ) in _contract_failures(be_release_dir)
+
+
+def test_a_policyengine_package_a_be_build_records_is_checked(
+    release_dir: Path,  # noqa: F811
+) -> None:
+    """A BE build need not record a PolicyEngine package, but one it records
+    must still be resolved."""
+    be_release_dir = _as_be_build_folder_release(release_dir)
+    manifest_path = be_release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["built_with_core_package"] = {
+        "name": "policyengine-core",
+        "version": "unknown",
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    assert (
+        "release_manifest.json 'built_with_core_package.version' must be "
+        "resolved, not 'unknown'."
+    ) in _contract_failures(be_release_dir)
+
+
 def test_a_be_build_folder_in_the_tagged_layout_is_refused(
     release_dir: Path,  # noqa: F811
 ) -> None:

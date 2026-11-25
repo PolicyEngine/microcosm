@@ -828,6 +828,37 @@ BE_CONTRACT_FILES = {
 }
 
 
+#: The engines a BE build records in its build manifest, in the form BE's
+#: published builds use: the Axiom rules engine with the packages installed
+#: for it, and the EUROMOD model the amounts come from.
+BE_ENGINES = {
+    "axiom_rules_engine": {
+        "python": "3.14.0",
+        "packages": {"numpy": "2.4.6", "pandas": "3.0.3", "tables": "3.11.1"},
+    },
+    "euromod": {"model": "EUROMOD J2.0+ BE_2025"},
+}
+#: A BE fixture build's dataset and calibration weights, with the bytes of
+#: the publisher fixture's, so its recorded digests still hold.
+BE_DATASET_FILE = "populace_be_2025.h5"
+BE_CALIBRATION_FILE = "populace_be_2025_calibration.npz"
+#: The publisher fixture's files that only a US build carries.
+_US_ONLY_FILES = (
+    US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+    US_STORED_INPUTS_EVIDENCE_FILE,
+    *GATE_EVIDENCE_FILES.values(),
+)
+#: The US build's records of the PolicyEngine packages it was built with and
+#: is compatible with. A BE build runs on the Axiom rules engine and EUROMOD,
+#: so it has none.
+_POLICYENGINE_PACKAGE_FIELDS = (
+    "built_with_core_package",
+    "built_with_model_package",
+    "compatible_core_packages",
+    "compatible_model_packages",
+)
+
+
 def _as_be_build_folder_release(
     release_dir: Path,
     *,
@@ -835,21 +866,61 @@ def _as_be_build_folder_release(
     build: str = BE_BUILD,
     drop: tuple[str, ...] = (),
     undeclared: tuple[str, ...] = (),
+    engines: dict | None = BE_ENGINES,
 ) -> Path:
     """Retarget the publisher fixture to a build of a BE release.
 
     The directory is named after ``release``, the manifests name it and
-    ``build`` in the build-folder layout, every artifact lives in a BE
-    fixture repository, and the build carries the three files BE's release
-    contract adds to the base set, each declared as an artifact. A file
-    ``drop`` names is neither written nor declared, and one ``undeclared``
-    names is written but not declared.
+    ``build`` in the build-folder layout, and every artifact lives in a BE
+    fixture repository. The build is shaped as BE's builds are: its build
+    manifest records the engines it ran on (``engines``; None leaves the
+    record out) and Python, but no PolicyEngine package; its release
+    manifest records no PolicyEngine packages; it carries none of the US-only
+    files; and its dataset and calibration weights are BE's, in the
+    directory itself. It carries the three files BE's release contract adds
+    to the base set, each declared as an artifact. A file ``drop`` names is
+    neither written nor declared, and one ``undeclared`` names is written but
+    not declared.
     """
     be_release_dir = release_dir.with_name(release)
     release_dir.rename(be_release_dir)
+    for name in _US_ONLY_FILES:
+        (be_release_dir / name).unlink(missing_ok=True)
+    (be_release_dir / BE_DATASET_FILE).write_bytes(b"h5 payload")
+    (be_release_dir / BE_CALIBRATION_FILE).write_bytes(b"npz payload")
+
+    build_path = be_release_dir / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest["runtime"] = {"python": build_manifest["runtime"]["python"]}
+    for field in ("gate_evidence", US_STORED_INPUTS_EVIDENCE_KEY):
+        build_manifest.pop(field, None)
+    build_manifest["dataset"]["filename"] = BE_DATASET_FILE
+    build_manifest["calibration"]["filename"] = BE_CALIBRATION_FILE
+    if engines is not None:
+        build_manifest["engines"] = engines
+    build_path.write_text(json.dumps(build_manifest))
+
     manifest_path = be_release_dir / "release_manifest.json"
     manifest = json.loads(manifest_path.read_text())
-    for artifact in manifest["artifacts"].values():
+    for field in _POLICYENGINE_PACKAGE_FIELDS:
+        manifest.pop(field, None)
+        manifest["build"].pop(field, None)
+    for field in ("qrf_tail_register", "gate_evidence", US_STORED_INPUTS_EVIDENCE_KEY):
+        manifest["build"].pop(field, None)
+    artifacts = {
+        key: entry
+        for key, entry in manifest["artifacts"].items()
+        if entry["path"] not in _US_ONLY_FILES
+    }
+    artifacts["populace_be_2025"] = {
+        **artifacts.pop("populace_us_2024"),
+        "path": BE_DATASET_FILE,
+    }
+    artifacts["populace_be_2025_calibration"] = {
+        **artifacts.pop("populace_us_2024_calibration"),
+        "path": BE_CALIBRATION_FILE,
+    }
+    for artifact in artifacts.values():
         artifact["repo_id"] = BE_FIXTURE_REPO_ID
     for key, filename in BE_CONTRACT_FILES.items():
         if filename in drop:
@@ -858,13 +929,15 @@ def _as_be_build_folder_release(
         contract_file.write_text(json.dumps({"schema_version": 1, "country": "be"}))
         if filename in undeclared:
             continue
-        manifest["artifacts"][key] = {
+        artifacts[key] = {
             "kind": "diagnostics",
             "path": filename,
             "repo_id": BE_FIXTURE_REPO_ID,
             "revision": release,
             "sha256": _sha256(contract_file),
         }
+    manifest["artifacts"] = artifacts
+    manifest["default_datasets"] = {"national": "populace_be_2025"}
     manifest_path.write_text(json.dumps(manifest))
     return to_build_folder_layout(be_release_dir, build=build)
 
