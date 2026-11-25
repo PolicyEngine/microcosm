@@ -325,3 +325,123 @@ def test_us_version_1_bundle_matches_fixed_fixture(tmp_path, monkeypatch):
         emitter.hub_files[(US_STAGING, "latest_staging.json")]
         == (run_dir / "latest_staging.json").read_bytes()
     )
+
+
+class _HourlyClock:
+    """A monotonic clock that moves on an hour each time it is read."""
+
+    def __init__(self) -> None:
+        self.seconds = 1_000_000.0
+
+    def __call__(self) -> float:
+        self.seconds += 3600.0
+        return self.seconds
+
+
+def _remote_writer(tmp_path, emitter, run_id="run-s"):
+    return StagingRunBundleWriter(
+        run_id=run_id,
+        candidate_release_id=run_id,
+        run_dir=tmp_path / run_id,
+        repo_id=US_STAGING,
+        emitter_client=emitter,
+    )
+
+
+def test_the_run_start_is_handed_over_once_and_flushed(tmp_path):
+    """The run's folder exists on the Hub from its start, whatever follows."""
+    emitter = FakeEmitterClient()
+    run_dir = tmp_path / "run-s"
+
+    _remote_writer(tmp_path, emitter)
+
+    assert len(emitter.run_file_requests) == 1
+    start = emitter.run_file_requests[0]
+    assert start.flush is True
+    assert {item.relative_path for item in start.files} == {
+        "run_manifest.json",
+        "progress.json",
+        "events.ndjson",
+    }
+    assert start.latest_pointer == run_dir / "latest_staging.json"
+    progress = emitter.hub_json(US_STAGING, "runs/run-s/progress.json")
+    assert (progress["status"], progress["stage"]) == ("running", "created")
+
+
+def test_only_the_start_result_files_and_end_are_handed_over(tmp_path, monkeypatch):
+    """Progress between those points stays local, however long the run takes."""
+    monkeypatch.setattr(staging_module.time, "monotonic", _HourlyClock())
+    emitter = FakeEmitterClient()
+    telemetry = _remote_writer(tmp_path, emitter)
+    after_start = len(emitter.run_file_requests)
+
+    telemetry.stage("target_registry", message="Compiled targets.", n_targets=3)
+    for epoch in range(1, 4):
+        telemetry.calibration_progress(
+            {"kind": "calibration_epoch", "epoch": epoch, "epochs": 3, "loss": 1.0}
+        )
+    telemetry.stage("export_dataset", message="Exporting.")
+    assert len(emitter.run_file_requests) == after_start
+
+    diagnostics = tmp_path / "calibration_diagnostics.json"
+    diagnostics.write_text(json.dumps({"targets": 3}))
+    telemetry.attach_artifact("calibration_diagnostics", diagnostics)
+    after_result = len(emitter.run_file_requests)
+    assert after_result > after_start
+    assert emitter.hub_files[
+        (US_STAGING, "runs/run-s/calibration_diagnostics.json")
+    ] == (diagnostics.read_bytes())
+    manifest = emitter.hub_json(US_STAGING, "runs/run-s/run_manifest.json")
+    assert "calibration_diagnostics" in manifest["artifacts"]
+
+    telemetry.stage("post_export_scoring", message="Scoring.")
+    assert len(emitter.run_file_requests) == after_result
+
+    telemetry.complete()
+    assert len(emitter.run_file_requests) > after_result
+    assert all(request.flush for request in emitter.run_file_requests)
+    progress = emitter.hub_json(US_STAGING, "runs/run-s/progress.json")
+    assert (progress["status"], progress["stage"]) == ("passed", "complete")
+    calibration = emitter.hub_json(US_STAGING, "runs/run-s/calibration_progress.json")
+    assert [row["epoch"] for row in calibration["events"]] == [1, 2, 3]
+
+
+def _paused_writer(tmp_path, emitter):
+    """A run whose hand-overs paused after three the emitter did not accept."""
+    telemetry = _remote_writer(tmp_path, emitter, run_id="run-p")
+    for name in ("first", "second"):
+        result = tmp_path / f"{name}.json"
+        result.write_text(json.dumps({"name": name}))
+        telemetry.attach_artifact(name, result)
+    assert len(emitter.run_file_requests) >= 3
+    assert not emitter.paths(US_STAGING)
+    return telemetry
+
+
+def test_completion_hands_over_the_final_state_after_paused_hand_overs(tmp_path):
+    emitter = FakeEmitterClient(accept_run_files=False)
+    telemetry = _paused_writer(tmp_path, emitter)
+    emitter.accept_run_files = True
+
+    telemetry.complete()
+
+    assert "runs/run-p/progress.json" in emitter.paths(US_STAGING)
+    progress = emitter.hub_json(US_STAGING, "runs/run-p/progress.json")
+    assert (progress["status"], progress["stage"]) == ("passed", "complete")
+    assert emitter.run_file_requests[-1].flush is True
+    assert {"runs/run-p/run_manifest.json", "runs/run-p/events.ndjson"} <= set(
+        emitter.paths(US_STAGING)
+    )
+
+
+def test_failure_hands_over_the_final_state_after_paused_hand_overs(tmp_path):
+    emitter = FakeEmitterClient(accept_run_files=False)
+    telemetry = _paused_writer(tmp_path, emitter)
+    emitter.accept_run_files = True
+
+    telemetry.fail(RuntimeError("solver exploded"))
+
+    assert "runs/run-p/progress.json" in emitter.paths(US_STAGING)
+    progress = emitter.hub_json(US_STAGING, "runs/run-p/progress.json")
+    assert (progress["status"], progress["stage"]) == ("failed", "failed")
+    assert progress["message"] == "solver exploded"

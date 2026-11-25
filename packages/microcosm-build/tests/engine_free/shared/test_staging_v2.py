@@ -1181,3 +1181,85 @@ def test_a_final_state_the_emitter_does_not_accept_stays_local(tmp_path, capsys)
     assert "final state was not handed over" in err
     # The local bundle is complete whatever the emitter did.
     assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"
+
+
+class _HourlyMonotonic:
+    """A monotonic clock that moves on an hour each time it is read."""
+
+    def __init__(self) -> None:
+        self.seconds = 1_000_000.0
+
+    def __call__(self) -> float:
+        self.seconds += 3600.0
+        return self.seconds
+
+
+def _remote_run(tmp_path, emitter):
+    """A remote run with the writer's own commit schedule (no interval given)."""
+    return _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id=UK_STAGING,
+        emitter_client=emitter,
+        monotonic=_HourlyMonotonic(),
+    )
+
+
+def test_the_run_start_is_handed_over_once_and_flushed(tmp_path):
+    """The run's folder exists on the Hub from its start, whatever follows."""
+    emitter = FakeEmitterClient()
+
+    telemetry = _remote_run(tmp_path, emitter)
+
+    assert len(emitter.run_file_requests) == 1
+    start = emitter.run_file_requests[0]
+    assert start.flush is True
+    assert {"run_manifest.json", "progress.json", "events.ndjson"} <= {
+        item.relative_path for item in start.files
+    }
+    prefix = telemetry.repo_run_prefix
+    progress = json.loads(_remote_files(emitter)[f"{prefix}/progress.json"])
+    assert (progress["status"], progress["current_stage"]) == ("running", "created")
+
+
+def test_only_the_start_result_files_and_end_are_handed_over(tmp_path):
+    """Progress between those points stays local, however long the run takes."""
+    emitter = FakeEmitterClient()
+    telemetry = _remote_run(tmp_path, emitter)
+    prefix = telemetry.repo_run_prefix
+    after_start = len(emitter.run_file_requests)
+
+    telemetry.stage("input_loading")
+    for epoch in range(1, 4):
+        telemetry.calibration_progress(
+            {"kind": "calibration_epoch", "epoch": epoch, "epochs": 3, "loss": 1.0}
+        )
+    telemetry.stage("diagnostics")
+    assert len(emitter.run_file_requests) == after_start
+
+    summary = tmp_path / "fit_summary.json"
+    summary.write_text(json.dumps({"targets": 3, "loss": 0.5}))
+    telemetry.add_artifact(
+        "fit_summary",
+        summary,
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+    after_result = len(emitter.run_file_requests)
+    assert after_result > after_start
+    remote = _remote_files(emitter)
+    assert f"{prefix}/artifacts/fit_summary.json" in remote
+    manifest = json.loads(remote[f"{prefix}/run_manifest.json"])
+    assert [item["logical_name"] for item in manifest["artifacts"]] == ["fit_summary"]
+
+    telemetry.stage("release_check_evaluation")
+    assert len(emitter.run_file_requests) == after_result
+
+    telemetry.complete()
+    assert len(emitter.run_file_requests) > after_result
+    assert all(request.flush for request in emitter.run_file_requests)
+    remote = _remote_files(emitter)
+    progress = json.loads(remote[f"{prefix}/progress.json"])
+    assert (progress["status"], progress["current_stage"]) == ("completed", "complete")
+    calibration = json.loads(remote[f"{prefix}/calibration_progress.json"])
+    assert [row["epoch"] for row in calibration["events"]] == [1, 2, 3]

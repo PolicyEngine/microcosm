@@ -6,8 +6,10 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
+import time
 import weakref
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -15975,6 +15977,48 @@ def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch) -> None:
         module.main()
 
     assert [str(error) for error in recorded] == ["build exploded"]
+
+
+class _SigtermReachedTheTestError(Exception):
+    """The test's own SIGTERM handler ran: the build installed none."""
+
+
+def test_a_sigterm_closes_the_staging_run_as_failed_and_exits_143(monkeypatch) -> None:
+    """SIGTERM reaches the build's failure path instead of killing it outright.
+
+    The test installs its own handler first, so a build that handles no SIGTERM
+    fails this test instead of ending the test process.
+    """
+    module = _load_builder_module()
+    recorded: list[BaseException] = []
+
+    class Telemetry:
+        def fail(self, error):
+            recorded.append(error)
+
+    def terminated_build(argv=None):
+        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(5)
+        pytest.fail("SIGTERM did not interrupt the build")
+
+    def test_handler(signum, frame):
+        raise _SigtermReachedTheTestError()
+
+    monkeypatch.setattr(module, "_ACTIVE_PROGRESS", Telemetry())
+    monkeypatch.setattr(module, "_main", terminated_build)
+    previous_handler = signal.signal(signal.SIGTERM, test_handler)
+    try:
+        with pytest.raises(BaseException) as raised:
+            module.main()
+        handler_after_build = signal.getsignal(signal.SIGTERM)
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+
+    assert isinstance(raised.value, SystemExit)
+    assert raised.value.code == 143
+    assert [type(error).__name__ for error in recorded] == ["BuildTerminatedError"]
+    # The build puts back the handler it found.
+    assert handler_after_build is test_handler
 
 
 def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) -> None:
