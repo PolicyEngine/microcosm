@@ -417,9 +417,9 @@ final_owner_stage: …
   installed policyengine-us version and a digest of the take-up and
   sources domains, bound to the issuing process ID). A direct child
   compares those three values instead of deriving the lock again and
-  refuses to run when any differs; the US base stage's `--stage all`
-  process does this for its step processes, which pass it on to their QRF
-  workers.
+  refuses to run when any differs. In the US base stage, the `--stage all`
+  process passes its record to each step process, and each step process
+  passes a record of its own check to the QRF workers it starts.
 - Column/entity mapping comes from the ABI projection with a
   **total-and-injective assertion** (the suffix naming rule died on
   `takes_up_eitc`/`takes_up_dc_ptc`).
