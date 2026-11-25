@@ -511,6 +511,55 @@ def test_a_county_rows_cap_without_a_county_training_row_is_refused() -> None:
         module.release_target_loss_caps(args, targets[1:], specs[1:], np.ones(1))
 
 
+def test_the_caps_receipt_reads_each_row_against_its_own_cap() -> None:
+    from microcosm.calibrate.diagnostics import past_cap_census
+
+    module = _FIXTURE._load_tool_module()
+    args = _cli(
+        module,
+        "--geographies", "state,county",
+        "--county-target-loss-cap-scope", "county_rows",
+    )  # fmt: skip
+    frame, targets, specs, _design = _joint_problem(module)
+    loss = module.release_target_loss_caps(args, targets, specs, np.ones(2))
+    # Nothing to do in one epoch: the estimates stay the starting ones.
+    result, _done = module.calibrate_surface(
+        frame,
+        targets,
+        epochs=1,
+        epoch_batch=1,
+        max_weight_ratio=args.max_weight_ratio,
+        target_loss_cap=loss["cap"],
+        l2_lambda=0.0,
+        seed=0,
+        target_loss_weights=loss["weights"],
+        target_loss_scales=loss["scales"],
+    )
+
+    receipt = module.target_loss_caps_receipt(loss, result)
+
+    assert receipt["default"] == 1.0 and receipt["by_level"] == {"county": 10.0}
+    assert receipt["rows_not_at_default"] == {"pop_county_01001@2024": 10.0}
+    census = receipt["past_cap_census"]
+    # Both rows miss by 200% at the start. That is past the state row's cap
+    # of 1 and inside the county row's cap of 10.
+    assert census["cap_basis"] == "each row's own cap"
+    assert census["initial_past_cap"] == 1
+    assert census["by_cap"]["1.0"]["initial_past_cap"] == 1
+    assert census["by_cap"]["10.0"]["initial_past_cap"] == 0
+    # The solver's own census reads both rows against the equivalent cap, 5.5,
+    # and sees neither past it: the reason the receipt carries its own.
+    solver_census = past_cap_census(result)
+    assert solver_census["cap"] == pytest.approx(5.5)
+    assert solver_census["initial_past_cap"] == 0
+    assert "equivalent_cap" in receipt["how_to_read_the_diagnostics"]
+    # One cap for the run records nothing.
+    plain = module.release_target_loss_caps(
+        _cli(module, "--geographies", "state,county"), targets, specs, np.ones(2)
+    )
+    assert module.target_loss_caps_receipt(plain, result) is None
+
+
 def test_diagnostics_of_a_row_cap_solve_match_the_published_schema(
     calibrate_run, tmp_path
 ) -> None:
@@ -520,6 +569,7 @@ def test_diagnostics_of_a_row_cap_solve_match_the_published_schema(
         target_loss_caps,
     )
 
+    module = calibrate_run.module
     call = calibrate_run.run()[0]
     train = calibrate_run.train
     caps = target_loss_caps(
@@ -527,12 +577,11 @@ def test_diagnostics_of_a_row_cap_solve_match_the_published_schema(
         levels=[lw.target_geography_level(spec) for spec in train],
         by_level={"congressional_district": 10.0},
     )
+    scales = default_target_loss_scales(
+        np.asarray([target.value for target in call["targets"]])
+    )
     equivalent = single_cap_equivalent(
-        caps,
-        weights=call["kwargs"]["target_loss_weights"],
-        scales=default_target_loss_scales(
-            np.asarray([target.value for target in call["targets"]])
-        ),
+        caps, weights=call["kwargs"]["target_loss_weights"], scales=scales
     )
     result = calibrate_run.real_calibrate(
         call["frame"],
@@ -544,20 +593,40 @@ def test_diagnostics_of_a_row_cap_solve_match_the_published_schema(
             "target_loss_scales": equivalent.scales,
         },
     )
+    # The block the calibrate stage puts in the diagnostics under row caps.
+    receipt = module.target_loss_caps_receipt(
+        {
+            "receipt": {
+                "default": 1.0,
+                "by_level": {"congressional_district": 10.0},
+                **equivalent.receipt(),
+            },
+            "row_caps": equivalent.caps,
+            "row_scales": scales,
+        },
+        result,
+    )
     written = tmp_path / "row_cap_diagnostics.json"
     outcome = calibrate_package.write_calibration_diagnostics(
-        result, written, target_registry=calibrate_run.registry
+        result,
+        written,
+        target_registry=calibrate_run.registry,
+        build={"target_loss_cap": equivalent.cap, "target_loss_caps": receipt},
     )
 
     assert outcome.status == "available"
-    assert (
-        _FIXTURE.published_json_schema_errors(
-            _FIXTURE.load_strict_json(written.read_bytes())
-        )
-        == []
-    )
+    document = _FIXTURE.load_strict_json(written.read_bytes())
+    assert _FIXTURE.published_json_schema_errors(document) == []
     assert result.options["target_loss_scales"]["kind"] == "provided"
     assert result.target_loss_cap == pytest.approx(equivalent.cap)
+    # The file itself says which rows have another cap, and carries the
+    # census against each row's own cap beside the solver's.
+    recorded = document["build"]["target_loss_caps"]
+    assert recorded["by_level"] == {"congressional_district": 10.0}
+    assert len(recorded["rows_not_at_default"]) == int((caps == 10.0).sum())
+    assert recorded["past_cap_census"]["n_targets"] == len(train)
+    assert set(recorded["past_cap_census"]["by_cap"]) == {"1.0", "10.0"}
+    assert document["past_cap_census"]["cap"] == pytest.approx(equivalent.cap)
 
 
 # ---------------------------------------------------------------------------

@@ -71,6 +71,7 @@ __all__ = [
     "apply_family_multipliers",
     "budget_group_weights",
     "budget_groups",
+    "row_cap_census",
     "single_cap_equivalent",
     "target_loss_caps",
     "target_loss_weight_shares",
@@ -589,8 +590,10 @@ def single_cap_equivalent(
 
     The transformed scales and weights are what the solver records. A
     diagnostic that reads the solver's ``target_loss_cap`` against the default
-    scales (the past-cap census) therefore measures against ``cap0``, not
-    against each row's own cap.
+    scales (the past-cap census of the calibration diagnostics) therefore
+    measures against ``cap0``, not against each row's own cap.
+    :func:`row_cap_census` is the census against each row's own cap; a build
+    that declares row caps records it beside the declared caps.
     """
 
     caps = np.array(caps, dtype=np.float64)
@@ -627,3 +630,91 @@ def single_cap_equivalent(
     return SingleCapEquivalent(
         cap=cap, weights=weights * factor, scales=scales * factor, caps=caps
     )
+
+
+def row_cap_census(
+    names: Sequence[str],
+    targets: Sequence[float] | np.ndarray,
+    initial_estimates: Sequence[float] | np.ndarray,
+    final_estimates: Sequence[float] | np.ndarray,
+    *,
+    scales: Sequence[float] | np.ndarray,
+    caps: Sequence[float] | np.ndarray,
+) -> dict[str, object]:
+    """Rows past their own loss cap at the solve's start and end.
+
+    The census of the calibration diagnostics, taken against each row's own
+    cap instead of one cap. A row whose scaled miss ``|estimate - target| /
+    scale`` is past its cap contributes a constant to the loss, so the solver
+    has no reason to improve it. ``scales`` are the declared scales, before
+    :func:`single_cap_equivalent` transforms them.
+
+    - ``initial_past_cap`` / ``final_past_cap``: rows strictly past their cap
+      under the starting / final estimates;
+    - ``escaped``: past at the start, inside at the end;
+    - ``frozen``: past at both;
+    - ``pushed_out``: inside at the start, past at the end, listed in
+      ``pushed_out_rows`` with the worst final miss first;
+    - ``by_cap``: the same counts for the rows of each cap value.
+    """
+
+    names = [str(name) for name in names]
+    targets = np.asarray(targets, dtype=np.float64)
+    initial = np.asarray(initial_estimates, dtype=np.float64)
+    final = np.asarray(final_estimates, dtype=np.float64)
+    scales = np.asarray(scales, dtype=np.float64)
+    caps = np.asarray(caps, dtype=np.float64)
+    shape = (len(names),)
+    for label, values in (
+        ("targets", targets),
+        ("initial_estimates", initial),
+        ("final_estimates", final),
+        ("scales", scales),
+        ("caps", caps),
+    ):
+        if values.shape != shape:
+            raise ValueError(
+                f"{label} has shape {values.shape}; there are {len(names)} names."
+            )
+        if not np.isfinite(values).all():
+            raise ValueError(f"{label} must be finite.")
+    if (scales <= 0).any() or (caps <= 0).any():
+        raise ValueError("scales and caps must be positive.")
+    initial_miss = np.abs(initial - targets) / scales
+    final_miss = np.abs(final - targets) / scales
+    # Strictly past the cap, as the solver's census counts: a row exactly at
+    # its cap still has a gradient.
+    initial_past = initial_miss > caps
+    final_past = final_miss > caps
+
+    def counts(rows: np.ndarray) -> dict[str, int]:
+        return {
+            "n_targets": int(rows.sum()),
+            "initial_past_cap": int((initial_past & rows).sum()),
+            "final_past_cap": int((final_past & rows).sum()),
+            "escaped": int((initial_past & ~final_past & rows).sum()),
+            "frozen": int((initial_past & final_past & rows).sum()),
+            "pushed_out": int((~initial_past & final_past & rows).sum()),
+        }
+
+    pushed_out = np.flatnonzero(~initial_past & final_past)
+    pushed_out_rows = sorted(
+        (
+            {
+                "name": names[index],
+                "cap": float(caps[index]),
+                "init_rel": float(initial_miss[index]),
+                "final_rel": float(final_miss[index]),
+            }
+            for index in pushed_out
+        ),
+        key=lambda row: (-row["final_rel"], row["name"]),
+    )
+    return {
+        "cap_basis": "each row's own cap",
+        **counts(np.ones(len(names), dtype=bool)),
+        "pushed_out_rows": pushed_out_rows,
+        "by_cap": {
+            repr(float(cap)): counts(caps == cap) for cap in np.unique(caps).tolist()
+        },
+    }

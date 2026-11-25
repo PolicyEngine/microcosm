@@ -13,6 +13,7 @@ from microcosm.calibrate.target_loss_rules import (
     TargetLossRows,
     TargetWeightRule,
     apply_family_multipliers,
+    row_cap_census,
     single_cap_equivalent,
     target_loss_caps,
     target_loss_weight_shares,
@@ -330,3 +331,58 @@ def test_the_equivalent_refuses_misaligned_or_invalid_inputs() -> None:
         single_cap_equivalent([1.0, 0.0], weights=[1.0, 1.0], scales=[1.0, 1.0])
     with pytest.raises(ValueError, match="positive total weight"):
         single_cap_equivalent([1.0, 2.0], weights=[0.0, 0.0], scales=[1.0, 1.0])
+
+
+def test_the_census_reads_each_row_against_its_own_cap() -> None:
+    names = ["state_far", "county_far", "county_escaped", "state_pushed", "at_cap"]
+    targets = np.asarray([100.0, 100.0, 100.0, 100.0, 100.0])
+    scales = np.asarray([100.0, 100.0, 100.0, 100.0, 100.0])
+    caps = np.asarray([1.0, 10.0, 10.0, 1.0, 1.0])
+    # Scaled misses at the start: 2, 2, 12, 0.5, 1. At the end: 2, 1.5, 3, 4, 1.
+    initial = np.asarray([300.0, 300.0, 1300.0, 150.0, 200.0])
+    final = np.asarray([300.0, 250.0, 400.0, 500.0, 200.0])
+
+    census = row_cap_census(names, targets, initial, final, scales=scales, caps=caps)
+
+    assert census["cap_basis"] == "each row's own cap"
+    assert census["n_targets"] == 5
+    # A miss of 2 is past a cap of 1 and inside a cap of 10.
+    assert census["initial_past_cap"] == 2  # state_far, county_escaped
+    assert census["final_past_cap"] == 2  # state_far, state_pushed
+    assert (census["escaped"], census["frozen"], census["pushed_out"]) == (1, 1, 1)
+    assert census["pushed_out_rows"] == [
+        {"name": "state_pushed", "cap": 1.0, "init_rel": 0.5, "final_rel": 4.0}
+    ]
+    assert census["by_cap"]["1.0"] == {
+        "n_targets": 3,
+        "initial_past_cap": 1,
+        "final_past_cap": 2,
+        "escaped": 0,
+        "frozen": 1,
+        "pushed_out": 1,
+    }
+    assert census["by_cap"]["10.0"]["escaped"] == 1
+    # A row exactly at its cap still has a gradient: it is not past the cap.
+    assert census["by_cap"]["1.0"]["initial_past_cap"] == 1
+    # One cap for every row gives the counts of a single-cap census.
+    single = row_cap_census(
+        names, targets, initial, final, scales=scales, caps=np.full(5, 1.0)
+    )
+    assert single["initial_past_cap"] == 3 and single["final_past_cap"] == 4
+
+
+def test_the_census_refuses_misaligned_or_invalid_inputs() -> None:
+    arguments = dict(scales=[1.0, 1.0], caps=[1.0, 1.0])
+    with pytest.raises(ValueError, match="there are 2 names"):
+        row_cap_census(["a", "b"], [1.0], [1.0, 1.0], [1.0, 1.0], **arguments)
+    with pytest.raises(ValueError, match="must be finite"):
+        row_cap_census(["a", "b"], [1.0, 1.0], [1.0, np.nan], [1.0, 1.0], **arguments)
+    with pytest.raises(ValueError, match="must be positive"):
+        row_cap_census(
+            ["a", "b"],
+            [1.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 1.0],
+            scales=[1.0, 0.0],
+            caps=[1.0, 1.0],
+        )

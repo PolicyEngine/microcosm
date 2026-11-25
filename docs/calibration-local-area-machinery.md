@@ -79,12 +79,18 @@ row and `sum(w') == sum(w)`. The loss value, each row's contribution and the
 gradient are those of the loss with row caps. When every row has the same cap
 the weights and scales come back unchanged.
 
-Two things to know when you read a run with row caps:
+How to read a run with row caps:
 
 - The solver records the transformed weights and scales, and `cap0` as its
-  cap. The declared row caps are in the tool's summary (`target_loss_caps`).
-- The past-cap census of the calibration diagnostics measures every row on the
-  default scales against `cap0`, not against the row's own cap.
+  cap. So in `calibration_diagnostics.json` the top-level `past_cap_census`
+  and each target's `target_loss_scale` and `target_loss_weight` read every
+  row against `cap0`, not against the row's own cap.
+- The declared caps and the census against them are in the `target_loss_caps`
+  block, in the tool's summary and in the `build` block of
+  `calibration_diagnostics.json`: the default cap, the cap of each level, the
+  rows at each cap, each row that is not at the default, and
+  `past_cap_census` against each row's own cap (`row_cap_census`). A run with
+  one cap has no such block.
 
 **US county builds.** By default the county profile's cap (10) applies to
 every row of a county build, as before. With
@@ -196,7 +202,11 @@ the next run instead of reading a cached result:
 - every UK solve node, through `calibrate.adam@1` (`calibrate/solve.py`);
 - the kernels of `uk_runtime/graph_targets.py`, which hash their own module:
   `uk.full.target_compilation@1`, `target_selection@1`, `measures@1` and
-  `problem@1`. The problem's loss-weight hash gained the shared rules there;
+  `problem@1`. The problem also hashes the modules that decide its loss
+  weights, which now include the shared rules. Those modules are named in
+  `uk_runtime/target_compile_modules.py`
+  (`UK_FULL_PROBLEM_LOSS_WEIGHT_MODULE_NAMES`) and no longer imported by
+  `graph_targets`, so the other three kernels have no import edge to them;
 - the kernels of `uk_runtime/graph_national.py`: `uk.full.national_targets@1`,
   `national_problem@1`, `national-gates@1` and `national-readback@1`;
 - the kernels of `uk_runtime/graph_terminal.py`: the rotated holdout,

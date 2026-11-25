@@ -2822,7 +2822,9 @@ def release_target_loss_caps(args, target_set, train_specs, loss_weights):
 
     Returns a mapping: ``cap``, ``weights`` and ``scales`` go to
     ``calibrate`` (``scales`` is ``None`` for the default scales); ``receipt``
-    is ``None`` unless row caps are declared.
+    is ``None`` unless row caps are declared. With row caps, ``row_caps`` and
+    ``row_scales`` are the declared cap and scale of each row, which
+    :func:`target_loss_caps_receipt` reads after the solve.
     """
 
     county_cap = getattr(args, "county_rows_target_loss_cap", None)
@@ -2849,22 +2851,69 @@ def release_target_loss_caps(args, target_set, train_specs, loss_weights):
         )
     except ValueError as error:
         raise SystemExit(f"Target loss caps: {error}") from error
-    equivalent = single_cap_equivalent(
-        caps,
-        weights=loss_weights,
-        scales=default_target_loss_scales(
-            np.asarray([target.value for target in target_set], dtype=np.float64)
-        ),
+    row_scales = default_target_loss_scales(
+        np.asarray([target.value for target in target_set], dtype=np.float64)
     )
+    equivalent = single_cap_equivalent(caps, weights=loss_weights, scales=row_scales)
     return {
         "cap": equivalent.cap,
         "weights": equivalent.weights,
         "scales": equivalent.scales,
+        "row_caps": equivalent.caps,
+        "row_scales": row_scales,
         "receipt": {
             "default": float(args.target_loss_cap),
             "by_level": {COUNTY_LEVEL: float(county_cap)},
             **equivalent.receipt(),
         },
+    }
+
+
+def target_loss_caps_receipt(solver_loss: dict, result) -> dict | None:
+    """What a solve under row caps records, for the summary and the diagnostics.
+
+    ``None`` when the run has one cap. Otherwise the declared caps (the
+    default, the cap of each level, the rows at each cap, and by name each row
+    that is not at the default) and the past-cap census against each row's own
+    cap (``row_cap_census``).
+
+    ``calibration_diagnostics.json`` needs this block. Its own
+    ``past_cap_census`` and the ``target_loss_scale`` and
+    ``target_loss_weight`` of each of its targets come from the solver, which
+    ran the equivalent one-cap loss: they read every row against
+    ``equivalent_cap`` on transformed scales, not against the row's own cap.
+    """
+
+    if solver_loss["receipt"] is None:
+        return None
+    from microcosm.calibrate.target_loss_rules import row_cap_census
+
+    names = [diagnostic.name for diagnostic in result.diagnostics]
+    caps = solver_loss["row_caps"]
+    default = solver_loss["receipt"]["default"]
+    return {
+        **solver_loss["receipt"],
+        "rows_not_at_default": {
+            name: float(cap)
+            for name, cap in zip(names, caps, strict=True)
+            if cap != default
+        },
+        "past_cap_census": row_cap_census(
+            names,
+            [diagnostic.target for diagnostic in result.diagnostics],
+            [diagnostic.initial_estimate for diagnostic in result.diagnostics],
+            [diagnostic.final_estimate for diagnostic in result.diagnostics],
+            scales=solver_loss["row_scales"],
+            caps=caps,
+        ),
+        "how_to_read_the_diagnostics": (
+            "The solver ran the one-cap loss that equals these row caps. In "
+            "calibration_diagnostics.json the top-level past_cap_census and "
+            "each target's target_loss_scale and target_loss_weight are the "
+            "solver's: they read every row against equivalent_cap on "
+            "transformed scales. For a row's own cap and the census against "
+            "it, read this block."
+        ),
     }
 
 
@@ -3454,6 +3503,7 @@ def do_calibrate(args) -> None:
             f"(e.g. {skipped[:5]}); the surface silently shrank. Fix the "
             "measures or the targets before shipping."
         )
+    caps_receipt = target_loss_caps_receipt(solver_loss, result)
     summary = {
         "run_identity_sha256": stamp,
         "solver_settings": settings,
@@ -3473,11 +3523,7 @@ def do_calibrate(args) -> None:
         # single cap, the largest value the loss can take; target_loss_caps
         # then records the declared row caps.
         "target_loss_cap": solver_loss["cap"],
-        **(
-            {"target_loss_caps": solver_loss["receipt"]}
-            if solver_loss["receipt"] is not None
-            else {}
-        ),
+        **({"target_loss_caps": caps_receipt} if caps_receipt is not None else {}),
         "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
         "l2_basis": args.l2_basis,
@@ -3552,6 +3598,9 @@ def do_calibrate(args) -> None:
             "target_loss_weighting": target_loss["weighting"],
             "target_loss_family_multipliers": target_loss["family_multipliers"] or None,
             "target_loss_cap": solver_loss["cap"],
+            # Only a solve under row caps: the caps and the census against
+            # them, so that this file says how to read its own census.
+            **({"target_loss_caps": caps_receipt} if caps_receipt is not None else {}),
             "target_loss_row_mapping": target_loss["row_mapping"],
             "target_loss_weights_sha256": target_loss["weights_sha256"],
             "target_loss_distribution": loss_distribution,
