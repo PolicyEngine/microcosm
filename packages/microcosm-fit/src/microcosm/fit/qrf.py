@@ -64,8 +64,9 @@ import random
 import warnings
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
+import joblib
 import numpy as np
 import pandas as pd
 import quantile_forest
@@ -1608,11 +1609,12 @@ _PREDICT_CHUNK_ROWS = 10_000
 
 #: Environment override for the parallel draw's worker count. A build tool sets
 #: it to leave cores for concurrent work or to pin timing; unset defaults to
-#: :func:`os.cpu_count`.
+#: :func:`default_predict_workers`.
 _PREDICT_WORKERS_ENV = "POPULACE_FIT_PREDICT_WORKERS"
 
 #: Environment override for quantile-forest fit parallelism. Unset retains the
-#: historical ``n_jobs=-1`` behavior; checkpointed production builds can pin it
+#: historical ``n_jobs=-1`` behavior, which joblib resolves to
+#: :func:`joblib.cpu_count` threads; checkpointed production builds can pin it
 #: to one (or another positive width) without changing the model API.
 _N_JOBS_ENV = "POPULACE_FIT_N_JOBS"
 
@@ -1635,10 +1637,16 @@ _DISCRETE_Y_LEAF_BOUND = 4_096
 def _fit_n_jobs() -> int:
     """Resolve quantile-forest fit parallelism.
 
-    Unset preserves the historical ``n_jobs=-1`` default. If the environment
-    variable is present it must be a strict positive base-10 integer; in
-    particular, an empty string is an invalid configured value rather than a
-    second spelling of "unset".
+    Unset preserves the historical ``n_jobs=-1`` default. joblib resolves a
+    negative ``n_jobs`` when it starts the fit's and ``apply``'s threads, as
+    ``joblib.cpu_count() + 1 + n_jobs``, so ``-1`` already counts only the
+    CPUs the process may use (see :func:`default_predict_workers`). Chain
+    states and the ``audit_thread_controls`` of the primary-QRF worker binding
+    record the literal ``-1``, not that count, and no resume compares either
+    record: the count changes no draw. If the environment variable is present
+    it must be a strict positive base-10 integer; in particular, an empty
+    string is an invalid configured value rather than a second spelling of
+    "unset".
 
     Raises:
         ValueError: If ``POPULACE_FIT_N_JOBS`` is set to anything other than a
@@ -1658,6 +1666,39 @@ def _fit_n_jobs() -> int:
     return jobs
 
 
+def default_predict_workers() -> int:
+    """The draw's thread-pool width when ``POPULACE_FIT_PREDICT_WORKERS`` is unset.
+
+    :func:`joblib.cpu_count` is the smallest of the machine's logical CPU
+    count, the process's CPU affinity mask, a Linux cgroup CPU quota (cgroup
+    v2 ``cpu.max`` or v1 ``cpu.cfs_quota_us``, rounded up) and
+    ``LOKY_MAX_CPU_COUNT``, and at least 1. It is 1 when joblib has turned
+    multiprocessing off (``JOBLIB_MULTIPROCESSING=0``, or no working
+    semaphores), as tree building with ``n_jobs=-1`` then also runs on one
+    thread. :func:`os.cpu_count`, the default before it, counts only the
+    machine's CPUs: in a container held to a CPU quota it started one thread
+    per host CPU, and the quota then paused them. The value can change within
+    a process (when ``LOKY_MAX_CPU_COUNT`` or the affinity mask changes), so
+    callers read it when they need it.
+
+    The primary-QRF worker identity records this value for an unset override
+    (``microcosm.build.us_runtime.worker_identity``), so both read it here.
+
+    Raises:
+        ValueError: If ``LOKY_MAX_CPU_COUNT`` is not an integer, which joblib
+            refuses, or joblib cannot parse the cgroup CPU quota.
+    """
+    try:
+        return joblib.cpu_count()
+    except ValueError as error:
+        raise ValueError(
+            "Cannot size the QRF draw's thread pool: joblib.cpu_count() failed "
+            f"with LOKY_MAX_CPU_COUNT={os.environ.get('LOKY_MAX_CPU_COUNT')!r} "
+            f"({error}). LOKY_MAX_CPU_COUNT must be unset or an integer, and "
+            "the process's cgroup CPU quota must be readable."
+        ) from error
+
+
 def _predict_workers() -> int:
     """Resolve the draw's thread-pool width.
 
@@ -1669,15 +1710,16 @@ def _predict_workers() -> int:
     MB to gigabytes each, re-paid on every fit in the fit-then-predict-per-
     pattern transfer path — for no speed gain over the GIL-free threads.
 
-    Defaults to :func:`os.cpu_count`; ``POPULACE_FIT_PREDICT_WORKERS`` overrides
-    it with a positive integer.
+    Defaults to :func:`default_predict_workers`; ``POPULACE_FIT_PREDICT_WORKERS``
+    overrides it with a positive integer.
 
     Raises:
-        ValueError: If the override is set but not a positive integer.
+        ValueError: If the override is set but not a positive integer, or
+            :func:`default_predict_workers` fails with the override unset.
     """
     override = os.environ.get(_PREDICT_WORKERS_ENV)
     if override is None or not override.strip():
-        return os.cpu_count() or 1
+        return default_predict_workers()
     try:
         workers = int(override)
     except ValueError:
@@ -1941,6 +1983,11 @@ class QRFChainState:
     fingerprint only when the chain was started with ``groups``, so the state
     of an in-sample, ungrouped chain, and any state written before either
     existed, reads the same.
+
+    ``fit_n_jobs`` records the ``POPULACE_FIT_N_JOBS`` value in force when the
+    chain started. It stays in :meth:`to_dict`, so saved states keep their
+    bytes, but it takes no part in equality and no step compares it: each step
+    fits with the live value, and the thread count changes no draw.
     """
 
     predictors: tuple[str, ...]
@@ -1954,7 +2001,7 @@ class QRFChainState:
     max_samples_leaf: int | float | None
     max_samples_leaf_kind: str
     seed: int
-    fit_n_jobs: int
+    fit_n_jobs: int = field(compare=False)
     donor_index: _IndexIdentity
     recipient_index: _IndexIdentity | None
     fit_rng_state_json: str
@@ -2827,7 +2874,11 @@ class RegimeGatedQRF:
         )
 
     def _validate_chain_config(self, state: QRFChainState) -> None:
-        """Refuse any model configuration drift across subprocesses."""
+        """Refuse drift in any setting that can change the draws.
+
+        The fit thread count is not one of them, so a chain may continue under
+        another ``POPULACE_FIT_N_JOBS``.
+        """
         if self.gate_level_columns:
             raise ValueError(
                 "The checkpointed QRF chain does not carry gate_level_columns yet; "
@@ -2839,7 +2890,6 @@ class RegimeGatedQRF:
             self.max_samples_leaf,
             _max_samples_leaf_kind(self.max_samples_leaf),
             self.seed,
-            _fit_n_jobs(),
             self.gate_calibration,
         )
         expected = (
@@ -2848,7 +2898,6 @@ class RegimeGatedQRF:
             state.max_samples_leaf,
             state.max_samples_leaf_kind,
             state.seed,
-            state.fit_n_jobs,
             state.gate_calibration,
         )
         if actual != expected or actual[3] != expected[3]:

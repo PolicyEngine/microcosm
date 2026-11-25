@@ -33,7 +33,13 @@ from microcosm.calibrate import (
     calibrate,
 )
 from microcosm.data.stored_inputs import register_sha256
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.frame import (
+    EntitySchema,
+    Frame,
+    SharedColumnChangedError,
+    WeightKind,
+    Weights,
+)
 from test_support.microcosm_diagnostics.json_schema import (
     load_strict_json,
     published_json_schema_errors,
@@ -14837,7 +14843,7 @@ def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
         and node.func.id
         in {
             "us_release_input_coverage_gate",
-            "_export_input_mass_gate",
+            "_record_export_input_mass_gate",
             "_record_qrf_tail_concentration_gate",
             "us_reform_coverage_smoke_gate",
             "_record_stored_inputs_gate_evidence",
@@ -20432,6 +20438,27 @@ def test_a_build_that_must_send_telemetry_stops_before_any_input_without_an_emit
     assert raised.value.reason == "command_not_found"
     assert builder._ACTIVE_EMITTER is None
     assert not output.exists()
+
+
+def test__given_changed_shared_column__then_target_frame_checkpoint_is_refused(
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    shared = small_frame.replace_tables()
+    np.add.at(small_frame.table("person")["income"].to_numpy(), [0], 1.0)
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        builder._write_target_frame_checkpoint(
+            tmp_path / "target_frame_checkpoint.h5",
+            frame=shared,
+            identity={},
+            compilation={},
+            build_commit="fixture-commit",
+        )
+
+    assert raised.value.changed_columns == (("person", "income"),)
+    assert list(tmp_path.iterdir()) == []
 
 
 # ---------------------------------------------------------------------------

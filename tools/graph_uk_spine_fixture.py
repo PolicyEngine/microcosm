@@ -197,6 +197,9 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_limited_capability import (
     UKUCLimitedCapabilityStageTransform,
 )
+from microcosm.build.uk_runtime.uc_new_claimant_draw import (
+    UKUCNewClaimantDrawStageTransform,
+)
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
@@ -223,7 +226,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 56
+UK_FIXTURE_STAGE_COUNT = 57
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -2486,6 +2489,9 @@ def _build_implementations(
         ),
         "uc_limited_capability": UKUCLimitedCapabilityStageTransform(
             stage=stages["uc_limited_capability"], engine=engine
+        ),
+        "uc_new_claimant_draw": UKUCNewClaimantDrawStageTransform(
+            stage=stages["uc_new_claimant_draw"], engine=engine
         ),
         "uc_take_up": UKUCTakeUpStageTransform(
             stage=stages["uc_take_up"], engine=engine

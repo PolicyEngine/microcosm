@@ -137,6 +137,11 @@ LEAF_ADDED_MODULES = frozenset(
 BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
     [
         "microcosm.calibrate.hierarchy_labels",
+        # The microcosm.calibrate package's __init__ imports dropped_matrix,
+        # which replaces a calibration result's constraint matrices with
+        # their shape and nonzero count once the release no longer needs
+        # their entries.
+        "microcosm.calibrate.dropped_matrix",
         "microcosm.diagnostics.catalogs",
         # microcosm#1490: microcosm.fit exports its categorical classifier,
         # held-out scores and keyed donors, so a binding that imports the
@@ -177,6 +182,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.data.source_enrichment",
         "microcosm.data.stored_inputs",
         "microcosm.data.us_critical_targets",
+        # microcosm#1683: microcosm.frame.bundle imports the shared-column
+        # check, so a binding that reaches the frame bundle reaches it.
+        "microcosm.frame.shared_columns",
     ]
 )
 BATTERY = "toy.gates.terminal"

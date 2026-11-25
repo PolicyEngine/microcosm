@@ -234,8 +234,9 @@ def load_uk_full_target_inputs(
     )
     # Microcosm-derived facts compile beside the Chronicle feed: the high-value
     # homes stock (HM Land Registry counts, microcosm#1240) at local grain and
-    # its region rows (microcosm#1301) at national grain, and DESNZ's domestic
-    # energy split onto constituencies (microcosm#1095).
+    # its region rows (microcosm#1301) at national grain, DESNZ's domestic
+    # energy split onto constituencies (microcosm#1095), and CenTax's parent
+    # cells (microcosm#1399) on the national line.
     derived = load_uk_derived_facts()
     facts = (*artifact.facts, *uk_derived_fact_rows(derived))
     for period in national_periods:
@@ -416,7 +417,8 @@ def load_uk_national_target_inputs(
     # on their Microcosm-derived facts included (microcosm#1301); those rows
     # bind on the local line only, so the national surface drops them before
     # reconciliation, the exclusions and the frozen-register check, and its
-    # registry is the one it was without them.
+    # registry is the one it was without them. CenTax's parent cells
+    # (microcosm#1399) bind on the national line and stay.
     derived = load_uk_derived_facts()
     compilation = compile_uk_target_registry(
         chain(artifact.facts, uk_derived_fact_rows(derived)), target_period=year

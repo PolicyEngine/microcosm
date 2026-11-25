@@ -68,11 +68,13 @@ stored ``age`` column is unchanged.
 most five full copies of the entity tables at once, inside
 :func:`microcosm.frame.adapters.policyengine_us.multi_year_dataset` (the frame,
 its export copy, the base-year dataset, the year's tables and the year's
-dataset); the calibration result's frame copy is released before that call.
-The local line holds the same five plus the slim aging frame and its
-calibration copy (only ids, memberships, the age-sex cells and the factored
-columns), then the frame, the year's frame and one entity table during the
-write, and the frame plus the native reload during the loader check.
+dataset). The calibration result's frame shares the calibrated frame's tables
+rather than copying them, and the result is released before that call. The
+local line holds the same five plus the slim aging frame (only ids,
+memberships, the age-sex cells and the factored columns), whose calibration
+result shares its tables, then the frame, the year's frame and one entity
+table during the write, and the frame plus the native reload during the
+loader check.
 """
 
 from __future__ import annotations
@@ -1175,8 +1177,10 @@ def build_annual_static_aging(
                     ),
                     "fraction_within_10pct": float(projection.fraction_within_10pct),
                 }
-                # The calibration result holds a full copy of the frame it
-                # calibrated; release it before the export copies are made.
+                # The calibration result's frame shares the calibrated frame's
+                # tables (Frame.with_weights does not copy them); release the
+                # result, and its constraint matrix, before the export copies
+                # are made.
                 del projection, result
                 if local:
                     refuse_protected_factors(factors, what=f"the {year} factors")

@@ -1,6 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_us_post_export_scoring.py."""
 
 # ruff: noqa: F403, F405
+import weakref
+from collections.abc import Iterator
+
+from microcosm.calibrate import DroppedConstraintMatrix
 from test_support.microcosm_build.us_post_export_scoring import *
 
 
@@ -1191,12 +1195,41 @@ def test_main_frees_the_target_frame_before_the_export(builder) -> None:
     assert reads and max(reads) < deleted_at
 
 
-def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
-    """The premise of ``del target_frame``: ``calibrate`` keeps no reference
-    to its input frame, and ``result.frame`` shares no memory with it."""
+@pytest.fixture
+def copy_on_write_on() -> Iterator[None]:
+    """Turn copy-on-write on under pandas 2.x; pandas 3 always has it on."""
+
+    if int(pd.__version__.split(".", 1)[0]) >= 3:
+        yield
+        return
+    with pd.option_context("mode.copy_on_write", True):
+        yield
+
+
+def test_calibration_leaves_its_input_frame_unchanged_and_unreferenced(
+    copy_on_write_on: None,
+) -> None:
+    """The premise of ``del target_frame``.
+
+    ``calibrate`` keeps no reference to its input frame and leaves it
+    unchanged. Under pandas copy-on-write, ``result.frame`` shares the input's
+    column memory (``Frame.with_weights`` builds it without copying), so the
+    target tables are freed only once both ``target_frame`` and the result's
+    frame are gone: ``del target_frame`` removes one reference and
+    ``_without_calibrated_frames`` the other. A result built with
+    ``return_frame=False`` holds no frame, so it keeps nothing of the input's
+    tables alive.
+    """
     frame, targets = _small_calibration_problem()
+    tables_before = {
+        entity: frame.table(entity).copy(deep=True) for entity in frame.entities
+    }
+    weights_before = frame.weights_for("household").values.copy()
+    strata_before = frame.strata.copy(deep=True)
+
     result = calibrate(frame, targets, epochs=3, mass="conserve", seed=0)
     gc.collect()
+
     # Nothing the calibration returned (or cached) refers to the input frame.
     referrers = [
         type(referrer).__name__
@@ -1205,12 +1238,45 @@ def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
     ]
     assert referrers == []
     assert result.frame is not frame
-    for entity in ("person", "household"):
-        for column in frame.table(entity).columns:
-            assert not np.shares_memory(
+    for entity, table_before in tables_before.items():
+        pd.testing.assert_frame_equal(
+            frame.table(entity), table_before, check_exact=True
+        )
+        assert result.frame.table(entity) is not frame.table(entity)
+        for column in table_before.columns:
+            assert np.shares_memory(
                 frame.table(entity)[column].to_numpy(),
                 result.frame.table(entity)[column].to_numpy(),
-            )
+            ), (entity, column)
+    assert frame.weights_for("household").kind is WeightKind.DESIGN
+    np.testing.assert_array_equal(frame.weights_for("household").values, weights_before)
+    pd.testing.assert_series_equal(frame.strata, strata_before, check_exact=True)
+    assert frame.mass_log == ()
+
+    # A pandas write into the calibrated frame's tables never reaches the input.
+    result.frame.table("household").loc[0, "x"] = -1.0
+    pd.testing.assert_frame_equal(
+        frame.table("household"), tables_before["household"], check_exact=True
+    )
+
+    frameless = calibrate(
+        frame, targets, epochs=3, mass="conserve", seed=0, return_frame=False
+    )
+    assert frameless.frame is None
+    np.testing.assert_array_equal(frameless.weights, result.weights)
+    # Follow the input's income column to the array that owns its memory.
+    income_values = frame.table("person")["income"].to_numpy()
+    while isinstance(income_values.base, np.ndarray):
+        income_values = income_values.base
+    input_income_memory = weakref.ref(income_values)
+    del income_values, frame
+    gc.collect()
+    # The calibrated frame alone keeps the input's column memory alive...
+    assert input_income_memory() is not None
+    del result
+    gc.collect()
+    # ...and a result built with return_frame=False keeps none of it.
+    assert input_income_memory() is None
 
 
 def test_calibration_results_drop_their_frames_and_keep_everything_else(
@@ -1312,6 +1378,7 @@ def test_main_drops_the_calibration_frames_before_the_export(builder) -> None:
     assert [value for _, value in later_bindings] == [
         "_without_calibrated_frames(result, "
         "export_frame=export_frame if ladder_outcome is not None else None)",
+        "without_constraint_matrix(result)",
     ]
     assert all(deleted < lineno < write_call for lineno, _ in later_bindings)
     export_bindings = [
@@ -1401,6 +1468,8 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
         cleaned = namespace["result"]
         if not full_pool:
             assert cleaned.selection.frame is None
+            assert isinstance(cleaned.selection.problem.matrix, DroppedConstraintMatrix)
+        assert isinstance(cleaned.problem.matrix, DroppedConstraintMatrix)
         assert cleaned.frame is (frame if exact_k else None)
         if exact_k:
             outcome = namespace["ladder_outcome"]

@@ -1,6 +1,7 @@
 """Tests split from packages/microcosm-build/tests/test_us_org_wages.py."""
 
 # ruff: noqa: F403, F405
+from test_support.microcosm_build.qrf_chain_doubles import FitPredictChainDouble
 from test_support.microcosm_build.us_org_wages import *
 
 
@@ -327,7 +328,7 @@ def test_recipient_income_feature_is_full_year_equivalent(monkeypatch) -> None:
                 index=features.index,
             )
 
-    class CaptureQRF:
+    class CaptureQRF(FitPredictChainDouble):
         def __init__(self, **kwargs):
             pass
 
@@ -383,7 +384,7 @@ def test_imputation_zeroes_inactive_and_union_is_deterministic(monkeypatch) -> N
                 index=features.index,
             )
 
-    class FakeQRF:
+    class FakeQRF(FitPredictChainDouble):
         def __init__(self, **kwargs):
             pass
 
@@ -485,7 +486,7 @@ def test_stage_derives_usual_hours_leg_end_to_end(monkeypatch) -> None:
                 index=features.index,
             )
 
-    class FakeQRF:
+    class FakeQRF(FitPredictChainDouble):
         def __init__(self, **kwargs):
             pass
 
@@ -616,7 +617,7 @@ def test_stage_reimputes_stale_wages_on_populated_surface(monkeypatch) -> None:
         module, "_flsa_policy", lambda year: (107_432.0, 35_568.0, 57_470.4, 40.0, 1.5)
     )
 
-    class FeatureQRF:
+    class FeatureQRF(FitPredictChainDouble):
         def __init__(self, **kwargs):
             pass
 

@@ -1,6 +1,6 @@
 """PIP assessment points for every recipient (P1 of the November event-data plan, microcosm#1095).
 
-policyengine-uk 2.177.7 decides a PIP component's rate from its points
+policyengine-uk 2.179.2 decides a PIP component's rate from its points
 (``pip_dl_points`` and ``pip_m_points``: 8 for the standard rate, 12 for the
 enhanced) wherever no category is supplied for the year (``utils/pip.py``).
 The release used to store ``pip_dl_category`` and ``pip_m_category``, which
@@ -163,7 +163,7 @@ _SHARE_CONCEPTS = {
 #: same distributions, and the receipt compares England and Wales alone.
 PIP_OUTSIDE_TABLES = ("SCOTLAND", "NORTHERN_IRELAND")
 #: The release's regions by UK country, for the receipt's recipients by
-#: country. policyengine-uk 2.174.1 has one set of PIP points thresholds, and
+#: country. policyengine-uk 2.179.2 has one set of PIP points thresholds, and
 #: frs_spine reads Scotland's Adult Disability Payment (FRS codes 117 and 118)
 #: as PIP, so a threshold reform reaches Scotland's ADP recipients and Northern
 #: Ireland's PIP recipients too, whose awards their own regulations set. The

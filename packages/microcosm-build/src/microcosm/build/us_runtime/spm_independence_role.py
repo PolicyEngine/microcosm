@@ -397,6 +397,8 @@ def with_us_spm_independence_role(
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US SPM independence role requires the US schema.")
+    # The stage below works on deep copies, which could not show a raw write.
+    frame.check_shared_columns()
     person = frame.table("person")
     existing_role = (
         person[NATIVE_SPM_ROLE] if NATIVE_SPM_ROLE in person.columns else None
