@@ -371,7 +371,10 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm.fit.qrf, moves it again.
             # calibrate's return_frame option in solve moves it again.
             # microcosm#1686's shared SIPP person-file read moves it again.
-            "spec_sha256": "499389d4b1f0c967c54a6f2fa81b8a07a7e59c045bf2a8fe6bb909f08561d049",
+            # Importing torch inside the solve functions that use it, and the
+            # QRF chain passing its workers a lock-file check record, move it
+            # again.
+            "spec_sha256": "098de45a444dba7a1151503f78b4c4574bb4acd60a0be0351cdc69528d2469de",
         },
     }
 
