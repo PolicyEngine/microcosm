@@ -22,19 +22,25 @@ chain and every other draw are unchanged.
 - **The two direct-purchase flags** follow ACS ``HINS2`` (insurance purchased
   directly from an insurance company), which does not tell Marketplace
   coverage from other direct purchase. ``HINS2 == 2``: both False.
-  ``HINS2 == 1``: the transfer's draws stand where one of them is True;
-  where both are False, one keyed draw picks the type (Marketplace only,
-  non-Marketplace only, or both) at the donor ASEC role's conditional shares
-  among direct purchasers, by age band (under 65, 65 and over: at 65+ direct
-  purchase is mostly Medigap). The draw is keyed on
-  ``acs_2024_1yr:SERIALNO:SPORDER`` and the build seed. This choice among
-  direct purchasers is one function, :func:`choose_acs_direct_purchase_types`,
-  so a ruling on ``HIMRKS`` changes that function and nothing else in the
-  stage.
-- **Blanks.** The 2024 PUMS dictionary lists no blank code for HINS1 or
-  HINS2; a blank that arrives anyway keeps the transfer's draw and is counted.
-- **Not loaded:** ``HIMRKS`` (Subsidized Marketplace Coverage), which could
-  split the direct-purchase types, awaits a ruling.
+  ``HINS2 == 1``: ACS ``HIMRKS`` (Subsidized Marketplace Coverage, loaded as
+  ``ACS_HIMRKS``) code 1, direct purchase with a premium subsidy, which only
+  the Marketplace pays, sets the Marketplace flag True and keeps the drawn
+  non-Marketplace flag (ruled 25 Nov 2026). Under codes 0 and 2 and a blank
+  the transfer's draws stand where one of them is True; where both are False,
+  one keyed draw picks the type (Marketplace only, non-Marketplace only, or
+  both) at the donor ASEC role's conditional shares among direct purchasers,
+  by age band (under 65, 65 and over: at 65+ direct purchase is mostly
+  Medigap). The draw is keyed on ``acs_2024_1yr:SERIALNO:SPORDER`` and the
+  build seed. Code 2 cannot tell Marketplace coverage at full price from
+  other direct purchase, and code 0's universe is not documented, so no rule
+  reads either. This choice among direct purchasers is one function,
+  :func:`choose_acs_direct_purchase_types`.
+- **Blanks.** The 2024 PUMS dictionary lists no blank code for HINS1, HINS2
+  or HIMRKS; a blank that arrives anyway keeps the earlier rule and is
+  counted.
+- **Not an ACA anchor.** ``HIMRKS`` stays on the staged ACS person rows as a
+  raw source item, but this stage writes no subsidized-Marketplace anchor;
+  that use is not ruled.
 
 The step must run before the self-employed premium attribution
 (:mod:`~microcosm.build.us_runtime.acs_local_se_health_premiums`), which
@@ -54,7 +60,10 @@ import pandas as pd
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.acs_inputs import _nullable_source_codes
 from microcosm.build.us_runtime.acs_local_ssi_disability import _acs_draw_keys
-from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+from microcosm.build.us_runtime.acs_pums import (
+    ACS_2024_1YR_SPINE,
+    ACS_SOURCE_COLUMN_RENAMES,
+)
 from microcosm.build.us_runtime.acs_transfer import resolve_acs_donor_channel
 from microcosm.build.us_runtime.support_provenance import BASE_ASEC_SUPPORT_CHANNEL
 from microcosm.frame import Frame
@@ -82,7 +91,18 @@ _OTHER_DIRECT = "has_non_marketplace_direct_purchase_health_coverage_at_intervie
 ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS: tuple[str, ...] = (_ESI, _MARKETPLACE, _OTHER_DIRECT)
 _EMPLOYER_ITEM = "HINS1"
 _DIRECT_ITEM = "HINS2"
-ACS_LOCAL_COVERAGE_SOURCE_COLUMNS: tuple[str, ...] = (_EMPLOYER_ITEM, _DIRECT_ITEM)
+#: HIMRKS and its allocation flag, as the loader renames them.
+_SUBSIDY_ITEM = ACS_SOURCE_COLUMN_RENAMES["HIMRKS"]
+_SUBSIDY_ALLOCATION = ACS_SOURCE_COLUMN_RENAMES["FHIMRKSP"]
+#: HIMRKS 1: direct purchase coverage, with premium subsidy.
+_SUBSIDIZED_CODE = 1
+#: HIMRKS 1 and 2 are direct purchase codes; a conflict with HINS2 == 2.
+_DIRECT_PURCHASE_CODES = (1, 2)
+ACS_LOCAL_COVERAGE_SOURCE_COLUMNS: tuple[str, ...] = (
+    _EMPLOYER_ITEM,
+    _DIRECT_ITEM,
+    _SUBSIDY_ITEM,
+)
 _AGE = "age"
 #: The type of direct purchase as the two donor flags record it.
 ACS_DIRECT_PURCHASE_TYPES: Mapping[str, tuple[bool, bool]] = {
@@ -97,20 +117,30 @@ _AGE_BANDS: tuple[tuple[str, float, float], ...] = (
 )
 _DRAW_KEY_FORMAT = f"{ACS_2024_1YR_SPINE}:SERIALNO:SPORDER"
 _DRAW_SALT = "acs_local_direct_purchase_type"
-#: Where the Marketplace-versus-other choice comes from today. A ruling on
-#: HIMRKS changes :func:`choose_acs_direct_purchase_types` and this name.
+#: Where the Marketplace-versus-other choice comes from (ruled 25 Nov 2026:
+#: HIMRKS splits the direct-purchase flags).
 ACS_DIRECT_PURCHASE_CHOICE_SOURCE = (
-    "transfer_draws_else_donor_asec_type_shares_by_age_band"
+    "himrks_1_marketplace_else_transfer_draws_else_donor_asec_type_shares_by_age_band"
 )
 _SOURCE_LABELS: Mapping[str, str] = {
     _EMPLOYER_ITEM: "Insurance through a current or former employer or union",
     _DIRECT_ITEM: "Insurance purchased directly from an insurance company",
+    _SUBSIDY_ITEM: (
+        "HIMRKS, Subsidized Marketplace Coverage: 0 categorically ineligible "
+        "for subsidy, 1 direct purchase coverage with premium subsidy, 2 "
+        "direct purchase coverage without a premium subsidy"
+    ),
+    _SUBSIDY_ALLOCATION: "FHIMRKSP, Subsidized Marketplace Coverage allocation flag",
 }
-_NOT_LOADED: Mapping[str, str] = {
-    "HIMRKS": (
-        "Subsidized Marketplace Coverage (2024 PUMS: 0 categorically ineligible "
-        "for subsidy, 1 direct purchase with premium subsidy, 2 without); it "
-        "could split the direct-purchase types and awaits a ruling"
+_NOT_USED: Mapping[str, str] = {
+    "HIMRKS code 0": "its universe is not documented; no rule reads it",
+    "HIMRKS code 2": (
+        "direct purchase without a subsidy can be on or off the Marketplace; "
+        "the earlier rule applies"
+    ),
+    "subsidized-Marketplace anchor": (
+        "reported_has_subsidized_marketplace_health_coverage_at_interview is "
+        "not written; that use of HIMRKS is not ruled"
     ),
 }
 
@@ -248,41 +278,63 @@ def choose_acs_direct_purchase_types(
     drawn_other: np.ndarray,
     donor_shares: Mapping[str, Any],
     seed: int,
+    weights: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """The Marketplace-versus-other choice for ACS direct purchasers.
 
-    The one function a ruling on HIMRKS (Subsidized Marketplace Coverage,
-    which the loader does not read) changes; the HINS2 == 2 rule, ``has_esi``
-    and the rest of the stage stay. Today the shared transfer's draws stand
-    where either flag is True. Where both are False, one draw keyed on
-    ``acs_2024_1yr:SERIALNO:SPORDER`` and ``seed`` picks the type at the
-    donor ASEC role's shares in the person's age band (``donor_shares``, from
+    As ruled on 25 Nov 2026, ``HIMRKS`` (``ACS_HIMRKS``) code 1, direct
+    purchase coverage with a premium subsidy, sets the Marketplace flag True;
+    the drawn non-Marketplace flag stands, since HIMRKS says nothing about
+    another direct plan. Under codes 0 and 2 and a blank the earlier rule
+    holds: the shared transfer's draws stand where either flag is True; where
+    both are False, one draw keyed on ``acs_2024_1yr:SERIALNO:SPORDER`` and
+    ``seed`` picks the type at the donor ASEC role's shares in the person's
+    age band (``donor_shares``, from
     :func:`acs_local_direct_purchase_donor_shares`); a band without shares
-    leaves both False and counts the row as unresolved.
+    leaves both False and counts the row as unresolved. Code 0's universe is
+    not documented, so no rule reads it. The HINS2 == 2 rule, ``has_esi`` and
+    the rest of the stage do not depend on this function.
 
     Args:
-        rows: The HINS2 == 1 person rows, with ``age``, ``SPORDER`` and
-            ``person_household_id``.
+        rows: The HINS2 == 1 person rows, with ``ACS_HIMRKS``, ``age``,
+            ``SPORDER`` and ``person_household_id`` (and ``ACS_FHIMRKSP`` if
+            the source has it).
         household: The household table, for ``SERIALNO``.
         drawn_marketplace: The transferred Marketplace flag of ``rows``.
         drawn_other: The transferred non-Marketplace direct-purchase flag of
             ``rows``.
         donor_shares: The donor's type shares by age band.
         seed: The build seed.
+        weights: The person weights of ``rows``, for the receipt's shares.
 
     Returns:
         The two flags for ``rows``, in their order, and the receipt of the
-        choice.
+        choice (row counts and weighted shares only).
 
     Raises:
-        ValueError: If a row needs a draw and its key cannot be built.
+        ValueError: If a HIMRKS or FHIMRKSP code is malformed, or a row needs
+            a draw and its key cannot be built.
     """
 
+    subsidy = _nullable_source_codes(
+        rows[_SUBSIDY_ITEM].rename("HIMRKS"), minimum=0, maximum=2
+    )
+    subsidized = subsidy.eq(_SUBSIDIZED_CODE).to_numpy(dtype=bool)
+    allocated: np.ndarray | None = None
+    if _SUBSIDY_ALLOCATION in rows:
+        allocated = (
+            _nullable_source_codes(
+                rows[_SUBSIDY_ALLOCATION].rename("FHIMRKSP"), minimum=0, maximum=1
+            )
+            .eq(1)
+            .to_numpy(dtype=bool)
+        )
+    weights = np.asarray(weights, dtype=np.float64)
     drawn_marketplace = np.asarray(drawn_marketplace, dtype=bool)
     drawn_other = np.asarray(drawn_other, dtype=bool)
-    marketplace = drawn_marketplace.copy()
+    marketplace = drawn_marketplace | subsidized
     other = drawn_other.copy()
-    to_draw = ~drawn_marketplace & ~drawn_other
+    to_draw = ~subsidized & ~drawn_marketplace & ~drawn_other
     drawn_types: dict[str, int] = dict.fromkeys(ACS_DIRECT_PURCHASE_TYPES, 0)
     unresolved = np.zeros(len(rows), dtype=bool)
     if to_draw.any():
@@ -311,10 +363,41 @@ def choose_acs_direct_purchase_types(
             other[chosen_rows] = band_other
             for choice in chosen:
                 drawn_types[choice] += 1
+    codes = subsidy.to_numpy(dtype=np.float64, na_value=np.nan)
+    himrks: dict[str, Any] = {
+        "codes": _code_rows(subsidy),
+        "weighted_shares": {
+            **{
+                str(code): _weighted_share(weights, codes == code) for code in (0, 1, 2)
+            },
+            "blank": _weighted_share(weights, np.isnan(codes)),
+        },
+        "allocation_flag_loaded": allocated is not None,
+        "allocated_rows": int(allocated.sum()) if allocated is not None else None,
+        "allocated_code_1_rows": (
+            int((allocated & subsidized).sum()) if allocated is not None else None
+        ),
+        "code_1": {
+            "rows": int(subsidized.sum()),
+            "drawn_marketplace_true_rows": int((subsidized & drawn_marketplace).sum()),
+            "drawn_marketplace_false_rows": int(
+                (subsidized & ~drawn_marketplace).sum()
+            ),
+            "drawn_marketplace_weighted_share": _weighted_share(
+                weights[subsidized], drawn_marketplace[subsidized]
+            ),
+            "drawn_non_marketplace_kept_rows": int((subsidized & drawn_other).sum()),
+            "drawn_non_marketplace_only_became_both_rows": int(
+                (subsidized & drawn_other & ~drawn_marketplace).sum()
+            ),
+        },
+    }
     receipt: dict[str, Any] = {
         "source": ACS_DIRECT_PURCHASE_CHOICE_SOURCE,
         "rows": int(len(rows)),
-        "draw_kept_rows": int((~to_draw).sum()),
+        "himrks": himrks,
+        "set_marketplace_by_code_1_rows": int((subsidized & ~drawn_marketplace).sum()),
+        "draw_kept_rows": int((~subsidized & ~to_draw).sum()),
         "type_drawn_rows": int((to_draw & ~unresolved).sum()),
         "type_drawn_by_type": drawn_types,
         "unresolved_rows": int(unresolved.sum()),
@@ -365,12 +448,15 @@ def with_acs_local_coverage_anchors(
     ]
     if missing:
         raise ValueError(
-            f"ACS coverage anchors require person column(s) {missing}: HINS1 and "
-            "HINS2 from the pinned ACS PUMS source, the flags from the shared "
-            f"transfer ({ACS_LOCAL_COVERAGE_ANCHORS_ISSUE})."
+            f"ACS coverage anchors require person column(s) {missing}: HINS1, "
+            "HINS2 and HIMRKS (as ACS_HIMRKS) from the pinned ACS PUMS source, "
+            f"the flags from the shared transfer ({ACS_LOCAL_COVERAGE_ANCHORS_ISSUE})."
         )
     employer = _nullable_source_codes(person[_EMPLOYER_ITEM], minimum=1, maximum=2)
     direct = _nullable_source_codes(person[_DIRECT_ITEM], minimum=1, maximum=2)
+    subsidy = _nullable_source_codes(
+        person[_SUBSIDY_ITEM].rename("HIMRKS"), minimum=0, maximum=2
+    )
     drawn_esi = _flags(person[_ESI], _ESI)
     drawn_marketplace = _flags(person[_MARKETPLACE], _MARKETPLACE)
     drawn_other = _flags(person[_OTHER_DIRECT], _OTHER_DIRECT)
@@ -395,6 +481,9 @@ def with_acs_local_coverage_anchors(
         drawn_other=drawn_other[yes_rows],
         donor_shares=acs_local_direct_purchase_donor_shares(donor),
         seed=seed,
+        weights=np.asarray(frame.resolve_weights("person").values, dtype=np.float64)[
+            yes_rows
+        ],
     )
     marketplace[yes_rows] = chosen_marketplace
     other[yes_rows] = chosen_other
@@ -445,6 +534,24 @@ def with_acs_local_coverage_anchors(
                 _OTHER_DIRECT: int((no_direct & drawn_other).sum()),
             },
             "hins2_yes_rows": int(yes_direct.sum()),
+            # HINS2 == 2 wins over a HIMRKS direct-purchase code: both flags
+            # stay False. Counted, never resolved the other way.
+            "himrks_conflicts": {
+                "hins2_no_himrks_direct_rows": {
+                    str(code): int((no_direct & subsidy.eq(code).to_numpy()).sum())
+                    for code in _DIRECT_PURCHASE_CODES
+                },
+                "hins2_no_himrks_direct_weighted_share": _weighted_share(
+                    weights,
+                    no_direct & subsidy.isin(_DIRECT_PURCHASE_CODES).to_numpy(),
+                ),
+                "hins2_blank_himrks_direct_rows": int(
+                    (
+                        direct.isna().to_numpy()
+                        & subsidy.isin(_DIRECT_PURCHASE_CODES).to_numpy()
+                    ).sum()
+                ),
+            },
             "choice": choice,
             "weighted_shares": {
                 column: {
@@ -457,6 +564,6 @@ def with_acs_local_coverage_anchors(
                 )
             },
         },
-        "not_loaded": dict(_NOT_LOADED),
+        "not_used": dict(_NOT_USED),
     }
     return result, _json_ready(receipt)

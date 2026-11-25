@@ -5023,8 +5023,10 @@ def finalize_reviewed_limitations(
                 "direct-purchase flags False where it is 2; where it is 1 the "
                 "draws stand unless both are False, and then one keyed draw "
                 "picks the type at the donor ASEC role's shares among direct "
-                "purchasers by age band. HIMRKS (Subsidized Marketplace "
-                "Coverage) is not loaded."
+                "purchasers by age band, except that HIMRKS (Subsidized "
+                "Marketplace Coverage) code 1, direct purchase with a premium "
+                "subsidy, sets the Marketplace flag True (ruled 25 Nov 2026). "
+                "HIMRKS is not used as an ACA anchor."
             ),
             "treatment": (
                 "Written at staging only in missing ACS cells, except the "

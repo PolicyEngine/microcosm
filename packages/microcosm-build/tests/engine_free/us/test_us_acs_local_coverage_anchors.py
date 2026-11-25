@@ -125,6 +125,9 @@ def _acs_frame(rows=_ROWS, **person_overrides: Any) -> Frame:
             _ESI: [row[3] for row in rows],
             _MARKETPLACE: [row[4] for row in rows],
             _OTHER: [row[5] for row in rows],
+            # HIMRKS 0 (categorically ineligible for a subsidy): no rule reads
+            # it, so the earlier rule decides every row.
+            "ACS_HIMRKS": 0,
             **person_overrides,
         }
     )
@@ -239,20 +242,33 @@ def test_the_acs_items_replace_the_draws() -> None:
     assert choice["unresolved_rows"] == 0
     assert choice["draw_key"] == "acs_2024_1yr:SERIALNO:SPORDER"
     assert choice["seed"] == 7
-    assert "HIMRKS" in receipt["not_loaded"]
+    assert choice["himrks"]["codes"] == {"0": 4, "blank": 0}
+    assert choice["set_marketplace_by_code_1_rows"] == 0
+    assert direct["himrks_conflicts"] == {
+        "hins2_no_himrks_direct_rows": {"1": 0, "2": 0},
+        "hins2_no_himrks_direct_weighted_share": 0.0,
+        "hins2_blank_himrks_direct_rows": 0,
+    }
+    assert set(receipt["not_used"]) == {
+        "HIMRKS code 0",
+        "HIMRKS code 2",
+        "subsidized-Marketplace anchor",
+    }
     json.dumps(receipt, allow_nan=False)
 
 
 def test_the_choice_is_one_function_over_the_direct_purchasers() -> None:
-    """The Marketplace-versus-other choice, alone: the function a ruling on
-    HIMRKS would change. Draws with a type stand; rows with none take the
-    donor's type for their age band; a band without shares stays unresolved."""
+    """The Marketplace-versus-other choice, alone. Without a HIMRKS code 1,
+    draws with a type stand; rows with none take the donor's type for their
+    age band; a band without shares stays unresolved."""
 
     rows = pd.DataFrame(
         {
             "person_household_id": [1, 2, 3, 4, 5],
             "SPORDER": [1, 1, 1, 1, 2],
             "age": [40.0, 70.0, 30.0, 80.0, 50.0],
+            # Codes 0 and 2 and a blank: the earlier rule decides every row.
+            "ACS_HIMRKS": [0, 2, 0, np.nan, 0],
         }
     )
     household = pd.DataFrame(
@@ -277,12 +293,29 @@ def test_the_choice_is_one_function_over_the_direct_purchasers() -> None:
         drawn_other=np.asarray([False, True, False, False, False]),
         donor_shares=shares,
         seed=11,
+        weights=np.ones(5),
     )
     assert marketplace.tolist() == [True, False, True, False, True]
     assert other.tolist() == [False, True, True, False, True]
     assert receipt == {
         "source": ACS_DIRECT_PURCHASE_CHOICE_SOURCE,
         "rows": 5,
+        "himrks": {
+            "codes": {"0": 3, "2": 1, "blank": 1},
+            "weighted_shares": {"0": 0.6, "1": 0.0, "2": 0.2, "blank": 0.2},
+            "allocation_flag_loaded": False,
+            "allocated_rows": None,
+            "allocated_code_1_rows": None,
+            "code_1": {
+                "rows": 0,
+                "drawn_marketplace_true_rows": 0,
+                "drawn_marketplace_false_rows": 0,
+                "drawn_marketplace_weighted_share": 0.0,
+                "drawn_non_marketplace_kept_rows": 0,
+                "drawn_non_marketplace_only_became_both_rows": 0,
+            },
+        },
+        "set_marketplace_by_code_1_rows": 0,
         "draw_kept_rows": 2,
         "type_drawn_rows": 2,
         "type_drawn_by_type": {
@@ -304,12 +337,116 @@ def test_the_choice_is_one_function_over_the_direct_purchasers() -> None:
         drawn_other=np.asarray([False, True]),
         donor_shares=shares,
         seed=11,
+        weights=np.ones(2),
     )
     assert (kept_marketplace.tolist(), kept_other.tolist()) == (
         [True, False],
         [False, True],
     )
     assert kept["type_drawn_rows"] == 0
+
+
+def test_himrks_code_1_sets_the_marketplace_flag_and_keeps_the_other_draw() -> None:
+    """As ruled on 25 Nov 2026: HIMRKS 1 (direct purchase with a premium
+    subsidy) sets the Marketplace flag; the drawn non-Marketplace flag stands.
+    Codes 0 and 2 and a blank keep the earlier rule."""
+
+    rows = pd.DataFrame(
+        {
+            "person_household_id": [1, 2, 3, 4, 5, 6],
+            "SPORDER": 1,
+            "age": [40.0, 40.0, 40.0, 40.0, 40.0, 70.0],
+            "ACS_HIMRKS": [1, 1, 1, 2, 0, np.nan],
+            "ACS_FHIMRKSP": [1, 0, 0, 0, 0, 0],
+        }
+    )
+    household = pd.DataFrame(
+        {"household_id": [1, 2, 3, 4, 5, 6], "SERIALNO": list("ABCDEF")}
+    )
+    shares = {
+        "bands": {
+            "under_65": {
+                "shares": {
+                    "marketplace_only": 0.0,
+                    "non_marketplace_only": 0.0,
+                    "both": 1.0,
+                }
+            },
+            "65_plus": {"shares": None},
+        }
+    }
+    marketplace, other, receipt = choose_acs_direct_purchase_types(
+        rows,
+        household,
+        # Code 1 rows: nothing drawn; a non-Marketplace draw; a Marketplace draw.
+        drawn_marketplace=np.asarray([False, False, True, False, False, False]),
+        drawn_other=np.asarray([False, True, False, False, True, False]),
+        donor_shares=shares,
+        seed=11,
+        weights=np.arange(1.0, 7.0),
+    )
+    assert marketplace.tolist() == [True, True, True, True, False, False]
+    assert other.tolist() == [False, True, False, True, True, False]
+    himrks = receipt["himrks"]
+    assert himrks["codes"] == {"0": 1, "1": 3, "2": 1, "blank": 1}
+    assert himrks["weighted_shares"] == pytest.approx(
+        {"0": 5 / 21, "1": 6 / 21, "2": 4 / 21, "blank": 6 / 21}
+    )
+    assert himrks["allocation_flag_loaded"] is True
+    assert (himrks["allocated_rows"], himrks["allocated_code_1_rows"]) == (1, 1)
+    assert himrks["code_1"] == {
+        "rows": 3,
+        "drawn_marketplace_true_rows": 1,
+        "drawn_marketplace_false_rows": 2,
+        "drawn_marketplace_weighted_share": pytest.approx(3 / 6),
+        "drawn_non_marketplace_kept_rows": 1,
+        "drawn_non_marketplace_only_became_both_rows": 1,
+    }
+    assert receipt["set_marketplace_by_code_1_rows"] == 2
+    # Code 0 with a drawn type: kept. Code 2 with nothing drawn: the donor's
+    # under-65 type. The blank 70-year-old: no 65+ shares, so unresolved.
+    assert receipt["draw_kept_rows"] == 1
+    assert receipt["type_drawn_rows"] == 1
+    assert receipt["type_drawn_by_type"]["both"] == 1
+    assert receipt["unresolved_rows"] == 1
+    json.dumps(receipt, allow_nan=False)
+
+    with pytest.raises(ValueError, match=r"FHIMRKSP requires blank"):
+        choose_acs_direct_purchase_types(
+            rows.assign(ACS_FHIMRKSP=[2, 0, 0, 0, 0, 0]),
+            household,
+            drawn_marketplace=np.zeros(6, dtype=bool),
+            drawn_other=np.zeros(6, dtype=bool),
+            donor_shares=shares,
+            seed=11,
+            weights=np.ones(6),
+        )
+
+
+def test_hins2_no_wins_over_a_himrks_direct_purchase_code_and_is_counted() -> None:
+    result, receipt = with_acs_local_coverage_anchors(
+        _acs_frame(ACS_HIMRKS=[1, 2, 1, 1, 1, 0, 0, 1]), _support_donor(), seed=7
+    )
+    person = result.table("person")
+    # Rows 1 and 2 have HINS2 2: both flags False, whatever HIMRKS says.
+    assert not person[_MARKETPLACE].iloc[:2].any()
+    assert not person[_OTHER].iloc[:2].any()
+    # Rows 4 and 5 have HINS2 1, nothing drawn and code 1: Marketplace only
+    # (row 5 is 70, where the donor's type would be non-Marketplace).
+    assert person[_MARKETPLACE].iloc[3:5].tolist() == [True, True]
+    assert person[_OTHER].iloc[3:5].tolist() == [False, False]
+    # Row 6 has HINS2 1, a drawn non-Marketplace type and code 0: kept.
+    assert (person[_MARKETPLACE].iloc[5], person[_OTHER].iloc[5]) == (False, True)
+    conflicts = receipt["direct_purchase"]["himrks_conflicts"]
+    assert conflicts["hins2_no_himrks_direct_rows"] == {"1": 1, "2": 1}
+    assert conflicts["hins2_no_himrks_direct_weighted_share"] == pytest.approx(2 / 8)
+    # Row 8 has a blank HINS2 and code 1: its draws stand, and it is counted.
+    assert conflicts["hins2_blank_himrks_direct_rows"] == 1
+    assert (person[_MARKETPLACE].iloc[7], person[_OTHER].iloc[7]) == (True, True)
+    choice = receipt["direct_purchase"]["choice"]
+    assert choice["himrks"]["codes"] == {"0": 1, "1": 3, "blank": 0}
+    assert choice["set_marketplace_by_code_1_rows"] == 2
+    assert "subsidized-Marketplace anchor" in receipt["not_used"]
 
 
 def _mixed_rows(n: int = 40) -> list[tuple]:
@@ -385,6 +522,7 @@ def test_a_band_without_donor_purchasers_falls_back_to_all_ages() -> None:
             {_ESI: [True, None, True, False, False, True, True, False]},
             "complete boolean",
         ),
+        ({"ACS_HIMRKS": [0, 0, 0, 0, 0, 0, 0, 3]}, r"HIMRKS requires blank"),
     ],
 )
 def test_malformed_inputs_are_refused(overrides, match) -> None:
@@ -394,7 +532,9 @@ def test_malformed_inputs_are_refused(overrides, match) -> None:
         )
 
 
-@pytest.mark.parametrize("column", ["HINS1", "HINS2", _MARKETPLACE, "age"])
+@pytest.mark.parametrize(
+    "column", ["HINS1", "HINS2", "ACS_HIMRKS", _MARKETPLACE, "age"]
+)
 def test_a_missing_column_is_refused(column) -> None:
     frame = _acs_frame()
     tables = {entity: frame.table(entity) for entity in frame.entities}
@@ -522,7 +662,8 @@ def test_the_seam_runs_the_step_after_the_transfers_and_before_the_premiums(
 
 
 def _raw_acs(n: int = 20) -> Frame:
-    """A raw ACS spine of one-person households with HINS1 and HINS2."""
+    """A raw ACS spine of one-person households with HINS1, HINS2 and
+    HIMRKS (as the loader renames it)."""
 
     rng = np.random.default_rng(2024)
     households = np.arange(600, 600 + n)
@@ -547,6 +688,8 @@ def _raw_acs(n: int = 20) -> Frame:
             "INTP": 0.0,
             "HINS1": np.resize([1, 2, 2], n),
             "HINS2": np.resize([2, 1, 2, 1], n),
+            "ACS_HIMRKS": np.resize([0, 1, 2, 1, 0], n),
+            "ACS_FHIMRKSP": 0,
         }
     )
     return Frame(
@@ -625,6 +768,10 @@ def test_a_real_transfer_keeps_every_other_draw_and_takes_the_acs_items(
     assert not acs.loc[no_direct, _MARKETPLACE].any()
     assert not acs.loc[no_direct, _OTHER].any()
     assert (acs.loc[~no_direct, _MARKETPLACE] | acs.loc[~no_direct, _OTHER]).all()
+    subsidized = ~no_direct & acs["ACS_HIMRKS"].eq(1)
+    assert subsidized.any() and acs.loc[subsidized, _MARKETPLACE].all()
+    # The raw item stays on the staged ACS rows, for a later stage.
+    assert acs["ACS_HIMRKS"].notna().all()
     # Donor rows keep the donor release's values.
     for column in columns:
         assert donor[column].tolist() == donor_before[column].tolist(), column
