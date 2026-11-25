@@ -48,6 +48,7 @@ __all__ = [
     "SCHEMA_NAME",
     "main",
     "reconstruct_uk_publication",
+    "reconstruct_uk_schema",
     "summary_text",
 ]
 
@@ -552,6 +553,10 @@ def reconstruct_uk_publication(
         },
     )
     return report
+
+
+#: The name the split tool is to have; it still writes the old layout.
+reconstruct_uk_schema = reconstruct_uk_publication
 
 
 def _count(number: int, noun: str) -> str:

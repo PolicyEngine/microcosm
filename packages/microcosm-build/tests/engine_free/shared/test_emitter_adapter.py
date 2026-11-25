@@ -52,7 +52,7 @@ def _record_starts(monkeypatch, client=None):
     return starts
 
 
-def test_starts_one_emitter_with_telemetry_graph_and_hugging_face_modules(
+def test_starts_one_emitter_with_telemetry_and_hugging_face_modules_only(
     monkeypatch, tmp_path
 ):
     client = FakeEmitterClient()
@@ -81,8 +81,9 @@ def test_starts_one_emitter_with_telemetry_graph_and_hugging_face_modules(
     assert telemetry.identity == {"commit": "synthetic"}
     assert telemetry.heartbeat_seconds == 123
     assert telemetry.development_collector_url is None
-    assert isinstance(options["orrery"], OrrerySettings)
-    assert options["orrery"].development_collector_url is None
+    # The collector builds the Orrery graph files from the staged bundle's
+    # inputs, so a build starts no graph publication module.
+    assert "orrery" not in options
     hugging_face = options["hugging_face"]
     assert isinstance(hugging_face, HuggingFaceSettings)
     # The hand-over tables stay in their own SQLite file beside the spool,

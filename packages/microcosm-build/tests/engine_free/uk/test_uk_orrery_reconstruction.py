@@ -33,6 +33,7 @@ from microcosm.build.uk_runtime.orrery_reconstruction import (
     SCHEMA_NAME,
     main,
     reconstruct_uk_publication,
+    reconstruct_uk_schema,
 )
 from microcosm.build.uk_runtime.rowwise_cli import MANIFEST_FILENAME, json_text
 from microcosm.graph import Graph, Node, Owned, SourceRef, StructuralDelta
@@ -282,6 +283,29 @@ def test_dense_build_reconstructs_the_normal_publication_layout(tmp_path):
     }
 
 
+def test_dense_build_reconstructs_only_a_marked_schema_and_its_report(tmp_path):
+    """The collector makes the Orrery document from the reconstructed schema,
+    so the tool writes no document and no publication inventory."""
+    build = write_pre_1144_build(tmp_path / "build")
+    output = tmp_path / "reconstruction"
+
+    report = reconstruct_uk_schema(build, output)
+
+    assert sorted(path.name for path in output.iterdir()) == sorted(
+        [SCHEMA_NAME, REPORT_NAME]
+    )
+    schema = validate_graph_schema(read_json(output / SCHEMA_NAME))
+    assert (output / SCHEMA_NAME).read_bytes() == canonical_json(schema)
+    marker = validate_reconstruction(schema)
+    assert marker is not None
+    assert (marker["reconstructed"], marker["basis"]) == (True, "declaration_only")
+    assert marker["source_revision"]["git_commit"] == RECORDED_COMMIT
+    assert report == read_json(output / REPORT_NAME)
+    assert report["protocol"] == "microcosm.uk.orrery-reconstruction-report.v2"
+    assert report["files"] == [SCHEMA_NAME]
+    assert not {"publication_id", "published_files"} & report.keys()
+
+
 def test_marker_names_the_recorded_revision_and_every_input_digest(tmp_path):
     build = write_pre_1144_build(tmp_path / "build")
     output = tmp_path / "publication"
@@ -506,8 +530,10 @@ def test_build_with_recorded_orrery_evidence_is_refused(tmp_path, recorded_file)
     build = write_pre_1144_build(tmp_path / "build")
     (build / recorded_file).write_text("{}")
 
-    with pytest.raises(ValueError, match="python -m microcosm.graph.orrery"):
-        reconstruct_uk_publication(build, tmp_path / "publication")
+    with pytest.raises(
+        ValueError, match="python -m microcosm.build.uk_runtime.orrery_inputs"
+    ):
+        reconstruct_uk_schema(build, tmp_path / "reconstruction")
 
 
 def test_staged_bundle_without_a_declaration_is_refused_naming_what_is_missing(
@@ -735,8 +761,10 @@ def test_cli_writes_the_publication_and_prints_a_summary(tmp_path, capsys):
     assert str(output) in printed
     assert RECORDED_COMMIT in printed
     assert "reconstructed by: " in printed
-    assert "declaration only" in printed
-    assert (output / GRAPH_NAME).is_file()
+    assert "Wrote a reconstructed graph schema (declaration only)" in printed
+    assert sorted(path.name for path in output.iterdir()) == sorted(
+        [SCHEMA_NAME, REPORT_NAME]
+    )
     with pytest.raises(SystemExit) as refusal:
         main(["--build", str(build), "--output", str(output)])
     assert refusal.value.code == 2
