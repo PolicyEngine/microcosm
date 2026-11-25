@@ -34,8 +34,8 @@ flag leaves:
   weights in 2025, against DWP's 63.3%, where the linked statements alone
   give 60.9%.
 
-These choices are for María's signature (microcosm#1710). On her call of 25
-November 2026, only linked claims set the flag.
+María signed these choices on 25 November 2026 (microcosm#1710), the day she
+ruled that only linked claims set the flag.
 """
 
 from __future__ import annotations
