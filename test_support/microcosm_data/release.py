@@ -43,6 +43,8 @@ from microcosm.data.release import (
 )
 from microcosm.data.stored_inputs import register_sha256
 from test_support.microcosm_data.build_folders import (
+    BE_BUILD,
+    BE_RELEASE_IDS,
     UK_NATIONAL_BUILD,
     to_build_folder_layout,
 )
@@ -812,6 +814,55 @@ def _as_uk_national_build_folder_release(release_dir: Path) -> Path:
     }
     manifest_path.write_text(json.dumps(manifest))
     return to_build_folder_layout(national, build=UK_NATIONAL_BUILD)
+
+
+#: The repository every BE fixture artifact names; a fixture name, not BE's
+#: release repository.
+BE_FIXTURE_REPO_ID = "policyengine/microcosm-be-fixture"
+#: The files BE's release contract adds to the base three, each with the
+#: artifact key a BE fixture declares it under.
+BE_CONTRACT_FILES = {
+    "source_coverage": "source_coverage.json",
+    "demographics": "demographics.json",
+    "reform_validation": "reform_validation.json",
+}
+
+
+def _as_be_build_folder_release(
+    release_dir: Path,
+    *,
+    release: str = BE_RELEASE_IDS[0],
+    build: str = BE_BUILD,
+    drop: tuple[str, ...] = (),
+) -> Path:
+    """Retarget the publisher fixture to a build of a BE release.
+
+    The directory is named after ``release``, the manifests name it and
+    ``build`` in the build-folder layout, every artifact lives in a BE
+    fixture repository, and the build carries the three files BE's release
+    contract adds to the base set, each declared as an artifact, except the
+    ones ``drop`` names.
+    """
+    be_release_dir = release_dir.with_name(release)
+    release_dir.rename(be_release_dir)
+    manifest_path = be_release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for artifact in manifest["artifacts"].values():
+        artifact["repo_id"] = BE_FIXTURE_REPO_ID
+    for key, filename in BE_CONTRACT_FILES.items():
+        if filename in drop:
+            continue
+        contract_file = be_release_dir / filename
+        contract_file.write_text(json.dumps({"schema_version": 1, "country": "be"}))
+        manifest["artifacts"][key] = {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": BE_FIXTURE_REPO_ID,
+            "revision": release,
+            "sha256": _sha256(contract_file),
+        }
+    manifest_path.write_text(json.dumps(manifest))
+    return to_build_folder_layout(be_release_dir, build=build)
 
 
 def _as_us_national_build_folder_release(release_dir: Path) -> Path:
