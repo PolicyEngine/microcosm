@@ -1263,3 +1263,107 @@ def test_only_the_start_result_files_and_end_are_handed_over(tmp_path):
     assert (progress["status"], progress["current_stage"]) == ("completed", "complete")
     calibration = json.loads(remote[f"{prefix}/calibration_progress.json"])
     assert [row["epoch"] for row in calibration["events"]] == [1, 2, 3]
+
+
+def test_the_writer_has_no_commit_interval_clock_or_forced_stage_option():
+    """Every hand-over is forced, so neither an interval nor a flag applies."""
+    parameters = inspect.signature(StagingRunBundleWriterV2).parameters
+    assert "upload_interval_seconds" not in parameters
+    assert "monotonic" not in parameters
+    assert (
+        "force_upload"
+        not in inspect.signature(StagingRunBundleWriterV2.stage).parameters
+    )
+    assert (
+        "force_upload"
+        not in inspect.signature(StagingRunBundleWriterV2.add_artifact).parameters
+    )
+
+
+def test_the_staging_options_have_no_upload_interval():
+    parser = argparse.ArgumentParser()
+    add_staging_arguments(
+        parser,
+        repository=StagingRepositoryConfig(
+            default_repo_id=UK_STAGING,
+            repo_id_environment_variable="UK_STAGING_REPO_ID",
+        ),
+    )
+
+    assert "staging_upload_interval_seconds" not in vars(parser.parse_args([]))
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--staging-upload-interval-seconds", "30"])
+
+
+def _closed_remote_run(tmp_path, emitter):
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id=UK_STAGING,
+        emitter_client=emitter,
+    )
+    telemetry.complete()
+    return telemetry
+
+
+def test_a_completed_run_confirms_that_the_hub_holds_its_final_state(tmp_path):
+    emitter = FakeEmitterClient()
+    telemetry = _closed_remote_run(tmp_path, emitter)
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=120.0)
+
+    assert check.confirmed is True
+    assert check.reason is None
+    assert check.files_compared > 0
+    assert emitter.read_back_waits == [120.0]
+    # The opt-in read-back (--staging-read-back) keeps its own record.
+    assert telemetry.delivery_summary["read_back"] == "not_requested"
+
+
+def test_an_unconfirmed_final_commit_warns_without_raising(tmp_path, capsys):
+    emitter = FakeEmitterClient()
+    emitter.read_back_answer = {
+        "status": "failed",
+        "files": 3,
+        "mismatched_paths": [],
+        "error_code": "REPOSITORY_UNAVAILABLE",
+    }
+    telemetry = _closed_remote_run(tmp_path, emitter)
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=30.0)
+
+    assert check.confirmed is False
+    assert check.reason == "REPOSITORY_UNAVAILABLE"
+    assert telemetry.delivery_summary["read_back"] == "not_requested"
+    assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"
+    err = capsys.readouterr().err
+    assert "final commit" in err and "not confirmed" in err
+
+
+def test_a_final_state_the_emitter_refused_is_not_read_back(tmp_path):
+    emitter = FakeEmitterClient()
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id=UK_STAGING,
+        emitter_client=emitter,
+    )
+    emitter.accept_run_files = False
+    telemetry.complete()
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=120.0)
+
+    assert check.confirmed is False
+    assert check.reason == "not_handed_over"
+    assert "read_back_run_files" not in emitter.calls
+
+
+def test_a_local_only_run_has_no_final_commit_to_confirm(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.complete()
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    assert telemetry.confirm_final_commit(wait_seconds=120.0) is None

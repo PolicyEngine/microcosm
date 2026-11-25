@@ -5912,3 +5912,49 @@ def test_a_child_tab_without_chearns_is_refused(tmp_path: Path) -> None:
     stage = _write_fixture(tmp_path, tables)
     with pytest.raises(KeyError, match="CHEARNS"):
         UKFRSSpineStageTransform(tmp_path, stage=stage)(uk_frs_spine_seed_frame())
+
+
+def test_a_failed_spine_run_confirms_its_final_commit_before_its_outcome(tmp_path):
+    """The emitter drops events after a run's outcome, so the check goes first."""
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    client = FakeEmitterClient()
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(
+            run_id="uk-spine-final",
+            country_code="GB",
+            pipeline="uk_national_spine",
+            candidate_id="uk-spine-final",
+            producer_id="producer-a",
+        ),
+        client=client,
+    )
+    bundle = StagingRunBundleWriterV2(
+        run_id="uk-spine-final",
+        country_code="GB",
+        operation_id="uk_frs_spine",
+        pipeline_id="uk_national_spine",
+        pipeline_version="2026.10",
+        candidate_id="uk-spine-final",
+        local_dir=tmp_path / "staging",
+        run_kind="smoke",
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        emitter_client=client,
+    )
+
+    spine_build._close_failed_telemetry(bundle, emitter, RuntimeError("spine failed"))
+
+    assert client.read_back_waits == [120.0]
+    final_commit = [
+        event["status"]
+        for event in emitter.events
+        if event["stage_id"] == "staging_final_commit"
+    ]
+    assert final_commit == ["started", "completed"]
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["failed"]

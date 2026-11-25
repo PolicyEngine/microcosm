@@ -451,3 +451,79 @@ def test_failure_hands_over_the_final_state_after_paused_hand_overs(tmp_path):
     progress = emitter.hub_json(US_STAGING, "runs/run-p/progress.json")
     assert (progress["status"], progress["stage"]) == ("failed", "failed")
     assert progress["message"] == "solver exploded"
+
+
+def test_the_writer_has_no_commit_interval_or_forced_stage_option():
+    """Every hand-over is forced, so neither an interval nor a flag applies."""
+    assert (
+        "upload_interval_seconds"
+        not in inspect.signature(StagingRunBundleWriter).parameters
+    )
+    assert (
+        "force_upload" not in inspect.signature(StagingRunBundleWriter.stage).parameters
+    )
+    assert (
+        "force_upload"
+        not in inspect.signature(StagingRunBundleWriter.attach_artifact).parameters
+    )
+
+
+def test_a_completed_run_confirms_that_the_hub_holds_its_final_state(tmp_path):
+    emitter = FakeEmitterClient()
+    telemetry = _remote_writer(tmp_path, emitter, run_id="run-c")
+    telemetry.complete()
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=120.0)
+
+    assert check.confirmed is True
+    assert check.reason is None
+    assert check.files_compared > 0
+    assert emitter.read_back_waits == [120.0]
+
+
+def test_an_unconfirmed_final_commit_warns_without_raising(tmp_path, capsys):
+    emitter = FakeEmitterClient()
+    emitter.read_back_answer = {
+        "status": "failed",
+        "files": 4,
+        "mismatched_paths": ["runs/run-u/progress.json"],
+        "error_code": None,
+    }
+    telemetry = _remote_writer(tmp_path, emitter, run_id="run-u")
+    telemetry.fail(RuntimeError("solver exploded"))
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=30.0)
+
+    assert check.confirmed is False
+    assert check.reason == "failed"
+    assert emitter.read_back_waits == [30.0]
+    err = capsys.readouterr().err
+    assert "final commit" in err and "not confirmed" in err
+
+
+def test_a_final_state_the_emitter_refused_is_not_read_back(tmp_path):
+    """Read-back compares the Hub with what the emitter committed, which would
+    then be an older state of the run."""
+    emitter = FakeEmitterClient()
+    telemetry = _remote_writer(tmp_path, emitter, run_id="run-r")
+    emitter.accept_run_files = False
+    telemetry.complete()
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=120.0)
+
+    assert check.confirmed is False
+    assert check.reason == "not_handed_over"
+    assert "read_back_run_files" not in emitter.calls
+
+
+def test_a_local_only_run_has_no_final_commit_to_confirm(tmp_path):
+    telemetry = StagingRunBundleWriter(
+        run_id="run-l", candidate_release_id="run-l", run_dir=tmp_path / "run-l"
+    )
+    telemetry.complete()
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    assert telemetry.confirm_final_commit(wait_seconds=120.0) is None

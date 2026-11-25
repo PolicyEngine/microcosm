@@ -16021,6 +16021,136 @@ def test_a_sigterm_closes_the_staging_run_as_failed_and_exits_143(monkeypatch) -
     assert handler_after_build is test_handler
 
 
+def _remote_build_progress(module, tmp_path, client=None):
+    """A build's progress with remote staging, on one in-memory emitter."""
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun("rel-1", "US", "us_fiscal_refresh"), client=client
+    )
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id="policyengine/populace-us-staging",
+        staging_run_id=None,
+        staging_prefix="runs",
+        staging_upload_interval_seconds=60.0,
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
+    )
+    progress = module._build_progress(
+        args, release_root=tmp_path, release_id="rel-1", emitter=emitter
+    )
+    return progress, emitter
+
+
+def _final_commit_events(emitter) -> list[tuple[str, dict]]:
+    return [
+        (event["status"], event["details"])
+        for event in emitter.events
+        if event["stage_id"] == "staging_final_commit"
+    ]
+
+
+def test_a_completed_build_confirms_its_final_staging_commit(tmp_path) -> None:
+    """The read-back runs before the emitter closes, and the collector hears it."""
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+
+    progress.complete()
+
+    client = emitter.client
+    assert client.read_back_waits == [120.0]
+    assert client.calls.index("read_back_run_files") < client.calls.index("close")
+    events = _final_commit_events(emitter)
+    assert [status for status, _ in events] == ["started", "completed"]
+    assert events[-1][1]["confirmed"] is True
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["completed"]
+
+
+def test_an_unconfirmed_final_commit_still_completes_the_build(
+    tmp_path, capsys
+) -> None:
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    module = _load_builder_module()
+    client = FakeEmitterClient()
+    client.read_back_answer = {
+        "status": "pending",
+        "files": 0,
+        "mismatched_paths": [],
+        "error_code": None,
+    }
+    progress, emitter = _remote_build_progress(module, tmp_path, client=client)
+
+    progress.complete()
+
+    events = _final_commit_events(emitter)
+    assert [status for status, _ in events] == ["started", "failed"]
+    assert events[-1][1]["confirmed"] is False
+    assert events[-1][1]["reason"] == "pending"
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["completed"]
+    assert "not confirmed" in capsys.readouterr().err
+
+
+def test_a_failed_build_confirms_its_final_staging_commit(tmp_path) -> None:
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+
+    progress.fail(RuntimeError("build exploded"))
+
+    assert emitter.client.read_back_waits == [120.0]
+    assert [status for status, _ in _final_commit_events(emitter)] == [
+        "started",
+        "completed",
+    ]
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["failed"]
+
+
+def test_a_terminated_build_waits_at_most_30_seconds_for_its_final_commit(
+    tmp_path,
+) -> None:
+    """The Modal runner sends SIGKILL 60 seconds after SIGTERM, and the emitter
+    then needs up to 15 seconds to finish."""
+    from microcosm.build.termination import BuildTerminatedError
+
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+
+    progress.fail(BuildTerminatedError())
+
+    assert emitter.client.read_back_waits == [30.0]
+    run_events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert [event["status"] for event in run_events] == ["failed"]
+    assert run_events[0]["details"]["error_code"] == "TERMINATED"
+
+
+def test_the_release_parser_has_no_staging_upload_interval() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                "--staging-upload-interval-seconds",
+                "30",
+            ]
+        )
+    assert (
+        "force_upload" not in inspect.signature(builder._BuildProgress.stage).parameters
+    )
+
+
 def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) -> None:
     module = _load_builder_module()
 

@@ -4364,3 +4364,154 @@ def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_a
 
     assert raised.value.reason == "command_not_found"
     assert sorted(tmp_path.rglob("*")) == before
+
+
+def _remote_uk_run(tmp_path, name):
+    """A remote UK staging run and the build's emitter, on one in-memory client.
+
+    The emitter stays open after the run's outcome, as the full build's does.
+    """
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    client = FakeEmitterClient()
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(
+            run_id=name,
+            country_code="GB",
+            pipeline="uk_local_candidate",
+            candidate_id=name,
+            producer_id="producer-a",
+        ),
+        client=client,
+        close_service_on_finish=False,
+    )
+    bundle = StagingRunBundleWriterV2(
+        run_id=name,
+        country_code="GB",
+        operation_id="uk_full_build",
+        pipeline_id="uk_local_candidate",
+        pipeline_version="2026.10",
+        candidate_id=name,
+        local_dir=tmp_path / name,
+        release_id=None,
+        run_kind="smoke",
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        emitter_client=client,
+    )
+    return bundle, emitter, client
+
+
+def _final_commit_statuses(emitter):
+    return [
+        event["status"]
+        for event in emitter.events
+        if event["stage_id"] == "staging_final_commit"
+    ]
+
+
+def _run_statuses(emitter):
+    return [event["status"] for event in emitter.events if event["event_type"] == "run"]
+
+
+def test_a_finalized_remote_run_confirms_its_final_commit_without_the_flag(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-ok")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    rowwise_staging.finalize_staging_run_bundle(
+        SimpleNamespace(staging_read_back=False), bundle
+    )
+
+    assert client.read_back_waits == [120.0]
+    assert _final_commit_statuses(emitter) == ["started", "completed"]
+    # Without --staging-read-back the run's own documents keep that record.
+    assert bundle.delivery_summary["read_back"] == "not_requested"
+
+
+def test_an_unconfirmed_final_commit_warns_and_the_build_goes_on(
+    tmp_path, monkeypatch, capsys
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-missing")
+    client.read_back_answer = {
+        "status": "failed",
+        "files": 0,
+        "mismatched_paths": [],
+        "error_code": "NO_COMMITTED_FILES",
+    }
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    rowwise_staging.finalize_staging_run_bundle(
+        SimpleNamespace(staging_read_back=False), bundle
+    )
+
+    assert _final_commit_statuses(emitter) == ["started", "failed"]
+    failed = [
+        event
+        for event in emitter.events
+        if (event["stage_id"], event["status"]) == ("staging_final_commit", "failed")
+    ]
+    assert failed[0]["details"]["reason"] == "NO_COMMITTED_FILES"
+    assert bundle.validate_local_bundle()["progress"]["status"] == "completed"
+    assert "not confirmed" in capsys.readouterr().err
+
+
+def test_a_failed_run_confirms_its_final_commit_before_its_outcome(
+    tmp_path, monkeypatch
+):
+    """The emitter drops events after a run's outcome, so the check goes first."""
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-failed")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
+
+    assert client.read_back_waits == [120.0]
+    assert _final_commit_statuses(emitter) == ["started", "completed"]
+    assert _run_statuses(emitter) == ["failed"]
+
+
+def test_a_terminated_run_waits_at_most_30_seconds_for_its_final_commit(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.termination import BuildTerminatedError
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-terminated")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    rowwise_staging.fail_staging_run_bundle(bundle, BuildTerminatedError())
+
+    assert client.read_back_waits == [30.0]
+    assert _final_commit_statuses(emitter) == ["started", "completed"]
+    assert _run_statuses(emitter) == ["failed"]
+
+
+def test_a_blocked_run_confirms_its_final_commit_before_its_outcome(tmp_path):
+    from microcosm.build.run_outcome import GateBlock
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-blocked")
+
+    rowwise_staging.close_run_blocked(
+        bundle,
+        emitter,
+        GateBlock.of(
+            "terminal",
+            ["uk_local_target_fit"],
+            gate_statuses={"uk_local_target_fit": "failed"},
+        ),
+    )
+
+    assert client.read_back_waits == [120.0]
+    assert _final_commit_statuses(emitter) == ["started", "completed"]
+    assert _run_statuses(emitter) == ["blocked"]
