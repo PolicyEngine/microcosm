@@ -558,3 +558,86 @@ def test_diagnostics_of_a_row_cap_solve_match_the_published_schema(
     )
     assert result.options["target_loss_scales"]["kind"] == "provided"
     assert result.target_loss_cap == pytest.approx(equivalent.cap)
+
+
+# ---------------------------------------------------------------------------
+# Item 4: the district gate reads the shared area support gate
+# ---------------------------------------------------------------------------
+
+
+_ESS = st.floats(0.0, 500.0, allow_nan=False) | st.sampled_from([0.0, 15.0, 60.0])
+_DISTRICT_ESS = st.dictionaries(
+    st.sampled_from(["0601", "0602", "2401", "3601", "3602", "5000"]),
+    st.tuples(_ESS, _ESS),
+    min_size=1,
+)
+_GATE_FLOORS = st.tuples(
+    st.sampled_from([0.0, 0.25, 0.5, 1.0]) | st.floats(0.0, 1.0),
+    st.sampled_from([0.0, 15.0]) | st.floats(0.0, 100.0),
+    st.booleans(),
+)
+
+
+@settings(max_examples=300, deadline=None)
+@given(districts=_DISTRICT_ESS, floors=_GATE_FLOORS)
+def test_the_district_gate_entry_is_the_entry_of_before(districts, floors) -> None:
+    from test_support.microcosm_build import us_district_ess_gate_reference as old
+
+    module = _FIXTURE._load_tool_module()
+    origin = {
+        "design": {
+            "effective_sample_size_by_district": {
+                district: design for district, (design, _c) in districts.items()
+            }
+        },
+        "calibrated": {
+            "effective_sample_size_by_district": {
+                district: calibrated for district, (_d, calibrated) in districts.items()
+            }
+        },
+    }
+    relative_floor, absolute_floor, blocking = floors
+    arguments = dict(
+        relative_floor=relative_floor, absolute_floor=absolute_floor, blocking=blocking
+    )
+
+    entry = module.district_ess_collapse_gate(origin, **arguments)
+
+    assert entry == old.district_ess_collapse_gate(origin, **arguments)
+    assert entry["report_only"] is (not blocking)
+    if not blocking:
+        # Report-only: the entry passes whatever it measured.
+        assert entry["passed"] is True
+
+
+def test_the_district_gate_is_report_only_by_default(tmp_path) -> None:
+    module = _FIXTURE._load_tool_module()
+    args = _cli(module)
+    assert args.district_ess_gate_blocking is False
+    collapsed = {
+        "design": {"effective_sample_size_by_district": {"0601": 400.0}},
+        "calibrated": {"effective_sample_size_by_district": {"0601": 2.0}},
+    }
+    entry = module.district_ess_collapse_gate(collapsed)
+    assert entry["criteria_met"] is False
+    assert entry["passed"] is True and entry["blocking"] is False
+    assert module.district_ess_collapse_failures(entry) == []
+
+
+def test_the_tools_hold_no_copy_of_the_ess_or_gate_code() -> None:
+    module = _FIXTURE._load_tool_module()
+    assert not hasattr(module.cd_surface, "ess_by_group")
+    repository = _FIXTURE._TEST_PATHS.repository
+    for tool in ("build_us_acs_local_release.py", "us_acs_local_cd_surface.py"):
+        source = (repository / "tools" / tool).read_text()
+        # No Kish arithmetic of its own: sum(w)^2 over sum(w^2).
+        assert "** 2 / (" not in source and '["w"] ** 2' not in source
+    gate = (repository / "tools" / "build_us_acs_local_release.py").read_text()
+    body = gate[
+        gate.index("def district_ess_collapse_gate(") : gate.index(
+            "def district_ess_collapse_failures("
+        )
+    ]
+    # The floors are compared in the shared gate, not here.
+    assert "area_support_gate(" in body and "area_support_floor_table(" in body
+    assert "relative_floor *" not in body and "< absolute_floor" not in body

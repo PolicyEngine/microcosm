@@ -3709,7 +3709,7 @@ def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
                 spine_person_weight / spine_weight if spine_weight else 0.0
             ),
         }
-    ess = float(weights.sum() ** 2 / (weights**2).sum()) if len(weights) else 0.0
+    ess = cd_surface.kish_ess(weights)
     composition["_all"] = {
         "households": int(len(weights)),
         "household_weight": total_weight,
@@ -5005,6 +5005,9 @@ DISTRICT_ESS_RELATIVE_FLOOR = 0.25
 #: 18.5 penalized.
 DISTRICT_ESS_FLOOR = 15.0
 DISTRICT_ESS_GATE = "district_ess_collapse"
+#: The geography level the district gate declares to the shared area support
+#: gate (``microcosm.build.area_support``).
+DISTRICT_ESS_LEVEL = "congressional_district"
 
 
 def _district_ess(weight_summary) -> dict[str, float] | None:
@@ -5096,29 +5099,63 @@ def district_ess_collapse_gate(
             "failures": failures,
         }
 
+    # The floors, the comparisons and the verdict are the shared area support
+    # gate's (microcosm#1729): this function declares the district floors to
+    # it and lays its answer out as the release's gate entry. A floor of 0 is
+    # a floor that is not declared.
+    from microcosm.build.area_support import (
+        area_support_floor_table,
+        area_support_gate,
+    )
+
+    districts = sorted(design)
+    floors = {
+        "minimum_effective_sample_size": absolute_floor or None,
+        "minimum_effective_sample_size_ratio": relative_floor or None,
+    }
+    support = pd.DataFrame(
+        {
+            "geography_level": DISTRICT_ESS_LEVEL,
+            "area_code": districts,
+            "effective_sample_size": [calibrated[district] for district in districts],
+            "starting_effective_sample_size": [
+                design[district] for district in districts
+            ],
+        }
+    )
+    verdict = area_support_gate(
+        support,
+        area_roster={DISTRICT_ESS_LEVEL: districts},
+        geography_levels=(DISTRICT_ESS_LEVEL,),
+        **floors,
+    )
+    checked = area_support_floor_table(support, **floors)
     rows = [
         {
-            "district": district,
-            "calibrated_ess": calibrated[district],
-            "design_ess": design[district],
+            "district": row.area_code,
+            "calibrated_ess": float(row.effective_sample_size),
+            "design_ess": float(row.starting_effective_sample_size),
             "ratio": (
-                calibrated[district] / design[district]
-                if design[district] > 0
-                else None
+                None
+                if np.isnan(row.effective_sample_size_ratio)
+                else float(row.effective_sample_size_ratio)
             ),
         }
-        for district in sorted(design)
+        for row in checked.itertuples(index=False)
     ]
+
+    def flagged(floor: str) -> list[dict]:
+        column = f"below_{floor}"
+        if column not in checked.columns:
+            return []
+        return [row for row, below in zip(rows, checked[column], strict=True) if below]
+
     collapsed = sorted(
-        (
-            row
-            for row in rows
-            if row["calibrated_ess"] < relative_floor * row["design_ess"]
-        ),
+        flagged("minimum_effective_sample_size_ratio"),
         key=lambda row: (row["ratio"], row["district"]),
     )
     below_floor = sorted(
-        (row for row in rows if row["calibrated_ess"] < absolute_floor),
+        flagged("minimum_effective_sample_size"),
         key=lambda row: (row["calibrated_ess"], row["district"]),
     )
     smallest = min(rows, key=lambda row: (row["calibrated_ess"], row["district"]))
@@ -5126,7 +5163,7 @@ def district_ess_collapse_gate(
     lowest = (
         min(rated, key=lambda row: (row["ratio"], row["district"])) if rated else None
     )
-    criteria_met = not collapsed and not below_floor
+    criteria_met = verdict.passed
     return {
         **gate,
         "passed": criteria_met or not blocking,
