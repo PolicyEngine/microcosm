@@ -167,6 +167,11 @@ clean && $R2 --stage package $C --out "$RUN/release"
   minutes. It then computes each household's AGI (minutes) and runs minimum
   support, SOI support included (`county_support.json`). The engine pass
   takes about 3 hours.
+- Before the AGI, after the SSI and Medicaid take-up, materialize draws the
+  ACS tax units' ACA take-up and plan ratio after one more engine pre-pass
+  (time not measured yet) and writes `acs_local_aca_take_up.npz` to the
+  checkpoint (microcosm#1720). Its grade in `run_identity.json` is
+  report-only: it never stops the run.
 - If the register or the donor's lineage entry is not in the checkout yet,
   commit it after materialize and before calibrate (section 3). The `clean`
   check before calibrate then holds, and calibrate refuses a donor without
