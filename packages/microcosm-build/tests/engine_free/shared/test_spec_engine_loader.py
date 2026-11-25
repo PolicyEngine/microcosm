@@ -39,7 +39,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # microcosm.fit.qrf, moves the fit kernels' bytes again.
     # calibrate's return_frame option in solve moves it again.
     assert first.spec_sha256 == (
-        "6ba1402eced96554e5d31781bf5a24b77d8b5421324d2da374b3806913a5d9bd"
+        "33b4f1a280f9b4d78b63723b79ded77b85d717e07170a8e43371f3bc8fc3a123"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
