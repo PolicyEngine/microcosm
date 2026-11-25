@@ -217,6 +217,11 @@ below (#1224), which remove 1,464 of the 1,466 specs:
 | Compiled targets, all on `full` | 33,250 (`f09571684885`) | 31,784 (`6e1ac91262bc`) |
 | `national_state` targets | 6,102 (`882f4764a248`) | 6,102 (`84504a7afd57`) |
 
+On the `41b2fb2` feed, merged with microcosm#1030, the compile keeps 31,748
+targets (`4cc4cfb7a147`) and `national_state` 6,102 (`4dfe25b1238a`).
+[us-chronicle-feed-repin.md](us-chronicle-feed-repin.md) ("Follow-up
+(microcosm#1038)") explains the 36 more rows that leave `full`.
+
 - The 974 congressional-district capital-gains rows move by one factor per
   measure: 0.415202720927 for returns and 0.834893818418 for amounts.
 - The two US rows retire.

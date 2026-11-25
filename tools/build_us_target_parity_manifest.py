@@ -154,7 +154,7 @@ _NAMESPACE_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
         "this manifest describes, turns none of them into a target.",
         "compile_us_fiscal_target_registry(age_targets=True) + "
         "apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: "
-        "33,250 targets, none from the feed's 461 ed_fsa facts; sample fact "
+        "31,748 targets, none from the feed's 461 ed_fsa facts; sample fact "
         "ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
         _fence(
             origin=(

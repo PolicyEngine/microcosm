@@ -84,14 +84,18 @@ With the 487 population marginals `state` now calibrates to 4,867 targets.
 from the wrong IRS column (`US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS` in
 `us_runtime/fiscal_targets.py`): the SALT rows read from N18425/A18425
 (state and local income taxes) and the premium-tax-credit rows read from
-N85530/A85530 (additional Medicare tax). `state` and `state_cd` are
-unchanged. `totals` loses the 487 district-file premium-tax-credit return
-rows and `full` loses those and the 974 district-file SALT rows:
+N85530/A85530 (additional Medicare tax). `state` and `state_cd` keep their
+counts. `totals` loses the 487 district-file premium-tax-credit return rows,
+and `full` loses those and the 974 district-file SALT rows. Both also lose
+the Historic Table 2 rows of those measures that the crosswalk had copied to
+the nine at-large districts (18 in `totals`, 36 in `full`): the crosswalk
+copies a state row to an at-large district only for a measure that the
+district file carries. Measured on the `41b2fb2` feed on 25 November 2026:
 
 | Family | `state` | `totals` | `full` |
 |---|---:|---:|---:|
-| `irs_soi` | 4,227 | 120 | 29,860 |
-| **Admin specs** | **4,380** | **273** | **30,013** |
+| `irs_soi` | 4,227 | 102 | 29,824 |
+| **Admin specs** | **4,380** | **255** | **29,977** |
 
 The rest of this section describes the 2026-09-22 measurement.
 

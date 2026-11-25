@@ -580,6 +580,22 @@ moves from `882f4764a248` to `84504a7afd57` only because its 102 Historic
 Table 2 capital-gains rows now name their share denominator in
 `soi_share_total_source_record_id`.
 
+**On the `41b2fb2` feed** (25 November 2026), with microcosm#1035, #1038 and
+#1030 merged together, the release compile keeps 31,748 targets (`full`
+`4cc4cfb7a147`, from 33,250 at `bf021cdc9749`), and `national_state` keeps
+6,102 at `4dfe25b1238a` (from `c698e70d33ce`).
+
+- Besides the 1,466 specs above, 36 Historic Table 2 SALT and
+  premium-tax-credit rows leave `full`. The crosswalk copies a state row to an
+  at-large district only for a measure that the district file carries. Once
+  the mislabeled columns are dropped before the crosswalk, the district file
+  carries no SALT or premium-tax-credit rows, so the copies of those measures
+  for the nine at-large districts go too. Each copy repeated its state row.
+- In `national_state`, 52 values move. The 51 Historic Table 2 state
+  net-capital-gains return counts move ×0.415203: they sum to 12,289,836
+  against the national Table 1.4 target of 12,392,020, from 29,599,604. The
+  W-2 Box 7 tips amount moves from $28,280,884,269 to $34,287,530,779.
+
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's
 substituted spec by cloning a neighbouring state's spec and kept that state's
@@ -708,18 +724,18 @@ re-pin the scope moves these pairs to their data years (`ty2022`, and `ty2020`
 for W-2). IRS has also published TY2023 Historic Table 2 and IRA tables, which
 would give true `ty2023` facts.
 
-Two things need a decision before that re-pin:
+Two things needed a decision before that re-pin:
 
-- **The Historic Table 2 capital-gains returns control.** The CD US row wins a
+- **The Historic Table 2 capital-gains returns control.** The CD US row won a
   same-period tie on feed order. Stamped truthfully, it would lose to Table
   1.4 ty2023, which counts returns with a taxable net gain (a different
-  population), and the 51 `national_state` counts would fall 58.5%. Today the
-  51 state counts sum to 2.39× the national Table 1.4 target of the same
-  compiled variable. microcosm#1036 (decision d468) chooses the control by
-  concept instead; no restamped row is then a capital-gains control, and the
-  60 control corrections above go away.
+  population), and the 51 `national_state` counts would fall 58.5%. The 51
+  state counts summed to 2.39× the national Table 1.4 target of the same
+  compiled variable. Since microcosm#1036 (decision d468) the control is
+  chosen by concept: no restamped row is a capital-gains control, and the
+  60 control corrections above are gone.
 - **`SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID`**, which names the `ty2023`
-  record set.
+  record set. This one is still open.
 
 One mis-stamp runs the other way and is out of reach of both rules.
 `bea-regional-state-personal-income-components-2024` reads the 2024 column

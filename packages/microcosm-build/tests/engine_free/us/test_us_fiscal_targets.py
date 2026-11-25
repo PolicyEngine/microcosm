@@ -1142,21 +1142,23 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 31,784 compiled
-    targets after Medicaid substitution (the full surface, at
-    6e1ac91262bc), 6,102 national_state targets at registry
-    c698e70d33ce, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. microcosm#1038 took it from
-    33,250 compiled: it drops the congressional-district capital-gains US
-    rows and (#1224) the congressional-district SALT and premium-tax-credit
-    rows read from the wrong IRS column, all on the full surface, and moves
-    national_state only by one provenance key, soi_share_total_source_record_id,
-    on the 102 Historic Table 2 capital-gains rows. microcosm#1035 moved the
-    national_state version at the same counts by choosing the capital-gains
-    control by concept and period, which returns the 51 Historic Table 2 state
-    return counts to Table 1.4 shares. Reading the restamped W-2 tips
-    amount at TY2020 (microcosm#1030) moved the national_state version
-    with the counts unchanged. The hierarchy value ranks
+    """The release surface on the pinned feed: 31,748 compiled
+    targets after Medicaid substitution (the full surface, at 4cc4cfb7a147),
+    6,102 national_state targets at registry 4dfe25b1238a, 32 CHIP rows none
+    of them for an M-CHIP state, no other-income row and no tips return count.
+    Three changes took it from 33,250 compiled (full bf021cdc9749) and
+    national_state c698e70d33ce, at the same national_state count:
+    microcosm#1035 chooses the capital-gains control by concept and period,
+    which returns the 51 Historic Table 2 state return counts to Table 1.4
+    shares; microcosm#1038 drops the congressional-district capital-gains US
+    rows and the congressional-district SALT and premium-tax-credit rows read
+    from the wrong IRS column, all on the full surface, and names the
+    denominator (soi_share_total_source_record_id) on the 102 Historic Table 2
+    capital-gains rows of national_state; microcosm#1030 reads the restamped
+    W-2 tips amount at TY2020. The district file no longer carries SALT or
+    premium-tax-credit district rows, so the crosswalk no longer copies the
+    36 Historic Table 2 rows of those measures to the nine at-large
+    districts; they repeated their state rows. The hierarchy value ranks
     (each group-by value's row in its source table, which the version
     hashes) moved it from 3aa2a0830e7d; microcosm#1343 moved the
     version from 3fad14f85468 by re-pinning to a feed that gives three
@@ -1175,12 +1177,12 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     from microcosm.calibrate import TargetRegistry
 
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 31_784
+    assert len(registry.specs) == 31_748
     builder = _load_repo_tool("build_us_fiscal_refresh_release")
     full, _ = builder._select_target_surface(registry.specs, "full")
-    assert TargetRegistry(full, country="us").version == "6e1ac91262bc"
+    assert TargetRegistry(full, country="us").version == "4cc4cfb7a147"
     assert len(surface.specs) == 6_102
-    assert surface.version == "c698e70d33ce"
+    assert surface.version == "4dfe25b1238a"
     chip = [
         spec
         for spec in surface.specs
@@ -1637,11 +1639,13 @@ def test_pinned_feed_corrects_the_translated_congressional_district_specs(
         for spec in registry.specs
         if "source_vintage_correction" in spec.metadata
     )
+    # microcosm#1038 drops the district file's SALT and premium-tax-credit rows
+    # and its capital-gains US rows, so fewer corrected specs remain.
     assert corrected == {
-        ("soi-congressional-district-2022", True, True): 11_772,
-        ("soi-congressional-district-2022", True, False): 12_208,
-        ("soi-congressional-district-2022", False, True): 1_404,
-        ("soi-congressional-district-2022", False, False): 1_404,
+        ("soi-congressional-district-2022", True, True): 10_900,
+        ("soi-congressional-district-2022", True, False): 11_772,
+        ("soi-congressional-district-2022", False, True): 1_300,
+        ("soi-congressional-district-2022", False, False): 1_350,
         ("soi-state-2022", False, False): 2,
         ("soi-w2-statistics-2020", False, True): 1,
     }
@@ -1659,21 +1663,22 @@ def test_pinned_feed_corrects_the_translated_congressional_district_specs(
             "soi-congressional-district-2022"
         )
     )
-    # The 60 Historic Table 2 capital-gains return counts rebased onto the
-    # congressional-district US row (51 of them on national_state), and no
-    # restamped share: no compile on main rebases a restamped row.
-    assert (
-        sum(
-            "uprating_index_source_vintage_correction" in spec.metadata
-            for spec in registry.specs
-        )
-        == 60
-    )
+    # No spec is rebased onto a restamped control: since microcosm#1035 the
+    # Historic Table 2 capital-gains return counts take the Table 1.4 control,
+    # not the congressional-district US row. The 974 district capital-gains
+    # shares of microcosm#1038 are admitted restamped shares.
     assert not [
         spec.name
         for spec in registry.specs
-        if "uprating_from_period_vintage_stamped_period" in spec.metadata
+        if "uprating_index_source_vintage_correction" in spec.metadata
     ]
+    assert (
+        sum(
+            "uprating_from_period_vintage_stamped_period" in spec.metadata
+            for spec in registry.specs
+        )
+        == 974
+    )
 
 
 def test_pinned_feed_rebased_specs_read_restamped_inputs_at_their_data_year(
