@@ -115,19 +115,20 @@ def test_a_be_promotion_names_its_build_for_the_collector(
     """The emitter submits the releases.json the promotion wrote under the BE
     country code, as for the build's publication."""
     release = BE_RELEASE_IDS[1]
+    build = BE_BUILD.replace("-2025-", "-2026-")
     be_release_dir = tmp_path / release
     be_release_dir.mkdir()
     monkeypatch.setattr(
         release_publication,
         "build_folder_identity",
-        lambda _path: (BE_FIXTURE_REPO_ID, release, BE_BUILD),
+        lambda _path: (BE_FIXTURE_REPO_ID, release, build),
     )
-    client = FakeEmitterClient(release_receipts=[{"current": BE_BUILD}])
+    client = FakeEmitterClient(release_receipts=[{"current": build}])
 
     outcome = release_publication.promote_release_build(be_release_dir, client=client)
 
     (promotion,) = client.release_requests
-    assert promotion.collector == _be_provenance(release)
+    assert promotion.collector == _be_provenance(release, build)
     assert client.collector_receipt_requests == [promotion.handover_id()]
     assert outcome.current
 

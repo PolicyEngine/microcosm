@@ -138,6 +138,7 @@ def test_a_be_build_without_its_engines_record_is_refused(
         {"packages": {}},
         {"packages": {"numpy": ""}},
         {"packages": {"numpy": 2}},
+        {"packages": {"": "2.4.6"}},
         {"model": ""},
         {"model": "EUROMOD J2.0+ BE_2025", "packages": {}},
         {"packages": {"numpy": "2.4.6"}, "model": ""},
@@ -148,6 +149,7 @@ def test_a_be_build_without_its_engines_record_is_refused(
         "no-packages",
         "unversioned-package",
         "non-string-version",
+        "empty-package-name",
         "empty-model",
         "model-with-empty-packages",
         "packages-with-empty-model",
@@ -164,7 +166,8 @@ def test_a_be_engine_must_record_its_packages_or_its_model(
 
     assert (
         "build_manifest.json 'engines.axiom_rules_engine' must record its "
-        "'packages' (each package's version) or its 'model'."
+        "'packages' (each package's name and version), its 'model', or both, "
+        "each well formed."
     ) in _contract_failures(be_release_dir)
 
 
@@ -235,6 +238,32 @@ def test_a_policyengine_package_a_be_build_records_is_checked(
     assert (
         "release_manifest.json 'built_with_core_package.version' must be "
         "resolved, not 'unknown'."
+    ) in _contract_failures(be_release_dir)
+
+
+@pytest.mark.parametrize("key", sorted(BE_CONTRACT_FILES))
+def test_a_be_contract_file_declared_under_another_key_is_refused(
+    release_dir: Path,  # noqa: F811
+    key: str,
+) -> None:
+    """In a build folder an artifact's role is its key, and the emitter hands
+    a build's demographics and reform validation to the collector by role,
+    so a BE build declares each added file under the key its contract
+    gives it."""
+    be_release_dir = _as_be_build_folder_release(release_dir)
+    manifest_path = be_release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    other_key = f"be_{key}"
+    manifest["artifacts"][other_key] = {
+        **manifest["artifacts"].pop(key),
+        "role": other_key,
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    assert (
+        f"release_manifest.json declares {BE_CONTRACT_FILES[key]!r} under the "
+        f"key {other_key!r}; a BE build declares it under {key!r}, the role "
+        "its build folder gives it."
     ) in _contract_failures(be_release_dir)
 
 
