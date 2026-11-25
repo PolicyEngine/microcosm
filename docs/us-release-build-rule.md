@@ -436,6 +436,15 @@ one Microsimulation over the whole file.
 
 - The scorer loads the written H5 once, binds its SHA-256, and refuses to let
   the release manifest pin different bytes.
+- It then writes each household batch to its own file, recording the SHA-256
+  of the bytes written, and frees the frames. Each pass reads every batch back
+  from its file and refuses one whose bytes changed, so the process that
+  scores holds no frame of the written H5 between batches. A batch read back
+  has the same tables, dtypes, values and weights, so scored values are
+  unchanged. Certification keeps the files in `post_export_batches/` in the
+  build's `--out`, about as much disk as the export H5 itself, until the
+  scorer closes; placing a build for certification removes files a killed
+  attempt left.
 - It refuses a file whose group units do not each nest in one household, or
   whose batches do not partition every entity, before any engine exists.
 - Batches hold at most `--maximum-microsim-batch-size` households (default

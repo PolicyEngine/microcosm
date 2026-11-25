@@ -367,7 +367,7 @@ def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
 def test_batches_read_from_their_files_equal_the_written_h5s_batches(
     builder, tmp_path
 ) -> None:
-    """Each batch the scorer reads back from its file (1.4 · 4) holds exactly
+    """Each batch the scorer reads back from its file holds exactly
     the rows, columns, dtypes, values and weights of that household batch of a
     fixture H5 written by the engine's own writer, as the scorer selected it
     in memory before it kept batches in files."""

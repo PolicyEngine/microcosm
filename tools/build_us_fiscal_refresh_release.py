@@ -58,16 +58,19 @@ import importlib.metadata
 import importlib.util
 import json
 import math
+import pickle
 import platform
 import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 import tomllib
 import traceback
 import uuid
-from collections.abc import Callable, Iterable, Mapping, Sequence
+import weakref
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from importlib.resources import files as package_files
@@ -5073,7 +5076,11 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 # * the WRITTEN H5 is loaded once (its sha256 bound to the bytes read) and
 #   split once into household batches; every group entity must nest in one
 #   household and the batches must partition every entity, or the scorer
-#   refuses before any engine exists;
+#   refuses before any engine exists. Each batch is then written to its own
+#   file, with the sha256 of its bytes recorded, and the frames are freed; a
+#   pass reads each batch back from its file and refuses one whose bytes
+#   changed, so the process that scores holds no frame of the H5 between
+#   batches (``_PostExportBatchFiles``);
 # * every construction declares ``spm=US_RELEASE_SPM_SELECTION``;
 # * a consumer's baseline requests are learned by an engine-free recording
 #   dry run and scored in ONE batch-outer pass, in ascending period order;
@@ -5658,6 +5665,78 @@ def _post_export_consumers(
     return consumers
 
 
+#: The directory in a build's ``--out`` where certification's post-export
+#: scorer keeps its household batch files while it scores. The scorer removes
+#: it when it closes or is freed; placing a build for certification removes
+#: one an attempt that was killed left (``_place_build_for_certification``).
+US_POST_EXPORT_BATCH_DIRECTORY = "post_export_batches"
+
+
+def _new_post_export_batch_directory(batch_directory: Path | None) -> Path:
+    """A new, empty directory for a scorer's batch files.
+
+    ``batch_directory`` is created and must not exist yet, so a scorer never
+    writes into, or later removes, a directory it did not make. Without one,
+    a new temporary directory is made.
+    """
+    if batch_directory is None:
+        return Path(tempfile.mkdtemp(prefix="microcosm-post-export-batches-"))
+    directory = Path(batch_directory)
+    directory.mkdir(parents=True)
+    return directory
+
+
+class _PostExportBatchFiles(Sequence):
+    """The written H5's household batches, each kept in its own file.
+
+    Built from the batch frames the scorer selected from the H5 it loaded
+    once, bound to the H5's sha256: each frame is pickled to its own file in
+    ``directory`` and the sha256 of the bytes written is recorded. Indexing
+    reads one batch back as a new frame, which the caller frees once it has
+    scored the batch, so between batches only the files' paths and digests
+    are held. A file's bytes must hash to the recorded digest before they are
+    unpickled, so only bytes this process wrote are loaded and a batch file
+    that changed is refused. Unpickling gives back the same tables, dtypes,
+    index, values, weights and strata, so every batch scores the values the
+    in-memory batch did. (A plain class, for the reason
+    :class:`_PostExportScoringPlan` gives.)
+    """
+
+    def __init__(self, directory: Path, batch_frames: Sequence[Frame]) -> None:
+        self.directory = Path(directory)
+        files: list[tuple[Path, str]] = []
+        for number, batch_frame in enumerate(batch_frames):
+            payload = pickle.dumps(batch_frame, protocol=pickle.HIGHEST_PROTOCOL)
+            path = self.directory / f"batch-{number:05d}.pickle"
+            path.write_bytes(payload)
+            files.append((path, hashlib.sha256(payload).hexdigest()))
+            del payload
+        self._files = tuple(files)
+
+    def __len__(self) -> int:
+        return len(self._files)
+
+    def __iter__(self) -> Iterator[Frame]:
+        # By position, not the Sequence default, which ends at the first
+        # IndexError: one raised while reading a batch would end the pass
+        # early, leaving later batches unscored.
+        for position in range(len(self._files)):
+            yield self[position]
+
+    def __getitem__(self, position: int) -> Frame:
+        if isinstance(position, slice):
+            raise TypeError("Post-export batches are read one at a time.")
+        path, sha256 = self._files[position]
+        payload = path.read_bytes()
+        observed = hashlib.sha256(payload).hexdigest()
+        if observed != sha256:
+            raise ValueError(
+                f"Post-export batch file {path} has SHA-256 {observed}, not the "
+                f"{sha256} the scorer wrote; the batch is refused."
+            )
+        return pickle.loads(payload)
+
+
 class _HouseholdBatchedPostExportScorer:
     """Scores the written release H5 in household batches (see the block
     comment above). One instance serves every post-export consumer."""
@@ -5668,6 +5747,7 @@ class _HouseholdBatchedPostExportScorer:
         *,
         maximum_microsim_batch_size: int | None,
         expected_n_households: int | None = None,
+        batch_directory: Path | None = None,
         microsimulation_cls=None,
         dataset_from_frame=None,
         load_frame=None,
@@ -5700,11 +5780,26 @@ class _HouseholdBatchedPostExportScorer:
         )
         _assert_post_export_batching_premises(frame, batch_frames)
         del frame
-        self._batch_frames: tuple[Frame, ...] | None = batch_frames
         self.n_batches = len(batch_frames)
         self.max_batch_households = max(
             (batch.n("household") for batch in batch_frames), default=0
         )
+        # The batches go to files in a new directory (``batch_directory``, or
+        # a temporary one) and the frames are freed; ``_batches()`` reads each
+        # back when a pass scores it. The directory is removed when the scorer
+        # closes, is freed or the interpreter exits.
+        self.batch_directory = _new_post_export_batch_directory(batch_directory)
+        self._remove_batch_files = weakref.finalize(
+            self, shutil.rmtree, self.batch_directory, ignore_errors=True
+        )
+        try:
+            self._batch_frames: _PostExportBatchFiles | None = _PostExportBatchFiles(
+                self.batch_directory, batch_frames
+            )
+        except BaseException:
+            self._remove_batch_files()
+            raise
+        del batch_frames
         if microsimulation_cls is None:
             from policyengine_us import Microsimulation
 
@@ -5795,6 +5890,7 @@ class _HouseholdBatchedPostExportScorer:
         self._finish_open_reform()
         self._batch_frames = None
         _collect_family_garbage()
+        self._remove_batch_files()
 
     def _open_reform_for(
         self, consumer: _PostExportConsumer, reform
@@ -5813,7 +5909,8 @@ class _HouseholdBatchedPostExportScorer:
         if reform is not None:
             reform.finish()
 
-    def _batches(self) -> tuple[Frame, ...]:
+    def _batches(self) -> _PostExportBatchFiles:
+        """The batches, each read from its file when it is indexed."""
         if self._batch_frames is None:
             raise RuntimeError("The post-export scorer is closed.")
         return self._batch_frames
@@ -5935,9 +6032,16 @@ class _HouseholdBatchedPostExportScorer:
 
 
 def _open_post_export_scorer(
-    plan: _PostExportScoringPlan, dataset_path: Path
+    plan: _PostExportScoringPlan,
+    dataset_path: Path,
+    *,
+    batch_directory: Path | None = None,
 ) -> _HouseholdBatchedPostExportScorer | None:
-    """Open the scorer the plan recorded before export, or None if no stage runs."""
+    """Open the scorer the plan recorded before export, or None if no stage runs.
+
+    ``batch_directory`` is the new directory the scorer keeps its household
+    batch files in (a temporary one without it).
+    """
     if plan.error is not None:
         raise RuntimeError(
             f"The post-export scoring plan was not built before export: {plan.error}"
@@ -5947,6 +6051,7 @@ def _open_post_export_scorer(
     return _HouseholdBatchedPostExportScorer(
         dataset_path,
         maximum_microsim_batch_size=plan.maximum_batch_size,
+        batch_directory=batch_directory,
         expected_n_households=plan.n_households,
     )
 
@@ -14748,7 +14853,8 @@ def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) ->
     #568 weight evidence is never copied: the H5 carries the weights. A
     rerun after a failed certification first removes every file this
     certification would copy or write, so none of an earlier attempt's
-    survives.
+    survives, and the post-export batch files of an attempt that was killed
+    before its scorer could remove them.
     """
 
     release_dir.mkdir(parents=True, exist_ok=True)
@@ -14764,6 +14870,9 @@ def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) ->
         "us_ssi_take_up.json",
     }:
         (release_dir / name).unlink(missing_ok=True)
+    stale_batch_files = record.release_root / US_POST_EXPORT_BATCH_DIRECTORY
+    if stale_batch_files.exists():
+        shutil.rmtree(stale_batch_files)
     build_dir = record.build_dir.resolve()
     for role, pinned in record.payload["files"].items():
         source = (record.release_root / pinned["path"]).resolve()
@@ -19503,7 +19612,9 @@ def _certify_us_build(
     # It loads the written H5 once, binds its sha256 (the manifest must pin
     # the same bytes), and serves the baseline plans recorded above.
     post_export_scorer = _open_post_export_scorer(
-        post_export_scoring_plan, dataset_path
+        post_export_scoring_plan,
+        dataset_path,
+        batch_directory=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY,
     )
     # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
@@ -19658,14 +19769,14 @@ def _certify_us_build(
             "us_medicare_irmaa_holdout",
             release_dir / "us_medicare_irmaa_holdout.json",
         )
-    # Every post-export engine stage has run; free the scorer's batch frames.
+    # Every post-export engine stage has run; remove the scorer's batch files.
     # The manifest must pin the bytes those stages scored, and both manifests
     # carry how they were scored (Route A remediation PR-3).
     post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
     scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
     post_export_scorer = None
-    # Reads the written H5 without an engine, after the scorer frees its
-    # batch frames, so it adds no memory on top of them.
+    # Reads the written H5 without an engine, after the scorer has closed,
+    # so it adds no memory on top of the scorer's.
     if telemetry is not None:
         telemetry.stage(
             "population_structure_holdout",

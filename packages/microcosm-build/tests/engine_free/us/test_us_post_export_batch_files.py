@@ -1,4 +1,4 @@
-"""The post-export scorer keeps its household batches in files (1.4 · 4).
+"""The post-export scorer keeps its household batches in files.
 
 ``_HouseholdBatchedPostExportScorer`` loads the written H5 once, bound to its
 sha256, and splits it into household batches. It writes each batch to its own
@@ -149,7 +149,8 @@ def _frames_held_by(root: object) -> list[str]:
 
 
 def _expected_batches(builder, frame: Frame, batch_size: int) -> list[Frame]:
-    """The batches the scorer selected in memory before 1.4 · 4."""
+    """The batches the scorer selected, and held in memory, before it kept
+    them in files."""
 
     return [
         frame
