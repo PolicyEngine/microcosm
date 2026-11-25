@@ -140,6 +140,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_weeks_unemployed",
         "derive_wic_claim",
         "disaggregate_aggregate_records",
+        "draw_budget_and_mix",
         "draw_capital_gains_prior_from_banded_quantiles",
         "draw_employer_pension_contributions_from_rate_bands",
         "draw_spi_donor_ages_by_population",

@@ -853,7 +853,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                         stage_seeds[target] = seed
                     else:
                         stage_seeds["assign_binary_from_rate"] = seed
-                elif operation.kind == "fit_weighted_qrf_chain":
+                elif operation.kind in (
+                    "fit_weighted_qrf_chain",
+                    "draw_budget_and_mix",
+                ):
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "fit_weighted_qrf":
                     stage_seeds[stage.stage] = seed

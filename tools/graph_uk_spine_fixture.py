@@ -1266,8 +1266,9 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     person = pd.DataFrame(
         {
             "case": np.arange(1, _DONOR_ROWS + 1),
-            "b303p": 10.0 + rows,
-            "b3262p": 1.0 + rows / 5.0,
+            "p008p": 10.0 + rows,
+            "p047p": 1.0 + rows / 5.0,
+            "p037p": rows / 10.0,
             "p049p": 4.0 + rows / 4.0,
         }
     )
@@ -2137,7 +2138,7 @@ def _fixture_stages(
             )
         elif stage.stage == "lcfs_consumption":
             stage = _replace_operation(
-                stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
+                stage, "draw_budget_and_mix", n_estimators=_QRF_ESTIMATORS
             )
         elif stage.stage == "hmrc_spi_income_spine":
             stage1 = next(

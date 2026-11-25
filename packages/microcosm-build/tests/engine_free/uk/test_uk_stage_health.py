@@ -1827,6 +1827,56 @@ def test_road_fuel_incidence_gate_holds_every_flagged_household_positive() -> No
         run(None)
 
 
+def test_decile_fit_gate_reports_a_decile_off_the_donors_shape() -> None:
+    """Deciles 1 to 9 are held to the donor's shape of spending; 10 is not.
+
+    The gate is report-only (microcosm#1717): declared diagnostic, evidence
+    absence blocks nothing, and it runs in the spine's battery.
+    """
+
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+
+    gates = json.loads(
+        (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text("utf-8")
+    )
+    entry = next(
+        g for g in gates["gates"] if g["id"] == "uk_stage_lcfs_consumption_decile_fit"
+    )
+    assert entry["gate"] == "stage_health"
+    assert entry["criticality"] == "diagnostic"
+    assert "evidence_absent_blocks" not in entry
+    assert entry["id"] in UK_SPINE_GATE_SCOPE
+    parameters = dict(entry["parameters"])
+    assert parameters["deciles"] == list(range(1, 10))
+
+    def gate(shapes):
+        rows = [
+            {"decile": decile, "withheld": True}
+            if shape is None
+            else {"decile": decile, "total": {"shape": shape}}
+            for decile, shape in enumerate(shapes, start=1)
+        ]
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "decile_fit": {"deciles": rows}},
+            stage="lcfs_consumption",
+            check="decile_fit",
+            parameters=parameters,
+        )
+
+    within = gate([1.08, 0.95, 1.0, 1.0, 1.0, 1.0, 1.0, 1.02, 0.93, 1.6])
+    assert within.passed, within.failures
+    assert "10" not in within.details["shapes"]
+    off = gate([1.27, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    assert list(off.failures) == [
+        "lcfs_consumption: decile 1's spending is 1.270 of the donor's shape, "
+        "outside 1 +/- 0.1."
+    ]
+    withheld = gate([1.0, None, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    assert list(withheld.failures) == [
+        "lcfs_consumption: decile 2 has no spending shape."
+    ]
+
+
 def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     """The lcfs recomposed_totals receipt is checked at stage time (microcosm#1113)."""
 

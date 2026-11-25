@@ -693,13 +693,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "e09318c248025d06054a9becc5d899e9cdec5059e713d7cbb908983d0aed574b"
+    "61eefa7d1ae166cee3629adfb7864b71f8725117ee21fa3b85b41e10f82b4112"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "579d7c867d32d815849d65d19d5c7ab579e882088be4c3d2537259cb59f74db9"
+    "a528b800fdd36aa0b9db699039248ee6e4ecc429e61d808145ceba5c00258110"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "172723901c9bcbba984518cb62fcf12918bf1316256bd22f6019dc26d6db47c9"
+    "4b0fd51cc20b98b19cd713579afc0e8602b77606339f49ebfc74cc3caf045658"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -760,6 +760,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_lcfs_consumption_excise_quantities": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_gambling_participation": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_decile_fit": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support_pricing": ("stage_health", "transferred"),
@@ -867,7 +868,11 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
 }
 _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
 _UK_GATE_BATTERY_DIAGNOSTIC_IDS = frozenset(
-    {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
+    {
+        "uk_high_value_homes_benchmarks",
+        "uk_high_value_homes_support",
+        "uk_stage_lcfs_consumption_decile_fit",
+    }
 )
 #: The entries whose bindings contribute an evidence digest; their keys are
 #: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
@@ -897,6 +902,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_lcfs_consumption_excise_quantities",
         "uk_stage_lcfs_consumption_gambling_participation",
         "uk_stage_lcfs_consumption_basis",
+        "uk_stage_lcfs_consumption_decile_fit",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
         "uk_stage_etb_services_support_pricing",
@@ -1281,6 +1287,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_spi_employment_shell_fit",
             "uk_stage_aps_occupation_fit",
             "uk_stage_lcfs_consumption_basis",
+            "uk_stage_lcfs_consumption_decile_fit",
             "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_excise_quantities",
@@ -1348,10 +1355,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "c552c77c2e6b0ca23323996820d9a2f53833fa0377eef4c607bc5fde32e939cf"
+            "5e6c8c2c13849b3aa62af25b1a622cffda3210a2fa3ad6c383ec48ff16e18dc7"
         ),
         "policy_sha256": (
-            "0a2635b7b22034ee1fa9b6574bc259805397171b367f4c7941509648704bf1bb"
+            "537be50186a08100dc6e404fe97130c38cfb5b8d7fb97a263a4fb186743ec4b6"
         ),
     },
     "calibration_seam": {

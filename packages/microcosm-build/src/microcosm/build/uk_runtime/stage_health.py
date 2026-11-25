@@ -94,6 +94,8 @@ def uk_stage_health_gate(
         return _consumption_basis_gate(stage, evidence, parameters)
     if check == "recomposed_totals":
         return _recomposed_totals_gate(stage, evidence, parameters)
+    if check == "decile_fit":
+        return _decile_fit_gate(stage, evidence, parameters)
     if check == "road_fuel_incidence":
         return _road_fuel_incidence_gate(stage, evidence, parameters)
     if check == "road_fuel_level":
@@ -3454,6 +3456,62 @@ def _division_levelling_factors(
             )
         factors[str(division)] = factor
     return factors
+
+
+def _decile_fit_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each income decile's spending keeps the donor's shape (microcosm#1717).
+
+    Reads the lcfs ``decile_fit`` receipt: the frame's total spending per
+    household over the donor's, in each decile, over the same ratio pooled
+    over the reference deciles. A decile among ``deciles`` whose shape leaves
+    1 by more than ``maximum_shape_deviation``, or that is withheld or
+    missing, fails. Decile 10 rests on incomes beyond the donor's and is
+    reported, not checked. The battery declares the gate diagnostic: it warns
+    and blocks no release.
+    """
+
+    check = "decile_fit"
+    receipt = _mapping(evidence.get("decile_fit"), label=f"{stage}.decile_fit")
+    maximum = _finite_number(
+        parameters.get("maximum_shape_deviation"),
+        label=f"{stage}.maximum_shape_deviation",
+    )
+    checked = [int(decile) for decile in parameters.get("deciles", range(1, 10))]
+    rows = {
+        int(row["decile"]): row
+        for row in receipt.get("deciles", ())
+        if isinstance(row, Mapping) and isinstance(row.get("decile"), int)
+    }
+    failures: list[str] = []
+    shapes: dict[str, float] = {}
+    for decile in checked:
+        row = rows.get(decile)
+        total = None if row is None else row.get("total")
+        shape = total.get("shape") if isinstance(total, Mapping) else None
+        if not isinstance(shape, int | float) or not np.isfinite(float(shape)):
+            failures.append(f"{stage}: decile {decile} has no spending shape.")
+            continue
+        shapes[str(decile)] = float(shape)
+        if abs(float(shape) - 1.0) > maximum:
+            failures.append(
+                f"{stage}: decile {decile}'s spending is {float(shape):.3f} of the "
+                f"donor's shape, outside 1 +/- {maximum}."
+            )
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "stage": stage,
+            "check": check,
+            "shapes": shapes,
+            "maximum_shape_deviation": maximum,
+        },
+    )
 
 
 def _recomposed_totals_gate(

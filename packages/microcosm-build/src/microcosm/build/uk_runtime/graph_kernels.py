@@ -194,8 +194,9 @@ _STAGE_HELPER_MODULES = {
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
     # The energy level and prices are energy_pricing's (microcosm#1418): a
     # code-only change to them must re-key the stage (the independent review
-    # of microcosm#1420, finding 5).
-    "lcfs_consumption": (uk_engine_adapter, energy_pricing),
+    # of microcosm#1420, finding 5). The spending draws through microcosm.fit's
+    # forest neighbourhoods and keyed donors (microcosm#1717).
+    "lcfs_consumption": (uk_engine_adapter, energy_pricing, fit_donors),
     "etb_vat": (uk_engine_adapter,),
     "etb_services": (uk_engine_adapter,),
     "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),

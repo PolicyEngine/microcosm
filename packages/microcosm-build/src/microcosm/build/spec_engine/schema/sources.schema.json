@@ -8294,6 +8294,56 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "predictors",
+      "budget",
+      "targets",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_budget_and_mix"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "budget": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "weights": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "seed": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "range",
       "exempt"
      ],

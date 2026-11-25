@@ -1655,6 +1655,7 @@ class TestUKGatesManifest:
             "uk_stage_lcfs_consumption_excise_quantities",
             "uk_stage_lcfs_consumption_gambling_participation",
             "uk_stage_lcfs_consumption_basis",
+            "uk_stage_lcfs_consumption_decile_fit",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
@@ -1731,10 +1732,12 @@ class TestUKGatesManifest:
         ]
         # PR #870 review: the four local fit/weight gates are release-blocking
         # like the rest of the battery; the only diagnostic entries are the
-        # microcosm#1240 high-value homes benchmarks and support reports.
+        # microcosm#1240 high-value homes benchmarks and support reports and
+        # the microcosm#1717 decile fit of the LCFS spending.
         diagnostic: set[str] = {
             "uk_high_value_homes_benchmarks",
             "uk_high_value_homes_support",
+            "uk_stage_lcfs_consumption_decile_fit",
         }
         assert {
             gate.id for gate in manifest.gates if gate.criticality == "diagnostic"
