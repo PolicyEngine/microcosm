@@ -1061,13 +1061,16 @@ def documents():
                 "constraints": [],
                 "observed_area": None,
                 "stages": [{"level": "area", "weight": "population"}],
+                # Each layer carries the labels of the support column it reads;
+                # the shared binder refuses a layer whose labels differ.
                 "layers": [
                     {
                         "input": input_,
                         "output": output,
-                        "vintage": "ta2026_regc2025_au2017",
-                        "relation": "exact",
-                        "source": "atomic_geography_support.json",
+                        **{
+                            key: support_definition["columns"][input_][key]
+                            for key in ("vintage", "relation", "source")
+                        },
                     }
                     for input_, output in (
                         ("ta_code", "ta_code"),
