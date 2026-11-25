@@ -1299,3 +1299,206 @@ def test_v2_numpy_real_targets_are_accepted(target):
 def test_v2_boolean_targets_refuse(target):
     with pytest.raises(ValueError, match="target must be finite"):
         _assign(_people((20,)), targets={"alpha_total": target})
+
+
+# Literal audits from main, pinned before the target-above-mass rule lands.
+
+
+def _check(expected_mass):
+    return {
+        "passed": True,
+        "relative_tolerance": 1e-12,
+        "expected_mass": expected_mass,
+    }
+
+
+def _row(name, target, filter_name, mass, before, before_ratio, ratio, rate):
+    return {
+        "target_name": name,
+        "target": target,
+        "filter": filter_name,
+        "eligible_mass": mass,
+        "eligible_mass_before_exclusions": before,
+        "target_to_eligible_mass_before_exclusions": before_ratio,
+        "target_to_remaining_eligible_mass": ratio,
+        "rate": rate,
+    }
+
+
+def _done(row, realized, count, expected):
+    return {
+        **row,
+        "realized_mass": realized,
+        "n_receipts": count,
+        "numerical_check": _check(expected),
+    }
+
+
+def _program_audit(name, target, before, mass, before_ratio, ratio, strata, outside):
+    return {
+        "program": name,
+        "target": target,
+        "eligible_mass_before_exclusions": before,
+        "eligible_mass": mass,
+        "target_to_eligible_mass_before_exclusions": before_ratio,
+        "target_to_remaining_eligible_mass": ratio,
+        "strata": strata,
+        "outside_strata": {"n_eligible": outside[0], "eligible_mass": outside[1]},
+    }
+
+
+def _finished(program_audit, realized, count):
+    return {**program_audit, "realized_mass": realized, "n_receipts": count}
+
+
+def _audit(programs, groups=(), status="completed"):
+    return {
+        "assignment_profile": "central",
+        "exclusion_order": "declared",
+        "status": status,
+        "programs": programs,
+        "exclusion_groups": list(groups),
+    }
+
+
+def _pinned(case):
+    """Literal audits traced from main, without the mass rule.
+
+    Returns person, contract, weights, targets, flags, audit and the refusal
+    message (None when the run completes). Fix a literal only from a run of
+    the unchanged base, never from the changed code.
+    """
+    if case == "completed":
+        young = _row("alpha_young", 2.0, "young", 2.0, 2.0, 1.0, 1.0, 1.0)
+        older = _row("alpha_older", 3.0, "older", 3.0, 3.0, 1.0, 1.0, 1.0)
+        program_audit = _program_audit(
+            "alpha",
+            5.0,
+            5.0,
+            5.0,
+            1.0,
+            1.0,
+            [_done(young, 2.0, 1, 2.0), _done(older, 3.0, 1, 3.0)],
+            (1, 5.0),
+        )
+        return (
+            _people((20, 40, 70)),
+            _contract(_program(stratified=True)),
+            [2, 3, 5],
+            {"alpha_young": 2, "alpha_older": 3},
+            {"receives_alpha": [True, True, False]},
+            _audit({"receives_alpha": _finished(program_audit, 5.0, 2)}),
+            None,
+        )
+    if case == "refused":
+        row = _row("alpha_total", 3.0, None, 2.0, 2.0, 1.5, 1.5, 1.5)
+        program_audit = _program_audit(
+            "alpha", 3.0, 2.0, 2.0, 1.5, 1.5, [row], (0, 0.0)
+        )
+        return (
+            _people((20, 21)),
+            _contract(),
+            [1, 1],
+            {"alpha_total": 3},
+            None,
+            _audit({"receives_alpha": program_audit}, status="refused"),
+            "Receipt target 'alpha_total' exceeds eligible weighted mass in declared order.",
+        )
+    if case not in ("group", "group_refused"):
+        raise AssertionError(f"unknown case {case!r}")
+    order = ["receives_alpha", "receives_beta"]
+    alpha = _row("alpha_total", 2.0, None, 2.0, 2.0, 1.0, 1.0, 1.0)
+    programs = {
+        "receives_alpha": _finished(
+            _program_audit(
+                "alpha", 2.0, 2.0, 2.0, 1.0, 1.0, [_done(alpha, 2.0, 2, 2.0)], (0, 0.0)
+            ),
+            2.0,
+            2,
+        ),
+    }
+    overlaps = [
+        {
+            "programs": pair,
+            "filter": None,
+            "n_eligible": 2,
+            "eligible_mass": 2.0,
+        }
+        for pair in (order, order[::-1])
+    ]
+    if case == "group_refused":
+        # Alpha takes beta's whole pool, so beta's remaining ratio is None and
+        # beta refuses. Targets of 3.0 over a mass of 2.0 fail the Hall check.
+        beta = _row("beta_total", 1.0, None, 0.0, 2.0, 0.5, None, None)
+        programs["receives_beta"] = _program_audit(
+            "beta", 1.0, 2.0, 0.0, 0.5, None, [beta], (0, 0.0)
+        )
+        violation = {
+            "programs": order,
+            "filter": None,
+            "filters": [None, None],
+            "target": 3.0,
+            "eligible_mass": 2.0,
+        }
+        group = {
+            "order": order,
+            "status": "refused",
+            "overlaps": overlaps,
+            "feasibility": {
+                "violations": [violation],
+                "feasible": False,
+                "relative_tolerance": 1e-12,
+            },
+        }
+        return (
+            _people((20, 21)),
+            _contract(_program("alpha"), _program("beta"), groups=[order]),
+            [1, 1],
+            {"alpha_total": 2, "beta_total": 1},
+            None,
+            _audit(programs, [group], status="refused"),
+            "Receipt target 'beta_total' exceeds eligible weighted mass in declared order.",
+        )
+    # A zero target over zero remaining mass gives the integer ratio 0.
+    beta = _row("beta_total", 0.0, None, 0.0, 2.0, 0.0, 0, 0)
+    programs["receives_beta"] = _finished(
+        _program_audit(
+            "beta", 0.0, 2.0, 0.0, 0.0, 0, [_done(beta, 0.0, 0, 0.0)], (0, 0.0)
+        ),
+        0.0,
+        0,
+    )
+    group = {
+        "order": order,
+        "status": "completed",
+        "overlaps": overlaps,
+        "feasibility": {
+            "violations": [],
+            "feasible": True,
+            "relative_tolerance": 1e-12,
+        },
+    }
+    return (
+        _people((20, 21)),
+        _contract(_program("alpha"), _program("beta"), groups=[order]),
+        [1, 1],
+        {"alpha_total": 2, "beta_total": 0},
+        {"receives_alpha": [True, True], "receives_beta": [False, False]},
+        _audit(programs, [group]),
+        None,
+    )
+
+
+@pytest.mark.parametrize("case", ["completed", "refused", "group", "group_refused"])
+def test_v2_audit_bytes_without_the_mass_rule_are_pinned(case):
+    person, contract, weights, targets, flags, audit, message = _pinned(case)
+    if message is not None:
+        with pytest.raises(ReceiptAssignmentRefused) as refused:
+            _assign(person, contract, weights=weights, targets=targets)
+        assert str(refused.value) == message
+        assert json.dumps(refused.value.audit) == json.dumps(audit)
+        return
+    out, result = _assign(person, contract, weights=weights, targets=targets)
+    assert list(out.columns) == ["person_id", *flags]
+    assert {name: out[name].tolist() for name in flags} == flags
+    assert json.dumps(result) == json.dumps(audit)
