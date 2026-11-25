@@ -894,7 +894,11 @@ def test_canonical_bytes_keep_what_pandas_reprs_and_numpy_copies_lose() -> None:
     int32_levels = pd.MultiIndex.from_arrays([np.array([1, 2], dtype=np.int32)])
     int64_levels = pd.MultiIndex.from_arrays([np.array([1, 2], dtype=np.int64)])
     assert canonical_result_bytes(int32_levels) != canonical_result_bytes(int64_levels)
-    not_a_number = pd.Series(np.array([0.0]) / np.array([0.0])).astype("Float64")
+    # An explicit mask keeps the NaN a value: pandas 3 turns NaN into a
+    # missing value on conversion.
+    not_a_number = pd.Series(
+        pd.arrays.FloatingArray(np.array([np.nan]), np.array([False]))
+    )
     missing = pd.Series([None], dtype="Float64")
     assert canonical_result_bytes(not_a_number) != canonical_result_bytes(missing)
     plain, labelled = pd.DataFrame({"a": [1.0]}), pd.DataFrame({"a": [1.0]})

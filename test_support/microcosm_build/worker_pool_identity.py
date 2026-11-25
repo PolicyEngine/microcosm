@@ -48,36 +48,88 @@ def _dtype_bytes(dtype: np.dtype) -> bytes:
     return repr((dtype.str, fields)).encode()
 
 
+def _pandas_values(value) -> object:
+    """The array behind a Series or Index: NumPy, or a pandas extension array."""
+    if isinstance(value.dtype, np.dtype):
+        return value.to_numpy()
+    return value.array
+
+
+def _extension_array_bytes(values) -> bytes:
+    """A pandas extension array, with its missing entries kept apart from NaN."""
+    import pandas as pd
+
+    kind = _framed(b"t", _type_name(values)) + _framed(
+        b"d", repr(values.dtype).encode()
+    )
+    if isinstance(values, pd.Categorical):
+        # Explicit categories: a dtype's repr elides them beyond 100.
+        return _framed(
+            b"c",
+            kind
+            + canonical_result_bytes(values.categories)
+            + canonical_result_bytes(bool(values.ordered))
+            + canonical_result_bytes(np.asarray(values.codes)),
+        )
+    missing = canonical_result_bytes(np.asarray(values.isna(), dtype=bool))
+    if hasattr(values, "asi8"):  # Datetime, timedelta and period arrays.
+        return _framed(
+            b"x", kind + missing + canonical_result_bytes(np.asarray(values.asi8))
+        )
+    numpy_dtype = getattr(values.dtype, "numpy_dtype", None)
+    if numpy_dtype is not None:  # Nullable integers, floats and booleans.
+        present = values.to_numpy(dtype=numpy_dtype, na_value=numpy_dtype.type(0))
+    else:
+        present = values.to_numpy(dtype=object, na_value=None)
+    return _framed(b"x", kind + missing + canonical_result_bytes(np.asarray(present)))
+
+
+def _values_bytes(values) -> bytes:
+    if isinstance(values, np.ndarray):
+        return canonical_result_bytes(values)
+    return _extension_array_bytes(values)
+
+
 def _pandas_bytes(value: object) -> bytes | None:
     try:
         import pandas as pd
     except ImportError:  # pragma: no cover - pandas is a workspace dependency
         return None
+    kind = _framed(b"t", _type_name(value))
     if isinstance(value, pd.DataFrame):
         parts = [
             canonical_result_bytes(value.columns),
             canonical_result_bytes(value.index),
+            canonical_result_bytes(dict(value.attrs)),
         ]
         for position in range(value.shape[1]):
             parts.append(canonical_result_bytes(value.iloc[:, position]))
-        return _framed(b"P", _framed(b"t", _type_name(value)) + b"".join(parts))
+        return _framed(b"P", kind + b"".join(parts))
     if isinstance(value, pd.Series):
         return _framed(
             b"P",
-            _framed(b"t", _type_name(value))
+            kind
             + canonical_result_bytes(value.name)
-            # The dtype's repr carries a categorical's categories and order.
             + canonical_result_bytes(repr(value.dtype))
             + canonical_result_bytes(value.index)
-            + canonical_result_bytes(np.asarray(value.to_numpy())),
+            + canonical_result_bytes(dict(value.attrs))
+            + _values_bytes(_pandas_values(value)),
         )
+    if isinstance(value, pd.MultiIndex):
+        levels = b"".join(
+            canonical_result_bytes(level) + canonical_result_bytes(np.asarray(codes))
+            for level, codes in zip(value.levels, value.codes, strict=True)
+        )
+        return _framed(b"P", kind + canonical_result_bytes(list(value.names)) + levels)
     if isinstance(value, pd.Index):
+        frequency = getattr(value, "freq", None)
         return _framed(
             b"P",
-            _framed(b"t", _type_name(value))
+            kind
             + canonical_result_bytes(list(value.names))
             + canonical_result_bytes(repr(value.dtype))
-            + canonical_result_bytes(np.asarray(value.to_numpy())),
+            + canonical_result_bytes(None if frequency is None else str(frequency))
+            + _values_bytes(_pandas_values(value)),
         )
     return None
 
@@ -86,7 +138,9 @@ def canonical_result_bytes(value: object) -> bytes:
     """Bytes that are equal exactly when two results are bit-for-bit the same.
 
     Every value carries its type, so ``True`` and ``np.True_``, an ``IntEnum``
-    member and its ``int``, and ``bytes`` and ``bytearray`` differ.
+    member and its ``int``, and ``bytes`` and ``bytearray`` differ. Structured
+    arrays and records are encoded field by field, never by raw bytes, which
+    would include padding and the addresses of object fields.
 
     Raises:
         TypeError: For a value of a type it has no encoding for.
@@ -107,11 +161,24 @@ def canonical_result_bytes(value: object) -> bytes:
             )
         header = kind + _framed(b"d", _dtype_bytes(value.dtype))
         header += _framed(b"s", repr(value.shape).encode())
+        if value.dtype.names is not None:
+            fields = b"".join(
+                canonical_result_bytes(name)
+                + canonical_result_bytes(np.ascontiguousarray(value[name]))
+                for name in value.dtype.names
+            )
+            return _framed(b"R", header + fields)
         if value.dtype.hasobject:
             items = b"".join(canonical_result_bytes(item) for item in value.ravel())
             return _framed(b"O", header + items)
         return _framed(b"A", header + np.ascontiguousarray(value).tobytes())
     if isinstance(value, np.generic):
+        if value.dtype.names is not None:  # A record of a structured array.
+            fields = b"".join(
+                canonical_result_bytes(name) + canonical_result_bytes(value[name])
+                for name in value.dtype.names
+            )
+            return _framed(b"V", _dtype_bytes(value.dtype) + fields)
         return _framed(
             b"S", _dtype_bytes(value.dtype) + b":" + np.asarray(value).tobytes()
         )
@@ -157,16 +224,95 @@ def canonical_result_bytes(value: object) -> bytes:
     )
 
 
+def _differ(left: object, right: object) -> bool:
+    return canonical_result_bytes(left) != canonical_result_bytes(right)
+
+
+def _first_array_difference(left: np.ndarray, right: np.ndarray, place: str) -> str:
+    if left.dtype != right.dtype or left.shape != right.shape:
+        return f"{place} (dtype or shape)"
+    if left.shape == ():
+        return place
+    if left.dtype.names is None and not left.dtype.hasobject:
+        left_items = np.ascontiguousarray(left).reshape(-1).view(np.uint8)
+        right_items = np.ascontiguousarray(right).reshape(-1).view(np.uint8)
+        differing = np.flatnonzero(left_items != right_items)
+        flat = (
+            int(differing[0]) // max(left.dtype.itemsize, 1) if differing.size else None
+        )
+    else:
+        flat = next(
+            (
+                position
+                for position, (left_item, right_item) in enumerate(
+                    zip(left.ravel(), right.ravel(), strict=True)
+                )
+                if _differ(left_item, right_item)
+            ),
+            None,
+        )
+    if flat is None:
+        return place
+    position = np.unravel_index(flat, left.shape)
+    return f"{place}[{', '.join(str(int(axis)) for axis in position)}]"
+
+
+def _first_pandas_difference(left, right, place: str) -> str | None:
+    """The place two pandas objects first differ, or None if they aren't pandas."""
+    try:
+        import pandas as pd
+    except ImportError:  # pragma: no cover - pandas is a workspace dependency
+        return None
+    if isinstance(left, pd.DataFrame):
+        for name, part in (("columns", "columns"), ("index", "index")):
+            if _differ(getattr(left, part), getattr(right, part)):
+                return f"{place}.{name}"
+        if _differ(dict(left.attrs), dict(right.attrs)):
+            return f"{place}.attrs"
+        for position in range(left.shape[1]):
+            left_column, right_column = left.iloc[:, position], right.iloc[:, position]
+            if _differ(left_column, right_column):
+                label = f"{place}[{left.columns[position]!r}]"
+                return _first_difference(left_column, right_column, label)
+        return place
+    if isinstance(left, pd.Series):
+        for name in ("index", "name", "attrs"):
+            left_part, right_part = getattr(left, name), getattr(right, name)
+            if name == "attrs":
+                left_part, right_part = dict(left_part), dict(right_part)
+            if _differ(left_part, right_part):
+                return f"{place}.{name}"
+        if repr(left.dtype) != repr(right.dtype):
+            return f"{place}.dtype"
+        if isinstance(left.dtype, np.dtype):
+            located = _first_array_difference(
+                left.to_numpy(), right.to_numpy(), f"{place}.iloc"
+            )
+            return place if located == f"{place}.iloc" else located
+        return place
+    if isinstance(left, pd.Index):
+        return place
+    return None
+
+
 def _first_difference(left: object, right: object, place: str) -> str:
     """The place in two results where their canonical bytes first differ."""
     if type(left) is not type(right):
         return f"{place} (types {type(left).__name__} and {type(right).__name__})"
+    pandas_place = _first_pandas_difference(left, right, place)
+    if pandas_place is not None:
+        return pandas_place
     if isinstance(left, Mapping):
-        if list(left) != list(right):
+        # Keys compare by their bytes: a NaN key is never == itself.
+        if [canonical_result_bytes(key) for key in left] != [
+            canonical_result_bytes(key) for key in right
+        ]:
             return f"{place} (its keys or their order)"
-        for key in left:
-            if canonical_result_bytes(left[key]) != canonical_result_bytes(right[key]):
-                return _first_difference(left[key], right[key], f"{place}[{key!r}]")
+        for (key, left_item), right_item in zip(
+            left.items(), right.values(), strict=True
+        ):
+            if _differ(left_item, right_item):
+                return _first_difference(left_item, right_item, f"{place}[{key!r}]")
         return place
     if isinstance(left, tuple | list):
         if len(left) != len(right):
@@ -174,7 +320,7 @@ def _first_difference(left: object, right: object, place: str) -> str:
         for position, (left_item, right_item) in enumerate(
             zip(left, right, strict=True)
         ):
-            if canonical_result_bytes(left_item) != canonical_result_bytes(right_item):
+            if _differ(left_item, right_item):
                 return _first_difference(left_item, right_item, f"{place}[{position}]")
         return place
     if dataclasses.is_dataclass(left) and not isinstance(left, type):
@@ -183,22 +329,11 @@ def _first_difference(left: object, right: object, place: str) -> str:
                 getattr(left, field.name),
                 getattr(right, field.name),
             )
-            if canonical_result_bytes(left_item) != canonical_result_bytes(right_item):
+            if _differ(left_item, right_item):
                 return _first_difference(left_item, right_item, f"{place}.{field.name}")
         return place
-    if (
-        isinstance(left, np.ndarray)
-        and left.dtype == right.dtype
-        and left.shape == right.shape
-        and not left.dtype.hasobject
-    ):
-        left_bytes = np.ascontiguousarray(left).reshape(-1).view(np.uint8)
-        right_bytes = np.ascontiguousarray(right).reshape(-1).view(np.uint8)
-        differing = np.flatnonzero(left_bytes != right_bytes)
-        if differing.size:
-            flat = int(differing[0]) // max(left.dtype.itemsize, 1)
-            position = np.unravel_index(flat, left.shape) if left.shape else ()
-            return f"{place}[{', '.join(str(int(axis)) for axis in position)}]"
+    if isinstance(left, np.ndarray) and not isinstance(left, np.ma.MaskedArray):
+        return _first_array_difference(left, right, place)
     return place
 
 

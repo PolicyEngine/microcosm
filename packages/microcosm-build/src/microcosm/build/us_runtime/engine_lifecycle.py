@@ -77,7 +77,10 @@ def _registrations(directory: Path | None) -> dict[str, ModuleType]:
 # Scopes opened and not yet closed, oldest first, as weak references: a scope
 # dropped without closing stops counting once it is collected.
 _OPEN_SCOPES: list[weakref.ref[EngineVariableModuleScope]] = []
-_OPEN_SCOPES_LOCK = threading.Lock()
+# Reentrant: a garbage collection that frees a suspended
+# ``temporary_engine_variable_modules`` scope runs its ``close`` in whichever
+# thread is running, possibly one that holds this lock inside ``open``.
+_OPEN_SCOPES_LOCK = threading.RLock()
 
 
 class EngineVariableModuleScope:
@@ -120,17 +123,24 @@ class EngineVariableModuleScope:
         """The snapshot of the oldest scope opened after this one and still open."""
         later = False
         snapshot = None
-        live = []
-        for reference in _OPEN_SCOPES:
+        # A copy: a close that a garbage collection runs from in here may change
+        # the list.
+        for reference in tuple(_OPEN_SCOPES):
             scope = reference()
-            if scope is None:
-                continue
-            live.append(reference)
             if scope is self:
                 later = True
-            elif later and snapshot is None and scope._previous is not None:
+            elif (
+                later
+                and snapshot is None
+                and scope is not None
+                and scope._previous is not None
+            ):
                 snapshot = scope._previous
-        _OPEN_SCOPES[:] = [reference for reference in live if reference() is not self]
+        _OPEN_SCOPES[:] = [
+            reference
+            for reference in _OPEN_SCOPES
+            if reference() is not None and reference() is not self
+        ]
         return snapshot
 
     def close(self) -> None:
