@@ -859,29 +859,54 @@ def _require_completed_source_receipt_matches_pins(
     )
 
 
-def _verify_asec_source_digests(args: argparse.Namespace) -> None:
+#: Steps that read the pinned ASEC files and check no digest of the bytes
+#: they read, so they hash the files for the pin check themselves rather
+#: than take the parent's digests. ``household_location_assignment`` reads
+#: the CPS household geography from them under ``block_v1``.
+#: ``source_construction``, the other step that reads them, compares the
+#: digests of the bytes it read with the pins
+#: (``_require_receipt_digests_match_pins``).
+_STEPS_HASHING_THEIR_ASEC_SOURCES = frozenset({HOUSEHOLD_LOCATION_STAGE_NAME})
+
+
+def _verify_asec_source_digests(args: argparse.Namespace) -> dict[str, str]:
     """Refuse a raw ASEC input whose bytes differ from its declared digest.
 
     Every pin is parsed and compared with the canonical roster first
     (:func:`_parse_asec_source_pins`, which reads no file), then each pinned
     file is hashed in year order. Runs before any stage, so a wrong input
-    refuses in seconds rather than surfacing as drift hours later.
+    refuses in seconds rather than surfacing as drift hours later. A step
+    process of a ``--stage all`` run compares each pin with the digest its
+    parent computed for the same resolved path (``PARENT_DIGESTS_VARIABLE``)
+    instead of hashing the file, except in
+    ``_STEPS_HASHING_THEIR_ASEC_SOURCES``.
+
+    Returns each pinned file's digest under its resolved path, empty when
+    nothing is pinned.
     """
 
     pins = _parse_asec_source_pins(args)
     if pins is None:
-        return
+        return {}
+    parent_digests = (
+        None
+        if getattr(args, "stage", "all") in _STEPS_HASHING_THEIR_ASEC_SOURCES
+        else _parent_digests(args)
+    )
     paths = _asec_source_paths(args)
+    verified: dict[str, str] = {}
     for year, sha in sorted(pins.items()):
         path = paths[year]
         if not path.is_file():
             raise SystemExit(f"ASEC {year} source {path} does not exist.")
-        actual = _sha256(path)
+        actual = _input_sha256(path, parent_digests)
         if actual != sha:
             raise SystemExit(
                 f"ASEC {year} source {path} failed digest "
                 f"verification: expected {sha}, got {actual}."
             )
+        verified[str(path.resolve())] = actual
+    return verified
 
 
 #: The telemetry pipeline this builder reports under.
@@ -908,7 +933,7 @@ def _dispatch(
 ) -> None:
     """Run the parsed command, recording stage changes on ``telemetry`` if any."""
 
-    _verify_asec_source_digests(args)
+    verified_asec_sha256 = _verify_asec_source_digests(args)
     stage = getattr(args, "stage", "all")
     checkpoint_dir = getattr(args, "checkpoint_dir", None)
     if stage != "all":
@@ -951,17 +976,22 @@ def _dispatch(
         if observer is not None:
             observer.assert_complete()
         return
-    _run_staged_all(args, telemetry)
+    _run_staged_all(args, telemetry, verified_asec_sha256=verified_asec_sha256)
 
 
 def _run_staged_all(
-    args: argparse.Namespace, telemetry: LocalTelemetryEmitter | None = None
+    args: argparse.Namespace,
+    telemetry: LocalTelemetryEmitter | None = None,
+    *,
+    verified_asec_sha256: Mapping[str, str] | None = None,
 ) -> None:
     """Run every outer boundary in a fresh interpreter, resuming by prefix.
 
     Before each child, ``telemetry`` (the parent's, if any) records that
     child's stage; a child that exits nonzero stops the run, which main()
     records as that stage's failure. The children start no emitter.
+    ``verified_asec_sha256`` holds the digests this process's pin check
+    computed (``_verify_asec_source_digests``), which the children reuse.
     """
 
     pipeline_steps = _pipeline_steps_for(args)
@@ -969,8 +999,11 @@ def _run_staged_all(
     runtime = _open_stage_runtime(args, run_config)
     # Each step process takes the input and builder source digests from this
     # run config, which the resume check just compared with the locked one,
-    # instead of hashing the files again.
-    digests_environment = _parent_digests_environment(run_config)
+    # and the ASEC digests from the pin check, instead of hashing the files
+    # again.
+    digests_environment = _parent_digests_environment(
+        run_config, verified_asec_sha256 or {}
+    )
     completed_prefix = runtime.context.completed
     remaining = pipeline_steps[len(completed_prefix) :]
     if not remaining and completed_prefix == pipeline_steps:
@@ -1333,8 +1366,8 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
 
     A resume must supply equal values, except for
     ``_RESUME_IGNORED_RUN_CONFIG_PATHS``. A step process of a ``--stage all``
-    run takes the PUF and builder source digests its parent passed
-    (``PARENT_DIGESTS_VARIABLE``) instead of hashing those files again.
+    run takes the PUF, location ladder and builder source digests its parent
+    passed (``PARENT_DIGESTS_VARIABLE``) instead of hashing those files again.
     """
 
     def path(value: Path | None) -> str | None:
@@ -1452,7 +1485,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
                 "location_seed": int(args.location_seed),
                 "location_clones": int(args.location_clones),
                 "block_ladder_artifact_sha256": (
-                    _sha256(args.block_ladder_artifact)
+                    _input_sha256(args.block_ladder_artifact, parent_digests)
                     if Path(args.block_ladder_artifact).is_file()
                     else None
                 ),
@@ -1493,20 +1526,25 @@ def _builder_tool_path() -> Path:
 
 
 #: The variable in which a ``--stage all`` parent passes each step process the
-#: digests of its run config, as JSON: the SHA-256 of the PUF H5 and CSV under
-#: each file's resolved path, and the builder source digest with the
-#: repository root and tool file it covers, so the step's own run config
-#: (``_stage_run_config``) does not read those files again. A step process
+#: digests it computed, as JSON: under each file's resolved path, the SHA-256
+#: of the PUF H5 and CSV and, under ``block_v1``, of the location ladder
+#: (all from its run config), and of each pinned ASEC file (from its pin
+#: check); and the builder source digest with the repository root and tool
+#: file it covers.
+#: So the step's own run config (``_stage_run_config``) and pin check
+#: (``_verify_asec_source_digests``) do not read those files again, except
+#: where a step hashes the ASEC files itself
+#: (``_STEPS_HASHING_THEIR_ASEC_SOURCES``). A step process
 #: uses a digest only for the same path, and only when the process that set
 #: the variable is its parent (the recorded process ID equals
 #: ``os.getppid()``); otherwise it hashes the file itself, as a named
 #: ``--stage`` run by hand does when the variable is unset. A malformed
 #: variable stops the process. The parent ignores the variable and hashes
 #: everything at every start, comparing the result with the locked run
-#: config before it starts a step, so a resume after an input or the
-#: builder's code changed is still refused. What goes unnoticed is a PUF or
-#: source file that changes while the run is under way, a ``git pull`` in
-#: the same checkout included. The process-ID comparison does not identify
+#: config and the ASEC pins before it starts a step, so a resume after an
+#: input or the builder's code changed is still refused. What goes unnoticed
+#: is one of those files changing while the run is under way, a ``git pull``
+#: in the same checkout included. The process-ID comparison does not identify
 #: the run: a copy of the variable used where process IDs repeat (a fresh
 #: container) can match, as ``MICROCOSM_TELEMETRY_PARENT_PID`` can.
 PARENT_DIGESTS_VARIABLE = "MICROCOSM_US_BASE_PARENT_DIGESTS"
@@ -1516,10 +1554,12 @@ _PARENT_DIGESTS_KEYS = frozenset(
 )
 _PARENT_SOURCE_DIGEST_KEYS = frozenset({"repo_root", "sha256", "tool_path"})
 #: The run-config keys of each input path the parent passes a digest for,
-#: and of that digest.
+#: and of that digest. The ladder's digest is in the run config only under
+#: ``block_v1``.
 _PARENT_DIGEST_FILE_KEYS = (
     ("puf_h5", "puf_h5_sha256"),
     ("puf_source_year_csv", "puf_source_year_csv_sha256"),
+    ("block_ladder_artifact", "block_ladder_artifact_sha256"),
 )
 
 
@@ -1535,10 +1575,16 @@ class _ParentDigests(NamedTuple):
     builder_source_sha256: str | None
 
 
-def _parent_digests_environment(run_config: Mapping[str, object]) -> dict[str, str]:
-    """``PARENT_DIGESTS_VARIABLE`` carrying ``run_config``'s digests."""
+def _parent_digests_environment(
+    run_config: Mapping[str, object], verified_asec_sha256: Mapping[str, str]
+) -> dict[str, str]:
+    """``PARENT_DIGESTS_VARIABLE`` carrying this process's digests.
 
-    file_sha256 = {}
+    They are ``run_config``'s and ``verified_asec_sha256``, the pinned ASEC
+    files' digests under their resolved paths.
+    """
+
+    file_sha256 = dict(verified_asec_sha256)
     for path_key, digest_key in _PARENT_DIGEST_FILE_KEYS:
         path, digest = run_config.get(path_key), run_config.get(digest_key)
         if isinstance(path, str) and isinstance(digest, str):
