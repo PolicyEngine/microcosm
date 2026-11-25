@@ -444,7 +444,10 @@ def _process_running(pid: int) -> bool:
     return True
 
 
-def test_busy_workers_exit_when_their_parent_is_killed(tmp_path) -> None:
+@pytest.mark.parametrize("fork_holder", [False, True], ids=["alone", "forked-child"])
+def test_busy_workers_exit_when_their_parent_is_killed(tmp_path, fork_holder) -> None:
+    """With ``forked-child``, a child the parent forked keeps copies of the
+    parent's pipe ends open, so the pipes alone cannot show the parent died."""
     repository = paths_for("microcosm-build").repository
     environment = {**os.environ, "PYTHONPATH": str(repository)}
     parent = subprocess.Popen(
@@ -453,13 +456,17 @@ def test_busy_workers_exit_when_their_parent_is_killed(tmp_path) -> None:
             "-m",
             "test_support.microcosm_build.worker_pool_orphan_parent",
             str(tmp_path),
+            *(["--fork-holder"] if fork_holder else []),
         ],
         cwd=repository,
         env=environment,
     )
+    holder_file = tmp_path / "holder"
     try:
         deadline = time.monotonic() + 90
-        while len(list(tmp_path.glob("worker-*"))) < 2:
+        while len(list(tmp_path.glob("worker-*"))) < 2 or (
+            fork_holder and not holder_file.exists()
+        ):
             assert parent.poll() is None, "the parent process exited early"
             assert time.monotonic() < deadline, "the workers did not start"
             time.sleep(0.2)
@@ -470,15 +477,21 @@ def test_busy_workers_exit_when_their_parent_is_killed(tmp_path) -> None:
         parent.kill()
         parent.wait()
 
-    deadline = time.monotonic() + 20
-    while (
-        any(_process_running(pid) for pid in worker_pids)
-        and time.monotonic() < deadline
-    ):
-        time.sleep(0.2)
-    still_running = [pid for pid in worker_pids if _process_running(pid)]
-    for pid in still_running:
-        os.kill(pid, signal.SIGKILL)
+    try:
+        deadline = time.monotonic() + 20
+        while (
+            any(_process_running(pid) for pid in worker_pids)
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.2)
+        still_running = [pid for pid in worker_pids if _process_running(pid)]
+        for pid in still_running:
+            os.kill(pid, signal.SIGKILL)
+    finally:
+        if holder_file.exists():
+            holder = int(holder_file.read_text())
+            if _process_running(holder):
+                os.kill(holder, signal.SIGKILL)
     assert still_running == []
 
 
@@ -732,6 +745,107 @@ def test_a_kill_the_operating_system_refuses_does_not_raise(monkeypatch) -> None
     finally:
         os.close(read_end)
         os.close(write_end)
+
+
+def _fail_one_send(monkeypatch, pool, *, while_ready: bool) -> list[int]:
+    """Make the parent's next unit or start-up send find its worker dead.
+
+    The send kills the worker and raises ``BrokenPipeError``, as a send does
+    when the worker dies (an out-of-memory kill, say) while reading it.
+    Returns the killed workers' process IDs.
+    """
+    from multiprocessing.connection import Connection
+
+    real_send_bytes = Connection.send_bytes
+    killed: list[int] = []
+
+    def send_bytes(connection, *args, **kwargs):
+        workers = pool._shared.workers
+        if not killed and workers and workers[-1].ready is while_ready:
+            killed.append(workers[-1].pid)
+            os.kill(workers[-1].pid, signal.SIGKILL)
+            raise BrokenPipeError(32, "Broken pipe")
+        return real_send_bytes(connection, *args, **kwargs)
+
+    monkeypatch.setattr(Connection, "send_bytes", send_bytes)
+    return killed
+
+
+def test_a_unit_whose_worker_dies_while_receiving_it_is_charged_an_attempt(
+    monkeypatch,
+) -> None:
+    pool = WorkerPool(
+        WorkerPoolSettings(workers=1, max_attempts=2), unit_function=units.echo
+    )
+    killed = _fail_one_send(monkeypatch, pool, while_ready=True)
+    with pool:
+        assert list(pool.map([0])) == [0]
+        report = pool.report()
+
+    assert len(killed) == 1
+    assert [
+        (attempt.unit_index, attempt.worker_pid) for attempt in report.failed_attempts
+    ] == [(0, killed[0])]
+
+
+def test_a_worker_that_dies_while_receiving_its_start_up_data_is_a_failed_start(
+    monkeypatch,
+) -> None:
+    pool = WorkerPool(
+        WorkerPoolSettings(workers=1, max_attempts=2),
+        initializer=units.initialize_with_payload,
+        initargs=(np.ones(10),),
+        unit_function=units.describe_worker,
+    )
+    killed = _fail_one_send(monkeypatch, pool, while_ready=False)
+    with pool:
+        (result,) = pool.map([0])
+        report = pool.report()
+
+    assert len(killed) == 1
+    assert result["pid"] != killed[0]
+    assert report.worker_starts == 2
+
+
+def test_a_units_iterable_that_raises_leaves_the_pool_usable() -> None:
+    def units_that_fail():
+        yield 0
+        raise ValueError("fixture units iterable fails")
+
+    with WorkerPool(WorkerPoolSettings(workers=1), unit_function=units.echo) as pool:
+        with pytest.raises(ValueError, match="fixture units iterable fails"):
+            next(pool.map(units_that_fail()))
+        assert list(pool.map([1])) == [1]
+
+
+def test_closing_while_this_thread_holds_the_pools_lock_returns() -> None:
+    """A garbage collection inside ``report()``, which holds the lock, can close
+    an abandoned map; ``close`` must not then wait for the memory thread,
+    which is waiting for that lock."""
+    pool = WorkerPool(
+        WorkerPoolSettings(workers=2, memory_poll_seconds=0.02),
+        unit_function=units.sleep_then_return,
+    )
+    results = pool.map([(0, 0.0), (1, 30.0)])
+    assert next(results) == 0
+    with pool._shared.lock:
+        time.sleep(0.2)  # The memory thread is now waiting for the lock.
+        pool.close()
+    assert multiprocessing.active_children() == []
+
+
+def test_handing_back_a_result_frees_its_place_for_an_idle_worker() -> None:
+    with WorkerPool(
+        WorkerPoolSettings(workers=1, max_units_ahead=1),
+        unit_function=units.record_run_times,
+    ) as pool:
+        results = pool.map([(0, 0.0), (1, 0.0)])
+        next(results)
+        time.sleep(1.0)  # The caller works on result 0.
+        resumed = time.monotonic()
+        (_, unit_one_started, _) = next(results)
+
+    assert unit_one_started < resumed
 
 
 # ---------------------------------------------------------------------------
