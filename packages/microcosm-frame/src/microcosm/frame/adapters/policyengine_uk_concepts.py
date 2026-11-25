@@ -64,6 +64,7 @@ _UK_BENUNIT_TAKE_UP = (
     "uc",
     "uc_at_legacy_closure",
     "uc_childcare",
+    "uc_housing_costs_element",
     "universal_childcare",
 )
 
@@ -174,6 +175,17 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
         "The UK build draws it with separate couple and single rates "
         "(frs_take_up.py); one rate per program key replaces them.",
     ),
+    "uc_housing_costs_element": (
+        "Whether this family's Universal Credit award would include the "
+        "housing costs element if entitled. ... A family with it false gets "
+        "no element under any reform, so a dataset should set it false only "
+        "where the model would otherwise pay an element.",
+        "The UK build sets it false on a linked FRS claim whose DWP award "
+        "statement carries no housing element where the locked engine pays "
+        "one, and every other unit keeps the default "
+        "(uc_housing_costs_claim.py, B1 of microcosm#1710); a threshold alone "
+        "has neither the statement nor the engine's element.",
+    ),
     "universal_childcare": (
         "Whether this BenUnit would claim universal childcare entitlement if eligible",
         "The UK build draws it from one rate (frs_take_up.py).",
@@ -208,16 +220,6 @@ UK_ENGINE_DEFAULT_TAKE_UP_INPUTS: dict[str, str] = {
         "and the same in every year. The survey year's loans, which the "
         "student_loans stage writes, do not move (microcosm#1095; María's "
         "signature of 19 November 2026, pending review)."
-    ),
-    "would_claim_uc_housing_costs_element": (
-        "Whether a family's Universal Credit award includes the housing costs "
-        "element where the engine finds it entitled (policyengine-uk 2.180.0, "
-        "policyengine-uk#2951). The build stores none, so it stays true and "
-        "every renting claimant the engine finds entitled is paid the element, "
-        "as before 2.180.0. On linked FRS 2024-25 claims, DWP's award statement "
-        "carries no housing costs element for some renters the engine pays "
-        "one, so their Universal Credit, and the benefit cap's reach, are "
-        "overstated (microcosm#1710; for María's signature)."
     ),
 }
 

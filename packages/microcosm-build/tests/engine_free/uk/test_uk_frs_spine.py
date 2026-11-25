@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_UC_CARER_ELEMENT_COLUMN,
     FRS_UC_CLAIM_MONTHS_COLUMN,
     FRS_UC_CLAIM_MONTHS_NOT_LINKED,
+    FRS_UC_HOUSING_ELEMENT_COLUMN,
     FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -84,6 +85,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     frs_lcwra_proxy,
     frs_uc_carer_element,
     frs_uc_claim_months,
+    frs_uc_housing_element_status,
     frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
@@ -5391,6 +5393,102 @@ class TestUCCarerElementCarrier:
         status = person.set_index("person_id")[FRS_UC_CARER_ELEMENT_COLUMN].to_dict()
         assert status[1001] == "CARER"
         assert {value for key, value in status.items() if key != 1001} == {"NOT_LINKED"}
+
+
+class TestUCHousingElementCarrier:
+    """DWP's housing costs element on a linked claim's statement (B1 of microcosm#1710)."""
+
+    @staticmethod
+    def _benefits(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows,
+            columns=["benunit_id", "person_id", "benefit", "uchousel", "ucstart_raw"],
+        )
+
+    def test_the_uc_rows_person_carries_whether_the_statement_holds_it(self) -> None:
+        benefits = self._benefits(
+            [
+                (101, 1001, 95, 85.5, "07/15/2024"),  # an element in the statement
+                (201, 2002, 95, 0.0, "01/15/2022"),  # none, on the partner's row
+                (301, 3001, 95, np.nan, ""),  # no linked record
+                (401, 4001, 96, 10.0, "07/15/2024"),  # PIP daily living, not UC
+                (501, 5001, 95, 50.0, ""),  # an amount on a claim with no start
+                (601, 6001, 95, np.nan, "07/15/2024"),  # a linked claim, no amount
+            ]
+        )
+        person = pd.DataFrame(
+            {"person_id": [1001, 1002, 2001, 2002, 3001, 4001, 5001, 6001]}
+        )
+
+        assert frs_uc_housing_element_status(benefits, person).tolist() == [
+            "PAID",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NONE",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NOT_LINKED",
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        person = pd.DataFrame({"person_id": [1001, 1002]})
+        with pytest.raises(KeyError, match="uchousel"):
+            frs_uc_housing_element_status(
+                pd.DataFrame(
+                    {
+                        "benunit_id": [101],
+                        "person_id": [1001],
+                        "benefit": [95],
+                        "ucstart_raw": ["07/15/2024"],
+                    }
+                ),
+                person,
+            )
+        with pytest.raises(KeyError, match="benefits.ucstart"):
+            frs_uc_housing_element_status(
+                pd.DataFrame(
+                    {
+                        "benunit_id": [101],
+                        "person_id": [1001],
+                        "benefit": [95],
+                        "uchousel": [1.0],
+                    }
+                ),
+                person,
+            )
+        linked = "07/15/2024"
+        with pytest.raises(ValueError, match="negative UCHOUSEL"):
+            frs_uc_housing_element_status(
+                self._benefits([(101, 1001, 95, -1.0, linked)]), person
+            )
+        with pytest.raises(ValueError, match="two FRS UC rows"):
+            frs_uc_housing_element_status(
+                self._benefits(
+                    [(101, 1001, 95, 1.0, linked), (101, 1002, 95, 1.0, linked)]
+                ),
+                person,
+            )
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_housing_element_status(
+                self._benefits([(101, 9999, 95, 1.0, linked)]), person
+            )
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append({**_uc_row(1, "07/15/2024", 2), "UCHOUSEL": 75.0})
+        tables["benefits"].append({**_uc_row(2, "07/15/2024"), "UCHOUSEL": 0.0})
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        status = person.set_index("person_id")[FRS_UC_HOUSING_ELEMENT_COLUMN].to_dict()
+        assert status[1001] == "PAID"
+        assert status[2001] == "NONE"
+        assert {value for key, value in status.items() if key not in (1001, 2001)} == {
+            "NOT_LINKED"
+        }
 
 
 class TestDWPCarerCareHours:

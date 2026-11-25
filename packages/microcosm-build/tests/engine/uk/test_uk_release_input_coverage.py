@@ -524,6 +524,7 @@ class TestUKManifest:
                 "was_lisa",
                 "isa_subscriptions",
                 "uc_limited_capability",
+                "uc_housing_costs_claim",
                 "pip_points",
                 "trading_allowance_receipts",
                 "uc_new_claimant_draw",

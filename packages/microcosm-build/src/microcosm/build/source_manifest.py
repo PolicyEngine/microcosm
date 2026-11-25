@@ -63,6 +63,8 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_trips_from_band_means",
         # microcosm#1428: the self-employed's gross receipts.
         "assign_trading_allowance_receipts",
+        # B1 of microcosm#1710: DWP's admin-linked UC housing element status.
+        "assign_uc_housing_claim_from_admin_status",
         # microcosm#1095 (Y1): DWP's admin-linked UC limited capability status.
         "assign_uc_limited_capability_from_admin_status",
         # microcosm#1095: UC's new-claimant health element draw, by claim recency.

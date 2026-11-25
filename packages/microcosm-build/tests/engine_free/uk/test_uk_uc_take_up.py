@@ -671,14 +671,16 @@ def test_committed_manifest_declares_the_stage_and_its_rewrite() -> None:
         )
     )
     assert transform.checkpoint_metadata()["evidence"]["stage"] == UC_TAKE_UP_STAGE_NAME
-    # The stage runs after the last writer of the capital and UC reports and
-    # the UC limited capability flags (microcosm#1095, Y1), and before the
-    # Move to UC draw reads would_claim_uc.
+    # The stage runs after the last writer of the capital and UC reports, the
+    # UC limited capability flags (microcosm#1095, Y1) and the housing costs
+    # element claim (microcosm#1710), so its draw sees the awards that claim
+    # leaves, and before the Move to UC draw reads would_claim_uc.
     order = [stage.stage for stage in load_country_spec("uk").sources.stages]
     position = order.index(UC_TAKE_UP_STAGE_NAME)
-    assert order[position - 2 : position] == [
+    assert order[position - 3 : position] == [
         "uc_capital_coherence",
         "uc_limited_capability",
+        "uc_housing_costs_claim",
     ]
     assert order[position + 1] == "uc_legacy_closure_take_up"
 

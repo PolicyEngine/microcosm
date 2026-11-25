@@ -1334,6 +1334,7 @@
           "person.uc_limited_capability_for_work",
           "person.cares_for_severely_disabled_person",
           "benunit.uc_new_claimant_health_element_draw",
+          "benunit.would_claim_uc_housing_costs_element",
           "household.uk_total_corporate_wealth",
           "household.uk_total_private_pension_wealth",
           "household.uk_total_food_and_non_alcoholic_beverages_consumption",

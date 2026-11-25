@@ -1024,6 +1024,12 @@ def build_manifest(
                 stage_name="uc_limited_capability",
                 candidate_source=candidate_source,
             ),
+            # B1 of microcosm#1710: the housing costs element claim flag, from
+            # DWP's award statement on linked claims.
+            "uc_housing_costs_claim": _source_stage_family_coverage_contract(
+                stage_name="uc_housing_costs_claim",
+                candidate_source=candidate_source,
+            ),
             # microcosm#1095 (P1): the PIP points, drawn within the stored awards.
             "pip_points": _source_stage_family_coverage_contract(
                 stage_name="pip_points",

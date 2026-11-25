@@ -194,6 +194,9 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
 from microcosm.build.uk_runtime.uc_deduction_attributes import (
     UKUCDeductionAttributesStageTransform,
 )
+from microcosm.build.uk_runtime.uc_housing_costs_claim import (
+    UKUCHousingCostsClaimStageTransform,
+)
 from microcosm.build.uk_runtime.uc_limited_capability import (
     UKUCLimitedCapabilityStageTransform,
 )
@@ -226,7 +229,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 57
+UK_FIXTURE_STAGE_COUNT = 58
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -269,6 +272,9 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # DWP's admin-linked UC carer element, the carrier frs_disability
         # checks the carer link against (microcosm#1095, A3 (f)).
         "frs_uc_carer_element",
+        # DWP's admin-linked UC housing element status, the carrier the
+        # uc_housing_costs_claim stage reads (B1 of microcosm#1710).
+        "frs_uc_housing_element_status",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -2231,8 +2237,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 35:
-        raise RuntimeError("The legacy normalization audit is not exactly 35 cells.")
+    if observed != expected_order or len(observed) != 36:
+        raise RuntimeError("The legacy normalization audit is not exactly 36 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -2489,6 +2495,9 @@ def _build_implementations(
         ),
         "uc_limited_capability": UKUCLimitedCapabilityStageTransform(
             stage=stages["uc_limited_capability"], engine=engine
+        ),
+        "uc_housing_costs_claim": UKUCHousingCostsClaimStageTransform(
+            stage=stages["uc_housing_costs_claim"], engine=engine
         ),
         "uc_new_claimant_draw": UKUCNewClaimantDrawStageTransform(
             stage=stages["uc_new_claimant_draw"], engine=engine

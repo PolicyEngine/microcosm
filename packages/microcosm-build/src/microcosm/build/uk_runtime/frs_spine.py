@@ -45,6 +45,7 @@ __all__ = [
     "FRS_CARE_RECIPIENTS_COLUMN",
     "FRS_SPINE_TABLES",
     "FRS_UC_CARER_ELEMENT_COLUMN",
+    "FRS_UC_HOUSING_ELEMENT_COLUMN",
     "OUTPUT_COLUMNS",
     "REGION_MAP",
     "TIME_PERIOD",
@@ -406,6 +407,20 @@ FRS_UC_CLAIM_MONTHS_NOT_LINKED = -1.0
 #: is no engine input and leaves at the release boundary.
 FRS_UC_CARER_ELEMENT_COLUMN = "frs_uc_carer_element"
 FRS_UC_CARER_ELEMENT_CODES = {0: "NONE", 1: "CARER"}
+#: DWP's housing costs element on a benefit unit's linked Universal Credit
+#: claim: BENEFITS.UCHOUSEL on the UC row, "Weekly Housing Element Amount
+#: (Admin UC)" in SN 9563's variable listing, the element in DWP's award
+#: statement for the assessment period that contains the interview (DWP,
+#: Family Resources Survey transformation: integrating administrative data
+#: for benefits, section 4.3.2). It is read only where the claim has a linked
+#: record (UCSTART present), as the carer element is, and gives whether the
+#: statement carries the element: PAID where the amount is positive, NONE
+#: where it is zero. Any other claim is NOT_LINKED, whatever the column
+#: holds. It is the claim's, on the UC row's person, every other person
+#: carrying NOT_LINKED. The uc_housing_costs_claim stage reads it (B1 of
+#: microcosm#1710); it is no engine input and leaves at the release boundary.
+FRS_UC_HOUSING_ELEMENT_COLUMN = "frs_uc_housing_element_status"
+FRS_UC_HOUSING_ELEMENT_CODES = {0: "NONE", 1: "PAID"}
 #: B3 of the November event-data plan's PR3 (microcosm#1095; María's ruling of
 #: 2026-11-11): DWP pays the Universal Credit carer element only for caring at
 #: least 35 hours a week for a severely disabled person, so a linked claim whose
@@ -499,6 +514,7 @@ OUTPUT_COLUMNS = (
     FRS_UC_LCW_STATUS_COLUMN,
     FRS_CONDITION_LIMITS_COLUMN,
     FRS_UC_CARER_ELEMENT_COLUMN,
+    FRS_UC_HOUSING_ELEMENT_COLUMN,
     "uc_is_in_gainful_self_employment",
     "rent_paid_as_boarder",
     "rent_paid_as_lodger",
@@ -1010,6 +1026,9 @@ def _assemble_frame(
         person, adult_record
     )
     pe_person[FRS_UC_CARER_ELEMENT_COLUMN] = frs_uc_carer_element(
+        frs["benefits"], pe_person
+    )
+    pe_person[FRS_UC_HOUSING_ELEMENT_COLUMN] = frs_uc_housing_element_status(
         frs["benefits"], pe_person
     )
     # Every column the LCWRA proxy reads is here after _add_benefits: strict,
@@ -2724,6 +2743,52 @@ def frs_uc_carer_element(benefits: pd.DataFrame, pe_person: pd.DataFrame) -> np.
         codes=FRS_UC_CARER_ELEMENT_CODES,
         carrier="UC carer element",
         known="the 0 and 1 the carrier reads",
+        linked_by_start=True,
+    )
+
+
+def frs_uc_housing_element_status(
+    benefits: pd.DataFrame, pe_person: pd.DataFrame
+) -> np.ndarray:
+    """Each person's carrier of DWP's housing costs element on a linked UC claim.
+
+    BENEFITS.UCHOUSEL (``FRS_UC_HOUSING_ELEMENT_COLUMN``) is the weekly housing
+    element in the claim's award statement, on the claim's single UC row, read
+    only where the claim has a linked record (UCSTART, kept as ``ucstart_raw``,
+    present). The UC row's person carries PAID for a positive amount, NONE for
+    zero, or NOT_LINKED for a claim without a linked record or without an
+    amount, as the other admin UC carriers read a blank (the 2024-25 file
+    records one on every linked claim), and every other person NOT_LINKED.
+    A negative amount on a linked claim, a second UC row on one benefit
+    unit, or a UC row whose person isn't on the spine is refused rather
+    than guessed (B1 of microcosm#1710). The refusals count the rows, never
+    naming one.
+    """
+
+    for column in ("uchousel", "ucstart_raw"):
+        if column not in benefits.columns:
+            raise KeyError(
+                "The UC housing element carrier needs the FRS column "
+                f"benefits.{column.removesuffix('_raw')}."
+            )
+    uc_rows = benefits.loc[
+        _number(benefits, "benefit").isin(BENEFIT_CODES["universal_credit"])
+    ]
+    start = pd.Series(uc_rows["ucstart_raw"], dtype="string").str.strip()
+    linked = (start.notna() & (start != "")).to_numpy()
+    amounts = _raw_number(uc_rows, "uchousel").to_numpy(dtype=float)
+    negative = int((linked & (amounts < 0)).sum())
+    if negative:
+        raise ValueError(f"{negative} linked UC claim(s) carry a negative UCHOUSEL.")
+    all_amounts = _raw_number(benefits, "uchousel")
+    paid = all_amounts.where(all_amounts.isna(), (all_amounts > 0).astype(float))
+    return _frs_uc_admin_claim_status(
+        benefits.assign(uchousel_paid=paid),
+        pe_person,
+        column="uchousel_paid",
+        codes=FRS_UC_HOUSING_ELEMENT_CODES,
+        carrier="UC housing element",
+        known="NONE and PAID",
         linked_by_start=True,
     )
 

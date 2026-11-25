@@ -221,6 +221,10 @@
    },
    {
     "entity": "benunit",
+    "name": "would_claim_uc_housing_costs_element"
+   },
+   {
+    "entity": "benunit",
     "name": "would_claim_universal_childcare"
    }
   ],
@@ -237,7 +241,7 @@
    }
   ]
  },
- "covered_count": 41,
+ "covered_count": 42,
  "covered_inputs": [
   {
    "entity": "person",
@@ -398,6 +402,10 @@
   {
    "entity": "benunit",
    "name": "would_claim_uc_childcare"
+  },
+  {
+   "entity": "benunit",
+   "name": "would_claim_uc_housing_costs_element"
   },
   {
    "entity": "benunit",
@@ -1850,10 +1858,6 @@
   {
    "entity": "person",
    "name": "would_claim_student_loan"
-  },
-  {
-   "entity": "benunit",
-   "name": "would_claim_uc_housing_costs_element"
   },
   {
    "entity": "benunit",
