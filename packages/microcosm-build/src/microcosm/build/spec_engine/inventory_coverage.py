@@ -411,8 +411,10 @@ EXPECTED_HASHES = {
     # os.cpu_count() in microcosm.fit.qrf, moves both again; no draw changes.
     # calibrate's return_frame option in solve moves both again; the default
     # is unchanged, and no draw changes.
-    "seed_map": "8a63571387e76202a1224306a2b80e8955044999fab1835146a094c4b7de5808",
-    "seed_protocol": "ecf212696835c226369058e5f9201502984f27db8c98c9b1387b5843eb73805c",
+    # microcosm#1686's shared SIPP person-file read moves both again: the five
+    # SIPP donor tables are byte-identical, and no draw changes.
+    "seed_map": "3785072f345357bc57385606093a03ee22bda592603ca6122ede9ec55decbdd2",
+    "seed_protocol": "3ff54daa668670e5f6cbc23302b8cac5f92a2d8d40d0340c7c3ea9cf8889775e",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

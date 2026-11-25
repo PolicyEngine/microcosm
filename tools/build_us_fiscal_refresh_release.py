@@ -114,15 +114,12 @@ from microcosm.build.us_runtime import (
     SCF_2025_SUMMARY_EXTRACT,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
     SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
-    SIPP_2023_HEAD_START_DONOR_SHA256,
-    SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
-    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
-    SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
     SIPP_2023_TIP_DONOR_SHA256,
-    SIPP_2023_VEHICLE_DONOR_SHA256,
-    SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
-    SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
-    SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
+    SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+    SIPP_HEAD_START_SOURCE_COLUMNS,
+    SIPP_SSI_DISABILITY_SOURCE_COLUMNS,
+    SIPP_VEHICLE_SOURCE_COLUMNS,
+    SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
@@ -136,6 +133,11 @@ from microcosm.build.us_runtime import (
     assert_take_up_treatments_consistent,
     assert_target_parity_manifest_current,
     assert_validation_leaf_registry_current,
+    build_sipp_2023_financial_asset_donor,
+    build_sipp_2023_head_start_donor,
+    build_sipp_2023_ssi_disability_donor,
+    build_sipp_2023_vehicle_donor,
+    build_sipp_2023_voluntary_filing_donor,
     compile_us_fiscal_target_registry,
     default_congressional_district_vintage_crosswalk_path,
     fetch_asec_2023_weeks_unemployed_source,
@@ -152,12 +154,8 @@ from microcosm.build.us_runtime import (
     load_scf_2022_auto_loan_donor,
     load_scf_2022_financial_asset_donor,
     load_scf_2025_education_debt_donor,
-    load_sipp_2023_financial_asset_donor,
-    load_sipp_2023_head_start_donor,
-    load_sipp_2023_ssi_disability_donor,
     load_sipp_2023_tip_donor,
-    load_sipp_2023_vehicle_donor,
-    load_sipp_2023_voluntary_filing_donor,
+    read_sipp_december_person_rows,
     ssi_take_up_prior_basis_from_artifact,
     ssi_take_up_prior_basis_from_diagnostics,
     us_alimony_signal_gate,
@@ -281,7 +279,10 @@ from microcosm.build.us_runtime.demographics import (
     population_by_age_from_sim,
     write_demographics,
 )
-from microcosm.build.us_runtime.engine_lifecycle import release_engine_simulation
+from microcosm.build.us_runtime.engine_lifecycle import (
+    EngineVariableModuleScope,
+    release_engine_simulation,
+)
 from microcosm.build.us_runtime.exact_k_ladder import (
     ExactKLadderCalibration,
     assert_exact_k_realized_count,
@@ -5724,6 +5725,11 @@ class _HouseholdBatchedPostExportScorer:
         # Each finished consumer's scoring record, for the manifests' block.
         # Records, not consumers: a finished consumer's arrays must be freed.
         self.consumer_records: dict[str, dict[str, object]] = {}
+        # The reform last handed to any consumer. Consumers run one after
+        # another, so at most one reform's system and rule modules are held;
+        # opening the next reform, finishing its consumer or closing the scorer
+        # releases it.
+        self._open_reform: _BatchedPostExportReform | None = None
 
     def open_consumer(
         self,
@@ -5749,6 +5755,8 @@ class _HouseholdBatchedPostExportScorer:
             raise ValueError(f"{scoring.name} was not opened on this scorer.")
         if scoring.name in self.consumer_records:
             raise ValueError(f"{scoring.name} already finished on this scorer.")
+        if self._open_reform is not None and self._open_reform._consumer is scoring:
+            self._finish_open_reform()
         record = scoring.record()
         self.consumer_records[scoring.name] = record
         return record
@@ -5784,8 +5792,26 @@ class _HouseholdBatchedPostExportScorer:
         }
 
     def close(self) -> None:
+        self._finish_open_reform()
         self._batch_frames = None
         _collect_family_garbage()
+
+    def _open_reform_for(
+        self, consumer: _PostExportConsumer, reform
+    ) -> _BatchedPostExportReform:
+        """Hand ``consumer`` a reform, finishing the one handed out before.
+
+        Each shipped consumer scores one reform completely before it opens the
+        next, and consumers run one after another.
+        """
+        self._finish_open_reform()
+        self._open_reform = _BatchedPostExportReform(consumer, reform)
+        return self._open_reform
+
+    def _finish_open_reform(self) -> None:
+        reform, self._open_reform = self._open_reform, None
+        if reform is not None:
+            reform.finish()
 
     def _batches(self) -> tuple[Frame, ...]:
         if self._batch_frames is None:
@@ -5977,7 +6003,7 @@ class _PostExportConsumer:
     def simulate(self, reform):
         if reform is None:
             return _PlannedPostExportBaseline(self)
-        return _BatchedPostExportReform(self, reform)
+        return self._scorer._open_reform_for(self, reform)
 
     def record(self) -> dict[str, object]:
         scorer = self._scorer
@@ -6041,6 +6067,14 @@ class _BatchedPostExportReform:
     The reform's tax-benefit system is built once, on the first key, and
     handed to every batch engine (microcosm#456). The engines get that system
     alone (see ``_HouseholdBatchedPostExportScorer._construct``).
+
+    Building the system makes policyengine-core add every variable module of
+    it to ``sys.modules`` (about 6,000 entries) under names it never removes;
+    on the eight-household guard fixture they hold about 0.04 GiB per reform.
+    The build opens an ``EngineVariableModuleScope``, which stays open until
+    the scorer hands out its next reform, the consumer finishes or the scorer
+    closes (:meth:`finish`), and then removes those modules. A finished reform
+    refuses further keys.
     """
 
     def __init__(self, consumer: _PostExportConsumer, reform) -> None:
@@ -6048,18 +6082,45 @@ class _BatchedPostExportReform:
         self._reform = reform
         self._system = None
         self._results: dict[PostExportKey, _PostExportValues] = {}
+        self._rule_modules: EngineVariableModuleScope | None = None
+        self._finished = False
 
     def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
         key = _post_export_key(variable, period, map_to)
+        if self._finished:
+            raise RuntimeError(
+                f"{self._consumer.name} asked a finished reform for {key}. A "
+                "post-export consumer scores each reform completely before it "
+                "opens the next one, which finishes and releases the earlier."
+            )
         if key not in self._results:
             if self._system is None:
                 scorer = self._consumer._scorer
-                self._system = scorer._microsimulation_cls.default_tax_benefit_system(
-                    reform=self._reform
-                )
+                rule_modules = EngineVariableModuleScope().open()
+                try:
+                    self._system = (
+                        scorer._microsimulation_cls.default_tax_benefit_system(
+                            reform=self._reform
+                        )
+                    )
+                except BaseException:
+                    rule_modules.close()
+                    raise
+                self._rule_modules = rule_modules
                 self._consumer.reform_systems += 1
             self._results[key] = self._consumer._reform_values(self._system, key)
         return self._results[key]
+
+    def finish(self) -> None:
+        """Drop the reform's system and remove the modules its build added."""
+        if self._finished:
+            return
+        self._finished = True
+        self._system = None
+        self._results = {}
+        rule_modules, self._rule_modules = self._rule_modules, None
+        if rule_modules is not None:
+            rule_modules.close()
 
 
 def _reform_household_income_tax(
@@ -15429,6 +15490,20 @@ def _check_us_feed_carries_fsa_facts(
     return plan
 
 
+# Every column the five donor tables built from the full SIPP 2023 file use.
+_SIPP_2023_DONOR_SOURCE_COLUMNS = tuple(
+    sorted(
+        {
+            *SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+            *SIPP_SSI_DISABILITY_SOURCE_COLUMNS,
+            *SIPP_HEAD_START_SOURCE_COLUMNS,
+            *SIPP_VEHICLE_SOURCE_COLUMNS,
+            *SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
+        }
+    )
+)
+
+
 def _main(argv: Sequence[str] | None = None) -> int | None:
     global _ACTIVE_EMITTER, _ACTIVE_PROGRESS
     _ACTIVE_EMITTER = None
@@ -16993,25 +17068,29 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         else fetch_scf_2022_summary_extract()
     )
     # The asset blend, SSI criterion, Head Start, vehicle, and filing families
-    # share one immutable full SIPP artifact. Resolve it once; the CLI option's
-    # historical name remains stable for existing release invocations.
+    # share one immutable full SIPP artifact. Resolve it once and parse it once;
+    # each stage builds its donor table from these December rows, which stay in
+    # memory until the last of the five stages. The CLI option's historical name
+    # remains stable for existing release invocations.
     sipp_full_donor_path = (
         Path(args.sipp_vehicle_donor)
         if args.sipp_vehicle_donor is not None
         else fetch_sipp_2023_financial_asset_donor()
     )
-    # Each donor table below is loaded in its stage's call, so no local keeps
-    # it once the stage returns.
+    # Each donor table below is loaded or built in its stage's call, so no
+    # local keeps it once the stage returns.
+    sipp_december_person_rows = read_sipp_december_person_rows(
+        sipp_full_donor_path,
+        columns=_SIPP_2023_DONOR_SOURCE_COLUMNS,
+        expected_sha256=SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+        expected_size_bytes=SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
+    )
     base_frame = with_us_scf_wealth_inputs(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
         scf_donor=load_scf_2022_financial_asset_donor(scf_summary_extract_path),
-        sipp_donor=load_sipp_2023_financial_asset_donor(
-            sipp_full_donor_path,
-            expected_sha256=SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
-            expected_size_bytes=SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
-        ),
+        sipp_donor=build_sipp_2023_financial_asset_donor(sipp_december_person_rows),
     )
     scf_wealth_gate = shadow_gate(
         "us_national_scf_wealth",
@@ -17042,7 +17121,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     scf_wealth_signal = _scf_wealth_gate_record(
         scf_wealth_gate, base_frame.table("household")["household_id"]
     )
-    sipp_vehicle_donor_path = sipp_full_donor_path
     if telemetry is not None:
         telemetry.stage(
             "ssi_disability_criteria",
@@ -17056,10 +17134,8 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # The retired weighted bootstrap and MicroImpute forest are fixed.
         seed=42,
         time_period=PERIOD,
-        sipp_donor=load_sipp_2023_ssi_disability_donor(
-            sipp_vehicle_donor_path,
-            expected_sha256=SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
-            expected_size_bytes=SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
+        sipp_donor=build_sipp_2023_ssi_disability_donor(
+            sipp_december_person_rows,
             time_period=PERIOD,
         ),
     )
@@ -17097,11 +17173,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        sipp_donor=load_sipp_2023_head_start_donor(
-            sipp_vehicle_donor_path,
-            expected_sha256=SIPP_2023_HEAD_START_DONOR_SHA256,
-            expected_size_bytes=SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
-        ),
+        sipp_donor=build_sipp_2023_head_start_donor(sipp_december_person_rows),
     )
     head_start_gate = _shadow_frame_gate(
         "us_national_sipp_head_start",
@@ -17281,11 +17353,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # The retired MicroImpute model pins both forests to seed 42.
         seed=42,
         time_period=PERIOD,
-        sipp_donor=load_sipp_2023_vehicle_donor(
-            sipp_vehicle_donor_path,
-            expected_sha256=SIPP_2023_VEHICLE_DONOR_SHA256,
-            expected_size_bytes=SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
-        ),
+        sipp_donor=build_sipp_2023_vehicle_donor(sipp_december_person_rows),
     )
     sipp_vehicles_gate = _shadow_frame_gate(
         "us_national_sipp_vehicles",
@@ -17320,12 +17388,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        sipp_donor=load_sipp_2023_voluntary_filing_donor(
-            sipp_vehicle_donor_path,
-            expected_sha256=SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
-            expected_size_bytes=SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
-        ),
+        sipp_donor=build_sipp_2023_voluntary_filing_donor(sipp_december_person_rows),
     )
+    del sipp_december_person_rows
     voluntary_filing_gate = _shadow_frame_gate(
         "us_national_voluntary_filing",
         lambda: us_voluntary_filing_signal_gate(base_frame),

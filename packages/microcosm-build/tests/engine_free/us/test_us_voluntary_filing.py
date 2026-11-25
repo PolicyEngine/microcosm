@@ -68,14 +68,12 @@ def test_exact_source_columns_predictors_outputs_and_manifest_stage() -> None:
     ]
 
 
-def test_loader_uses_reported_answers_drops_dependents_and_pairs_spouses(
+def test_donor_uses_reported_answers_drops_dependents_and_pairs_spouses(
     tmp_path: Path,
 ) -> None:
     path = _write_source(tmp_path, _synthetic_source_rows())
 
-    donor = load_sipp_2023_voluntary_filing_donor(
-        path, expected_size_bytes=None
-    ).set_index("source_tax_unit_key")
+    donor = _voluntary_filing_donor_from_file(path).set_index("source_tax_unit_key")
 
     assert len(donor) == 2
     married_key = next(key for key in donor.index if str(key).startswith("1:"))
@@ -94,7 +92,7 @@ def test_loader_uses_reported_answers_drops_dependents_and_pairs_spouses(
     assert donor["employment_income"].max() < 100_000.0
 
 
-def test_loader_rejects_reciprocal_spouse_target_disagreement(tmp_path: Path) -> None:
+def test_donor_rejects_reciprocal_spouse_target_disagreement(tmp_path: Path) -> None:
     rows = [
         _source_row(1, 101, spouse=102, filing=1),
         _source_row(
@@ -108,10 +106,10 @@ def test_loader_rejects_reciprocal_spouse_target_disagreement(tmp_path: Path) ->
     ]
     path = _write_source(tmp_path, rows)
     with pytest.raises(ValueError, match="spouses disagree"):
-        load_sipp_2023_voluntary_filing_donor(path, expected_size_bytes=None)
+        _voluntary_filing_donor_from_file(path)
 
 
-def test_loader_reference_is_minimum_pnum_before_response_filter(
+def test_donor_reference_is_minimum_pnum_before_response_filter(
     tmp_path: Path,
 ) -> None:
     rows = [
@@ -144,9 +142,9 @@ def test_loader_reference_is_minimum_pnum_before_response_filter(
             will_file_status=1,
         ),
     ]
-    donor = load_sipp_2023_voluntary_filing_donor(
-        _write_source(tmp_path, rows), expected_size_bytes=None
-    ).set_index("source_tax_unit_key")
+    donor = _voluntary_filing_donor_from_file(_write_source(tmp_path, rows)).set_index(
+        "source_tax_unit_key"
+    )
     married = donor.loc[next(key for key in donor.index if str(key).startswith("1:"))]
 
     assert married["reference_age"] == pytest.approx(63)
@@ -155,15 +153,14 @@ def test_loader_reference_is_minimum_pnum_before_response_filter(
     assert married["employment_income"] == pytest.approx((100 + 200) * 12)
 
 
-def test_loader_rejects_missing_columns_bad_hash_and_constant_target(
+def test_read_and_donor_reject_missing_columns_bad_hash_and_constant_target(
     tmp_path: Path,
 ) -> None:
     path = _write_source(tmp_path, _synthetic_source_rows())
     with pytest.raises(ValueError, match="sha-256 verification"):
-        load_sipp_2023_voluntary_filing_donor(
+        _voluntary_filing_donor_from_file(
             path,
             expected_sha256="0" * 64,
-            expected_size_bytes=None,
         )
 
     missing = tmp_path / "missing.csv"
@@ -171,7 +168,7 @@ def test_loader_rejects_missing_columns_bad_hash_and_constant_target(
         missing, sep="|", index=False
     )
     with pytest.raises(ValueError, match="missing column"):
-        load_sipp_2023_voluntary_filing_donor(missing, expected_size_bytes=None)
+        _voluntary_filing_donor_from_file(missing)
 
     constant = tmp_path / "constant.csv"
     _write_source(
@@ -179,7 +176,7 @@ def test_loader_rejects_missing_columns_bad_hash_and_constant_target(
         [_source_row(10, 101), _source_row(20, 101)],
     ).replace(constant)
     with pytest.raises(ValueError, match="target is constant"):
-        load_sipp_2023_voluntary_filing_donor(constant, expected_size_bytes=None)
+        _voluntary_filing_donor_from_file(constant)
 
 
 def test_cached_full_donor_matches_locked_response_and_weight_facts() -> None:
@@ -196,7 +193,7 @@ def test_cached_full_donor_matches_locked_response_and_weight_facts() -> None:
     if not snapshot.is_file():
         pytest.skip("the 3.73 GB pinned SIPP donor is not mounted")
 
-    donor = load_sipp_2023_voluntary_filing_donor(
+    donor = _voluntary_filing_donor_from_file(
         snapshot,
         expected_sha256=SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
         expected_size_bytes=SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
