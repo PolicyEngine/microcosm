@@ -267,8 +267,11 @@ def test_reform_requests_follow_the_order_of_first_asks(
     builder, fake_reforms, tmp_path
 ) -> None:
     """A reform pass runs when a reformed simulation is first asked for a key,
-    so the descriptors follow those first asks across simulations; a
-    simulation never asked makes no request but keeps its number."""
+    so the descriptors follow those first asks. The scorer finishes a
+    reformed simulation when the consumer opens the next one and refuses it
+    further keys, so a consumer asks each reformed simulation for all its
+    keys before opening the next; a simulation never asked makes no request
+    but keeps its number."""
     first = ParameterChangesReform({"gov.fixture.first": {"2024-01-01": 1}})
     second = ParameterChangesReform({"gov.fixture.second": {"2024-01-01": 2}})
     unasked = ParameterChangesReform({"gov.fixture.unasked": {"2024-01-01": 3}})
@@ -282,22 +285,22 @@ def test_reform_requests_follow_the_order_of_first_asks(
             )
 
         first_simulation = reformed(first)
-        second_simulation = reformed(second)
-        reformed(unasked)
         simulate(None).calculate("income_tax", 2025)
-        second_simulation.calculate("income_tax", 2024)
         first_simulation.calculate("income_tax", 2024)
         first_simulation.calculate("income_tax", 2024)
-        simulate(None).calculate("age", 2024, map_to="household")
         first_simulation.calculate("age", 2024, map_to="household")
+        reformed(unasked)
+        second_simulation = reformed(second)
+        simulate(None).calculate("age", 2024, map_to="household")
+        second_simulation.calculate("income_tax", 2024)
 
     requests = builder._record_post_export_request_descriptors("fixture", consumer)
     assert [(r.position, r.reformed_simulation, r.reform, r.key) for r in requests] == [
         (0, None, None, ("age", 2024, "household")),
         (1, None, None, ("income_tax", 2025, None)),
-        (2, 1, second, ("income_tax", 2024, None)),
-        (3, 0, first, ("income_tax", 2024, None)),
-        (4, 0, first, ("age", 2024, "household")),
+        (2, 0, first, ("income_tax", 2024, None)),
+        (3, 0, first, ("age", 2024, "household")),
+        (4, 2, second, ("income_tax", 2024, None)),
     ]
     assert builder._record_post_export_requests(consumer) == (
         (("age", 2024, "household"), ("income_tax", 2025, None)),
