@@ -806,19 +806,25 @@ def state_admin_surface(
     )
 
 
-def acs_local_ssi_medicaid_take_up_targets(feed: str | Path) -> dict[str, object]:
+def acs_local_ssi_medicaid_take_up_targets(
+    feed: str | Path, *, compiled: tuple | None = None
+) -> dict[str, object]:
     """The counts the ACS SSI/Medicaid take-up stage scales (microcosm#1022).
 
     Compiled from the same feed and path as :func:`state_admin_specs` (a
     second compile, run before the staging frame is loaded) and read exactly
     as the fiscal lane's take-up stages read them: the SSA age-band SSI
     recipient counts, and the post-substitution CMS state Medicaid enrollment
-    table with its reviewed substitution records.
+    table with its reviewed substitution records. ``compiled`` is that
+    compile, :func:`_compiled_fiscal_registry` of ``feed``, when the caller
+    already holds it.
     """
 
     import build_us_fiscal_refresh_release as release_tool
 
-    registry, substitutions = _compiled_fiscal_registry(feed)
+    registry, substitutions = (
+        _compiled_fiscal_registry(feed) if compiled is None else compiled
+    )
     try:
         ssi = release_tool._ssi_take_up_band_targets_from_registry(registry.specs)
         medicaid = release_tool._medicaid_source_target_table(registry.specs)
@@ -832,6 +838,37 @@ def acs_local_ssi_medicaid_take_up_targets(feed: str | Path) -> dict[str, object
         "medicaid_state_targets": medicaid,
         "medicaid_substitutions": [dict(record) for record in substitutions],
     }
+
+
+def acs_local_aca_take_up_targets(
+    feed: str | Path, *, compiled: tuple | None = None
+) -> dict[str, object]:
+    """The state tables the ACS ACA take-up stage scales (microcosm#1720).
+
+    Read from the registry :func:`acs_local_ssi_medicaid_take_up_targets`
+    compiles (``compiled``; materialize passes it, so the feed is not
+    compiled a third time) exactly as the fiscal lane's ACA stage reads them
+    (``_aca_source_target_tables``): each state table by ``target_role``,
+    CMS APTC recipients, the IRS SOI premium tax credit returns and amounts,
+    and the CMS bronze consumers where the feed carries them. The SOI tables
+    are the Historic Table 2 state rows R2's ``state`` surface holds. Like
+    the fiscal lane, the stage needs the APTC-recipient table: its rate and
+    first calibration read it.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+
+    registry, _substitutions = (
+        _compiled_fiscal_registry(feed) if compiled is None else compiled
+    )
+    tables = release_tool._aca_source_target_tables(tuple(registry.specs))
+    if release_tool.US_ACA_APTC_TARGET_TABLE not in tables:
+        raise SystemExit(
+            "The ledger feed cannot supply the ACS local ACA take-up counts "
+            f"(microcosm#1720): no {release_tool.US_ACA_APTC_TARGET_TABLE} "
+            "table. The fiscal lane's ACA stage needs it too."
+        )
+    return {"target_tables": tables}
 
 
 # ---------------------------------------------------------------------------

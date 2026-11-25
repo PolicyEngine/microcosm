@@ -3876,6 +3876,114 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
     }
 
 
+def _aca_spec(name, role, state, value, *, level="state", groupby="state"):
+    return SimpleNamespace(
+        name=name,
+        value=value,
+        metadata={
+            "ledger_geography_level": level,
+            "ledger_layout_groupby_dimension": groupby,
+            "state_fips": state,
+            "target_role": role,
+        },
+    )
+
+
+def test_aca_take_up_targets_read_the_state_tables_of_the_compiled_registry(
+    monkeypatch,
+) -> None:
+    """microcosm#1720: the ACA tables come from the registry materialize
+    already compiled for SSI and Medicaid, read as the fiscal lane reads
+    them; district rows and other roles stay out."""
+
+    module = _load_tool_module()
+    monkeypatch.setattr(
+        module,
+        "_compiled_fiscal_registry",
+        lambda feed: pytest.fail("the ACA targets compiled the feed again"),
+    )
+    specs = [
+        _aca_spec("cms.aptc.ca", "aca_ptc_recipients", "6", 1_500_000.0),
+        _aca_spec("cms.aptc.de", "aca_ptc_recipients", "10", 30_000.0),
+        _aca_spec("soi.returns.ca", "aca_ptc_returns", "6", 600_000.0),
+        _aca_spec("soi.amount.ca", "aca_spending", "6", 4.0e9),
+        # The district file's state total and a district row stay out.
+        _aca_spec(
+            "soi.cd.ca_total",
+            "aca_ptc_returns",
+            "6",
+            590_000.0,
+            groupby="irs_soi.congressional_district",
+        ),
+        _aca_spec("soi.cd.ca01", "aca_ptc_returns", "6", 9_000.0, level="cd"),
+        _aca_spec("cms.enrollment.ca", "aca_enrollment", "6", 1_800_000.0),
+    ]
+    compiled = (SimpleNamespace(specs=specs), [])
+
+    targets = module.acs_local_aca_take_up_targets("facts.jsonl", compiled=compiled)
+
+    tables = targets["target_tables"]
+    assert sorted(tables) == [
+        "cms_aca_aptc_recipients_by_state",
+        "irs_soi_premium_tax_credit_amount_by_state",
+        "irs_soi_premium_tax_credit_returns_by_state",
+    ]
+    aptc = tables["cms_aca_aptc_recipients_by_state"]
+    assert aptc["state_fips"].tolist() == ["06", "10"]
+    assert aptc["target"].tolist() == [1_500_000.0, 30_000.0]
+    returns = tables["irs_soi_premium_tax_credit_returns_by_state"]
+    assert returns["source_record_id"].tolist() == ["soi.returns.ca"]
+
+    # Without the APTC-recipient table the stage has no rate to draw at.
+    with pytest.raises(SystemExit, match="microcosm#1720"):
+        module.acs_local_aca_take_up_targets(
+            "facts.jsonl", compiled=(SimpleNamespace(specs=specs[2:4]), [])
+        )
+
+
+def test_pinned_feed_aca_take_up_targets_bind_the_state_surface_ptc_rows() -> None:
+    """On the real feed: the ACA stage's SOI tables are exactly the 102
+    premium tax credit rows of R2's default ``state`` surface, the CMS table
+    covers 51 states, and no bronze table exists, so the stage stops after
+    the ratio's clip as the fiscal lane does (microcosm#1720).
+
+    Feed-gated like the surface contract test above: two registry compiles.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    module = _load_tool_module()
+    tables = module.acs_local_aca_take_up_targets(feed)["target_tables"]
+    assert sorted(tables) == [
+        "cms_aca_aptc_recipients_by_state",
+        "irs_soi_premium_tax_credit_amount_by_state",
+        "irs_soi_premium_tax_credit_returns_by_state",
+    ]
+    for table in tables.values():
+        assert len(table) == 51
+        assert table["state_fips"].is_unique
+    registry, _ = module.state_admin_specs(feed, ["snap", "medicaid", "soi"])
+    surface_ptc = {
+        spec.name
+        for spec in registry.specs
+        if spec.metadata.get("target_role") in {"aca_ptc_returns", "aca_spending"}
+    }
+    soi = {
+        name
+        for table in (
+            tables["irs_soi_premium_tax_credit_returns_by_state"],
+            tables["irs_soi_premium_tax_credit_amount_by_state"],
+        )
+        for name in table["source_record_id"]
+    }
+    assert len(surface_ptc) == 102
+    assert soi == surface_ptc
+
+
 def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
     """A minimal US-schema staging frame carrying the two pool hours columns."""
 
