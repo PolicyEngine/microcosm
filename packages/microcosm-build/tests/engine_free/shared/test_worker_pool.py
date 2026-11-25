@@ -38,6 +38,8 @@ from test_support.paths import paths_for
 
 MIB = 1024 * 1024
 TEST_SECONDS_LIMIT = 120
+#: Room above an idle worker's footprint before a test's memory cap.
+CAP_MARGIN = 256 * MIB
 
 
 @pytest.fixture(autouse=True)
@@ -59,6 +61,25 @@ def no_worker_left_behind():
             process.kill()
             process.join(5)
     assert leftover == []
+
+
+@pytest.fixture(scope="module")
+def idle_worker_bytes() -> int:
+    """The most memory a worker here holds while it starts and waits.
+
+    A worker imports ``microcosm.build``, and so torch and pandas: about
+    0.2 GiB on macOS and about 0.5 GiB on the Linux CI runners, varying from
+    start to start. Memory caps in these tests sit ``CAP_MARGIN`` above this
+    figure, not at a fixed number a fresh worker might already pass.
+    """
+    with WorkerPool(
+        WorkerPoolSettings(workers=1, memory_poll_seconds=0.02),
+        unit_function=units.sleep_then_return,
+    ) as pool:
+        list(pool.map([(0, 1.0)]))
+        peak = pool.report().peak_worker_memory_bytes
+    assert peak is not None
+    return peak
 
 
 def test_results_come_back_in_unit_order_whatever_order_they_finish() -> None:
@@ -189,15 +210,15 @@ def test_a_unit_that_keeps_killing_its_worker_stops_the_run_with_its_label() -> 
 
 
 def test_a_worker_over_its_memory_cap_is_stopped_and_its_unit_run_again(
-    tmp_path,
+    tmp_path, idle_worker_bytes
 ) -> None:
     marker = tmp_path / "held"
-    cap = 512 * MIB
+    cap = idle_worker_bytes + CAP_MARGIN
     with WorkerPool(
         WorkerPoolSettings(workers=1, memory_cap_bytes=cap, memory_poll_seconds=0.05),
         unit_function=units.hold_memory_on_first_attempt,
     ) as pool:
-        results = list(pool.map([(7, str(marker), 1_024)]))
+        results = list(pool.map([(7, str(marker), 3 * CAP_MARGIN // MIB)]))
         report = pool.report()
 
     assert results[0][0] == 7
@@ -207,15 +228,19 @@ def test_a_worker_over_its_memory_cap_is_stopped_and_its_unit_run_again(
     assert report.peak_worker_memory_bytes > cap
 
 
-def test_a_unit_that_needs_more_than_the_memory_cap_stops_the_run() -> None:
+def test_a_unit_that_needs_more_than_the_memory_cap_stops_the_run(
+    idle_worker_bytes,
+) -> None:
     with WorkerPool(
         WorkerPoolSettings(
-            workers=1, memory_cap_bytes=512 * MIB, memory_poll_seconds=0.05
+            workers=1,
+            memory_cap_bytes=idle_worker_bytes + CAP_MARGIN,
+            memory_poll_seconds=0.05,
         ),
         unit_function=units.always_hold_memory,
     ) as pool:
         with pytest.raises(WorkerPoolUnitError, match="unit 1/1") as failure:
-            list(pool.map([1_024]))
+            list(pool.map([3 * CAP_MARGIN // MIB]))
 
     assert len(failure.value.causes) == 2
     assert all("memory cap" in cause for cause in failure.value.causes)
@@ -528,17 +553,20 @@ def test_a_result_the_parent_cannot_unpickle_stops_the_run_with_its_label() -> N
             list(pool.map([0]))
 
 
-def test_memory_a_unit_leaves_behind_is_not_charged_to_the_next_unit() -> None:
+def test_memory_a_unit_leaves_behind_is_not_charged_to_the_next_unit(
+    idle_worker_bytes,
+) -> None:
     # The memory thread's first reading comes long after this test ends, so
-    # only the reading taken when unit 0 returns can see the 600 MiB.
+    # only the reading taken when unit 0 returns can see what it keeps.
     settings = WorkerPoolSettings(
         workers=1,
-        memory_cap_bytes=400 * MIB,
+        memory_cap_bytes=idle_worker_bytes + CAP_MARGIN,
         memory_poll_seconds=300.0,
         max_attempts=1,
     )
+    kept = 3 * CAP_MARGIN // MIB
     with WorkerPool(settings, unit_function=units.keep_memory_after_returning) as pool:
-        assert list(pool.map([(0, 600), (1, 0)])) == [0, 1]
+        assert list(pool.map([(0, kept), (1, 0)])) == [0, 1]
         report = pool.report()
 
     assert report.failed_attempts == ()
@@ -641,7 +669,7 @@ def test_closing_from_inside_the_memory_thread_stops_every_worker(monkeypatch) -
 
 
 def test_a_stale_memory_reading_does_not_kill_a_worker_on_a_later_unit(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, idle_worker_bytes
 ) -> None:
     marker = tmp_path / "unit-0-started"
     real_reading = worker_pool_module.process_memory_bytes
@@ -662,7 +690,7 @@ def test_a_stale_memory_reading_does_not_kill_a_worker_on_a_later_unit(
     monkeypatch.setattr(worker_pool_module, "process_memory_bytes", reading)
     settings = WorkerPoolSettings(
         workers=1,
-        memory_cap_bytes=400 * MIB,
+        memory_cap_bytes=idle_worker_bytes + CAP_MARGIN,
         memory_poll_seconds=0.05,
         max_attempts=1,
     )
