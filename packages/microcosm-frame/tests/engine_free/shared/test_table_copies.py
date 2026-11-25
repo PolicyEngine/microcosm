@@ -82,6 +82,8 @@ PANDAS_COPIED_VALUES: dict[str, Callable[[], object]] = {
 INDEX_KINDS: dict[str, Callable[[], pd.Index | None]] = {
     "default range": lambda: None,
     "named range from 1": lambda: pd.RangeIndex(1, 7, name="row"),
+    # Row selection, such as iloc[::2], can give a step other than 1.
+    "range with a step": lambda: pd.RangeIndex(0, 12, 2, name="row"),
     "int64": lambda: pd.Index(np.array([5, 3, 9, 1, 7, 2]), name="row"),
     "object": lambda: pd.Index(list("uvwxyz"), dtype=object, name="row"),
     "multi": lambda: pd.MultiIndex.from_tuples(
@@ -95,6 +97,20 @@ INDEX_KINDS: dict[str, Callable[[], pd.Index | None]] = {
     ),
     "datetime with freq": lambda: pd.date_range("2020-01-01", periods=6, name="row"),
     "categorical": lambda: pd.CategoricalIndex(list("uvwuvw"), name="row"),
+    # Integer categories, whose np.asarray is their own memory, and ordered.
+    "ordered categorical with int64 categories": lambda: pd.CategoricalIndex(
+        [30, 10, 20, 30, 10, 20],
+        categories=pd.Index(np.array([30, 20, 10])),
+        ordered=True,
+        name="row",
+    ),
+    # A sortorder, and a level value no row uses.
+    "multi with a sortorder and an unused level": lambda: pd.MultiIndex(
+        levels=[pd.Index(["a", "b", "c", "unused"]), pd.Index([1, 2])],
+        codes=[[0, 0, 1, 1, 2, 2], [0, 1, 0, 1, 0, 1]],
+        sortorder=2,
+        names=["part", "row"],
+    ),
 }
 
 
@@ -391,9 +407,18 @@ def _label_arrays(labels: pd.Index) -> list[np.ndarray]:
     arrays = [np.asarray(labels)]
     if isinstance(labels, pd.MultiIndex):
         arrays.extend(np.asarray(level) for level in labels.levels)
+        arrays.extend(np.asarray(codes) for codes in labels.codes)
     if isinstance(labels, pd.CategoricalIndex):
         arrays.append(np.asarray(labels.categories))
     return arrays
+
+
+def _label_structure(labels: pd.Index) -> object:
+    """What ``assert_index_equal`` does not compare: levels and sort order."""
+
+    if isinstance(labels, pd.MultiIndex):
+        return (labels.sortorder, [level.tolist() for level in labels.levels])
+    return None
 
 
 def _label_values(labels: pd.Index) -> list[list[object]]:
@@ -443,11 +468,20 @@ def test_a_write_into_the_copy_s_labels_leaves_the_source_s_unchanged(
     values_before = _label_values(source_labels)
     names_before = list(source_labels.names)
 
-    for copied in (copy_table(source), copy_table(source.iloc[:, [0, 1]])):
+    for selected in (source, source.iloc[:, [0, 1]]):
+        copied = copy_table(selected)
         target = getattr(copied, axis)
+        expected = getattr(selected.copy(deep=True), axis)
         pd.testing.assert_index_equal(
-            target, source_labels[: len(target)], exact=True, check_categorical=True
+            target, expected, exact=True, check_categorical=True
         )
+        assert _label_structure(target) == _label_structure(expected)
+        if isinstance(target, pd.CategoricalIndex):
+            categories = target.categories.values
+            try:
+                categories[0] = categories[-1]
+            except ValueError:
+                pass
         for array in _label_arrays(target):
             # A read-only array is the executor's view, which an item write
             # cannot change; np.add.at would write into it anyway, and the
@@ -629,7 +663,10 @@ def test_a_series_copy_equals_pandas_deep_copy_and_shares_no_memory(kind, index_
     for array in _label_arrays(copied.index):
         if array.dtype.kind in "iuf" and array.flags.writeable:
             np.add.at(array, [0], 1)
+    names_before = list(source.index.names)
+    copied.index.names = ["renamed"] * copied.index.nlevels
     assert _label_values(source.index) == index_before
+    assert list(source.index.names) == names_before
 
 
 class _SubclassedSeries(pd.Series):

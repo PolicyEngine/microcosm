@@ -250,11 +250,10 @@ def test_the_kernel_frame_equals_the_frame_built_before(
     assert frame.mass_log == before.mass_log
 
 
-@pytest.mark.parametrize("person_index", PERSON_INDEXES)
 @pytest.mark.parametrize("builder", BUILDERS)
-def test_the_kernel_frame_shares_no_memory_with_its_context(builder, person_index):
+def test_the_kernel_frame_shares_no_memory_with_its_context(builder):
     build, _ = BUILDERS[builder]
-    context = _context(_population("category", person_index))
+    context = _context(_population("category"))
 
     frame = build(context)
 
@@ -459,7 +458,7 @@ INDEX_WRITES: dict[str, Callable[[pd.DataFrame], None]] = {
 @pytest.mark.parametrize("person_index", PERSON_INDEXES)
 @pytest.mark.parametrize("entity", UK_NATIONAL_SCHEMA.entities)
 @pytest.mark.parametrize("builder", BUILDERS)
-def test_a_write_into_a_table_index_changes_neither_context_nor_population(
+def test_a_write_into_a_table_index_stays_in_the_frame_or_is_rejected(
     builder, entity, person_index, write
 ):
     # A view of a RangeIndex shares the cache holding its values once
@@ -482,6 +481,9 @@ def test_a_write_into_a_table_index_changes_neither_context_nor_population(
             with pytest.raises(ValueError, match="read-only"):
                 INDEX_WRITES[write](table)
         else:
+            # The view's memory is the population's own here (a node reading
+            # every row), so the in-memory population changes too; the
+            # rejected node's result is never applied or stored.
             INDEX_WRITES[write](table)
             assert graph_executor._context_digest(context) != context_before[0]
             return

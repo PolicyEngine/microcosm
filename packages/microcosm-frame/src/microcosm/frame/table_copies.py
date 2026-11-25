@@ -85,9 +85,10 @@ _TWO_DIMENSIONAL_EXTENSION_DTYPES = (pd.DatetimeTZDtype, pd.PeriodDtype)
 def copy_table(table: pd.DataFrame) -> pd.DataFrame:
     """``table.copy(deep=True)``, built with one copy of each column.
 
-    The copy shares no memory with ``table`` other than a pyarrow-backed
-    column's buffers. See the module docstring for what matches pandas' copy
-    and the three ways the copy differs.
+    The copy shares no writable memory with ``table``. It views an index or
+    column labels over read-only NumPy memory, and shares a pyarrow-backed
+    column's immutable buffers. See the module docstring for what matches
+    pandas' copy and the three ways the copy differs.
 
     Args:
         table: The table to copy. It is only read.
@@ -136,7 +137,7 @@ def copy_table(table: pd.DataFrame) -> pd.DataFrame:
 
 
 def copy_series(series: pd.Series) -> pd.Series:
-    """``series.copy(deep=True)``, with its categories and index copied.
+    """``series.copy(deep=True)``, with its categories and writable index copied.
 
     The same two differences from pandas' copy as :func:`copy_table` makes, for
     the same reasons. A series of a type :func:`copy_table` leaves to pandas is
@@ -146,8 +147,7 @@ def copy_series(series: pd.Series) -> pd.Series:
         series: The series to copy. It is only read.
 
     Returns:
-        A new series that shares no memory with ``series`` other than
-        pyarrow buffers.
+        A new series that shares no writable memory with ``series``.
     """
 
     if type(series) is not pd.Series:
@@ -186,7 +186,9 @@ def _copied_categorical(values: pd.Categorical) -> pd.Categorical:
     the categories it is given; ``from_codes`` would narrow the codes.
     """
 
-    return values.rename_categories(_copied_index(values.categories))
+    return values.rename_categories(
+        _copied_index(values.categories, view_read_only=False)
+    )
 
 
 def _pandas_copy(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
@@ -208,17 +210,19 @@ def _pandas_copy(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
     return copied
 
 
-def _copied_index(index: pd.Index) -> pd.Index:
+def _copied_index(index: pd.Index, *, view_read_only: bool = True) -> pd.Index:
     """An index equal to ``index`` that shares no writable memory with it.
 
-    A plain index over read-only NumPy memory is viewed, as pandas' copy views
-    it. Otherwise ``copy(deep=True)`` would do, except that it keeps a
+    With ``view_read_only``, a plain index over read-only NumPy memory is
+    viewed, as pandas' copy views it; categories, which are few, are always
+    copied. Otherwise ``copy(deep=True)`` would do, except that it keeps a
     ``RangeIndex``'s cache of materialized values, also as a level of a
     ``MultiIndex``, and a ``CategoricalIndex``'s categories; those are rebuilt.
     """
 
     if (
-        type(index) is pd.Index
+        view_read_only
+        and type(index) is pd.Index
         and isinstance(index.dtype, np.dtype)
         and not np.asarray(index).flags.writeable
     ):
