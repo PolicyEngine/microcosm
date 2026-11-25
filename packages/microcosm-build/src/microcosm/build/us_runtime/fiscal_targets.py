@@ -1856,26 +1856,6 @@ def _soi_capital_gains_active_totals(
     return controls
 
 
-def _soi_record_set_family(record_set_id: str) -> str:
-    """An SOI record set's table family, without period or data vintage.
-
-    ``irs_soi.ty2023.table_1_4`` is ``table_1_4``,
-    ``irs_soi.ty2022.historic_table_2.state_broad`` is ``historic_table_2`` and
-    ``irs_soi.ty2023.congressional_district_2022.all_returns`` is
-    ``congressional_district``.
-    """
-    parts = record_set_id.split(".")
-    if parts[0] != "irs_soi":
-        return ""
-    rest = parts[2:] if len(parts) > 1 and _is_period_token(parts[1]) else parts[1:]
-    if not rest:
-        return ""
-    family = rest[0]
-    if family.startswith("congressional_district"):
-        return "congressional_district"
-    return family
-
-
 def _soi_capital_gains_concept(fact: object) -> str | None:
     """The reviewed IRS concept of a capital-gains fact's family, if any."""
     return _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS.get(
@@ -3392,8 +3372,9 @@ def _is_source_column_concept_exclusion(fact: object) -> bool:
         return False
     column = _str_at(fact, "layout", "source_column_id")
     if not column:
-        # Any congressional-district package, whatever its boundary vintage.
-        if ".congressional_district_" in _str_at(fact, "layout", "record_set_id"):
+        # Any congressional-district package, whatever its data vintage: the
+        # same family match as every other district guard (microcosm#1244).
+        if _is_soi_congressional_district_record_set(fact):
             raise MissingSoiSourceColumnError(
                 f"{_source_record_id(fact)} is a congressional-district "
                 f"{measure_id} fact with no layout.source_column_id, so "
