@@ -25,6 +25,15 @@ ACS local-area build has files its checksum ledger records but its release
 manifest doesn't declare; and an older national build has a leftover
 ``release-staging/`` branch, pointing at a commit on ``main``, from a retry
 of its publication that stopped because its tag already existed.
+
+``untagged_repository`` builds one with no tags at all, laid out as BE's
+private release repository is: each build is an untagged folder
+``releases/<build>/`` on ``main`` holding only its two manifests and its
+calibration diagnostics, and ``latest.json`` names a folder by its name,
+with no revision. Each release manifest declares files of the builder's own
+output directory that the folder doesn't hold, one with builder-local
+paths and the other with no paths at all. Its names are neutral fixture
+names.
 """
 
 from __future__ import annotations
@@ -241,19 +250,32 @@ class FakeDatasetRepository:
         *,
         repo_type: str | None = None,
         revision: str | None = None,
+        expand: bool = False,
     ) -> list[Any]:
+        """Each path's information; with ``expand``, also the last commit
+        that changed it, as the Hub's ``last_commit``."""
         self._check(repo_id, repo_type)
-        files = self.files_at(revision)
+        commit = self._commit(revision)
+        files = self.commits[commit]
         return [
             SimpleNamespace(
                 path=path,
                 lfs=SimpleNamespace(sha256=sha256(files[path]))
                 if path.endswith(_LFS_SUFFIXES)
                 else None,
+                last_commit=self._last_change(path, commit) if expand else None,
             )
             for path in paths
             if path in files
         ]
+
+    def _last_change(self, path: str, commit: str) -> Any:
+        """The newest commit up to ``commit`` that added or changed ``path``."""
+        content = self.commits[commit][path]
+        parent = self.parents[commit]
+        while parent is not None and self.commits[parent].get(path) == content:
+            commit, parent = parent, self.parents[parent]
+        return SimpleNamespace(oid=commit, date=self.dates[commit], title="")
 
     def list_repo_commits(
         self, repo_id: str, *, repo_type: str | None = None, revision: str | None = None
@@ -679,5 +701,159 @@ def us_repository(download_dir: Path) -> FakeDatasetRepository:
         date=US_PUBLISHED_AT[ACS_TAG],
         tag=ACS_TAG,
         on_main=False,
+    )
+    return hub
+
+
+UNTAGGED_REPOSITORY = "example-owner/untagged-releases"
+#: The two untagged builds' folder names under ``releases/``, which the
+#: switch keeps as their build names.
+OLDER_UNTAGGED_FOLDER = "example-2026-chronicle-aaaaaaa-20260823T134247Z"
+NEWER_UNTAGGED_FOLDER = "example-2025-chronicle-bbbbbbb-20260823T204826Z"
+#: The releases the two untagged builds move into.
+OLDER_UNTAGGED_RELEASE = "example-2026-national"
+NEWER_UNTAGGED_RELEASE = "example-2025-national"
+#: When each untagged folder's files last changed on ``main``: the older
+#: folder was first published earlier and rewritten in a later commit.
+UNTAGGED_FIRST_PUBLISHED_AT = datetime(2026, 8, 23, 15, 38, 14, tzinfo=UTC)
+UNTAGGED_LAST_CHANGED_AT = {
+    OLDER_UNTAGGED_FOLDER: datetime(2026, 8, 23, 16, 13, 38, tzinfo=UTC),
+    NEWER_UNTAGGED_FOLDER: datetime(2026, 8, 23, 21, 15, 44, tzinfo=UTC),
+}
+#: When each untagged build was built, as its manifests record it.
+UNTAGGED_BUILT_AT = {
+    OLDER_UNTAGGED_FOLDER: "2026-08-23T13:42:47.070381+00:00",
+    NEWER_UNTAGGED_FOLDER: "2026-08-23T20:48:26.610956+00:00",
+}
+_UNTAGGED_DESCRIPTION = "An example synthetic population."
+
+
+def _untagged_build(folder: str, *, year: int, chronicle: str) -> dict[str, Any]:
+    """An untagged build's ``build`` object, which is also its build manifest."""
+    return {
+        "schema_version": 1,
+        "description": _UNTAGGED_DESCRIPTION,
+        "build_id": folder,
+        "built_at": UNTAGGED_BUILT_AT[folder],
+        "lineage": f"example_{year}",
+        "population_year": year,
+        "chronicle": {"repo": "PolicyEngine/chronicle", "commit": chronicle},
+    }
+
+
+def untagged_folder_files(
+    folder: str,
+    *,
+    year: int,
+    chronicle: str,
+    diagnostics: bytes,
+    builder_paths: bool,
+) -> dict[str, bytes]:
+    """An untagged build's folder: its two manifests and its diagnostics.
+
+    Its release manifest declares the builder's own output files, which the
+    folder doesn't hold: with ``builder_paths`` each under the builder's
+    ``out/`` directory, as BE's 2025 build has them, otherwise keyed by file
+    name with no path, as its 2026 build has them. The diagnostics file in
+    the folder is none of them.
+    """
+    build = _untagged_build(folder, year=year, chronicle=chronicle)
+    outputs = {
+        f"example_{year}.h5": b"builder dataset " + folder.encode(),
+        f"example_{year}_weights.npz": b"builder weights " + folder.encode(),
+        f"example_{year}_calibration_diagnostics.json": b"builder diagnostics",
+    }
+    artifacts = {
+        (name.rsplit(".", 1)[0] if builder_paths else name): {
+            **({"path": f"out/example/{name}"} if builder_paths else {}),
+            "sha256": sha256(content),
+            "bytes": len(content),
+        }
+        for name, content in outputs.items()
+    }
+    manifest = {
+        "schema_version": 1,
+        "description": _UNTAGGED_DESCRIPTION,
+        "data_package": _package("example-data", f"0.{year - 2020}.0"),
+        "default_datasets": {"national": f"example_{year}"},
+        "build": build,
+        "artifacts": artifacts,
+        "external_validations": {"example": {"status": "reviewed"}},
+    }
+    return {
+        f"releases/{folder}/release_manifest.json": dumped(manifest),
+        f"releases/{folder}/build_manifest.json": dumped(build),
+        f"releases/{folder}/calibration_diagnostics.json": diagnostics,
+    }
+
+
+def _untagged_pointer(folder: str) -> bytes:
+    """``latest.json`` as BE's has it: the folder's name, its files' paths
+    and no revision."""
+    return dumped(
+        {
+            "schema_version": 1,
+            "release_id": folder,
+            "paths": {
+                name.removesuffix(".json"): f"releases/{folder}/{name}"
+                for name in (
+                    "build_manifest.json",
+                    "release_manifest.json",
+                    "calibration_diagnostics.json",
+                )
+            },
+        }
+    )
+
+
+def untagged_repository(download_dir: Path) -> FakeDatasetRepository:
+    """A repository with untagged build folders only, as BE's release
+    repository is before its switch.
+
+    The older folder is published, then rewritten in a later commit, while
+    ``latest.json`` names it; the newer folder's commit also points
+    ``latest.json`` at it. There are no tags and no branch but ``main``.
+    """
+    hub = FakeDatasetRepository(UNTAGGED_REPOSITORY, download_dir)
+    hub.seed(
+        {".gitattributes": b"*.h5 filter=lfs\n", "README.md": b"# Example\n"},
+        date=datetime(2026, 8, 23, 15, 38, 13, tzinfo=UTC),
+    )
+    older = {
+        "year": 2026,
+        "chronicle": "a" * 40,
+        "builder_paths": False,
+    }
+    hub.seed(
+        {
+            **untagged_folder_files(
+                OLDER_UNTAGGED_FOLDER, diagnostics=b'{"first": true}', **older
+            ),
+            "latest.json": _untagged_pointer(OLDER_UNTAGGED_FOLDER),
+        },
+        date=UNTAGGED_FIRST_PUBLISHED_AT,
+    )
+    hub.seed(
+        untagged_folder_files(
+            OLDER_UNTAGGED_FOLDER, diagnostics=b'{"schema_version": 9}', **older
+        ),
+        date=UNTAGGED_LAST_CHANGED_AT[OLDER_UNTAGGED_FOLDER],
+    )
+    hub.seed(
+        {"README.md": b"# Example, reframed\n"},
+        date=datetime(2026, 8, 23, 16, 13, 39, tzinfo=UTC),
+    )
+    hub.seed(
+        {
+            **untagged_folder_files(
+                NEWER_UNTAGGED_FOLDER,
+                year=2025,
+                chronicle="b" * 40,
+                diagnostics=b'{"schema_version": 9, "targets": []}',
+                builder_paths=True,
+            ),
+            "latest.json": _untagged_pointer(NEWER_UNTAGGED_FOLDER),
+        },
+        date=UNTAGGED_LAST_CHANGED_AT[NEWER_UNTAGGED_FOLDER],
     )
     return hub
