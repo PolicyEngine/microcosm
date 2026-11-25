@@ -201,3 +201,38 @@ def test_a_base_process_refuses_to_start_when_its_parents_check_no_longer_holds(
 
     assert completed.returncode != 0, completed.stdout
     assert refusal in completed.stderr, completed.stderr[-4000:]
+
+
+@pytest.mark.parametrize("process", sorted(_PROCESS_COMMANDS))
+def test_a_base_process_start_does_not_import_torch(
+    process: str,
+    tmp_path: Path,
+) -> None:
+    """Torch is imported only by the calibration functions that use it."""
+
+    environment = {
+        **{
+            name: value for name, value in os.environ.items() if name != RECORD_VARIABLE
+        },
+        **take_up_contract.us_engine_abi_lock_check_environment(),
+    }
+    command = _PROCESS_COMMANDS[process]
+
+    completed = subprocess.run(
+        [command[0], "-X", "importtime", *command[1:]],
+        env=environment,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr[-4000:]
+    imported = {
+        line.rsplit("|", 1)[1].strip()
+        for line in completed.stderr.splitlines()
+        if line.startswith("import time:") and "|" in line
+    }
+    assert "microcosm.calibrate" in imported
+    assert "torch" not in imported
