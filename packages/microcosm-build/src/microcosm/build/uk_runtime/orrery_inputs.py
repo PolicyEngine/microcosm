@@ -272,6 +272,11 @@ def finalize_graph(
             "outputs": {name: _output(output / name, published_root) for name in names},
         }
         materialize_bytes(canonical_json(evidence), output / EVIDENCE_MANIFEST_NAME)
+    else:
+        # Nothing registered: an earlier attempt's record in a reused output
+        # directory must not be staged as this attempt's.
+        for directory in {output, published_root}:
+            (directory / EVIDENCE_MANIFEST_NAME).unlink(missing_ok=True)
     return GraphFinalization(files=tuple(names))
 
 

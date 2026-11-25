@@ -376,7 +376,7 @@ sidecar identifies its native index under the checkpoint directory; use that
 directory's `graph.schema.json` and `node-graph` store.
 
 The command uploads nothing and starts no emitter. A later emitter command,
-`microcosm-emitter backfill-orrery <dir>` (tracker task 6a · 1), is planned
+`microcosm-emitter backfill-orrery <dir>`, is planned
 to run it and submit the result as an `orrery-inputs` submission. Without
 `--evidence`, the directory has no execution overlay, which today's emitter
 and collector both require for that submission. The Python function is
@@ -578,7 +578,7 @@ does from a build's, but the schema has no execution overlay, which today's
 emitter and collector both require for an `orrery-inputs` submission.
 Submitting it therefore waits for planned collector work, to accept a marked
 schema without an overlay and record it as reconstructed, and for the
-planned emitter command of tracker task 6a · 1.
+planned emitter command.
 
 ## Evidence and limits
 

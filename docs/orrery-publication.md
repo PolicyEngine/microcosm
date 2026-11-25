@@ -56,8 +56,8 @@ build's evidence bundle. For a build whose files exist only on one machine,
 `python -m microcosm.build.uk_runtime.orrery_inputs` writes the same inputs
 into a new directory and uploads nothing (see
 [Writing inputs for a saved build](orrery-adapter.md#writing-inputs-for-a-saved-build));
-a later emitter command, `microcosm-emitter backfill-orrery <dir>` (tracker
-task 6a · 1), is planned to run it and submit the result.
+a later emitter command, `microcosm-emitter backfill-orrery <dir>`, is planned
+to run it and submit the result.
 
 `--publish-orrery`, which asked for an upload to the public Orrery (María's
 ruling of 2026-10-26 made that upload opt-in), now prints a warning and
