@@ -90,9 +90,9 @@ import math
 import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
-import torch
 from scipy import sparse
 
 from microcosm.calibrate.exact_k import (
@@ -103,7 +103,6 @@ from microcosm.calibrate.exact_k import (
     assert_exact_k_support,
     exact_k_design_feasibility,
 )
-from microcosm.calibrate.gates import HardConcrete
 from microcosm.calibrate.initialization import GateInitialization
 from microcosm.calibrate.matrix import (
     CalibrationProblem,
@@ -112,6 +111,13 @@ from microcosm.calibrate.matrix import (
 )
 from microcosm.calibrate.target import TargetSet
 from microcosm.frame import Frame, MassChange, WeightKind, Weights
+
+if TYPE_CHECKING:
+    # Torch is imported by the functions that use it, so importing this
+    # module (as every importer of microcosm.calibrate does) does not import it.
+    import torch
+
+    from microcosm.calibrate.gates import HardConcrete
 
 __all__ = [
     "calibrate",
@@ -604,6 +610,9 @@ def _torch_constraint_matrix(matrix) -> torch.Tensor:
     to a torch sparse-CSR tensor and every epoch runs SpMM instead; autograd
     flows to the dense weight operand.
     """
+
+    import torch
+
     cells = int(matrix.shape[0]) * int(matrix.shape[1])
     density = (matrix.nnz / cells) if cells else 1.0
     if cells >= _SPARSE_MIN_CELLS and density <= _SPARSE_DENSITY_CUTOFF:
@@ -619,6 +628,9 @@ def _torch_constraint_matrix(matrix) -> torch.Tensor:
 
 def _apply_constraint(matrix: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
     """``A @ w`` for a dense or sparse-CSR ``A`` (targets x records)."""
+
+    import torch
+
     if matrix.layout == torch.sparse_csr:
         # SpMM needs a 2-D dense operand; SpMV is not exposed with autograd.
         return (matrix @ weights.unsqueeze(1)).squeeze(1)
@@ -756,6 +768,9 @@ def _relative_error_loss(
     target_loss_cap: float,
 ) -> torch.Tensor:
     """The capped weighted-MAPE target loss, optionally averaged with row weights."""
+
+    import torch
+
     scaled_error = (estimate - targets) / target_loss_scales
     loss = torch.clamp(
         torch.abs(scaled_error),
@@ -1053,6 +1068,9 @@ def _sorted_capped_log_shift(
     rounds once per record, at the resolution of a log-sum that size
     (*Precision* in :func:`_capped_log_shift` gives the figures).
     """
+
+    import torch
+
     rest = ~capped & torch.isfinite(log_weights)
     order = torch.argsort(cap_shift[rest])
     rest_shift = cap_shift[rest][order]
@@ -1155,6 +1173,9 @@ def _capped_log_shift(
     Returns the shift and the rounds taken (``active_set_rounds + 1`` when
     the sort finished it).
     """
+
+    import torch
+
     cap_shift = torch.where(
         torch.isneginf(log_upper),
         torch.full_like(log_upper, -math.inf),
@@ -1207,6 +1228,9 @@ def _project_softmax_log_weights_(
     projection is the shift alone. Returns the active-set rounds taken (0
     without a cap).
     """
+
+    import torch
+
     log_weights = log_w.detach().to(torch.float64)
     log_weights = log_weights + (
         math.log(total) - float(torch.logsumexp(log_weights, dim=0))
@@ -1225,6 +1249,9 @@ def _max_cap_ratio(weights: torch.Tensor, cap: torch.Tensor) -> float:
     A record with a zero cap reads ``0`` while its weight is zero (``0 / 0``)
     and ``inf`` once it is not.
     """
+
+    import torch
+
     ratio = weights.detach().to(torch.float64) / cap
     return float(torch.nan_to_num(ratio, nan=0.0, posinf=math.inf).max())
 
@@ -1278,6 +1305,11 @@ def _optimize(
     callers. The third value is aligned per-record ``pi_i`` for an L0 run and
     ``None`` when no gates were active.
     """
+
+    import torch
+
+    from microcosm.calibrate.gates import HardConcrete
+
     w0 = np.asarray(initial_weights, dtype=np.float64)
     start = _prepare_warm_start_weights(
         w0,
@@ -1582,6 +1614,9 @@ def _optimize_proximal(
     is used for the prox, so ``l1_lambda`` is the recorded mean-ratio objective
     coefficient.
     """
+
+    import torch
+
     w0 = np.asarray(initial_weights, dtype=np.float64)
     start = _prepare_warm_start_weights(
         w0,
@@ -1821,6 +1856,9 @@ def _search_l0_lambda_for_budget(
         vector is appended. The default four-item tuple is retained for
         existing workspace callers.
     """
+
+    import torch
+
     bracket_lo, bracket_hi = _check_l0_search_bracket(search_bracket)
     lo_u, hi_u = math.log10(bracket_lo), math.log10(bracket_hi)
     warm = initial_lambda is not None and initial_lambda > 0
@@ -2658,6 +2696,9 @@ def calibrate(
             (``l0_lambda``) lies outside the search bracket, or if no
             targets compile (from the matrix build).
     """
+
+    import torch
+
     if method == "apg":
         warnings.warn(
             "method='apg' is deprecated and now aliases method='adam'; result "
@@ -3097,6 +3138,9 @@ def solve_constraint_system(
         ``(weights, trajectory)``, as :func:`calibrate` reports ``weights``
         and ``loss_trajectory``.
     """
+
+    import torch
+
     _check_mass(mass)
     _check_epochs_and_weight_ratio(epochs, max_weight_ratio, mass=mass)
     l2_anchor_weights = _checked_l2_options(
