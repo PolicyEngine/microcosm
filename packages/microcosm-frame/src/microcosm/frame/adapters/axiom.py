@@ -2270,17 +2270,18 @@ def _validated_nesting(
 def _graph_output(name: str, engine_dtype: str, values: np.ndarray) -> np.ndarray:
     """Cast one dense output array to its graph-ownable dtype without loss.
 
-    Bool stays bool; integers and judgment codes become int64; decimals
-    become float64. Judgment codes must be ``-1``, ``0`` or ``1``. The input
-    must already hold the engine's numpy kind for that dtype, with one
-    exception: a decimal output may arrive as a signed or unsigned integer
-    array, and it becomes float64 when every value lies from ``-2**53`` to
-    ``2**53``, where float64 holds each integer exactly. As of
-    axiom-rules-engine 753ce7d9, the per-period dense surface returns int64
-    for a rule declared decimal when the rule's value stays integer-typed
-    inside the engine, for example an ``if`` tree whose branches read
-    parameters written as whole numbers. Bool never stands for a decimal.
-    Nothing is parsed, rounded, or truncated.
+    Bool stays bool; integers and judgment codes become int64; decimals become
+    float64. Judgment codes must be ``-1``, ``0`` or ``1``. The input must
+    already hold the engine's numpy kind for that dtype, with one exception: a
+    decimal output may arrive as a signed or unsigned integer array, and it
+    becomes float64 when every value lies in the accepted interval, ``-2**53``
+    to ``2**53``, where float64 holds every integer exactly. A value outside
+    that interval is refused even when float64 holds it, as it holds
+    ``2**53 + 2``. As of axiom-rules-engine 753ce7d9, the per-period dense
+    surface returns int64 for a rule declared decimal when the rule's value
+    stays integer-typed inside the engine, for example an ``if`` tree whose
+    branches read parameters written as whole numbers. Bool never stands for a
+    decimal. Nothing is parsed, rounded, or truncated.
 
     Raises:
         ValueError: If ``engine_dtype`` has no graph type, the array's numpy
