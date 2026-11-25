@@ -2,14 +2,20 @@
 
 The transfer fits one target at a time: each later target in a family is drawn
 on the recipients' raw float64 draws of the earlier ones
-(``RegimeGatedQRF.fit_draw_next``). Two kinds of exported value differ from
-those raw draws, and neither may reach a later target:
+(``RegimeGatedQRF.fit_draw_next``). Some exported values differ from those raw
+draws, and none may reach a later target. The fixture reaches two of them:
 
 - ``first_home_mortgage_origination_year`` is ``discrete_numeric``: the
   transfer snaps its draws to the donor support when it decodes them, which
   happens inside the outer family loop, after the year's own family is fitted;
 - the self-employment components are set to zero after the transfer where
   the recipient's own total is kept (``keep_measured_self_employment_totals``).
+
+The whole production batches these tests run reach two more, on
+supplemental donor columns: the passive partnership/S-corp subset, set to zero
+where the row's line 32 is zero (``reconcile_acs_passive_partnership_s_corp``),
+and, on the ACS local lane, ``partnership_income``, kept at zero where the
+row's ACS ``SEMP`` already counts it (``semp_covers_partnership_income``).
 
 The fixture (:mod:`test_support.microcosm_build.qrf_raw_priors`) puts the
 year ahead of ``health_savings_account_ald``, and the components ahead of
@@ -36,13 +42,20 @@ production's declared ACS plan draws them. These tests pin that:
   exported year is the donor support point nearest its raw draw, and the
   decoder sends an exact midpoint between two support points to the lower one;
 - production's plans put the fixture's targets in the fixture's order. The
-  plans are the batches ``transfer_acs_inputs`` itself plans, up to its
-  activation filter, for the declared ACS plan, each stacked gap-fill
-  direction and each stacked post-PUF group. Each batch that holds two or
-  more fixture targets then runs whole under its production name, in memory
-  and banked, with supplemental donor columns for its other targets: every
-  availability pattern draws the batch in the plan's order, each target on
-  the earlier raw draws, and the patterns together cover every recipient row;
+  plans are the batches ``transfer_acs_inputs`` itself plans for the declared
+  ACS plan, each stacked gap-fill direction and each stacked post-PUF group.
+  Where the stacked callers pass regime-evidence targets, the plan is read
+  again at the transfer's first fit, after the widening, and must not have
+  changed. Each batch that holds two or more fixture targets then runs whole
+  under its production name, in memory and banked, with supplemental donor
+  columns for its other targets: every availability pattern draws the batch
+  in the plan's order, each target on the earlier raw draws, and the
+  patterns together cover every recipient row. Where the batch draws the
+  passive subset, some rows draw a zero line 32 under a nonzero passive
+  draw, which the export zeroes;
+- the ACS local lane's run of the declared batch that holds
+  ``partnership_income`` draws every later target on the raw partnership
+  draws, in memory and banked, while the export zeroes some of them;
 - the fixture would catch the change on the running platform: a chain fed
   the snapped year, the zeroed components or the zeroed partnership earnings
   alone draws different later targets.
@@ -64,6 +77,7 @@ passing.
 
 from __future__ import annotations
 
+import inspect
 import platform
 import shutil
 from collections.abc import Mapping, Sequence
@@ -85,7 +99,10 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
-from microcosm.build.us_runtime.stacked_spine import stacked_gap_fill_plan
+from microcosm.build.us_runtime.stacked_spine import (
+    _stacked_post_transfer_calibration_specs,
+    stacked_gap_fill_plan,
+)
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_TRANSFER_GROUPS,
 )
@@ -170,6 +187,7 @@ def _transfer(
         str, Mapping[str, tuple[str, ...]]
     ] = RAW_PRIOR_FIXTURE_FAMILIES,
     frames: tuple[Frame, Frame] | None = None,
+    **options: bool,
 ) -> AcsTransferResult:
     recipient, donor = acs_raw_prior_fixture() if frames is None else frames
     return transfer_acs_inputs(
@@ -179,6 +197,7 @@ def _transfer(
         seed=RAW_PRIOR_FIXTURE_SEED,
         n_estimators=RAW_PRIOR_FIXTURE_N_ESTIMATORS,
         target_bank=target_bank,
+        **options,
     )
 
 
@@ -745,37 +764,71 @@ def _plan_recipient() -> Frame:
 
 def _active_plan(
     target_families: Mapping[str, Mapping[str, Sequence[str]]],
+    regime_evidence_targets: tuple[tuple[str, str], ...] = (),
 ) -> list[_Batch]:
     """The batches ``transfer_acs_inputs`` plans for ``target_families``.
 
     The transfer itself plans: it normalizes the families in the recipient's
     entity order, splits them into bounded batches and keeps the targets the
-    recipient lacks. It stops at that activation filter, before any fit. The
-    recipient lacks every target, as an ACS recipient lacks the PUF targets.
-    The stacked callers also pass regime-evidence targets, which can only
-    widen an active batch back to its planned targets; with every target
-    lacking, the active batches already are the planned ones.
+    recipient lacks. The recipient lacks every target, as an ACS recipient
+    lacks the PUF targets. Without ``regime_evidence_targets`` the transfer
+    stops at that activation filter, before any fit. With them, as the stacked
+    callers pass them, it goes on through the widening that restores a
+    batch's planned targets and stops at its first fit, where the plan its
+    loop fits must equal the filtered plan.
     """
 
     activation_filter = acs_transfer_module._missing_target_families
-    recorded: list[list[_Batch]] = []
+    filtered: list[list[_Batch]] = []
+    widened: list[list[_Batch]] = []
 
-    def record_then_stop(families: Sequence[_Batch], *, recipient: Frame) -> NoReturn:
-        recorded.append(activation_filter(families, recipient=recipient))
+    def record_plan(families: Sequence[_Batch], *, recipient: Frame) -> list[_Batch]:
+        filtered.append(activation_filter(families, recipient=recipient))
+        if not regime_evidence_targets:
+            raise _PlanRecordedError
+        return filtered[-1]
+
+    def record_first_fit(
+        *_args: object, targets: tuple[str, ...], **_kwargs: object
+    ) -> NoReturn:
+        # The transfer's loop fits the batches of its local ``active`` plan.
+        active = list(inspect.currentframe().f_back.f_locals["active"])
+        assert active[0][2] == targets
+        widened.append(active)
         raise _PlanRecordedError
 
     recipient = _plan_recipient()
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(acs_transfer_module, "_missing_target_families", record_then_stop)
+        patch.setattr(acs_transfer_module, "_missing_target_families", record_plan)
+        patch.setattr(acs_transfer_module, "_fit_family_patterns", record_first_fit)
         with pytest.raises(_PlanRecordedError):
             transfer_acs_inputs(
                 recipient,
                 recipient,
                 target_families=target_families,
                 max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+                regime_evidence_targets=regime_evidence_targets,
             )
-    (active,) = recorded
+    (active,) = filtered
+    if regime_evidence_targets:
+        assert widened == [active], (
+            "the regime-evidence widening changed the planned batches to "
+            f"{[batch for batch in widened[0] if batch not in active]}"
+        )
     return active
+
+
+def _regime_evidence(
+    target_families: Mapping[str, Mapping[str, Sequence[str]]], *, stage: str
+) -> tuple[tuple[str, str], ...]:
+    """The regime-evidence targets the stacked callers pass with these families."""
+
+    return tuple(
+        (spec.entity, spec.target)
+        for spec in _stacked_post_transfer_calibration_specs(
+            target_families, stage=stage
+        )
+    )
 
 
 def _production_batches() -> dict[str, list[_Batch]]:
@@ -783,20 +836,23 @@ def _production_batches() -> dict[str, list[_Batch]]:
 
     The staging builder passes the declared ACS plan. Stacked gap fill passes
     each direction's families (``stacked_gap_fill_plan``), and canonical
-    post-PUF execution passes each late-transfer group's families.
+    post-PUF execution passes each late-transfer group's families, each with
+    the regime-evidence targets of its calibration specs.
     """
 
     return {
         "declared ACS plan": _active_plan(declared_acs_transfer_target_families()),
         **{
             f"stacked gap-fill direction {direction.name!r}": _active_plan(
-                direction.target_families
+                direction.target_families,
+                _regime_evidence(direction.target_families, stage="early_gap_fill"),
             )
             for direction in stacked_gap_fill_plan()
         },
         **{
             f"stacked post-PUF group {group.name!r}": _active_plan(
-                group.target_families
+                group.target_families,
+                _regime_evidence(group.target_families, stage="late_transfer"),
             )
             for group in CANONICAL_US_LATE_TRANSFER_GROUPS
         },
@@ -805,24 +861,40 @@ def _production_batches() -> dict[str, list[_Batch]]:
 
 #: Seed of the supplemental donor columns.
 _SUPPLEMENT_SEED = 1723
+#: The line-32 components, and the passive subset of line 32 that the export
+#: zeroes where they sum to zero.
+_LINE_32 = ("partnership_income", "s_corp_income")
+_PASSIVE = "passive_partnership_s_corp_income"
+#: Seed and share of the zeros in the supplemental line-32 columns.
+_LINE_32_ZERO_SEED = 20261125
+_LINE_32_ZERO_SHARE = 0.6
 
 
 def _with_batch_columns(donor: Frame, entity: str, targets: Sequence[str]) -> Frame:
     """``donor`` with a column for each of ``targets`` that it lacks.
 
     The fixture has donor columns for its own targets only. Each supplemental
-    column is a positive amount from one seeded stream, so its target has one
-    sign regime and its fits stay cheap. The fixture's columns are unchanged.
+    column is a positive amount from one seeded stream, so most of these
+    targets have one sign regime and their fits stay cheap. The line-32
+    columns are also zero on about 60% of donor rows, from a second seeded
+    stream, so some recipients draw a zero line 32 under a nonzero passive
+    subset and the export's passive reconciliation fires. The fixture's
+    columns are unchanged.
     """
 
     table = donor.table(entity)
     missing = [target for target in targets if target not in table.columns]
-    amounts = np.random.default_rng(_SUPPLEMENT_SEED).lognormal(
-        7.0, 1.0, (len(missing), len(table))
+    amounts = np.round(
+        np.random.default_rng(_SUPPLEMENT_SEED).lognormal(
+            7.0, 1.0, (len(missing), len(table))
+        ),
+        2,
     )
-    return donor.with_columns(
-        entity, **dict(zip(missing, np.round(amounts, 2), strict=True))
-    )
+    zeros = np.random.default_rng(_LINE_32_ZERO_SEED)
+    for column, target in zip(amounts, missing, strict=True):
+        if target in _LINE_32:
+            column[zeros.random(len(table)) < _LINE_32_ZERO_SHARE] = 0.0
+    return donor.with_columns(entity, **dict(zip(missing, amounts, strict=True)))
 
 
 def _patterns(steps: list[ChainStep]) -> dict[tuple, list[ChainStep]]:
@@ -832,6 +904,63 @@ def _patterns(steps: list[ChainStep]) -> dict[tuple, list[ChainStep]]:
     for step in steps:
         patterns.setdefault(tuple(step.index), []).append(step)
     return patterns
+
+
+def _run_whole_batch(
+    batch: _Batch,
+    frames: tuple[Frame, Frame],
+    *,
+    bank: AcsTransferTargetBankStore | None,
+    run: str,
+    monkeypatch: pytest.MonkeyPatch,
+    **options: bool,
+) -> tuple[dict[tuple, list[ChainStep]], AcsTransferResult]:
+    """Run one production batch whole, under its name, and check its chains.
+
+    Every availability pattern must draw the batch in the plan's order, each
+    target on the earlier raw draws, and the patterns together must draw every
+    recipient row once. ``run`` names the run in failure messages.
+    """
+
+    entity, family, targets = batch
+    steps: list[ChainStep] = []
+    monkeypatch.setattr(acs_transfer_module, "QRF", prior_recording_qrf(steps))
+    result = _transfer(
+        target_bank=bank,
+        target_families={entity: {family: targets}},
+        frames=frames,
+        **options,
+    )
+    patterns = _patterns(steps)
+    orders = {tuple(step.target for step in chain) for chain in patterns.values()}
+    assert orders == {targets}, (
+        f"{run}draws {sorted(orders)}; the plan orders it {list(targets)}"
+    )
+    for chain in patterns.values():
+        _assert_chain_feeds_raw_draws(chain, targets, run=run)
+    rows = frames[0].table(entity).index
+    drawn_rows = [row for chain in patterns.values() for row in chain[0].index]
+    assert sorted(drawn_rows) == sorted(rows), (
+        f"{run}the patterns drew {len(drawn_rows)} rows, not each of the "
+        f"{len(rows)} eligible rows once"
+    )
+    assert {
+        (record.column, record.imputed_recipient_rows)
+        for record in result.imputed_inputs
+    } == {(target, len(rows)) for target in targets}, run
+    return patterns, result
+
+
+def _raw_draws(
+    patterns: dict[tuple, list[ChainStep]], target: str, index: pd.Index
+) -> pd.Series:
+    """``target``'s raw draw on every row of ``index``, from each pattern."""
+
+    raw = pd.Series(np.nan, index=index)
+    for chain in patterns.values():
+        (step,) = [candidate for candidate in chain if candidate.target == target]
+        raw.loc[step.index] = step.raw_draw
+    return raw
 
 
 def test_production_draws_the_fixture_targets_in_the_fixture_order(
@@ -861,6 +990,13 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
                 if len(shared) > 1:
                     runtime_batches.add((entity, batch, targets, tuple(shared)))
 
+    # Stacked gap fill passes regime-evidence targets, so its plans were read
+    # at the transfer's first fit, after the widening.
+    assert any(
+        _regime_evidence(direction.target_families, stage="early_gap_fill")
+        for direction in stacked_gap_fill_plan()
+    )
+
     # The transfer draws each such batch whole at runtime, under its
     # production name, in memory and banked. The donor gets a supplemental
     # column for each batch target the fixture lacks; the recipient is the
@@ -870,42 +1006,39 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
     for number, (entity, batch, targets, shared) in enumerate(sorted(runtime_batches)):
         recipient, donor = acs_raw_prior_fixture()
         frames = (recipient, _with_batch_columns(donor, entity, targets))
-        rows = recipient.table(entity).index
         for path, bank in (
             ("in memory", None),
             ("banked", _bank_store(tmp_path / f"order_{number}")),
         ):
             run = f"the transfer, {path}, of {entity} batch {batch!r}: "
-            steps: list[ChainStep] = []
-            monkeypatch.setattr(acs_transfer_module, "QRF", prior_recording_qrf(steps))
-            result = _transfer(
-                target_bank=bank,
-                target_families={entity: {batch: targets}},
-                frames=frames,
+            patterns, result = _run_whole_batch(
+                (entity, batch, targets),
+                frames,
+                bank=bank,
+                run=run,
+                monkeypatch=monkeypatch,
             )
-            patterns = _patterns(steps)
-            orders = {
-                tuple(step.target for step in chain) for chain in patterns.values()
-            }
-            assert orders == {targets}, (
-                f"{run}draws {sorted(orders)}; the plan orders it {list(targets)}"
-            )
+            # The fixture's targets reach the draw boundary in the fixture's
+            # order.
             for chain in patterns.values():
-                # The fixture's targets reach the draw boundary in the
-                # fixture's order, and each draw is fed the earlier raw draws.
                 fixture_order = [step.target for step in chain if step.target in shared]
                 assert fixture_order == list(shared), run
-                _assert_chain_feeds_raw_draws(chain, targets, run=run)
-            # The patterns together cover every eligible row, once.
-            drawn_rows = [row for chain in patterns.values() for row in chain[0].index]
-            assert sorted(drawn_rows) == sorted(rows), (
-                f"{run}the patterns drew {len(drawn_rows)} rows, not each of the "
-                f"{len(rows)} eligible rows once"
+            if _PASSIVE not in targets:
+                continue
+            # The export zeroes the passive subset where the row drew a zero
+            # line 32, while the chain fed the later targets the raw passive
+            # draw there, so the chain check above reached that export.
+            exported = result.frame.table(entity)
+            line_32 = sum(
+                _raw_draws(patterns, column, exported.index) for column in _LINE_32
             )
-            assert {
-                (record.column, record.imputed_recipient_rows)
-                for record in result.imputed_inputs
-            } == {(target, len(rows)) for target in targets}, run
+            passive = _raw_draws(patterns, _PASSIVE, exported.index)
+            cleared = (line_32 == 0.0) & (passive != 0.0)
+            assert cleared.any(), (
+                f"{run}no row drew a zero line 32 under a nonzero passive "
+                "subset, so the passive reconciliation never fired"
+            )
+            assert (exported.loc[cleared, _PASSIVE] == 0.0).all(), run
 
     # The declared ACS plan chains each fixture family whole in one batch.
     declared = plans["declared ACS plan"]
@@ -920,6 +1053,72 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
                 f"the declared ACS plan no longer chains {list(chain)} in one "
                 f"{entity} batch; revisit the fixture"
             )
+
+
+#: The leaf the ACS local lane keeps at zero where ACS ``SEMP`` counts it.
+_SEMP_PARTNERSHIP = "partnership_income"
+
+
+def test_acs_local_lane_draws_later_targets_on_raw_partnership_draws(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The ACS local lane runs the declared plan with
+    # semp_covers_partnership_income=True: after the transfer it keeps a
+    # partnership_income draw at zero where the row's or its tax unit's ACS
+    # SEMP already counts it. In the declared person batch that holds it,
+    # partnership_income precedes later targets (s_corp_income, the passive
+    # subset, the partnership earnings and the estate flag), which must be
+    # drawn on the raw partnership draws.
+    ((entity, batch, targets),) = [
+        (entity, batch, targets)
+        for entity, batch, targets in _production_batches()["declared ACS plan"]
+        if entity == "person" and _SEMP_PARTNERSHIP in targets
+    ]
+    assert targets.index(_SEMP_PARTNERSHIP) < len(targets) - 1, targets
+    recipient, donor = acs_raw_prior_fixture()
+    person = recipient.table(entity)
+    # ACS SEMP maps to self_employment_income_before_lsr, blank where blank.
+    # Each household is one tax unit: its head heads it, and the other person
+    # is the spouse from age 18 and a dependent below.
+    recipient = recipient.with_columns(
+        entity,
+        SEMP=person["self_employment_income_before_lsr"].to_numpy(dtype=np.float64),
+        tax_unit_role_input=np.where(
+            person["is_household_head"],
+            "HEAD",
+            np.where(person["age"] >= 18, "SPOUSE", "DEPENDENT"),
+        ).astype(object),
+    )
+    frames = (recipient, _with_batch_columns(donor, entity, targets))
+    for path, bank in (
+        ("in memory", None),
+        ("banked", _bank_store(tmp_path / "semp_lane")),
+    ):
+        run = f"the ACS local lane's transfer, {path}, of {entity} batch {batch!r}: "
+        patterns, result = _run_whole_batch(
+            (entity, batch, targets),
+            frames,
+            bank=bank,
+            run=run,
+            monkeypatch=monkeypatch,
+            semp_covers_partnership_income=True,
+        )
+        # The export zeroed some nonzero partnership draws and changed no
+        # other, while the chain fed the later targets the raw draws there.
+        exported = result.frame.table(entity)[_SEMP_PARTNERSHIP]
+        raw = _raw_draws(patterns, _SEMP_PARTNERSHIP, exported.index)
+        changed = exported.to_numpy() != raw.to_numpy()
+        (receipt,) = [
+            record.reconciliation
+            for record in result.imputed_inputs
+            if record.column == _SEMP_PARTNERSHIP
+        ]
+        assert (exported.to_numpy()[changed] == 0.0).all(), run
+        assert changed.sum() == receipt["nonzero_draws_discarded"] > 0, (
+            f"{run}the export zeroed {int(changed.sum())} partnership draws; "
+            f"the receipt counts {receipt['nonzero_draws_discarded']}"
+        )
 
 
 # ---------------------------------------------------------------------------
