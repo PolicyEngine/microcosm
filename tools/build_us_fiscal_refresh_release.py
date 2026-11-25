@@ -5669,8 +5669,12 @@ def _post_export_consumers(
 #: scorer makes its own directory for its household batch files while it
 #: scores. The scorer removes its directory, and this one once empty if it
 #: made it, when it closes or is freed; placing a build for certification
-#: removes what an attempt that was killed left (``_place_build_for_certification``).
+#: removes the scorer directories an attempt that was killed left there
+#: (``_place_build_for_certification``).
 US_POST_EXPORT_BATCH_DIRECTORY = "post_export_batches"
+
+#: The start of the name of each scorer's own batch directory.
+_POST_EXPORT_BATCH_DIRECTORY_PREFIX = "post-export-batches-"
 
 
 class PostExportBatchFileError(RuntimeError):
@@ -5702,7 +5706,9 @@ def _new_post_export_batch_directory(
             pass
         else:
             made_parent = batch_parent
-    directory = Path(tempfile.mkdtemp(prefix="post-export-batches-", dir=batch_parent))
+    directory = Path(
+        tempfile.mkdtemp(prefix=_POST_EXPORT_BATCH_DIRECTORY_PREFIX, dir=batch_parent)
+    )
     return directory, made_parent
 
 
@@ -14924,9 +14930,13 @@ def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) ->
         "us_ssi_take_up.json",
     }:
         (release_dir / name).unlink(missing_ok=True)
-    stale_batch_files = record.release_root / US_POST_EXPORT_BATCH_DIRECTORY
-    if stale_batch_files.exists():
-        shutil.rmtree(stale_batch_files)
+    # Only scorers' own directories: anything else in the parent is kept.
+    batch_parent = record.release_root / US_POST_EXPORT_BATCH_DIRECTORY
+    if batch_parent.is_dir():
+        for stale_batch_files in batch_parent.glob(
+            f"{_POST_EXPORT_BATCH_DIRECTORY_PREFIX}*"
+        ):
+            shutil.rmtree(stale_batch_files)
     build_dir = record.build_dir.resolve()
     for role, pinned in record.payload["files"].items():
         source = (record.release_root / pinned["path"]).resolve()

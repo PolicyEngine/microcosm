@@ -446,8 +446,9 @@ one Microsimulation over the whole file.
 - Certification's scorer keeps the files in a directory of its own inside
   `post_export_batches/` in the build's `--out`: about as much disk as the
   export H5 itself, until the scorer closes. Placing a build for
-  certification removes what a killed attempt left there, so two
-  certifications of one `--out` must not run at once.
+  certification removes the scorer directories a killed attempt left there
+  and keeps anything else, so two certifications of one `--out` must not run
+  at once.
 - It refuses a file whose group units do not each nest in one household, or
   whose batches do not partition every entity, before any engine exists.
 - Batches hold at most `--maximum-microsim-batch-size` households (default
