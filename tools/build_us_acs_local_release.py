@@ -4552,8 +4552,9 @@ def finalize_reviewed_limitations(
                 "receives_housing_assistance copies the transferred "
                 "takes_up_housing_assistance_if_eligible (equal on the donor by "
                 "construction) and is False in TYPEHUGQ 2/3 group quarters, "
-                "whose transferred take-up flag is the open transfer-side fix "
-                "microcosm#975. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
+                "where staging also sets the transferred take-up flag False "
+                "(microcosm#975; reviewed limitation acs_local_staged_inputs). "
+                "takes_up_medicare_if_eligible is ACS HINS3 == 1 "
                 "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
                 "blank or invalid HINS3 reads as not covered. "
                 "takes_up_head_start_if_eligible is True for a person aged 3-5 "
@@ -4963,6 +4964,7 @@ def finalize_reviewed_limitations(
                 *ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
                 *ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
                 ACS_LOCAL_VOLUNTARY_FILING_COLUMN,
+                "takes_up_housing_assistance_if_eligible",
             ],
             "reason": (
                 "Staging writes these inputs on ACS rows from ACS items or the "
@@ -5002,20 +5004,31 @@ def finalize_reviewed_limitations(
                 "answers), run on the ACS tax units with tax-unit wages, the "
                 "head's age and sex, JOINT filing status and the household's "
                 "persons under 18 as predictors; it reads the file staging "
-                "already verifies for the SSI disability model."
+                "already verifies for the SSI disability model. Last, staging "
+                "sets the transferred takes_up_housing_assistance_if_eligible "
+                "False on every group-quarters SPM unit (TYPEHUGQ 2/3), which "
+                "has no housing unit (microcosm#975): a lane-own step after "
+                "the shared transfer, whose plan is unchanged, rather than the "
+                "structural policy inside the shared transfer that "
+                "microcosm#975 proposed."
             ),
             "treatment": (
-                "Written at staging only in missing ACS cells; donor rows keep "
-                "the donor release's values. The staging summary's receipts "
-                "record each rule, its source columns and the filled and true "
-                "rows (acs_local_status_inputs: also the agreement of "
-                "is_military with POCCU2 52 and ESR 4 or 5; "
-                "acs_local_se_health_premiums: also the premiums the Medicare "
-                "proxy and employer coverage withheld, and the agreement of "
-                "the flag with COW 6 or 7). Recorded, not "
-                "graded. A null in any of these columns stops materialize "
-                "(NEVER_DEFAULT_FILLED), so a staging run from before them is "
-                "refused there."
+                "Written at staging only in missing ACS cells, except the "
+                "group-quarters housing take-up flag, which overrides the "
+                "shared transfer's draw; donor rows keep the donor release's "
+                "values. The staging summary's receipts record each rule, its "
+                "source columns and the filled and true rows "
+                "(acs_local_status_inputs: also the agreement of is_military "
+                "with POCCU2 52 and ESR 4 or 5; acs_local_se_health_premiums: "
+                "also the premiums the Medicare proxy and employer coverage "
+                "withheld, and the agreement of the flag with COW 6 or 7; "
+                "acs_local_weeks_deferrals: the donor's ASEC coverage and the "
+                "post-processing counts; acs_local_voluntary_filing: the SIPP "
+                "identity and the ACS and donor true shares; "
+                "acs_local_group_quarters_housing: the units turned False by "
+                "TYPEHUGQ). Recorded, not graded. A null in any column but the "
+                "housing flag stops materialize (NEVER_DEFAULT_FILLED), so a "
+                "staging run from before them is refused there."
             ),
             "calibration_blocker": False,
         },

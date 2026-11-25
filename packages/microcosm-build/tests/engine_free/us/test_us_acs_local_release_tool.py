@@ -596,6 +596,12 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     )
     assert set(module.ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS) <= set(staged["columns"])
     assert "would_file_taxes_voluntarily" in staged["columns"]
+    assert "takes_up_housing_assistance_if_eligible" in staged["columns"]
+    # The housing flag is an override of a draw, not a never-default column.
+    assert ("spm_unit", "takes_up_housing_assistance_if_eligible") not in (
+        module.NEVER_DEFAULT_FILLED
+    )
+    assert "acs_local_group_quarters_housing" in staged["treatment"]
     for fragment in (
         "microcosm#1720",
         "A_MARITL",
@@ -608,6 +614,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "RETCB_VAL",
         "weeks 0 without UC",
         "SIPP 2023",
+        "microcosm#975",
     ):
         assert fragment in staged["reason"], fragment
     assert "NEVER_DEFAULT_FILLED" in staged["treatment"]

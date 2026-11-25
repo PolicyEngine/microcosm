@@ -31,6 +31,9 @@ from microcosm.build.us_runtime.acs_local_esi_premiums import (
     acs_local_esi_premium_transfer_target_families,
     with_acs_local_esi_premium_anchor,
 )
+from microcosm.build.us_runtime.acs_local_group_quarters_housing import (
+    with_acs_local_group_quarters_housing,
+)
 from microcosm.build.us_runtime.acs_local_hours import (
     acs_local_hours_transfer_target_families,
     complete_acs_local_under15_hours,
@@ -142,6 +145,7 @@ def build_optional_acs_multispine(
     income_transfer: bool = False,
     se_health_premiums: bool = False,
     weeks_deferrals: bool = False,
+    group_quarters_housing: bool = False,
     native_receipt_anchors: bool = False,
     wic_take_up: bool = False,
     semp_covers_partnership_income: bool = False,
@@ -201,6 +205,12 @@ def build_optional_acs_multispine(
     settled the self-employment components it reads, and before pooling; it
     fills only missing ``is_self_employed`` and ``health_insurance_premiums``
     cells. Its receipt is ``provenance["acs_local_se_health_premiums"]``.
+    ``group_quarters_housing`` (the ACS local lane, microcosm#975 and
+    microcosm#1720) sets the transferred
+    ``takes_up_housing_assistance_if_eligible`` False on every ACS SPM unit
+    in group quarters (``TYPEHUGQ`` 2/3) after the shared transfer, whose
+    plan is unchanged, and before pooling. Its receipt is
+    ``provenance["acs_local_group_quarters_housing"]``.
     ``native_receipt_anchors`` (the ACS local lane, microcosm#1022) replaces
     the transferred ``receives_snap`` with native household ``FS`` on every
     ACS SPM unit after the shared transfer, whose plan is unchanged, and
@@ -550,6 +560,14 @@ def build_optional_acs_multispine(
         transferred_frame, se_health_receipt = with_acs_local_se_health_premiums(
             transferred_frame
         )
+    group_quarters_housing_receipt = None
+    if group_quarters_housing:
+        # Local lane only (microcosm#975): group quarters have no housing
+        # unit. The shared plan still draws the flag; this lane-own step
+        # overrides it there, before pooling, so donor rows are never seen.
+        transferred_frame, group_quarters_housing_receipt = (
+            with_acs_local_group_quarters_housing(transferred_frame)
+        )
     receipt_anchors = None
     if native_receipt_anchors:
         # Local lane only (microcosm#1022): after the shared transfer, so the
@@ -633,6 +651,10 @@ def build_optional_acs_multispine(
     if se_health_receipt is not None:
         provenance["acs_local_se_health_premiums"] = _json_ready_mapping(
             se_health_receipt
+        )
+    if group_quarters_housing_receipt is not None:
+        provenance["acs_local_group_quarters_housing"] = _json_ready_mapping(
+            group_quarters_housing_receipt
         )
     if weeks_deferrals_receipt is not None:
         provenance["fit_configuration"]["weeks_deferrals_donor_channel"] = (

@@ -1765,15 +1765,16 @@ entries:
       tanf, wic]
     notes:
       - programs: [housing_assistance]
-        verdict: known_bias
-        direction: overstates
+        verdict: harmless
         note: >-
           Group-quarters units pass HUD's renter test
-          (is_eligible_for_housing_assistance). With pre_subsidy_rent 0 their gross rent
-          is the HUD utility allowance, which policyengine-us encodes only for Los
-          Angeles County, the Texas TDHCA area and four Kansas PHAs, so a payment arises
-          only there, and only where the transferred housing take-up flag is True
-          (microcosm#975).
+          (is_eligible_for_housing_assistance), but housing_assistance is hud_hap times
+          takes_up_housing_assistance_if_eligible, and staging sets that flag False on
+          every group-quarters SPM unit (microcosm#975, acs_local_group_quarters_housing),
+          so no payment arises. Before that step a payment could arise where the
+          transferred flag was True and policyengine-us encodes a HUD utility allowance
+          (Los Angeles County, the Texas TDHCA area and four Kansas PHAs). The verdict
+          holds while staging writes the flag False there.
       - programs: [aca_ptc, chip, ctc, general_assistance, head_start, lifeline,
           medicaid, school_meals, snap, state_benefits, wic]
         verdict: harmless

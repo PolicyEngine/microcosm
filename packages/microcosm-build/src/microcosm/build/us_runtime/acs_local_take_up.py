@@ -59,8 +59,8 @@ an engine default that biases SNAP (microcosm#1022). None needs the engine:
   ``SPM_CAPHOUSESUB > 0`` and are equal by construction
   (:mod:`~microcosm.build.us_runtime.housing_inputs`). Units in an ACS
   group-quarters household (``TYPEHUGQ`` 2/3) have no housing unit and get
-  ``False``. Their transferred take-up flag is left alone: forcing it is the
-  transfer-side fix of microcosm#975.
+  ``False``. Staging sets their transferred take-up flag False too
+  (microcosm#975, ``acs_local_group_quarters_housing``).
 - ``takes_up_medicare_if_eligible`` (person) is native ACS ``HINS3 == 1``
   (Medicare coverage at interview), the ACS counterpart of the donor's
   measured ``MCARE == 1``
@@ -582,8 +582,9 @@ def _housing_fill(
             "filled_rows": int(missing.sum()),
             "preserved_rows": int((acs_units & present).sum()),
             "group_quarters_filled_false": int((missing & group_quarters).sum()),
-            # Group-quarters units whose transferred take-up flag is True: the
-            # transfer-side defect microcosm#975 owns; this receipt stays False.
+            # Group-quarters units whose take-up flag is True: 0 on a staging
+            # run that sets it False there (microcosm#975); this receipt stays
+            # False either way.
             "group_quarters_take_up_true": int(
                 (acs_units & group_quarters & take_up_present & take_up).sum()
             ),

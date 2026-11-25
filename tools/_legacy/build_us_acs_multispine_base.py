@@ -652,6 +652,8 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
         # weeks unemployed and three deferrals from the ASEC observations.
         se_health_premiums=True,
         weeks_deferrals=True,
+        # microcosm#975: no housing take-up in group quarters.
+        group_quarters_housing=True,
         native_receipt_anchors=True,
         # microcosm#1154: the ACS rows' WIC decisions, drawn before pooling.
         wic_take_up=True,
@@ -832,6 +834,9 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     )
     summary["acs_local_weeks_deferrals"] = result.provenance.get(
         "acs_local_weeks_deferrals"
+    )
+    summary["acs_local_group_quarters_housing"] = result.provenance.get(
+        "acs_local_group_quarters_housing"
     )
     summary.update(immigration)
     summary.update(work_disability)

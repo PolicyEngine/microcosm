@@ -302,6 +302,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Local-lane voluntary-filing fill of ACS tax units with the donor's
         # SIPP model (#1720); outside the registry.
         "acs_local_voluntary_filing.py",
+        # Local-lane housing take-up of ACS group-quarters SPM units (#975),
+        # on the ACS-only frame after the shared transfer and before pooling;
+        # tag-free. Outside the registry.
+        "acs_local_group_quarters_housing.py",
         # Legacy local-lane Head Start take-up fill, ACS VEH availability
         # receipt and grade helpers (#1022); tag-free, the take-up stage
         # passes the spine masks. Outside the registry.
