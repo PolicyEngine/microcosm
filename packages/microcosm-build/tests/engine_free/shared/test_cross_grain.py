@@ -1462,6 +1462,44 @@ def test_a_partition_with_a_missing_member_is_refused():
         apply_cross_grain_partitions(raw, reconciled, (partition,))
 
 
+def test_a_share_of_parent_member_missing_leaves_the_rest_on_the_parents_factor():
+    """A share_of_parent member moves by its parent's factor alone, so the
+    members present move as they would beside the absent one, and the
+    absent one is receipted (a signed deferral off the frame, microcosm#931)."""
+
+    raw, reconciled = _partition_surface(90.0, 120.0, [30.0, 30.0])
+    partition = CrossGrainPartition(
+        "children_with_households",
+        "total",
+        ("band_0", "band_1", "band_2"),
+        kind="share_of_parent",
+    )
+    out, receipt = apply_cross_grain_partitions(raw, reconciled, (partition,))
+    assert out["value"].tolist() == pytest.approx([120.0, 40.0, 40.0])
+    assert receipt["members_absent"] == [
+        {
+            "partition_id": "children_with_households",
+            "grain": "la",
+            "geography_id": "A1",
+            "absent_member_target_ids": ["band_2"],
+        }
+    ]
+    whole, whole_receipt = apply_cross_grain_partitions(
+        raw,
+        reconciled,
+        (
+            CrossGrainPartition(
+                "children_with_households",
+                "total",
+                ("band_0", "band_1"),
+                kind="share_of_parent",
+            ),
+        ),
+    )
+    assert whole["value"].tolist() == out["value"].tolist()
+    assert whole_receipt["members_absent"] == []
+
+
 def test_a_parent_without_members_is_receipted_not_refused():
     raw, reconciled = _partition_surface(90.0, 120.0, [])
     partition = CrossGrainPartition("bands", "total", ("band_0",))

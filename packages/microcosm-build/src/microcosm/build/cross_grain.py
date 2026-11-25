@@ -861,9 +861,13 @@ def apply_cross_grain_partitions(
     Runs after :func:`apply_cross_grain_reconciliation`: ``raw_frame`` is its
     input and ``reconciled_frame`` its output, row for row, so a
     ``share_of_parent`` partition reads the parent's own factor. A geography
-    with the parent and no members is recorded; one with some members but not
-    all is refused, since rescaling a partial set onto the whole parent would
-    move the missing members' mass onto the present ones.
+    with the parent and no members is recorded. One with some members but not
+    all is refused for an ``exhaustive`` partition, since rescaling a partial
+    set onto the whole parent would move the missing members' mass onto the
+    present ones. A ``share_of_parent`` member moves by the parent's factor,
+    which no other member enters, so a partial set moves as it would in a
+    whole one and the absent members are recorded (a signed deferral whose
+    leg no control moves stays out of the frame, microcosm#931).
     """
 
     columns = _surface_columns(reconciled_frame)
@@ -888,6 +892,7 @@ def apply_cross_grain_partitions(
         ).append(position)
     receipts: list[dict[str, Any]] = []
     parents_without_members: list[dict[str, Any]] = []
+    members_absent: list[dict[str, Any]] = []
     for partition in partitions:
         legs: list[dict[str, Any]] = []
         for (grain, geography_id), by_target in sorted(cells.items()):
@@ -913,9 +918,18 @@ def apply_cross_grain_partitions(
                 continue
             if len(present) != len(partition.member_target_ids):
                 missing = sorted(set(partition.member_target_ids) - set(present))
-                raise ValueError(
-                    f"cross-grain partition {partition.partition_id!r} at "
-                    f"{geography_id!r} lacks member(s) {missing}."
+                if partition.kind == "exhaustive":
+                    raise ValueError(
+                        f"cross-grain partition {partition.partition_id!r} at "
+                        f"{geography_id!r} lacks member(s) {missing}."
+                    )
+                members_absent.append(
+                    {
+                        "partition_id": partition.partition_id,
+                        "grain": grain,
+                        "geography_id": geography_id,
+                        "absent_member_target_ids": missing,
+                    }
                 )
             positions = [
                 position for member in present for position in by_target[member]
@@ -977,6 +991,7 @@ def apply_cross_grain_partitions(
     return out, {
         "partitions": receipts,
         "parents_without_members": parents_without_members,
+        "members_absent": members_absent,
     }
 
 
