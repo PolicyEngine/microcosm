@@ -35,10 +35,50 @@ line-length = 88
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "TID251"]
 ignore = ["E501"]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# Builds reach Hugging Face and the collector only through the separately
+# installed emitter, started through microcosm-emitter-interface. The modules
+# that may still import huggingface_hub are listed under per-file-ignores
+# below with the exception that covers them.
+"huggingface_hub".msg = "Hand files to the emitter through microcosm-emitter-interface; only the modules listed under TID251 in pyproject.toml read or write Hugging Face directly."
+
 [tool.ruff.lint.per-file-ignores]
+# TID251, huggingface_hub outside the emitter. Datasets and the release
+# metadata that selects and verifies them: the loader, the publisher's
+# listing and parent checks, a UK national build's reference build and
+# releases.json, the policyengine.py certification, the US recertification
+# and the quick-start notebook.
+"packages/microcosm-data/src/microcosm/data/loader.py" = ["TID251"]
+"packages/microcosm-build/src/microcosm/build/release_publication.py" = ["TID251"]
+"packages/microcosm-build/src/microcosm/build/uk_runtime/cut_reference.py" = ["TID251"]
+"tools/run_uk_cut.py" = ["TID251"]
+"tools/certify_uk_cut_in_policyengine_py.py" = ["TID251"]
+"tools/build_us_compatibility_recertification.py" = ["TID251"]
+"examples/quickstart_us.ipynb" = ["TID251"]
+# TID251. Build inputs.
+"packages/microcosm-build/src/microcosm/build/us_runtime/asec_sources.py" = ["TID251"]
+"packages/microcosm-build/src/microcosm/build/us_runtime/sipp_financial_assets.py" = ["TID251"]
+"tools/modal_us_stage.py" = ["TID251"]
+"tools/modal_rebuild_uk_chronicle_artifact.py" = ["TID251"]
+"tools/build_uk_efrs_parity_reference.py" = ["TID251"]
+"tools/build_uk_release_input_coverage_manifest.py" = ["TID251"]
+"experiments/**" = ["TID251"]
+# TID251. Operator tools with the operator's own token: the UK staging
+# repository's provisioning, and fetching a staged UK bundle.
+"tools/provision_uk_staging_repository.py" = ["TID251"]
+"tools/fetch_uk_staged_dataset.py" = ["TID251"]
+"packages/microcosm-build/src/microcosm/build/staging_storage.py" = ["TID251"]
+# TID251. BE's publication tools, which substage 5b removes: the build-folder
+# switch and the tagged publisher (microcosm-publish-release).
+"packages/microcosm-build/src/microcosm/build/build_folder_switch.py" = ["TID251"]
+"packages/microcosm-data/src/microcosm/data/release.py" = ["TID251"]
+# TID251. Tests and their stand-ins for the Hub.
+"packages/*/tests/**" = ["TID251"]
+"test_support/**" = ["TID251"]
+"conftest.py" = ["TID251"]
 # microcosm#456 (#447): the release tool bounds BLAS/torch thread-pool env
 # defaults before numpy/torch load, which requires statements above the
 # import block.

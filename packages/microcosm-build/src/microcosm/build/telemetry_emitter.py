@@ -139,47 +139,14 @@ def _packaged_minimum_emitter_version() -> str:
 
 
 #: The oldest emitter release a build starts: 0.17.0 since 2026-11-19, the
-#: newest release then. 0.17.0 includes ``parent_build_manifest.json`` and
-#: ``reform_validation.json``, which a release publication hands over under
-#: the roles ``parent_build_manifest`` and ``reform_validation`` when the
-#: release has them (only some US releases do), in the build's
-#: ``calibration-diagnostics`` submission to the collector; 0.16.0 leaves
-#: both out. 0.16.0, from 2026-11-16, added collector provenance on a
-#: promotion or withdrawal: once the change lands, it submits
-#: ``releases.json`` at the commit its receipt reports (for a change that
-#: writes nothing, the commit that last changed the file), and the collector
-#: points the country's latest calibration tree at its default release's
-#: current build when it has that build's tree. 0.15.0 accepts that
-#: provenance but drops it, so it would submit no ``releases.json``. 0.15.0,
-#: from 2026-11-13, added the Hugging Face module's setting that switches
-#: collector submissions on (``hugging_face_settings``), collector
-#: provenance on a release publication, which it submits after the release
-#: commit, and a ``skipped`` collector receipt with an error code when it
-#: refuses its collector settings; an emitter before it accepts the setting
-#: but drops a publication's provenance, and its hand-over ID differs from
-#: the interface's. 0.14.0, from 2026-11-09, added the build machine's
-#: readings. 0.13.0, from 2026-11-05, added ``microcosm-emitter status``,
-#: which the Modal stage runner runs in the container after a stage's tool
-#: to record how many telemetry events each run left undelivered, so the
-#: image needs it; a build requires the same release, so that the release is
-#: written once (``MINIMUM_EMITTER_VERSION_RESOURCE``). Practically no
-#: machine ran the separately installed emitter at any of these rises, so
-#: refusing the releases before them cost nothing. Earlier floors: 0.11.9
-#: from 2026-11-02, because since 0.10.0 the emitter sends to the
-#: collector's hostname by default, which stays the same when the collector
-#: moves to another Google Cloud project, while earlier releases send to its
-#: Cloud Run address, which changes with the move; 0.11.1 fixed two cases in
-#: which the telemetry module stopped. A refused emitter costs a build its
-#: hosted telemetry, its staging hand-overs and its Orrery graph
-#: publication, fails a UK build given ``--staging-read-back``, and refuses
-#: a UK build that asks for remote staging of its dataset bundle
-#: (``OUTDATED_EMITTER_WARNING``), so a later rise weighs that against how
-#: many machines would have to upgrade. 0.6.0 added the Hugging Face module
-#: (``stage_run_files``, ``run_files_receipt`` and ``read_back_run_files``
-#: for staging run files; ``stage_dataset_bundle``,
-#: ``dataset_bundle_receipt`` and ``check_write_access`` for staged dataset
-#: bundles) and its queue in ``events.handovers.sqlite3``; releases 0.4.0 to
-#: 0.5.1 accept the same protocol version but start without that module.
+#: newest release then. It is the first that hands a release's
+#: ``parent_build_manifest.json`` and ``reform_validation.json`` to the
+#: collector with its ``calibration-diagnostics`` submission. The changelog of
+#: microcosm-emitter says what each earlier release added. A refused emitter
+#: costs a build its hosted telemetry and its staging hand-overs, fails a UK
+#: build given ``--staging-read-back``, and refuses a UK build that asks for
+#: remote staging of its dataset bundle (``OUTDATED_EMITTER_WARNING``), so a
+#: later rise weighs that against how many machines would have to upgrade.
 MINIMUM_EMITTER_VERSION = _packaged_minimum_emitter_version()
 UPGRADE_EMITTER_COMMAND = (
     f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"

@@ -33,7 +33,7 @@ export HF_TOKEN=…
 # The key goes to this one command, never to the whole shell:
 MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY="$(security find-generic-password -a "$USER" -s microcosm-uk-gate-signing-key -w)" \
   uv run --no-sync python tools/run_uk_cut.py all --label sat24              # build, certify, assemble
-# add --publish to publish for inspection
+# add --publish to publish the build without making it current
 ```
 
 The runner passes the key on only to the steps that sign (spine, national
@@ -94,7 +94,7 @@ derive from licensed data:
 | `cuts/<label>-<sha9>/national/` | the calibration run |
 | `cuts/<label>-<sha9>/release/` | the assembled release |
 | `cuts/<label>-<sha9>/logs/` | one log per step |
-| `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, the signing key's fingerprint (from the signed reports), input pins, step timings, tag |
+| `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, the signing key's fingerprint (from the signed reports), input pins, step timings, build |
 
 If the machine runs a disk cleaner, keep it away from the work directory for
 the length of a run. On a host booked through a reservation tool, pass
@@ -104,11 +104,14 @@ missing. Without them no reservation is checked.
 
 ### What it will not do
 
-- **It never moves a default.** `--publish` always passes `--no-latest
-  --tag-only`, so `populace-uk-private`'s main branch, its root files and
-  `latest-*.json` stay where they are.
-- **It never promotes.** Promotion (`--promote-line national`) is a separate,
-  reviewed call. The runner prints the command for it.
+- **It never moves a default.** `--publish` publishes the build into its own
+  folder through the emitter (`microcosm-publish-release-build`, run as
+  `python -m microcosm.build.release_publication`), which lists it in
+  `populace-uk-private`'s `releases.json` without making it the release's
+  current build. A rerun publishes nothing once `releases.json` lists it.
+- **It never promotes.** Promotion (`microcosm-publish-release-build
+  --promote`) is a separate, reviewed call. The runner prints the command for
+  it.
 - **It never publishes to the public Orrery.** No build uploads its graph:
   the national build's staged bundle submits the graph's inputs to the
   collector, which keeps a licensed build's graph private
@@ -385,6 +388,11 @@ A public-key scheme (Ed25519) would let the registry hold public keys and
 anyone verify; that is tracked in microcosm#1406.
 
 ## Certifying into policyengine.py
+
+`tools/certify_uk_cut_in_policyengine_py.py` still reads a national build by
+its tag (`--national-tag`, the manifests at that revision), and builds
+published into their own folders carry no tag, so it cannot yet certify a
+build `run_uk_cut.py` publishes. The command it takes:
 
 ```bash
 uv run --no-sync python tools/certify_uk_cut_in_policyengine_py.py \
