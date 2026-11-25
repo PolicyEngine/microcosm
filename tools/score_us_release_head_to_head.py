@@ -104,7 +104,13 @@ from microcosm.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
 )
-from microcosm.build.worker_pool import WorkerPool, WorkerPoolSettings
+from microcosm.build.worker_pool import (
+    WorkerPool,
+    WorkerPoolError,
+    WorkerPoolReport,
+    WorkerPoolSettings,
+    WorkerPoolUnitError,
+)
 from microcosm.calibrate import TargetRegistry, score_targets
 from microcosm.calibrate.solve import relative_error_loss
 from microcosm.frame import US_SCHEMA, Frame
@@ -1091,10 +1097,10 @@ def _score_slice_worker(state: _SliceWorkerState, task: tuple[int, int]) -> Scor
         gc.collect()
         _assert_rss_below_limit(f"after scoring {label}")
         return scored_slice
-    except MemoryError:
-        # The shared pool runs the slice again in a fresh worker.
-        raise
     except Exception as error:
+        # A RuntimeError, not the MemoryError the 20 GiB check raises, so the
+        # check stays fatal as in one process: the shared pool runs a slice
+        # again only when its worker dies.
         raise RuntimeError(f"{label} worker failed: {error}") from error
 
 
@@ -1181,6 +1187,22 @@ def _reduce_scored_slices(
     )
 
 
+def _print_failed_attempts(report: WorkerPoolReport) -> None:
+    """Report each slice attempt that ended without a result on stderr.
+
+    Operational receipts only, like the memory receipts; the JSON and Markdown
+    outputs stay byte-deterministic.
+    """
+    for attempt in report.failed_attempts:
+        print(
+            f"[h2h {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] "
+            f"{attempt.label}: attempt {attempt.attempt} ended without a result "
+            f"({attempt.cause})",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 def _score_chunks_parallel(
     base_frame: Frame,
     specs: Sequence,
@@ -1195,8 +1217,8 @@ def _score_chunks_parallel(
 
     The pool returns slice results in task order, so each chunk reduces its
     slices in the sequential order whatever order the workers finish in. A
-    slice whose worker dies or runs out of memory runs once more in a fresh
-    worker before the run stops.
+    slice whose worker dies runs once more in a fresh worker before the run
+    stops; each failed attempt is reported on stderr.
     """
 
     slice_count = len(
@@ -1261,8 +1283,16 @@ def _score_chunks_parallel(
                     chunk_label=f"chunk {chunk_index + 1}/{chunk_count}",
                     maximum_microsim_batch_size=maximum_microsim_batch_size,
                 )
+        except WorkerPoolUnitError:
+            raise
+        except WorkerPoolError as error:
+            # A failure no slice carries, such as a worker failing to start.
+            raise WorkerPoolError(
+                f"{artifact_name} slice workers failed: {error}"
+            ) from error
         finally:
             results.close()
+            _print_failed_attempts(pool.report())
 
 
 def _spec_keys(specs: Sequence) -> tuple[tuple[str, object], ...]:

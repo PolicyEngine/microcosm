@@ -5,12 +5,14 @@ result is whatever the caller joins from the pool (arrays, totals, payloads),
 and calls :func:`assert_identical_across_worker_counts`. The helper runs it at
 each worker count and compares canonical bytes, not values:
 
-* arrays by dtype, shape and raw bytes, so ``0.0`` and ``-0.0``, NaNs with
-  different bits, and ``int32`` and ``int64`` all count as different;
-* floats by their IEEE 754 bits;
+* arrays by type, dtype (with its byte order and any fields), shape and raw
+  bytes, so ``0.0`` and ``-0.0``, NaNs with different bits, and ``int32`` and
+  ``int64`` all count as different; masked arrays by their mask too;
+* every other value with its type, and floats by their IEEE 754 bits;
 * mappings with their keys in order, since a payload written to JSON keeps
   that order;
-* tuples, lists, dataclasses and pandas objects by type and contents.
+* tuples, lists, dataclasses and pandas objects by type and contents, pandas
+  objects with their dtypes (a categorical's categories) and index names.
 
 A difference is reported by its place in the result, such as
 ``result['totals'][3]``.
@@ -36,6 +38,16 @@ def _type_name(value: object) -> bytes:
     return f"{kind.__module__}.{kind.__qualname__}".encode()
 
 
+def _dtype_bytes(dtype: np.dtype) -> bytes:
+    """A dtype with its byte order and, for structured dtypes, its fields.
+
+    ``dtype.str`` alone is ``|V8`` for every 8-byte structured dtype, so it
+    would lose field names, field types and their byte order.
+    """
+    fields = dtype.descr if dtype.fields is not None or dtype.subdtype else None
+    return repr((dtype.str, fields)).encode()
+
+
 def _pandas_bytes(value: object) -> bytes | None:
     try:
         import pandas as pd
@@ -43,26 +55,28 @@ def _pandas_bytes(value: object) -> bytes | None:
         return None
     if isinstance(value, pd.DataFrame):
         parts = [
-            canonical_result_bytes(list(value.columns)),
+            canonical_result_bytes(value.columns),
             canonical_result_bytes(value.index),
         ]
-        for column in value.columns:
-            parts.append(canonical_result_bytes(value[column]))
-        return _framed(b"P", _type_name(value) + b"".join(parts))
+        for position in range(value.shape[1]):
+            parts.append(canonical_result_bytes(value.iloc[:, position]))
+        return _framed(b"P", _framed(b"t", _type_name(value)) + b"".join(parts))
     if isinstance(value, pd.Series):
         return _framed(
             b"P",
-            _type_name(value)
+            _framed(b"t", _type_name(value))
             + canonical_result_bytes(value.name)
-            + canonical_result_bytes(str(value.dtype))
+            # The dtype's repr carries a categorical's categories and order.
+            + canonical_result_bytes(repr(value.dtype))
             + canonical_result_bytes(value.index)
             + canonical_result_bytes(np.asarray(value.to_numpy())),
         )
     if isinstance(value, pd.Index):
         return _framed(
             b"P",
-            _type_name(value)
-            + canonical_result_bytes(str(value.dtype))
+            _framed(b"t", _type_name(value))
+            + canonical_result_bytes(list(value.names))
+            + canonical_result_bytes(repr(value.dtype))
             + canonical_result_bytes(np.asarray(value.to_numpy())),
         )
     return None
@@ -71,33 +85,50 @@ def _pandas_bytes(value: object) -> bytes | None:
 def canonical_result_bytes(value: object) -> bytes:
     """Bytes that are equal exactly when two results are bit-for-bit the same.
 
+    Every value carries its type, so ``True`` and ``np.True_``, an ``IntEnum``
+    member and its ``int``, and ``bytes`` and ``bytearray`` differ.
+
     Raises:
         TypeError: For a value of a type it has no encoding for.
     """
     if value is None:
         return b"N"
-    if isinstance(value, bool | np.bool_):
+    if type(value) is bool:
         return b"B1" if value else b"B0"
     if isinstance(value, np.ndarray):
-        header = f"{value.dtype.str}{value.shape}".encode()
+        kind = _framed(b"t", _type_name(value))
+        if isinstance(value, np.ma.MaskedArray):
+            return _framed(
+                b"K",
+                kind
+                + canonical_result_bytes(np.asarray(value.data))
+                + canonical_result_bytes(np.ma.getmaskarray(value))
+                + canonical_result_bytes(np.asarray(value.fill_value)),
+            )
+        header = kind + _framed(b"d", _dtype_bytes(value.dtype))
+        header += _framed(b"s", repr(value.shape).encode())
         if value.dtype.hasobject:
             items = b"".join(canonical_result_bytes(item) for item in value.ravel())
-            return _framed(b"O", _framed(b"h", header) + items)
-        return _framed(
-            b"A", _framed(b"h", header) + np.ascontiguousarray(value).tobytes()
-        )
+            return _framed(b"O", header + items)
+        return _framed(b"A", header + np.ascontiguousarray(value).tobytes())
     if isinstance(value, np.generic):
-        return _framed(b"S", value.dtype.str.encode() + b":" + value.tobytes())
+        return _framed(
+            b"S", _dtype_bytes(value.dtype) + b":" + np.asarray(value).tobytes()
+        )
+    kind = _framed(b"t", _type_name(value))
     if isinstance(value, int):
-        return _framed(b"I", str(value).encode())
+        return _framed(b"I", kind + str(int(value)).encode())
     if isinstance(value, float):
-        return _framed(b"F", struct.pack(">d", value))
+        return _framed(b"F", kind + struct.pack(">d", value))
     if isinstance(value, complex):
-        return _framed(b"C", struct.pack(">dd", value.real, value.imag))
+        return _framed(b"C", kind + struct.pack(">dd", value.real, value.imag))
     if isinstance(value, str):
-        return _framed(b"U", value.encode("utf-8", "surrogatepass"))
-    if isinstance(value, bytes | bytearray | memoryview):
-        return _framed(b"Y", bytes(value))
+        return _framed(b"U", kind + str.encode(value, "utf-8", "surrogatepass"))
+    if isinstance(value, memoryview):
+        layout = repr((value.format, value.shape)).encode()
+        return _framed(b"Y", kind + _framed(b"m", layout) + value.tobytes())
+    if isinstance(value, bytes | bytearray):
+        return _framed(b"Y", kind + bytes(value))
     pandas_bytes = _pandas_bytes(value)
     if pandas_bytes is not None:
         return pandas_bytes
@@ -106,20 +137,20 @@ def canonical_result_bytes(value: object) -> bytes:
             canonical_result_bytes(key) + canonical_result_bytes(item)
             for key, item in value.items()
         )
-        return _framed(b"M", _framed(b"t", _type_name(value)) + items)
+        return _framed(b"M", kind + items)
     if isinstance(value, tuple | list):
         items = b"".join(canonical_result_bytes(item) for item in value)
-        return _framed(b"L", _framed(b"t", _type_name(value)) + items)
+        return _framed(b"L", kind + items)
     if isinstance(value, set | frozenset):
         items = b"".join(sorted(canonical_result_bytes(item) for item in value))
-        return _framed(b"E", _framed(b"t", _type_name(value)) + items)
+        return _framed(b"E", kind + items)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         items = b"".join(
             canonical_result_bytes(field.name)
             + canonical_result_bytes(getattr(value, field.name))
             for field in dataclasses.fields(value)
         )
-        return _framed(b"D", _framed(b"t", _type_name(value)) + items)
+        return _framed(b"D", kind + items)
     raise TypeError(
         "canonical_result_bytes has no encoding for values of type "
         f"{type(value).__module__}.{type(value).__qualname__}."

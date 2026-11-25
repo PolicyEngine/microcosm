@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import gc
 import multiprocessing
 import os
@@ -350,14 +351,18 @@ def test_the_memory_cap_is_enforced_while_another_worker_starts(monkeypatch) -> 
     """
     pool = WorkerPool(WorkerPoolSettings(workers=1), unit_function=units.echo)
     starts_under_lock = []
-    real_process = pool._context.Process
+    real_environment_for_start = worker_pool_module._environment_for_start
 
-    class RecordingProcess(real_process):
-        def start(self):
-            starts_under_lock.append(pool._shared.lock.locked())
-            return super().start()
+    @contextlib.contextmanager
+    def recording_environment_for_start(environment):
+        # Entered around ``process.start()`` in the pool's worker start.
+        starts_under_lock.append(pool._shared.lock.locked())
+        with real_environment_for_start(environment):
+            yield
 
-    monkeypatch.setattr(pool._context, "Process", RecordingProcess)
+    monkeypatch.setattr(
+        worker_pool_module, "_environment_for_start", recording_environment_for_start
+    )
     with pool:
         list(pool.map([0]))
     assert starts_under_lock == [False]

@@ -30,6 +30,8 @@ kills an 8-hour run.
 from __future__ import annotations
 
 import sys
+import threading
+import weakref
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -72,6 +74,12 @@ def _registrations(directory: Path | None) -> dict[str, ModuleType]:
     return found
 
 
+# Scopes opened and not yet closed, oldest first, as weak references: a scope
+# dropped without closing stops counting once it is collected.
+_OPEN_SCOPES: list[weakref.ref[EngineVariableModuleScope]] = []
+_OPEN_SCOPES_LOCK = threading.Lock()
+
+
 class EngineVariableModuleScope:
     """Remove Core's variable-module registrations made between open and close.
 
@@ -83,6 +91,11 @@ class EngineVariableModuleScope:
     later scope registered and still uses. A scope left unclosed here does
     nothing when collected; its modules simply stay registered, as they would
     without it. ``close`` does nothing the second time.
+
+    Scopes may close in any order. A scope that closes while a scope opened
+    after it is still open removes only what was registered before that later
+    scope opened; what came after may belong to the later scope, which removes
+    it when it closes.
     """
 
     def __init__(self, variables_dir: str | Path | None = None) -> None:
@@ -98,16 +111,44 @@ class EngineVariableModuleScope:
         directory = (
             None if initial_directory is None else Path(initial_directory).absolute()
         )
-        self._previous = _registrations(directory)
+        with _OPEN_SCOPES_LOCK:
+            self._previous = _registrations(directory)
+            _OPEN_SCOPES.append(weakref.ref(self))
         return self
+
+    def _first_later_open_scope_snapshot(self) -> dict[str, ModuleType] | None:
+        """The snapshot of the oldest scope opened after this one and still open."""
+        later = False
+        snapshot = None
+        live = []
+        for reference in _OPEN_SCOPES:
+            scope = reference()
+            if scope is None:
+                continue
+            live.append(reference)
+            if scope is self:
+                later = True
+            elif later and snapshot is None and scope._previous is not None:
+                snapshot = scope._previous
+        _OPEN_SCOPES[:] = [reference for reference in live if reference() is not self]
+        return snapshot
 
     def close(self) -> None:
         """Remove the registrations made since ``open``, except the shared system's."""
-        previous, self._previous = self._previous, None
-        if self._closed or previous is None:
+        with _OPEN_SCOPES_LOCK:
+            previous, self._previous = self._previous, None
+            if self._closed or previous is None:
+                self._closed = True
+                return
             self._closed = True
-            return
-        self._closed = True
+            later_snapshot = self._first_later_open_scope_snapshot()
+            self._remove_since(previous, later_snapshot)
+
+    def _remove_since(
+        self,
+        previous: dict[str, ModuleType],
+        later_snapshot: dict[str, ModuleType] | None,
+    ) -> None:
         final_directory = self._variables_dir or _loaded_variables_dir()
         if final_directory is None:
             return
@@ -123,6 +164,9 @@ class EngineVariableModuleScope:
         for name in _registrations(Path(final_directory).absolute()):
             if name in previous:
                 sys.modules[name] = previous[name]
+            elif later_snapshot is not None and name not in later_snapshot:
+                # Registered after a still-open later scope opened.
+                continue
             elif shared_system is None or not name.startswith(shared_prefix):
                 sys.modules.pop(name, None)
 
