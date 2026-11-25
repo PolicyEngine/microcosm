@@ -1806,9 +1806,7 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     )
 
     assert calls == [frame]
-    alias = tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME
-    assert alias.is_file()
-    assert alias.stat().st_ino == checkpoint.stat().st_ino
+    _assert_hard_link(tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME, checkpoint)
 
 
 def _final_export_args(tmp_path: Path, location_rule: str) -> SimpleNamespace:
@@ -1823,12 +1821,22 @@ _STEP_MARKER_COLUMN = "employment_income_before_lsr"
 
 
 def _frame_written_by_step(step_index: int) -> Frame:
-    """The fixture frame with one person column set to the step's index."""
+    """The fixture frame with two person columns set from the step's index.
 
-    return _with_person_column(
+    ``employment_income_before_lsr`` holds the index, and ``source_row_id``
+    differs per step, so each step's frame also has its own frame identity
+    (which covers the pooled-provenance columns).
+    """
+
+    marked = _with_person_column(
         _minimal_us_frame(),
         _STEP_MARKER_COLUMN,
         np.full(3, step_index, dtype="int64"),
+    )
+    return _with_person_column(
+        marked,
+        "source_row_id",
+        np.arange(3, dtype="int64") + 10 * step_index,
     )
 
 
@@ -1864,10 +1872,18 @@ def _assert_hard_link(alias: Path, target: Path) -> None:
     assert alias.lstat().st_dev == target.stat().st_dev
 
 
-def _patch_staged_export(
+def _patch_final_export_dependencies(
     monkeypatch: pytest.MonkeyPatch, builder, out_dir: Path
 ) -> list[Frame]:
-    """Replace the engine export with one that writes two small files.
+    """Replace what ``final_export`` calls beyond the step runtime.
+
+    - ``_export_staged_result``: writes two small files in ``out_dir``
+      instead of the engine export, and records the frame it is given.
+    - ``_ensure_capital_gains_tail_manifest``: does nothing.
+    - ``_stage_run_config``: returns ``{}``, the run config
+      ``_complete_steps_before_final_export`` records, so the step's
+      runtime accepts the directory.
+    - ``profile_stage``: does nothing.
 
     Returns the list that receives each frame the export is given.
     """
@@ -1914,7 +1930,9 @@ def test_staged_final_export_records_the_previous_checkpoint_without_writing_one
     previous_checkpoint = args.checkpoint_dir / written_checkpoint_names[-1]
     assert previous_checkpoint.name == f"{len(steps) - 2:03d}_{steps[-2]}.frame.h5"
     previous_bytes = previous_checkpoint.read_bytes()
-    exported_frames = _patch_staged_export(monkeypatch, builder, tmp_path / "out")
+    exported_frames = _patch_final_export_dependencies(
+        monkeypatch, builder, tmp_path / "out"
+    )
     events: list[str] = []
     fake_export = builder._export_staged_result
 
@@ -1981,6 +1999,14 @@ def test_staged_final_export_records_the_previous_checkpoint_without_writing_one
         (args.checkpoint_dir / "stage_run_context.json").read_text(encoding="utf-8")
     )
     assert context["completed"] == list(steps)
+    # Every step's frame has its own identity, so the identity comparison
+    # below tells the previous step's record from the others.
+    written_identities = [
+        record["identity"]["sha256"]
+        for record in context["stage_records"]
+        if record["wrote_frame"]
+    ]
+    assert len(set(written_identities)) == len(written_identities)
     previous_record, final_record = context["stage_records"][-2:]
     assert final_record["stage"] == "final_export"
     assert final_record["wrote_frame"] is False
@@ -2014,7 +2040,9 @@ def test_completed_final_export_repair_links_the_previous_checkpoint(
     _runtime, written_checkpoint_names = _complete_steps_before_final_export(
         builder, args
     )
-    exported_frames = _patch_staged_export(monkeypatch, builder, tmp_path / "out")
+    exported_frames = _patch_final_export_dependencies(
+        monkeypatch, builder, tmp_path / "out"
+    )
     builder._run_outer_stage(args)
     context_path = args.checkpoint_dir / "stage_run_context.json"
     context_bytes = context_path.read_bytes()
@@ -2061,7 +2089,9 @@ def test_completed_final_export_that_wrote_its_own_frame_still_repairs(
     runtime, _written_checkpoint_names = _complete_steps_before_final_export(
         builder, args
     )
-    exported_frames = _patch_staged_export(monkeypatch, builder, tmp_path / "out")
+    exported_frames = _patch_final_export_dependencies(
+        monkeypatch, builder, tmp_path / "out"
+    )
     predecessor = runtime.load_predecessor("final_export")
     export_metadata = builder._export_staged_result(
         args, predecessor.frame, runtime.metadata

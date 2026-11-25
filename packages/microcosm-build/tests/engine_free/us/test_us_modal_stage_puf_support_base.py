@@ -2280,7 +2280,7 @@ def test_a_stopped_base_pushes_its_output_before_its_checkpoints(
 
 def test_a_finished_base_pushes_only_its_output_and_evidence(tmp_path: Path) -> None:
     # A completed --stage all has nothing to resume: the other checkpoints
-    # (about 40 GB) are hashed into the receipt and not copied.
+    # (about 42 GB at 4b57d15a2) are hashed into the receipt and not copied.
     copied, not_mirrored, volume = _base_push(tmp_path, returncode=0, stopped=False)
     assert copied == _BASE_EVIDENCE_ORDER
     assert not_mirrored == [
