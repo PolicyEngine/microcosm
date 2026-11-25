@@ -255,11 +255,37 @@ def _audit_ratio(target, mass, assign_all):
     None, the value a zero mass already gets. Without the rule the stratum
     refuses, and the refusal audit keeps the value ``_ratio`` gives, byte for
     byte.
+
+    A None target gives None. Only the rule records a None target: a program
+    whose stratum targets total more than a float can hold.
     """
+    if target is None:
+        return None
     ratio = _ratio(target, mass)
     if assign_all and ratio is not None and not math.isfinite(ratio):
         return None
     return ratio
+
+
+def _target_total(values, assign_all):
+    """Return a program's target total for its audit.
+
+    Each target is finite, but ``math.fsum`` raises OverflowError when their
+    sum passes the largest float, and on some sums just below it. Without the
+    ``assign_all_eligible`` rule the error propagates, as it did before the
+    rule. Under the rule the total is the exact sum rounded to a float, or
+    None when no float holds it, and each stratum still caps on its own
+    target.
+    """
+    try:
+        return math.fsum(values)
+    except OverflowError:
+        if not assign_all:
+            raise
+    try:
+        return float(sum((Fraction(value) for value in values), Fraction()))
+    except OverflowError:
+        return None
 
 
 def _ordered_receipt_outputs(outputs, groups):
@@ -282,7 +308,7 @@ def _ordered_receipt_outputs(outputs, groups):
     return ordered
 
 
-def hall_diagnostics(demands, weights):
+def hall_diagnostics(demands, weights, *, overflow_as_none=False):
     """Report one maximally deficient demand set using an exact integer max-flow.
 
     A demand is (programme, filter, target, eligibility mask). Split people into
@@ -311,6 +337,14 @@ def hall_diagnostics(demands, weights):
     probabilities gives a flow, proving equivalence for expected counts. This
     is diagnostic only; draws and priority may still refuse even when the
     fractional allocation is feasible.
+
+    The reported target is the exact sum of finite targets, so its float can
+    overflow. By default that OverflowError propagates. With
+    ``overflow_as_none``, which ``assign_receipts_v2`` sets under the
+    ``assign_all_eligible`` rule, the violation records that target as None.
+    The reported supply never overflows once the weights' float sum is finite,
+    which ``assign_receipts_v2`` checks first: the supply sums some of those
+    weights exactly, and rounding preserves order.
     """
     denominator, totals = 1, {}
     if demands:
@@ -427,12 +461,18 @@ def hall_diagnostics(demands, weights):
         subset = [demands[index] for index in indices]
         subset_pattern = sum(1 << index for index in indices)
         filters = {item[1] for item in subset}
+        try:
+            target = float(sum((targets[index] for index in indices), Fraction()))
+        except OverflowError:
+            if not overflow_as_none:
+                raise
+            target = None
         violations.append(
             {
                 "programs": [item[0] for item in subset],
                 "filter": next(iter(filters)) if len(filters) == 1 else None,
                 "filters": [item[1] for item in subset],
-                "target": float(sum((targets[index] for index in indices), Fraction())),
+                "target": target,
                 "eligible_mass": float(
                     Fraction(
                         sum(
@@ -507,7 +547,9 @@ def assign_receipts_v2(
     shortfall never moves to another stratum or program, and a later program in
     the same exclusion group loses that whole pool. Under the rule, the program
     and stratum audits record a target-to-mass ratio too large for a float as
-    None.
+    None. The rule also records as None a target total too large for a float:
+    a program's total, whose two ratios are then None, and a Hall violation's
+    target. Without the rule, such a total raises OverflowError as before.
     """
     seed, rows, declared_groups = validate_receipt_v2(contract)
     # Read here, so validate_receipt_v2 keeps its three-part result.
@@ -651,7 +693,7 @@ def assign_receipts_v2(
             for s in receipt_strata(row)
         ]
         # One flow includes all strata and mixed-filter demand cuts.
-        feasibility = hall_diagnostics(demands, weights)
+        feasibility = hall_diagnostics(demands, weights, overflow_as_none=assign_all)
         audit["exclusion_groups"].append(
             {
                 "order": group,
@@ -684,8 +726,9 @@ def assign_receipts_v2(
             ),
         )
         stratum_audits = []
-        total_target = math.fsum(
-            target_values[stratum["target"]] for stratum in receipt_strata(row)
+        total_target = _target_total(
+            [target_values[stratum["target"]] for stratum in receipt_strata(row)],
+            assign_all,
         )
         total_before = _mass(weights, before_payment[output] & covered)
         total_remaining = _mass(weights, remaining & covered)

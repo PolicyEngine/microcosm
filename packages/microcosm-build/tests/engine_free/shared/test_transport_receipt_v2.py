@@ -2021,6 +2021,7 @@ def test_property_mass_rule_group_never_refuses_or_assigns_two_flags(
         profile=profile,
     )
     assert audit["status"] == audit["exclusion_groups"][0]["status"] == "completed"
+    json.dumps(audit, allow_nan=False)
     assert (out[["receives_alpha", "receives_beta"]].sum(axis=1) <= 1).all()
     first, second = ("alpha", "beta") if profile == "central" else ("beta", "alpha")
     if {"alpha": alpha, "beta": beta}[first] > 8:
@@ -2124,3 +2125,184 @@ def test_overflowing_ratios_without_the_mass_rule_refuse_as_before(case):
     program_audit = _program_audit("alpha", 1.0, before, mass, *ratios, [row], (0, 0.0))
     expected = _audit({"receives_alpha": program_audit}, status="refused")
     assert json.dumps(refused.value.audit) == json.dumps(expected)
+
+
+# Each target is finite, but two of them sum past the largest float. Under the
+# rule the audit records such a total as None; without it the OverflowError
+# propagates, as on base 9189f745.
+_HUGE = 1e308
+_HUGE_ORDER = ["receives_alpha", "receives_beta"]
+
+
+def _huge_inputs(case):
+    if case == "strata":
+        # One program whose two strata each hold one unit-weight adult.
+        targets = {"alpha_young": _HUGE, "alpha_older": _HUGE}
+        return _people((20, 40)), _contract(_program(stratified=True)), targets
+    # Two programs in one exclusion group, both eligible for both adults.
+    contract = _contract(_program("alpha"), _program("beta"), groups=[_HUGE_ORDER])
+    targets = {"alpha_total": _HUGE, "beta_total": _HUGE}
+    return _people((20, 21)), contract, targets
+
+
+def _huge_expected(case):
+    if case == "strata":
+        strata = [
+            _done(
+                {
+                    **_row(name, _HUGE, filter_name, 1.0, 1.0, _HUGE, _HUGE, 1.0),
+                    "shortfall": _HUGE - 1.0,
+                },
+                1.0,
+                1,
+                1.0,
+            )
+            for name, filter_name in (
+                ("alpha_young", "young"),
+                ("alpha_older", "older"),
+            )
+        ]
+        # The program total overflows, so it and both of its ratios are None.
+        program = _program_audit("alpha", None, 2.0, 2.0, None, None, strata, (0, 0.0))
+        flags = {"receives_alpha": [True, True]}
+        return flags, _audit({"receives_alpha": _finished(program, 2.0, 2)})
+    alpha = {
+        **_row("alpha_total", _HUGE, None, 2.0, 2.0, _HUGE / 2, _HUGE / 2, 1.0),
+        "shortfall": _HUGE - 2.0,
+    }
+    beta = {
+        **_row("beta_total", _HUGE, None, 0.0, 2.0, _HUGE / 2, None, 1.0),
+        "shortfall": _HUGE,
+    }
+    programs = {
+        "receives_alpha": _finished(
+            _program_audit(
+                "alpha",
+                _HUGE,
+                2.0,
+                2.0,
+                _HUGE / 2,
+                _HUGE / 2,
+                [_done(alpha, 2.0, 2, 2.0)],
+                (0, 0.0),
+            ),
+            2.0,
+            2,
+        ),
+        "receives_beta": _finished(
+            _program_audit(
+                "beta",
+                _HUGE,
+                2.0,
+                0.0,
+                _HUGE / 2,
+                None,
+                [_done(beta, 0.0, 0, 0.0)],
+                (0, 0.0),
+            ),
+            0.0,
+            0,
+        ),
+    }
+    # The pair's exact target overflows, so the Hall violation records None.
+    group = {
+        "order": _HUGE_ORDER,
+        "status": "completed",
+        "overlaps": [
+            {"programs": pair, "filter": None, "n_eligible": 2, "eligible_mass": 2.0}
+            for pair in (_HUGE_ORDER, _HUGE_ORDER[::-1])
+        ],
+        "feasibility": {
+            "violations": [
+                {
+                    "programs": _HUGE_ORDER,
+                    "filter": None,
+                    "filters": [None, None],
+                    "target": None,
+                    "eligible_mass": 2.0,
+                }
+            ],
+            "feasible": False,
+            "relative_tolerance": 1e-12,
+        },
+    }
+    flags = {"receives_alpha": [True, True], "receives_beta": [False, False]}
+    return flags, _audit(programs, [group])
+
+
+_HUGE_ERRORS = {
+    "strata": "intermediate overflow in fsum",
+    "group": "integer division result too large for a float",
+}
+
+
+@pytest.mark.parametrize("case", list(_HUGE_ERRORS))
+def test_mass_rule_records_a_target_total_too_large_for_a_float_as_none(case):
+    person, contract, targets = _huge_inputs(case)
+    out, audit = _assign(person, _declared(contract), targets=targets)
+    flags, expected = _huge_expected(case)
+    assert {name: out[name].tolist() for name in flags} == flags
+    assert json.dumps(audit, allow_nan=False) == json.dumps(expected)
+
+
+@pytest.mark.parametrize("case", list(_HUGE_ERRORS))
+def test_target_total_too_large_for_a_float_raises_without_the_mass_rule(case):
+    person, contract, targets = _huge_inputs(case)
+    with pytest.raises(OverflowError, match=_HUGE_ERRORS[case]):
+        _assign(person, contract, targets=targets)
+
+
+def test_hall_overflowing_target_raises_unless_recorded_as_none():
+    demands = [(name, None, _HUGE, np.ones(2, dtype=bool)) for name in _HUGE_ORDER]
+    weights = np.ones(2)
+    with pytest.raises(OverflowError, match=_HUGE_ERRORS["group"]):
+        receipt_module.hall_diagnostics(demands, weights)
+    with pytest.raises(TypeError):
+        receipt_module.hall_diagnostics(demands, weights, True)
+    assert receipt_module.hall_diagnostics(demands, weights, overflow_as_none=True) == {
+        "violations": [
+            {
+                "programs": _HUGE_ORDER,
+                "filter": None,
+                "filters": [None, None],
+                "target": None,
+                "eligible_mass": 2.0,
+            }
+        ],
+        "feasible": False,
+        "relative_tolerance": receipt_module.RECEIPT_RELATIVE_TOLERANCE,
+    }
+    # A total a float can hold reports the same either way.
+    demands = [(name, None, _HUGE / 4, np.ones(2, dtype=bool)) for name in _HUGE_ORDER]
+    plain = receipt_module.hall_diagnostics(demands, weights)
+    assert plain["violations"][0]["target"] == _HUGE / 2
+    assert (
+        receipt_module.hall_diagnostics(demands, weights, overflow_as_none=True)
+        == plain
+    )
+
+
+# fsum raises on these four finite targets although their exact sum, rounded,
+# is the largest float.
+_NEAR_MAX_TARGETS = [
+    float.fromhex(value)
+    for value in (
+        "0x1.fffffffffffe8p+1020",
+        "0x1.0000000000002p+1023",
+        "0x1.fffffffffffffp+1020",
+        "0x1.0000000000001p+1022",
+    )
+]
+
+
+def test_target_total_falls_back_to_the_exact_sum_under_the_mass_rule():
+    exact = float(sum(map(Fraction, _NEAR_MAX_TARGETS), Fraction()))
+    assert math.isfinite(exact)
+    for assign_all in (False, True):
+        assert receipt_module._target_total([1.0, 2.5], assign_all) == 3.5
+    with pytest.raises(OverflowError, match="intermediate overflow in fsum"):
+        receipt_module._target_total(_NEAR_MAX_TARGETS, False)
+    assert receipt_module._target_total(_NEAR_MAX_TARGETS, True) == exact
+    with pytest.raises(OverflowError, match="intermediate overflow in fsum"):
+        receipt_module._target_total([_HUGE, _HUGE], False)
+    assert receipt_module._target_total([_HUGE, _HUGE], True) is None
