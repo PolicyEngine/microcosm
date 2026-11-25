@@ -137,6 +137,11 @@ LEAF_ADDED_MODULES = frozenset(
 BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
     [
         "microcosm.calibrate.hierarchy_labels",
+        # The microcosm.calibrate package's __init__ imports dropped_matrix,
+        # which replaces a calibration result's constraint matrices with
+        # their shape and nonzero count once the release no longer needs
+        # their entries.
+        "microcosm.calibrate.dropped_matrix",
         "microcosm.diagnostics.catalogs",
         # microcosm#1490: microcosm.fit exports its categorical classifier,
         # held-out scores and keyed donors, so a binding that imports the
@@ -153,6 +158,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1585 item 11: us_runtime.multispine_pool's shadow sites
         # import us_runtime.gate_shadow.
         "microcosm.build.us_runtime.gate_shadow",
+        # microcosm#1686: the five SIPP donor modules import the shared read
+        # of the SIPP person file.
+        "microcosm.build.us_runtime.sipp_december_person_rows",
         # microcosm#1405: the gate battery refuses a signing key the committed
         # registry does not let sign, so it imports
         # microcosm.data.gate_signing_keys, and with it the microcosm.data

@@ -6455,9 +6455,17 @@ def _reviewed_fill(entity, column, fill_value="0", spine="acs_2024_1yr") -> dict
     }
 
 
+#: Reviewed fills added since release 767312d60, each with its register entry.
+#: strike_benefits: the OIP predictor extension (d5aa4e25c) makes every donor
+#: carry it, and nothing transfers it, so every ACS person is filled
+#: (microcosm#922).
+_REVIEWED_FILLS_ADDED_SINCE_767312D60 = {("person", "strike_benefits")}
+
+
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
-    them (NEVER_DEFAULT_FILLED), and every other one has a register entry."""
+    them (NEVER_DEFAULT_FILLED), and every other one has a register entry, as
+    does each reviewed fill added since."""
 
     module = _load_tool_module()
     document = load_reviewed_fill_consumer_register()
@@ -6479,7 +6487,8 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     # returned to a reviewed fill after the microcosm#1064 review (VEH counts
     # vehicles available, not owned): it left NEVER_DEFAULT_FILLED and gained
     # an entry together, so this still holds.
-    assert registered == released - now_filled
+    assert registered == (released - now_filled) | _REVIEWED_FILLS_ADDED_SINCE_767312D60
+    assert not released & _REVIEWED_FILLS_ADDED_SINCE_767312D60
 
 
 def test_do_finalize_hard_fails_on_an_unregistered_reviewed_fill(

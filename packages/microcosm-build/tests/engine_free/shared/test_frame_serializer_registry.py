@@ -12,10 +12,10 @@ def test_registry_classifies_every_writable_production_hdf_site() -> None:
     assert _discover_writable_hdf_sites() == classified
 
 
-def test_registry_has_exactly_ten_unique_frame_table_serializers() -> None:
-    assert len(FRAME_TABLE_SERIALIZERS) == 10
-    assert len({spec.serializer_id for spec in FRAME_TABLE_SERIALIZERS}) == 10
-    assert len({spec.writer.key for spec in FRAME_TABLE_SERIALIZERS}) == 10
+def test_registry_has_exactly_eleven_unique_frame_table_serializers() -> None:
+    assert len(FRAME_TABLE_SERIALIZERS) == 11
+    assert len({spec.serializer_id for spec in FRAME_TABLE_SERIALIZERS}) == 11
+    assert len({spec.writer.key for spec in FRAME_TABLE_SERIALIZERS}) == 11
 
 
 def test_round_trip_adapter_registry_exactly_matches_serializer_registry() -> None:

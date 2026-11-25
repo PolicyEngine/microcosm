@@ -137,10 +137,13 @@ def test_a_malformed_calibration_lines_declaration_is_refused(declared, message)
 
 
 def test_only_the_region_rows_narrow_their_lines_in_the_committed_contract():
+    # CenTax's England parent cells (microcosm#1399) are the one other family
+    # that narrows its lines, to the national line.
     narrowed = {
         target_id: uk_contract_target_calibration_lines(target)
         for target_id, target in _targets().items()
         if "calibration_lines" in target
+        and not target_id.startswith("microcosm.centax_childcare_parents.")
     }
     assert narrowed == {target_id: {"local"} for target_id in REGION_TARGET_IDS}
 

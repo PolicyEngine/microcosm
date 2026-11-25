@@ -1,0 +1,488 @@
+{
+  "built_on": "2026-11-24",
+  "description": "Microcosm-derived counts of parents of age-eligible 3- and 4-year-olds in England by adjusted net income, from CenTax's HMRC tabulations for 2021-22 (Advani, Flew, Pepin-Hall and Summers 2026, Figures 3.1, 3.3, 3.6 and 3.7, from the workbook Chronicle registers as centax-childcare-cliff-edge-2026): each published share of the parents in (\u00a350k, \u00a3200k] times the baseline build's own parents in that range. No CenTax model output, and none of the figures kept as diagnostics.",
+  "generator": {
+    "tool": "tools/build_uk_centax_childcare_parent_facts.py",
+    "version": "uk-centax-childcare-parents-v2"
+  },
+  "inputs": {
+    "baseline": {
+      "dataset": "uk-frs-calibration-attempt-20261122T100732Z-b891aa69",
+      "diagnostics_schema": "microcosm.uk.centax_parent_diagnostics.v2",
+      "policyengine_uk_version": "2.179.2",
+      "sha256": "ae116bc3cff798fe68df253083f0b26d779e02a0a818ee68df7d29fbc557165a"
+    },
+    "method": "uk-centax-childcare-parents-v2",
+    "workbook": {
+      "chronicle_package_id": "centax-childcare-cliff-edge-2026",
+      "chronicle_source_id": "centax",
+      "figures": [
+        "Fig. 3.1",
+        "Fig. 3.6",
+        "Fig. 3.7"
+      ],
+      "files": {
+        "2026": {
+          "filename": "AdvaniFlewPepinhallSummers2026_ChildcareThreshold_data.xlsx",
+          "r2_key": "raw/uk/centax/centax-childcare-cliff-edge-2026/2026/8c23855745154a601064e766552c64bc2e88de51e043b4df1397c580e969354b/AdvaniFlewPepinhallSummers2026_ChildcareThreshold_data.xlsx",
+          "sha256": "8c23855745154a601064e766552c64bc2e88de51e043b4df1397c580e969354b",
+          "size_bytes": 194075,
+          "source_url": "https://arunadvani.com/data/AdvaniFlewPepinhallSummers2026_ChildcareThreshold_data.xlsx"
+        }
+      },
+      "licence": {
+        "attribution": "Advani, A., Flew, J., Pepin-Hall, J. and Summers, A. (2026), Removing the \u00a3100,000 childcare cliff-edge: Impacts and cost of reform, CenTax Policy Report; data for the charts. Authors' calculations based on HMRC administrative datasets.",
+        "license": "None stated",
+        "license_evidence": "Neither the page that links the workbook (https://arunadvani.com/policy.html#ChildcareCliffEdge, \"Data for the charts\", beside the report) nor CenTax's report page (https://centax.org.uk/removing-the-childcare-cliff-edge-impacts-and-cost-of-reform/, which links only the PDF) nor the workbook states a licence; every sheet cites the authors' calculations based on HMRC administrative datasets. Arun Advani (CenTax) has said he is open to PolicyEngine using the data published at source_url (relayed by Mar\u00eda Juaristi, PolicyEngine, 23 November 2026). With no licence stated, the bytes stay out of this public repository: the workbook is git-ignored and the private ledger-raw bucket holds it.",
+        "license_source": "manifest",
+        "license_verified_at": "2026-11-23",
+        "package_id": "centax-childcare-cliff-edge-2026"
+      },
+      "registration_kind": "raw_only",
+      "report_url": "https://centax.org.uk/wp-content/uploads/2026/09/AdvaniFlewPepin-HallSummers2026_Removing-the-childcare-cliff-edge.pdf",
+      "source_page": "https://arunadvani.com/policy.html#ChildcareCliffEdge"
+    }
+  },
+  "inputs_sha256": "f6539c0a353ad60d95874f453b7e66e062663010255aa21b1852f1ea4c6ec860",
+  "kind": "uk_derived_consumer_facts",
+  "licence": {
+    "attribution": [
+      "Advani, A., Flew, J., Pepin-Hall, J. and Summers, A. (2026), Removing the \u00a3100,000 childcare cliff-edge: Impacts and cost of reform, CenTax Policy Report; data for the charts. Authors' calculations based on HMRC administrative datasets."
+    ]
+  },
+  "parameters": {
+    "ani_bands_2022": {
+      "ani_120k_to_200k": [
+        120000.0,
+        200000.0
+      ],
+      "ani_50k_to_80k": [
+        50000.0,
+        80000.0
+      ],
+      "ani_80k_to_120k": [
+        80000.0,
+        120000.0
+      ]
+    },
+    "ani_uprating": 1.2337297844440867,
+    "ani_uprating_basis": "policyengine-uk gov.economic_assumptions.indices.obr.average_earnings, 2025 over 2021",
+    "calibration_year": 2025,
+    "model_ani_edges": {
+      "ani_120k_to_200k": [
+        148048,
+        246746
+      ],
+      "ani_50k_to_80k": [
+        61686,
+        98698
+      ],
+      "ani_80k_to_120k": [
+        98698,
+        148048
+      ],
+      "female_ani_80k_to_150k": [
+        98698,
+        185059
+      ],
+      "london_ani_80k_to_150k": [
+        98698,
+        185059
+      ]
+    },
+    "never_targets": [
+      "Tables 3.1, 3.2 and 4.1 (bunching estimates)",
+      "friction parameters, elasticities and marginal bunchers",
+      "every fiscal cost"
+    ],
+    "parent_count": 318478.71745317057,
+    "parent_count_basis": "baseline parents of age-eligible 3- and 4-year-olds with annual ANI in (61,686, 246,746] at 2025",
+    "share_base_2022": [
+      50000.0,
+      200000.0
+    ],
+    "shares": {
+      "ani_120k_to_200k": 0.10837445835339432,
+      "ani_50k_to_80k": 0.6443525818488204,
+      "ani_80k_to_120k": 0.24727295979778527,
+      "female_ani_80k_to_150k": 0.08181143441158602,
+      "london_ani_80k_to_150k": 0.08806832622390573
+    },
+    "split_band_2022": [
+      80000.0,
+      150000.0
+    ],
+    "split_band_share": 0.30851664058738565
+  },
+  "resource": "centax_childcare_parent_facts.json",
+  "row_count": 5,
+  "rows": [
+    {
+      "aggregate_fact_key": "microcosm.derived_fact.centax_childcare_parents.v1:0bbe969a4232bd47960ab374",
+      "aggregation": {
+        "method": "sum"
+      },
+      "assertion": "observation",
+      "concept_alignment": {
+        "canonical_concept": "uk.person.count",
+        "relation": "derived",
+        "source_concept": "microcosm.centax_childcare_parents.count"
+      },
+      "dimension_labels": {
+        "microcosm.centax_cell": "CenTax parent cell (2021-22 ANI pounds)"
+      },
+      "dimension_value_labels": {
+        "microcosm.centax_cell": {
+          "ani_80k_to_120k": "ANI over \u00a380,000 to \u00a3120,000"
+        }
+      },
+      "dimensions": {
+        "microcosm.centax_cell": "ani_80k_to_120k"
+      },
+      "entity": {
+        "name": "person",
+        "role": "parent"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "name": "England",
+        "vintage": "current"
+      },
+      "label": "Parents of age-eligible 3- and 4-year-olds, ANI over \u00a380,000 to \u00a3120,000 (2021-22 pounds), England",
+      "layout": {
+        "measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_id": "uk.centax_childcare_parents.ani_80k_to_120k",
+        "record_set_spec_id": "uk.centax_childcare_parents.ani_80k_to_120k.v1"
+      },
+      "lineage": {
+        "source_record_id": "microcosm.centax_childcare_parents.ani_80k_to_120k"
+      },
+      "measure": {
+        "unit": "count"
+      },
+      "observed_measure": {
+        "source_concept": "microcosm.centax_childcare_parents.count",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "unit": "count"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": "2025"
+      },
+      "period_coverage": {
+        "basis": "flow",
+        "end_date": "2026-04-05",
+        "notes": "The 2025-26 tax year's ANI, which policyengine-uk dates 2025, the period value. CenTax's share for tax year 2021-22 times the baseline build's parents at 2025; the ANI edges are aged to 2025 pounds (98,698 to 148,048).",
+        "start_date": "2025-04-06"
+      },
+      "provenance_class": "derived_administrative",
+      "schema_version": "microcosm.derived_consumer_fact.v1",
+      "semantic_fact_key": "microcosm.semantic_fact.centax_childcare_parents.v1:0bbe969a4232bd47960ab374",
+      "source": {
+        "source_file": "centax_childcare_parent_facts.json",
+        "source_name": "microcosm",
+        "source_sha256": "f6539c0a353ad60d95874f453b7e66e062663010255aa21b1852f1ea4c6ec860",
+        "source_table": "CenTax, Removing the \u00a3100,000 childcare cliff-edge (2026), Fig. 3.1 (Chronicle centax-childcare-cliff-edge-2026); Microcosm derivation",
+        "url": "https://centax.org.uk/wp-content/uploads/2026/09/AdvaniFlewPepin-HallSummers2026_Removing-the-childcare-cliff-edge.pdf",
+        "vintage": "centax_2026_09"
+      },
+      "value": 78751.175,
+      "value_type": "float"
+    },
+    {
+      "aggregate_fact_key": "microcosm.derived_fact.centax_childcare_parents.v1:a46422479b671c651ef9950e",
+      "aggregation": {
+        "method": "sum"
+      },
+      "assertion": "observation",
+      "concept_alignment": {
+        "canonical_concept": "uk.person.count",
+        "relation": "derived",
+        "source_concept": "microcosm.centax_childcare_parents.count"
+      },
+      "dimension_labels": {
+        "microcosm.centax_cell": "CenTax parent cell (2021-22 ANI pounds)"
+      },
+      "dimension_value_labels": {
+        "microcosm.centax_cell": {
+          "female_ani_80k_to_150k": "women, ANI over \u00a380,000 to \u00a3150,000"
+        }
+      },
+      "dimensions": {
+        "microcosm.centax_cell": "female_ani_80k_to_150k"
+      },
+      "entity": {
+        "name": "person",
+        "role": "parent"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "name": "England",
+        "vintage": "current"
+      },
+      "label": "Parents of age-eligible 3- and 4-year-olds, women, ANI over \u00a380,000 to \u00a3150,000 (2021-22 pounds), England",
+      "layout": {
+        "measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_id": "uk.centax_childcare_parents.female_ani_80k_to_150k",
+        "record_set_spec_id": "uk.centax_childcare_parents.female_ani_80k_to_150k.v1"
+      },
+      "lineage": {
+        "source_record_id": "microcosm.centax_childcare_parents.female_ani_80k_to_150k"
+      },
+      "measure": {
+        "unit": "count"
+      },
+      "observed_measure": {
+        "source_concept": "microcosm.centax_childcare_parents.count",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "unit": "count"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": "2025"
+      },
+      "period_coverage": {
+        "basis": "flow",
+        "end_date": "2026-04-05",
+        "notes": "The 2025-26 tax year's ANI, which policyengine-uk dates 2025, the period value. CenTax's share for tax year 2021-22 times the baseline build's parents at 2025; the ANI edges are aged to 2025 pounds (98,698 to 185,059).",
+        "start_date": "2025-04-06"
+      },
+      "provenance_class": "derived_administrative",
+      "schema_version": "microcosm.derived_consumer_fact.v1",
+      "semantic_fact_key": "microcosm.semantic_fact.centax_childcare_parents.v1:a46422479b671c651ef9950e",
+      "source": {
+        "source_file": "centax_childcare_parent_facts.json",
+        "source_name": "microcosm",
+        "source_sha256": "f6539c0a353ad60d95874f453b7e66e062663010255aa21b1852f1ea4c6ec860",
+        "source_table": "CenTax, Removing the \u00a3100,000 childcare cliff-edge (2026), Fig. 3.6 (Chronicle centax-childcare-cliff-edge-2026); Microcosm derivation",
+        "url": "https://centax.org.uk/wp-content/uploads/2026/09/AdvaniFlewPepin-HallSummers2026_Removing-the-childcare-cliff-edge.pdf",
+        "vintage": "centax_2026_09"
+      },
+      "value": 26055.201,
+      "value_type": "float"
+    },
+    {
+      "aggregate_fact_key": "microcosm.derived_fact.centax_childcare_parents.v1:a6af4be857b390dc38982965",
+      "aggregation": {
+        "method": "sum"
+      },
+      "assertion": "observation",
+      "concept_alignment": {
+        "canonical_concept": "uk.person.count",
+        "relation": "derived",
+        "source_concept": "microcosm.centax_childcare_parents.count"
+      },
+      "dimension_labels": {
+        "microcosm.centax_cell": "CenTax parent cell (2021-22 ANI pounds)"
+      },
+      "dimension_value_labels": {
+        "microcosm.centax_cell": {
+          "london_ani_80k_to_150k": "London, ANI over \u00a380,000 to \u00a3150,000"
+        }
+      },
+      "dimensions": {
+        "microcosm.centax_cell": "london_ani_80k_to_150k"
+      },
+      "entity": {
+        "name": "person",
+        "role": "parent"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "name": "England",
+        "vintage": "current"
+      },
+      "label": "Parents of age-eligible 3- and 4-year-olds, London, ANI over \u00a380,000 to \u00a3150,000 (2021-22 pounds), England",
+      "layout": {
+        "measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_id": "uk.centax_childcare_parents.london_ani_80k_to_150k",
+        "record_set_spec_id": "uk.centax_childcare_parents.london_ani_80k_to_150k.v1"
+      },
+      "lineage": {
+        "source_record_id": "microcosm.centax_childcare_parents.london_ani_80k_to_150k"
+      },
+      "measure": {
+        "unit": "count"
+      },
+      "observed_measure": {
+        "source_concept": "microcosm.centax_childcare_parents.count",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "unit": "count"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": "2025"
+      },
+      "period_coverage": {
+        "basis": "flow",
+        "end_date": "2026-04-05",
+        "notes": "The 2025-26 tax year's ANI, which policyengine-uk dates 2025, the period value. CenTax's share for tax year 2021-22 times the baseline build's parents at 2025; the ANI edges are aged to 2025 pounds (98,698 to 185,059).",
+        "start_date": "2025-04-06"
+      },
+      "provenance_class": "derived_administrative",
+      "schema_version": "microcosm.derived_consumer_fact.v1",
+      "semantic_fact_key": "microcosm.semantic_fact.centax_childcare_parents.v1:a6af4be857b390dc38982965",
+      "source": {
+        "source_file": "centax_childcare_parent_facts.json",
+        "source_name": "microcosm",
+        "source_sha256": "f6539c0a353ad60d95874f453b7e66e062663010255aa21b1852f1ea4c6ec860",
+        "source_table": "CenTax, Removing the \u00a3100,000 childcare cliff-edge (2026), Fig. 3.7 (Chronicle centax-childcare-cliff-edge-2026); Microcosm derivation",
+        "url": "https://centax.org.uk/wp-content/uploads/2026/09/AdvaniFlewPepin-HallSummers2026_Removing-the-childcare-cliff-edge.pdf",
+        "vintage": "centax_2026_09"
+      },
+      "value": 28047.888,
+      "value_type": "float"
+    },
+    {
+      "aggregate_fact_key": "microcosm.derived_fact.centax_childcare_parents.v1:c230adc0ce149f0b98da6684",
+      "aggregation": {
+        "method": "sum"
+      },
+      "assertion": "observation",
+      "concept_alignment": {
+        "canonical_concept": "uk.person.count",
+        "relation": "derived",
+        "source_concept": "microcosm.centax_childcare_parents.count"
+      },
+      "dimension_labels": {
+        "microcosm.centax_cell": "CenTax parent cell (2021-22 ANI pounds)"
+      },
+      "dimension_value_labels": {
+        "microcosm.centax_cell": {
+          "ani_120k_to_200k": "ANI over \u00a3120,000 to \u00a3200,000"
+        }
+      },
+      "dimensions": {
+        "microcosm.centax_cell": "ani_120k_to_200k"
+      },
+      "entity": {
+        "name": "person",
+        "role": "parent"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "name": "England",
+        "vintage": "current"
+      },
+      "label": "Parents of age-eligible 3- and 4-year-olds, ANI over \u00a3120,000 to \u00a3200,000 (2021-22 pounds), England",
+      "layout": {
+        "measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_id": "uk.centax_childcare_parents.ani_120k_to_200k",
+        "record_set_spec_id": "uk.centax_childcare_parents.ani_120k_to_200k.v1"
+      },
+      "lineage": {
+        "source_record_id": "microcosm.centax_childcare_parents.ani_120k_to_200k"
+      },
+      "measure": {
+        "unit": "count"
+      },
+      "observed_measure": {
+        "source_concept": "microcosm.centax_childcare_parents.count",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "unit": "count"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": "2025"
+      },
+      "period_coverage": {
+        "basis": "flow",
+        "end_date": "2026-04-05",
+        "notes": "The 2025-26 tax year's ANI, which policyengine-uk dates 2025, the period value. CenTax's share for tax year 2021-22 times the baseline build's parents at 2025; the ANI edges are aged to 2025 pounds (148,048 to 246,746).",
+        "start_date": "2025-04-06"
+      },
+      "provenance_class": "derived_administrative",
+      "schema_version": "microcosm.derived_consumer_fact.v1",
+      "semantic_fact_key": "microcosm.semantic_fact.centax_childcare_parents.v1:c230adc0ce149f0b98da6684",
+      "source": {
+        "source_file": "centax_childcare_parent_facts.json",
+        "source_name": "microcosm",
+        "source_sha256": "f6539c0a353ad60d95874f453b7e66e062663010255aa21b1852f1ea4c6ec860",
+        "source_table": "CenTax, Removing the \u00a3100,000 childcare cliff-edge (2026), Fig. 3.1 (Chronicle centax-childcare-cliff-edge-2026); Microcosm derivation",
+        "url": "https://centax.org.uk/wp-content/uploads/2026/09/AdvaniFlewPepin-HallSummers2026_Removing-the-childcare-cliff-edge.pdf",
+        "vintage": "centax_2026_09"
+      },
+      "value": 34514.959,
+      "value_type": "float"
+    },
+    {
+      "aggregate_fact_key": "microcosm.derived_fact.centax_childcare_parents.v1:d0a4f4a79c439e3222f10172",
+      "aggregation": {
+        "method": "sum"
+      },
+      "assertion": "observation",
+      "concept_alignment": {
+        "canonical_concept": "uk.person.count",
+        "relation": "derived",
+        "source_concept": "microcosm.centax_childcare_parents.count"
+      },
+      "dimension_labels": {
+        "microcosm.centax_cell": "CenTax parent cell (2021-22 ANI pounds)"
+      },
+      "dimension_value_labels": {
+        "microcosm.centax_cell": {
+          "ani_50k_to_80k": "ANI over \u00a350,000 to \u00a380,000"
+        }
+      },
+      "dimensions": {
+        "microcosm.centax_cell": "ani_50k_to_80k"
+      },
+      "entity": {
+        "name": "person",
+        "role": "parent"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "name": "England",
+        "vintage": "current"
+      },
+      "label": "Parents of age-eligible 3- and 4-year-olds, ANI over \u00a350,000 to \u00a380,000 (2021-22 pounds), England",
+      "layout": {
+        "measure_id": "parents_of_eligible_3_4_year_olds",
+        "record_set_id": "uk.centax_childcare_parents.ani_50k_to_80k",
+        "record_set_spec_id": "uk.centax_childcare_parents.ani_50k_to_80k.v1"
+      },
+      "lineage": {
+        "source_record_id": "microcosm.centax_childcare_parents.ani_50k_to_80k"
+      },
+      "measure": {
+        "unit": "count"
+      },
+      "observed_measure": {
+        "source_concept": "microcosm.centax_childcare_parents.count",
+        "source_measure_id": "parents_of_eligible_3_4_year_olds",
+        "unit": "count"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": "2025"
+      },
+      "period_coverage": {
+        "basis": "flow",
+        "end_date": "2026-04-05",
+        "notes": "The 2025-26 tax year's ANI, which policyengine-uk dates 2025, the period value. CenTax's share for tax year 2021-22 times the baseline build's parents at 2025; the ANI edges are aged to 2025 pounds (61,686 to 98,698).",
+        "start_date": "2025-04-06"
+      },
+      "provenance_class": "derived_administrative",
+      "schema_version": "microcosm.derived_consumer_fact.v1",
+      "semantic_fact_key": "microcosm.semantic_fact.centax_childcare_parents.v1:d0a4f4a79c439e3222f10172",
+      "source": {
+        "source_file": "centax_childcare_parent_facts.json",
+        "source_name": "microcosm",
+        "source_sha256": "f6539c0a353ad60d95874f453b7e66e062663010255aa21b1852f1ea4c6ec860",
+        "source_table": "CenTax, Removing the \u00a3100,000 childcare cliff-edge (2026), Fig. 3.1 (Chronicle centax-childcare-cliff-edge-2026); Microcosm derivation",
+        "url": "https://centax.org.uk/wp-content/uploads/2026/09/AdvaniFlewPepin-HallSummers2026_Removing-the-childcare-cliff-edge.pdf",
+        "vintage": "centax_2026_09"
+      },
+      "value": 205212.584,
+      "value_type": "float"
+    }
+  ],
+  "rows_sha256": "97c7b47a5667b9e262bcb0e063b38b27cdd9699c94cb498e7e88fe8f0428333e",
+  "schema_version": 2
+}

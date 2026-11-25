@@ -37,6 +37,10 @@ from typing import BinaryIO
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    SippDecemberPersonRows,
+)
+
 __all__ = [
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS",
@@ -49,9 +53,9 @@ __all__ = [
     "SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS",
     "SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS",
     "SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS",
+    "build_sipp_2023_financial_asset_donor",
     "fetch_sipp_2023_financial_asset_donor",
     "impute_us_sipp_financial_assets",
-    "load_sipp_2023_financial_asset_donor",
 ]
 
 SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS = (
@@ -384,56 +388,17 @@ def _target_balanced_cap(
     return donor.iloc[np.asarray(selected, dtype=int)].copy().reset_index(drop=True)
 
 
-def load_sipp_2023_financial_asset_donor(
-    path: str | Path,
+def build_sipp_2023_financial_asset_donor(
+    person_rows: SippDecemberPersonRows,
     *,
-    expected_sha256: str | None = None,
-    expected_size_bytes: int | None = None,
-    chunksize: int = 100_000,
     max_train_samples: int | None = _MAX_TRAIN_SAMPLES,
 ) -> pd.DataFrame:
-    """Load the exact December SIPP asset-QRF donor surface from ``pu2023``."""
+    """Build the exact December SIPP asset-QRF donor surface from ``pu2023``."""
 
-    source_path = Path(path)
-    if (
-        expected_size_bytes is not None
-        and source_path.stat().st_size != expected_size_bytes
-    ):
-        raise ValueError(
-            "SIPP 2023 financial-asset donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {source_path.stat().st_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(source_path)
-        if actual_sha256 != expected_sha256:
-            raise ValueError(
-                "SIPP 2023 financial-asset donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
-            )
-    if chunksize < 1:
-        raise ValueError("chunksize must be a positive integer")
-
-    header = pd.read_csv(source_path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP financial-asset donor missing column(s): {missing}.")
-
-    parts: list[pd.DataFrame] = []
-    for chunk in pd.read_csv(
-        source_path,
-        delimiter="|",
-        usecols=list(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        dtype={"SSUID": "string"},
-        low_memory=False,
-    ):
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            parts.append(december)
-    if not parts:
-        raise ValueError("SIPP financial-asset donor has no December rows.")
-    raw = pd.concat(parts, ignore_index=True)
+    raw = person_rows.source_table(
+        SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+        ssuid_as_text=True,
+    )
 
     for column in SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS:
         if column == "SSUID":
