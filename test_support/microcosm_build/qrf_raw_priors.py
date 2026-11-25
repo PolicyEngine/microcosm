@@ -49,10 +49,12 @@ SELF_EMPLOYMENT_COMPONENTS: tuple[str, ...] = (
 )
 
 #: Families of the raw-prior fixture, in production's relative order: the
-#: person family alternates a component and a later target (as the person PUF
-#: batch that holds ``farm_operations_income`` does), and the tax-unit family
-#: puts the origination year ahead of the HSA deduction (as the tax-unit PUF
-#: batch does).
+#: person family alternates a component and a later target, as the declared
+#: ACS plan's person batch ``puf_tax_itemization__batch_5`` does, and the
+#: tax-unit family puts the origination year ahead of the HSA deduction, as the
+#: tax-unit ``puf_tax_itemization`` family does.
+#: ``test_production_draws_the_fixture_targets_in_the_fixture_order`` pins that
+#: order against production's batches.
 RAW_PRIOR_FIXTURE_FAMILIES: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     "person": {
         "fixture_self_employment": (
@@ -258,10 +260,16 @@ class ChainStep:
     index: pd.Index
 
 
-def prior_recording_qrf(steps: list[ChainStep]) -> type[RegimeGatedQRF]:
-    """The real QRF, appending each ``fit_draw_next`` call to ``steps``."""
+def prior_recording_qrf(
+    steps: list[ChainStep], base: type[RegimeGatedQRF] = RegimeGatedQRF
+) -> type[RegimeGatedQRF]:
+    """``base`` (the real QRF by default), appending each ``fit_draw_next`` call.
 
-    class PriorRecordingQRF(RegimeGatedQRF):
+    With one of the spies below as ``base``, ``steps`` records the priors the
+    chain passed, before the spy alters them, and the draws the spy produced.
+    """
+
+    class PriorRecordingQRF(base):
         def fit_draw_next(
             self,
             frame_or_df: Any,
