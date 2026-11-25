@@ -16120,9 +16120,9 @@ def test_a_failed_build_confirms_its_final_staging_commit(tmp_path) -> None:
 def test_a_terminated_build_checks_its_final_commit_by_receipt_only(
     tmp_path,
 ) -> None:
-    """The Modal runner sends SIGKILL 60 seconds after SIGTERM, and the emitter
-    then needs up to 15 seconds to finish, so the check skips the Hub
-    comparison (a request of up to 60 seconds) and reads the receipt."""
+    """The Modal runner sends SIGKILL 60 seconds after SIGTERM, so the check
+    skips the Hub comparison (a request of up to 60 seconds) and reads the
+    receipt."""
     from microcosm.build.termination import BuildTerminatedError
 
     module = _load_builder_module()
@@ -16225,6 +16225,49 @@ def test_a_sigterm_during_certification_exits_143(monkeypatch) -> None:
     assert isinstance(raised.value, SystemExit)
     assert raised.value.code == 143
     assert handler_after_certification is test_handler
+
+
+def test_a_failure_caused_by_a_sigterm_is_recorded_as_a_termination(
+    tmp_path,
+) -> None:
+    """An error raised while a SIGTERM unwinds is still the build's termination."""
+    from microcosm.build.termination import BuildTerminatedError
+
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+    error = RuntimeError("cleanup failed")
+    error.__cause__ = BuildTerminatedError()
+
+    progress.fail(error)
+
+    (failure,) = _run_events(emitter)
+    assert failure["details"].get("error_code") == "TERMINATED"
+    assert "read_back_run_files" not in emitter.client.calls
+
+
+def test_an_interrupt_during_the_success_check_still_completes_the_build(
+    tmp_path,
+) -> None:
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    class InterruptedReadBack(FakeEmitterClient):
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            raise KeyboardInterrupt
+
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(
+        module, tmp_path, client=InterruptedReadBack()
+    )
+
+    try:
+        progress.complete()
+    except KeyboardInterrupt:
+        pytest.fail("the interrupt escaped the build's close-out")
+
+    assert [event["status"] for event in _run_events(emitter)] == ["completed"]
+    assert [details["reason"] for _, details in _final_commit_events(emitter)] == [
+        "interrupted"
+    ]
 
 
 def test_the_release_parser_has_no_staging_upload_interval() -> None:

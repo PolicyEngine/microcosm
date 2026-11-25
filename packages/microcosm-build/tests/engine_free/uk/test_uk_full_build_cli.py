@@ -4565,3 +4565,28 @@ def test_a_blocked_run_confirms_its_final_commit_before_its_outcome(tmp_path):
     assert client.read_back_waits == [120.0]
     assert _final_commit_statuses(emitter) == ["completed"]
     assert _run_statuses(emitter) == ["blocked"]
+
+
+def test_an_interrupt_during_a_refusal_checks_by_receipt_only(tmp_path, monkeypatch):
+    """A SIGTERM that lands while a refusal unwinds closes the run blocked, and
+    its check must still fit the grace before SIGKILL."""
+    from microcosm.build.gate_battery import GateBatteryBlockedError
+    from microcosm.build.termination import BuildTerminatedError
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-refused")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+    terminated = BuildTerminatedError()
+    terminated.__context__ = GateBatteryBlockedError(
+        "terminal",
+        ["[uk_local_target_fit] missed"],
+        tmp_path / "missing-report.json",
+        blocking_gate_ids=["uk_local_target_fit"],
+    )
+
+    rowwise_staging.fail_staging_run_bundle(bundle, terminated)
+
+    assert _run_statuses(emitter) == ["blocked"]
+    assert "read_back_run_files" not in client.calls
+    (report,) = _final_commit_events(emitter)
+    assert report["details"]["method"] == "receipt"

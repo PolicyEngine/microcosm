@@ -570,3 +570,90 @@ def test_the_final_hand_over_carries_result_files_missed_while_paused(tmp_path):
     assert {"runs/run-p/first.json", "runs/run-p/second.json"} <= set(
         emitter.paths(US_STAGING)
     )
+
+
+class _PendingReceipts(FakeEmitterClient):
+    """An emitter whose receipts show files pending for the first few queries."""
+
+    def __init__(self, pending_queries: int) -> None:
+        super().__init__()
+        self.pending_queries = pending_queries
+
+    def run_files_receipt(self, repository, run_id):
+        receipt = super().run_files_receipt(repository, run_id)
+        if self.pending_queries > 0:
+            self.pending_queries -= 1
+            return {**receipt, "pending_files": 2}
+        return receipt
+
+
+def test_a_receipt_check_waits_until_no_file_is_pending(tmp_path):
+    emitter = _PendingReceipts(pending_queries=3)
+    telemetry = _remote_writer(tmp_path, emitter, run_id="run-w")
+    telemetry.complete()
+
+    check = telemetry.confirm_final_commit(wait_seconds=30.0, read_back=False)
+
+    assert (check.confirmed, check.method) == (True, "receipt")
+    assert emitter.pending_queries == 0
+
+
+def test_a_receipt_check_gives_up_after_its_wait(tmp_path):
+    emitter = _PendingReceipts(pending_queries=1_000)
+    telemetry = _remote_writer(tmp_path, emitter, run_id="run-g")
+    telemetry.complete()
+
+    check = telemetry.confirm_final_commit(wait_seconds=0.0, read_back=False)
+
+    assert (check.confirmed, check.reason) == (False, "pending")
+
+
+def test_a_receipt_check_stops_when_the_emitter_stops_answering(tmp_path):
+    """A stale receipt from the last hand-over must not be polled for 30 s."""
+    from microcosm_emitter_interface.staging import unavailable_run_files_receipt
+
+    class Stopped(FakeEmitterClient):
+        def _receipt(self, repository, run_id):
+            return {**super()._receipt(repository, run_id), "pending_files": 3}
+
+        def run_files_receipt(self, repository, run_id):
+            self.calls.append("run_files_receipt")
+            return unavailable_run_files_receipt(repository, run_id)
+
+    emitter = Stopped()
+    telemetry = _remote_writer(tmp_path, emitter, run_id="run-x")
+    telemetry.complete()
+
+    check = telemetry.confirm_final_commit(wait_seconds=0.5, read_back=False)
+
+    assert (check.confirmed, check.reason) == (False, "unavailable")
+
+
+def test_a_result_file_too_large_for_the_emitter_stays_out_of_the_hand_over(
+    tmp_path, monkeypatch, capsys
+):
+    """The emitter refuses a whole request with one file over its limit, which
+    would refuse the run's documents and its final state with it."""
+    monkeypatch.setattr(staging_module, "_MAX_RUN_FILE_BYTES", 100, raising=False)
+    emitter = FakeEmitterClient()
+    telemetry = _remote_writer(tmp_path, emitter, run_id="run-l")
+    large = tmp_path / "large.json"
+    large.write_text(json.dumps({"rows": "x" * 200}))
+    small = tmp_path / "small.json"
+    small.write_text(json.dumps({"rows": 1}))
+
+    telemetry.attach_artifact("large", large)
+    telemetry.attach_artifact("small", small)
+    telemetry.complete()
+
+    assert not any(
+        item.relative_path == "large.json"
+        for request in emitter.run_file_requests
+        for item in request.files
+    )
+    paths = set(emitter.paths(US_STAGING))
+    assert "runs/run-l/small.json" in paths
+    assert emitter.hub_json(US_STAGING, "runs/run-l/progress.json")["status"] == (
+        "passed"
+    )
+    assert "too large" in capsys.readouterr().err
