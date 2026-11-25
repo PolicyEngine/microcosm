@@ -5665,25 +5665,57 @@ def _post_export_consumers(
     return consumers
 
 
-#: The directory in a build's ``--out`` where certification's post-export
-#: scorer keeps its household batch files while it scores. The scorer removes
-#: it when it closes or is freed; placing a build for certification removes
-#: one an attempt that was killed left (``_place_build_for_certification``).
+#: The directory in a build's ``--out`` in which certification's post-export
+#: scorer makes its own directory for its household batch files while it
+#: scores. The scorer removes its directory, and this one once empty if it
+#: made it, when it closes or is freed; placing a build for certification
+#: removes what an attempt that was killed left (``_place_build_for_certification``).
 US_POST_EXPORT_BATCH_DIRECTORY = "post_export_batches"
 
 
-def _new_post_export_batch_directory(batch_directory: Path | None) -> Path:
-    """A new, empty directory for a scorer's batch files.
+class PostExportBatchFileError(RuntimeError):
+    """A post-export batch file changed or cannot be read; the batch is refused.
 
-    ``batch_directory`` is created and must not exist yet, so a scorer never
-    writes into, or later removes, a directory it did not make. Without one,
-    a new temporary directory is made.
+    Not a measurement that cannot be made: the held-out reports, which record
+    those as unavailable, raise this (``_write_ssi_social_security_holdout``,
+    ``_write_medicare_irmaa_holdout``).
     """
-    if batch_directory is None:
-        return Path(tempfile.mkdtemp(prefix="microcosm-post-export-batches-"))
-    directory = Path(batch_directory)
-    directory.mkdir(parents=True)
-    return directory
+
+
+def _new_post_export_batch_directory(
+    batch_parent: Path | None,
+) -> tuple[Path, Path | None]:
+    """A new directory for one scorer's batch files, and the parent it made.
+
+    The directory is new and uniquely named inside ``batch_parent`` (the
+    system's temporary directory without one), so a scorer only ever removes
+    files it wrote, even when an earlier scorer used the same parent. The
+    parent is made if it does not exist, and is then returned, so that the
+    scorer can remove it again once it is empty.
+    """
+    made_parent = None
+    if batch_parent is not None:
+        batch_parent = Path(batch_parent)
+        try:
+            batch_parent.mkdir(parents=True)
+        except FileExistsError:
+            pass
+        else:
+            made_parent = batch_parent
+    directory = Path(tempfile.mkdtemp(prefix="post-export-batches-", dir=batch_parent))
+    return directory, made_parent
+
+
+def _remove_post_export_batch_files(directory: Path, made_parent: Path | None) -> None:
+    """Remove a scorer's batch directory, and the parent it made once empty."""
+    shutil.rmtree(directory, ignore_errors=True)
+    if made_parent is not None:
+        try:
+            made_parent.rmdir()
+        except OSError:
+            # Not empty: another scorer's directory, or files someone else
+            # put there, which this scorer did not write.
+            pass
 
 
 class _PostExportBatchFiles(Sequence):
@@ -5727,10 +5759,16 @@ class _PostExportBatchFiles(Sequence):
         if isinstance(position, slice):
             raise TypeError("Post-export batches are read one at a time.")
         path, sha256 = self._files[position]
-        payload = path.read_bytes()
+        try:
+            payload = path.read_bytes()
+        except OSError as error:
+            raise PostExportBatchFileError(
+                f"Post-export batch file {path} cannot be read ({error}); the "
+                "batch is refused."
+            ) from error
         observed = hashlib.sha256(payload).hexdigest()
         if observed != sha256:
-            raise ValueError(
+            raise PostExportBatchFileError(
                 f"Post-export batch file {path} has SHA-256 {observed}, not the "
                 f"{sha256} the scorer wrote; the batch is refused."
             )
@@ -5747,7 +5785,7 @@ class _HouseholdBatchedPostExportScorer:
         *,
         maximum_microsim_batch_size: int | None,
         expected_n_households: int | None = None,
-        batch_directory: Path | None = None,
+        batch_parent: Path | None = None,
         microsimulation_cls=None,
         dataset_from_frame=None,
         load_frame=None,
@@ -5784,13 +5822,16 @@ class _HouseholdBatchedPostExportScorer:
         self.max_batch_households = max(
             (batch.n("household") for batch in batch_frames), default=0
         )
-        # The batches go to files in a new directory (``batch_directory``, or
-        # a temporary one) and the frames are freed; ``_batches()`` reads each
-        # back when a pass scores it. The directory is removed when the scorer
-        # closes, is freed or the interpreter exits.
-        self.batch_directory = _new_post_export_batch_directory(batch_directory)
+        # The batches go to files in a new directory of this scorer's own,
+        # made inside ``batch_parent`` (or the system's temporary directory),
+        # and the frames are freed; ``_batches()`` reads each back when a pass
+        # scores it. The directory is removed when the scorer closes, is freed
+        # or the interpreter exits.
+        self.batch_directory, made_parent = _new_post_export_batch_directory(
+            batch_parent
+        )
         self._remove_batch_files = weakref.finalize(
-            self, shutil.rmtree, self.batch_directory, ignore_errors=True
+            self, _remove_post_export_batch_files, self.batch_directory, made_parent
         )
         try:
             self._batch_frames: _PostExportBatchFiles | None = _PostExportBatchFiles(
@@ -5997,9 +6038,15 @@ class _HouseholdBatchedPostExportScorer:
             total=len(batches),
             outer=outer,
         )
-        for batch, batch_frame in enumerate(batches, start=1):
+        for batch in range(1, len(batches) + 1):
+            # Read by position: ``enumerate`` keeps its last item, so the
+            # previous batch's frame would stay alive while the next is read.
+            batch_frame = batches[batch - 1]
             with _automatic_gc_suspended():
                 simulation = self._construct(batch_frame, reform_system=reform_system)
+                # The engine holds its own copy of the batch; the frame read
+                # from the batch's file is freed before the next one is read.
+                del batch_frame
                 try:
                     known_at_load = _engine_known_periods(simulation, watched)
                     engine = _AscendingPeriodEngine(simulation, label=label)
@@ -6035,12 +6082,12 @@ def _open_post_export_scorer(
     plan: _PostExportScoringPlan,
     dataset_path: Path,
     *,
-    batch_directory: Path | None = None,
+    batch_parent: Path | None = None,
 ) -> _HouseholdBatchedPostExportScorer | None:
     """Open the scorer the plan recorded before export, or None if no stage runs.
 
-    ``batch_directory`` is the new directory the scorer keeps its household
-    batch files in (a temporary one without it).
+    The scorer keeps its household batch files in a new directory of its own
+    inside ``batch_parent`` (the system's temporary directory without one).
     """
     if plan.error is not None:
         raise RuntimeError(
@@ -6051,7 +6098,7 @@ def _open_post_export_scorer(
     return _HouseholdBatchedPostExportScorer(
         dataset_path,
         maximum_microsim_batch_size=plan.maximum_batch_size,
-        batch_directory=batch_directory,
+        batch_parent=batch_parent,
         expected_n_households=plan.n_households,
     )
 
@@ -11558,6 +11605,9 @@ def _write_ssi_social_security_holdout(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
         payload["release_id"] = release_id
+    except PostExportBatchFileError:
+        # The scored file's integrity, not a measurement: it stops certification.
+        raise
     except Exception as error:
         # Reporting is observational, including an unavailable measurement.
         # It must not introduce a new release refusal or calibration target.
@@ -11589,6 +11639,9 @@ def _write_medicare_irmaa_holdout(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
         payload["release_id"] = release_id
+    except PostExportBatchFileError:
+        # The scored file's integrity, not a measurement: it stops certification.
+        raise
     except Exception as error:
         # Reporting is observational, including an unavailable measurement.
         # It must not introduce a new release refusal or calibration target.
@@ -14854,7 +14907,8 @@ def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) ->
     rerun after a failed certification first removes every file this
     certification would copy or write, so none of an earlier attempt's
     survives, and the post-export batch files of an attempt that was killed
-    before its scorer could remove them.
+    before its scorer could remove them. (Two certifications of one ``--out``
+    at once are not supported: each removes the other's files.)
     """
 
     release_dir.mkdir(parents=True, exist_ok=True)
@@ -19614,7 +19668,7 @@ def _certify_us_build(
     post_export_scorer = _open_post_export_scorer(
         post_export_scoring_plan,
         dataset_path,
-        batch_directory=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY,
+        batch_parent=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY,
     )
     # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
