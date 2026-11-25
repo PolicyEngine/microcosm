@@ -95,6 +95,22 @@ def test_a_be_build_folder_without_a_contract_file_is_refused(
     )
 
 
+@pytest.mark.parametrize("undeclared", sorted(BE_CONTRACT_FILES.values()))
+def test_a_be_build_folder_that_does_not_declare_a_contract_file_is_refused(
+    release_dir: Path,  # noqa: F811
+    undeclared: str,
+) -> None:
+    """The publisher hands over only the manifests and the declared
+    artifacts, so a contract file that is present but not declared would
+    not be published; as a US build must declare its source coverage, a
+    BE build must declare each file its release contract adds."""
+    be_release_dir = _as_be_build_folder_release(release_dir, undeclared=(undeclared,))
+
+    assert (
+        f"release_manifest.json artifacts must include {undeclared!r} for BE releases."
+    ) in _contract_failures(be_release_dir)
+
+
 def test_a_be_build_folder_in_the_tagged_layout_is_refused(
     release_dir: Path,  # noqa: F811
 ) -> None:

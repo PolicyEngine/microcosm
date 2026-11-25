@@ -834,14 +834,16 @@ def _as_be_build_folder_release(
     release: str = BE_RELEASE_IDS[0],
     build: str = BE_BUILD,
     drop: tuple[str, ...] = (),
+    undeclared: tuple[str, ...] = (),
 ) -> Path:
     """Retarget the publisher fixture to a build of a BE release.
 
     The directory is named after ``release``, the manifests name it and
     ``build`` in the build-folder layout, every artifact lives in a BE
     fixture repository, and the build carries the three files BE's release
-    contract adds to the base set, each declared as an artifact, except the
-    ones ``drop`` names.
+    contract adds to the base set, each declared as an artifact. A file
+    ``drop`` names is neither written nor declared, and one ``undeclared``
+    names is written but not declared.
     """
     be_release_dir = release_dir.with_name(release)
     release_dir.rename(be_release_dir)
@@ -854,6 +856,8 @@ def _as_be_build_folder_release(
             continue
         contract_file = be_release_dir / filename
         contract_file.write_text(json.dumps({"schema_version": 1, "country": "be"}))
+        if filename in undeclared:
+            continue
         manifest["artifacts"][key] = {
             "kind": "diagnostics",
             "path": filename,
