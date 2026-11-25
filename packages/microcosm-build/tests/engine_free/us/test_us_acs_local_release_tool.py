@@ -765,7 +765,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         f"{len(register_entries)} entries",
         f"policyengine-us {_REVIEWED_ENGINE}",
         "spm_unit.spm_unit_energy_subsidy (liheap)",
-        "tax_unit.takes_up_aca_if_eligible (aca_ptc)",
+        "household.household_vehicles_owned (general_assistance)",
     ):
         assert fragment in register["reason"], fragment
     assert "acs_local_reviewed_fill_consumers" in register["treatment"]
@@ -2669,6 +2669,104 @@ def test_reviewed_null_fill_refuses_to_default_fill_ssi_medicaid_take_up(
     ):
         module.fill_reviewed_nulls(frame, summary)
     assert person[column].isna().sum() == 2
+
+
+_ACA = ("takes_up_aca_if_eligible", "selected_marketplace_plan_benchmark_ratio")
+
+
+def test_aca_inputs_are_never_default_filled() -> None:
+    """microcosm#1720: True is universal take-up, 1.0 the benchmark plan."""
+
+    module = _load_tool_module()
+    assert module.ACS_LOCAL_ACA_TAKE_UP_COLUMNS == _ACA
+    for column in _ACA:
+        reason = module._NEVER_DEFAULT_FILLED_REASONS[("tax_unit", column)]
+        assert ("tax_unit", column) in module.NEVER_DEFAULT_FILLED
+        assert "microcosm#1720" in reason
+        assert "ACA take-up stage first" in reason
+
+
+@pytest.mark.parametrize("column", _ACA)
+def test_reviewed_null_fill_refuses_to_default_fill_aca_inputs(
+    tmp_path, column
+) -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    tax_unit = frame.table("tax_unit")
+    tax_unit = tax_unit.assign(
+        **{column: [1.0] * (len(tax_unit) - 2) + [np.nan, np.nan]}
+    )
+    frame = Frame(
+        {
+            name: tax_unit if name == "tax_unit" else frame.table(name)
+            for name in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": "tax_unit", "column": column, "missing_rows": 2}
+                ]
+            }
+        )
+    )
+    with pytest.raises(
+        module.DeniedDefaultFillError, match=rf"tax_unit\.{column} \(2 null rows\)"
+    ):
+        module.fill_reviewed_nulls(frame, summary)
+    assert tax_unit[column].isna().sum() == 2
+
+
+def test_the_prepass_reads_pending_aca_cells_at_the_engine_default(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1720: the SSI and Medicaid pre-pass runs before the ACA
+    stage, so its ACS view still carries null ACA cells, which the
+    never-default rule would refuse. The pre-pass reads them at the engine
+    defaults, what the reviewed fill gave them before the stage existed."""
+
+    module = _load_tool_module()
+    fixtures = _aca_fixtures()
+    frame = fixtures._frame(n_donor=10, n_acs=20)
+    view = frame.select(np.ones(frame.n("person"), dtype=bool))
+    stored = view.table("tax_unit")[list(_ACA)].copy()
+    acs = stored[_ACA[0]].isna().to_numpy()
+    assert acs.any() and not acs.all()
+    system = SimpleNamespace(
+        variables={
+            _ACA[0]: SimpleNamespace(default_value=True, value_type=bool),
+            _ACA[1]: SimpleNamespace(default_value=1.0, value_type=float),
+        }
+    )
+    seen = []
+
+    def fill(view, summary_path, *, period, system):
+        seen.append(view.table("tax_unit")[list(_ACA)].copy())
+        return [], []
+
+    monkeypatch.setattr(module, "_formula_owned_columns", lambda view: set())
+    monkeypatch.setattr(module, "fill_reviewed_nulls", fill)
+
+    module._prepass_view_contract(
+        view, summary_path=tmp_path / "s.json", hh_chunk=10_000, system=system
+    )
+
+    (filled,) = seen
+    assert filled[_ACA[0]].dtype == bool
+    assert filled.loc[acs, _ACA[0]].all()
+    assert (filled.loc[acs, _ACA[1]] == 1.0).all()
+    # Stored donor cells are untouched.
+    assert (
+        filled.loc[~acs, _ACA[0]].tolist()
+        == stored.loc[~acs, _ACA[0]].astype(bool).tolist()
+    )
+    assert filled.loc[~acs, _ACA[1]].tolist() == stored.loc[~acs, _ACA[1]].tolist()
 
 
 @pytest.mark.parametrize(
@@ -7030,7 +7128,7 @@ _REVIEWED_FILLS_RETIRED_SINCE_767312D60 = {
 
 
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
-    """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
+    """Release 767312d60 default-filled 79 columns; the stack now fills 23 of
     them (NEVER_DEFAULT_FILLED), and every other one has a register entry,
     except one the reviewed engine no longer defines, as does each reviewed
     fill added since."""
@@ -7051,7 +7149,8 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     assert len(released) == 79
     now_filled = released & set(module.NEVER_DEFAULT_FILLED)
     registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
-    # 20 are filled natively, 1 is retired and 58 are registered. The ACS
+    # 23 are filled natively (ACA take-up and the plan ratio since
+    # microcosm#1720), 1 is retired and 55 are registered. The ACS
     # vehicle count returned to a reviewed fill after the microcosm#1064 review
     # (VEH counts vehicles available, not owned): it left NEVER_DEFAULT_FILLED
     # and gained an entry together, so this still holds.
@@ -7266,9 +7365,10 @@ def test_package_regrades_the_packaged_fill_manifests(tmp_path, monkeypatch):
 def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch):
     module = _load_tool_module()
     args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
-    # microcosm#1675: EITC take-up is drawn on ACS rows and never default-filled;
-    # ACA take-up still ships at the default with its reviewed known bias.
-    fills = [_reviewed_fill("tax_unit", "takes_up_aca_if_eligible", "True")]
+    # microcosm#1675/#1720: EITC and ACA take-up are drawn on ACS rows and
+    # never default-filled; the owned vehicle count still ships at the
+    # default with its reviewed known bias.
+    fills = [_reviewed_fill("household", "household_vehicles_owned", "0")]
     (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
         json.dumps({"columns_filled": 1, "fills": fills})
     )
@@ -7288,7 +7388,9 @@ def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch
     assert record["sha256"] == reviewed_fill_register_sha256(document)
     assert record["entries"] == len(document["entries"])
     assert record["reviewed_against"] == {"policyengine_us": _REVIEWED_ENGINE}
-    assert record["known_bias"]["tax_unit.takes_up_aca_if_eligible"] == ["aca_ptc"]
+    assert record["known_bias"]["household.household_vehicles_owned"] == [
+        "general_assistance"
+    ]
     gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
         "acs_local_reviewed_fill_consumers"
     ]
@@ -7297,7 +7399,7 @@ def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
     assert gate["detail"]["register_sha256"] == record["sha256"]
     assert gate["detail"]["known_bias"] == {
-        "tax_unit.takes_up_aca_if_eligible": {"aca_ptc": "overstates"}
+        "household.household_vehicles_owned": {"general_assistance": "overstates"}
     }
 
 

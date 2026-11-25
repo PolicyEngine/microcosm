@@ -2254,58 +2254,6 @@ entries:
           labor-supply elasticities they gate), which return 0 before reading anything
           in an engine pass without a reform; inert.
   - entity: tax_unit
-    column: selected_marketplace_plan_benchmark_ratio
-    fill_value: "1.0"
-    spines: [acs_2024_1yr]
-    rows: "every ACS tax unit"
-    summary: >-
-      Read only by monthly_selected_marketplace_plan_premium_proxy, which
-      selected_marketplace_plan_premium_proxy sums, a net-premium proxy; the premium tax
-      credit reads the benchmark (SLCSP) premium, not the selected plan. The proxy
-      reaches the programs only through household health costs, household_net_income and
-      the behavioral responses.
-    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
-      tanf, wic]
-    notes:
-      - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-          housing_assistance, lifeline, medicaid, school_meals, snap, ssi,
-          state_benefits, tanf, wic]
-        verdict: harmless
-        note: >-
-          Reached only through the behavioral responses
-          (labor_supply_behavioral_response and capital_gains_behavioral_response, which
-          read household_net_income, and the labor-supply elasticities they gate), which
-          return 0 before reading anything in an engine pass without a reform, as every
-          release pass is; inert.
-  - entity: tax_unit
-    column: takes_up_aca_if_eligible
-    fill_value: "True"
-    spines: [acs_2024_1yr]
-    rows: "every ACS tax unit"
-    summary: >-
-      Runtime-owned take-up flag, not seeded on ACS rows (reviewed limitation
-      acs_take_up_engine_defaults).
-    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
-      tanf, wic]
-    notes:
-      - programs: [aca_ptc]
-        verdict: known_bias
-        direction: overstates
-        note: >-
-          Universal take-up: assigned_aca_ptc is the full credit for every eligible ACS
-          unit, while donor rows carry the seeded draw.
-      - programs: [chip, ctc, eitc, general_assistance, head_start, housing_assistance,
-          lifeline, medicaid, school_meals, snap, ssi, state_benefits, tanf, wic]
-        verdict: harmless
-        note: >-
-          Reached only through the behavioral responses
-          (labor_supply_behavioral_response and capital_gains_behavioral_response, which
-          read household_net_income, and the labor-supply elasticities they gate), which
-          return 0 before reading anything in an engine pass without a reform, as every
-          release pass is; inert.
-  - entity: tax_unit
     column: would_file_taxes_voluntarily
     fill_value: "False"
     spines: [acs_2024_1yr]
@@ -2326,13 +2274,15 @@ entries:
       - programs: [aca_ptc]
         verdict: known_bias
         direction: mixed
-        via: [medicaid]
         note: >-
-          No direct effect on ACS rows: files_return_for_aca_ptc counts a unit that
-          takes up a positive credit as filing for it, and takes_up_aca_if_eligible is
-          the reviewed default True on every ACS unit. Only through Medicaid's non-filer
-          rules below, which move the PTC either way because Medicaid eligibility keeps
-          a person off the Marketplace.
+          Direct, and through Medicaid's non-filer rules below.
+          files_return_for_aca_ptc counts a unit that takes up a positive credit as
+          filing for it, so the drawn takers' credit does not move. A unit that does
+          not take up files only through tax_unit_is_filer, so its aca_ptc (the credit
+          before take-up) understates where it would file voluntarily, while its
+          assigned_aca_ptc stays 0 (ACA take-up is drawn on ACS tax units since
+          microcosm#1720). Medicaid's rules move the PTC either way, because Medicaid
+          eligibility keeps a person off the Marketplace.
       - programs: [chip, medicaid]
         verdict: known_bias
         direction: mixed

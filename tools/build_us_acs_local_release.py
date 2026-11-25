@@ -1007,6 +1007,25 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS, ("SSI", "Medicaid"), strict=True
         )
     },
+    # microcosm#1720: the ACA take-up default, True, is universal take-up of
+    # the premium tax credit, and the plan-ratio default, 1.0, puts every
+    # taker on the benchmark plan; materialize assigns both on ACS tax units
+    # after an engine pre-pass and the consumer export applies the recorded
+    # assignment.
+    **{
+        ("tax_unit", column): (
+            f"the engine default is {meaning} ({ACS_LOCAL_ACA_TAKE_UP_ISSUE}); "
+            "run the ACS local ACA take-up stage first"
+        )
+        for column, meaning in zip(
+            ACS_LOCAL_ACA_TAKE_UP_COLUMNS,
+            (
+                "universal premium tax credit take-up",
+                "the benchmark plan for every taker",
+            ),
+            strict=True,
+        )
+    },
     # microcosm#1154: the WIC take-up default, True, is universal take-up;
     # staging draws the ACS rows' decisions with the national generator and
     # the donor release carries its own.
@@ -2235,13 +2254,55 @@ def _acs_engine_values(
     return values
 
 
-def _prepass_view_contract(view, *, summary_path: Path, hh_chunk: int) -> None:
+#: Never-default columns that a later materialize stage assigns on ACS rows:
+#: the ACA take-up stage runs after the SSI and Medicaid pre-pass, so that
+#: pass's ACS view still carries them null (microcosm#1720).
+_PREPASS_PENDING_COLUMNS: tuple[tuple[str, str], ...] = tuple(
+    ("tax_unit", column) for column in ACS_LOCAL_ACA_TAKE_UP_COLUMNS
+)
+
+
+def _with_prepass_pending_defaults(view, system) -> dict[str, int]:
+    """Read a pending column's null cells at the engine default, in place.
+
+    Only a pre-pass view gets this: the cells read what the reviewed fill
+    gave them before their stage existed (for ACA take-up, ``True`` and a
+    ratio of ``1.0``), and the stage fills them before materialize's engine
+    pass, whose fill refuses a null there. Returns the cells read so, by
+    column.
+    """
+
+    read: dict[str, int] = {}
+    for entity, column in _PREPASS_PENDING_COLUMNS:
+        table = view.table(entity)
+        if column not in table.columns:
+            continue
+        missing = table[column].isna()
+        if not missing.any():
+            continue
+        value, _kind = _resolve_engine_default(system, column)
+        filled = table[column].astype(object).where(~missing, value)
+        value_type = getattr(system.variables[column], "value_type", None)
+        if value_type is bool:
+            filled = filled.astype(bool)
+        elif value_type is float:
+            filled = filled.astype(np.float64)
+        table[column] = filled
+        read[f"{entity}.{column}"] = int(missing.sum())
+    return read
+
+
+def _prepass_view_contract(
+    view, *, summary_path: Path, hh_chunk: int, system=None
+) -> None:
     """Materialize's engine-pass contract on a pre-pass view, in place.
 
     The classifier of :func:`project_input_only`, without its copy, then the
     reviewed-null fill. The view is the stage's own copy of its households,
     so both steps edit it in place: a pre-pass never holds a second copy of
-    the rows.
+    the rows. A column a later materialize stage assigns reads its engine
+    default where it is still null (:func:`_with_prepass_pending_defaults`).
+    ``system`` defaults to the policyengine-us tax-benefit system.
     """
 
     import build_us_fiscal_refresh_release as release_tool
@@ -2252,7 +2313,14 @@ def _prepass_view_contract(view, *, summary_path: Path, hh_chunk: int) -> None:
         held = sorted(set(table.columns) & formula_owned)
         if held:
             table.drop(columns=held, inplace=True)
-    fill_reviewed_nulls(view, summary_path, period=PERIOD)
+    if system is None:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        system = CountryTaxBenefitSystem()
+    pending = _with_prepass_pending_defaults(view, system)
+    if pending:
+        log(f"pre-pass reads pending cells at the engine default: {pending}")
+    fill_reviewed_nulls(view, summary_path, period=PERIOD, system=system)
     if view.n("household") > hh_chunk:
         release_tool._assert_group_entities_nest_in_households(view)
         release_tool._assert_medicaid_claiming_tax_units_local(view)
