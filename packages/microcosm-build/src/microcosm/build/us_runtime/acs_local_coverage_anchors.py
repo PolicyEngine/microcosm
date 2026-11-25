@@ -38,9 +38,16 @@ chain and every other draw are unchanged.
 - **Blanks.** The 2024 PUMS dictionary lists no blank code for HINS1, HINS2
   or HIMRKS; a blank that arrives anyway keeps the earlier rule and is
   counted.
-- **Not an ACA anchor.** ``HIMRKS`` stays on the staged ACS person rows as a
-  raw source item, but this stage writes no subsidized-Marketplace anchor;
-  that use is not ruled.
+- **The ACA anchor** (ruled 25 Nov 2026, "Yes, with thinning"). The stage
+  writes the ACA manifest stage's own anchor column,
+  ``reported_has_subsidized_marketplace_health_coverage_at_interview`` (read
+  from the manifest's ``reported_true_anchor``), on the ACS rows: True where
+  ``HINS2 == 1`` and HIMRKS is 1, allocated values included; False on every
+  other ACS row. Donor rows are not written: the donor reads no subsidized
+  item (``NOW_MRKS`` is unread), and the national tool reads the absent
+  column as False there. The release's ACA stage thins anchors above a
+  state's residual. ``HIMRKS`` also stays on the staged ACS rows as a raw
+  source item.
 
 The step must run before the self-employed premium attribution
 (:mod:`~microcosm.build.us_runtime.acs_local_se_health_premiums`), which
@@ -52,11 +59,14 @@ without the columns it reads, and malformed source codes.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import cache
+from importlib.resources import files
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.source_manifest import load_source_manifest
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.acs_inputs import _nullable_source_codes
 from microcosm.build.us_runtime.acs_local_ssi_disability import _acs_draw_keys
@@ -76,6 +86,7 @@ __all__ = [
     "ACS_LOCAL_COVERAGE_ANCHORS_ISSUE",
     "ACS_LOCAL_COVERAGE_ANCHORS_METHOD",
     "ACS_LOCAL_COVERAGE_SOURCE_COLUMNS",
+    "acs_local_aca_reported_true_anchor",
     "acs_local_direct_purchase_donor_shares",
     "choose_acs_direct_purchase_types",
     "with_acs_local_coverage_anchors",
@@ -138,11 +149,42 @@ _NOT_USED: Mapping[str, str] = {
         "direct purchase without a subsidy can be on or off the Marketplace; "
         "the earlier rule applies"
     ),
-    "subsidized-Marketplace anchor": (
-        "reported_has_subsidized_marketplace_health_coverage_at_interview is "
-        "not written; that use of HIMRKS is not ruled"
-    ),
 }
+#: The US manifest stage whose own anchor column the stage writes.
+_ACA_STAGE = "aca_marketplace_inputs"
+_ANCHOR_PARAMETER = "reported_true_anchor"
+
+
+@cache
+def acs_local_aca_reported_true_anchor() -> str:
+    """The ACA manifest stage's own anchor column, from the US manifest.
+
+    Raises:
+        ValueError: If the manifest has no ACA stage or not exactly one
+            anchor column.
+    """
+
+    stage = (
+        load_source_manifest(files("microcosm.build.us").joinpath("source_stages.json"))
+        .stage_map()
+        .get(_ACA_STAGE)
+    )
+    if stage is None:
+        raise ValueError(
+            f"The US source manifest declares no {_ACA_STAGE!r} stage "
+            f"({ACS_LOCAL_COVERAGE_ANCHORS_ISSUE})."
+        )
+    anchors = {
+        str(operation.parameters[_ANCHOR_PARAMETER])
+        for operation in stage.operations
+        if _ANCHOR_PARAMETER in operation.parameters
+    }
+    if len(anchors) != 1:
+        raise ValueError(
+            f"The {_ACA_STAGE!r} stage must declare one {_ANCHOR_PARAMETER}, "
+            f"got {sorted(anchors)} ({ACS_LOCAL_COVERAGE_ANCHORS_ISSUE})."
+        )
+    return anchors.pop()
 
 
 def _flags(values: pd.Series, column: str) -> np.ndarray:
@@ -471,8 +513,8 @@ def with_acs_local_coverage_anchors(
     yes_direct = direct.eq(1).to_numpy(dtype=bool)
     marketplace = np.where(no_direct, False, drawn_marketplace)
     other = np.where(no_direct, False, drawn_other)
-    # The Marketplace-versus-other choice among direct purchasers is the one
-    # place a HIMRKS ruling would change.
+    # The Marketplace-versus-other choice among direct purchasers is one
+    # function; HIMRKS code 1 decides it there (ruled 25 Nov 2026).
     yes_rows = np.flatnonzero(yes_direct)
     chosen_marketplace, chosen_other, choice = choose_acs_direct_purchase_types(
         person.iloc[yes_rows],
@@ -487,6 +529,10 @@ def with_acs_local_coverage_anchors(
     )
     marketplace[yes_rows] = chosen_marketplace
     other[yes_rows] = chosen_other
+    # The ACA stage's fixed points: direct purchase with a premium subsidy.
+    anchor_column = acs_local_aca_reported_true_anchor()
+    subsidized = subsidy.eq(_SUBSIDIZED_CODE).to_numpy(dtype=bool)
+    anchor = yes_direct & subsidized
 
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables.update({name: frame.link(name) for name in frame.links})
@@ -494,6 +540,7 @@ def with_acs_local_coverage_anchors(
     updated[_ESI] = esi.astype(bool)
     updated[_MARKETPLACE] = marketplace.astype(bool)
     updated[_OTHER_DIRECT] = other.astype(bool)
+    updated[anchor_column] = anchor.astype(bool)
     tables["person"] = updated
     result = Frame(
         tables,
@@ -562,6 +609,37 @@ def with_acs_local_coverage_anchors(
                     (_MARKETPLACE, marketplace, drawn_marketplace),
                     (_OTHER_DIRECT, other, drawn_other),
                 )
+            },
+        },
+        "aca_anchor": {
+            "column": anchor_column,
+            "manifest_stage": _ACA_STAGE,
+            "rule": (
+                "HINS2 == 1 and HIMRKS == 1, allocated values included; False "
+                "on every other ACS row; donor rows are not written"
+            ),
+            "replaced_existing_column": anchor_column in person,
+            "true_rows": int(anchor.sum()),
+            "weighted_share": _weighted_share(weights, anchor),
+            "allocated_true_rows": (
+                int(
+                    (
+                        anchor
+                        & _nullable_source_codes(
+                            person[_SUBSIDY_ALLOCATION].rename("FHIMRKSP"),
+                            minimum=0,
+                            maximum=1,
+                        )
+                        .eq(1)
+                        .to_numpy(dtype=bool)
+                    ).sum()
+                )
+                if _SUBSIDY_ALLOCATION in person
+                else None
+            ),
+            "not_anchored_code_1_rows": {
+                "hins2_no": int((no_direct & subsidized).sum()),
+                "hins2_blank": int((direct.isna().to_numpy() & subsidized).sum()),
             },
         },
         "not_used": dict(_NOT_USED),

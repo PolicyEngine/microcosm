@@ -17,6 +17,7 @@ from microcosm.build.us_runtime.acs_local_coverage_anchors import (
     ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS,
     ACS_LOCAL_COVERAGE_ANCHORS_ISSUE,
     ACS_LOCAL_COVERAGE_ANCHORS_METHOD,
+    acs_local_aca_reported_true_anchor,
     acs_local_direct_purchase_donor_shares,
     choose_acs_direct_purchase_types,
     with_acs_local_coverage_anchors,
@@ -35,6 +36,7 @@ from microcosm.build.us_runtime.support_provenance import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _ESI, _MARKETPLACE, _OTHER = ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS
+_ANCHOR = acs_local_aca_reported_true_anchor()
 TAG = spine_column("person")
 
 
@@ -154,6 +156,14 @@ def test_the_three_columns_are_shared_transfer_targets() -> None:
     assert set(ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS) <= required_acs_transfer_inputs()
 
 
+def test_the_aca_anchor_is_the_manifest_stages_own_column() -> None:
+    """The column the national tool reads as False when absent; not a
+    transfer target, so writing it moves no draw."""
+
+    assert _ANCHOR == "reported_has_subsidized_marketplace_health_coverage_at_interview"
+    assert _ANCHOR not in required_acs_transfer_inputs()
+
+
 def test_the_donor_shares_come_from_the_asec_role_by_age_band() -> None:
     shares = acs_local_direct_purchase_donor_shares(_support_donor())
     assert shares["channel"] == "asec"
@@ -200,10 +210,14 @@ def test_the_acs_items_replace_the_draws() -> None:
         False,
         True,
     ]
-    for column in ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS:
+    # HIMRKS is 0 on every row: no ACA anchor.
+    assert person[_ANCHOR].tolist() == [False] * 8
+    for column in (*ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS, _ANCHOR):
         assert person[column].dtype == bool, column
     # Every other column, and the input frame, are untouched.
-    other_columns = [c for c in person if c not in ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS]
+    other_columns = [
+        c for c in person if c not in (*ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS, _ANCHOR)
+    ]
     pd.testing.assert_frame_equal(
         person[other_columns], frame.table("person")[other_columns]
     )
@@ -249,11 +263,13 @@ def test_the_acs_items_replace_the_draws() -> None:
         "hins2_no_himrks_direct_weighted_share": 0.0,
         "hins2_blank_himrks_direct_rows": 0,
     }
-    assert set(receipt["not_used"]) == {
-        "HIMRKS code 0",
-        "HIMRKS code 2",
-        "subsidized-Marketplace anchor",
-    }
+    assert set(receipt["not_used"]) == {"HIMRKS code 0", "HIMRKS code 2"}
+    anchor = receipt["aca_anchor"]
+    assert anchor["column"] == _ANCHOR
+    assert anchor["manifest_stage"] == "aca_marketplace_inputs"
+    assert (anchor["true_rows"], anchor["weighted_share"]) == (0, 0.0)
+    assert anchor["allocated_true_rows"] is None
+    assert anchor["replaced_existing_column"] is False
     json.dumps(receipt, allow_nan=False)
 
 
@@ -425,7 +441,12 @@ def test_himrks_code_1_sets_the_marketplace_flag_and_keeps_the_other_draw() -> N
 
 def test_hins2_no_wins_over_a_himrks_direct_purchase_code_and_is_counted() -> None:
     result, receipt = with_acs_local_coverage_anchors(
-        _acs_frame(ACS_HIMRKS=[1, 2, 1, 1, 1, 0, 0, 1]), _support_donor(), seed=7
+        _acs_frame(
+            ACS_HIMRKS=[1, 2, 1, 1, 1, 0, 0, 1],
+            ACS_FHIMRKSP=[1, 0, 1, 0, 0, 0, 0, 0],
+        ),
+        _support_donor(),
+        seed=7,
     )
     person = result.table("person")
     # Rows 1 and 2 have HINS2 2: both flags False, whatever HIMRKS says.
@@ -446,7 +467,23 @@ def test_hins2_no_wins_over_a_himrks_direct_purchase_code_and_is_counted() -> No
     choice = receipt["direct_purchase"]["choice"]
     assert choice["himrks"]["codes"] == {"0": 1, "1": 3, "blank": 0}
     assert choice["set_marketplace_by_code_1_rows"] == 2
-    assert "subsidized-Marketplace anchor" in receipt["not_used"]
+    # The ACA anchor: HINS2 1 and HIMRKS 1 only (rows 3-5), allocated
+    # values included (row 3); the code 1 rows with HINS2 2 or blank are not.
+    assert person[_ANCHOR].tolist() == [
+        False,
+        False,
+        True,
+        True,
+        True,
+        False,
+        False,
+        False,
+    ]
+    anchor = receipt["aca_anchor"]
+    assert anchor["true_rows"] == 3
+    assert anchor["weighted_share"] == pytest.approx(3 / 8)
+    assert anchor["allocated_true_rows"] == 1
+    assert anchor["not_anchored_code_1_rows"] == {"hins2_no": 1, "hins2_blank": 1}
 
 
 def _mixed_rows(n: int = 40) -> list[tuple]:
@@ -745,8 +782,9 @@ def test_a_real_transfer_keeps_every_other_draw_and_takes_the_acs_items(
     without_step = _real_seam(monkeypatch, tmp_path, coverage_anchors=False)
 
     columns = list(ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS)
+    assert _ANCHOR not in without_step.frame.table("person")
     pd.testing.assert_frame_equal(
-        with_step.frame.table("person").drop(columns=columns),
+        with_step.frame.table("person").drop(columns=[*columns, _ANCHOR]),
         without_step.frame.table("person").drop(columns=columns),
         check_like=True,
     )
@@ -772,6 +810,9 @@ def test_a_real_transfer_keeps_every_other_draw_and_takes_the_acs_items(
     assert subsidized.any() and acs.loc[subsidized, _MARKETPLACE].all()
     # The raw item stays on the staged ACS rows, for a later stage.
     assert acs["ACS_HIMRKS"].notna().all()
+    # The ACA anchor is written on ACS rows only; donor rows lack it.
+    assert acs[_ANCHOR].tolist() == (~no_direct & acs["ACS_HIMRKS"].eq(1)).tolist()
+    assert donor[_ANCHOR].isna().all()
     # Donor rows keep the donor release's values.
     for column in columns:
         assert donor[column].tolist() == donor_before[column].tolist(), column

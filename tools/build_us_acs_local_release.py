@@ -5026,7 +5026,11 @@ def finalize_reviewed_limitations(
                 "purchasers by age band, except that HIMRKS (Subsidized "
                 "Marketplace Coverage) code 1, direct purchase with a premium "
                 "subsidy, sets the Marketplace flag True (ruled 25 Nov 2026). "
-                "HIMRKS is not used as an ACA anchor."
+                "Staging also writes the ACA stage's anchor column, "
+                "reported_has_subsidized_marketplace_health_coverage_at_"
+                "interview, on ACS rows: True where HINS2 is 1 and HIMRKS is 1 "
+                "(ruled 25 Nov 2026); the donor reads no such item, so its "
+                "rows have none."
             ),
             "treatment": (
                 "Written at staging only in missing ACS cells, except the "
