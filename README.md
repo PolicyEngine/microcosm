@@ -535,14 +535,16 @@ side of this holds from the US repository's switch commit: Microcosm's US
 change (microcosm#1570) merges straight after that commit.
 
 **Each build is published into its own folder.** The UK national and dense
-releases, each UK local-area release that the registry names, and the US
-releases below
+releases, each UK local-area release that the registry names, the US
+releases below and BE's two releases, `microcosm-be-2025-national` and
+`microcosm-be-2026-national`
 (`microcosm.data.contract.publishes_to_build_folder`) hand each build to the
 separately installed emitter, whose release writer puts it in
 `releases/<release>/<build>/` and records it in the repository's
 `releases.json`, the only record of each release's builds and which one is
 current, in one commit. A UK build is the calibration attempt id; a US build
-keeps its `populace-us-2024-…` build ID. Both manifests name the release and
+keeps its `populace-us-2024-…` build ID; a BE build keeps the ID BE's builder
+gives it (`microcosm-be-<year>-chronicle-<commit>-<time>`). Both manifests name the release and
 the build as strings; the release manifest records `built_at`,
 `built_with_model_package` and `built_with_core_package` at its top level and
 each file's `role`, and pins no revision. Nothing is tagged and no pointer
@@ -555,8 +557,9 @@ uv run microcosm-publish-release-build releases/<release> \
   --repo-id <repository> --promote
 ```
 
-`<repository>` is `policyengine/populace-uk-private` or
-`policyengine/populace-us`. The first command publishes a build, and makes it
+`<repository>` is `policyengine/populace-uk-private`,
+`policyengine/populace-us`, or BE's private release repository, which BE's
+`release_contract.json` names. The first command publishes a build, and makes it
 current with `--make-current`; the second makes a published build current. A
 build counts as current only when the emitter's receipt is `published` and
 names it as `current`. The emitter changes no current build while any

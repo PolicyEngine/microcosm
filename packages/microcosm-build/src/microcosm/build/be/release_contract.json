@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "be",
-  "policy": "Microcosm-BE: synthetic Belgian population calibrated to Belgian administrative and national-accounts targets (sums of Chronicle facts; surveys validation-only). Support records: US survey donor pool, reweighted; a Belgian donor pool is the planned upgrade. All artifacts remain in the private Hugging Face repository. Publication is Max's decision at release time; this inactive declaration authorizes no publication. Releases use data_build_id plus immutable Hugging Face revision, never ordinals.",
+  "policy": "Microcosm-BE: synthetic Belgian population calibrated to Belgian administrative and national-accounts targets (sums of Chronicle facts; surveys validation-only). Support records: US survey donor pool, reweighted; a Belgian donor pool is the planned upgrade. All artifacts remain in the private Hugging Face repository. Builds publish there through microcosm-publish-release-build and the emitter, each into its own folder, releases/<release>/<build>/, which releases.json lists; making any artifact public is Max's decision. Builds are named by data_build_id, never ordinals.",
   "builder": "populace-be",
   "hf": {
     "artifact_repo": "policyengine/populace-be-private",
@@ -27,14 +27,14 @@
       "source_coverage.json",
       "demographics.json",
       "reform_validation.json",
-      "latest.json"
+      "releases.json"
     ],
     "public": []
   },
   "licence": {
     "name": "Microcosm US public synthetic donor release plus Belgian public aggregate facts",
     "restricted": false,
-    "notes": "The donor is the immutable Build P artifact in source_stages.json. Chronicle owns licence evidence for destination facts. Repository visibility remains private pending Max's publication decision."
+    "notes": "The donor is the immutable Build P artifact in source_stages.json. Chronicle owns licence evidence for destination facts. Repository visibility remains private pending Max's decision to make any of it public."
   },
-  "notes": "Proposed target and policy year 2026 (BE-MC0), pending Max's ruling d1902. Microcosm-BE: synthetic Belgian population calibrated to Belgian administrative and national-accounts targets (sums of Chronicle facts; surveys validation-only). Support records: US survey donor pool, reweighted; a Belgian donor pool is the planned upgrade. source_coverage.json records source provenance, calibration_diagnostics.json records target fit, and reform_validation.json separates held-out comparisons. The existing private artifact and staging repository names are retained. A later release assembler and release qualification are required; latest.json is an atomic pointer only after publication is authorized."
+  "notes": "Proposed target and policy year 2026 (BE-MC0), pending Max's ruling d1902. Microcosm-BE: synthetic Belgian population calibrated to Belgian administrative and national-accounts targets (sums of Chronicle facts; surveys validation-only). Support records: US survey donor pool, reweighted; a Belgian donor pool is the planned upgrade. source_coverage.json records source provenance, calibration_diagnostics.json records target fit, and reform_validation.json separates held-out comparisons. The existing private artifact and staging repository names are retained. A later release assembler and release qualification are required. releases.json names each release's current build and the repository's default release; only the emitter's release writer changes it, and no pointer file names a build."
 }

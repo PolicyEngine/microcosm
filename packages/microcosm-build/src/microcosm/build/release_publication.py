@@ -2,7 +2,7 @@
 
 A release whose builds can publish into their own folders (the UK national
 and dense releases, each UK local-area release that the dataset registry
-names, and the US releases, which
+names, the US releases and BE's releases, which
 ``microcosm.data.contract.publishes_to_build_folder`` names) is handed to the
 separately installed emitter with the interface's ``publish_release`` call.
 Microcosm decides what the build contains and checks it with the release
@@ -107,6 +107,7 @@ from microcosm_emitter_interface.publication import (
 from microcosm_emitter_interface.releases import is_pointer_file
 
 from microcosm.build.collector_submissions import (
+    BE_COLLECTOR_COUNTRY_CODE,
     COLLECTOR_RECEIPT_POLL_SECONDS,
     COLLECTOR_SUBMISSION_WAIT_SECONDS,
     UK_COLLECTOR_COUNTRY_CODE,
@@ -116,7 +117,11 @@ from microcosm.build.collector_submissions import (
 )
 from microcosm.build.staging_dataset import hub_offline, write_access_problem
 from microcosm.build.telemetry_emitter import start_bundle_emitter
-from microcosm.data.contract import US_RELEASES, publishes_to_build_folder
+from microcosm.data.contract import (
+    US_RELEASES,
+    is_be_release,
+    publishes_to_build_folder,
+)
 from microcosm.data.publish_cli import publication_refusal
 from microcosm.data.release import (
     TAGGED_RELEASE_ADVICE,
@@ -268,20 +273,26 @@ def collector_provenance(release: str, build: str) -> CollectorProvenance | None
     dense releases, and each local-area release that the dataset registry
     names) used licensed microdata, so the collector keeps its Orrery outputs
     private; a US build is published in the public US repository, so it used
-    none whose licence keeps its outputs private. None for a release whose
-    builds do not publish into their own folders, a UK local-area release
-    that the registry does not name among them. The interface raises
-    ``ValueError`` for a build ID it does not accept.
+    none whose licence keeps its outputs private. A BE build is published in
+    BE's private repository, and making any of it public is Max's decision,
+    so it is reported as a UK build is: the collector keeps its Orrery
+    outputs private. None for a release whose builds do not publish into
+    their own folders, a UK local-area release that the registry does not
+    name among them. The interface raises ``ValueError`` for a build ID it
+    does not accept.
     """
     if not publishes_to_build_folder(release):
         return None
-    us_build = release in US_RELEASES
+    if release in US_RELEASES:
+        country_code, licensed_data = US_COLLECTOR_COUNTRY_CODE, False
+    elif is_be_release(release):
+        country_code, licensed_data = BE_COLLECTOR_COUNTRY_CODE, True
+    else:
+        country_code, licensed_data = UK_COLLECTOR_COUNTRY_CODE, True
     return CollectorProvenance(
-        country_code=US_COLLECTOR_COUNTRY_CODE
-        if us_build
-        else UK_COLLECTOR_COUNTRY_CODE,
+        country_code=country_code,
         build_id=build,
-        licensed_data=not us_build,
+        licensed_data=licensed_data,
         release=release,
     )
 
@@ -838,8 +849,9 @@ def _parser() -> argparse.ArgumentParser:
         description=(
             "Publish a build of a release whose builds publish into their own "
             "folders (the UK national and dense releases, each UK local-area "
-            "release the dataset registry names, and the US releases) through "
-            "the emitter, or make a published build current. " + TAGGED_RELEASE_ADVICE
+            "release the dataset registry names, the US releases and BE's "
+            "releases) through the emitter, or make a published build current. "
+            + TAGGED_RELEASE_ADVICE
         ),
     )
     parser.add_argument("release_dir", type=Path, help="The local release directory.")

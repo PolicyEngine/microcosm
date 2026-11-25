@@ -76,6 +76,8 @@ from microcosm.diagnostics import (
 )
 
 __all__ = [
+    "BE_RELEASES",
+    "BE_REQUIRED_RELEASE_FILES",
     "BUILD_MANIFEST_FILE_ROLE",
     "CALIBRATION_DIAGNOSTICS_FILE_ROLE",
     "CALIBRATION_WEIGHTS_FILE_ROLE",
@@ -116,6 +118,7 @@ __all__ = [
     "US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION",
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
+    "is_be_release",
     "is_us_release",
     "line_for_release_id",
     "publishes_to_build_folder",
@@ -306,14 +309,48 @@ def is_us_release(release_id: str) -> bool:
     return release_id in US_RELEASES or release_id.startswith(_US_BUILD_ID_PREFIX)
 
 
+#: BE's releases in the build-folder layout (tracker 5b · 1): one national
+#: release for each population year, in BE's private repository. As with the
+#: UK national and dense releases, the contract names them exactly and ties
+#: them to no role in ``releases.json``: a build's ``dataset_role`` gives it
+#: (:data:`RELEASE_ROLES`). A build keeps the ID BE's builder gives it
+#: (``microcosm-be-<year>-chronicle-<commit>-<time>``); the two builds
+#: published before the move keep theirs as build names.
+BE_RELEASES: frozenset[str] = frozenset(
+    {"microcosm-be-2025-national", "microcosm-be-2026-national"}
+)
+#: The files every build of a BE release carries: the base set and the three
+#: that BE's release contract adds (``microcosm/build/be/release_contract.json``
+#: in the build shard, which this shard cannot import; a build-shard test
+#: holds the two lists equal). As with a UK release's files, the name of the
+#: release decides them.
+BE_REQUIRED_RELEASE_FILES = (
+    *REQUIRED_RELEASE_FILES,
+    "source_coverage.json",
+    "demographics.json",
+    "reform_validation.json",
+)
+
+
+def is_be_release(release_id: str) -> bool:
+    """Whether ``release_id`` is one of :data:`BE_RELEASES`, matched exactly.
+
+    BE's builds published before the move were their own releases in a
+    ``releases/<build>/`` folder each, so their IDs share the
+    ``microcosm-be-`` prefix and are not BE releases.
+    """
+    return release_id in BE_RELEASES
+
+
 def publishes_to_build_folder(release_id: str) -> bool:
     """Whether builds of ``release_id`` publish into their own build folders.
 
     This is the one place that says which releases use the build-folder
     layout: the UK national and dense releases, each UK local-area release
-    that the dataset registry names, and the US releases
-    (:data:`US_RELEASES`). A US build's own release in the tagged layout
-    (``populace-us-…``) keeps tags, for the builds that have only their tag.
+    that the dataset registry names, the US releases (:data:`US_RELEASES`)
+    and BE's releases (:data:`BE_RELEASES`). A US build's own release in the
+    tagged layout (``populace-us-…``) keeps tags, for the builds that have
+    only their tag.
 
     A UK local-area release is ``microcosm-uk-2024-25-local-k<N>``, and it
     publishes once a UK entry of :data:`microcosm.data.registry.REGISTRY`
@@ -326,6 +363,7 @@ def publishes_to_build_folder(release_id: str) -> bool:
             and _uk_registry_entry_names(release_id)
         )
         or release_id in US_RELEASES
+        or is_be_release(release_id)
     )
 
 
@@ -1409,6 +1447,8 @@ def required_release_files(release_id: str) -> tuple[str, ...]:
         # release without one is refused at the required-files layer, not
         # just when part artifacts happen to be present.
         return (*REQUIRED_RELEASE_FILES, _UK_RELEASE_CERTIFICATION_FILE)
+    if is_be_release(release_id):
+        return BE_REQUIRED_RELEASE_FILES
     return REQUIRED_RELEASE_FILES
 
 
