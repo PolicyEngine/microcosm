@@ -17,12 +17,14 @@ from microcosm.frame import Frame
 def assert_same_batch(restored: Frame, expected: Frame) -> None:
     """``restored`` holds exactly ``expected``'s data.
 
-    Same entities, columns, dtypes and index; numeric, boolean and date
-    columns equal byte for byte (so the sign of a zero and a NaN's bit pattern
-    count); object columns equal value by value with the same Python types;
-    the same weights, weight kinds and strata.
+    Same schema, entities, columns, dtypes and index; numeric, boolean and
+    date columns equal byte for byte (so the sign of a zero and a NaN's bit
+    pattern count); object columns equal value by value with the same Python
+    types; the same weights, weight kinds, strata, link tables, record of
+    weight changes and metadata.
     """
 
+    assert restored.schema == expected.schema
     assert restored.entities == expected.entities
     for entity in expected.entities:
         restored_table = restored.table(entity)
@@ -50,3 +52,10 @@ def assert_same_batch(restored: Frame, expected: Frame) -> None:
             == np.asarray(expected_weights.values).tobytes()
         ), entity
     pd.testing.assert_series_equal(restored.strata, expected.strata, check_exact=True)
+    assert restored.links == expected.links
+    for name in expected.links:
+        pd.testing.assert_frame_equal(
+            restored.link(name), expected.link(name), check_exact=True
+        )
+    assert restored.mass_log == expected.mass_log
+    assert dict(restored.metadata) == dict(expected.metadata)

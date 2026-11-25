@@ -394,7 +394,8 @@ def test_a_scorer_that_cannot_write_its_batches_leaves_no_files(
 ) -> None:
     nested = _nested_frame()
     tables = {entity: nested.table(entity).copy() for entity in nested.entities}
-    # A value pickle cannot write: the first batch's file fails part-written.
+    # A value pickle cannot write: pickling the first batch raises before its
+    # file is written.
     tables["household"]["unwritable"] = pd.Series(
         [lambda: None for _ in range(len(tables["household"]))], dtype=object
     )
@@ -410,9 +411,38 @@ def test_a_scorer_that_cannot_write_its_batches_leaves_no_files(
     parent = tmp_path / "post_export_batches"
     # Python 3.13 raises AttributeError for a local function, 3.14
     # PicklingError.
-    with pytest.raises((pickle.PicklingError, AttributeError)):
+    with pytest.raises((pickle.PicklingError, AttributeError)) as raised:
         _open_scorer(builder, frame, tmp_path / "h5", batch_parent=parent)
-    gc.collect()
+    # The traceback still holds the half-made scorer, so its finalizer has not
+    # run: the scorer removed its files itself.
+    assert raised.traceback
+    assert not parent.exists()
+
+
+def test_a_scorer_whose_disk_fills_leaves_no_part_written_files(
+    builder, tmp_path, monkeypatch
+) -> None:
+    """A write that fails partway (a full disk) leaves no batch file behind,
+    neither the part-written one nor those written before it."""
+
+    write_bytes = Path.write_bytes
+    batch_writes: list[Path] = []
+
+    def disk_fills_on_the_second_batch(self, data):
+        if not self.name.startswith("batch-"):
+            return write_bytes(self, data)
+        batch_writes.append(self)
+        if len(batch_writes) == 2:
+            write_bytes(self, data[: len(data) // 2])
+            raise OSError(28, "No space left on device")
+        return write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", disk_fills_on_the_second_batch)
+    parent = tmp_path / "post_export_batches"
+    with pytest.raises(OSError, match="No space left") as raised:
+        _open_scorer(builder, _nested_frame(), tmp_path / "h5", batch_parent=parent)
+    assert raised.traceback
+    assert len(batch_writes) == 2
     assert not parent.exists()
 
 
@@ -431,6 +461,9 @@ def test_certification_removes_an_earlier_attempts_batch_files(
     (stale / "post-export-batches-earlier" / "batch-00000.pickle").write_bytes(
         b"an earlier attempt's batch"
     )
+    # Not a scorer's directory: someone else's, which placement leaves.
+    kept = stale / "notes.txt"
+    kept.write_text("not a scorer's")
     record = SimpleNamespace(
         build="fixture-build",
         release_root=release_root,
@@ -438,4 +471,5 @@ def test_certification_removes_an_earlier_attempts_batch_files(
         payload={"files": {}},
     )
     builder._place_build_for_certification(record, release_root / "releases" / "r")
-    assert not stale.exists()
+    assert sorted(path.name for path in stale.iterdir()) == ["notes.txt"]
+    assert kept.read_text() == "not a scorer's"
