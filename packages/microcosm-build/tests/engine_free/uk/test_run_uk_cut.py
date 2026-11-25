@@ -772,7 +772,7 @@ def test_without_publish_only_the_publication_preflight_runs(tmp_path, monkeypat
     build = _all(runner)["build"]
 
     def never_asked(name):
-        raise AssertionError("a run without --publish reads no releases.json")
+        raise AssertionError("a run without --publish never asks whether it published")
 
     monkeypatch.setattr(cut, "build_published", never_asked)
     cut.run_publish(runner, build, publish=False)

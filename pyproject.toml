@@ -48,9 +48,11 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 # TID251, huggingface_hub outside the emitter. Datasets and the release
 # metadata that selects and verifies them: the loader, the publisher's
-# listing and parent checks, a UK national build's reference build and
-# releases.json, the policyengine.py certification, the US recertification
-# and the quick-start notebook.
+# listing of the repository (its parent and annual base checks, and its
+# refusal of BE-era latest*.json pointer files, which 5b removes), a UK
+# national build's reference build and releases.json (run_uk_cut.py also
+# fetches its build inputs), the policyengine.py certification, the US
+# recertification and the quick-start notebook.
 "packages/microcosm-data/src/microcosm/data/loader.py" = ["TID251"]
 "packages/microcosm-build/src/microcosm/build/release_publication.py" = ["TID251"]
 "packages/microcosm-build/src/microcosm/build/uk_runtime/cut_reference.py" = ["TID251"]
@@ -75,10 +77,10 @@ ignore = ["E501"]
 # switch and the tagged publisher (microcosm-publish-release).
 "packages/microcosm-build/src/microcosm/build/build_folder_switch.py" = ["TID251"]
 "packages/microcosm-data/src/microcosm/data/release.py" = ["TID251"]
-# TID251. Tests and their stand-ins for the Hub.
+# TID251. Tests and their stand-ins for the Hub (the root conftest.py only).
 "packages/*/tests/**" = ["TID251"]
 "test_support/**" = ["TID251"]
-"conftest.py" = ["TID251"]
+"./conftest.py" = ["TID251"]
 # microcosm#456 (#447): the release tool bounds BLAS/torch thread-pool env
 # defaults before numpy/torch load, which requires statements above the
 # import block.

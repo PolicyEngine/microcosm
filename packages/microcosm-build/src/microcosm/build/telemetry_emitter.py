@@ -143,10 +143,11 @@ def _packaged_minimum_emitter_version() -> str:
 #: ``parent_build_manifest.json`` and ``reform_validation.json`` to the
 #: collector with its ``calibration-diagnostics`` submission. The changelog of
 #: microcosm-emitter says what each earlier release added. A refused emitter
-#: costs a build its hosted telemetry and its staging hand-overs, fails a UK
-#: build given ``--staging-read-back``, and refuses a UK build that asks for
-#: remote staging of its dataset bundle (``OUTDATED_EMITTER_WARNING``), so a
-#: later rise weighs that against how many machines would have to upgrade.
+#: costs a build its hosted telemetry, its staging hand-overs and its Orrery
+#: graph publication, fails a UK build given ``--staging-read-back``, and
+#: refuses a UK build that asks for remote staging of its dataset bundle
+#: (``OUTDATED_EMITTER_WARNING``), so a later rise weighs that against how
+#: many machines would have to upgrade.
 MINIMUM_EMITTER_VERSION = _packaged_minimum_emitter_version()
 UPGRADE_EMITTER_COMMAND = (
     f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"

@@ -1,9 +1,11 @@
 # Building a UK national cut without the original builder's machine
 
 Any team member or agent session with the credentials below can build, sign
-and publish a Microcosm UK national cut, then open its policyengine.py
-certification pull request. Each input comes from Hugging Face and is checked
-against the pins the build itself enforces.
+and publish a Microcosm UK national cut. Its policyengine.py certification
+pull request waits for the certification tool to read builds published into
+their own folders (see [Certifying into policyengine.py](#certifying-into-policyenginepy)).
+Each input comes from Hugging Face and is checked against the pins the build
+itself enforces.
 
 This is the short path. The step-by-step reference behind it stays in
 [uk-national-release-assembly-runbook-806.md](uk-national-release-assembly-runbook-806.md).
