@@ -1297,7 +1297,7 @@ paths before any other file, in this order: `base-out/`, `logs/`, then
 
 - *Clean exit* (return code 0, not stopped at the budget). Nothing else is
   copied. A finished `--stage all` has nothing to resume, so the other
-  checkpoints (about 42 GB) are hashed into the receipt and left in the
+  checkpoints (about 40 GB) are hashed into the receipt and left in the
   container. The receipt lists them under `outputs_not_mirrored`, and an
   older copy of one on the volume is removed, since it would not match the
   receipt. The push is about 4 GB instead of about 50, which also takes

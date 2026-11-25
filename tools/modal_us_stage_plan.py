@@ -880,8 +880,9 @@ RUNNER_SMOKE = ToolSpec(
 # them should be a reviewed registry change rather than a plan edit.
 #
 # State layout, all under the mirrored state directory:
-#   base-checkpoints/  the frame checkpoint after each outer stage that
-#                      changes the frame (about 44 GB in the 2026-09-16 run,
+#   base-checkpoints/  a frame checkpoint after every outer stage except
+#                      primary_qrf_chain and final_export, which record the
+#                      previous stage's (about 44 GB in the 2026-09-16 run,
 #                      when final_export still wrote one too),
 #                      stage_run_context.json and stage_profile.json
 #   base-out/          the base H5, its summary JSON and the capital-gains
@@ -916,7 +917,7 @@ RUNNER_SMOKE = ToolSpec(
 # output, the logs, the run context and profile, and the two checkpoints
 # compare-lineage checks against the local run. After a clean exit nothing
 # else is copied: a completed `--stage all` has nothing to resume, so the
-# other checkpoints (about 42 GB) are hashed into the receipt and left in the
+# other checkpoints (about 40 GB) are hashed into the receipt and left in the
 # container (rest_is_resume_state). That push is about 4 GB, not about 50.
 PUF_SUPPORT_BASE_CHECKPOINTS = "base-checkpoints"
 PUF_SUPPORT_BASE_OUT = "base-out"

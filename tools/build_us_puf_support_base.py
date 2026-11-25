@@ -2876,9 +2876,11 @@ def _repair_completed_final_stage(
     """Re-create a missing or changed export and relink the alias.
 
     ``runtime.load`` follows the ``final_export`` record to the checkpoint it
-    names and checks that file against the record: the previous step's
-    checkpoint, or, in a checkpoint directory from before ``final_export``
-    stopped writing one, its own ``NNN_final_export.frame.h5``.
+    names, the previous step's, and checks that file against the record. A
+    record in which ``final_export`` wrote its own ``NNN_final_export.frame.h5``
+    is read the same way, although this command does not resume such a
+    directory with later builder code: the recorded run config holds the
+    builder's source digest, and a resume compares it.
     """
 
     _ensure_capital_gains_tail_manifest(
