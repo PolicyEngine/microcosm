@@ -50,8 +50,10 @@ CD_FILE_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
 STATE_CD_VINTAGE_RULE = "state_cd.historic_table_2_level_cd_file_shares.v1"
 
 #: District-file measures that read the wrong IRS column (microcosm#1038).
-#: PR #1040 excludes the same columns in the compiler; until it lands this
-#: register keeps them off the ``state_cd`` surface at both geographies.
+#: The compiler's ``US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`` drops these
+#: facts by (measure id, IRS column) before this surface sees them; this
+#: register stays as a second fence on the ``state_cd`` surface, at both
+#: geographies, and records the reason in the receipt.
 STATE_CD_DEFECTIVE_CD_FILE_MEASURES: Mapping[str, str] = {
     "limited_state_local_taxes_amount": (
         "22incd.csv column A18425 is state and local income taxes (Schedule A "
