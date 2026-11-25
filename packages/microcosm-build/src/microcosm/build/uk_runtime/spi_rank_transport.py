@@ -385,6 +385,9 @@ def cross_fit_transport(
             seed=seed,
             outputs=outputs,
         )
+        # Freed here, or this fold's forests would stay in memory through the
+        # next fold's fit.
+        del reference
         for target in outputs:
             quantiles[target][score] = part.quantiles[target]
             sign_uniforms[target][score] = part.sign_uniforms[target]

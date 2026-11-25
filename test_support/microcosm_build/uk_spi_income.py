@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import replace
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -54,6 +55,90 @@ _TEST_PATHS = paths_for("microcosm-build")
 
 _REPO_ROOT = _TEST_PATHS.repository
 _PINNED_SPI_DONOR_PATH = _REPO_ROOT / "inputs" / "spi" / "put2223uk.tab"
+
+
+@dataclass(frozen=True)
+class SPIChainDoubleState:
+    """Chain state of an :class:`SPIChainDouble`, with the uniforms seen so far."""
+
+    fitted: object
+    targets: tuple[str, ...]
+    weight_kind: str
+    completed_targets: tuple[str, ...] = ()
+    quantiles: Mapping[str, np.ndarray] = field(default_factory=dict)
+    sign_uniforms: Mapping[str, np.ndarray] = field(default_factory=dict)
+
+    @property
+    def next_target(self) -> str | None:
+        if self.is_complete:
+            return None
+        return self.targets[len(self.completed_targets)]
+
+    @property
+    def is_complete(self) -> bool:
+        return len(self.completed_targets) == len(self.targets)
+
+
+class SPIChainDouble:
+    """``start_chain`` and ``fit_draw_next`` over a stand-in's whole-model calls.
+
+    SPI stage 2 fits and draws one target at a time. ``start_chain`` calls the
+    stand-in's ``fit`` once, and every step calls the fitted stand-in's
+    ``predict_from_uniforms`` and keeps its target's column. That method takes
+    uniforms for every target: targets the chain has not reached get this
+    step's, so the last step's call holds each target's own.
+    """
+
+    def start_chain(
+        self, frame, predictors, targets, *, weights, groups=None
+    ) -> SPIChainDoubleState:
+        fitted = self.fit(
+            frame, list(predictors), list(targets), weights=weights, groups=groups
+        )
+        return SPIChainDoubleState(
+            fitted=fitted, targets=tuple(targets), weight_kind=fitted.weight_kind
+        )
+
+    def fit_draw_next(
+        self,
+        frame,
+        recipients: pd.DataFrame,
+        prior_draws: pd.DataFrame,
+        *,
+        state: SPIChainDoubleState,
+        weights,
+        quantiles: np.ndarray,
+        sign_uniforms: np.ndarray,
+        groups=None,
+    ) -> SimpleNamespace:
+        target = state.next_target
+        assert list(prior_draws.columns) == list(state.completed_targets)
+        seen_quantiles = {**state.quantiles, target: quantiles}
+        seen_sign_uniforms = {**state.sign_uniforms, target: sign_uniforms}
+        drawn = state.fitted.predict_from_uniforms(
+            recipients,
+            quantiles={
+                name: seen_quantiles.get(name, quantiles) for name in state.targets
+            },
+            sign_uniforms={
+                name: seen_sign_uniforms.get(name, sign_uniforms)
+                for name in state.targets
+            },
+        )
+        return SimpleNamespace(
+            target=target,
+            raw_draw=np.asarray(drawn[target], dtype=np.float64),
+            state=replace(
+                state,
+                completed_targets=(*state.completed_targets, target),
+                quantiles=seen_quantiles,
+                sign_uniforms=seen_sign_uniforms,
+            ),
+            weight_kind=state.weight_kind,
+            fitted=SimpleNamespace(
+                gate_outcomes=lambda: {target: state.fitted.gate_outcomes()[target]}
+            ),
+        )
 
 
 class _FakeFittedQRF:
@@ -139,7 +224,7 @@ class _FakeFittedQRF:
         return pd.DataFrame(values, index=predictors.index)
 
 
-class _FakeQRF:
+class _FakeQRF(SPIChainDouble):
     fit_weight_kinds: list[str] = []
     fit_weight_values: list[np.ndarray] = []
     #: Each fit's weight kind, gate calibration and fold groups, in fit order.
