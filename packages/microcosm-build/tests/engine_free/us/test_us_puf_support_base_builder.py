@@ -1764,7 +1764,9 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     tmp_path: Path,
 ) -> None:
     builder = _load_support_builder_module()
-    checkpoint = tmp_path / "021_final_export.frame.h5"
+    # final_export's record names the previous step's checkpoint, which
+    # runtime.load returns.
+    checkpoint = tmp_path / "022_block_ladder_assignment.frame.h5"
     checkpoint.write_bytes(b"valid-checkpoint")
     output = tmp_path / "output.h5"
     summary = tmp_path / "summary.json"

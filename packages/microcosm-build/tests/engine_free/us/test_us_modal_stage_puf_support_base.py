@@ -2203,8 +2203,9 @@ def test_upload_commands_refuse_a_file_the_plan_does_not_pin(
 # --------------------------------------------------------------------------- #
 
 # The base's state as the tool leaves it (4b57d15a2): a frame checkpoint per
-# outer stage, the primary-QRF target checkpoints, the final checkpoint's
-# alias, the run context and profile, the output and the runner's log.
+# outer stage, the primary-QRF target checkpoints, stage_all.frame.h5 (a hard
+# link to the last frame checkpoint written, which the push copies as its own
+# file), the run context and profile, the output and the runner's log.
 _BASE_STATE = (
     "base-checkpoints/000_source_construction.frame.h5",
     "base-checkpoints/001_pre_clone_enrichment.frame.h5",

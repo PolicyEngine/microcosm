@@ -1268,9 +1268,11 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   `status`. After a
   stop or a failure the push copies the whole state, about 50 GiB
   (`BASE_MIRRORED_STATE_GIB`): the local run's 44 GB of checkpoints and
-  2.35 GB H5, plus the final checkpoint's hard-linked alias
-  (`stage_all.frame.h5`), which the mirror copies as a second file. After a
-  clean exit it copies about 4 GB (see "What the push copies").
+  2.35 GB H5, plus `stage_all.frame.h5`, a hard link to the last frame
+  checkpoint the base writes, which the mirror copies as a second file. The
+  44 GB includes about 2 GB that `final_export` no longer writes: it records
+  the previous stage's checkpoint instead of writing the same frame again.
+  After a clean exit it copies about 4 GB (see "What the push copies").
 - *The write probe.* No container-to-volume write rate has been measured,
   so the check measures one. It copies 1 GiB to the runs volume, commits
   it, deletes it, and reports `runs_volume_write_probe`. The check fails

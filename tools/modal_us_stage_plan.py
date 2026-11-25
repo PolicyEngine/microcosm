@@ -497,9 +497,12 @@ RUNNER_OVERHEAD_SECONDS = 15 * 60
 BASE_RUNNER_OVERHEAD_SECONDS = 30 * 60
 # The state the base leaves to hash and mirror, for the check's write probe:
 # about 44 GB of frame checkpoints and the 2.35 GB H5 locally (route_a.sh
-# section 4), plus the final checkpoint's hard-linked alias
-# (_link_all_stage_checkpoint), which the mirror copies as a second file. An
-# allowance from the local figures, not a measurement.
+# section 4), plus stage_all.frame.h5, a hard link to the last frame
+# checkpoint the base writes (_link_all_stage_checkpoint), which the mirror
+# copies as a second file. The 44 GB includes about 2 GB that final_export
+# no longer writes: it records the previous stage's checkpoint instead of
+# writing the same frame again. An allowance from the local figures, not a
+# measurement.
 BASE_MIRRORED_STATE_GIB = 50
 # Staging has no frame checkpoints: its 10.7 GB H5 (~10 GiB), summary and
 # logs fit in a 12 GiB mirror allowance. Thirty minutes reserves 60 s for
@@ -877,9 +880,10 @@ RUNNER_SMOKE = ToolSpec(
 # them should be a reviewed registry change rather than a plan edit.
 #
 # State layout, all under the mirrored state directory:
-#   base-checkpoints/  the frame checkpoint after every outer stage (about
-#                      44 GB in the 2026-09-16 run), stage_run_context.json
-#                      and stage_profile.json
+#   base-checkpoints/  the frame checkpoint after each outer stage that
+#                      changes the frame (about 44 GB in the 2026-09-16 run,
+#                      when final_export still wrote one too),
+#                      stage_run_context.json and stage_profile.json
 #   base-out/          the base H5, its summary JSON and the capital-gains
 #                      tail manifest; the release reads this directory
 #
