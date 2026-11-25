@@ -499,6 +499,15 @@ def with_acs_local_coverage_anchors(
     subsidy = _nullable_source_codes(
         person[_SUBSIDY_ITEM].rename("HIMRKS"), minimum=0, maximum=2
     )
+    allocated: np.ndarray | None = None
+    if _SUBSIDY_ALLOCATION in person:
+        allocated = (
+            _nullable_source_codes(
+                person[_SUBSIDY_ALLOCATION].rename("FHIMRKSP"), minimum=0, maximum=1
+            )
+            .eq(1)
+            .to_numpy(dtype=bool)
+        )
     drawn_esi = _flags(person[_ESI], _ESI)
     drawn_marketplace = _flags(person[_MARKETPLACE], _MARKETPLACE)
     drawn_other = _flags(person[_OTHER_DIRECT], _OTHER_DIRECT)
@@ -621,25 +630,25 @@ def with_acs_local_coverage_anchors(
             "replaced_existing_column": anchor_column in person,
             "true_rows": int(anchor.sum()),
             "weighted_share": _weighted_share(weights, anchor),
+            # Census-allocated code 1 values are anchors too (not ruled).
+            "allocation_flag_loaded": allocated is not None,
             "allocated_true_rows": (
-                int(
-                    (
-                        anchor
-                        & _nullable_source_codes(
-                            person[_SUBSIDY_ALLOCATION].rename("FHIMRKSP"),
-                            minimum=0,
-                            maximum=1,
-                        )
-                        .eq(1)
-                        .to_numpy(dtype=bool)
-                    ).sum()
-                )
-                if _SUBSIDY_ALLOCATION in person
+                int((anchor & allocated).sum()) if allocated is not None else None
+            ),
+            "allocated_weighted_share_of_true": (
+                _weighted_share(weights[anchor], allocated[anchor])
+                if allocated is not None
                 else None
             ),
-            "not_anchored_code_1_rows": {
-                "hins2_no": int((no_direct & subsidized).sum()),
-                "hins2_blank": int((direct.isna().to_numpy() & subsidized).sum()),
+            # HIMRKS 1 where HINS2 is 2 (or blank): no anchor; counted.
+            "conflicts": {
+                "himrks_1_hins2_no_rows": int((no_direct & subsidized).sum()),
+                "himrks_1_hins2_no_weighted_share": _weighted_share(
+                    weights, no_direct & subsidized
+                ),
+                "himrks_1_hins2_blank_rows": int(
+                    (direct.isna().to_numpy() & subsidized).sum()
+                ),
             },
         },
         "not_used": dict(_NOT_USED),
