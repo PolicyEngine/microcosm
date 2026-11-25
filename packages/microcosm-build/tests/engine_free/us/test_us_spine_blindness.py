@@ -290,6 +290,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # the donor's attribution on the ACS-only frame after the shared
         # transfer and before pooling; tag-free. Outside the registry.
         "acs_local_se_health_premiums.py",
+        # Local-lane weeks unemployed and retirement deferrals of ACS rows
+        # (#1720): a one-pass transfer plan on the donor's ASEC role after the
+        # shared transfer, on the ACS-only frame before pooling; tag-free (it
+        # selects the donor role through resolve_acs_donor_channel). Outside
+        # the registry.
+        "acs_local_weeks_deferrals.py",
         # Legacy local-lane Head Start take-up fill, ACS VEH availability
         # receipt and grade helpers (#1022); tag-free, the take-up stage
         # passes the spine masks. Outside the registry.

@@ -594,6 +594,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     assert {"is_self_employed", "health_insurance_premiums"} <= set(
         staged["columns"]
     )
+    assert set(module.ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS) <= set(staged["columns"])
     for fragment in (
         "microcosm#1720",
         "A_MARITL",
@@ -602,6 +603,9 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "attribute_us_se_health_premiums",
         "not ACS COW 6 or 7",
         "microcosm#1689",
+        "LKWEEKS",
+        "RETCB_VAL",
+        "weeks 0 without UC",
     ):
         assert fragment in staged["reason"], fragment
     assert "NEVER_DEFAULT_FILLED" in staged["treatment"]
@@ -6651,7 +6655,7 @@ _REVIEWED_FILLS_RETIRED_SINCE_767312D60 = {
 
 
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
-    """Release 767312d60 default-filled 79 columns; the stack now fills 30 of
+    """Release 767312d60 default-filled 79 columns; the stack now fills 34 of
     them (NEVER_DEFAULT_FILLED), and every other one has a register entry,
     except one the reviewed engine no longer defines, as does each reviewed
     fill added since."""
@@ -6672,13 +6676,14 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     assert len(released) == 79
     now_filled = released & set(module.NEVER_DEFAULT_FILLED)
     registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
-    # 30 are filled natively, 1 is retired and 48 are registered. The ACS
+    # 34 are filled natively, 1 is retired and 44 are registered. The ACS
     # vehicle count returned to a reviewed fill after the microcosm#1064 review
     # (VEH counts vehicles available, not owned): it left NEVER_DEFAULT_FILLED
     # and gained an entry together, so this still holds. microcosm#1720:
     # staging maps the ACS rows' marital, military and occupation status and
-    # attributes their self-employed health premiums.
-    assert len(now_filled) == 30
+    # attributes their self-employed health premiums, and draws their weeks
+    # unemployed and three retirement deferrals.
+    assert len(now_filled) == 34
     assert _REVIEWED_FILLS_RETIRED_SINCE_767312D60 <= released - now_filled
     assert (
         registered
@@ -6744,7 +6749,7 @@ def test_do_finalize_grades_the_registered_fills_of_both_engine_passes(
     module = _load_tool_module()
     args = _finalize_args(module, tmp_path)
     fills = [
-        _reviewed_fill("person", "weeks_unemployed"),
+        _reviewed_fill("person", "pre_subsidy_rent"),
         _reviewed_fill("household", "household_vehicles_value"),
     ]
     for name in module.REVIEWED_FILL_MANIFESTS:
@@ -6771,14 +6776,16 @@ def test_do_finalize_grades_the_registered_fills_of_both_engine_passes(
     assert detail["known_bias"]["household.household_vehicles_value"]["snap"] == (
         "mixed"
     )
-    # policyengine-us 2.145.3 reads the weeks: they set the months of UC receipt,
-    # which SNAP's ABAWD time limit and, from 2027, Medicaid's SNAP pass-through
-    # read (microcosm#1675).
-    assert detail["known_bias"]["person.weeks_unemployed"] == {
-        "aca_ptc": "mixed",
-        "medicaid": "understates",
-        "snap": "overstates",
-    }
+    # Group-quarters residents who pay for shelter lose SNAP's shelter
+    # deduction at 0 rent (microcosm#1071 review); weeks unemployed, the
+    # earlier example here, left the register when staging began to draw them
+    # (microcosm#1720).
+    known = detail["known_bias"]["person.pre_subsidy_rent"]
+    assert (known["snap"], known["medicaid"], known["aca_ptc"]) == (
+        "understates",
+        "understates",
+        "mixed",
+    )
     entries = load_reviewed_fill_consumer_register()["entries"]
     assert len(detail["unused_entries"]) == len(entries) - 2
     summary = json.loads(args.out_summary.read_text())

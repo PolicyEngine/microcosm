@@ -82,6 +82,7 @@ __all__ = [
     "fill_asec_2022_weeks_unemployed_source",
     "impute_us_weeks_unemployed_to_puf_support_from_manifest",
     "load_asec_2023_weeks_unemployed_source",
+    "postprocess_us_weeks_unemployed_predictions",
     "us_weeks_unemployed_signal_gate",
     "us_weeks_unemployed_stage_spec",
     "us_weeks_unemployed_summary",
@@ -966,11 +967,15 @@ def impute_us_weeks_unemployed_to_puf_support_from_manifest(
         raise SourceRuntimeError(
             "US weeks-unemployed QRF produced nonfinite predictions."
         )
-    lower, upper = operation.parameters["clip"]
-    predicted = np.rint(np.clip(predicted, float(lower), float(upper)))
-    if _OPTIONAL_UC_PREDICTOR in predictors:
-        uc = test[_OPTIONAL_UC_PREDICTOR].to_numpy(dtype=np.float64)
-        predicted = np.where(uc > 0.0, predicted, 0.0)
+    predicted = postprocess_us_weeks_unemployed_predictions(
+        predicted,
+        unemployment_compensation=(
+            test[_OPTIONAL_UC_PREDICTOR].to_numpy(dtype=np.float64)
+            if _OPTIONAL_UC_PREDICTOR in predictors
+            else None
+        ),
+        clip=tuple(operation.parameters["clip"]),
+    )
     if not (
         np.isfinite(predicted).all()
         and (predicted == np.floor(predicted)).all()
@@ -984,6 +989,34 @@ def impute_us_weeks_unemployed_to_puf_support_from_manifest(
     result = frame.copy(deep=True)
     result[_OUTPUT] = pd.to_numeric(result[_OUTPUT], errors="coerce").astype("float64")
     result.loc[puf_mask, _OUTPUT] = predicted
+    return result
+
+
+def postprocess_us_weeks_unemployed_predictions(
+    predicted: np.ndarray,
+    *,
+    unemployment_compensation: np.ndarray | None,
+    clip: tuple[float, float] | None = None,
+) -> np.ndarray:
+    """The archived post-processing of QRF weeks: clip, round, zero rule.
+
+    Predictions are clipped to ``clip`` (by default the reviewed contract's
+    0--52) and rounded to the nearest integer;
+    with ``unemployment_compensation`` given, weeks are 0 wherever it is not
+    positive (the archived zero rule). One rule for every spine: the PUF
+    support half calls it, and the ACS local lane on its ACS rows
+    (microcosm#1720).
+    """
+
+    lower, upper = (
+        clip if clip is not None else WEEKS_UNEMPLOYED_PUF_IMPUTATION_PARAMETERS["clip"]
+    )
+    result = np.rint(
+        np.clip(np.asarray(predicted, dtype=np.float64), float(lower), float(upper))
+    )
+    if unemployment_compensation is not None:
+        uc = np.asarray(unemployment_compensation, dtype=np.float64)
+        result = np.where(uc > 0.0, result, 0.0)
     return result
 
 

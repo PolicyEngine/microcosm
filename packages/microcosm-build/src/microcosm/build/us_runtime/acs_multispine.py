@@ -55,6 +55,9 @@ from microcosm.build.us_runtime.acs_local_se_health_premiums import (
 from microcosm.build.us_runtime.acs_local_status_inputs import (
     map_acs_local_status_inputs,
 )
+from microcosm.build.us_runtime.acs_local_weeks_deferrals import (
+    with_acs_local_weeks_deferrals,
+)
 from microcosm.build.us_runtime.acs_local_wic_take_up import (
     require_complete_us_wic_take_up,
     with_acs_local_wic_take_up,
@@ -138,6 +141,7 @@ def build_optional_acs_multispine(
     status_inputs: bool = False,
     income_transfer: bool = False,
     se_health_premiums: bool = False,
+    weeks_deferrals: bool = False,
     native_receipt_anchors: bool = False,
     wic_take_up: bool = False,
     semp_covers_partnership_income: bool = False,
@@ -183,6 +187,13 @@ def build_optional_acs_multispine(
     ACS-aligned ``RETP`` analog for disability and account distributions);
     the shared transfer and its execution contract are unchanged. Its receipt
     is ``provenance["acs_local_income_transfer"]``.
+    ``weeks_deferrals`` (the ACS local lane, microcosm#1720) runs a separate
+    ASEC-channel QRF pass for ``weeks_unemployed`` and three retirement
+    deferrals right after the shared transfer, whose
+    ``unemployment_compensation`` the weeks family reads through a predictor
+    extension of that call alone; every earlier fit has drawn by then, so
+    their draws are unchanged. Its receipt is
+    ``provenance["acs_local_weeks_deferrals"]``.
     ``se_health_premiums`` (the ACS local lane, microcosm#1720) runs the
     donor's self-employed premium attribution
     (:func:`~.other_health_insurance.attribute_us_se_health_premiums`) on the
@@ -472,17 +483,41 @@ def build_optional_acs_multispine(
     )
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
+    weeks_deferrals_frame = None
+    weeks_deferrals_fit_records = ()
+    weeks_deferrals_imputed_inputs = ()
+    weeks_deferrals_receipt = None
+    if weeks_deferrals:
+        # Local lane only (microcosm#1720): after the shared transfer, so the
+        # weeks family reads its unemployment_compensation, and after every
+        # other fit, whose draws therefore cannot move. ASEC observations,
+        # a plan disjoint from every other transfer, null cells only.
+        late = with_acs_local_weeks_deferrals(
+            transferred.frame,
+            base,
+            seed=seed,
+            n_estimators=n_estimators,
+            max_targets_per_fit=max_targets_per_fit,
+            donor_spine=donor_spine,
+        )
+        weeks_deferrals_frame = late.frame
+        weeks_deferrals_fit_records = late.fit_records
+        weeks_deferrals_imputed_inputs = late.imputed_inputs
+        weeks_deferrals_receipt = late.receipt
+        del late
     fit_records = (
         hours_fit_records
         + income_fit_records
         + esi_fit_records
         + tuple(transferred.fit_records)
+        + weeks_deferrals_fit_records
     )
     imputed_provenance = _json_ready_sequence(
         hours_imputed_inputs
         + income_imputed_inputs
         + esi_imputed_inputs
         + tuple(transferred.imputed_inputs)
+        + weeks_deferrals_imputed_inputs
     )
     deferred_inputs = tuple(transferred.deferred_inputs)
     if block_location:
@@ -502,8 +537,10 @@ def build_optional_acs_multispine(
     deferred_provenance = _json_ready_sequence(deferred_inputs)
     resolved_donor_channel = transferred.resolved_donor_channel
     fit_provenance = _json_ready_sequence(fit_records)
-    transferred_frame = transferred.frame
-    del transferred
+    transferred_frame = (
+        transferred.frame if weeks_deferrals_frame is None else weeks_deferrals_frame
+    )
+    del transferred, weeks_deferrals_frame
     se_health_receipt = None
     if se_health_premiums:
         # Local lane only (microcosm#1720): the donor's rule, unchanged, after
@@ -596,6 +633,13 @@ def build_optional_acs_multispine(
     if se_health_receipt is not None:
         provenance["acs_local_se_health_premiums"] = _json_ready_mapping(
             se_health_receipt
+        )
+    if weeks_deferrals_receipt is not None:
+        provenance["fit_configuration"]["weeks_deferrals_donor_channel"] = (
+            weeks_deferrals_receipt["resolved_donor_channel"]
+        )
+        provenance["acs_local_weeks_deferrals"] = _json_ready_mapping(
+            weeks_deferrals_receipt
         )
     if hours_donor is not None or hours_donor_factory is not None:
         provenance["fit_configuration"]["hours_donor_channel"] = hours_donor_channel

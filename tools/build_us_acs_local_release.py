@@ -212,6 +212,10 @@ from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
     US_VEHICLES_OWNED_COLUMN,
     US_VEHICLES_VALUE_COLUMN,
 )
+from microcosm.build.us_runtime.acs_local_weeks_deferrals import (
+    ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+    ACS_LOCAL_WEEKS_DEFERRALS_ISSUE,
+)
 from microcosm.build.us_runtime.acs_local_wic_take_up import (
     ACS_LOCAL_WIC_TAKE_UP_ISSUE,
     US_WIC_TAKE_UP_COLUMN,
@@ -996,6 +1000,25 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             "re-run staging with the current builder"
         )
         for column in ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS
+    },
+    # microcosm#1720: staging draws weeks unemployed and three retirement
+    # deferrals on the ACS rows from the donor's ASEC observations.
+    **{
+        ("person", column): (
+            f"the engine default 0 drops {reason} for every ACS person "
+            f"({ACS_LOCAL_WEEKS_DEFERRALS_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column, reason in zip(
+            ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+            (
+                "the months of UC receipt (SNAP's work-registration exemption)",
+                "traditional 401(k) deferrals, so AGI includes deferred wages",
+                "Roth 401(k) deferrals and their saver's credit",
+                "Roth IRA contributions and their saver's credit",
+            ),
+            strict=True,
+        )
     },
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
@@ -4926,6 +4949,7 @@ def finalize_reviewed_limitations(
             "columns": [
                 *ACS_LOCAL_STATUS_INPUTS_COLUMNS,
                 *ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
+                *ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
             ],
             "reason": (
                 "Staging writes these inputs on ACS rows from ACS items or the "
@@ -4950,7 +4974,16 @@ def finalize_reviewed_limitations(
                 "Security disability and no employer coverage. The ACS rows' "
                 "MAGI is then final before materialize assigns Medicaid take-up; "
                 "the national build applies the attribution in another order "
-                "(microcosm#1689)."
+                "(microcosm#1689). weeks_unemployed and the traditional and "
+                "Roth 401(k) and Roth IRA deferrals come from a separate local "
+                "QRF pass on the donor's ASEC observation role (measured "
+                "LKWEEKS, and RETCB_VAL split by the archived shares), run after "
+                "the shared transfer so the weeks read its "
+                "unemployment_compensation, with the donor's own "
+                "post-processing: weeks 0 without UC, 401(k) deferrals 0 "
+                "without wages. The shared plan keeps the traditional IRA and "
+                "self-employed pension leaves. The deferrals lower the ACS rows' "
+                "AGI."
             ),
             "treatment": (
                 "Written at staging only in missing ACS cells; donor rows keep "
