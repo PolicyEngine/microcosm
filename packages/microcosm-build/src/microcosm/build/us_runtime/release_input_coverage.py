@@ -145,6 +145,7 @@ __all__ = [
     "ReleaseInputCoverageManifest",
     "assert_release_input_coverage_manifest_current",
     "check_resolved_list_edit_target",
+    "clear_installed_list_parameter_baseline_cache",
     "installed_list_parameter_baseline",
     "list_parameter_baseline",
     "list_parameter_pieces",
@@ -654,7 +655,8 @@ def check_resolved_list_edit_target(
 def _installed_parameter_stages() -> tuple[Mapping[str, str], Any]:
     """The installed engine's first breakpoints at its first reform pass.
 
-    Builds one PolicyEngine-US system per process with a reform that records
+    Builds one PolicyEngine-US system per process (again after
+    :func:`clear_installed_list_parameter_baseline_cache`) with a reform that records
     each leaf parameter's first breakpoint the first time the system applies
     it (before backdating), and returns those with the finished system's
     parameter tree, which the baseline lists are read from.
@@ -678,11 +680,23 @@ def _installed_parameter_stages() -> tuple[Mapping[str, str], Any]:
     return first_breakpoints, system.parameters
 
 
+def clear_installed_list_parameter_baseline_cache() -> None:
+    """Drop the system :func:`installed_list_parameter_baseline` caches.
+
+    The cache keeps a reformed PolicyEngine-US system's parameter tree until
+    the process exits or this is called. A long run that needs it only at
+    start-up calls this afterwards; the next call to
+    :func:`installed_list_parameter_baseline` builds the system again.
+    """
+    _installed_parameter_stages.cache_clear()
+
+
 def installed_list_parameter_baseline(path: str, edit: ListParameterEdit) -> list[str]:
     """The installed PolicyEngine-US baseline list an edit resolves against.
 
     Builds one tax-benefit system per process (see
-    ``_installed_parameter_stages``). Besides :func:`list_parameter_baseline`
+    ``_installed_parameter_stages``), or again after
+    :func:`clear_installed_list_parameter_baseline_cache`. Besides :func:`list_parameter_baseline`
     on its finished parameter tree, the edit must start after the list's
     first breakpoint at the system's first reform pass, so the system the
     scorer builds applies the edit to the same baseline it resolved on.
