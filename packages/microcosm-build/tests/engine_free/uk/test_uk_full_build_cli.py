@@ -4590,3 +4590,27 @@ def test_an_interrupt_during_a_refusal_checks_by_receipt_only(tmp_path, monkeypa
     assert "read_back_run_files" not in client.calls
     (report,) = _final_commit_events(emitter)
     assert report["details"]["method"] == "receipt"
+
+
+def test_a_failure_whose_final_write_fails_is_not_reported_confirmed(
+    tmp_path, monkeypatch
+):
+    """Nothing new reached the emitter, so the run's earlier hand-over must
+    not pass for its final state."""
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-write-failed")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    def disk_full():
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(bundle, "_persist_bundle", disk_full)
+
+    rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
+
+    assert "read_back_run_files" not in client.calls
+    assert [
+        report["details"]["confirmed"] for report in _final_commit_events(emitter)
+    ] == [False]
+    assert _run_statuses(emitter) == ["failed"]

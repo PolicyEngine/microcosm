@@ -657,3 +657,42 @@ def test_a_result_file_too_large_for_the_emitter_stays_out_of_the_hand_over(
         "passed"
     )
     assert "too large" in capsys.readouterr().err
+
+
+class _MeasuringEmitter(FakeEmitterClient):
+    """Records each hand-over's bytes as the emitter totals them: every file
+    and the latest-run pointer."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.request_bytes: list[int] = []
+
+    def stage_run_files(self, request):
+        total = sum(item.local_path.stat().st_size for item in request.files)
+        if request.latest_pointer is not None:
+            total += request.latest_pointer.stat().st_size
+        self.request_bytes.append(total)
+        return super().stage_run_files(request)
+
+
+def test_a_hand_over_counts_the_latest_pointer_in_the_request_limit(
+    tmp_path, monkeypatch
+):
+    """The emitter refuses a whole request whose files and pointer together
+    pass its limit, so the writer's budget must count the pointer too."""
+    result = tmp_path / "result.json"
+    result.write_text(json.dumps({"rows": "x" * 1_000}))
+    measured = _MeasuringEmitter()
+    telemetry = _remote_writer(tmp_path / "measured", measured, run_id="run-p")
+    telemetry.attach_artifact("result", result)
+    # The result file's hand-over, pointer included, as the emitter totals it.
+    with_result = measured.request_bytes[-1]
+
+    monkeypatch.setattr(
+        staging_module, "_MAX_RUN_REQUEST_BYTES", with_result - 1, raising=False
+    )
+    limited = _MeasuringEmitter()
+    telemetry = _remote_writer(tmp_path / "limited", limited, run_id="run-p")
+    telemetry.attach_artifact("result", result)
+
+    assert all(total <= with_result - 1 for total in limited.request_bytes)

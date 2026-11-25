@@ -5956,3 +5956,53 @@ def test_a_failed_spine_run_confirms_its_final_commit_before_its_outcome(tmp_pat
     assert [
         event["status"] for event in emitter.events if event["event_type"] == "run"
     ] == ["failed"]
+
+
+def test_an_interrupt_during_a_spine_refusal_checks_by_receipt_only(tmp_path):
+    """A SIGTERM that lands while a refusal unwinds closes the run blocked,
+    and its check must fit the grace before SIGKILL."""
+    from microcosm.build.gate_battery import GateBatteryBlockedError
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from microcosm.build.termination import BuildTerminatedError
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    client = FakeEmitterClient()
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(
+            run_id="uk-spine-refused",
+            country_code="GB",
+            pipeline="uk_national_spine",
+            candidate_id="uk-spine-refused",
+            producer_id="producer-a",
+        ),
+        client=client,
+    )
+    bundle = StagingRunBundleWriterV2(
+        run_id="uk-spine-refused",
+        country_code="GB",
+        operation_id="uk_frs_spine",
+        pipeline_id="uk_national_spine",
+        pipeline_version="2026.10",
+        candidate_id="uk-spine-refused",
+        local_dir=tmp_path / "staging",
+        run_kind="smoke",
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        emitter_client=client,
+    )
+    terminated = BuildTerminatedError()
+    terminated.__context__ = GateBatteryBlockedError(
+        "spine",
+        ["[uk_spine_check] missed"],
+        tmp_path / "missing-report.json",
+        blocking_gate_ids=["uk_spine_check"],
+    )
+
+    spine_build._close_failed_telemetry(bundle, emitter, terminated)
+
+    assert "read_back_run_files" not in client.calls
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["blocked"]
