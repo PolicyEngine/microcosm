@@ -86,7 +86,11 @@ def test_a_base_process_with_its_parents_record_does_not_import_policyengine_us(
 def test_the_full_us_bundle_loader_accepts_the_parents_record(
     tmp_path: Path,
 ) -> None:
-    """The full loader compares the same take-up and sources domains."""
+    """The full loader compares the same take-up and sources domains.
+
+    Had its digest of those domains differed, the child would refuse; had it
+    ignored the record, it would import policyengine-us to derive the lock.
+    """
 
     environment = {
         **os.environ,
@@ -96,6 +100,8 @@ def test_the_full_us_bundle_loader_accepts_the_parents_record(
     completed = subprocess.run(
         [
             sys.executable,
+            "-X",
+            "importtime",
             "-c",
             "from microcosm.build.spec_engine import load_bundle\nload_bundle('us')\n",
         ],
@@ -108,3 +114,6 @@ def test_the_full_us_bundle_loader_accepts_the_parents_record(
     )
 
     assert completed.returncode == 0, completed.stderr[-4000:]
+    imported = _imported_modules(completed.stderr)
+    assert "microcosm.build.spec_engine.engine_abi" in imported
+    assert "policyengine_us" not in imported
