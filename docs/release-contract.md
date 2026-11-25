@@ -672,8 +672,9 @@ unchanged.
   installs the `microcosm-emitter` command on its own (for example with
   `uv tool install microcosm-emitter`). The adapter,
   `microcosm.build.telemetry_emitter`, starts it as the build's child process
-  with three modules: telemetry, Orrery graph publication, and the Hugging Face
-  hand-over, which commits staging run files and staged dataset bundles. The
+  with two modules: telemetry, and the Hugging Face hand-over, which commits
+  staging run files and staged dataset bundles (until microcosm#1745 it also
+  started an Orrery graph publication module). The
   adapter supplies build identity and never starts an emitter older than
   `MINIMUM_EMITTER_VERSION`. `_packaged_minimum_emitter_version` reads that
   floor from the package's `minimum_emitter_version.json` (0.14.0 on

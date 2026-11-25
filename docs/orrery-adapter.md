@@ -1,119 +1,136 @@
-# Orrery adapter
+# Orrery inputs
 
-`microcosm.graph.orrery` converts a Microcosm graph declaration and its
-compiler-derived metadata, with optional recorded execution evidence, into
+Microcosm writes the files from which the collector
+(PolicyEngine/microcosm-collector) builds a graph's Orrery graph files: the
+compiler schema (`graph.schema.json`), the execution overlay
+(`graph.execution.json`) and the upstream files they link
+(`upstream-<sha256>.json`). Microcosm owns the calculation and field
+semantics those files record. It converts nothing into
 `graph-explorer/v1`, the JSON format accepted by
-[Orrery](https://github.com/TheAxiomFoundation/orrery). Microcosm owns the
-calculation and field semantics. Orrery owns graph navigation, presentation,
-and self-contained HTML export.
+[Orrery](https://github.com/TheAxiomFoundation/orrery): the collector does
+that with its own copy of the projection, in
+`telemetry_collector/orrery/projection/`, which is the reference for the
+Orrery document's structure, relationships, evidence panels and limits.
+Orrery owns graph navigation and presentation, and staff view a build's graph
+through the run viewer (microcosm-runs), which reads it from the collector.
+[UK graph inputs](orrery-publication.md) describes how a UK build registers
+and hands over these files.
 
-This conversion is separate from graph execution:
+The files are made separately from graph execution:
 
 1. `compile_graph(graph)` validates a `Graph` and derives operation order,
    population versions, field owners, and operation predecessors. The executor
    uses this `CompiledGraph`.
 2. `graph_schema(compiled)` derives a portable static metadata artifact from
-   that same `CompiledGraph`.
-3. `orrery_json(compiled, execution=...)` converts the metadata and any supplied
-   evidence into Orrery input. Omitting `execution` keeps declaration-only export.
-4. The separately installed Orrery command can turn that JSON into a
-   self-contained HTML file.
+   that same `CompiledGraph`, and `save_graph_schema` writes it as
+   `graph.schema.json` with copies of the upstream files it links.
+3. `save_run_evidence` records each executed phase's native evidence.
+   `collect_execution_evidence` checks that evidence against the schema and
+   the content store and returns the execution overlay, which
+   `execution_overlay_bytes` writes as `graph.execution.json`.
+4. The collector projects the schema and the overlay into the Orrery graph
+   files.
 
 The schema is therefore a generated artifact, not an instruction that
-Microcosm executes. The direct API performs steps 2 and 3 in memory. A saved
-schema lets another process repeat step 3 without importing the original graph
-construction code.
-
-That process needs none of the build runtime either. `microcosm.graph.orrery`
-and the modules it imports use only the standard library, and `microcosm.graph`
-loads its runtime exports (the executor, content store, kernels, codecs and
-evidence capture, which need numpy, pandas and microcosm-frame) on first
-access. A test runs the projection, with an execution overlay, and the command
-in an interpreter that refuses to import numpy, pandas, microcosm-frame or the
-store. The package's declared dependencies are unchanged.
+Microcosm executes. A saved schema and overlay let another process read the
+graph and its recorded execution without importing the original graph
+construction code. That process needs none of the build runtime either:
+validating a saved schema and its presentation contract
+(`validate_graph_schema`, `validate_presentation`) and reading an overlay
+file (`load_execution_overlay`) need only the standard library, and
+`microcosm.graph` loads its runtime exports (the executor, content store,
+kernels, codecs and evidence capture, which need numpy, pandas and
+microcosm-frame) on first access. A test
+(`packages/microcosm-graph/tests/engine_free/shared/test_graph_execution_overlay_file.py`)
+runs those three calls in an interpreter that refuses to import numpy,
+pandas, microcosm-frame or the store. The package's declared dependencies are
+unchanged.
 
 A kernel is the implementation of one graph operation, with a declared input,
 output, numerical and execution contract.
 
-## Export from Python
+## Compiler schema
 
-Use the public API when the `Graph` or `CompiledGraph` is already available:
+Use the public API when the `Graph` or `CompiledGraph` is available:
 
 ```python
-from pathlib import Path
-
-from microcosm.graph import compile_graph, orrery_json
+from microcosm.graph import compile_graph, graph_schema
+from microcosm.graph.canonical import canonical_json
 
 compiled = compile_graph(graph)
-Path("orrery.json").write_text(
-    orrery_json(compiled, title="Microcosm UK"),
-    encoding="utf-8",
-)
+payload = canonical_json(graph_schema(compiled))
 ```
 
-Passing the original `Graph` to `orrery_json` produces the same bytes because
-the function compiles it first. `orrery_document` returns the same result as
-detached Python dictionaries and lists.
-
-To persist the intermediate compiler schema, serialize `graph_schema(compiled)`
-with `microcosm.graph.canonical.canonical_json`. The schema has exactly these
-root fields:
+`save_graph_schema(graph, directory, presentation=...)` writes the same
+schema as `graph.schema.json`, with a presentation contract and copies of
+its linked upstream files (see below). The schema has exactly these root
+fields:
 
 ```text
 protocol, country, graph_sha256, graph, compiled,
 fields, input_bindings, extensions
 ```
 
-Only `extensions` is producer-defined. Before presentation,
-`validate_graph_schema` restores and recompiles the embedded graph and requires
-every other field to equal the newly derived result. A caller cannot change an
-owner, predecessor, population version, field provider, or input binding while
-retaining a valid schema.
+Only `extensions` is producer-defined.
+`microcosm.graph.schema.validate_graph_schema` restores and recompiles the
+embedded graph and requires every other field to equal the newly derived
+result. A caller cannot change an owner, predecessor, population version,
+field provider, or input binding while retaining a valid schema. The inputs
+command below and the collector's projection both validate a saved schema
+this way. Every serialized string in the schema, operation contracts
+included, may be up to 131,072 characters, because operation parameters can
+hold serialized validation-check contracts larger than 64 KiB; the schema's
+other bounds are under [Evidence and limits](#evidence-and-limits).
 
-## Export from the command line
+## Fields and input bindings
 
-The command requires an explicit input type and creates a new output file:
+Every field record identifies one visible value by:
 
-```sh
-uv run python -m microcosm.graph.orrery \
-  --graph graph.json \
-  --output orrery.json \
-  --title "Microcosm UK"
-```
+- `population`, `entity`, and `column`: its coordinate;
+- `provider`: the operation whose artifact supplies that value;
+- `declared_in`: the operation containing the nearest applicable `Owned`
+  declaration;
+- `dtype`, `rows`, `ownership`, and `rewrite`: the declaration details.
 
-For a previously saved compiler schema, use `--schema` instead of `--graph`:
+A structural operation carries all fields from its base population. For such a
+carried field, `provider` is the structural operation because its output
+artifact is what downstream operations read; `declared_in` still points to the
+earlier `Owned` declaration. An operation that writes or rewrites a field is
+the provider after that operation completes.
 
-```sh
-uv run python -m microcosm.graph.orrery \
-  --schema compiled-schema.json \
-  --output orrery.json
-```
+`input_bindings` are also derived entirely from `Graph` and `CompiledGraph`.
+They contain no Frame values and do not observe kernel behavior. Each record
+connects one declared input role to the exact pre-operation field provider:
 
-The command does not infer the input type. It rejects duplicate JSON keys,
-non-finite numbers, streams and devices, oversized input, an invalid graph or
-schema, and an existing output path. It does not install Orrery, download
-assets, or execute a population operation.
+| `kind` | Declared role | `rows` |
+| --- | --- | --- |
+| `slice` | A column named by a `Slice` | The slice's row selector |
+| `slice_mask` | The boolean column used to select a slice's rows | `all` |
+| `output_mask` | The boolean column limiting an `Owned` output | `all` |
+| `rewrite_incumbent` | The prior value replaced by `Owned(rewrite=True)` | The output's row selector |
+| `materialized_expand_output` | A new column physically installed by an `EXPAND` operation and read by its following ownership-claim operation | The output's row selector |
 
-Install the viewer independently, then create the HTML file:
+For a rewrite, both the explicit slice and the implicit incumbent role resolve
+to the value present before that operation. The final rewritten field is a
+different identity. Repeated declared roles remain repeated schema records,
+even when they refer to the same coordinate.
 
-```sh
-npm install --save-dev @axiom-foundation/orrery
-npx orrery --input orrery.json --output orrery.html
-```
+For `materialized_expand_output`, the input field's provider is the `EXPAND`
+operation and its declaration source is the following claim operation. The
+claim's final output receives a separate field identity, preserving both the
+physical materialization and the ownership declaration in the schema.
 
-Orrery validates the JSON before export. Its HTML contains the viewer assets
-and does not require a network connection to render. Microcosm CI parses a
-generated document with the compatible range declared by its contract-test
-package and a locked set of transitive dependencies. The consumer contract is
-`@axiom-foundation/orrery >=0.6.1 <0.7.0`, pinned by
-`tools/orrery-contract/package-lock.json` for CI.
+These records describe values supplied to an operation. They do not claim that
+a kernel read every supplied value at runtime, and they do not reproduce the
+executor's complete causal-writer history, which may be refined by runtime
+receipts.
 
 ## Country inputs and presentation
 
-The schema and exporter retain the interfaces introduced by #888. The graph
-schema remains `microcosm.graph.schema.v1`; compiler facts still come from the
-same compiler. Country is descriptive metadata. Shared export code neither
-imports a country builder nor dispatches on country names or operation prefixes.
+The schema keeps the interfaces introduced by #888. The graph schema remains
+`microcosm.graph.schema.v1`; compiler facts still come from the same
+compiler. Country is descriptive metadata. Shared graph code neither imports
+a country builder nor dispatches on country names or operation prefixes.
 
 Countries can supply `extensions["microcosm.presentation"]` with protocol
 `microcosm.graph.presentation.v1`:
@@ -136,16 +153,19 @@ schema = graph_schema(
 ```
 
 Group members name real operations or sources. Optional `parent` names another
-group. Groups use Orrery containment and preserve every dependency edge. A field
-node is contained by the operation whose artifact provides it, so folding an
-operation folds its versioned fields and folding a group folds both. The
-validator rejects unknown members, duplicate membership and containment cycles.
-Operation/source records can provide `label`, `description`, `composite`
-metadata and `references`, each with a `label` and optional HTTP(S)/relative
-`url` and `sha256`. When the scope has an `id`, the Orrery document id becomes
-`["microcosm", country, scope id]` and the default title uses the scope label,
-so spine, dense and national snapshots of one country stay distinguishable in a
-host's revision picker and in baseline comparisons.
+group. `microcosm.graph.presentation.validate_presentation` rejects unknown
+members, duplicate membership and containment cycles; the build's graph step
+and the inputs command run it before they hand a schema over, since the
+collector's projection refuses an invalid contract. Operation/source
+records can provide `label`, `description`, `composite` metadata and
+`references`, each with a `label` and optional HTTP(S)/relative `url` and
+`sha256`. In the Orrery document the collector makes, groups contain their
+members and every dependency edge is kept; a field is contained by the
+operation whose artifact provides it, so folding an operation folds its
+versioned fields and folding a group folds both. The collector's projection
+uses the scope's `id` in the document id (`["microcosm", country, scope id]`)
+and its label in the default title, so spine, dense and national snapshots
+of one country stay distinguishable.
 
 Scope boundaries name an `operation` and `kind`, with `upstream` references
 requiring both URL and digest, or a `missing` reason. UK inputs identify raw
@@ -160,15 +180,16 @@ coupled fit/draw stays one operation and one cache boundary.
 Checkpoint provenance is a small shared record. A producer writes
 `graph_declaration`, `graph_manifest` and optionally `graph_schema` and
 `graph_execution_evidence` entries, each with `path` and `sha256`, into its
-checkpoint sidecar; `microcosm.graph.checkpoint_references` projects them into
+checkpoint sidecar; `microcosm.graph.checkpoint_references` turns them into
 upstream references. Only files whose bytes still match their digest are
 linked; an absent file is named in the `missing` reason together with its
 recorded digest, never linked by a local path. The UK spine driver writes all
 four entries. `microcosm.graph.save_graph_schema` copies linked local bytes
 into `upstream-<sha256>.json` beside `graph.schema.json` and relinks them
-relatively, so a published build and a later HTML export travel together. The
-exporter never reconstructs an earlier spine from current source code or
-matching field names.
+relatively, so the schema and the recorded bytes it links move together, and
+a UK build hands them to the collector as `orrery_upstream` files. Neither
+the schema nor the overlay reconstructs an earlier spine from current source
+code or matching field names.
 
 ## Recorded execution
 
@@ -188,22 +209,34 @@ index = save_run_evidence(
 `summary_providers` is optional. It maps `(artifact_type_name, schema_version)`
 to a callback accepting `ArtifactSummaryContext` and returning JSON aggregates.
 `microcosm.calibrate.graph_evidence.CALIBRATION_SUMMARY_PROVIDERS` uses maintained
-problem, solution and result codecs. The UK adapter extends that registry with
-recorded target uncertainty and size-search/draw/refit summaries. No country
-lookup occurs in the shared exporter. Native summaries are captured once per
+problem, solution and result codecs. The UK adapter
+(`uk_runtime.orrery_contract.UK_SUMMARY_PROVIDERS`) extends that registry with
+recorded target uncertainty and size-search/draw/refit summaries. Shared
+evidence code does no country lookup. Native summaries are captured once per
 artifact and reused across later phases.
 
-Providers are trusted projections: they must emit aggregates and omit
-record-level values. During a build, evidence capture is diagnostic: a provider
-that raises is recorded as `provider_failed` with its error beside the artifact
-binding and the build continues; the explicit export command runs providers
-strictly and refuses on a failure.
+Providers are trusted code: they must emit aggregates and omit record-level
+values. During a build, evidence capture is diagnostic: a provider that raises
+is recorded as `provider_failed` with its error beside the artifact binding
+and the build continues. `collect_execution_evidence`, when it is given an
+`artifact_summaries` registry, runs providers strictly and refuses on a
+failure; the UK graph step and the inputs command pass none and use the
+summaries recorded during the build.
 
-An execution export from a licensed run carries the achieved value of every
-target, local-area targets included, and the weight distribution's extremes and
-quantiles. Inside the private build bundle that is fine; before an execution
-snapshot or its HTML is posted anywhere public it needs the same output
-clearance as the calibration diagnostics it summarises.
+The shared calibration summaries carry each target's initial and achieved
+values, residual and relative error, and the weight distribution's counts,
+mass, extremes, quantiles and effective sample size. The UK registry drops
+every target row's model figures and every validation check's failure lines:
+a UK calibration summary keeps each row's target, tolerance, source, family
+and recorded uncertainty, and a UK validation-check summary keeps each
+check's identifier, phase, criticality, status, reason and number of failure
+lines, with enforcement or blocking verdicts in its overview. The UK graph
+step refuses to hand over summaries that carry either
+([UK graph inputs](orrery-publication.md)). No summary contains entity axes,
+record values, per-record weights, draw masks or fitted model bytes. An
+overlay from licensed data, or a document made from it, needs the same output
+clearance as the calibration diagnostics it summarises before it is posted
+anywhere public.
 
 `save_run_evidence` appends an `execution.evidence.json` index with protocol
 `microcosm.graph.execution-input.v1`, plus exact graph, manifest, binding and
@@ -213,111 +246,147 @@ identity>-<file>.json` and merges the index with attempts published there
 earlier, after re-checking every published file's digest. A repeated or resumed
 build into the same output directory therefore keeps the record of the attempt
 that computed a result next to the replay that reused it; a published file
-that no longer verifies refuses publication instead of being dropped. `microcosm.graph.run-binding.v1` records the graph/manifest byte
-digests, manifest key, attempt, phase, platform and identities of used sources.
-These native files support later export; they do not create an Orrery snapshot. Native evidence files are bounded by bytes (1 GiB) and nesting depth; the compiler schema's per-item budget applies to schemas and Orrery documents, not to copied manifests, which hold over a million JSON items on a licensed spine. The byte cap is set by the largest file a real build writes — the K=25/60k dense build's numerical and preflight graphs are 399 MiB (41.4M items, 2.2 GiB peak RSS to parse) — with about 2.5x headroom. Digest checks read bytes without parsing, so hashing a graph that size never pays the parse cost.
-A serialized historical manifest without this binding cannot supply missing
-run-end source identities by reading today's source files.
+that no longer verifies refuses publication instead of being dropped.
+`microcosm.graph.run-binding.v1` records the graph/manifest byte digests,
+manifest key, attempt, phase, platform and identities of used sources. The
+overlay is collected from these native files; they are not submitted to the
+collector. Native evidence files are bounded by bytes (1 GiB) and nesting
+depth; the compiler schema's per-item budget applies to schemas and overlays,
+not to copied manifests, which hold over a million JSON items on a licensed
+spine. The byte cap is set by the largest file a real build writes — the
+K=25/60k dense build's numerical and preflight graphs are 399 MiB (41.4M
+items, 2.2 GiB peak RSS to parse) — with about 2.5x headroom. Digest checks
+read bytes without parsing, so hashing a graph that size never pays the parse
+cost. A serialized historical manifest without this binding cannot supply
+missing run-end source identities by reading today's source files.
 
-Read and export an existing bundle without executing kernels:
+### Execution overlay file
+
+Collect the overlay from an existing bundle without executing kernels, and
+save it as its own file:
 
 ```python
-from microcosm.graph import ContentStore, collect_execution_evidence, load_run_evidence
-from microcosm.graph.orrery import orrery_json_from_schema
+import json
+from pathlib import Path
 
+from microcosm.graph import ContentStore, collect_execution_evidence, load_run_evidence
+from microcosm.graph.execution_overlay import (
+    execution_overlay_bytes,
+    load_execution_overlay,
+)
+
+schema = json.loads(Path("build/graph.schema.json").read_bytes())
 store = ContentStore(Path("build/.graph-store"), create=False)
 runs = load_run_evidence(
     Path("build/execution.evidence.json"), store=store,
     reference_base=Path("build"),
 )
 execution = collect_execution_evidence(schema, runs=runs, store=store)
-Path("build/graph.orrery.json").write_text(
-    orrery_json_from_schema(schema, execution=execution), encoding="utf-8"
-)
-```
-
-The equivalent command keeps the existing input/output structure:
-
-```sh
-uv run python -m microcosm.graph.orrery \
-  --schema build/graph.schema.json \
-  --evidence build/execution.evidence.json \
-  --store build/.graph-store \
-  --output build/graph.orrery.json
-npx orrery --input build/graph.orrery.json --output build/graph.orrery.html
-```
-
-`--evidence` and `--store` must appear together.
-Native evidence links and saved-schema relative references are rebased to the
-command's output directory; keep the referenced files available with the HTML.
-
-`collect_execution_evidence` returns the execution overlay: the
-`microcosm.graph.execution-evidence.v1` object that the projection embeds at
-`metadata.execution`. `microcosm.graph.execution_overlay` saves it as its own
-file, so a later projection needs only the schema and that file, not the store:
-
-```python
-from microcosm.graph.execution_overlay import (
-    execution_overlay_bytes,
-    load_execution_overlay,
-)
-
 Path("build/graph.execution.json").write_bytes(execution_overlay_bytes(execution))
 
 # Later, in a process without the store, numpy, pandas or microcosm-frame:
-schema = json.loads(Path("build/graph.schema.json").read_bytes())
 overlay = load_execution_overlay(Path("build/graph.execution.json"))
-Path("build/graph.orrery.json").write_text(
-    orrery_json_from_schema(schema, execution=overlay), encoding="utf-8"
-)
 ```
+
+The overlay is a `microcosm.graph.execution-evidence.v1` object. It holds the
+schema's `graph_sha256`; one record per supplied phase, with its attempt,
+graph and manifest digests, manifest key, timestamps, source identities,
+operation states, artifacts with their per-file payload digests, the keys of
+its summaries and its references; each summary once; and `verification` and
+`history` fields saying what was checked and that only supplied phases are
+recorded. The collector's projection embeds it at `metadata.execution`.
 
 The file is the overlay's canonical JSON: UTF-8, sorted keys and no
 whitespace. It has none of the transport tags for numbers JavaScript cannot
-represent; the projection adds those. Reading it back gives an equal object,
-so the projection is byte-identical to projecting the in-memory overlay. The
-reader takes only a regular file within the schema's 32 MiB serialized limit,
-which evidence collection and projection already apply to the overlay. It
-refuses duplicate keys, non-finite numbers, values outside the schema's JSON
-bounds and any other protocol. The overlay's graph binding and records are
-checked when it is projected. Its native-evidence links are relative to the
-directory it was collected for (`reference_base`), so project into that
-directory, beside the linked files.
+represent; the collector's projection adds those. Reading it back gives an
+equal object, so the collector projects the same document from the file as
+from the in-memory overlay. The reader takes only a regular file within the
+schema's 32 MiB serialized limit, which evidence collection also applies to
+the overlay. It refuses duplicate keys, non-finite numbers, values outside
+the schema's JSON bounds and any other protocol. The overlay's graph binding
+and records are checked by the collector's projection. Its native-evidence
+links are relative to the directory it was collected for (`reference_base`).
+
+`collect_execution_evidence` recompiles each recorded graph, compares
+declarations and dependency sets to the schema's graph, recomputes
+receipt/artifact identities using recorded inputs and platform, and checks
+required store payload digests. Graph/manifest mismatches, missing required
+bytes and corrupt files refuse collection. Outputs a validation check left
+unavailable, omitted operations and unconfigured summary providers are
+explicit. Earlier phases not supplied remain unknown.
+
+### Country wiring
 
 Other countries supply the same three inputs: a presentation dictionary (groups,
 scope, optional labels and references), an artifact-summary registry keyed by
 artifact type, and driver wiring that calls `save_graph_schema`,
 `save_run_evidence`/`publish_run_evidence` and writes the checkpoint provenance
 record. No shared module changes are needed.
-UK full/national drivers save
-`graph.schema.json`, `execution.evidence.json` and flat `evidence-*.json` files
-beside `graph.json` and `operations.json`. Durable copies also remain in the
-content store's attempt directory if a later phase interrupts the build. For
-that case, pass the attempt's `graph.schema.json` and
-`graph-evidence/execution.evidence.json`, and the same store. The spine sidecar
-identifies its native index under the checkpoint directory; use that directory's
-`graph.schema.json` and `node-graph` store. Orrery JSON and HTML remain opt-in.
-When UK finalize exports `graph.orrery.json` from recorded execution, it also
-writes the overlay it projected as `graph.execution.json` and registers it as a
-build output, so `graph.schema.json` and `graph.execution.json` reproduce the
-export byte for byte without the store. The overlay is not part of the Orrery
-publication set (see [UK graph publication](orrery-publication.md)).
 
-The final national schema, declaration and inventory all include the appended
-`uk.full.national.readback` operation. Earlier endpoint runs remain separate
-phases of the same attempt. A final cache hit does not erase earlier computation.
+UK full/national drivers save `graph.schema.json`, `execution.evidence.json`
+and flat `evidence-*.json` files beside `graph.json` and `operations.json`.
+Durable copies also remain in the content store's attempt directory if a
+later phase interrupts the build. The UK graph step writes the overlay as
+`graph.execution.json` beside the schema and registers the schema, the
+overlay, the native evidence and the linked upstream files as build outputs
+([UK graph inputs](orrery-publication.md)).
 
-Validation recompiles each recorded graph, compares declarations and dependency
-sets to the exported graph, recomputes receipt/artifact identities using recorded
-inputs and platform, and checks required store payload digests. Graph/manifest
-mismatches, missing required bytes and corrupt files refuse export. Unavailable
-gate-blocked outputs, omitted operations and unconfigured summary providers are
-explicit. Earlier phases not supplied to the exporter remain unknown.
+The final national schema, declaration and operation inventory
+(`operations.json`) all include the appended `uk.full.national.readback`
+operation. Earlier endpoint runs remain separate phases of the same attempt.
+A final cache hit does not erase earlier computation.
+
+## Writing inputs for a saved build
+
+`python -m microcosm.build.uk_runtime.orrery_inputs` writes the collector's
+inputs for one UK build into a new directory from the build's saved files,
+without executing a kernel. It is for a build whose files exist only on one
+machine, such as one staged only locally or interrupted:
+
+```sh
+uv run python -m microcosm.build.uk_runtime.orrery_inputs \
+  --schema path/to/build/graph.schema.json \
+  --evidence path/to/build/execution.evidence.json \
+  --store path/to/build/.graph-store \
+  --output path/to/new-inputs
+```
+
+- **`--schema`:** the build's `graph.schema.json`, written to the output
+  unchanged. The command refuses a symbolic link, a device, a file over
+  32 MiB, duplicate JSON keys, non-finite numbers and a schema that
+  `validate_graph_schema` or `validate_presentation` rejects.
+- **`--evidence` and `--store`:** given together or not at all. They are the
+  build's `execution.evidence.json` and its content store (`<out>/.graph-store`
+  unless the build was given `--graph-store`). With them, the command
+  collects the overlay the build would have written and writes it as
+  `graph.execution.json`. It refuses summaries that carry a target row's
+  figures or a check's failure lines, as the build's graph step does.
+- **Upstream files:** each `upstream-<sha256>.json` file that the schema's
+  extensions or the overlay link is read from beside the schema and copied
+  unchanged. The command refuses one that is missing or whose bytes no
+  longer match the digest in its name.
+- **`--output`:** a new directory. It must not exist, either as given or
+  once resolved. The files are written into a hidden sibling directory, which
+  is moved into place only once every file is written, and the command prints
+  the resolved path and the names it wrote.
+
+For an interrupted build, pass the attempt directory's `graph.schema.json`
+and `graph-evidence/execution.evidence.json`, and the same store. The spine
+sidecar identifies its native index under the checkpoint directory; use that
+directory's `graph.schema.json` and `node-graph` store.
+
+The command uploads nothing and starts no emitter. A later emitter command,
+`microcosm-emitter backfill-orrery <dir>` (tracker task 6a · 1), is planned
+to run it and submit the result as an `orrery-inputs` submission. Without
+`--evidence`, the directory has no execution overlay, which today's emitter
+and collector both require for that submission. The Python function is
+`write_orrery_inputs(schema_path, output, *, evidence=None, store=None)`,
+which returns the names it wrote.
 
 ## Reconstructed declarations
 
 A build from before #1144 recorded its graph declaration, but not the run
-binding that execution export validates, so its execution cannot be shown.
+binding that evidence collection validates, so its execution cannot be shown.
 `microcosm.graph.reconstruction` rebuilds that build's schema from the recorded
 declaration alone and marks it as reconstructed:
 
@@ -340,10 +409,10 @@ schema = reconstructed_schema(declaration_bytes, marker)
 
 Only the declaration comes from the build. The schema's `graph` section and
 `graph_sha256` reproduce the recorded file byte for byte. Its `compiled`,
-`fields` and `input_bindings` sections, and the Orrery document projected from
-it, are computed by the code running the reconstruction. A reconstruction made
-at another revision can therefore differ in those parts, which is why the
-marker records that revision separately from the build's.
+`fields` and `input_bindings` sections are computed by the code running the
+reconstruction. A reconstruction made at another revision can therefore
+differ in those parts, which is why the marker records that revision
+separately from the build's.
 
 The marker is the producer extension `microcosm.reconstruction`:
 
@@ -402,35 +471,35 @@ The marker is the producer extension `microcosm.reconstruction`:
   section is therefore the recorded file, not a reinterpretation of it. A file
   that is not a graph declaration at all, such as a JSON array, is also refused
   with a `ValueError`.
-- **Where it travels:** the marker is saved in `graph.schema.json`, so any
-  later projection of the saved schema keeps it. Orrery documents show it at
+- **Where it travels:** the marker is saved in `graph.schema.json`, so the
+  collector's projection of the saved schema keeps it, and the Orrery
+  document shows it at
   `metadata.microcosm.extensions["microcosm.reconstruction"]`.
   `validate_reconstruction(schema)` returns the marker, or `None` for a schema
   that was not reconstructed.
-- **No execution claims:** a reconstructed document has no activities,
-  artifacts, statuses or `metadata.execution`. No operation appears as
-  executed, cached or gated. CI parses one with Orrery's public parser
-  (`tools/orrery-contract/verify-reconstruction.mjs`).
+- **No execution claims:** a reconstructed schema has no execution overlay,
+  so a document made from it has no activities, artifacts, statuses or
+  `metadata.execution`. No operation appears as executed, cached or blocked by
+  a validation check.
 
 ### UK builds before #1144
 
 UK dense and national builds from before #1144 wrote `graph.json` beside their
 outputs, and recorded their code revision in `rowwise_candidate_manifest.json`.
-This command turns such a build's output directory into a reconstructed
-publication:
+This command writes a reconstructed, marked schema for such a build's output
+directory:
 
 ```sh
 uv run python -m microcosm.build.uk_runtime.orrery_reconstruction \
   --build path/to/past-build \
-  --output path/to/reconstructed-publication
+  --output path/to/reconstructed-schema
 ```
 
 The declaration is the build's own `graph.json`. It is not rebuilt by running
 the UK graph builders at the current revision. The declaration format has not
 changed since the UK graph driver, so a recorded file reproduces byte for byte;
-one that does not is refused. Everything derived from it (the schema's
-compiled sections and the Orrery document) is computed by the code running the
-command, and the marker records that code's revision as
+one that does not is refused. The schema's compiled sections are computed by
+the code running the command, and the marker records that code's revision as
 `reconstruction_revision`.
 
 The build directory is only read. The command:
@@ -456,15 +525,17 @@ The build directory is only read. The command:
   `--revision` must match that commit, or supplies one when the build recorded
   none; that revision is marked `caller_asserted`. With neither, it refuses.
 - **Refuses later builds:** a build that records Orrery evidence
-  (`graph.schema.json` or `execution.evidence.json`) is exported with
-  `python -m microcosm.graph.orrery` instead.
+  (`graph.schema.json` or `execution.evidence.json`) is refused, and the
+  refusal points to `python -m microcosm.build.uk_runtime.orrery_inputs`,
+  which writes such a build's inputs (see
+  [Writing inputs for a saved build](#writing-inputs-for-a-saved-build)).
 - **Refuses missing declarations:** a directory without `graph.json` is refused,
   and the refusal names the build records that were found. Staged bundles never
   carried `graph.json`, and builds from before the UK graph driver never wrote
   it.
 
-It writes a new directory with the layout of a normal publication, and moves the
-directory into place only after every file is written. The output must not
+It writes the schema and its report into a new directory, and moves the
+directory into place only after both files are written. The output must not
 exist, either as given (a symbolic link counts, even one whose target does not
 exist) or once resolved. It must not be the build directory or lie inside it
 once `..` and links are resolved. The command writes to that resolved path, so
@@ -475,14 +546,16 @@ because the path as given need not reach it:
 | File | Contents |
 | --- | --- |
 | `graph.schema.json` | Compiler schema of the recorded declaration, with the reconstruction marker |
-| `graph.orrery.json` | Orrery document, titled `UK · reconstructed declaration (<commit>)` |
-| `orrery.upload.json` | Publication inventory (roles `graph` and `schema`); its publication ID is derived from the files' digests |
-| `orrery.reconstruction.json` | Summary report; not in the inventory |
+| `orrery.reconstruction.json` | Summary report, protocol `microcosm.uk.orrery-reconstruction-report.v2` |
 
-The summary report, of which the command prints a short version, lists:
+The summary report, of which the command prints a short version, has:
 
-- the inputs and how each was verified;
+- `status` (`reconstructed`), `basis` (`declaration_only`) and `files`, the
+  files the command wrote besides the report (`["graph.schema.json"]`);
 - the source revision and the reconstruction revision;
+- the build's identity, and the declaration's name, country, `graph_sha256`
+  and numbers of operations and sources;
+- the inputs and how each was verified;
 - the recorded digests skipped as stale, each with its note and the records the
   file was checked against instead;
 - the expected files that are missing;
@@ -493,168 +566,38 @@ The summary report, of which the command prints a short version, lists:
   revision, a skipped stale digest, or a declaration the build recorded no
   digest for. Before #1144, the last one applies to every build.
 
+Version 2 of the report drops version 1's `publication_id` and
+`published_files`. The Python function is
+`reconstruct_uk_schema(build, output, *, revision=None)`, which returns the
+report.
+
 Output is deterministic: reconstructing the same build twice from the same
-code revision gives identical bytes and the same publication ID. The command
-uploads nothing and starts no emitter service, so publishing the directory
-remains a separate step.
-
-## Orrery evidence panels
-
-| Surface | Exported evidence |
-| --- | --- |
-| Record | Operation declarations, attempt/phase history with kernel role, duration, numerical keys, mass and weight transitions, artifact keys, calibration/size aggregates and per-gate outcomes |
-| Sources | Presentation references and recorded checkpoint references |
-| Activity | One record per operation and supplied phase; the kernel (`name@version`, implementation hash) as the agent; declared operation/source inputs; artifact references including the digest-bound native graph/manifest/binding/summary files; phase timestamps |
-| Status badges | Gate verdict first on gate kernels only, then execution state, then an attempt-level cache summary |
-
-Orrery cards show the first two badges. A gate kernel therefore leads with
-`Gate: pass`/`fail`/`evidence_absent`/`unreached`; other operations carry no
-gate badge. The cache badge summarises every supplied phase: `Computed:
-numerical · reused 2×` names the phase that computed the result before counting
-replays, `Reused: 3 cache hits; computation not in supplied phases` is explicit
-when no supplied phase computed it, and `Cache: unknown` means no receipt.
-
-Artifact references are one per content-store object (frame, column, weights,
-typed or opaque artifact), labelled by producing operation, output name, kind
-and file count. A single-file object carries its byte digest; the per-file
-payload digests of every object are in `metadata.execution.phases[].artifacts`.
-This keeps a structural operation's activity to tens of references rather than
-one row per column file.
-
-UK gate batteries (spine, full and national gate reports) are summarised per
-gate: identifier, phase, criticality, status, failure lines and reason, with
-enforcement or blocking verdicts in the overview. Gate detail payloads and
-target or area tables stay in the artifact.
-
-Per-target tables contain target, initial and achieved values, residuals,
-relative error, tolerance and recorded uncertainty where available. Full tables
-appear once in `metadata.execution.summaries`; selected-node Record data shows
-an explicit 50-row preview with `total_rows` and `preview_limit`. Weight summaries
-contain counts, mass, quantiles and effective sample size. They contain no entity
-axes, record values, per-record weights, draw masks or fitted model bytes.
-
-Orrery's existing panels can present these records. A dedicated calibration table,
-phase selector, linked upstream-run expansion and group-focused layout controls
-remain viewer follow-ups; the exporter does not add those UI features. Precise
-per-output mathematical lineage remains #865.
-
-Orrery 0.6.1's Activity panel includes downstream activities that received the
-selected record as an input. This can produce a long list for structural nodes;
-the artifact labels include their producing operation and output name so they
-remain identifiable. Browsing a synthetic saved national run confirmed groups,
-Record fields, separate status badges, Sources links and phase activities.
-
-## Large snapshots and deep links
-
-Field nodes are the bulk of a UK snapshot: the maintained dense declaration has
-76 operations, 15 sources and about 5,300 field nodes with 20,000
-relationships. Orrery lays out every visible node, so the whole-graph view of
-such a snapshot takes a minute to appear and is unreadable until filtered. The
-offline HTML honours Orrery's URL hash, so publish or open it with a location
-that starts from the operations:
-
-```text
-graph.orrery.html#kinds=["operation","source","group"]
-graph.orrery.html#kinds=["operation","source","group"]&focusId=["operation","uk.full.dense"]&depth=1
-graph.orrery.html#collapsedIds=["[\"group\",\"enrichment\"]"]
-```
-
-Fields remain searchable and inspectable from the index, and expanding one
-operation shows exactly its versioned fields because fields are contained by
-their provider. Every serialized string in the compiler schema and the export,
-operation contracts included, may be up to 131,072 characters; the overall
-document, complexity, node, and edge limits remain unchanged. These are declaration and synthetic diagnostic measurements, not a
-licensed population run.
-
-## Fields and input bindings
-
-Every field record identifies one visible value by:
-
-- `population`, `entity`, and `column`: its coordinate;
-- `provider`: the operation whose artifact supplies that value;
-- `declared_in`: the operation containing the nearest applicable `Owned`
-  declaration;
-- `dtype`, `rows`, `ownership`, and `rewrite`: the declaration details.
-
-A structural operation carries all fields from its base population. For such a
-carried field, `provider` is the structural operation because its output
-artifact is what downstream operations read; `declared_in` still points to the
-earlier `Owned` declaration. An operation that writes or rewrites a field is
-the provider after that operation completes.
-
-`input_bindings` are also derived entirely from `Graph` and `CompiledGraph`.
-They contain no Frame values and do not observe kernel behavior. Each record
-connects one declared input role to the exact pre-operation field provider:
-
-| `kind` | Declared role | `rows` |
-| --- | --- | --- |
-| `slice` | A column named by a `Slice` | The slice's row selector |
-| `slice_mask` | The boolean column used to select a slice's rows | `all` |
-| `output_mask` | The boolean column limiting an `Owned` output | `all` |
-| `rewrite_incumbent` | The prior value replaced by `Owned(rewrite=True)` | The output's row selector |
-| `materialized_expand_output` | A new column physically installed by an `EXPAND` operation and read by its following ownership-claim operation | The output's row selector |
-
-For a rewrite, both the explicit slice and the implicit incumbent role resolve
-to the value present before that operation. The final rewritten field is a
-different identity. Repeated declared roles remain repeated schema records,
-even when they refer to the same coordinate.
-
-For `materialized_expand_output`, the input field's provider is the `EXPAND`
-operation and its declaration source is the following claim operation. The
-claim's final output receives a separate field identity, preserving both the
-physical materialization and the ownership declaration in the presentation.
-
-These records describe values supplied to an operation. They do not claim that
-a kernel read every supplied value at runtime, and they do not reproduce the
-executor's complete causal-writer history, which may be refined by runtime
-receipts.
-
-## Orrery document structure
-
-The adapter creates operation, source, and versioned-field nodes. Descriptions
-are promoted to Orrery's visible `description` property while the complete
-declaration remains in `data`. `metadata.microcosm` is a bounded summary of the
-compiler schema (protocol, country, graph and canonical schema digests,
-compiled order, record counts and the producer extensions); the complete schema
-is the separately saved `graph.schema.json` whose bytes have
-`metadata.microcosm.schema_sha256`. Orrery renders snapshot metadata as text,
-so the viewer document does not repeat declarations that its records already
-carry.
-
-| Relationship | Category | Meaning |
-| --- | --- | --- |
-| `compiled_predecessor` | dependency | An operation dependency derived by `compile_graph` |
-| `declared_read` | dependency | A slice, mask, or rewrite-incumbent input binding |
-| `artifact_input` | dependency | A typed producer-to-consumer artifact declaration |
-| `provided_field` | provenance | The operation that supplies a versioned field |
-| `structural_input` | provenance | A base population field carried into a structural operation |
-| `declared_source` | provenance | A named external input declaration |
-
-Structural carriage does not assert that values are unchanged. Declared reads
-do not infer an individual mathematical formula for each output. Artifact and
-source declarations do not establish that the referenced bytes exist or were
-validated.
-
-Pre-rewrite values receive auxiliary field nodes when necessary. Stable IDs
-include the population, coordinate, provider, and declaration source, so the
-pre-rewrite value and final rewritten value cannot collide.
+code revision gives identical bytes. The command uploads nothing and starts
+no emitter. The collector can make the Orrery document from the schema as it
+does from a build's, but the schema has no execution overlay, which today's
+emitter and collector both require for an `orrery-inputs` submission.
+Submitting it therefore waits for planned collector work, to accept a marked
+schema without an overlay and record it as reconstructed, and for the
+planned emitter command of tracker task 6a · 1.
 
 ## Evidence and limits
 
-Declaration-only export contains static declarations. It does not contain entity IDs,
+A schema contains static declarations only. It does not contain entity IDs,
 memberships, field values, source bytes, kernel code, observed runtime reads,
-cache results, execution receipts, verifier assessments, or release decisions.
-Content revisions identify metadata bytes; they are not execution keys or
-authenticity claims. Execution export adds the recorded aggregates above, but
-does not emit Orrery cryptographic `Receipt` verification verdicts. Checking keys
-and byte digests does not establish signatures or release certification.
+cache results, execution receipts, verifier assessments, or release
+decisions. The execution overlay adds the recorded aggregates above. It
+records which keys and byte digests were checked; that does not establish
+signatures or release certification, and the overlay carries no Orrery
+cryptographic `Receipt` verification verdicts.
 
-Python integers outside JavaScript's safe range are represented as
-`{"integer_literal": "..."}` before Orrery parses the document. Large integral
-floats use `{"float_literal": "..."}`. Exports reject non-finite numbers,
-excessive nesting, non-JSON objects, more than 20,000 presentation nodes or
-100,000 relationships, input above 32 MiB, and output above 64 MiB. They fail
-instead of silently omitting records.
+A schema, and an overlay written or read back, may hold at most 2,000,000
+JSON items nested at most 64 deep, with strings of at most 131,072
+characters, integers of at most 1,024 bits, finite numbers only, string
+object keys only and a canonical serialized size of at most 32 MiB. Anything
+else is refused rather than silently shortened. Native evidence files have
+their own bounds (see [Recorded execution](#recorded-execution)). The Orrery
+document's own limits belong to the collector's projection.
 
 Runtime evidence comes only from supplied records. Precise per-output value
-lineage cannot be inferred from static reads or operation ancestry.
+lineage cannot be inferred from static reads or operation ancestry; it
+remains #865.
