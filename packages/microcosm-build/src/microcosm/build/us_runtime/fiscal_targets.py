@@ -1670,7 +1670,8 @@ class _SoiTotalControl:
 #:   TY2022. Its amount, net of losses, is 1.4% below col 38 in TY2022.
 #:
 #: A family absent from this register has no reviewed concept and is never a
-#: capital-gains control.
+#: capital-gains control. A registered family whose concept is not the
+#: model's supplies shares only (``_soi_capital_gains_share_family``).
 _SOI_SCHEDULE_D_TAXABLE_NET_GAIN = "schedule_d_taxable_net_gain"
 _SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS = "form_1040_line_7_net_gain_or_loss"
 _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS: dict[str, str] = {
@@ -1699,44 +1700,57 @@ def _rebase_stale_soi_capital_gains_distributions(
     *,
     target_period: int | str,
 ) -> TargetRegistry:
-    """Use Historic Table 2 capital-gains rows as shares of a Table 1.4 level.
+    """Use line-7 capital-gains rows as shares of a Table 1.4 level.
 
-    HT2 rows count Form 1040 line 7 (gain or loss), a population
-    ``capital_gains_gross`` cannot measure, so they never ship as levels. Each
-    one ships as its share of the HT2 national total, scaled to the
-    concept-matched control of ``_soi_capital_gains_active_totals`` at or after
-    its own period, and declares the bridge in ``soi_source_concept`` /
-    ``soi_control_concept``. Without such a control, the row is dropped. The
-    national all-AGI HT2 rows retire because the control's own row owns the
-    national concept.
+    Historic Table 2 and congressional-district rows count Form 1040 line 7
+    (gain or loss), a population ``capital_gains_gross`` cannot measure, so
+    they never ship as levels. Each one ships as its share of its own family's
+    national total at its own period (an HT2 row of the HT2 US row, a
+    congressional-district state or district row of that file's US row),
+    scaled to the concept-matched control of ``_soi_capital_gains_active_totals``
+    at or after that period, and declares the bridge in ``soi_source_concept``
+    / ``soi_control_concept``. Without such a control or a nonzero national
+    row of its own family the row is dropped, never shipped as a line-7 level.
+    Each family's national all-AGI row retires because the control's own row
+    owns the national concept.
+
+    One factor per family, quantity and period scales a family's state and
+    district rows alike, so the district-to-state hierarchy reconciliation that
+    runs next sees the same proportions. The congressional-district file's
+    states sum exactly to its US row, so on the full surface its states and
+    its districts each sum to the control. Before this, they shipped as
+    line-7 levels, 2.41x the Table 1.4 return count (microcosm#1038).
     """
 
     controls = _soi_capital_gains_active_totals(
         facts,
         target_period=target_period,
     )
-    stale_national_totals = _soi_capital_gains_stale_national_totals(facts)
+    share_totals = _soi_capital_gains_share_national_totals(facts)
     specs: list[TargetSpec] = []
     for spec in registry.specs:
         kind = _soi_capital_gains_kind(spec)
-        if kind is None or not _is_stale_soi_historic_capital_gains_spec(spec):
+        family = _soi_capital_gains_share_family_from_spec(spec) if kind else None
+        if kind is None or family is None:
             specs.append(spec)
             continue
 
         key = _soi_capital_gains_control_key_from_spec(spec)
         control = controls.get(key)
-        source_total = stale_national_totals.get((*key, spec.metadata["source_period"]))
+        source_total = share_totals.get((family, *key, spec.metadata["source_period"]))
         if control is None or not _period_not_before(
             control.period_key, _period_key_from_value(spec.metadata["source_period"])
         ):
             continue
-        if source_total in (None, 0):
+        if source_total is None or source_total.value == 0:
+            # Unanchored: a share needs its own family's national row. Never
+            # divided by another family's total, never shipped as a level.
             continue
 
         if _is_national_all_agi_spec(spec):
             continue
 
-        factor = control.value / source_total
+        factor = control.value / source_total.value
         specs.append(
             replace(
                 spec,
@@ -1753,8 +1767,11 @@ def _rebase_stale_soi_capital_gains_distributions(
                     "uprating_index_source_record_id": control.source_record_id,
                     "uprating_factor": _format_float(factor),
                     "stale_distribution_rebased_to_active_total": "true",
-                    "soi_source_concept": _SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS,
+                    "soi_source_concept": _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS[family],
                     "soi_control_concept": _SOI_CAPITAL_GAINS_MODEL_CONCEPT,
+                    # The share's denominator: this family's own national
+                    # row, from the same release as the row itself.
+                    "soi_share_total_source_record_id": source_total.source_record_id,
                 },
             )
         )
@@ -1848,15 +1865,79 @@ def _soi_capital_gains_concept(fact: object) -> str | None:
     )
 
 
-def _soi_capital_gains_stale_national_totals(
+def _soi_capital_gains_share_family(record_set_id: str) -> str | None:
+    """The family of a capital-gains row that may ship only as a share.
+
+    A registered family whose columns count something other than what
+    ``capital_gains_gross`` measures (Historic Table 2 and the
+    congressional-district file, both Form 1040 line 7) supplies shares, never
+    levels. The model's own family and unregistered families return ``None``.
+    """
+    family = _soi_record_set_family(record_set_id)
+    concept = _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS.get(family)
+    if concept is None or concept == _SOI_CAPITAL_GAINS_MODEL_CONCEPT:
+        return None
+    return family
+
+
+def _soi_capital_gains_share_family_from_spec(spec: TargetSpec) -> str | None:
+    if spec.family != "irs_soi":
+        return None
+    return _soi_capital_gains_share_family(
+        spec.metadata.get("ledger_layout_record_set_id", "")
+    )
+
+
+class AmbiguousSoiCapitalGainsShareTotalError(ValueError):
+    """One share family carries two different national totals for one period."""
+
+
+@dataclass(frozen=True)
+class _SoiShareTotal:
+    value: float
+    source_record_id: str
+
+
+def _soi_capital_gains_share_national_totals(
     facts: tuple[object, ...],
-) -> dict[tuple[str, str, str, str], float]:
-    totals: dict[tuple[str, str, str, str], float] = {}
+) -> dict[tuple[str, str, str, str, str], _SoiShareTotal]:
+    """Each share family's national all-AGI total, the denominator of its shares.
+
+    Keyed by (family, measure, filing status, universe, period), so an HT2 row
+    divides by the HT2 US row and a congressional-district row by that file's
+    US row, never by another family's. Two different values under one key
+    refuse the compile instead of letting feed order pick the denominator;
+    equal values under two record ids keep the smaller id, so the named
+    denominator does not depend on feed order either. Congressional-district
+    packages of different boundary vintages for one tax year share the
+    ``congressional_district`` family, so their US rows must agree or the
+    compile refuses.
+    """
+    totals: dict[tuple[str, str, str, str, str], _SoiShareTotal] = {}
     for fact in facts:
         key = _soi_capital_gains_control_key_from_fact(fact)
-        if key is None or not _is_stale_soi_historic_capital_gains_fact(fact):
+        if key is None:
             continue
-        totals[(*key, str(_period_value(fact)))] = _numeric_value(fact)
+        family = _soi_capital_gains_share_family(
+            _str_at(fact, "layout", "record_set_id")
+        )
+        if family is None:
+            continue
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        total_key = (family, *key, str(_period_value(fact)))
+        candidate = _SoiShareTotal(_numeric_value(fact), source_record_id)
+        current = totals.get(total_key)
+        if current is not None and current.value != candidate.value:
+            raise AmbiguousSoiCapitalGainsShareTotalError(
+                "SOI capital-gains share family has two national totals for "
+                f"{total_key}: {current.value!r} ({current.source_record_id}) "
+                f"and {candidate.value!r} ({candidate.source_record_id}). "
+                "Deduplicate them upstream."
+            )
+        if current is None or candidate.source_record_id < current.source_record_id:
+            totals[total_key] = candidate
     return totals
 
 
@@ -1872,22 +1953,6 @@ def _soi_capital_gains_kind_from_measure(measure_id: str) -> str | None:
     if measure_id == "net_capital_gains_returns":
         return "returns"
     return None
-
-
-def _is_stale_soi_historic_capital_gains_spec(spec: TargetSpec) -> bool:
-    if spec.family != "irs_soi":
-        return False
-    if _soi_capital_gains_kind(spec) is None:
-        return False
-    return ".historic_table_2." in spec.metadata.get("ledger_layout_record_set_id", "")
-
-
-def _is_stale_soi_historic_capital_gains_fact(fact: object) -> bool:
-    if _source_name(fact) != "irs_soi":
-        return False
-    if _soi_capital_gains_kind_from_measure(_measure_id(fact)) is None:
-        return False
-    return ".historic_table_2." in _str_at(fact, "layout", "record_set_id")
 
 
 def _soi_capital_gains_control_key_from_fact(

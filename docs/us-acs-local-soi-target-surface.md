@@ -217,8 +217,11 @@ district rows, are mostly 1.00 to 1.10.
   chained SOI and CBO series (about 1.120). The smallest amount factor,
   1.03, is that aging ratio alone. Correcting the district file's stamp
   (#1030) would remove the aging part only.
-- **Two factors reflect known level differences:** taxable interest (2.35 to
-  2.70, the Table 4.3 rebase) and capital-gains amounts (0.77 to 1.00).
+- **Taxable interest reflects a known level difference** (2.35 to 2.70, the
+  Table 4.3 rebase). Capital-gains factors sit near 1: since microcosm#1038
+  (#1040) both files' capital-gains rows are shares of the same Table 1.4
+  control (amounts 0.93 to 1.20, median 0.98; before, 0.77 to 1.00; returns
+  0.98 to 1.00).
 - **The largest single-state factors** were on qualified and ordinary
   dividends (Hawaii, 2.68 and 2.17), tax-exempt interest (Utah, 1.43) and
   rental income (New York, 0.72), where the two tables disagree about one
@@ -320,11 +323,13 @@ bridged state row records its sibling and bridge factor.
 | Bridged state rows whose sibling ratio is out of band | 4 | The factor band (above) |
 
 Since microcosm#1038 the compiler excludes the same SALT and PTC columns
-(`US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`). PR #1040 (awaiting a ruling)
-rescales the district file's capital-gains rows by one national factor.
-`state_cd` already takes district capital gains as within-state shares of
+(`US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`, #1224) and rescales the
+district file's capital-gains rows by one national factor per measure
+(#1040). `state_cd` takes district capital gains as within-state shares of
 Historic Table 2, which a national factor does not move, so their level
-changes only when Historic Table 2's own capital-gains rows do (#1036).
+changes only when Historic Table 2's own capital-gains rows do (#1036). Its
+capital-gains rebase factors move by the reciprocal of that factor, and no
+factor-band verdict or contract count changes.
 
 North Carolina's district rows are bound. Before #1043 the packaged
 117th→119th crosswalk was built from NC's 2016 plan rather than the 2019 plan
