@@ -19,6 +19,7 @@ import microcosm.calibrate.artifacts as calibrate_artifacts
 import microcosm.calibrate.geography_constants as geography_constants
 import microcosm.calibrate.matrix as calibrate_matrix
 import microcosm.calibrate.solve as calibrate_solve
+import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
 import microcosm.calibrate.target_selection as calibrate_target_selection
 from microcosm.build import cross_grain
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
@@ -677,7 +678,10 @@ class UKFullProblemKernel(_TargetKernel):
         # ``calibrate.solve.default_target_loss_scales`` (microcosm#1492). All
         # of ``calibrate.solve`` is hashed: ``calibrate.adam@1``, whose hash
         # every UK solve kernel embeds, already hashes it, so an edit there
-        # re-solves anyway and re-keys only this node besides.
+        # re-solves anyway and re-keys only this node besides. The arithmetic
+        # of every rule is the shared ``calibrate.target_loss_rules``
+        # (microcosm#1729), which ``target_weights`` and ``national_doctrine``
+        # call, so an edit to a shared rule re-keys the problem too.
         return hashlib.sha256(
             canonical_json(
                 {
@@ -688,6 +692,7 @@ class UKFullProblemKernel(_TargetKernel):
                         target_weights,
                         geography_constants,
                         calibrate_solve,
+                        calibrate_target_loss_rules,
                     ),
                 }
             )

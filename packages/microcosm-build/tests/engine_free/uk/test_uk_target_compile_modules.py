@@ -21,6 +21,7 @@ import pytest
 
 import microcosm.calibrate.geography_constants as geography_constants_module
 import microcosm.calibrate.solve as calibrate_solve
+import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
 from microcosm.build import ledger_artifact
 from microcosm.build import ledger_targets as shared_ledger_targets
 from microcosm.build.uk_runtime import (
@@ -171,6 +172,10 @@ _RUN_MODULES = {
     # The full problem's loss scales (default_target_loss_scales). The
     # national kernels call nothing in it (see the test below).
     "microcosm.calibrate.solve": ("uk.full.problem@1",),
+    # The shared rules that compute the loss weights (microcosm#1729):
+    # target_weights and national_doctrine call them for the full problem,
+    # national_doctrine for the national problem.
+    "microcosm.calibrate.target_loss_rules": ("uk.full.problem@1",) + _NATIONAL_GRAPH,
     # full_targets' exclusion clock (exclusion_evaluation_date).
     "microcosm.build.uk_runtime.weighted_integrity": _FULL_GRAPH + _NATIONAL_GRAPH,
     # full_targets' surface provenance (_ledger_provenance) and band-edge
@@ -552,6 +557,14 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
         "microcosm.build.uk_runtime.graph_targets -> microcosm.calibrate.solve": (
             FULL_TARGETS,
         ),
+        # The same kind of edge as the one above, added with microcosm#1729:
+        # graph_targets imports the shared rules only to put them in the full
+        # problem's loss-weight hash. The target, selection and measures
+        # kernels run none of it, so hashing it there would re-run target
+        # compilation and the measures on every edit to a shared rule.
+        "microcosm.build.uk_runtime.graph_targets -> microcosm.calibrate.target_loss_rules": (
+            FULL_TARGETS,
+        ),
         "microcosm.calibrate.artifacts -> microcosm.calibrate.solve": (
             FULL_TARGETS,
             NATIONAL,
@@ -781,7 +794,9 @@ def test_full_problem_loss_weights_hash_what_target_weights_reads(monkeypatch):
     """target_weights takes UK_WIDE_GEOGRAPHY_IDS from geography_constants
     and the loss scales from calibrate.solve for the weights the problem
     binds, so the problem's weight hash covers both modules itself, not only
-    through the target modules' hash."""
+    through the target modules' hash. It computes every rule with the shared
+    calibrate.target_loss_rules (microcosm#1729), so the hash covers that
+    module too."""
     calls: list[tuple] = []
     monkeypatch.setattr(
         graph_targets,
@@ -792,6 +807,7 @@ def test_full_problem_loss_weights_hash_what_target_weights_reads(monkeypatch):
     (weights,) = [objects for objects in calls if target_weights in objects]
     assert geography_constants_module in weights
     assert calibrate_solve in weights
+    assert calibrate_target_loss_rules in weights
 
 
 def test_the_national_kernels_leave_calibrate_solve_unhashed():
