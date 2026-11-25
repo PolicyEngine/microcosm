@@ -641,3 +641,125 @@ def test_the_tools_hold_no_copy_of_the_ess_or_gate_code() -> None:
     # The floors are compared in the shared gate, not here.
     assert "area_support_gate(" in body and "area_support_floor_table(" in body
     assert "relative_floor *" not in body and "< absolute_floor" not in body
+
+
+# ---------------------------------------------------------------------------
+# Item 1: the L2 anchor
+# ---------------------------------------------------------------------------
+
+
+def test_the_cli_exposes_the_l2_anchor_with_the_default_of_every_solve(
+    tmp_path,
+) -> None:
+    module = _FIXTURE._load_tool_module()
+    default = _cli(module)
+    assert (default.l2_anchor, default.l2_anchor_weights) == ("initial", None)
+    assert _cli(module, "--l2-anchor", "uniform").l2_anchor == "uniform"
+    anchor = tmp_path / "anchor.npy"
+    named = _cli(
+        module,
+        "--l2-anchor",
+        "household_proportional",
+        "--l2-anchor-weights",
+        str(anchor),
+    )
+    assert (named.l2_anchor, named.l2_anchor_weights) == (
+        "household_proportional",
+        anchor,
+    )
+    for bad in (
+        ("--l2-anchor", "household_proportional"),  # a name with no vector
+        ("--l2-anchor-weights", str(anchor)),  # a vector with no name
+        ("--l2-anchor", "uniform", "--l2-anchor-weights", str(anchor)),
+    ):
+        with pytest.raises(SystemExit):
+            _cli(module, *bad)
+
+
+def test_the_default_anchor_adds_no_keyword_and_no_stamp() -> None:
+    module = _FIXTURE._load_tool_module()
+    args = _cli(module)
+    assert module.release_l2_anchor(args, np.arange(5)) == ({}, None)
+    assert "l2_anchor" not in module._solver_settings(args, {}, None)
+
+
+def test_the_uniform_anchor_reaches_calibrate_and_the_stamp(calibrate_run) -> None:
+    calls = calibrate_run.run(
+        l2_anchor="uniform", l2_lambda=0.05, l2_basis="chi_square"
+    )
+    for call in calls:
+        assert set(call["kwargs"]) == HISTORICAL_CALIBRATE_KEYWORDS | {"l2_anchor"}
+        assert call["kwargs"]["l2_anchor"] == "uniform"
+    summary = _summary(calibrate_run)
+    assert summary["l2_anchor"] == "uniform"
+    assert summary["solver_settings"]["l2_anchor"] == "uniform"
+    assert "l2_anchor_weights_sha256" not in summary["solver_settings"]
+
+
+def test_anchor_weights_pull_toward_a_declared_design(calibrate_run) -> None:
+    from microcosm.calibrate import chi_square_distance
+
+    module = calibrate_run.module
+    design = np.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+    # A declared design that is not the starting weights: equal households.
+    declared = np.full(5, 3.0)
+    anchor = calibrate_run.path / "anchor.npz"
+    np.savez(anchor, weights=declared, household_id=np.arange(1, 6))
+    penalty = dict(l2_lambda=5.0, l2_basis="chi_square", epochs=60, epoch_batch=30)
+
+    calibrate_run.run(**penalty)
+    toward_start = _saved_weights(calibrate_run)
+    calls = calibrate_run.run(
+        **penalty, l2_anchor="equal_households", l2_anchor_weights=anchor
+    )
+    toward_declared = _saved_weights(calibrate_run)
+
+    for call in calls:
+        assert call["kwargs"]["l2_anchor"] == "equal_households"
+        np.testing.assert_array_equal(call["kwargs"]["l2_anchor_weights"], declared)
+    # The starting weights, and so the bound and the mass, did not change.
+    saved = np.load(calibrate_run.path / "weights_latest.npz")
+    np.testing.assert_array_equal(saved["initial_weights"], design)
+    assert toward_declared.sum() == pytest.approx(design.sum())
+    assert (toward_declared <= 5.0 * design * (1 + 1e-12)).all()
+    # The penalty pulled toward the declared design instead of the start.
+    assert chi_square_distance(toward_declared, declared) < chi_square_distance(
+        toward_start, declared
+    )
+    stamp = _summary(calibrate_run)["solver_settings"]
+    assert stamp["l2_anchor"] == "equal_households"
+    assert stamp["l2_anchor_weights_sha256"] == module._weights_digest(declared)
+    # Another anchor is another solve: a resume refuses these weights.
+    with pytest.raises(SystemExit, match="different solver settings"):
+        calibrate_run.run(**penalty, resume=True)
+
+
+def test_anchor_weights_must_fit_the_checkpoint(calibrate_run, tmp_path) -> None:
+    module = calibrate_run.module
+    households = np.arange(1, 6)
+
+    def anchor(name, **arrays):
+        path = tmp_path / name
+        if name.endswith(".npy"):
+            np.save(path, arrays["weights"])
+        else:
+            np.savez(path, **arrays)
+        return SimpleNamespace(l2_anchor="declared", l2_anchor_weights=path)
+
+    keywords, stamp = module.release_l2_anchor(
+        anchor("plain.npy", weights=np.ones(5)), households
+    )
+    assert keywords["l2_anchor"] == "declared" and stamp["l2_anchor"] == "declared"
+    np.testing.assert_array_equal(keywords["l2_anchor_weights"], np.ones(5))
+    for name, arrays, match in (
+        ("short.npy", {"weights": np.ones(4)}, "has shape"),
+        ("zero.npy", {"weights": np.asarray([1.0, 1, 1, 1, 0])}, "strictly positive"),
+        ("nokey.npz", {"anchor": np.ones(5)}, "has no 'weights' array"),
+        (
+            "order.npz",
+            {"weights": np.ones(5), "household_id": households[::-1]},
+            "other households",
+        ),
+    ):
+        with pytest.raises(SystemExit, match=match):
+            module.release_l2_anchor(anchor(name, **arrays), households)

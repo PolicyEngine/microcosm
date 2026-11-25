@@ -336,6 +336,13 @@ CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_
 #: so parsing arguments never imports torch; a test pins them equal.
 L2_BASIS_CHOICES = ("chi_square", "record")
 MASS_PARAMETRIZATION_CHOICES = ("projection", "softmax")
+#: The kernel's ``l2_anchor`` presets (``microcosm.calibrate.calibrate``): the
+#: weights the ``--l2-lambda`` penalty pulls toward. ``initial`` is each
+#: record's own starting weight and what every solve has used; ``uniform`` is
+#: the mean starting weight. With ``--l2-anchor-weights`` the anchor is the
+#: vector in that file and ``--l2-anchor`` names it (microcosm#1729).
+L2_ANCHOR_INITIAL = "initial"
+L2_ANCHOR_PRESETS = (L2_ANCHOR_INITIAL, "uniform")
 #: The penalty settings every solve had before they were options: a solver
 #: stamp or summary that lacks them was solved with these.
 HISTORICAL_PENALTY = {
@@ -2623,12 +2630,15 @@ def _apply_county_solver_profile(args, *, identity=None) -> None:
         }
 
 
-def _solver_settings(args, target_loss: dict) -> dict:
+def _solver_settings(args, target_loss: dict, l2_anchor: dict | None = None) -> dict:
     """The calibrate-stage settings a resume or reuse must share.
 
     ``target_loss`` is the stamp :func:`release_target_loss_weights` returns,
     so weights calibrated under another loss weighting, or under none (a run
-    from before the weights), are never warm-started from.
+    from before the weights), are never warm-started from. ``l2_anchor`` is
+    the stamp :func:`release_l2_anchor` returns: ``None`` for the default
+    anchor, which adds no key, so a stamp from before the option compares
+    equal to a request for the default.
     """
 
     return {
@@ -2648,6 +2658,7 @@ def _solver_settings(args, target_loss: dict) -> dict:
             if getattr(args, "county_solver_profile", None) is not None
             else {}
         ),
+        **(l2_anchor or {}),
     }
 
 
@@ -2688,6 +2699,58 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
         stamp["weighting"] = rule
         stamp["rule"] = loss_weighting.acs_local_target_weight_rule(rule).to_json()
     return weights, stamp
+
+
+def release_l2_anchor(args, household_ids) -> tuple[dict, dict | None]:
+    """The L2 anchor keywords for ``calibrate``, and the stamp describing them.
+
+    The default (``--l2-anchor initial``, no anchor weights) gives no keyword
+    and no stamp, so the solve and its settings are those of every release.
+    ``--l2-anchor uniform`` passes the preset. ``--l2-anchor-weights FILE``
+    passes the vector in FILE (``.npy``, or ``.npz`` with ``weights``), one
+    positive weight for each checkpoint household in checkpoint order, under
+    the label ``--l2-anchor`` names; an ``.npz`` that also has
+    ``household_id`` must list the checkpoint's households. The stamp digests
+    the vector, so a resume refuses weights calibrated toward another anchor.
+
+    The anchor changes only what the ``--l2-lambda`` penalty pulls toward. It
+    does not change the starting weights, the weight bound or the mass.
+    """
+
+    anchor = getattr(args, "l2_anchor", L2_ANCHOR_INITIAL)
+    path = getattr(args, "l2_anchor_weights", None)
+    if path is None:
+        if anchor == L2_ANCHOR_INITIAL:
+            return {}, None
+        return {"l2_anchor": anchor}, {"l2_anchor": anchor}
+    loaded = np.load(path, allow_pickle=False)
+    if isinstance(loaded, np.ndarray):
+        vector = loaded
+    else:
+        if "weights" not in loaded:
+            raise SystemExit(f"--l2-anchor-weights {path} has no 'weights' array.")
+        vector = loaded["weights"]
+        if "household_id" in loaded and not np.array_equal(
+            np.asarray(loaded["household_id"]), np.asarray(household_ids)
+        ):
+            raise SystemExit(
+                f"--l2-anchor-weights {path} lists other households, or another "
+                "order, than the checkpoint."
+            )
+    vector = np.asarray(vector, dtype=np.float64)
+    if vector.shape != (len(household_ids),):
+        raise SystemExit(
+            f"--l2-anchor-weights {path} has shape {vector.shape}; the checkpoint "
+            f"has {len(household_ids)} households."
+        )
+    if not np.isfinite(vector).all() or (vector <= 0).any():
+        raise SystemExit(
+            f"--l2-anchor-weights {path} must be finite and strictly positive."
+        )
+    return (
+        {"l2_anchor": anchor, "l2_anchor_weights": vector},
+        {"l2_anchor": anchor, "l2_anchor_weights_sha256": _weights_digest(vector)},
+    )
 
 
 def release_target_loss_caps(args, target_set, train_specs, loss_weights):
@@ -2995,6 +3058,7 @@ def calibrate_surface(
     l2_basis: str = HISTORICAL_PENALTY["l2_basis"],
     mass_parametrization: str = HISTORICAL_PENALTY["mass_parametrization"],
     target_loss_scales: np.ndarray | None = None,
+    l2_anchor: dict | None = None,
 ):
     """Epoch-batched warm-start calibration of ``target_set``.
 
@@ -3006,14 +3070,15 @@ def calibrate_surface(
     release weights (:func:`release_target_loss_weights`), and ``None`` (equal
     weights) is for harnesses. Returns ``(result, epochs_done)``.
 
-    An option added after the first release (``target_loss_scales``) reaches
+    An option added after the first release (``target_loss_scales``, and the
+    ``l2_anchor`` keywords :func:`release_l2_anchor` returns) reaches
     ``calibrate`` only when a caller sets it, so a run that sets none makes
     the call every release has made.
     """
 
     from microcosm.calibrate import calibrate
 
-    optional = {}
+    optional = dict(l2_anchor or {})
     if target_loss_scales is not None:
         optional["target_loss_scales"] = target_loss_scales
     batch = epoch_batch if epoch_batch > 0 else epochs
@@ -3185,7 +3250,10 @@ def do_calibrate(args) -> None:
     )
 
     stamp = _run_identity_digest(identity)
-    settings = _solver_settings(args, target_loss)
+    l2_anchor, l2_anchor_stamp = release_l2_anchor(
+        args, frame.table("household")["household_id"].to_numpy()
+    )
+    settings = _solver_settings(args, target_loss, l2_anchor_stamp)
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
     warm, done = None, 0
     if args.resume and resume_npz.exists():
@@ -3309,6 +3377,7 @@ def do_calibrate(args) -> None:
         seed=args.seed,
         target_loss_weights=solver_loss["weights"],
         target_loss_scales=solver_loss["scales"],
+        l2_anchor=l2_anchor,
         warm=warm,
         done=done,
         on_batch=save,
@@ -3348,6 +3417,7 @@ def do_calibrate(args) -> None:
         "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
         "l2_basis": args.l2_basis,
+        **(l2_anchor_stamp or {}),
         "mass_parametrization": args.mass_parametrization,
         "seed": args.seed,
         "initial_loss": round(result.initial_loss, 6),
@@ -6954,6 +7024,20 @@ def do_package(args) -> dict:
             refresh_recipe["release"] += (
                 f" --county-target-loss-cap-scope {county_profile['scope']}"
             )
+    # Options a build asked for by name are named in the recipe; a default
+    # build records none of them and its recipe is unchanged.
+    recorded_settings = diagnostics.get("solver_settings") or {}
+    if (recorded_settings.get("target_loss") or {}).get("rule") is not None:
+        refresh_recipe["release"] += (
+            f" --target-weight-rule {recorded_settings['target_loss']['weighting']}"
+        )
+    if recorded_settings.get("l2_anchor") is not None:
+        refresh_recipe["release"] += f" --l2-anchor {recorded_settings['l2_anchor']}"
+        if recorded_settings.get("l2_anchor_weights_sha256") is not None:
+            refresh_recipe["release"] += (
+                " --l2-anchor-weights <anchor weights with sha256 "
+                f"{recorded_settings['l2_anchor_weights_sha256']}>"
+            )
     refresh_recipe["release"] += district_ess_refresh_flags(
         (gate_report.get("gates") or {}).get(DISTRICT_ESS_GATE)
     )
@@ -7368,6 +7452,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--l2-anchor",
+        default=L2_ANCHOR_INITIAL,
+        help=(
+            "What the --l2-lambda penalty pulls toward (microcosm.calibrate "
+            "l2_anchor). 'initial' (default) is each record's own starting "
+            "weight; 'uniform' is the mean starting weight. With "
+            "--l2-anchor-weights it is the name of that vector, for the "
+            "record (for example 'household_proportional'). It has no effect "
+            "at --l2-lambda 0."
+        ),
+    )
+    parser.add_argument(
+        "--l2-anchor-weights",
+        type=Path,
+        default=None,
+        help=(
+            "A declared anchor for the --l2-lambda penalty: a .npy vector, or "
+            "a .npz with 'weights' (and optionally 'household_id'), one "
+            "positive weight per checkpoint household in checkpoint order. "
+            "The penalty then pulls toward this design; the starting weights "
+            "and the weight bound do not change. Needs a name in --l2-anchor."
+        ),
+    )
+    parser.add_argument(
         "--mass-parametrization",
         choices=MASS_PARAMETRIZATION_CHOICES,
         default=HISTORICAL_PENALTY["mass_parametrization"],
@@ -7513,6 +7621,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error(
             "--cd-holdout-fraction must be in "
             f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
+        )
+    if args.l2_anchor_weights is None and args.l2_anchor not in L2_ANCHOR_PRESETS:
+        parser.error(
+            f"--l2-anchor must be one of {L2_ANCHOR_PRESETS} unless "
+            "--l2-anchor-weights gives the vector it names."
+        )
+    if args.l2_anchor_weights is not None and (
+        args.l2_anchor in L2_ANCHOR_PRESETS or not args.l2_anchor.strip()
+    ):
+        parser.error(
+            "--l2-anchor-weights needs a name for the vector in --l2-anchor "
+            f"(not one of {L2_ANCHOR_PRESETS})."
         )
     if not 0.0 <= args.district_ess_relative_floor <= 1.0:
         parser.error("--district-ess-relative-floor must be in [0, 1].")
