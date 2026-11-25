@@ -270,9 +270,14 @@ its tag also carries `migrated_from`, which names the tag, its commit and the
 SHA-256 of the manifest the tool rewrote. A build it moved from an untagged
 folder on `main` (`--include-untagged`, for BE's builds) carries instead the
 old folder, the commit that last changed it and that SHA-256. Its `artifacts`
-lists the files its folder holds, and `unpublished_artifacts` keeps, unchanged,
-the map the old manifest had, which declares files of the builder's output
-directory that were never published.
+lists the files its folder holds, each with its `path`, `repo_id`, `role` and
+`sha256` but no `kind`, and `unpublished_artifacts` keeps, unchanged, the map
+the old manifest had, which declares files of the builder's output directory
+that were never published. Such a folder holds no dataset, so the release
+validator's build-folder checks (a `kind` on every artifact, a default dataset
+artifact) don't hold for it: it meets the emitter interface's checks and the
+collector's daily check that every listed file is in the folder and every
+file is listed, and nothing loads it as a dataset.
 
 Several writers produce the build-folder manifests on main. The UK national and
 dense assemblers build both dictionaries themselves and run

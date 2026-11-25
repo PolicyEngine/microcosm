@@ -109,10 +109,14 @@ with the ID of its tag object instead.
 - Each untagged folder that ``--include-untagged FOLDER=RELEASE`` names: a
   folder ``releases/<FOLDER>/`` on ``main`` that no tag names, holding its
   build's files directly, as BE's builds are stored. Its build is
-  ``FOLDER``, in ``RELEASE``. Its release manifest's ``build.build_id`` must
-  be ``FOLDER``, and the tool refuses a folder whose manifest names a tag
-  (``build.cut_tag``), a folder holding a checksum ledger or a subfolder,
-  and a ``FOLDER`` that is also a tag.
+  ``FOLDER``, in ``RELEASE``. The tool refuses a ``FOLDER`` that is also a
+  tag, a ``RELEASE`` that is the name of a folder ``--include-untagged``
+  moves, a folder holding a checksum ledger, a subfolder or no file besides
+  its manifests, two of its files whose names give one artifact name, a
+  folder from which a file was deleted after the commit that last changed
+  the files it holds, and a release manifest with no ``build`` object,
+  whose ``build.build_id`` is not ``FOLDER`` or that names a tag
+  (``build.cut_tag``).
 
 A pointer file with no ``revision`` names a release-per-build tag, or an
 untagged folder, by its ``release_id``: BE's ``latest.json`` names a folder
@@ -169,7 +173,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC
 from pathlib import Path
@@ -367,16 +371,30 @@ class BuildMove:
 
 @dataclass(frozen=True)
 class _Candidate:
-    """A tag or an untagged folder to move: where its build is, and how its
-    build is named. An untagged folder's ``tag`` is ``None``, and its
-    ``commit`` is the commit that last changed it."""
+    """A tag to move: where its build is, and how its build is named."""
 
-    tag: str | None
+    tag: str
     commit: str
     release: str
     source_folder: str
     #: ``None`` for a dated tag, whose build is its manifest's attempt ID.
     build: str | None
+
+
+@dataclass(frozen=True)
+class _UntaggedFolder:
+    """An untagged folder ``releases/<name>/`` on ``main`` to move as build
+    ``name`` of ``release``: the files it holds, and the commit that last
+    changed one of them, at which it holds exactly those files."""
+
+    name: str
+    release: str
+    commit: str
+    files: tuple[str, ...]
+
+    @property
+    def folder(self) -> str:
+        return f"releases/{self.name}"
 
 
 class _Hub:
@@ -453,8 +471,9 @@ class _Hub:
 
     def last_change(self, paths: Sequence[str], revision: str) -> str:
         """The newest commit, in ``revision``'s history, that changed any
-        of ``paths``: at it, every one of them has the bytes it has at
-        ``revision``."""
+        of ``paths``: in a history without merges, every one of them has
+        the bytes there that it has at ``revision``. It doesn't see a file
+        deleted since; the caller compares the files there."""
         infos = self.api.get_paths_info(
             self.repository,
             list(paths),
@@ -969,58 +988,69 @@ def _describe(hub: _Hub, candidate: _Candidate) -> BuildMove:
     )
 
 
-def _untagged_candidate(
+def _untagged_folder(
     hub: _Hub,
-    folder_name: str,
+    name: str,
     release: str,
     *,
     head: str,
     head_files: Sequence[str],
     tags: Mapping[str, str],
-) -> tuple[_Candidate, list[str]]:
-    """An untagged folder to move, and the names of the files it holds."""
-    if not folder_name or "/" in folder_name or folder_name in {".", ".."}:
+    moving: Collection[str],
+) -> _UntaggedFolder:
+    """The untagged folder ``releases/<name>/`` to move into ``release``;
+    refuse one this tool cannot move.
+
+    ``moving`` names every untagged folder the run moves: a release with one
+    of their names would put its build folder inside that old folder.
+    """
+    if not name or "/" in name or name in {".", ".."}:
         raise SwitchRefusedError("it is not a folder directly under releases/")
-    if folder_name in tags:
+    if name in tags:
         raise SwitchRefusedError(
-            f"{folder_name} is a tag of {hub.repository}; move it with --include "
-            f"{folder_name}=<release>"
+            f"{name} is a tag of {hub.repository}; move it with --include "
+            f"{name}=<release>"
         )
-    folder = f"releases/{folder_name}"
+    if release in moving:
+        raise SwitchRefusedError(
+            f"its release {release} is the name of a folder that "
+            f"--include-untagged moves, so its build folder would be inside "
+            f"releases/{release}/"
+        )
+    folder = f"releases/{name}"
     paths = sorted(path for path in head_files if path.startswith(f"{folder}/"))
     if not paths:
         raise SwitchRefusedError(f"it is not a folder on main at {head}")
-    names = [path.removeprefix(f"{folder}/") for path in paths]
-    nested = [name for name in names if "/" in name]
+    files = tuple(path.removeprefix(f"{folder}/") for path in paths)
+    nested = [file for file in files if "/" in file]
     if nested:
         raise SwitchRefusedError(
             f"it holds files in subfolders, which this tool does not move: {nested}"
         )
-    candidate = _Candidate(
-        tag=None,
-        commit=hub.last_change(paths, head),
-        release=release,
-        source_folder=folder,
-        build=folder_name,
+    commit = hub.last_change(paths, head)
+    # The files it holds are unchanged since that commit; a file deleted
+    # since then means the folder held more there, and no commit records
+    # when it took the form that moves.
+    then = {path for path in hub.files(commit) if path.startswith(f"{folder}/")}
+    if then != set(paths):
+        deleted = sorted(path.removeprefix(f"{folder}/") for path in then - set(paths))
+        raise SwitchRefusedError(
+            f"{deleted} were deleted from it after {commit}, the commit that "
+            "last changed the files it holds, so it has no commit to record as "
+            "its origin"
+        )
+    return _UntaggedFolder(name=name, release=release, commit=commit, files=files)
+
+
+def _describe_untagged(hub: _Hub, untagged: _UntaggedFolder) -> BuildMove:
+    """Read one untagged folder and work out its build folder; refuse if it
+    cannot move. Every file is read at the commit that last changed it."""
+    folder, commit, build, names = (
+        untagged.folder,
+        untagged.commit,
+        untagged.name,
+        untagged.files,
     )
-    return candidate, names
-
-
-def _describe_untagged(
-    hub: _Hub, candidate: _Candidate, names: Sequence[str]
-) -> BuildMove:
-    """Read one untagged build folder and work out its build folder; refuse
-    if it cannot move.
-
-    ``names`` are the files the folder holds, all read at the commit that
-    last changed it.
-    """
-    folder, commit, build = (
-        candidate.source_folder,
-        candidate.commit,
-        candidate.build,
-    )
-    assert build is not None
     if RELEASE_MANIFEST_NAME not in names:
         raise SwitchRefusedError(f"it holds no {RELEASE_MANIFEST_NAME}")
     if CHECKSUMS_FILE in names:
@@ -1058,13 +1088,13 @@ def _describe_untagged(
         original = hub.read(f"{folder}/{_BUILD_MANIFEST_NAME}", commit)
         written[_BUILD_MANIFEST_NAME] = _serialized(
             build_folder_build_manifest(
-                json.loads(original), release=candidate.release, build=build
+                json.loads(original), release=untagged.release, build=build
             )
         )
     written[RELEASE_MANIFEST_NAME] = _serialized(
         untagged_build_folder_release_manifest(
             manifest,
-            release=candidate.release,
+            release=untagged.release,
             build=build,
             repository=hub.repository,
             held=held,
@@ -1076,10 +1106,10 @@ def _describe_untagged(
         )
     )
     return BuildMove(
-        release=candidate.release,
+        release=untagged.release,
         build=build,
         release_role=release_role,
-        tagged_release=folder.removeprefix("releases/"),
+        tagged_release=untagged.name,
         tag=None,
         commit=commit,
         published_at=hub.commit_date(commit),
@@ -1156,19 +1186,20 @@ def _survey(
             survey.moves.append(_describe(hub, candidate))
         except (ValueError, KeyError) as error:
             survey.problems.append(f"{tag} cannot move: {error}")
-    for folder_name, release in sorted(selection.include_untagged.items()):
+    for name, release in sorted(selection.include_untagged.items()):
         try:
-            untagged, names = _untagged_candidate(
+            untagged = _untagged_folder(
                 hub,
-                folder_name,
+                name,
                 release,
                 head=head,
                 head_files=head_files,
                 tags=tags,
+                moving=selection.include_untagged.keys(),
             )
-            survey.moves.append(_describe_untagged(hub, untagged, names))
+            survey.moves.append(_describe_untagged(hub, untagged))
         except (ValueError, KeyError) as error:
-            survey.problems.append(f"releases/{folder_name}/ cannot move: {error}")
+            survey.problems.append(f"releases/{name}/ cannot move: {error}")
     seen: dict[tuple[str, str], str] = {}
     for move in survey.moves:
         earlier = seen.setdefault((move.release, move.build), move.origin)
@@ -1188,10 +1219,13 @@ def _folder_state(
 
     ``missing`` when the folder holds nothing; ``copied`` when it holds
     exactly the build's files, its release manifest names the release, the
-    build and the tagged manifest it was rewritten from, every file the
-    manifest declares has the SHA-256 the manifest records, and every
-    undeclared file the checksum ledger records has the SHA-256 it had at
-    the tag; ``occupied`` otherwise, with the reason. The rewritten
+    build and the manifest it was rewritten from (``migrated_from``: the tag
+    and its commit, or an untagged build's old folder and the commit that
+    last changed it, so a change to that folder since the copy makes it
+    ``occupied``), every file the manifest declares has the SHA-256 the
+    manifest records, and every undeclared file the checksum ledger records
+    has the SHA-256 it had at the tag; ``occupied`` otherwise, with the
+    reason. The rewritten
     manifests' bytes are not compared, and the checksum ledger at ``head`` is
     not read, nor the build manifest unless the release manifest declares
     it, so a folder copied by an earlier version of this tool still counts
@@ -1518,7 +1552,7 @@ def _switch_record(
                 make_current=False,
             )
         except (ReleaseRecordError, ValueError) as error:
-            problems.append(f"{move.tag}: {error}")
+            problems.append(f"{move.origin}: {error}")
     for release, build in sorted(currents.items()):
         try:
             record = make_current(record, release=release, build=build)
