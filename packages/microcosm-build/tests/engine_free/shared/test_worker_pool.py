@@ -365,13 +365,44 @@ def test_functions_a_worker_cannot_import_are_refused_before_any_worker_starts()
         )
 
 
-def test_process_memory_bytes_sees_this_process_grow() -> None:
-    before = process_memory_bytes(os.getpid())
-    held = np.ones(256 * MIB // 8)
-    after = process_memory_bytes(os.getpid())
+def test_process_memory_bytes_sees_a_process_grow_and_exit() -> None:
+    """Read a fresh child process, not this one.
+
+    A test process that has run for an hour can hold a large freed block its C
+    allocator reuses, so a new array there may add no resident pages at all
+    (seen on the Linux CI runners: the same 3.2 GB before and after).
+    """
+    script = (
+        "import sys\n"
+        "import numpy as np\n"
+        "print('started', flush=True)\n"
+        "sys.stdin.readline()\n"
+        "held = np.ones(256 * 1024 * 1024 // 8)\n"
+        "print('holding', flush=True)\n"
+        "sys.stdin.readline()\n"
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert child.stdout.readline().strip() == "started"
+        before = process_memory_bytes(child.pid)
+        child.stdin.write("\n")
+        child.stdin.flush()
+        assert child.stdout.readline().strip() == "holding"
+        after = process_memory_bytes(child.pid)
+    finally:
+        child.kill()
+        child.wait()
+        child.stdin.close()
+        child.stdout.close()
+
     assert before is not None and before > 10 * MIB
     assert after - before >= 200 * MIB
-    del held
+    assert process_memory_bytes(child.pid) is None  # Exited and reaped.
 
 
 def _held_by_another_thread(lock) -> bool:
