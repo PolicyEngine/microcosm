@@ -25,10 +25,12 @@ rate allows:
 
     copy reports  iff  u * p_twin < p_copy               (twin reports)
                        p_twin + u * (1 - p_twin) < p_copy (twin does not)
+                       u < p_copy                         (twin in no cell)
 
 with ``u`` uniform on the copy's identity: a copy in its twin's cell keeps the
 twin's report, and where the twins report at their cells' rates the copies
-report at their own. A
+report at their own. A twin with no eligible child is in no cell and has no
+rate to couple to, so its copy draws on its own at its cell's rate. A
 reporting copy takes its twin's reported amounts, or the engine's annual Child
 Benefit entitlement on its benefit unit head when the twin does not report; a
 copy without an eligible child takes its twin's reports. FRS rows are never
@@ -875,9 +877,10 @@ def assign_spi_child_benefit_reports(
     A copy reports when ``u * p_twin < p_copy`` if its twin reports and when
     ``p_twin + u * (1 - p_twin) < p_copy`` if it does not: a copy in its
     twin's cell keeps the twin's report, and a twin reporting at its cell's
-    rate gives its copies their own cell's rate. ``p_twin`` is the copy's own
-    rate when the twin is in no cell (it has no eligible child). False outside
-    the copy families.
+    rate gives its copies their own cell's rate. A twin in no cell (it has no
+    eligible child) has no rate to couple to, so its copy reports when
+    ``u < p_copy``, at its own cell's rate whatever the twin reports. False
+    outside the copy families.
     """
 
     copy = np.asarray(copy, dtype=bool)
@@ -894,11 +897,13 @@ def assign_spi_child_benefit_reports(
         raise ValueError("Every SPI copy family needs a report cell.")
     p_copy = rates[cell[target]]
     twin_cell = cell[twin[target]]
-    p_twin = np.where(twin_cell >= 0, rates[np.maximum(twin_cell, 0)], p_copy)
+    p_twin = rates[np.maximum(twin_cell, 0)]
     u = draws[target]
     coupled = np.where(reporter[twin[target]], u * p_twin, p_twin + u * (1.0 - p_twin))
+    # Standing in p_copy for a twin in no cell would make the copy report
+    # always (twin reports) or never (it does not): draw such a copy uncoupled.
     drawn = np.zeros(len(copy), dtype=bool)
-    drawn[target] = coupled < p_copy
+    drawn[target] = np.where(twin_cell >= 0, coupled, u) < p_copy
     return drawn
 
 

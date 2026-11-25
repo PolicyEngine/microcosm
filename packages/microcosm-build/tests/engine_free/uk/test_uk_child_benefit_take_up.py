@@ -854,3 +854,23 @@ def test_coupled_copy_reports_keep_same_cell_twins_and_reach_the_cell_rate() -> 
             reporter=np.array([False]),
             draws=np.array([0.5]),
         )
+
+
+@pytest.mark.parametrize("twin_reports", [True, False])
+def test_a_copy_whose_twin_is_in_no_cell_draws_at_its_own_rate(
+    twin_reports: bool,
+) -> None:
+    # A twin with no eligible child has no rate to couple to (Vahid's review
+    # of microcosm#1718): its copy reports when u < p_copy, not always or never.
+    u = np.array([0.1, 0.29, 0.31, 0.9])
+    drawn = assign_spi_child_benefit_reports(
+        copy=np.r_[np.zeros(4, dtype=bool), np.ones(4, dtype=bool)],
+        family=np.r_[np.zeros(4, dtype=bool), np.ones(4, dtype=bool)],
+        twin=np.r_[np.full(4, -1), np.arange(4)],
+        cell=np.r_[np.full(4, -1), np.zeros(4, dtype=np.int64)],
+        rates=np.array([0.3]),
+        reporter=np.r_[np.full(4, twin_reports), np.zeros(4, dtype=bool)],
+        draws=np.r_[np.zeros(4), u],
+    )
+
+    assert drawn.tolist() == [False] * 4 + [True, True, False, False]
