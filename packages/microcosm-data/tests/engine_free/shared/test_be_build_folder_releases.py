@@ -137,13 +137,26 @@ def test_a_be_build_without_its_engines_record_is_refused(
         {"python": "3.14.0"},
         {"packages": {}},
         {"packages": {"numpy": ""}},
+        {"packages": {"numpy": 2}},
         {"model": ""},
+        {"model": "EUROMOD J2.0+ BE_2025", "packages": {}},
+        {"packages": {"numpy": "2.4.6"}, "model": ""},
+        "axiom",
     ],
-    ids=["neither", "no-packages", "unversioned-package", "empty-model"],
+    ids=[
+        "neither",
+        "no-packages",
+        "unversioned-package",
+        "non-string-version",
+        "empty-model",
+        "model-with-empty-packages",
+        "packages-with-empty-model",
+        "not-an-object",
+    ],
 )
 def test_a_be_engine_must_record_its_packages_or_its_model(
     release_dir: Path,  # noqa: F811
-    engine: dict,
+    engine: object,
 ) -> None:
     be_release_dir = _as_be_build_folder_release(
         release_dir, engines={"axiom_rules_engine": engine}
@@ -152,6 +165,40 @@ def test_a_be_engine_must_record_its_packages_or_its_model(
     assert (
         "build_manifest.json 'engines.axiom_rules_engine' must record its "
         "'packages' (each package's version) or its 'model'."
+    ) in _contract_failures(be_release_dir)
+
+
+def test_a_be_build_in_the_local_area_role_records_its_engines(
+    release_dir: Path,  # noqa: F811
+) -> None:
+    """A BE release is tied to no role, so a BE build in the local-area role
+    is held to the local-area contract, and records its engines there too."""
+    be_release_dir = _as_be_build_folder_release(release_dir, engines=None)
+    manifest_path = be_release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["dataset_role"] = "non_default_local_area"
+    manifest_path.write_text(json.dumps(manifest))
+
+    assert (
+        "build_manifest.json 'engines' must be a non-empty object naming each "
+        "engine a BE build ran on."
+    ) in _contract_failures(be_release_dir)
+
+
+def test_a_policyengine_core_version_a_be_build_records_is_checked(
+    release_dir: Path,  # noqa: F811
+) -> None:
+    """A BE build need not record policyengine-core in its runtime, but a
+    version it does record must be resolved, as for any build."""
+    be_release_dir = _as_be_build_folder_release(release_dir)
+    build_path = be_release_dir / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest["runtime"]["policyengine-core"] = "unknown"
+    build_path.write_text(json.dumps(build_manifest))
+
+    assert (
+        "build_manifest.json 'runtime.policyengine-core' must be a resolved "
+        "version, not missing or unknown."
     ) in _contract_failures(be_release_dir)
 
 
