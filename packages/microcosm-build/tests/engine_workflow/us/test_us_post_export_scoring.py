@@ -362,3 +362,32 @@ def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
     kept_before, kept_after, kept = score()
     assert len(kept_after - kept_before) >= 2 * 1_000
     assert released == kept
+
+
+def test_batches_read_from_their_files_equal_the_written_h5s_batches(
+    builder, tmp_path
+) -> None:
+    """Each batch the scorer reads back from its file (1.4 · 4) holds exactly
+    the rows, columns, dtypes, values and weights of that household batch of a
+    fixture H5 written by the engine's own writer, as the scorer selected it
+    in memory before it kept batches in files."""
+    from test_support.microcosm_build.us_post_export_batch_files import (
+        assert_same_batch,
+    )
+
+    path = _write_engine_h5(builder, tmp_path, _GUARD_HOUSEHOLDS)
+    written = builder._load_frame(path, expected_sha256=builder._sha256(path))
+    expected = [
+        builder._select_households_by_position(written, positions)
+        for positions in builder._household_position_batches(written.n("household"), 3)
+    ]
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        path, maximum_microsim_batch_size=3
+    )
+    try:
+        batches = scorer._batches()
+        assert len(batches) == len(expected) == scorer.n_batches >= 2
+        for number, selected in enumerate(expected):
+            assert_same_batch(batches[number], selected)
+    finally:
+        scorer.close()
