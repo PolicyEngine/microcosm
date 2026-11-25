@@ -1720,28 +1720,35 @@ def _check_build_folder_release_details(
     built_with_core_package = manifest.get("built_with_core_package")
     built_with_model_package = manifest.get("built_with_model_package")
     model_package = _expected_model_package(release_id)
-    _check_release_manifest_package(
-        built_with_core_package,
-        field="built_with_core_package",
-        expected_name="policyengine-core",
-        failures=failures,
-    )
-    _check_release_manifest_package(
-        built_with_model_package,
-        field="built_with_model_package",
-        expected_name=model_package,
-        failures=failures,
-    )
+    # A BE build runs on no PolicyEngine package, and records its engines in
+    # the build manifest instead (_check_be_engines); a PolicyEngine record it
+    # does carry is checked as any other build's is.
+    optional = is_be_release(release_id)
+    if not (optional and "built_with_core_package" not in manifest):
+        _check_release_manifest_package(
+            built_with_core_package,
+            field="built_with_core_package",
+            expected_name="policyengine-core",
+            failures=failures,
+        )
+    if not (optional and "built_with_model_package" not in manifest):
+        _check_release_manifest_package(
+            built_with_model_package,
+            field="built_with_model_package",
+            expected_name=model_package,
+            failures=failures,
+        )
     if not compatible_packages:
         return
-    _check_compatible_package_entries(
-        manifest.get("compatible_core_packages"),
-        field="compatible_core_packages",
-        expected_name="policyengine-core",
-        built_with_package=built_with_core_package,
-        built_with_field="built_with_core_package",
-        failures=failures,
-    )
+    if not (optional and "compatible_core_packages" not in manifest):
+        _check_compatible_package_entries(
+            manifest.get("compatible_core_packages"),
+            field="compatible_core_packages",
+            expected_name="policyengine-core",
+            built_with_package=built_with_core_package,
+            built_with_field="built_with_core_package",
+            failures=failures,
+        )
     _check_compatible_package_entries(
         manifest.get("compatible_model_packages"),
         field="compatible_model_packages",
@@ -1849,7 +1856,12 @@ def _check_build_manifest(
             "(Python and package versions used for target materialization)."
         )
     else:
-        required_packages = ["python", "policyengine-core"]
+        # A BE build runs on the Axiom rules engine and EUROMOD, not on
+        # PolicyEngine packages, so it records its engines instead
+        # (_check_be_engines).
+        required_packages = ["python"]
+        if not is_be_release(release_id):
+            required_packages.append("policyengine-core")
         model_package = _expected_model_package(release_id)
         if model_package is not None:
             required_packages.append(model_package)
@@ -1860,6 +1872,8 @@ def _check_build_manifest(
                     f"build_manifest.json 'runtime.{package}' must be a resolved "
                     "version, not missing or unknown."
                 )
+    if is_be_release(release_id):
+        _check_be_engines(manifest, failures)
     dataset = manifest.get("dataset")
     if not isinstance(dataset, Mapping):
         failures.append("build_manifest.json is missing the 'dataset' object.")
@@ -2171,6 +2185,40 @@ def _check_us_release_artifacts(
             "release_manifest.json artifacts must include "
             f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
         )
+
+
+def _check_be_engines(manifest: Mapping, failures: list[str]) -> None:
+    """A BE build's manifest records each engine the build ran on.
+
+    BE's builds run on the Axiom rules engine and EUROMOD, not on PolicyEngine
+    packages, so where a UK or US build records its PolicyEngine package
+    versions, a BE build records ``engines``, as BE's builds published before
+    the move do: each engine by name, with the version of each package
+    installed for it (``packages``) or the model it ran (``model``).
+    """
+    engines = manifest.get("engines")
+    if not isinstance(engines, Mapping) or not engines:
+        failures.append(
+            "build_manifest.json 'engines' must be a non-empty object naming each "
+            "engine a BE build ran on."
+        )
+        return
+    for name, engine in engines.items():
+        packages = engine.get("packages") if isinstance(engine, Mapping) else None
+        model = engine.get("model") if isinstance(engine, Mapping) else None
+        records_packages = (
+            isinstance(packages, Mapping)
+            and bool(packages)
+            and all(
+                isinstance(version, str) and version for version in packages.values()
+            )
+        )
+        records_model = isinstance(model, str) and bool(model)
+        if not (records_packages or records_model):
+            failures.append(
+                f"build_manifest.json 'engines.{name}' must record its "
+                "'packages' (each package's version) or its 'model'."
+            )
 
 
 def _check_be_release_artifacts(manifest: Mapping, failures: list[str]) -> None:

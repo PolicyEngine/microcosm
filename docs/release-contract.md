@@ -252,6 +252,17 @@ carry:
     `release_artifact_role` fixes the role: `dataset` for the microdata,
     `calibration_weights` for the weights, and otherwise the artifact's key.
 
+  A build of a BE release (`BE_RELEASES`) runs on the Axiom rules engine and
+  EUROMOD, not on PolicyEngine packages (microcosm#1741). Its build manifest
+  records no `runtime.policyengine-core`; it records instead, in `engines`,
+  each engine it ran on with the version of each package installed for it
+  (`packages`) or the model it ran (`model`), as BE's builds published before
+  the move do (`_check_be_engines`). Its release manifest need not carry
+  `built_with_core_package`, `built_with_model_package` or
+  `compatible_core_packages`; one it does carry is checked as above. It
+  declares each file BE's release contract adds as an artifact
+  (`_check_be_release_artifacts`).
+
   A new US build in a build folder declares exactly one microdata file, its
   release's (`US_RELEASE_DATASET_FILES`; `microcosm_us_2024.h5` for a national
   build); the validator holds no tagged `populace-us-` build to that name. An
@@ -1090,8 +1101,9 @@ work.
   - *BE's registry entry and staging* (microcosm#1741). BE's releases joined
     `publishes_to_build_folder` without a registry entry: there is no
     policyengine-be package, so an entry would name the Axiom adapter's
-    dataset class, and the two builds moved from BE's old folders hold no
-    dataset file. BE's release contract names a staging repository, but no
+    dataset class, the two builds moved from BE's old folders hold no
+    dataset file, and the loader's compatibility check reads
+    `compatible_core_packages`, which a BE build need not carry. BE's release contract names a staging repository, but no
     BE builder in this repository stages and the collector registers no BE
     staging repository; a BE build whose manifest records no staging is not
     refused for it.

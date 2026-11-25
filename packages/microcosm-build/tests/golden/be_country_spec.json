@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "eb145e58e3cb144c3762c599ee8f8a78bb6314f2a4b45a3f8648ee4aa58fb089",
+  "fingerprint": "6a9915f5f2a89102ce066763634aacda9bdcee9fca82752c967c6694472be25c",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -45,7 +45,7 @@
     "reference_intervals.json": "5c13dc32257d9d3c9b5cbbd14b79c229bbeb7037671778fdb8b09042693bb562",
     "reference_inventory.json": "c7edd4f7ced9150c14a33dc0d651035831d74a05ab8db8cbdb510435e8d316f1",
     "reference_profiles.json": "1f7eb7f7a5bde2484b423e12835c9ef5eb8351599c29d836e35a910897ead52a",
-    "release_contract.json": "450eb9308ad0a047d160cc2e5e4f3febfc3d4040ca627ffca960d162266d4dc2",
+    "release_contract.json": "52a7873c071a48a8002d850f7bdc614b75b4e150a68d5b41d6494ebb04db5d10",
     "source_stages.json": "3d0a362345894dc6ea230ebed7fec7ff99a972879dc60c06001635c1b4a1ec47",
     "spec/bundle.yaml": "8ac8b75f61f78f67946828863962c9096f8f98ab12b1a44e40e09b5f6cac67eb",
     "spec/catalogs.yaml": "c1a17fde1597ca169bd48c6126b7170f14a40f12c7b8e57a24e9a034339f1940",
