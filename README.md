@@ -546,8 +546,10 @@ current, in one commit. A UK build is the calibration attempt id; a US build
 keeps its `populace-us-2024-…` build ID; a BE build keeps the ID BE's builder
 gives it (`microcosm-be-<year>-chronicle-<commit>-<time>`). Both manifests name the release and
 the build as strings; the release manifest records `built_at`,
-`built_with_model_package` and `built_with_core_package` at its top level and
-each file's `role`, and pins no revision. Nothing is tagged and no pointer
+`built_with_model_package` and `built_with_core_package` at its top level
+(a BE build, which runs on the Axiom rules engine and EUROMOD, records its
+engines in its build manifest instead) and each file's `role`, and pins no
+revision. Nothing is tagged and no pointer
 file is written:
 
 ```bash

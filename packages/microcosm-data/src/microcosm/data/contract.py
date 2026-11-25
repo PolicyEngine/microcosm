@@ -1710,7 +1710,10 @@ def _check_build_folder_release_details(
 
     With ``compatible_packages`` the compatibility lists must also include
     the built-with versions, as the national contract has always required.
-    The local-area contract never checked them, and still does not.
+    The local-area contract never checked them, and still does not. A build
+    of a BE release, in either role, runs on no PolicyEngine package and
+    records its engines in its build manifest instead (:func:`_check_be_engines`),
+    so its PolicyEngine records are checked only when it carries them.
     """
     built_at = manifest.get("built_at")
     if not isinstance(built_at, str) or not built_at:
@@ -1720,18 +1723,19 @@ def _check_build_folder_release_details(
     built_with_core_package = manifest.get("built_with_core_package")
     built_with_model_package = manifest.get("built_with_model_package")
     model_package = _expected_model_package(release_id)
-    # A BE build runs on no PolicyEngine package, and records its engines in
-    # the build manifest instead (_check_be_engines); a PolicyEngine record it
-    # does carry is checked as any other build's is.
-    optional = is_be_release(release_id)
-    if not (optional and "built_with_core_package" not in manifest):
+    policyengine_records_optional = is_be_release(release_id)
+
+    def record_is_checked(field: str) -> bool:
+        return not policyengine_records_optional or field in manifest
+
+    if record_is_checked("built_with_core_package"):
         _check_release_manifest_package(
             built_with_core_package,
             field="built_with_core_package",
             expected_name="policyengine-core",
             failures=failures,
         )
-    if not (optional and "built_with_model_package" not in manifest):
+    if record_is_checked("built_with_model_package"):
         _check_release_manifest_package(
             built_with_model_package,
             field="built_with_model_package",
@@ -1740,7 +1744,7 @@ def _check_build_folder_release_details(
         )
     if not compatible_packages:
         return
-    if not (optional and "compatible_core_packages" not in manifest):
+    if record_is_checked("compatible_core_packages"):
         _check_compatible_package_entries(
             manifest.get("compatible_core_packages"),
             field="compatible_core_packages",
@@ -1858,9 +1862,10 @@ def _check_build_manifest(
     else:
         # A BE build runs on the Axiom rules engine and EUROMOD, not on
         # PolicyEngine packages, so it records its engines instead
-        # (_check_be_engines).
+        # (_check_be_engines); a policyengine-core version it does record is
+        # checked as any other build's is.
         required_packages = ["python"]
-        if not is_be_release(release_id):
+        if not is_be_release(release_id) or "policyengine-core" in runtime:
             required_packages.append("policyengine-core")
         model_package = _expected_model_package(release_id)
         if model_package is not None:
@@ -2194,7 +2199,10 @@ def _check_be_engines(manifest: Mapping, failures: list[str]) -> None:
     packages, so where a UK or US build records its PolicyEngine package
     versions, a BE build records ``engines``, as BE's builds published before
     the move do: each engine by name, with the version of each package
-    installed for it (``packages``) or the model it ran (``model``).
+    installed for it (``packages``), the model it ran (``model``), or both;
+    each one it records is well formed. A version is any non-empty string,
+    so a package recorded as not installed in a stage (as BE's 2025 build
+    records ``torch``) passes.
     """
     engines = manifest.get("engines")
     if not isinstance(engines, Mapping) or not engines:
@@ -2204,17 +2212,23 @@ def _check_be_engines(manifest: Mapping, failures: list[str]) -> None:
         )
         return
     for name, engine in engines.items():
-        packages = engine.get("packages") if isinstance(engine, Mapping) else None
-        model = engine.get("model") if isinstance(engine, Mapping) else None
-        records_packages = (
+        record: Mapping = engine if isinstance(engine, Mapping) else {}
+        packages = record.get("packages")
+        model = record.get("model")
+        packages_well_formed = (
             isinstance(packages, Mapping)
             and bool(packages)
             and all(
                 isinstance(version, str) and version for version in packages.values()
             )
         )
-        records_model = isinstance(model, str) and bool(model)
-        if not (records_packages or records_model):
+        model_well_formed = isinstance(model, str) and bool(model)
+        records_either = "packages" in record or "model" in record
+        if (
+            not records_either
+            or ("packages" in record and not packages_well_formed)
+            or ("model" in record and not model_well_formed)
+        ):
             failures.append(
                 f"build_manifest.json 'engines.{name}' must record its "
                 "'packages' (each package's version) or its 'model'."
@@ -5413,6 +5427,11 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
+        if build_manifest is not None and is_be_release(release_id):
+            # A BE build in the local-area role records its engines as one in
+            # the national-default role does (_check_build_manifest), since
+            # it need not record PolicyEngine packages in either.
+            _check_be_engines(build_manifest, failures)
         if build_manifest is not None and publishes_to_build_folder(release_id):
             _check_build_folder_identity(
                 build_manifest,

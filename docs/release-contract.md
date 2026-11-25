@@ -254,12 +254,14 @@ carry:
 
   A build of a BE release (`BE_RELEASES`) runs on the Axiom rules engine and
   EUROMOD, not on PolicyEngine packages (microcosm#1741). Its build manifest
-  records no `runtime.policyengine-core`; it records instead, in `engines`,
-  each engine it ran on with the version of each package installed for it
-  (`packages`) or the model it ran (`model`), as BE's builds published before
-  the move do (`_check_be_engines`). Its release manifest need not carry
+  need not record `runtime.policyengine-core`; it records instead, in
+  `engines`, each engine it ran on with the version of each package installed
+  for it (`packages`), the model it ran (`model`), or both, as BE's builds
+  published before the move do (`_check_be_engines`), in the local-area role
+  as in the national-default one. Its release manifest need not carry
   `built_with_core_package`, `built_with_model_package` or
-  `compatible_core_packages`; one it does carry is checked as above. It
+  `compatible_core_packages`. A PolicyEngine record it does carry, in either
+  manifest, is checked as above. It
   declares each file BE's release contract adds as an artifact
   (`_check_be_release_artifacts`).
 
