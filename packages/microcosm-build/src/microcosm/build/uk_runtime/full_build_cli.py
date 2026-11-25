@@ -1906,7 +1906,7 @@ def _run_with_graph_publication[Prepared](
     record: dict,
 ) -> int:
     """Export before temporary files disappear, even if a kernel raises."""
-    from .orrery_publication import finalize_graph
+    from .orrery_inputs import finalize_graph
 
     try:
         status = execute(
@@ -1956,7 +1956,7 @@ def _publish_failure_evidence(
     """
     from microcosm.build.artifact_files import publish_staged_bundle
 
-    from .orrery_publication import (
+    from .orrery_inputs import (
         EVIDENCE_MANIFEST_NAME,
         FAILURE_BUNDLE_DIRECTORY,
         FAILURE_MARKER_NAME,
@@ -2198,7 +2198,7 @@ def _close_attempt(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
     else:
-        from .orrery_publication import stage_graph_evidence
+        from .orrery_inputs import stage_graph_evidence
 
         stage_graph_evidence(
             args,
@@ -3685,7 +3685,7 @@ def _close_national_attempt(
             if rewritten and not _kept_for_emitter(staged, output / "build.json"):
                 _refresh_completion(output, rewritten)
     else:
-        from .orrery_publication import stage_graph_evidence
+        from .orrery_inputs import stage_graph_evidence
 
         stage_graph_evidence(
             args,

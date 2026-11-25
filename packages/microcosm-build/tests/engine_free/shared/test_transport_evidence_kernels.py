@@ -118,8 +118,6 @@ LEAF_ADDED_MODULES = frozenset(
         "microcosm.graph.kernel",
         "microcosm.graph.keys",
         "microcosm.graph.manifest",
-        "microcosm.graph.orrery",
-        "microcosm.graph.orrery_evidence",
         "microcosm.graph.population",
         "microcosm.graph.presentation",
         "microcosm.graph.schema",

@@ -11,7 +11,6 @@ import pytest
 
 from microcosm.graph import graph_schema, graph_to_json
 from microcosm.graph.canonical import canonical_json
-from microcosm.graph.orrery import orrery_document_from_schema, orrery_json_from_schema
 from microcosm.graph.reconstruction import (
     DECLARATION_ONLY,
     RECONSTRUCTION_EXTENSION,
@@ -26,12 +25,7 @@ from test_support.microcosm_graph.schema import (
     compiled_default_population_graph,
     compiled_graph,
 )
-from test_support.paths import paths_for
 
-_TEST_PATHS = paths_for("microcosm-graph")
-_RECONSTRUCTION_VERIFY = (
-    _TEST_PATHS.repository / "tools" / "orrery-contract" / "verify-reconstruction.mjs"
-)
 RECORDED_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 # The revision of the code that ran the reconstruction, later than the build's.
 RECONSTRUCTING_REVISION = {
@@ -80,7 +74,7 @@ def marker_for(declaration: bytes, **revision_overrides) -> dict:
     )
 
 
-def test_reconstructed_schema_carries_the_marker_into_orrery_metadata():
+def test_reconstructed_schema_carries_the_marker_in_its_extensions():
     declaration = recorded_declaration()
     marker = marker_for(declaration)
 
@@ -102,9 +96,7 @@ def test_reconstructed_schema_carries_the_marker_into_orrery_metadata():
         "rowwise_candidate_manifest.json",
     ]
     assert marker["scope"].strip()
-    document = orrery_document_from_schema(schema)
-    carried = document["metadata"]["microcosm"]["extensions"][RECONSTRUCTION_EXTENSION]
-    assert carried == marker
+    assert validate_reconstruction(schema) == marker
 
 
 def test_marker_records_the_reconstructing_code_apart_from_the_source_revision():
@@ -117,7 +109,7 @@ def test_marker_records_the_reconstructing_code_apart_from_the_source_revision()
     )
 
     # The declaration's bytes come from the source revision; the compiled
-    # sections and the Orrery projection come from the reconstructing code.
+    # sections come from the reconstructing code.
     assert marker["source_revision"]["git_commit"] == RECORDED_COMMIT
     assert marker["reconstruction_revision"] == RECONSTRUCTING_REVISION
     assert unknown["reconstruction_revision"] == {"git_commit": None, "git_dirty": None}
@@ -212,24 +204,25 @@ def test_code_revision_ignores_git_variables_that_select_another_checkout(
     assert code_revision(reconstructing / "only_here.py") == expected
 
 
-def test_reconstructed_document_claims_no_execution():
+def test_reconstructed_schema_holds_only_compiler_metadata_and_the_marker():
     declaration = recorded_declaration()
+    marker = marker_for(declaration)
 
-    document = orrery_document_from_schema(
-        reconstructed_schema(declaration, marker_for(declaration))
-    )
+    schema = reconstructed_schema(declaration, marker)
 
-    assert not {"activities", "artifacts", "receipts"} & document.keys()
-    assert all("statuses" not in node for node in document["nodes"])
-    assert "execution" not in document["metadata"]
-    assert sum(node["kind"] == "operation" for node in document["nodes"]) == len(
-        compiled_graph().graph.nodes
+    # The ordinary compiler schema of the recorded declaration, with the marker
+    # as its only producer extension: no receipt, cache or validation-check
+    # state.
+    assert schema == graph_schema(
+        compiled_graph(), extensions={RECONSTRUCTION_EXTENSION: marker}
     )
+    assert len(schema["graph"]["nodes"]) == len(compiled_graph().graph.nodes)
 
 
 def test_declaration_that_does_not_reproduce_its_recorded_bytes_is_refused():
     # The same graph, re-indented: it parses, but the current serializer would
-    # not write these bytes, so the projection would not be the recorded file.
+    # not write these bytes, so the schema's embedded graph would not be the
+    # recorded file.
     reformatted = json.dumps(json.loads(recorded_declaration()), indent=2).encode()
 
     with pytest.raises(ValueError, match="does not reproduce its recorded bytes"):
@@ -377,17 +370,17 @@ def test_marker_rejects_malformed_provenance(corrupt):
         reconstructed_schema(declaration, marker)
 
 
-def test_saved_reconstructed_schema_keeps_its_marker_when_reprojected():
+def test_saved_reconstructed_schema_keeps_its_marker_when_read_back():
     declaration = recorded_declaration()
     marker = marker_for(declaration, git_dirty=None, revision_origin="caller_asserted")
     schema = reconstructed_schema(declaration, marker)
 
-    # A later projection (a collector re-projecting stored inputs, say) reads
-    # only the saved graph.schema.json bytes; the marker travels inside them.
+    # A later reader (the collector reading stored inputs, say) has only the
+    # saved graph.schema.json bytes; the marker travels inside them.
     restored = validate_graph_schema(json.loads(canonical_json(schema)))
 
     assert validate_reconstruction(restored) == marker
-    assert orrery_json_from_schema(restored) == orrery_json_from_schema(schema)
+    assert restored == schema
     assert validate_reconstruction(graph_schema(compiled_graph())) is None
     relabelled = graph_schema(
         compiled_default_population_graph(),
@@ -395,22 +388,3 @@ def test_saved_reconstructed_schema_keeps_its_marker_when_reprojected():
     )
     with pytest.raises(ValueError, match="does not name this declaration"):
         validate_reconstruction(relabelled)
-
-
-def test_public_orrery_parser_accepts_reconstructed_document():
-    declaration = recorded_declaration()
-    payload = orrery_json_from_schema(
-        reconstructed_schema(declaration, marker_for(declaration)),
-        title="INVENTED · reconstructed declaration",
-    )
-
-    result = subprocess.run(
-        ["node", str(_RECONSTRUCTION_VERIFY)],
-        input=payload,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == "Orrery accepted the reconstructed declaration.\n"

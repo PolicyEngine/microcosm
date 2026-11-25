@@ -14,9 +14,22 @@ from pathlib import Path
 import pytest
 
 import test_support.microcosm_build.uk_full_build_cli as full_build_support
-from microcosm.build.uk_runtime import full_build_cli, orrery_inputs
-from microcosm.build.uk_runtime.orrery_contract import save_uk_graph_schema
-from microcosm.graph import Graph, Node, Owned, SourceRef, StructuralDelta
+from microcosm.build.uk_runtime import full_build_cli, orrery_inputs, rowwise_staging
+from microcosm.build.uk_runtime.orrery_contract import (
+    public_summary_findings,
+    save_uk_graph_schema,
+)
+from microcosm.graph import (
+    ContentStore,
+    Graph,
+    Node,
+    Owned,
+    SourceRef,
+    StructuralDelta,
+    collect_execution_evidence,
+    load_run_evidence,
+)
+from microcosm.graph.execution_overlay import load_execution_overlay
 
 SCHEMA_NAME = "graph.schema.json"
 OVERLAY_NAME = "graph.execution.json"
@@ -76,6 +89,14 @@ def build_directory_with_upstream_files(tmp_path: Path) -> Path:
     save_uk_graph_schema(
         spine_checkpoint_graph(), out, scope="national", sidecar_path=sidecar
     )
+    return out
+
+
+def plain_build_directory(tmp_path: Path) -> Path:
+    """A build directory whose saved schema links no upstream file."""
+    out = tmp_path / "temporary"
+    out.mkdir()
+    save_uk_graph_schema(spine_checkpoint_graph(), out, scope="national")
     return out
 
 
@@ -331,3 +352,278 @@ def test_inputs_command_refuses_summaries_a_build_would_not_hand_over(
     assert refusal.value.code == 2
     assert "summaries" in capsys.readouterr().err
     assert not output.exists()
+
+
+def fail(*arguments, **options):
+    raise RuntimeError("kernel failed")
+
+
+def test_failure_path_preserves_graph_inputs_before_temporary_cleanup(
+    tmp_path, monkeypatch
+):
+    args = graph_step_arguments(tmp_path, plain_build_directory(tmp_path))
+    staged = []
+    monkeypatch.setattr(
+        orrery_inputs,
+        "stage_graph_evidence",
+        lambda args, output, **kwargs: staged.append(output),
+    )
+
+    with pytest.raises(RuntimeError, match="kernel failed"):
+        full_build_cli._run_with_graph_publication(
+            fail, None, args, telemetry=None, attempt=None, record={}
+        )
+    bundle = args.attempt_evidence / orrery_inputs.FAILURE_BUNDLE_DIRECTORY
+    assert staged == [bundle]
+    assert (bundle / SCHEMA_NAME).is_file()
+    assert (bundle / orrery_inputs.EVIDENCE_MANIFEST_NAME).is_file()
+    assert (bundle / orrery_inputs.FAILURE_MARKER_NAME).is_file()
+    evidence = json.loads((bundle / orrery_inputs.EVIDENCE_MANIFEST_NAME).read_bytes())
+    assert {entry["path"] for entry in evidence["outputs"].values()} == {
+        str(bundle / name) for name in evidence["outputs"]
+    }
+
+
+def test_failure_leaves_an_earlier_successful_bundle_unchanged(tmp_path, monkeypatch):
+    args = graph_step_arguments(tmp_path, plain_build_directory(tmp_path))
+    monkeypatch.setattr(orrery_inputs, "stage_graph_evidence", lambda *a, **k: None)
+    args.published_out.mkdir()
+    previous = {
+        "build.json": b'{"kind":"previous-complete-build"}',
+        "graph.orrery.json": b'{"previous":"graph"}',
+        "orrery.publication.json": b'{"previous":"receipt"}',
+    }
+    for name, payload in previous.items():
+        (args.published_out / name).write_bytes(payload)
+
+    with pytest.raises(RuntimeError, match="kernel failed"):
+        full_build_cli._run_with_graph_publication(
+            fail, None, args, telemetry=None, attempt=None, record={}
+        )
+    assert {
+        path.name: path.read_bytes() for path in args.published_out.iterdir()
+    } == previous
+
+
+def test_interrupt_preserves_local_evidence_without_staging(tmp_path, monkeypatch):
+    args = graph_step_arguments(tmp_path, plain_build_directory(tmp_path))
+    monkeypatch.setattr(
+        orrery_inputs,
+        "stage_graph_evidence",
+        lambda *a, **k: pytest.fail("An interrupt started Hugging Face staging"),
+    )
+
+    def interrupt(*arguments, **options):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        full_build_cli._run_with_graph_publication(
+            interrupt, None, args, telemetry=None, attempt=None, record={}
+        )
+    bundle = args.attempt_evidence / orrery_inputs.FAILURE_BUNDLE_DIRECTORY
+    assert (bundle / SCHEMA_NAME).is_file()
+
+
+def test_failure_evidence_error_does_not_replace_the_build_error(
+    tmp_path, monkeypatch, capsys
+):
+    args = graph_step_arguments(tmp_path, plain_build_directory(tmp_path))
+
+    def broken(*arguments, **options):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(orrery_inputs, "finalize_graph", broken)
+    with pytest.raises(RuntimeError, match="kernel failed"):
+        full_build_cli._run_with_graph_publication(
+            fail, None, args, telemetry=None, attempt=None, record={}
+        )
+    assert "Graph failure evidence was not preserved (OSError)" in (
+        capsys.readouterr().err
+    )
+
+
+def test_a_graph_step_failure_registers_nothing_and_says_so(tmp_path, capsys):
+    out = build_directory_with_upstream_files(tmp_path)
+    (out / upstream_names(out)[0]).write_text('{"changed": true}')
+    args = graph_step_arguments(tmp_path, out)
+    manifest = {"outputs": {}}
+
+    result = orrery_inputs.finalize_graph(args, manifest=manifest)
+
+    assert result.files == ()
+    assert manifest["outputs"] == {}
+    assert "Orrery inputs were not written (ValueError)" in capsys.readouterr().err
+
+
+def test_publish_orrery_only_warns_that_the_build_uploads_no_graph(tmp_path, capsys):
+    """``--publish-orrery`` asked for an upload to the public Orrery, which
+    builds no longer make: the collector builds the graph files from the
+    inputs the staged bundle submits, and keeps a licensed build's private.
+    The flag is accepted, says so, and changes nothing."""
+
+    args = full_build_support.arguments(tmp_path, "--publish-orrery")
+    warning = capsys.readouterr().err
+    assert "--publish-orrery no longer uploads the graph" in warning
+    assert "collector" in warning
+    # Every emitter a build starts has its collector submissions on
+    # (telemetry_emitter.COLLECTOR_SUBMISSIONS), so a remotely staged bundle
+    # submits its Orrery inputs whether or not the flag is given.
+    assert "submits them to the collector with or without the flag" in warning
+    quiet = full_build_support.arguments(tmp_path, "--no-publish-orrery")
+    assert "--publish-orrery" not in capsys.readouterr().err
+    assert args.publish_orrery is True and quiet.publish_orrery is False
+
+
+def test_a_refused_build_hands_over_check_verdicts_without_their_failure_lines(
+    tmp_path, monkeypatch
+):
+    """Vahid's review of #1396, M1: a failure line can state a row's figures
+    or an area's support, so the overlay's summaries count the lines."""
+    args, status = synthetic_full_build(tmp_path, monkeypatch, REFUSED_BUILD_CHECK)
+    assert status == 1
+
+    summaries = load_execution_overlay(args.out / OVERLAY_NAME)["summaries"]
+    checks = [
+        row
+        for summary in summaries
+        for row in summary["data"].get("tables", {}).get("gates", [])
+    ]
+    failed = [row for row in checks if row["status"] == "failed"]
+    assert failed and all(row["failure_count"] > 0 for row in failed)
+    assert not any("failures" in row for row in checks)
+    assert public_summary_findings(summaries) == []
+
+
+def test_execution_overlay_file_equals_the_collected_overlay(tmp_path, monkeypatch):
+    args, status = synthetic_full_build(tmp_path, monkeypatch)
+    assert status == 0
+    schema = json.loads((args.out / SCHEMA_NAME).read_bytes())
+    store = ContentStore(args.out / ".graph-store", create=False)
+    collected = collect_execution_evidence(
+        schema,
+        runs=load_run_evidence(args.out / EVIDENCE_INDEX_NAME, store=store),
+        store=store,
+    )
+
+    assert load_execution_overlay(args.out / OVERLAY_NAME) == collected
+
+
+def test_execution_overlay_is_registered_in_the_build_manifest(tmp_path, monkeypatch):
+    args, status = synthetic_full_build(tmp_path, monkeypatch)
+    assert status == 0
+    overlay_path = args.out / OVERLAY_NAME
+    manifest = json.loads((args.out / full_build_cli.MANIFEST_FILENAME).read_text())
+    registered = manifest["outputs"][f"orrery/{OVERLAY_NAME}"]
+    assert Path(registered["path"]) == overlay_path
+    assert registered["sha256"] == sha256_hex(overlay_path)
+    assert registered["bytes"] == overlay_path.stat().st_size
+
+
+def test_refused_build_registers_its_execution_overlay_in_its_evidence_record(
+    tmp_path, monkeypatch
+):
+    args, status = synthetic_full_build(tmp_path, monkeypatch, REFUSED_BUILD_CHECK)
+    assert status == 1
+    evidence = json.loads(
+        (args.out / orrery_inputs.EVIDENCE_MANIFEST_NAME).read_bytes()
+    )
+    assert evidence["outputs"][OVERLAY_NAME]["sha256"] == sha256_hex(
+        args.out / OVERLAY_NAME
+    )
+
+
+def test_failed_build_keeps_its_execution_overlay_in_the_failure_bundle(
+    tmp_path, monkeypatch
+):
+    pytest.importorskip("tables")
+    full_build_support.patch_certification(monkeypatch)
+    args = full_build_support.arguments(tmp_path)
+    build = full_build_support.prepared(tmp_path)
+
+    def refuse_manifest(*arguments, **options):
+        raise RuntimeError("manifest projection failed")
+
+    monkeypatch.setattr(
+        full_build_support.cli, "rowwise_candidate_manifest_from_graph", refuse_manifest
+    )
+    with pytest.raises(RuntimeError, match="manifest projection failed"):
+        full_build_support.cli.execute_full_build(build, args)
+    bundle = args.attempt_evidence / orrery_inputs.FAILURE_BUNDLE_DIRECTORY
+    evidence = json.loads((bundle / orrery_inputs.EVIDENCE_MANIFEST_NAME).read_bytes())
+    assert Path(evidence["outputs"][OVERLAY_NAME]["path"]) == bundle / OVERLAY_NAME
+    assert load_execution_overlay(bundle / OVERLAY_NAME)["phases"]
+
+
+def test_build_without_recorded_execution_writes_no_execution_overlay(tmp_path):
+    args = graph_step_arguments(tmp_path, plain_build_directory(tmp_path))
+    manifest = {"outputs": {}}
+
+    result = orrery_inputs.finalize_graph(args, manifest=manifest)
+
+    assert result.files == (SCHEMA_NAME,)
+    assert not (args.out / OVERLAY_NAME).exists()
+    assert f"orrery/{OVERLAY_NAME}" not in manifest["outputs"]
+
+
+def test_failure_evidence_is_handed_to_the_builds_emitter_with_each_files_role(
+    tmp_path, monkeypatch
+):
+    """A failed build's graph evidence is staged like a dataset bundle: the
+    build's emitter commits it under ``staged/<run_id>/``, and the build
+    makes no Hub call of its own."""
+    from microcosm_emitter_interface import CollectorProvenance
+
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    output = tmp_path / orrery_inputs.FAILURE_BUNDLE_DIRECTORY
+    output.mkdir()
+    schema = output / SCHEMA_NAME
+    schema.write_text('{"nodes": []}')
+    evidence = {
+        "schema_version": 1,
+        "build_kind": "uk_graph_evidence",
+        "releasable": False,
+        "outputs": {
+            schema.name: {
+                "path": str(schema),
+                "sha256": sha256_hex(schema),
+                "bytes": schema.stat().st_size,
+            }
+        },
+    }
+    (output / orrery_inputs.EVIDENCE_MANIFEST_NAME).write_text(json.dumps(evidence))
+    hub = _FakeHub()
+    client = FakeEmitterClient(hub_files=hub.files, hub_api=hub)
+    run = TelemetryRun(run_id="uk-attempt", country_code="GB", pipeline="uk")
+    monkeypatch.setattr(
+        rowwise_staging, "_ACTIVE_EMITTER", FakeTelemetryEmitter(run, client=client)
+    )
+    args = Namespace(
+        no_staging=False,
+        no_staged_dataset=False,
+        staging_local_only=False,
+        staged_dataset_repo_id="policyengine/populace-uk-private",
+    )
+
+    delivery = orrery_inputs.stage_graph_evidence(args, output, run_id="uk-attempt")
+
+    assert delivery["status"] == "uploaded"
+    assert delivery["revision"] == hub.sha
+    (request,) = client.bundle_requests
+    assert {item.name: item.role for item in request.files} == {
+        SCHEMA_NAME: "orrery_schema",
+        orrery_inputs.EVIDENCE_MANIFEST_NAME: "build_manifest",
+        "staged_manifest.json": "staged_manifest",
+        "sha256sums.txt": "checksums",
+    }
+    # The bundle names the build for the collector, so its Orrery inputs are
+    # submitted once the commit lands; a failed build is no release candidate.
+    assert request.collector == CollectorProvenance(
+        country_code="UK", build_id="uk-attempt", licensed_data=True, release=None
+    )
+    assert hub.commits[0]["paths"] == sorted(
+        f"staged/uk-attempt/{item.name}" for item in request.files
+    )

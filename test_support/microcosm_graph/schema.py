@@ -1,4 +1,4 @@
-"""Compiler-only graph fixtures for schema and Orrery adapter tests."""
+"""Compiler-only graph fixtures for the graph schema and reconstruction tests."""
 
 from __future__ import annotations
 

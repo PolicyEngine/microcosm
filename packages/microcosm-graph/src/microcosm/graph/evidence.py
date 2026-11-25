@@ -812,8 +812,8 @@ def save_graph_schema(
 
     Upstream checkpoint references that name local files are copied into the
     directory as ``upstream-<sha256>.json`` (after re-checking their digest)
-    and relinked relatively, so the schema and any later Orrery export can be
-    published or moved together with the recorded bytes.
+    and relinked relatively, so the schema can be handed to the collector or
+    moved together with the recorded bytes.
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
