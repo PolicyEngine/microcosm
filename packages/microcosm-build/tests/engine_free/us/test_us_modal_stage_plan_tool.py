@@ -2691,6 +2691,28 @@ def test_a_plan_may_set_the_telemetry_requirement_only_to_0(value: str) -> None:
     assert dict(plan_lib.parse_plan(_plan_data(env=env)).env) == env
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "0",
+        "-1",
+        "+4",
+        " 3 ",
+        "4.0",
+        "four",
+        pytest.param("9" * 5000, id="longer_than_int_parses"),
+    ],
+)
+def test_a_plan_s_thread_setting_must_be_a_positive_whole_number(value: str) -> None:
+    # The base tool's check step loads it without running its start-up step,
+    # so a bad value would otherwise stop the run only after the runner had
+    # staged the inputs.
+    with pytest.raises(plan_lib.PlanError, match="MICROCOSM_THREADS"):
+        plan_lib.parse_plan(_plan_data(env={"MICROCOSM_THREADS": value}))
+    env = {"MICROCOSM_THREADS": "4"}
+    assert dict(plan_lib.parse_plan(_plan_data(env=env)).env) == env
+
+
 def test_the_tool_gets_the_collector_token_only_from_the_runner_s_secret() -> None:
     assert dict(plan_lib.RUNNER_TOKEN_SECRET_ENV) == dict(
         zip(RUNNER_TOKEN_SECRET, COLLECTOR_TOKEN_NAMES, strict=True)

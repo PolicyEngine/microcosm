@@ -30,24 +30,25 @@ the release's current build.
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 
 # microcosm#456 (#447 ops note): bound the default BLAS/OpenMP/joblib thread
 # pools instead of inheriting machine geometry — per-thread scratch buffers
 # scale the resident set with core count (measured 125 GB anon-RSS at 16 vCPU
 # vs 249 GB at 32 vCPU for the same build). OpenBLAS and torch read these at
-# library load, so this must precede the numpy/torch imports below; operator-
-# set values always win (setdefault only). E402 is ignored for this file in
-# pyproject for exactly this block.
-_THREAD_POOL_DEFAULT = str(min(os.cpu_count() or 1, 16))
-for _thread_pool_variable in (
-    "OMP_NUM_THREADS",
-    "OPENBLAS_NUM_THREADS",
-    "MKL_NUM_THREADS",
-    "NUMEXPR_NUM_THREADS",
-    "VECLIB_MAXIMUM_THREADS",
-    "LOKY_MAX_CPU_COUNT",
-):
-    os.environ.setdefault(_thread_pool_variable, _THREAD_POOL_DEFAULT)
+# library load, so this must precede the numpy/torch imports below. The one
+# thread setting of the US build commands, MICROCOSM_THREADS, replaces the
+# default of min(os.cpu_count(), 16), and variables already set keep their
+# values (tools/us_build_thread_environment.py). This also runs on import, as
+# it always has. The helper is loaded from this file's folder, which an import
+# does not always have on its path. E402 is ignored for this file in pyproject
+# for exactly this block.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from us_build_thread_environment import set_build_thread_environment
+
+del sys.path[0]
+set_build_thread_environment(default_count=min(os.cpu_count() or 1, 16))
 
 import argparse
 import dataclasses
@@ -62,7 +63,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import sys
 import time
 import tomllib
 import traceback
@@ -71,7 +71,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from importlib.resources import files as package_files
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from types import MethodType, SimpleNamespace
 from typing import Any
 
@@ -402,6 +402,7 @@ from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
 )
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    clear_installed_list_parameter_baseline_cache,
     project_ecps_parity_known_gap_names,
     us_release_input_coverage_signal_counts,
 )
@@ -447,6 +448,7 @@ from microcosm.calibrate import (
     calibrate,
     calibrate_l0_refit,
     relative_error_loss,
+    without_constraint_matrix,
 )
 from microcosm.calibrate.diagnostics import (
     target_surface_payload,
@@ -3265,6 +3267,7 @@ def _write_target_frame_checkpoint(
 ) -> dict[str, object]:
     import h5py
 
+    frame.check_shared_columns()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f"{path.name}.tmp")
     if tmp_path.exists():
@@ -8708,6 +8711,83 @@ US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, str] = {
         "(PolicyEngine/microcosm#299 Build H)."
     ),
 }
+
+
+def _record_export_input_mass_gate(
+    export_frame: Frame,
+    base_frame: Frame,
+    *,
+    reference_h5: Path | None,
+    reference_name: str,
+    reference_record: dict[str, object],
+    relative_tolerance: float,
+    minimum_reference_total: float,
+    terminal_gate_failures: list[str],
+) -> GateResult | None:
+    """Evaluate :func:`_export_input_mass_gate` against a reference H5 loaded here.
+
+    The reference is a full frame. Loaded in this function, it is freed when
+    the check returns or raises; a ``del`` in the caller after the check
+    would be skipped when the load or the check raised. Without a reference
+    H5 the check compares the export against ``base_frame``.
+
+    The reference's sha256 goes into ``reference_record`` before the load.
+    Only an evaluation crash escapes: it propagates on an otherwise-clean run,
+    and under earlier failures it becomes one line in
+    ``terminal_gate_failures`` and the function returns ``None``.
+    """
+    reference_loaded = False
+    try:
+        if reference_h5 is not None:
+            reference_record["sha256"] = _sha256(reference_h5)
+        reference_frame = (
+            load_us_frame(reference_h5) if reference_h5 is not None else None
+        )
+        reference_loaded = True
+        # Build H (microcosm#299): the two SOI-identified columns whose true
+        # target level provably cannot sit inside the live-default reference
+        # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
+        # and both mortgage columns are deliberately NOT excluded so the run
+        # adjudicates their actual gate outcome. See the constant's band-math
+        # rationale above.
+        return shadow_gate(
+            "us_national_export_input_mass",
+            lambda: _export_input_mass_gate(
+                export_frame,
+                base_frame,
+                relative_tolerance=relative_tolerance,
+                minimum_reference_total=minimum_reference_total,
+                reference_frame=reference_frame,
+                reference_name=reference_name,
+                reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
+            ),
+            lambda: EvidenceContext(
+                frame=export_frame,
+                artifacts={
+                    "base_frame": base_frame,
+                    "export_input_mass_reference_frame": reference_frame,
+                    "export_input_mass_reference_name": reference_name,
+                    "export_input_mass_reviewed_exclusions": (
+                        US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+                    ),
+                },
+            ),
+        )
+    except Exception as exc:
+        # Same degraded-mode contract as the coverage gate in _main.
+        if not terminal_gate_failures:
+            raise
+        if not reference_loaded:
+            # As for the QRF tail register: the gate never ran.
+            shadow_not_run(
+                "us_national_export_input_mass",
+                f"its reference did not load: {type(exc).__name__}: {exc}",
+            )
+        terminal_gate_failures.append(
+            "Input mass parity failed: evaluation error under earlier gate "
+            f"failures: {type(exc).__name__}: {exc}"
+        )
+        return None
 
 
 def _export_input_mass_gate(
@@ -15606,6 +15686,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     # PolicyEngine-US input leaves. A drifted manifest fails here before the
     # expensive calibration so a stale contract cannot silently narrow coverage.
     assert_release_input_coverage_manifest_current()
+    # The check resolves the probes' list edits on a reformed PolicyEngine-US
+    # system that the module caches for the process. Nothing in the build reads
+    # it again (the reform-coverage smoke, its other reader, runs at
+    # certification, in its own process), so it is not kept through the source
+    # stages and the calibration.
+    clear_installed_list_parameter_baseline_cache()
     # Preflight (microcosm#377): no column may be required-to-signal by one
     # register (seeded/count-calibrated take-up, health nonconstant, coverage
     # 'required') and excused as absent/degenerate by another (degenerate
@@ -16948,6 +17034,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     base_frame = acs_predictor_join_result.frame
     acs_predictor_join_receipt = dict(acs_predictor_join_result.receipt)
+    # Only the receipt is read later. The result's frame would otherwise keep
+    # the post-join frame alive after the next stage rebinds base_frame.
+    del acs_predictor_join_result
     if telemetry is not None:
         telemetry.stage(
             "acs_predictor_join",
@@ -16986,18 +17075,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         if args.sipp_vehicle_donor is not None
         else fetch_sipp_2023_financial_asset_donor()
     )
-    scf_wealth_donor = load_scf_2022_financial_asset_donor(scf_summary_extract_path)
-    sipp_financial_asset_donor = load_sipp_2023_financial_asset_donor(
-        sipp_full_donor_path,
-        expected_sha256=SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
-    )
+    # Each donor table below is loaded in its stage's call, so no local keeps
+    # it once the stage returns.
     base_frame = with_us_scf_wealth_inputs(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        scf_donor=scf_wealth_donor,
-        sipp_donor=sipp_financial_asset_donor,
+        scf_donor=load_scf_2022_financial_asset_donor(scf_summary_extract_path),
+        sipp_donor=load_sipp_2023_financial_asset_donor(
+            sipp_full_donor_path,
+            expected_sha256=SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+            expected_size_bytes=SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
+        ),
     )
     scf_wealth_gate = shadow_gate(
         "us_national_scf_wealth",
@@ -17037,18 +17126,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "sha-pinned full SIPP 2023 donor after SCF assets."
             ),
         )
-    ssi_disability_donor = load_sipp_2023_ssi_disability_donor(
-        sipp_vehicle_donor_path,
-        expected_sha256=SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
-        time_period=PERIOD,
-    )
     base_frame = with_us_ssi_disability_criteria(
         base_frame,
         # The retired weighted bootstrap and MicroImpute forest are fixed.
         seed=42,
         time_period=PERIOD,
-        sipp_donor=ssi_disability_donor,
+        sipp_donor=load_sipp_2023_ssi_disability_donor(
+            sipp_vehicle_donor_path,
+            expected_sha256=SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
+            expected_size_bytes=SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES,
+            time_period=PERIOD,
+        ),
     )
     ssi_disability_gate = _shadow_frame_gate(
         "us_national_ssi_disability_criteria",
@@ -17080,16 +17168,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "2023 donor."
             ),
         )
-    head_start_donor = load_sipp_2023_head_start_donor(
-        sipp_vehicle_donor_path,
-        expected_sha256=SIPP_2023_HEAD_START_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
-    )
     base_frame = with_us_sipp_head_start_input(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        sipp_donor=head_start_donor,
+        sipp_donor=load_sipp_2023_head_start_donor(
+            sipp_vehicle_donor_path,
+            expected_sha256=SIPP_2023_HEAD_START_DONOR_SHA256,
+            expected_size_bytes=SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
+        ),
     )
     head_start_gate = _shadow_frame_gate(
         "us_national_sipp_head_start",
@@ -17206,15 +17293,14 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         if args.scf_full_extract is not None
         else fetch_scf_2022_full_extract()
     )
-    scf_auto_loan_donor = load_scf_2022_auto_loan_donor(
-        scf_summary_extract_path,
-        scf_full_extract_path,
-    )
     base_frame = with_us_scf_auto_loan_inputs(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        scf_auto_loan_donor=scf_auto_loan_donor,
+        scf_auto_loan_donor=load_scf_2022_auto_loan_donor(
+            scf_summary_extract_path,
+            scf_full_extract_path,
+        ),
     )
     scf_auto_loan_gate = _shadow_frame_gate(
         "us_national_scf_auto_loans",
@@ -17265,17 +17351,16 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "sha-pinned full SIPP 2023 donor."
             ),
         )
-    sipp_vehicle_donor = load_sipp_2023_vehicle_donor(
-        sipp_vehicle_donor_path,
-        expected_sha256=SIPP_2023_VEHICLE_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
-    )
     base_frame = with_us_sipp_vehicle_inputs(
         base_frame,
         # The retired MicroImpute model pins both forests to seed 42.
         seed=42,
         time_period=PERIOD,
-        sipp_donor=sipp_vehicle_donor,
+        sipp_donor=load_sipp_2023_vehicle_donor(
+            sipp_vehicle_donor_path,
+            expected_sha256=SIPP_2023_VEHICLE_DONOR_SHA256,
+            expected_size_bytes=SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
+        ),
     )
     sipp_vehicles_gate = _shadow_frame_gate(
         "us_national_sipp_vehicles",
@@ -17306,16 +17391,15 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "same sha-pinned full SIPP 2023 donor."
             ),
         )
-    voluntary_filing_donor = load_sipp_2023_voluntary_filing_donor(
-        sipp_vehicle_donor_path,
-        expected_sha256=SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
-        expected_size_bytes=SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
-    )
     base_frame = with_us_voluntary_filing_input(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        sipp_donor=voluntary_filing_donor,
+        sipp_donor=load_sipp_2023_voluntary_filing_donor(
+            sipp_vehicle_donor_path,
+            expected_sha256=SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
+            expected_size_bytes=SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
+        ),
     )
     voluntary_filing_gate = _shadow_frame_gate(
         "us_national_voluntary_filing",
@@ -17351,15 +17435,14 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         if args.sipp_tip_donor is not None
         else fetch_sipp_2023_tip_donor()
     )
-    sipp_tip_donor = load_sipp_2023_tip_donor(
-        sipp_tip_donor_path,
-        expected_sha256=SIPP_2023_TIP_DONOR_SHA256,
-    )
     base_frame = with_us_sipp_tip_inputs(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        sipp_donor=sipp_tip_donor,
+        sipp_donor=load_sipp_2023_tip_donor(
+            sipp_tip_donor_path,
+            expected_sha256=SIPP_2023_TIP_DONOR_SHA256,
+        ),
     )
     sipp_tips_gate = _shadow_frame_gate(
         "us_national_sipp_tips",
@@ -17396,15 +17479,14 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         if args.org_wages_donor is not None
         else fetch_org_2024_donor()
     )
-    org_wages_donor = load_org_2024_donor(
-        org_wages_donor_path,
-        expected_content_sha256=ORG_2024_DONOR_CONTENT_SHA256,
-    )
     base_frame = with_us_org_wages_inputs(
         base_frame,
         seed=args.seed,
         time_period=PERIOD,
-        org_donor=org_wages_donor,
+        org_donor=load_org_2024_donor(
+            org_wages_donor_path,
+            expected_content_sha256=ORG_2024_DONOR_CONTENT_SHA256,
+        ),
     )
     org_wages_gate = _shadow_frame_gate(
         "us_national_org_wages",
@@ -18197,9 +18279,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             "refit_initial_loss": _finite_or_none(result.initial_loss),
             "refit_final_loss": _finite_or_none(result.final_loss),
         }
-    # Frame.with_weights copies the target tables into each calibrated frame.
-    # Drop the input now and replace those result frames after building the
-    # clean export from base_frame and the calibrated weights below.
+    # A calibrated frame built from target_frame by Frame.with_weights (the
+    # dense result, an L0 selection) shares the target tables' memory with it,
+    # so the tables are freed only once both references are gone: drop the
+    # input now, and replace those result frames after building the clean
+    # export from base_frame and the calibrated weights below.
     del target_frame
     if telemetry is not None:
         telemetry.stage(
@@ -18225,6 +18309,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         result,
         export_frame=export_frame if ladder_outcome is not None else None,
     )
+    # The solves are done. Later code reads only each constraint matrix's
+    # shape and nonzero count (the target surface in the calibration
+    # diagnostics), so keep those two numbers and free the matrices: the
+    # refit's and, under L0 selection, the selection's over the full frame.
+    result = without_constraint_matrix(result)
     if isinstance(ladder_outcome, ExactKLadderCalibration):
         ladder_outcome = dataclasses.replace(ladder_outcome, result=result)
     if args.scf_education_debt:
@@ -19016,62 +19105,24 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         "sha256": None,
         "reference_name": export_reference_name,
     }
-    reference_loaded = False
-    try:
-        if args.export_input_mass_reference_h5 is not None:
-            export_input_mass_reference["sha256"] = _sha256(
-                args.export_input_mass_reference_h5
-            )
-        export_reference_frame = (
-            load_us_frame(args.export_input_mass_reference_h5)
-            if args.export_input_mass_reference_h5 is not None
-            else None
-        )
-        reference_loaded = True
-        # Build H (microcosm#299): the two SOI-identified columns whose true
-        # target level provably cannot sit inside the live-default reference
-        # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
-        # and both mortgage columns are deliberately NOT excluded so the run
-        # adjudicates their actual gate outcome. See the constant's band-math
-        # rationale above.
-        export_input_mass_gate = shadow_gate(
-            "us_national_export_input_mass",
-            lambda: _export_input_mass_gate(
-                export_frame,
-                base_frame,
-                relative_tolerance=args.input_mass_relative_tolerance,
-                minimum_reference_total=args.input_mass_minimum_reference_total,
-                reference_frame=export_reference_frame,
-                reference_name=export_reference_name,
-                reviewed_exclusions=US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS,
-            ),
-            lambda: EvidenceContext(
-                frame=export_frame,
-                artifacts={
-                    "base_frame": base_frame,
-                    "export_input_mass_reference_frame": export_reference_frame,
-                    "export_input_mass_reference_name": export_reference_name,
-                    "export_input_mass_reviewed_exclusions": (
-                        US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
-                    ),
-                },
-            ),
-        )
-    except Exception as exc:
-        # Same degraded-mode contract as the coverage gate above.
-        if not terminal_gate_failures:
-            raise
-        if not reference_loaded:
-            # As for the QRF tail register: the gate never ran.
-            shadow_not_run(
-                "us_national_export_input_mass",
-                f"its reference did not load: {type(exc).__name__}: {exc}",
-            )
-        terminal_gate_failures.append(
-            "Input mass parity failed: evaluation error under earlier gate "
-            f"failures: {type(exc).__name__}: {exc}"
-        )
-        export_input_mass_gate = None
+    # The check loads the reference frame itself, so the frame is freed when
+    # the check returns or raises.
+    export_input_mass_gate = _record_export_input_mass_gate(
+        export_frame,
+        base_frame,
+        reference_h5=args.export_input_mass_reference_h5,
+        reference_name=export_reference_name,
+        reference_record=export_input_mass_reference,
+        relative_tolerance=args.input_mass_relative_tolerance,
+        minimum_reference_total=args.input_mass_minimum_reference_total,
+        terminal_gate_failures=terminal_gate_failures,
+    )
+    # The check above is base_frame's last reader; the export frame and the
+    # written H5 carry everything later stages read. Rebinding the name frees
+    # the frame. A ``del`` would do the same, but ruff would then report the
+    # shadow-gate lambdas above, which read the name while they run, as reading
+    # an undefined name.
+    base_frame = None
     # A reference the gate never evaluated is still named, but marked so no
     # reader takes its bytes as what the parity verdict saw.
     export_input_mass_reference["evaluated"] = export_input_mass_gate is not None
@@ -19229,6 +19280,12 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     if stored_input_premise_failure is not None:
         artifact_integrity_failures.append(stored_input_premise_failure)
         terminal_gate_failures.append(stored_input_premise_failure)
+    # The writer was the engine's last use; post-export scoring builds its own.
+    # It is released here, not between the write and the written file's check,
+    # which stays right after the write; that check reads column names and the
+    # module-level system only. Rebound rather than deleted, as base_frame is
+    # above.
+    release_engine = None
     # The build ends here (microcosm#1585 item 11, PR 4a). The optional export
     # audit and the calibration NPZ read the calibration result, which only
     # this process holds, so they run first. Every later stage scores the

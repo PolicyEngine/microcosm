@@ -40,6 +40,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.target_materialization",
     "microcosm.build.target_reference_authoring",
     "microcosm.build.uk_runtime.bus_fare_pricing",
+    "microcosm.build.uk_runtime.centax_childcare_parents",
     "microcosm.build.uk_runtime.cgt_calibration",
     "microcosm.build.uk_runtime.chronicle_feed",
     "microcosm.build.uk_runtime.council_tax_constants",
