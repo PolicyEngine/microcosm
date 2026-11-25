@@ -5029,8 +5029,9 @@ def finalize_reviewed_limitations(
                 "Staging also writes the ACA stage's anchor column, "
                 "reported_has_subsidized_marketplace_health_coverage_at_"
                 "interview, on ACS rows: True where HINS2 is 1 and HIMRKS is 1 "
-                "(ruled 25 Nov 2026); the donor reads no such item, so its "
-                "rows have none."
+                "(ruled 25 Nov 2026), Census-allocated values included. The "
+                "donor reads no such item, so donor rows carry the column "
+                "missing; the ACA stage reads it on ACS rows only."
             ),
             "treatment": (
                 "Written at staging only in missing ACS cells, except the "

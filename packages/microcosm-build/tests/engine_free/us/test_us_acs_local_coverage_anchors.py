@@ -33,7 +33,14 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
-from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.frame import (
+    US_SCHEMA,
+    Frame,
+    WeightKind,
+    Weights,
+    put_frame_table,
+    read_frame_table,
+)
 
 _ESI, _MARKETPLACE, _OTHER = ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS
 _ANCHOR = acs_local_aca_reported_true_anchor()
@@ -268,7 +275,14 @@ def test_the_acs_items_replace_the_draws() -> None:
     assert anchor["column"] == _ANCHOR
     assert anchor["manifest_stage"] == "aca_marketplace_inputs"
     assert (anchor["true_rows"], anchor["weighted_share"]) == (0, 0.0)
+    assert anchor["allocation_flag_loaded"] is False
     assert anchor["allocated_true_rows"] is None
+    assert anchor["allocated_weighted_share_of_true"] is None
+    assert anchor["conflicts"] == {
+        "himrks_1_hins2_no_rows": 0,
+        "himrks_1_hins2_no_weighted_share": 0.0,
+        "himrks_1_hins2_blank_rows": 0,
+    }
     assert anchor["replaced_existing_column"] is False
     json.dumps(receipt, allow_nan=False)
 
@@ -482,8 +496,15 @@ def test_hins2_no_wins_over_a_himrks_direct_purchase_code_and_is_counted() -> No
     anchor = receipt["aca_anchor"]
     assert anchor["true_rows"] == 3
     assert anchor["weighted_share"] == pytest.approx(3 / 8)
+    assert anchor["allocation_flag_loaded"] is True
     assert anchor["allocated_true_rows"] == 1
-    assert anchor["not_anchored_code_1_rows"] == {"hins2_no": 1, "hins2_blank": 1}
+    assert anchor["allocated_weighted_share_of_true"] == pytest.approx(1 / 3)
+    # The code 1 rows with HINS2 2 (row 1) or blank (row 8): no anchor.
+    assert anchor["conflicts"] == {
+        "himrks_1_hins2_no_rows": 1,
+        "himrks_1_hins2_no_weighted_share": pytest.approx(1 / 8),
+        "himrks_1_hins2_blank_rows": 1,
+    }
 
 
 def _mixed_rows(n: int = 40) -> list[tuple]:
@@ -813,6 +834,16 @@ def test_a_real_transfer_keeps_every_other_draw_and_takes_the_acs_items(
     # The ACA anchor is written on ACS rows only; donor rows lack it.
     assert acs[_ANCHOR].tolist() == (~no_direct & acs["ACS_HIMRKS"].eq(1)).tolist()
     assert donor[_ANCHOR].isna().all()
+    # Through the staging H5 boundary (R1 writes, R2 reads whole tables), ACS
+    # rows keep their values and donor rows stay missing, never False.
+    path = tmp_path / "staging.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        put_frame_table(store, "person", person, preferred_format="fixed")
+    with pd.HDFStore(path, mode="r") as store:
+        loaded = read_frame_table(store, "person")
+    loaded_acs = loaded[TAG].eq(ACS_2024_1YR_SPINE)
+    assert loaded.loc[loaded_acs, _ANCHOR].tolist() == acs[_ANCHOR].tolist()
+    assert loaded.loc[~loaded_acs, _ANCHOR].isna().all()
     # Donor rows keep the donor release's values.
     for column in columns:
         assert donor[column].tolist() == donor_before[column].tolist(), column
