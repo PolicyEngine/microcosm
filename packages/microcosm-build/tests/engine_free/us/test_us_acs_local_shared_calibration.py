@@ -103,6 +103,7 @@ def calibrate_run(monkeypatch, tmp_path):
         run=run,
         path=tmp_path,
         real_calibrate=real_calibrate,
+        registry=registry,
         train=[spec for spec in registry.specs if spec.name not in held],
     )
 
@@ -336,3 +337,224 @@ def test_resume_refuses_weights_calibrated_under_another_rule(calibrate_run) -> 
         calibrate_run.run(
             resume=True, target_weight_rule="level_family_equal_sqrt_count"
         )
+
+
+# ---------------------------------------------------------------------------
+# Item 3: a loss cap for the county rows only
+# ---------------------------------------------------------------------------
+
+
+def _cli(module, *options):
+    return module._parse_args(
+        [
+            "--stage",
+            "calibrate",
+            "--staging-h5",
+            "staging.h5",
+            "--checkpoint-dir",
+            "checkpoint",
+            "--out-h5",
+            "calibrated.h5",
+            *options,
+        ]  # fmt: skip
+    )
+
+
+def test_the_county_cap_applies_to_the_run_by_default() -> None:
+    module = _FIXTURE._load_tool_module()
+    args = _cli(module, "--geographies", "state,cd,county")
+    assert args.county_target_loss_cap_scope == "run"
+    assert args.target_loss_cap == 10.0
+    assert args.county_rows_target_loss_cap is None
+    assert args.county_solver_profile == {
+        "scope": "run",
+        "target_loss_cap": 10.0,
+        "max_weight_ratio": 5.0,
+    }
+
+
+def test_the_county_rows_scope_keeps_the_cap_of_the_other_rows() -> None:
+    module = _FIXTURE._load_tool_module()
+    args = _cli(
+        module,
+        "--geographies", "state,cd,county",
+        "--county-target-loss-cap-scope", "county_rows",
+        "--target-loss-cap", "2",
+    )  # fmt: skip
+    assert args.target_loss_cap == 2.0
+    assert args.county_rows_target_loss_cap == 10.0
+    settings = module._solver_settings(args, {})
+    assert settings["target_loss_cap"] == 2.0
+    # The scope is in the stamp, so a resume refuses weights of the other one.
+    assert settings["county_solver_profile"] == {
+        "scope": "county_rows",
+        "target_loss_cap": 10.0,
+        "max_weight_ratio": 5.0,
+    }
+
+
+def test_the_scope_changes_nothing_without_county_rows() -> None:
+    module = _FIXTURE._load_tool_module()
+    plain = _cli(module)
+    scoped = _cli(module, "--county-target-loss-cap-scope", "county_rows")
+    assert scoped.county_rows_target_loss_cap is None
+    assert module._solver_settings(scoped, {}) == module._solver_settings(plain, {})
+
+
+def _joint_problem(module):
+    """Three households; a county row and a state row, each a 200% miss."""
+
+    import pandas as pd
+    from scipy import sparse
+
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    design = np.asarray([300.0, 300.0, 300.0])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": [1, 2, 3], "person_household_id": [1, 2, 3]}
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": [1, 2, 3],
+                    "state_fips": [1, 1, 1],
+                    "county_fips": [1001, 1003, 1005],
+                }
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(design, WeightKind.DESIGN)},
+    )
+    county = module.county_surface.population_spec("pop_county_01001", 100.0)
+    (state,) = module.population_target_specs(["pop_state_01"], [100.0])
+    records = [
+        {**module.county_surface.target_record(county), "role": "train"},
+        {**module.cd_surface.target_record(state), "role": "train"},
+    ]
+    targets = module.cd_surface.calibration_target_set(
+        records,
+        sparse.csr_array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32),
+        3,
+        specs=[county, state],
+    )
+    return frame, targets, [county, state], design
+
+
+def _solve_joint(module, *options):
+    args = _cli(module, "--geographies", "state,county", *options)
+    frame, targets, specs, design = _joint_problem(module)
+    loss = module.release_target_loss_caps(args, targets, specs, np.ones(2))
+    result, _done = module.calibrate_surface(
+        frame,
+        targets,
+        epochs=80,
+        epoch_batch=40,
+        max_weight_ratio=args.max_weight_ratio,
+        target_loss_cap=loss["cap"],
+        l2_lambda=0.0,
+        seed=0,
+        target_loss_weights=loss["weights"],
+        target_loss_scales=loss["scales"],
+    )
+    return loss, result, design
+
+
+def test_the_run_scope_passes_one_cap_and_no_scales() -> None:
+    module = _FIXTURE._load_tool_module()
+    loss, result, design = _solve_joint(module)
+    assert loss == {
+        "cap": 10.0,
+        "weights": loss["weights"],
+        "scales": None,
+        "receipt": None,
+    }
+    np.testing.assert_array_equal(loss["weights"], np.ones(2))
+    # Cap 10 gives both rows a gradient, so both far misses are corrected.
+    assert result.weights[0] < design[0] and result.weights[1] < design[1]
+
+
+def test_the_county_rows_scope_corrects_the_county_row_only() -> None:
+    module = _FIXTURE._load_tool_module()
+    loss, result, design = _solve_joint(
+        module, "--county-target-loss-cap-scope", "county_rows"
+    )
+    # Declared caps: county 10, state 1 (the default --target-loss-cap).
+    assert loss["receipt"] == {
+        "default": 1.0,
+        "by_level": {"county": 10.0},
+        "method": "single_cap_equivalent",
+        "equivalent_cap": 5.5,
+        "rows_by_cap": {"1.0": 1, "10.0": 1},
+    }
+    # The solver's one-cap loss gives each row its own cap in its own units:
+    # scale * cap0 / (target scale) is the miss at which the row goes flat.
+    flat_at = loss["scales"] * loss["cap"] / 100.0
+    np.testing.assert_allclose(flat_at, [10.0, 1.0])
+    assert result.weights.sum() == pytest.approx(design.sum())
+    # The county row (200% miss, cap 10) has a gradient and moves to its target.
+    assert abs(result.weights[0] - 100.0) < abs(design[0] - 100.0)
+    # The state row (200% miss, cap 1) is past its cap, as in a run without
+    # county rows: it has no gradient, so its household is not pulled down.
+    assert result.weights[1] >= design[1]
+
+
+def test_a_county_rows_cap_without_a_county_training_row_is_refused() -> None:
+    module = _FIXTURE._load_tool_module()
+    args = _cli(
+        module,
+        "--geographies", "state,county",
+        "--county-target-loss-cap-scope", "county_rows",
+    )  # fmt: skip
+    frame, targets, specs, _design = _joint_problem(module)
+    with pytest.raises(SystemExit, match="level 'county' matches no target"):
+        module.release_target_loss_caps(args, targets[1:], specs[1:], np.ones(1))
+
+
+def test_diagnostics_of_a_row_cap_solve_match_the_published_schema(
+    calibrate_run, tmp_path
+) -> None:
+    from microcosm.calibrate import default_target_loss_scales
+    from microcosm.calibrate.target_loss_rules import (
+        single_cap_equivalent,
+        target_loss_caps,
+    )
+
+    call = calibrate_run.run()[0]
+    train = calibrate_run.train
+    caps = target_loss_caps(
+        1.0,
+        levels=[lw.target_geography_level(spec) for spec in train],
+        by_level={"congressional_district": 10.0},
+    )
+    equivalent = single_cap_equivalent(
+        caps,
+        weights=call["kwargs"]["target_loss_weights"],
+        scales=default_target_loss_scales(
+            np.asarray([target.value for target in call["targets"]])
+        ),
+    )
+    result = calibrate_run.real_calibrate(
+        call["frame"],
+        call["targets"],
+        **{
+            **call["kwargs"],
+            "target_loss_cap": equivalent.cap,
+            "target_loss_weights": equivalent.weights,
+            "target_loss_scales": equivalent.scales,
+        },
+    )
+    written = tmp_path / "row_cap_diagnostics.json"
+    outcome = calibrate_package.write_calibration_diagnostics(
+        result, written, target_registry=calibrate_run.registry
+    )
+
+    assert outcome.status == "available"
+    assert (
+        _FIXTURE.published_json_schema_errors(
+            _FIXTURE.load_strict_json(written.read_bytes())
+        )
+        == []
+    )
+    assert result.options["target_loss_scales"]["kind"] == "provided"
+    assert result.target_loss_cap == pytest.approx(equivalent.cap)

@@ -2567,11 +2567,22 @@ SOLVER_METHOD = "adam"
 SOLVER_LEARNING_RATE = 0.02
 SOLVER_MASS = "conserve"
 
-# Starting values from microcosm#1377's county pilot. The calibrator accepts
-# only one scalar loss cap, so these apply to the joint run, not county rows
-# individually. Ordinary ACS-local builds retain their historical settings.
+# Starting values from microcosm#1377's county pilot. By default they apply to
+# the joint run, not county rows individually. Ordinary ACS-local builds
+# retain their historical settings.
 COUNTY_TARGET_LOSS_CAP = 10.0
 COUNTY_MAX_WEIGHT_RATIO = 5.0
+#: Which rows the county profile's loss cap applies to (microcosm#1729).
+#: ``run`` (default) is every row of a county run, as every county build has
+#: solved. ``county_rows`` is the county rows only: the state and district
+#: rows keep ``--target-loss-cap``, so county rows joining the solve do not
+#: change their cap. The weight ratio is a bound on records, not on targets,
+#: so it stays one number for the run under both.
+COUNTY_CAP_SCOPE_RUN = "run"
+COUNTY_CAP_SCOPE_COUNTY_ROWS = "county_rows"
+COUNTY_CAP_SCOPES = (COUNTY_CAP_SCOPE_RUN, COUNTY_CAP_SCOPE_COUNTY_ROWS)
+#: The geography level of a county row, as ``target_geography_level`` reads it.
+COUNTY_LEVEL = "county"
 
 
 def _apply_county_solver_profile(args, *, identity=None) -> None:
@@ -2592,16 +2603,22 @@ def _apply_county_solver_profile(args, *, identity=None) -> None:
     county_requested = "county" in {item.strip() for item in geographies.split(",")}
     county_requested |= soi_mode == SOI_MODE_STATE_COUNTY
     args.county_solver_profile = None
+    # Set only under the county_rows scope: the cap of the county rows, while
+    # args.target_loss_cap stays the cap of every other row.
+    args.county_rows_target_loss_cap = None
     if county_requested:
-        args.target_loss_cap = getattr(
-            args, "county_target_loss_cap", COUNTY_TARGET_LOSS_CAP
-        )
+        county_cap = getattr(args, "county_target_loss_cap", COUNTY_TARGET_LOSS_CAP)
+        scope = getattr(args, "county_target_loss_cap_scope", COUNTY_CAP_SCOPE_RUN)
+        if scope == COUNTY_CAP_SCOPE_COUNTY_ROWS:
+            args.county_rows_target_loss_cap = county_cap
+        else:
+            args.target_loss_cap = county_cap
         args.max_weight_ratio = getattr(
             args, "county_max_weight_ratio", COUNTY_MAX_WEIGHT_RATIO
         )
         args.county_solver_profile = {
-            "scope": "run",
-            "target_loss_cap": args.target_loss_cap,
+            "scope": scope,
+            "target_loss_cap": county_cap,
             "max_weight_ratio": args.max_weight_ratio,
         }
 
@@ -2671,6 +2688,64 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
         stamp["weighting"] = rule
         stamp["rule"] = loss_weighting.acs_local_target_weight_rule(rule).to_json()
     return weights, stamp
+
+
+def release_target_loss_caps(args, target_set, train_specs, loss_weights):
+    """The solver's loss cap, weights and scales, and the caps it stands for.
+
+    One number for the run unless the county profile's cap applies to the
+    county rows only (``--county-target-loss-cap-scope county_rows``). Then
+    each row has its own cap, declared by level through the shared
+    ``target_loss_caps``, and the solver gets the one-cap loss that equals it
+    (``single_cap_equivalent``): the same loss value, row contributions and
+    gradient, with the cap still one number.
+
+    Returns a mapping: ``cap``, ``weights`` and ``scales`` go to
+    ``calibrate`` (``scales`` is ``None`` for the default scales); ``receipt``
+    is ``None`` unless row caps are declared.
+    """
+
+    county_cap = getattr(args, "county_rows_target_loss_cap", None)
+    if county_cap is None:
+        return {
+            "cap": args.target_loss_cap,
+            "weights": loss_weights,
+            "scales": None,
+            "receipt": None,
+        }
+    from microcosm.calibrate import default_target_loss_scales
+    from microcosm.calibrate.target_loss_rules import (
+        single_cap_equivalent,
+        target_loss_caps,
+    )
+
+    try:
+        caps = target_loss_caps(
+            args.target_loss_cap,
+            levels=[
+                loss_weighting.target_geography_level(spec) for spec in train_specs
+            ],
+            by_level={COUNTY_LEVEL: county_cap},
+        )
+    except ValueError as error:
+        raise SystemExit(f"Target loss caps: {error}") from error
+    equivalent = single_cap_equivalent(
+        caps,
+        weights=loss_weights,
+        scales=default_target_loss_scales(
+            np.asarray([target.value for target in target_set], dtype=np.float64)
+        ),
+    )
+    return {
+        "cap": equivalent.cap,
+        "weights": equivalent.weights,
+        "scales": equivalent.scales,
+        "receipt": {
+            "default": float(args.target_loss_cap),
+            "by_level": {COUNTY_LEVEL: float(county_cap)},
+            **equivalent.receipt(),
+        },
+    }
 
 
 def _stamped_settings(settings: dict | None) -> dict | None:
@@ -2919,6 +2994,7 @@ def calibrate_surface(
     on_batch=None,
     l2_basis: str = HISTORICAL_PENALTY["l2_basis"],
     mass_parametrization: str = HISTORICAL_PENALTY["mass_parametrization"],
+    target_loss_scales: np.ndarray | None = None,
 ):
     """Epoch-batched warm-start calibration of ``target_set``.
 
@@ -2929,10 +3005,17 @@ def calibrate_surface(
     row-aligned with ``target_set``; ``do_calibrate`` always passes the
     release weights (:func:`release_target_loss_weights`), and ``None`` (equal
     weights) is for harnesses. Returns ``(result, epochs_done)``.
+
+    An option added after the first release (``target_loss_scales``) reaches
+    ``calibrate`` only when a caller sets it, so a run that sets none makes
+    the call every release has made.
     """
 
     from microcosm.calibrate import calibrate
 
+    optional = {}
+    if target_loss_scales is not None:
+        optional["target_loss_scales"] = target_loss_scales
     batch = epoch_batch if epoch_batch > 0 else epochs
     result = None
     while done < epochs:
@@ -2954,6 +3037,7 @@ def calibrate_surface(
             seed=seed,
             target_loss_weights=target_loss_weights,
             warm_start_weights=warm,
+            **optional,
         )
         done += this_batch
         warm = result.weights.copy()
@@ -2995,6 +3079,7 @@ def calibration_evidence(
     target_loss_cap: float,
     checkpoint_dir: Path | None = None,
     identity: dict | None = None,
+    county_target_loss_cap: float | None = None,
 ) -> dict:
     """The sparse-surface evidence the calibration summary adds.
 
@@ -3002,7 +3087,9 @@ def calibration_evidence(
     and distinct households with household-weight share by spine, at the
     design and the calibrated weights. With the checkpoint directory and run
     identity, a county run also scores its held-out ACS validation families
-    (microcosm#922), which never reach the loss.
+    (microcosm#922), which never reach the loss. ``county_target_loss_cap``
+    is the cap the county evidence is scored at when the county rows have a
+    cap of their own; ``None`` scores it at ``target_loss_cap``.
     """
 
     origin = _origin_columns(frame)
@@ -3031,7 +3118,9 @@ def calibration_evidence(
             matrix,
             design_weights,
             weights,
-            target_loss_cap,
+            target_loss_cap
+            if county_target_loss_cap is None
+            else county_target_loss_cap,
             checkpoint_dir=checkpoint_dir,
             identity=identity,
         ),
@@ -3075,6 +3164,7 @@ def do_calibrate(args) -> None:
             "specs, so their loss weights would attach to the wrong targets."
         )
     loss_weights, target_loss = release_target_loss_weights(args, train_specs)
+    solver_loss = release_target_loss_caps(args, target_set, train_specs, loss_weights)
     loss_distribution = loss_weighting.target_loss_weight_distribution(
         train_specs,
         loss_weights,
@@ -3147,6 +3237,7 @@ def do_calibrate(args) -> None:
                 target_loss_cap=args.target_loss_cap,
                 checkpoint_dir=args.checkpoint_dir,
                 identity=identity,
+                county_target_loss_cap=args.county_rows_target_loss_cap,
             )
             stale = sorted(
                 key
@@ -3211,12 +3302,13 @@ def do_calibrate(args) -> None:
         epochs=args.epochs,
         epoch_batch=args.epoch_batch,
         max_weight_ratio=args.max_weight_ratio,
-        target_loss_cap=args.target_loss_cap,
+        target_loss_cap=solver_loss["cap"],
         l2_lambda=args.l2_lambda,
         l2_basis=args.l2_basis,
         mass_parametrization=args.mass_parametrization,
         seed=args.seed,
-        target_loss_weights=loss_weights,
+        target_loss_weights=solver_loss["weights"],
+        target_loss_scales=solver_loss["scales"],
         warm=warm,
         done=done,
         on_batch=save,
@@ -3244,7 +3336,15 @@ def do_calibrate(args) -> None:
         "epochs": args.epochs,
         "epoch_batch": args.epoch_batch,
         "max_weight_ratio": args.max_weight_ratio,
-        "target_loss_cap": args.target_loss_cap,
+        # The solver's cap. With a cap for each row it is the equivalent
+        # single cap, the largest value the loss can take; target_loss_caps
+        # then records the declared row caps.
+        "target_loss_cap": solver_loss["cap"],
+        **(
+            {"target_loss_caps": solver_loss["receipt"]}
+            if solver_loss["receipt"] is not None
+            else {}
+        ),
         "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
         "l2_basis": args.l2_basis,
@@ -3275,6 +3375,7 @@ def do_calibrate(args) -> None:
             target_loss_cap=args.target_loss_cap,
             checkpoint_dir=args.checkpoint_dir,
             identity=identity,
+            county_target_loss_cap=args.county_rows_target_loss_cap,
         ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
@@ -3310,7 +3411,7 @@ def do_calibrate(args) -> None:
             # release names them, plus the ACS local row mapping and digest.
             "target_loss_weighting": target_loss["weighting"],
             "target_loss_family_multipliers": target_loss["family_multipliers"] or None,
-            "target_loss_cap": args.target_loss_cap,
+            "target_loss_cap": solver_loss["cap"],
             "target_loss_row_mapping": target_loss["row_mapping"],
             "target_loss_weights_sha256": target_loss["weights_sha256"],
             "target_loss_distribution": loss_distribution,
@@ -6812,6 +6913,10 @@ def do_package(args) -> dict:
             f" --county-target-loss-cap {float(county_profile['target_loss_cap'])!r}"
             f" --county-max-weight-ratio {float(county_profile['max_weight_ratio'])!r}"
         )
+        if county_profile.get("scope", COUNTY_CAP_SCOPE_RUN) != COUNTY_CAP_SCOPE_RUN:
+            refresh_recipe["release"] += (
+                f" --county-target-loss-cap-scope {county_profile['scope']}"
+            )
     refresh_recipe["release"] += district_ess_refresh_flags(
         (gate_report.get("gates") or {}).get(DISTRICT_ESS_GATE)
     )
@@ -7163,6 +7268,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Run-level loss cap when county rows are requested (default 10); "
             "overrides --target-loss-cap only for county builds."
+        ),
+    )
+    parser.add_argument(
+        "--county-target-loss-cap-scope",
+        choices=COUNTY_CAP_SCOPES,
+        default=COUNTY_CAP_SCOPE_RUN,
+        help=(
+            "Which rows --county-target-loss-cap applies to in a county build. "
+            "'run' (default) is every row, as every county build has solved. "
+            "'county_rows' is the county rows only: state and district rows "
+            "keep --target-loss-cap. It changes the weights of a county build."
         ),
     )
     parser.add_argument(
