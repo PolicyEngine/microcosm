@@ -11,15 +11,15 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from microcosm.build import area_support as module
+from microcosm.build import gates
 from microcosm.build.area_support import (
     area_support_floor_table,
     area_support_gate,
     area_support_table,
     effective_sample_size_by_group,
 )
-from microcosm.build.gates import area_support_gate as absolute_floor_gate
 from microcosm.calibrate.solve import effective_sample_size
+from test_support.microcosm_build import area_support_gate_reference as before
 
 LEVEL = "district"
 
@@ -148,40 +148,98 @@ _AREAS = st.lists(
 _EXCLUDED = st.lists(st.integers(0, 14), max_size=4, unique=True)
 
 
-@settings(max_examples=200, deadline=None)
+def test_there_is_one_gate() -> None:
+    assert area_support_gate is gates.area_support_gate
+
+
+@settings(max_examples=300, deadline=None)
 @given(
     areas=_AREAS,
     floors=st.tuples(st.integers(1, 80), st.floats(0.5, 80.0), st.integers(1, 80)),
     excluded=_EXCLUDED,
 )
-def test_the_absolute_floors_are_the_existing_gate(areas, floors, excluded) -> None:
-    """With three absolute floors the gate is ``gates.area_support_gate``.
+def test_the_absolute_floors_give_the_gate_of_before(areas, floors, excluded) -> None:
+    """With the three absolute floors the gate is the gate it always was.
 
-    The general rule gives the same result, exclusions included, so the two
-    cannot drift while both exist.
+    The UK local build calls it this way. The result, the per-area flag and
+    the wording are held to a verbatim copy of the code before the floors
+    became optional, reviewed exclusions included.
     """
 
     table = _table([(f"a{index:02d}", *area) for index, area in enumerate(areas)])
-    arguments = dict(
-        area_roster={LEVEL: list(table["area_code"])},
-        geography_levels=(LEVEL,),
+    declared = dict(
         minimum_rows=floors[0],
         minimum_effective_sample_size=floors[1],
         minimum_distinct_sources=floors[2],
+    )
+    arguments = dict(
+        area_roster={LEVEL: list(table["area_code"])},
+        geography_levels=(LEVEL,),
         # Some name areas of the table, some an area it does not have.
         reviewed_exclusions={
             f"{LEVEL}/a{index:02d}": {"reviewer": "test"} for index in excluded
         },
+        **declared,
     )
 
-    existing = absolute_floor_gate(table, **arguments)
-    assert area_support_gate(table, **arguments) == existing
-    assert (
-        module._general_area_support_gate(
-            table, **arguments, minimum_effective_sample_size_ratio=None
-        )
-        == existing
+    assert area_support_gate(table, **arguments) == before.area_support_gate(
+        table, **arguments
     )
+    assert gates.area_support_below_floor(table, **declared).equals(
+        before.area_support_below_floor(table, **declared)
+    )
+    for row in table.itertuples(index=False):
+        measured = (
+            row.nonzero_households,
+            row.effective_sample_size,
+            row.nonzero_source_households,
+        )
+        assert gates.area_support_shortfalls(*measured, **declared) == (
+            before.area_support_shortfalls(*measured, **declared)
+        )
+
+
+@pytest.mark.parametrize(
+    ("floor", "value", "match"),
+    [
+        ("minimum_rows", 0, "minimum_rows must be a positive integer"),
+        ("minimum_distinct_sources", True, "minimum_distinct_sources must be"),
+        ("minimum_effective_sample_size", 0.0, "must be positive and finite"),
+    ],
+)
+def test_an_invalid_absolute_floor_keeps_its_refusal(floor, value, match) -> None:
+    table = _table([("a", 60, 60, 60.0, 60.0)])
+    arguments = dict(
+        area_roster={LEVEL: ["a"]},
+        geography_levels=(LEVEL,),
+        minimum_rows=50,
+        minimum_effective_sample_size=50.0,
+        minimum_distinct_sources=50,
+    )
+    arguments[floor] = value
+    for gate in (area_support_gate, before.area_support_gate):
+        with pytest.raises(ValueError, match=match):
+            gate(table, **arguments)
+
+
+def test_the_flag_needs_the_columns_of_its_floors() -> None:
+    table = _table([("a", 60, 60, 60.0, 60.0)]).drop(columns="nonzero_households")
+    with pytest.raises(ValueError, match="nonzero_households"):
+        gates.area_support_below_floor(
+            table,
+            minimum_rows=50,
+            minimum_effective_sample_size=50.0,
+            minimum_distinct_sources=50,
+        )
+    # A floor that is not declared reads no column.
+    flags = gates.area_support_below_floor(
+        table,
+        minimum_rows=None,
+        minimum_effective_sample_size=70.0,
+        minimum_distinct_sources=None,
+        minimum_effective_sample_size_ratio=0.5,
+    )
+    assert flags.tolist() == [True]
 
 
 def test_the_relative_floor_fails_an_area_below_a_share_of_its_starting_ess() -> None:

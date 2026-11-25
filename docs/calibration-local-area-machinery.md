@@ -18,10 +18,10 @@ Two rules hold for every piece:
 | Piece | Shared code | UK local | US local (ACS) |
 |---|---|---|---|
 | L2 penalty anchor | `calibrate(l2_anchor=, l2_anchor_weights=)` | `uniform` on the refit stage (`UK_LOCAL_SIZE_REFIT_L2_ANCHOR`) | `--l2-anchor` (default `initial`), `--l2-anchor-weights` |
-| Target loss weights | `microcosm.calibrate.target_loss_rules` | `uk_runtime.target_weight_declarations` (declared; see the note below) | `US_ACS_LOCAL_TARGET_WEIGHT_RULES`, `--target-weight-rule` |
+| Target loss weights | `microcosm.calibrate.target_loss_rules` | `UK_LOCAL_TARGET_WEIGHT_RULE_DECLARATIONS` (`uk_runtime.target_weights`), `UK_NATIONAL_TARGET_WEIGHT_RULE_DECLARATIONS` (`uk_runtime.national_doctrine`) | `US_ACS_LOCAL_TARGET_WEIGHT_RULES`, `--target-weight-rule` |
 | Loss cap for a level or a family | `target_loss_caps`, `single_cap_equivalent` | one number (`UK_LOCAL_TARGET_LOSS_CAP`) | one number; `--county-target-loss-cap-scope county_rows` |
-| Area support | `microcosm.build.area_support` | `gates.area_support_gate`, floors in `uk/gates.json` | `district_ess_collapse_gate` declares its floors to the shared gate |
-| Weight bound | `max_weight_ratio`; contract in `microcosm.calibrate.weight_bound` | `UK_LOCAL_MAX_WEIGHT_RATIO` | `--max-weight-ratio` |
+| Area support | `gates.area_support_gate`; measurement in `microcosm.build.area_support` | three absolute floors in `uk/gates.json` | `district_ess_collapse_gate` declares a relative and an absolute ESS floor |
+| Weight bound | `max_weight_ratio`, `max_weight_reference`; contract in `microcosm.calibrate.weight_bound` | `UK_LOCAL_MAX_WEIGHT_RATIO`, against each record's own weight | `--max-weight-ratio`, `--weight-bound-reference` (default `own`) |
 | Which rows carry each target | `microcosm.calibrate.spine_target_shares`, `tools/spine_target_shares.py` | not run | run on a checkpoint |
 
 ## Target loss weights
@@ -47,13 +47,19 @@ Any rule may carry `family_multipliers`.
   gives each geography level one equal share of the loss. On the September
   surface the state SOI rows held about 90% of the loss weight under the
   default.
-- **UK.** `uk_runtime.target_weight_declarations` states each UK rule name as
-  a shared rule: the doctrine's `nation_grain_family_equal_sqrt_count` is
-  `level_family_equal` with `count_power` 0.5, over the UK's own mapping of
-  rows to levels. A test holds the shared rule equal to the UK code bit for
-  bit under all six rules. The UK solve still computes its vector in
-  `uk_runtime.target_weights`, because that module is part of the UK graph's
-  code identity and an edit to it re-keys the UK target and solve nodes.
+- **UK.** The UK computes every loss weight with the shared rules.
+  `uk_runtime.target_weights` says what a UK row is and declares each local
+  rule name as a shared rule: the doctrine's
+  `nation_grain_family_equal_sqrt_count` is `level_family_equal` with
+  `count_power` 0.5, over the UK's own mapping of rows to levels. The national
+  build's `family_equal` (`uk_runtime.national_doctrine`) is `level_equal`
+  with each family as one level. The vectors are the same as before, bit for
+  bit: the tests hold them to verbatim copies of the UK arithmetic as it
+  stood before the move.
+
+  The shared module is in the hash of the UK nodes that bind loss weights
+  (`uk.full.problem@1`, the two national kernels and the rotated holdout), so
+  an edit to a shared rule re-keys them.
 
 ## A loss cap for a level or a family
 
@@ -89,24 +95,26 @@ run.
 
 ## Area support
 
-`microcosm.build.area_support` measures and checks the support of each area:
+There is one gate, `microcosm.build.gates.area_support_gate`. It checks every
+area of a declared roster against the floors a country declares. Each floor
+is optional: `minimum_rows`, `minimum_distinct_sources`,
+`minimum_effective_sample_size`, and `minimum_effective_sample_size_ratio`, a
+floor relative to the area's starting ESS (the rule microcosm#1078 adopted).
+
+The UK local build declares the three absolute floors (50 rows, ESS 50 and 50
+distinct sources). With those three and no relative floor the gate gives the
+result it always gave: a test holds it to a verbatim copy of the gate as it
+stood before the floors became optional, reviewed exclusions included.
+
+`microcosm.build.area_support` measures what the gate reads:
 
 - `effective_sample_size_by_group` is the Kish ESS of the records in each
   area.
 - `area_support_table` builds the long-form table from a weight vector and
   each record's area: positive-weight rows, distinct positive-weight source
   households, ESS, and the ESS under the starting weights.
-- `area_support_gate` checks every area of a declared roster against the
-  floors a country declares. Each floor is optional: `minimum_rows`,
-  `minimum_distinct_sources`, `minimum_effective_sample_size`, and
-  `minimum_effective_sample_size_ratio`, a floor relative to the area's
-  starting ESS (the rule microcosm#1078 adopted).
-- `area_support_floor_table` gives the same verdict area by area.
-
-With the three absolute floors and no relative floor the gate calls
-`microcosm.build.gates.area_support_gate`, which the UK local build uses with
-50 rows, ESS 50 and 50 distinct sources. A test holds the general rule equal
-to that function wherever both apply.
+- `area_support_floor_table` gives the gate's verdict area by area, with one
+  flag for each declared floor.
 
 The US district gate (`us_local_district_ess_collapse` in `us/gates.json`)
 declares a relative floor of 0.25 and an absolute floor of 15 to the shared
@@ -128,13 +136,27 @@ the frame the solve was given.
    the US local file a donor row starts about 27 times heavier than an ACS
    row, so its absolute bound is about 27 times higher under the same ratio.
 
-`weight_bound_reference` declares another reference (`mean`, or `group_mean`
-for the mean starting weight of the record's area), and `weight_bound_report`
-measures any weight vector against it: the largest ratio, the records above
-the bound, the records that start above it, and whether the bounds admit the
-starting mass. The report is how to read what a declared-reference bound
-would do before a solve enforces one. The solver itself bounds against the
-frame's weights only.
+**A declared reference.** Point 3 is a choice. `calibrate` and
+`solve_constraint_system` take `max_weight_reference`, one positive weight for
+each record, and then bound each record at `max_weight_ratio` times that
+reference. `weight_bound_reference` builds one: `mean`, or `group_mean` for
+the mean starting weight of the record's area. The frame's weights still set
+the starting point, the mass and the L2 anchor. A record that starts above its
+bound starts from the bound, with the mass it gives up spread below the
+bounds. Under mass conservation the bounds must admit the total, or the solve
+refuses. Without `max_weight_reference` the solve is the historical one, byte
+for byte.
+
+In the US local tool, `--weight-bound-reference mean`, `state_mean` or
+`district_mean` turns it on. The default, `own`, is each household's own
+starting weight.
+
+`weight_bound_report` measures any weight vector against a reference: the
+largest ratio, the records above the bound, the records that start above it,
+and whether the bounds admit the starting mass. Read it on a finished solve
+before you turn a declared reference on: in the pooled US file the donor rows
+start far above a shared bound at the default ratio, so the bound moves
+starting mass off them.
 
 ## Which rows carry each target
 
@@ -160,6 +182,29 @@ pass the disclosure floor for a build on licensed microdata.
 ## What only a full build can show
 
 The tests prove that the default declarations send the solver the same
-arguments and return the same arrays on small fixtures. They do not run a
-full ACS local build or a UK local build. A full build is the only proof for
-the full surface, the full pool and the stages around the solve.
+arguments and return the same arrays on small fixtures, and that the UK
+vectors and the UK gate result are those of the code before the move. They do
+not run a full ACS local build or a UK build. A full build is the only proof
+for the full surface, the full pool and the stages around the solve.
+
+## What re-keys in the UK graph
+
+The UK graph hashes the bytes of the modules its kernels name. This work
+edits some of them, with the same outputs, so these nodes compute again on
+the next run instead of reading a cached result:
+
+- every UK solve node, through `calibrate.adam@1` (`calibrate/solve.py`);
+- the kernels of `uk_runtime/graph_targets.py`, which hash their own module:
+  `uk.full.target_compilation@1`, `target_selection@1`, `measures@1` and
+  `problem@1`. The problem's loss-weight hash gained the shared rules there;
+- the kernels of `uk_runtime/graph_national.py`: `uk.full.national_targets@1`,
+  `national_problem@1`, `national-gates@1` and `national-readback@1`;
+- the kernels of `uk_runtime/graph_terminal.py`: the rotated holdout,
+  `uk.full-gates@1` (which also hashes `build/gates.py`), its preflight, and
+  the three export kernels;
+- outside the UK, the transport gate kernel, which hashes `build/gates.py`.
+
+The UK spine kernels are not among them.
+
+No `uk/gates.json` digest, gate replay or receipt moves. The calibrate parity
+pin is re-recorded.
