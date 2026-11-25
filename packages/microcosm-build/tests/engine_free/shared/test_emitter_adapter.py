@@ -457,7 +457,7 @@ def test_metadata_or_cache_failure_never_starts_an_emitter(
 
 
 @pytest.mark.parametrize("outcome", ["blocked", "failed", "completed"])
-def test_graph_publication_precedes_emitter_shutdown_after_an_outcome(
+def test_graph_evidence_hand_over_precedes_emitter_shutdown_after_an_outcome(
     tmp_path, outcome
 ):
     client = FakeEmitterClient()

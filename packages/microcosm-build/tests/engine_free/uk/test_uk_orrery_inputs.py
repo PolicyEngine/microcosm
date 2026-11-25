@@ -199,7 +199,7 @@ def test_a_failed_builds_evidence_bundle_holds_no_document(tmp_path):
         raise RuntimeError("kernel failed")
 
     with pytest.raises(RuntimeError, match="kernel failed"):
-        full_build_cli._run_with_graph_publication(
+        full_build_cli._run_with_graph_inputs(
             fail, None, args, telemetry=None, attempt=None, record={}
         )
 
@@ -370,7 +370,7 @@ def test_failure_path_preserves_graph_inputs_before_temporary_cleanup(
     )
 
     with pytest.raises(RuntimeError, match="kernel failed"):
-        full_build_cli._run_with_graph_publication(
+        full_build_cli._run_with_graph_inputs(
             fail, None, args, telemetry=None, attempt=None, record={}
         )
     bundle = args.attempt_evidence / orrery_inputs.FAILURE_BUNDLE_DIRECTORY
@@ -397,7 +397,7 @@ def test_failure_leaves_an_earlier_successful_bundle_unchanged(tmp_path, monkeyp
         (args.published_out / name).write_bytes(payload)
 
     with pytest.raises(RuntimeError, match="kernel failed"):
-        full_build_cli._run_with_graph_publication(
+        full_build_cli._run_with_graph_inputs(
             fail, None, args, telemetry=None, attempt=None, record={}
         )
     assert {
@@ -417,7 +417,7 @@ def test_interrupt_preserves_local_evidence_without_staging(tmp_path, monkeypatc
         raise KeyboardInterrupt
 
     with pytest.raises(KeyboardInterrupt):
-        full_build_cli._run_with_graph_publication(
+        full_build_cli._run_with_graph_inputs(
             interrupt, None, args, telemetry=None, attempt=None, record={}
         )
     bundle = args.attempt_evidence / orrery_inputs.FAILURE_BUNDLE_DIRECTORY
@@ -434,7 +434,7 @@ def test_failure_evidence_error_does_not_replace_the_build_error(
 
     monkeypatch.setattr(orrery_inputs, "finalize_graph", broken)
     with pytest.raises(RuntimeError, match="kernel failed"):
-        full_build_cli._run_with_graph_publication(
+        full_build_cli._run_with_graph_inputs(
             fail, None, args, telemetry=None, attempt=None, record={}
         )
     assert "Graph failure evidence was not preserved (OSError)" in (

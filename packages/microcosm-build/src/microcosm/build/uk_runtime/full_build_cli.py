@@ -1896,7 +1896,7 @@ class _BuildKernel[Prepared](Protocol):
     ) -> int: ...
 
 
-def _run_with_graph_publication[Prepared](
+def _run_with_graph_inputs[Prepared](
     execute: _BuildKernel[Prepared],
     prepared: Prepared,
     args: argparse.Namespace,
@@ -2045,7 +2045,7 @@ def execute_full_build(
         staged_args.out = Path(temporary)
         staged_args.graph_store = graph_store
         staged_args.published_out = output
-        status = _run_with_graph_publication(
+        status = _run_with_graph_inputs(
             _execute_full_build,
             prepared,
             staged_args,
@@ -3099,7 +3099,7 @@ def execute_national_build(
         staged_args.out = Path(temporary)
         staged_args.graph_store = graph_store
         staged_args.published_out = output
-        status = _run_with_graph_publication(
+        status = _run_with_graph_inputs(
             _execute_national_build,
             prepared,
             staged_args,
