@@ -585,6 +585,15 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     ):
         assert fragment in anchor["reason"], fragment
     assert "acs_snap_receipt_anchor" in (by_id["acs_take_up_engine_defaults"]["reason"])
+    # microcosm#1720: the inputs staging writes on ACS rows are a reviewed
+    # method, recorded and not graded.
+    staged = by_id["acs_local_staged_inputs"]
+    assert staged["status"] == "reviewed_modeling_decision"
+    assert staged["calibration_blocker"] is False
+    assert set(module.ACS_LOCAL_STATUS_INPUTS_COLUMNS) <= set(staged["columns"])
+    for fragment in ("microcosm#1720", "A_MARITL", "MIL == 1", "POCCU2 52"):
+        assert fragment in staged["reason"], fragment
+    assert "NEVER_DEFAULT_FILLED" in staged["treatment"]
     # microcosm#1021: native ACS disability is a reviewed method; weeks worked
     # is staged only, and is_veteran is documented, not exported.
     work_disability = by_id["acs_work_disability_inputs"]
@@ -6631,7 +6640,7 @@ _REVIEWED_FILLS_RETIRED_SINCE_767312D60 = {
 
 
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
-    """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
+    """Release 767312d60 default-filled 79 columns; the stack now fills 28 of
     them (NEVER_DEFAULT_FILLED), and every other one has a register entry,
     except one the reviewed engine no longer defines, as does each reviewed
     fill added since."""
@@ -6652,10 +6661,12 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     assert len(released) == 79
     now_filled = released & set(module.NEVER_DEFAULT_FILLED)
     registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
-    # 20 are filled natively, 1 is retired and 58 are registered. The ACS
+    # 28 are filled natively, 1 is retired and 50 are registered. The ACS
     # vehicle count returned to a reviewed fill after the microcosm#1064 review
     # (VEH counts vehicles available, not owned): it left NEVER_DEFAULT_FILLED
-    # and gained an entry together, so this still holds.
+    # and gained an entry together, so this still holds. microcosm#1720:
+    # staging maps the ACS rows' marital, military and occupation status.
+    assert len(now_filled) == 28
     assert _REVIEWED_FILLS_RETIRED_SINCE_767312D60 <= released - now_filled
     assert (
         registered

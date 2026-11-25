@@ -486,17 +486,6 @@ entries:
           labor-supply elasticities they gate), which return 0 before reading anything
           in an engine pass without a reform; inert.
   - entity: person
-    column: has_never_worked
-    fill_value: "False"
-    spines: [acs_2024_1yr]
-    rows: "every ACS person"
-    summary: >-
-      Read only by the FLSA overtime occupation category
-      (fsla_overtime_occupation_exemption_category), which reaches no means-tested
-      program.
-    consumers: []
-    notes: []
-  - entity: person
     column: health_insurance_premiums
     fill_value: "0"
     spines: [acs_2024_1yr]
@@ -576,17 +565,6 @@ entries:
     consumers: []
     notes: []
   - entity: person
-    column: is_computer_scientist
-    fill_value: "False"
-    spines: [acs_2024_1yr]
-    rows: "every ACS person"
-    summary: >-
-      Read only by the FLSA overtime occupation category
-      (fsla_overtime_occupation_exemption_category), which reaches no means-tested
-      program.
-    consumers: []
-    notes: []
-  - entity: person
     column: is_enrolled_at_least_half_time_for_american_opportunity_credit
     fill_value: "False"
     spines: [acs_2024_1yr]
@@ -648,28 +626,6 @@ entries:
           labor-supply elasticities they gate), which return 0 before reading anything
           in an engine pass without a reform; inert.
   - entity: person
-    column: is_executive_administrative_professional
-    fill_value: "False"
-    spines: [acs_2024_1yr]
-    rows: "every ACS person"
-    summary: >-
-      Read only by the FLSA overtime occupation category
-      (fsla_overtime_occupation_exemption_category), which reaches no means-tested
-      program.
-    consumers: []
-    notes: []
-  - entity: person
-    column: is_farmer_fisher
-    fill_value: "False"
-    spines: [acs_2024_1yr]
-    rows: "every ACS person"
-    summary: >-
-      Read only by the FLSA overtime occupation category
-      (fsla_overtime_occupation_exemption_category), which reaches no means-tested
-      program.
-    consumers: []
-    notes: []
-  - entity: person
     column: is_hispanic
     fill_value: "False"
     spines: [acs_2024_1yr]
@@ -691,90 +647,6 @@ entries:
       the reviewed default 0 on the same rows.
     consumers: []
     notes: []
-  - entity: person
-    column: is_military
-    fill_value: "False"
-    spines: [acs_2024_1yr]
-    rows: "every ACS person"
-    summary: >-
-      Active-duty status; ACS MIL == 1 could fill it natively. SNAP's five-year bar
-      exempts a military-connected qualified alien, their spouse and their dependent
-      children (is_snap_alien_military_connected); Missouri SSP's immigrant waiver, the
-      2020-2021 recovery rebate credits' armed-forces exception, the FLSA overtime
-      occupation category, Indiana EAP and Utah HEAT read it too.
-    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
-      tanf, wic]
-    notes:
-      - programs: [snap]
-        verdict: known_bias
-        direction: mixed
-        note: >-
-          ACS active-duty members inside the five-year bar, and their spouses and
-          dependent children, lose the military-connected exception (8 U.S.C.
-          1612(a)(2)(C), is_snap_alien_military_connected), so the bar excludes them. A
-          unit whose members are all inside the bar loses SNAP; in a unit that keeps an
-          exempt member, such as a child under 18, the barred adults' income is prorated
-          (7 CFR 273.11(c)(2)), which can raise or lower its allotment.
-      - programs: [lifeline]
-        verdict: known_bias
-        direction: understates
-        via: [snap]
-        note: >-
-          Only through SNAP receipt, which only a unit whose members are all inside the
-          bar loses, and only where it is the unit's only route: Lifeline's own income
-          test is 135% of FPG (150% in Texas).
-      - programs: [state_benefits]
-        verdict: harmless
-        note: >-
-          California CARE (categorical through CalFresh), Los Angeles EZ-SAVE and
-          Missouri SSP pay nothing on these files: CARE and EZ-SAVE need an electricity
-          expense, and Missouri SSP a living arrangement, which no stage writes. Its
-          other state-benefit routes run only through Medicaid enrollment, which the
-          Medicaid note below rules nil.
-      - programs: [head_start, school_meals, wic]
-        verdict: harmless
-        note: >-
-          A unit with a child keeps SNAP receipt through the child, whom the five-year
-          bar exempts under 18, so Head Start and school-meal categorical eligibility do
-          not change; WIC's 185% income test passes for any SNAP-income-eligible unit.
-          Missouri SSP's immigrant waiver needs a living arrangement no stage produces.
-      - programs: [aca_ptc, chip, medicaid]
-        verdict: harmless
-        note: >-
-          Only through SNAP's community-engagement pass-through, which applies from 2027
-          (gov.hhs.medicaid.eligibility.work_requirements.applies), and the 2020-2021
-          recovery rebate credits, whose maximums are 0 from 2022. The SNAP change
-          removes receipt only from a unit whose members are all inside the five-year
-          bar, and Medicaid's own five-year bar already excludes them (no military
-          exemption is modeled). CHIP reads Medicaid eligibility only for children and
-          pregnant people, whom the work requirement exempts; the PTC follows Medicaid.
-      - programs: [ctc, general_assistance]
-        verdict: harmless
-        note: >-
-          Only through the armed-forces exception of the 2020 and 2021 recovery rebate
-          credits, whose maximums are 0 from 2022.
-      - programs: [eitc, housing_assistance, tanf]
-        verdict: harmless
-        note: >-
-          Reached only through the 2020-only charitable deduction for non-itemizers
-          (charitable_contributions_ald), which is 0 before it reads anything in any
-          other year, and the behavioral responses (labor_supply_behavioral_response and
-          capital_gains_behavioral_response, which read household_net_income, and the
-          labor-supply elasticities they gate), which return 0 before reading anything
-          in an engine pass without a reform; inert.
-      - programs: [ssi]
-        verdict: harmless
-        note: >-
-          Reached only through the 2020-only charitable deduction for non-itemizers
-          (charitable_contributions_ald), which is 0 before it reads anything in any
-          other year, and/or the contributed COLA means test
-          (social_security_cola_means_test_withheld), which is False unless
-          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
-          responses (labor_supply_behavioral_response and
-          capital_gains_behavioral_response, which read household_net_income, and the
-          labor-supply elasticities they gate), which return 0 before reading anything
-          in an engine pass without a reform; inert.
   - entity: person
     column: is_paid_hourly
     fill_value: "False"
@@ -919,91 +791,6 @@ entries:
           withholding, which reads AGI, and Colorado OAP and AND-CS read a spouse's
           Medicaid enrollment, which the MAGI above moves; DC TANF reads filing status,
           which a dependent's gross income can move. All second-order.
-      - programs: [ssi]
-        verdict: harmless
-        note: >-
-          Reached only through the contributed COLA means test
-          (social_security_cola_means_test_withheld), which is False unless
-          gov.contrib.ssa.benefit_levers.cola.means_test.enabled, and the behavioral
-          responses (labor_supply_behavioral_response and
-          capital_gains_behavioral_response, which read household_net_income, and the
-          labor-supply elasticities they gate), which return 0 before reading anything
-          in an engine pass without a reform; inert.
-  - entity: person
-    column: is_separated
-    fill_value: "False"
-    spines: [acs_2024_1yr]
-    rows: "every ACS person"
-    summary: >-
-      ACS MAR 4 (separated) is not mapped, so every ACS person reads as not separated.
-      policyengine-us uses the flag for the separate filing status (a separated head
-      without a qualifying child files separately), the IRC 7703(b) head-of-household
-      path, and to stop any member of a separated person's tax unit from being ranked
-      the tax-unit spouse. A native fill from MAR is a follow-up.
-    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
-      tanf, wic]
-    notes:
-      - programs: [aca_ptc]
-        verdict: known_bias
-        direction: mixed
-        via: [medicaid]
-        note: >-
-          Mostly overstated: separated ACS filers without a qualifying child file single
-          instead of separately, so the PTC's separate-filer bar (is_aca_ptc_eligible)
-          never applies to them. The Medicaid changes below move the PTC the other way
-          for some units, because Medicaid eligibility bars it (is_aca_marketplace_enrollee).
-      - programs: [chip, ctc, eitc, general_assistance, housing_assistance, medicaid,
-          snap, ssi, tanf]
-        verdict: known_bias
-        direction: mixed
-        note: >-
-          Filing status and the tax-unit spouse role change: a separated head's unit
-          files single or head of household instead of separately, and another adult in
-          the unit can be ranked the tax-unit spouse (is_tax_unit_spouse), which moves
-          joint thresholds, SSI spousal deeming, SNAP and TANF dependency rules, HUD
-          dependents and Los Angeles and Marin general relief marital rules. ACS MAR 4
-          persons have no spouse in the household, so this matters only in units that
-          hold another adult.
-      - programs: [head_start, lifeline, school_meals, state_benefits, wic]
-        verdict: known_bias
-        direction: mixed
-        via: [medicaid, snap, ssi, tanf]
-        note: >-
-          Only through Medicaid, SNAP, SSI and TANF results; the state supplements in
-          household_state_benefits and in school-meal income also apply SSI's spousal
-          rules to the same tax-unit roles.
-  - entity: person
-    column: is_surviving_spouse
-    fill_value: "False"
-    spines: [acs_2024_1yr]
-    rows: "every ACS person"
-    summary: >-
-      Not mapped from ACS MAR 2 (widowed), so no ACS head qualifies for the
-      surviving-spouse filing status (surviving_spouse_eligible also needs a child
-      dependent); such heads file as head of household. The status needs a death in the
-      two prior years, which ACS MARHW (widowed in the past 12 months) only
-      approximates.
-    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
-      tanf, wic]
-    notes:
-      - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
-          housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
-          tanf, wic]
-        verdict: harmless
-        note: >-
-          These programs read filing status only as joint or separate (the PTC's
-          separate-filer bar, Medicaid's head-and-spouse count and MAGI, DC TANF's
-          single-parent exemption, Massachusetts TAFDC), through Medicare IRMAA
-          thresholds (above $103,000 for a single filer in 2024) or California's CVRP
-          income caps (above $135,000), and surviving spouse versus head of household
-          moves none of them. The CTC sees only the tax-liability difference, for the
-          few recently widowed parents whose liability limits it; negligible. The one
-          exception is the filing threshold: a surviving spouse's is the joint one, so
-          as head of household a unit counts as required to file at a lower income,
-          which moves the filer flag, and Medicaid's non-filer rules, only for a
-          recently widowed parent with no earnings and no refundable credit; negligible.
       - programs: [ssi]
         verdict: harmless
         note: >-

@@ -189,6 +189,10 @@ from microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up import (
     with_acs_local_ssi_medicaid_take_up,
     with_recorded_acs_local_ssi_medicaid_take_up,
 )
+from microcosm.build.us_runtime.acs_local_status_inputs import (
+    ACS_LOCAL_STATUS_INPUTS_COLUMNS,
+    ACS_LOCAL_STATUS_INPUTS_ISSUE,
+)
 from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_EITC_TAKE_UP_ISSUE,
     ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
@@ -967,6 +971,17 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
         f"({ACS_LOCAL_WIC_TAKE_UP_ISSUE}); re-run staging with the current "
         "builder"
     ),
+    # microcosm#1720: staging maps the ACS rows' marital, military and
+    # occupation status from MAR, MIL and OCCP, and the donor release carries
+    # its own; the default False would ignore the measured item.
+    **{
+        ("person", column): (
+            "the engine default False ignores the ACS rows' measured MAR, MIL "
+            f"or OCCP item ({ACS_LOCAL_STATUS_INPUTS_ISSUE}); re-run staging "
+            "with the current builder"
+        )
+        for column in ACS_LOCAL_STATUS_INPUTS_COLUMNS
+    },
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
 
@@ -4886,6 +4901,38 @@ def finalize_reviewed_limitations(
                 "ACS rows hold. The "
                 "weighted FS == 1 share of ACS housing units is reported "
                 "against the 2023 ACS figure (12.2%), not graded."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_staged_inputs",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [*ACS_LOCAL_STATUS_INPUTS_COLUMNS],
+            "reason": (
+                "Staging writes these inputs on ACS rows from ACS items or the "
+                "donor's own rules instead of leaving the engine default "
+                f"({ACS_LOCAL_STATUS_INPUTS_ISSUE}). is_separated and "
+                "is_surviving_spouse follow the donor's relationship_inputs "
+                "rule on the ACS rows' A_MARITL (ACS MAR 4, separated, and MAR "
+                "2, widowed; as on the donor, widowed is wider than the "
+                "surviving-spouse tax status). is_military is ACS MIL == 1, now "
+                "on active duty, and MIL's blank under 17 reads False; the "
+                "donor reads a military occupation (POCCU2 52), which on ACS "
+                "rows would also mark a veteran whose last job was military. "
+                "has_never_worked, is_computer_scientist, is_farmer_fisher and "
+                "is_executive_administrative_professional follow the donor's "
+                "org_wages rule on the native detailed_occupation_recode."
+            ),
+            "treatment": (
+                "Written at staging only in missing ACS cells; donor rows keep "
+                "the donor release's values. The staging summary's receipts "
+                "record each rule, its source columns and the filled and true "
+                "rows (acs_local_status_inputs: also the agreement of "
+                "is_military with POCCU2 52 and ESR 4 or 5). Recorded, not "
+                "graded. A null in any of these columns stops materialize "
+                "(NEVER_DEFAULT_FILLED), so a staging run from before them is "
+                "refused there."
             ),
             "calibration_blocker": False,
         },

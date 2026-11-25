@@ -1,0 +1,7 @@
+The ACS local lane's staging maps seven person inputs on ACS rows from ACS items instead of leaving the engine default, `False` (microcosm#1720; `acs_local_status_inputs`, `build_optional_acs_multispine(status_inputs=True)`).
+
+- `is_separated` and `is_surviving_spouse` follow the donor's `relationship_inputs` rule on the ACS rows' `A_MARITL`, which the loader maps from MAR (MAR 4 is code 6, MAR 2 is code 4). The rule is now one shared function, `us_marital_status_inputs`, which the donor stage calls too; donor values are unchanged.
+- `is_military` is ACS MIL == 1 (now on active duty); MIL is blank under 17, which reads as False. The donor's rule is a military occupation (`POCCU2` 52); the receipt records how often the two rules, and ESR 4 or 5, agree on ACS rows.
+- `has_never_worked`, `is_computer_scientist`, `is_farmer_fisher` and `is_executive_administrative_professional` follow the donor's `org_wages` rule (now the shared `us_flsa_occupation_flags`) on the ACS rows' native `detailed_occupation_recode`.
+- The stage runs on the ACS-only frame before any transfer and fills only missing cells. Its receipt (`acs_local_status_inputs` in the staging summary) records each rule, its source columns, the filled and true rows and the weighted shares; it grades nothing.
+- The seven columns leave the reviewed-fill register and join the release tool's `NEVER_DEFAULT_FILLED`: a null there now means a staging run from before this change.

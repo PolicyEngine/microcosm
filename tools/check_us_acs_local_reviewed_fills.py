@@ -20,7 +20,8 @@ This check runs in seconds after the staging (R1), before R2:
   the take-up stage's SPM-unit take-up flags and engine-free fills, and the
   SSI and Medicaid take-up flags). R2 expects staging to fill every other
   never-default column (immigration, disability, income transfers, SSI
-  disability criteria); its reason for those says to re-run staging.
+  disability criteria, and the microcosm#1720 inputs staging maps or draws
+  on ACS rows); its reason for those says to re-run staging.
 - A null in an ESI premium output is refused, as materialize refuses it.
 - A staging summary whose ``engine_versions`` names another policyengine-us
   than the installed one, or none, is refused, as materialize refuses it
@@ -87,8 +88,10 @@ def stage_filled_never_default(release: Any) -> frozenset[tuple[str, str]]:
     take-up and the engine-free fills; its SSI/Medicaid take-up stage fills
     those two flags.
     R2's reasons for every other never-default column (immigration,
-    disability, income transfers, SSI disability criteria) say to re-run
-    staging, and a null there stops materialize on any spine.
+    disability, income transfers, SSI disability criteria, the
+    microcosm#1720 staged inputs) say to re-run staging, and a null there
+    stops materialize on any spine. Staged columns therefore never join this
+    list.
     """
 
     filled = frozenset(

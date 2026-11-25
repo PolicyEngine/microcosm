@@ -49,6 +49,9 @@ from microcosm.build.us_runtime.acs_local_receipt_anchors import (
     require_acs_receipt_anchor_sources,
     with_acs_local_snap_receipt_anchor,
 )
+from microcosm.build.us_runtime.acs_local_status_inputs import (
+    map_acs_local_status_inputs,
+)
 from microcosm.build.us_runtime.acs_local_wic_take_up import (
     require_complete_us_wic_take_up,
     with_acs_local_wic_take_up,
@@ -129,6 +132,7 @@ def build_optional_acs_multispine(
     esi_premium_donor_factory: Callable[[Frame], tuple[Frame, dict[str, object]]]
     | None = None,
     work_disability_inputs: bool = False,
+    status_inputs: bool = False,
     income_transfer: bool = False,
     native_receipt_anchors: bool = False,
     wic_take_up: bool = False,
@@ -162,6 +166,12 @@ def build_optional_acs_multispine(
     native ``is_disabled``/``is_blind``/``weeks_worked`` on every ACS row
     before any transfer, so the null-only transfer leaves them alone; its
     receipt is ``provenance["acs_local_work_disability"]``.
+    ``status_inputs`` (the ACS local lane, microcosm#1720) writes
+    ``is_separated``/``is_surviving_spouse`` from ``A_MARITL`` and the four
+    ``POCCU2`` occupation flags from ``detailed_occupation_recode`` under the
+    donor's own rules, and ``is_military`` from ACS ``MIL`` == 1, on every ACS
+    row before any transfer; no transfer plan names them. Its receipt is
+    ``provenance["acs_local_status_inputs"]``.
     ``income_transfer`` (the ACS local lane, microcosm#1022) runs a separate
     ASEC-channel QRF pass for the SNAP-relevant income leaves the shared plan
     does not carry, with its own local-only plan and two opt-in predictor
@@ -284,6 +294,21 @@ def build_optional_acs_multispine(
         mapped_frame = local.frame
         work_disability = local.receipt
         del local
+    status_inputs_receipt = None
+    if status_inputs:
+        # Local lane only (microcosm#1720): ACS MAR, MIL and OCCP under the
+        # donor's rules. No transfer plan names these columns, so they land
+        # before the transfers like the other native mappings.
+        status = map_acs_local_status_inputs(mapped_frame)
+        overlap = sorted(set(native_provenance) & set(status.native_inputs))
+        if overlap:
+            raise ValueError(
+                f"ACS local status inputs would overwrite native {overlap}."
+            )
+        native_provenance.update(_json_ready_mapping(status.native_inputs))
+        mapped_frame = status.frame
+        status_inputs_receipt = _json_ready_mapping(status.receipt)
+        del status
     modeled_hours = None
     if hours_under15_policy is not None:
         mapped_frame, modeled_hours = complete_acs_local_under15_hours(
@@ -546,6 +571,8 @@ def build_optional_acs_multispine(
     }
     if wic_take_up_receipt is not None:
         provenance["wic_take_up"] = _json_ready(wic_take_up_receipt)
+    if status_inputs_receipt is not None:
+        provenance["acs_local_status_inputs"] = status_inputs_receipt
     if hours_donor is not None or hours_donor_factory is not None:
         provenance["fit_configuration"]["hours_donor_channel"] = hours_donor_channel
         provenance["local_hours_source"] = hours_source

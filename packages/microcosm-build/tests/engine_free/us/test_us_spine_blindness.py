@@ -281,6 +281,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane native FS receipt anchor and release gate (#1022);
         # outside the registry.
         "acs_local_receipt_anchors.py",
+        # Local-lane marital, military and occupation status of ACS rows
+        # (#1720), mapped on the ACS-only frame before any transfer under the
+        # donor's rules; tag-free, it runs before origin tags exist. Outside
+        # the registry.
+        "acs_local_status_inputs.py",
         # Legacy local-lane Head Start take-up fill, ACS VEH availability
         # receipt and grade helpers (#1022); tag-free, the take-up stage
         # passes the spine masks. Outside the registry.
