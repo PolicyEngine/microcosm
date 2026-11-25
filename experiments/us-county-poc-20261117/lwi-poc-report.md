@@ -2,7 +2,7 @@
 kind: proposal
 client: "Living Wage Institute"
 title: "County Files proof of concept: 2024 county file — a PolicyEngine report"
-status: "draft v0.5 (2026-11-24): for María and Max to review, not for sending"
+status: "v0.5 (2026-11-24): sent to LWI"
 pe-doc:
   psl_foundation: false
   split_tables: false
