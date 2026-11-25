@@ -95,10 +95,14 @@ class EngineVariableModuleScope:
     nothing when collected; its modules simply stay registered, as they would
     without it. ``close`` does nothing the second time.
 
-    Scopes may close in any order. A scope that closes while a scope opened
-    after it is still open removes only what was registered before that later
-    scope opened; what came after may belong to the later scope, which removes
-    it when it closes.
+    Scopes may close in any order. A registration belongs to the most recently
+    opened scope that is still open when it is made: a scope that closes
+    removes what was registered since it opened, except what was registered
+    after a later, still-open scope opened, which that scope removes when it
+    closes. An entry that existed when the scope opened is put back only if
+    the scope is the latest open one and the entry is still registered (Core
+    reused a dead system's id and overwrote it); otherwise the later scope,
+    whose snapshot holds it too, decides.
     """
 
     def __init__(self, variables_dir: str | Path | None = None) -> None:
@@ -173,7 +177,14 @@ class EngineVariableModuleScope:
         shared_prefix = f"{id(shared_system)}_"
         for name in _registrations(Path(final_directory).absolute()):
             if name in previous:
-                sys.modules[name] = previous[name]
+                if later_snapshot is not None:
+                    # A later open scope's snapshot holds it too; it decides.
+                    continue
+                current = sys.modules.get(name)
+                # Not if another scope removed it meanwhile (a garbage
+                # collection can close one in the middle of this loop).
+                if current is not None and current is not previous[name]:
+                    sys.modules[name] = previous[name]
             elif later_snapshot is not None and name not in later_snapshot:
                 # Registered after a still-open later scope opened.
                 continue

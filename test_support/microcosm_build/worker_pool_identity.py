@@ -21,6 +21,7 @@ A difference is reported by its place in the result, such as
 from __future__ import annotations
 
 import dataclasses
+import enum
 import struct
 from collections.abc import Callable, Mapping, Sequence
 
@@ -45,7 +46,9 @@ def _dtype_bytes(dtype: np.dtype) -> bytes:
     would lose field names, field types and their byte order.
     """
     fields = dtype.descr if dtype.fields is not None or dtype.subdtype else None
-    return repr((dtype.str, fields)).encode()
+    # The character code tells apart types with the same layout, such as
+    # ``longlong`` and ``int64`` where they differ.
+    return repr((dtype.str, dtype.char, fields)).encode()
 
 
 def _pandas_values(value) -> object:
@@ -57,6 +60,37 @@ def _pandas_values(value) -> object:
 
 def _extension_array_bytes(values) -> bytes:
     """A pandas extension array, with its missing entries kept apart from NaN."""
+    try:
+        return _extension_array_bytes_or_raise(values)
+    except (TypeError, ValueError) as error:
+        raise TypeError(
+            "canonical_result_bytes has no encoding for pandas values of dtype "
+            f"{values.dtype!r}: {error}"
+        ) from error
+
+
+def _subclass_state_bytes(value: object, base: type) -> bytes:
+    """What a subclass of ``base`` keeps beyond the base's own data.
+
+    A pandas subclass lists it in ``_metadata`` (policyengine-core's
+    ``MicroSeries`` keeps its weights there); an ``ndarray`` subclass keeps it
+    in its instance dictionary (``EnumArray`` keeps its enum class there).
+    """
+    if type(value) is base:
+        return b""
+    if base is np.ndarray:
+        state = dict(sorted(getattr(value, "__dict__", {}).items()))
+    else:
+        own = set(getattr(base, "_metadata", ()))
+        state = {
+            name: getattr(value, name, None)
+            for name in sorted(getattr(type(value), "_metadata", ()))
+            if name not in own
+        }
+    return _framed(b"z", canonical_result_bytes(state))
+
+
+def _extension_array_bytes_or_raise(values) -> bytes:
     import pandas as pd
 
     kind = _framed(b"t", _type_name(values)) + _framed(
@@ -101,6 +135,7 @@ def _pandas_bytes(value: object) -> bytes | None:
             canonical_result_bytes(value.columns),
             canonical_result_bytes(value.index),
             canonical_result_bytes(dict(value.attrs)),
+            _subclass_state_bytes(value, pd.DataFrame),
         ]
         for position in range(value.shape[1]):
             parts.append(canonical_result_bytes(value.iloc[:, position]))
@@ -113,12 +148,15 @@ def _pandas_bytes(value: object) -> bytes | None:
             + canonical_result_bytes(repr(value.dtype))
             + canonical_result_bytes(value.index)
             + canonical_result_bytes(dict(value.attrs))
+            + _subclass_state_bytes(value, pd.Series)
             + _values_bytes(_pandas_values(value)),
         )
     if isinstance(value, pd.MultiIndex):
+        # Each level's values in index order: its levels and codes would also
+        # carry values a slice no longer uses.
         levels = b"".join(
-            canonical_result_bytes(level) + canonical_result_bytes(np.asarray(codes))
-            for level, codes in zip(value.levels, value.codes, strict=True)
+            canonical_result_bytes(value.get_level_values(position))
+            for position in range(value.nlevels)
         )
         return _framed(b"P", kind + canonical_result_bytes(list(value.names)) + levels)
     if isinstance(value, pd.Index):
@@ -149,16 +187,29 @@ def canonical_result_bytes(value: object) -> bytes:
         return b"N"
     if type(value) is bool:
         return b"B1" if value else b"B0"
+    if isinstance(value, type):
+        return _framed(b"T", f"{value.__module__}.{value.__qualname__}".encode())
+    if isinstance(value, enum.Enum):
+        return _framed(
+            b"G",
+            _framed(b"t", _type_name(value))
+            + canonical_result_bytes(value.name)
+            + canonical_result_bytes(value.value),
+        )
     if isinstance(value, np.ndarray):
-        kind = _framed(b"t", _type_name(value))
         if isinstance(value, np.ma.MaskedArray):
+            # Its instance dictionary is internal state; the data, mask and
+            # fill value are what it holds.
             return _framed(
                 b"K",
-                kind
+                _framed(b"t", _type_name(value))
                 + canonical_result_bytes(np.asarray(value.data))
                 + canonical_result_bytes(np.ma.getmaskarray(value))
                 + canonical_result_bytes(np.asarray(value.fill_value)),
             )
+        kind = _framed(b"t", _type_name(value)) + _subclass_state_bytes(
+            value, np.ndarray
+        )
         header = kind + _framed(b"d", _dtype_bytes(value.dtype))
         header += _framed(b"s", repr(value.shape).encode())
         if value.dtype.names is not None:
@@ -173,15 +224,14 @@ def canonical_result_bytes(value: object) -> bytes:
             return _framed(b"O", header + items)
         return _framed(b"A", header + np.ascontiguousarray(value).tobytes())
     if isinstance(value, np.generic):
+        scalar = _framed(b"t", _type_name(value)) + _dtype_bytes(value.dtype)
         if value.dtype.names is not None:  # A record of a structured array.
             fields = b"".join(
                 canonical_result_bytes(name) + canonical_result_bytes(value[name])
                 for name in value.dtype.names
             )
-            return _framed(b"V", _dtype_bytes(value.dtype) + fields)
-        return _framed(
-            b"S", _dtype_bytes(value.dtype) + b":" + np.asarray(value).tobytes()
-        )
+            return _framed(b"V", scalar + fields)
+        return _framed(b"S", scalar + b":" + np.asarray(value).tobytes())
     kind = _framed(b"t", _type_name(value))
     if isinstance(value, int):
         return _framed(b"I", kind + str(int(value)).encode())
