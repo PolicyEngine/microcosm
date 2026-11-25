@@ -1,6 +1,8 @@
 import hashlib
 import importlib.util
 import json
+import os
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1806,6 +1808,188 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     alias = tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME
     assert alias.is_file()
     assert alias.stat().st_ino == checkpoint.stat().st_ino
+
+
+def _final_export_args(tmp_path: Path, location_rule: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        stage="final_export",
+        checkpoint_dir=tmp_path / "checkpoints",
+        location_rule=location_rule,
+    )
+
+
+def _complete_steps_before_final_export(builder, args: SimpleNamespace):
+    """Complete every step before ``final_export`` as the staged build does.
+
+    ``primary_qrf_chain`` records its predecessor's checkpoint, as in the
+    build; every other step writes the fixture frame. Returns the runtime and
+    the names of the checkpoint files the steps wrote, in pipeline order.
+    """
+
+    pipeline = builder._pipeline_for(args)
+    runtime = builder.StageRuntime(args.checkpoint_dir, pipeline, run_config={})
+    frame = _minimal_us_frame()
+    written_checkpoint_names: list[str] = []
+    for stage in pipeline.names[:-1]:
+        if stage == "primary_qrf_chain":
+            runtime.complete_without_frame(stage)
+        else:
+            written_checkpoint_names.append(runtime.complete(stage, frame).path.name)
+    return runtime, written_checkpoint_names
+
+
+def _patch_staged_export(
+    monkeypatch: pytest.MonkeyPatch, builder, out_dir: Path
+) -> list[Frame]:
+    """Replace the engine export with one that writes two small files.
+
+    Returns the list that receives each frame the export is given.
+    """
+
+    exported_frames: list[Frame] = []
+
+    def export(_args, frame: Frame, _stage_metadata) -> dict[str, object]:
+        exported_frames.append(frame)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_h5 = out_dir / "base.h5"
+        summary_path = out_dir / "base.summary.json"
+        output_h5.write_bytes(b"fixture output h5")
+        summary_path.write_text('{"fixture": "summary"}', encoding="utf-8")
+        return {
+            "output_h5": str(output_h5),
+            "output_sha256": hashlib.sha256(output_h5.read_bytes()).hexdigest(),
+            "summary_path": str(summary_path),
+            "summary_sha256": hashlib.sha256(summary_path.read_bytes()).hexdigest(),
+        }
+
+    monkeypatch.setattr(builder, "_export_staged_result", export)
+    monkeypatch.setattr(
+        builder, "_ensure_capital_gains_tail_manifest", lambda _metadata: None
+    )
+    monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
+    monkeypatch.setattr(
+        builder, "profile_stage", lambda *_args, **_kwargs: nullcontext()
+    )
+    return exported_frames
+
+
+@pytest.mark.parametrize("location_rule", ["legacy", "block_v1"])
+def test_staged_final_export_records_the_previous_checkpoint_without_writing_one(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    location_rule: str,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _final_export_args(tmp_path, location_rule)
+    runtime, written_checkpoint_names = _complete_steps_before_final_export(
+        builder, args
+    )
+    steps = builder._pipeline_steps_for(args)
+    previous_checkpoint = args.checkpoint_dir / written_checkpoint_names[-1]
+    assert previous_checkpoint.name == f"{len(steps) - 2:03d}_{steps[-2]}.frame.h5"
+    previous_bytes = previous_checkpoint.read_bytes()
+    exported_frames = _patch_staged_export(monkeypatch, builder, tmp_path / "out")
+
+    builder._run_outer_stage(args)
+
+    # The export was given the previous step's frame, and no checkpoint file
+    # for final_export exists: only the alias was added.
+    assert [frame_identity(frame) for frame in exported_frames] == [
+        frame_identity(_minimal_us_frame())
+    ]
+    assert sorted(path.name for path in args.checkpoint_dir.glob("*.frame.h5")) == (
+        sorted([*written_checkpoint_names, builder.ALL_STAGE_CHECKPOINT_FILENAME])
+    )
+    assert not list(args.checkpoint_dir.glob("*final_export*"))
+    assert previous_checkpoint.read_bytes() == previous_bytes
+    context = json.loads(
+        (args.checkpoint_dir / "stage_run_context.json").read_text(encoding="utf-8")
+    )
+    assert context["completed"] == list(steps)
+    previous_record, final_record = context["stage_records"][-2:]
+    assert final_record["stage"] == "final_export"
+    assert final_record["wrote_frame"] is False
+    assert final_record["checkpoint_stage"] == steps[-2]
+    assert final_record["checkpoint_filename"] == previous_checkpoint.name
+    for key in ("checkpoint_filename", "checkpoint_sha256", "identity"):
+        assert final_record[key] == previous_record[key]
+    assert set(final_record["metadata"]) == {
+        "output_h5",
+        "output_sha256",
+        "summary_path",
+        "summary_sha256",
+    }
+    assert runtime.load("final_export").path == previous_checkpoint
+    alias = args.checkpoint_dir / builder.ALL_STAGE_CHECKPOINT_FILENAME
+    assert os.path.samefile(alias, previous_checkpoint)
+
+
+@pytest.mark.parametrize("location_rule", ["legacy", "block_v1"])
+def test_completed_final_export_repair_links_the_previous_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    location_rule: str,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _final_export_args(tmp_path, location_rule)
+    _runtime, written_checkpoint_names = _complete_steps_before_final_export(
+        builder, args
+    )
+    exported_frames = _patch_staged_export(monkeypatch, builder, tmp_path / "out")
+    builder._run_outer_stage(args)
+    context_path = args.checkpoint_dir / "stage_run_context.json"
+    context_bytes = context_path.read_bytes()
+    export_metadata = json.loads(context_bytes)["stage_records"][-1]["metadata"]
+    output_h5 = Path(export_metadata["output_h5"])
+    summary_path = Path(export_metadata["summary_path"])
+    alias = args.checkpoint_dir / builder.ALL_STAGE_CHECKPOINT_FILENAME
+    # A stop after the completion record was saved and before the alias was
+    # linked, with the export's files lost as well.
+    output_h5.unlink()
+    summary_path.unlink()
+    alias.unlink()
+
+    builder._run_outer_stage(args)
+
+    assert len(exported_frames) == 2
+    repaired_sha256 = hashlib.sha256(output_h5.read_bytes()).hexdigest()
+    assert repaired_sha256 == export_metadata["output_sha256"]
+    assert summary_path.is_file()
+    assert os.path.samefile(alias, args.checkpoint_dir / written_checkpoint_names[-1])
+    assert context_path.read_bytes() == context_bytes
+    assert not list(args.checkpoint_dir.glob("*final_export*"))
+
+
+def test_completed_final_export_that_wrote_its_own_frame_still_repairs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A checkpoint directory in which final_export wrote its own checkpoint."""
+
+    builder = _load_support_builder_module()
+    args = _final_export_args(tmp_path, "legacy")
+    runtime, _written_checkpoint_names = _complete_steps_before_final_export(
+        builder, args
+    )
+    exported_frames = _patch_staged_export(monkeypatch, builder, tmp_path / "out")
+    predecessor = runtime.load_predecessor("final_export")
+    export_metadata = builder._export_staged_result(
+        args, predecessor.frame, runtime.metadata
+    )
+    own_checkpoint = runtime.complete(
+        "final_export", predecessor.frame, metadata=export_metadata
+    ).path
+    final_index = len(builder.PIPELINE_STEPS) - 1
+    assert own_checkpoint.name == f"{final_index:03d}_final_export.frame.h5"
+    alias = args.checkpoint_dir / builder.ALL_STAGE_CHECKPOINT_FILENAME
+    alias.write_bytes(b"stale alias")
+    Path(export_metadata["output_h5"]).unlink()
+
+    builder._run_outer_stage(args)
+
+    assert len(exported_frames) == 2
+    assert Path(export_metadata["output_h5"]).is_file()
+    assert os.path.samefile(alias, own_checkpoint)
 
 
 def test_staged_export_serializes_e01000_reconciliation(
