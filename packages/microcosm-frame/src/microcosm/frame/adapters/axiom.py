@@ -2281,12 +2281,14 @@ def _graph_output(name: str, engine_dtype: str, values: np.ndarray) -> np.ndarra
     surface returns int64 for a rule declared decimal when the rule's value
     stays integer-typed inside the engine, for example an ``if`` tree whose
     branches read parameters written as whole numbers. Bool never stands for a
-    decimal. Nothing is parsed, rounded, or truncated.
+    decimal. Nothing is parsed or truncated, and widening an integer rounds
+    nothing.
 
     Raises:
         ValueError: If ``engine_dtype`` has no graph type, the array's numpy
             dtype does not match it, an integer value lies outside the range
-            its graph type holds, or a judgment code is invalid.
+            its graph type holds (for a decimal, the accepted interval), or a
+            judgment code is invalid.
     """
     if engine_dtype not in _GRAPH_DTYPE_BY_ENGINE:
         raise ValueError(
