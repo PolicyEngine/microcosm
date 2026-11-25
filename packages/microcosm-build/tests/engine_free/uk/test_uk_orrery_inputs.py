@@ -627,3 +627,46 @@ def test_failure_evidence_is_handed_to_the_builds_emitter_with_each_files_role(
     assert hub.commits[0]["paths"] == sorted(
         f"staged/uk-attempt/{item.name}" for item in request.files
     )
+
+
+def break_presentation_contract(out: Path) -> None:
+    """Make the saved schema's presentation contract name an unknown operation."""
+    schema_path = out / SCHEMA_NAME
+    schema = json.loads(schema_path.read_bytes())
+    groups = schema["extensions"]["microcosm.presentation"]["groups"]
+    group = next(group for group in groups if "operations" in group)
+    group["operations"].append("uk.no_such_operation")
+    schema_path.write_text(json.dumps(schema))
+
+
+def test_graph_step_hands_over_nothing_for_an_invalid_presentation_contract(
+    tmp_path, capsys
+):
+    """The collector's projection refuses an invalid contract, so the build
+    must not hand it over."""
+    out = plain_build_directory(tmp_path)
+    break_presentation_contract(out)
+    manifest = {"outputs": {}}
+
+    result = orrery_inputs.finalize_graph(
+        graph_step_arguments(tmp_path, out), manifest=manifest
+    )
+
+    assert result.files == ()
+    assert manifest["outputs"] == {}
+    assert "Orrery inputs were not written (ValueError)" in capsys.readouterr().err
+
+
+def test_inputs_command_refuses_an_invalid_presentation_contract(tmp_path, capsys):
+    out = plain_build_directory(tmp_path)
+    break_presentation_contract(out)
+    output = tmp_path / "inputs"
+
+    with pytest.raises(SystemExit) as refusal:
+        orrery_inputs.main(
+            ["--schema", str(out / SCHEMA_NAME), "--output", str(output)]
+        )
+
+    assert refusal.value.code == 2
+    assert "unknown group member" in capsys.readouterr().err
+    assert not output.exists()
