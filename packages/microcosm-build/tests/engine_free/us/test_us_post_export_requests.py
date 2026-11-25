@@ -322,6 +322,50 @@ def test_reform_requests_follow_the_order_of_first_asks(
         scorer.close()
 
 
+@pytest.mark.parametrize(
+    "late_ask",
+    [("income_tax", 2024), ("age", 2024)],
+    ids=["a key it already asked", "a key it did not ask"],
+)
+def test_the_dry_run_refuses_a_reformed_simulation_asked_after_the_next_opens(
+    builder, fake_reforms, tmp_path, late_ask
+) -> None:
+    """The scorer finishes a reformed simulation when the consumer opens the
+    next one and refuses it any further key, even one it already scored. The
+    dry run refuses the same consumer, so the release's plan fails before the
+    export instead of certification's scoring failing after it."""
+    first = ParameterChangesReform({"gov.fixture.first": {"2024-01-01": 1}})
+    second = ParameterChangesReform({"gov.fixture.second": {"2024-01-01": 2}})
+
+    def consumer(simulate):
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+
+        def reformed(source):
+            return simulate(
+                source if records_only else build_post_export_reform(source)
+            )
+
+        first_simulation = reformed(first)
+        first_simulation.calculate("income_tax", 2024)
+        simulate(None).calculate("income_tax", 2024)
+        reformed(second).calculate("income_tax", 2024)
+        first_simulation.calculate(*late_ask)
+
+    refusal = r"reformed simulation 0 for .* after opening reformed simulation 1\."
+    with pytest.raises(RuntimeError, match=refusal):
+        builder._record_post_export_request_descriptors("fixture", consumer)
+    with pytest.raises(RuntimeError, match=refusal):
+        builder._record_post_export_requests(consumer)
+
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    try:
+        scoring = scorer.open_consumer("fixture", (("income_tax", 2024, None),))
+        with pytest.raises(RuntimeError, match="asked a finished reform"):
+            consumer(scoring.simulate)
+    finally:
+        scorer.close()
+
+
 class _Unreducible:
     """A value whose pickling raises ``ValueError``, not ``PicklingError``."""
 
