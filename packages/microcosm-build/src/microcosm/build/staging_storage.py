@@ -49,9 +49,11 @@ __all__ = [
 FINAL_COMMIT_WAIT_SECONDS = 120.0
 #: The wait after an interrupt (a SIGTERM, which builds turn into
 #: ``BuildTerminatedError``, or Ctrl-C), when the check reads the emitter's
-#: receipts and skips the Hub comparison: the Modal stage runner sends
-#: SIGKILL 60 seconds after SIGTERM, and the emitter needs up to 15 of them
-#: to finish. Each receipt query is a request of up to 5 seconds.
+#: receipts and skips the Hub comparison, so that the close-out ends inside
+#: the 60 seconds the Modal stage runner allows between SIGTERM and SIGKILL.
+#: Each receipt query is a request of up to 5 seconds, so the check can take
+#: up to about 40 seconds in all; the emitter finishes its own commits after
+#: the build has exited.
 INTERRUPTED_FINAL_COMMIT_WAIT_SECONDS = 30.0
 #: How a build's hosted telemetry names the check, in the details of the one
 #: progress event, outside any stage, that reports it.
@@ -375,9 +377,21 @@ class RunFileHandOver:
         )
         return FinalCommitCheck(confirmed=False, reason=reason, files_compared=compared)
 
+    def _answered_receipt(self) -> RunFilesReceipt | None:
+        """The emitter's current receipt for the run, or None if it did not answer."""
+        if self.emitter is None:
+            return None
+        try:
+            receipt = self.emitter.run_files_receipt(self.repository, self.run_id)
+        except Exception:
+            return None
+        return receipt if self._record(receipt) else None
+
     def _confirm_by_receipt(self, wait_seconds: float) -> FinalCommitCheck:
         deadline = time.monotonic() + max(0.0, float(wait_seconds))
-        receipt = self.receipt()
+        # Only receipts the emitter gives now count: the last hand-over's
+        # answer would show its files still pending until the wait ran out.
+        receipt = self._answered_receipt()
         while (
             receipt is not None
             and receipt["pending_files"]
@@ -385,7 +399,7 @@ class RunFileHandOver:
             and time.monotonic() < deadline
         ):
             time.sleep(_RECEIPT_POLL_SECONDS)
-            receipt = self.receipt()
+            receipt = self._answered_receipt()
         if receipt is None:
             return FinalCommitCheck(
                 confirmed=False, reason="unavailable", method="receipt"

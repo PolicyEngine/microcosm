@@ -1118,7 +1118,7 @@ def _close_failed_telemetry(
     """
     classified = classify_failure(error)
     if classified.block is not None and not rung_abort:
-        close_run_blocked(staging_bundle, emitter, classified.block)
+        close_run_blocked(staging_bundle, emitter, classified.block, error=error)
         return
     error_code, failure_class = (
         ("RUNG_ABORTED", "aborted")

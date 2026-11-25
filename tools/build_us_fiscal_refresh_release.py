@@ -12972,10 +12972,14 @@ _ACTIVE_PROGRESS: _BuildProgress | None = None
 
 
 def _fail_emitter(emitter: LocalTelemetryEmitter, error: BaseException) -> None:
-    """Record the build's failure; a SIGTERM as a termination, as UK builds do."""
+    """Record the build's failure; a SIGTERM as a termination, as UK builds do.
 
-    if isinstance(error, BuildTerminatedError):
-        classified = classify_failure(error)
+    An error raised while a SIGTERM unwinds holds it in its cause chain, which
+    ``classify_failure`` follows.
+    """
+
+    classified = classify_failure(error)
+    if classified.error_code == "TERMINATED":
         emitter.fail(
             error,
             failure_class=classified.failure_class or "terminated",

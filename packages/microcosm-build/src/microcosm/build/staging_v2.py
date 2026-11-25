@@ -817,9 +817,9 @@ class StagingRunBundleWriterV2:
     construction), when an artifact is added and when the run ends. Stage
     events and calibration progress in between are written locally and reach
     the repository with the next of those hand-overs. Once the run has ended,
-    :meth:`confirm_final_commit` has the emitter read its final state back,
-    and :meth:`verify_remote` is the stricter read-back that
-    ``--staging-read-back`` asks for. The delivery
+    :meth:`confirm_final_commit` has the emitter check that its final state
+    reached the repository, and :meth:`verify_remote` is the stricter
+    read-back that ``--staging-read-back`` asks for. The delivery
     summary in each document carries the emitter's counts as of that
     document's hand-over: the files it attempted to commit (plus any it did
     not accept) and the files it committed. A document never counts the

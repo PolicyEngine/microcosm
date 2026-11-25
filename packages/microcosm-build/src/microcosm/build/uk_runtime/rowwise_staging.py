@@ -448,7 +448,11 @@ def fail_staging_run_bundle(
     classified = classify_failure(error)
     if classified.block is not None:
         _close_blocked(
-            staging_bundle, classified.block, gate_statuses=None, read_back=False
+            staging_bundle,
+            classified.block,
+            gate_statuses=None,
+            read_back=False,
+            error=error,
         )
         return
     # The staging run closes first and its final commit is confirmed before
@@ -499,6 +503,7 @@ def close_run_blocked(
     *,
     gate_statuses: Mapping[str, str] | None = None,
     read_back: bool = False,
+    error: BaseException | None = None,
 ) -> None:
     """Close the staging run and the hosted emitter as ``blocked``, the same way.
 
@@ -535,12 +540,14 @@ def close_run_blocked(
             except StagingContractError as failure:
                 _warn_telemetry("could not close the staging run", failure)
             else:
-                confirm_final_commit(staging_bundle, emitter)
+                confirm_final_commit(staging_bundle, emitter, error=error)
         else:
             try:
                 # Before the emitter records the block, which ends the run's
                 # telemetry.
-                confirm_final_commit(staging_bundle, emitter, read_back=read_back)
+                confirm_final_commit(
+                    staging_bundle, emitter, read_back=read_back, error=error
+                )
             finally:
                 try:
                     staging_bundle.validate_local_bundle()
@@ -569,6 +576,7 @@ def _close_blocked(
     *,
     gate_statuses: Mapping[str, str] | None,
     read_back: bool,
+    error: BaseException | None = None,
 ) -> None:
     close_run_blocked(
         staging_bundle,
@@ -576,6 +584,7 @@ def _close_blocked(
         block,
         gate_statuses=gate_statuses,
         read_back=read_back,
+        error=error,
     )
 
 
@@ -627,9 +636,10 @@ def confirm_final_commit(
     and is reported (``staging_storage.confirm_and_report_final_commit``).
     With ``read_back`` (``--staging-read-back``) the check is
     :meth:`~microcosm.build.staging_v2.StagingRunBundleWriterV2.verify_remote`,
-    whose failure fails the build and is recorded in the delivery summary.
+    whose failure fails the build and is recorded in the delivery summary;
+    a run that an error ended (``error``) takes the first check instead.
     """
-    if not read_back:
+    if not read_back or error is not None:
         confirm_and_report_final_commit(staging_bundle, emitter, error=error)
         return
     try:

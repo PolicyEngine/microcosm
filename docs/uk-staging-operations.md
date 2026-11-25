@@ -150,9 +150,12 @@ the build confirms its final commit before it reports the run's outcome to its
 hosted telemetry: the emitter commits the run's pending files, waiting up to
 120 seconds, then compares the Hub's copy of each with the bytes it committed
 (one more request of up to 60 seconds). After an interrupt (a SIGTERM or
-Ctrl-C) the build reads the emitter's receipts instead, for up to 30 seconds,
-until no file is pending, so the check fits in the 60 seconds a supervisor
-allows between SIGTERM and SIGKILL. The build reports the result as one
+Ctrl-C) the build reads the emitter's receipts instead until no file is
+pending, waiting up to 30 seconds (each receipt query is a request of up to 5
+seconds more), so the close-out ends inside the 60 seconds a supervisor allows
+between SIGTERM and SIGKILL; the emitter finishes its commits after the build
+has exited. The check stops at once when the emitter does not answer
+(`reason` `unavailable`). The build reports the result as one
 `progress` event outside any stage, `completed` or `failed`, whose details
 hold `check` (`staging_final_commit`), `method` (`read_back` or `receipt`),
 `confirmed`, `reason` and `files_compared`; being outside any stage, it does

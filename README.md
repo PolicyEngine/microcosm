@@ -161,8 +161,9 @@ and the build reports the result to its hosted telemetry as a progress event
 whose details name the check `staging_final_commit` (best-effort: no
 emitter, a missing token, a failed commit or a failed read-back never fails
 the build), so every candidate shows up on the staging dashboard before it is
-published. A SIGTERM closes the
-staging run as failed and the build exits 143. Disable these files with `--no-staging`, or point them
+published. A SIGTERM during the build closes the staging run as failed and
+the build exits 143; one that arrives during that final check only ends the
+check. Disable these files with `--no-staging`, or point them
 elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
 `POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
 no destination at all is an argparse error. `--no-staging` does not disable

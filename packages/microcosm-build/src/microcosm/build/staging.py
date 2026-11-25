@@ -9,11 +9,13 @@ repo with the build's own credential.
 
 The writer hands the run's files over at three points only: when the run
 starts, when a result file is attached and when the run ends. Every hand-over
-is forced, so the emitter commits it at its next cycle. Stage events and
-calibration progress in between are written locally and reach the repo with
-the next of those hand-overs; the build's hosted telemetry is the live record
-of a running build. Once the run has ended, :meth:`confirm_final_commit` has
-the emitter read the final state back.
+is forced, so the emitter commits it at its next cycle, and carries the run's
+documents with every attached result file the emitter can take. Stage events
+and calibration progress in between are written locally and reach the repo
+with the next of those hand-overs; the build's hosted telemetry is the live
+record of a running build. Once the run has ended,
+:meth:`StagingRunBundleWriter.confirm_final_commit` has the emitter check
+that the final state reached the repo.
 """
 
 from __future__ import annotations
@@ -37,6 +39,10 @@ from microcosm.build.staging_storage import (
 )
 
 STAGING_SCHEMA_VERSION = 1
+#: The emitter refuses a whole hand-over in which one file is larger than
+#: this, or whose files together are larger than ``_MAX_RUN_REQUEST_BYTES``.
+_MAX_RUN_FILE_BYTES = 32 * 1024 * 1024
+_MAX_RUN_REQUEST_BYTES = 64 * 1024 * 1024
 LATEST_STAGING_POINTER = "latest_staging.json"
 RUNS_INDEX = "runs.json"
 DEFAULT_STAGING_PREFIX = "runs"
@@ -118,6 +124,7 @@ class StagingRunBundleWriter:
         #: folder; every hand-over carries them, and the emitter skips bytes
         #: it has already committed.
         self._artifact_files: dict[str, Path] = {}
+        self._too_large_warned: set[str] = set()
         self._progress: dict[str, Any] = {
             "schema_version": STAGING_SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -213,9 +220,11 @@ class StagingRunBundleWriter:
         # its place: the documents describe the run.
         documents = {filename for filename, _ in files}
         files.extend(
-            (filename, local)
-            for filename, local in self._artifact_files.items()
-            if filename not in documents and local.exists()
+            self._sendable_result_files(
+                exclude=documents,
+                budget=_MAX_RUN_REQUEST_BYTES
+                - sum(local.stat().st_size for _, local in files),
+            )
         )
         pointer = self._write_latest_pointer()
         self._write_runs_index()
@@ -226,6 +235,34 @@ class StagingRunBundleWriter:
             latest_pointer=pointer,
             run_index_entry=self.run_summary(),
         )
+
+    def _sendable_result_files(
+        self, *, exclude: set[str], budget: int
+    ) -> list[tuple[str, Path]]:
+        """The attached result files one hand-over can carry with the documents.
+
+        A file the emitter would refuse (over its size limit, or past the
+        request's) stays local with a warning, so it cannot get the run's
+        documents and final state refused with it.
+        """
+        sendable: list[tuple[str, Path]] = []
+        for filename, local in self._artifact_files.items():
+            if filename in exclude or not local.is_file():
+                continue
+            size = local.stat().st_size
+            if size > _MAX_RUN_FILE_BYTES or size > budget:
+                if filename not in self._too_large_warned:
+                    self._too_large_warned.add(filename)
+                    print(
+                        f"warning: the staging result file {filename} is too "
+                        f"large for the emitter ({size} bytes); it stays in the "
+                        "local staging files.",
+                        file=sys.stderr,
+                    )
+                continue
+            budget -= size
+            sendable.append((filename, local))
+        return sendable
 
     def _write_latest_pointer(self) -> Path:
         payload = {
