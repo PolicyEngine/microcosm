@@ -232,6 +232,36 @@ def test_acs_loader_keeps_immigration_sources_and_renames_military_service(
     assert person["CIT"].tolist() == [5, 1]
 
 
+def test_acs_loader_keeps_the_subsidy_recode_under_acs_source_names(
+    tmp_path: Path,
+) -> None:
+    """microcosm#1720: HIMRKS (Subsidized Marketplace Coverage) and its
+    allocation flag stay on the ACS rows as raw source items, under ACS_
+    names; absent in the source, they stay absent."""
+
+    household_zip = tmp_path / "subsidy-hh.zip"
+    person_zip = tmp_path / "subsidy-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("sub", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("sub", 1, 20, HINS2=1, HIMRKS=1, FHIMRKSP=1),
+                _person("sub", 2, 21, HINS2=2, HIMRKS=0, FHIMRKSP=0),
+            ]
+        },
+    )
+    tables, _ = load_acs_pums_tables(AcsPumsSource(household_zip, person_zip))
+    person = tables["person"]
+    assert "HIMRKS" not in person and "FHIMRKSP" not in person
+    assert person["ACS_HIMRKS"].tolist() == [1, 0]
+    assert person["ACS_FHIMRKSP"].tolist() == [1, 0]
+
+    absent, _ = load_acs_pums_tables(_source(tmp_path))
+    for column in ("HIMRKS", "FHIMRKSP", "ACS_HIMRKS", "ACS_FHIMRKSP"):
+        assert column not in absent["person"]
+
+
 def test_acs_loader_leaves_absent_immigration_sources_absent(tmp_path: Path) -> None:
     tables, _ = load_acs_pums_tables(_source(tmp_path))
     # ESR is also a required work-experience column, so it is always loaded.
