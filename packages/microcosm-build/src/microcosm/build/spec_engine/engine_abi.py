@@ -69,6 +69,11 @@ class _LockCheckInputs:
     process's direct children, which run the same checkout within the same run.
     A source edit during a base run is the base stage's run-config check to
     catch (its builder code digest), not this record's.
+
+    The engine is matched by its installed distribution version only, as the
+    base stage's run config records it. A policyengine-us reinstalled with
+    different files under the same version during a run, or a changed
+    policyengine-core, is not noticed by a child holding a record.
     """
 
     lock_sha256: str
