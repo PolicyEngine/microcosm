@@ -16041,11 +16041,21 @@ def _remote_build_progress(module, tmp_path, client=None):
 
 
 def _final_commit_events(emitter) -> list[tuple[str, dict]]:
-    return [
-        (event["status"], event["details"])
+    """The final-commit check's reports: progress events outside any stage."""
+    events = [
+        event
         for event in emitter.events
-        if event["stage_id"] == "staging_final_commit"
+        if event["details"].get("check") == "staging_final_commit"
     ]
+    assert all(
+        (event["event_type"], event["stage_id"]) == ("progress", None)
+        for event in events
+    )
+    return [(event["status"], event["details"]) for event in events]
+
+
+def _run_events(emitter) -> list[dict]:
+    return [event for event in emitter.events if event["event_type"] == "run"]
 
 
 def test_a_completed_build_confirms_its_final_staging_commit(tmp_path) -> None:
@@ -16059,8 +16069,9 @@ def test_a_completed_build_confirms_its_final_staging_commit(tmp_path) -> None:
     assert client.read_back_waits == [120.0]
     assert client.calls.index("read_back_run_files") < client.calls.index("close")
     events = _final_commit_events(emitter)
-    assert [status for status, _ in events] == ["started", "completed"]
+    assert [status for status, _ in events] == ["completed"]
     assert events[-1][1]["confirmed"] is True
+    assert events[-1][1]["method"] == "read_back"
     assert [
         event["status"] for event in emitter.events if event["event_type"] == "run"
     ] == ["completed"]
@@ -16084,7 +16095,7 @@ def test_an_unconfirmed_final_commit_still_completes_the_build(
     progress.complete()
 
     events = _final_commit_events(emitter)
-    assert [status for status, _ in events] == ["started", "failed"]
+    assert [status for status, _ in events] == ["failed"]
     assert events[-1][1]["confirmed"] is False
     assert events[-1][1]["reason"] == "pending"
     assert [
@@ -16100,20 +16111,18 @@ def test_a_failed_build_confirms_its_final_staging_commit(tmp_path) -> None:
     progress.fail(RuntimeError("build exploded"))
 
     assert emitter.client.read_back_waits == [120.0]
-    assert [status for status, _ in _final_commit_events(emitter)] == [
-        "started",
-        "completed",
-    ]
+    assert [status for status, _ in _final_commit_events(emitter)] == ["completed"]
     assert [
         event["status"] for event in emitter.events if event["event_type"] == "run"
     ] == ["failed"]
 
 
-def test_a_terminated_build_waits_at_most_30_seconds_for_its_final_commit(
+def test_a_terminated_build_checks_its_final_commit_by_receipt_only(
     tmp_path,
 ) -> None:
     """The Modal runner sends SIGKILL 60 seconds after SIGTERM, and the emitter
-    then needs up to 15 seconds to finish."""
+    then needs up to 15 seconds to finish, so the check skips the Hub
+    comparison (a request of up to 60 seconds) and reads the receipt."""
     from microcosm.build.termination import BuildTerminatedError
 
     module = _load_builder_module()
@@ -16121,10 +16130,101 @@ def test_a_terminated_build_waits_at_most_30_seconds_for_its_final_commit(
 
     progress.fail(BuildTerminatedError())
 
-    assert emitter.client.read_back_waits == [30.0]
+    assert "read_back_run_files" not in emitter.client.calls
+    events = _final_commit_events(emitter)
+    assert [status for status, _ in events] == ["completed"]
+    assert events[-1][1]["method"] == "receipt"
     run_events = [event for event in emitter.events if event["event_type"] == "run"]
     assert [event["status"] for event in run_events] == ["failed"]
     assert run_events[0]["details"]["error_code"] == "TERMINATED"
+
+
+def test_a_failed_build_keeps_the_stage_it_failed_in(tmp_path) -> None:
+    """The check's report must not end the build's stage or take its place."""
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+    progress.stage("export_dataset", message="Exporting the dataset.")
+
+    progress.fail(RuntimeError("export failed"))
+
+    (failure,) = _run_events(emitter)
+    assert failure["details"]["failed_during"] == "export_dataset"
+    assert [
+        event["status"]
+        for event in emitter.events
+        if event["stage_id"] == "export_dataset"
+    ] == ["started", "failed"]
+
+
+def test_an_interrupt_during_the_check_keeps_the_builds_own_failure(
+    tmp_path, capsys
+) -> None:
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    class InterruptedReadBack(FakeEmitterClient):
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            raise KeyboardInterrupt
+
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(
+        module, tmp_path, client=InterruptedReadBack()
+    )
+
+    try:
+        progress.fail(RuntimeError("export failed"))
+    except KeyboardInterrupt:
+        pytest.fail("the interrupt escaped the build's close-out")
+
+    (failure,) = _run_events(emitter)
+    assert failure["status"] == "failed"
+    assert failure["message"] == "export failed"
+    events = _final_commit_events(emitter)
+    assert [details["reason"] for _, details in events] == ["interrupted"]
+    assert "not confirmed" in capsys.readouterr().err
+
+
+def test_an_operator_interrupt_checks_the_final_commit_by_receipt_only(
+    tmp_path,
+) -> None:
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+
+    progress.fail(KeyboardInterrupt())
+
+    assert "read_back_run_files" not in emitter.client.calls
+    assert [details["method"] for _, details in _final_commit_events(emitter)] == [
+        "receipt"
+    ]
+
+
+def test_a_sigterm_during_certification_exits_143(monkeypatch) -> None:
+    """Certification opens a staging run too, so it handles SIGTERM as a build does.
+
+    The test installs its own handler first, so a command that handles no
+    SIGTERM fails this test instead of ending the test process.
+    """
+    module = _load_builder_module()
+
+    def terminated_parser():
+        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(5)
+        pytest.fail("SIGTERM did not interrupt certification")
+
+    def test_handler(signum, frame):
+        raise _SigtermReachedTheTestError()
+
+    monkeypatch.setattr(module, "_certify_parser", terminated_parser)
+    previous_handler = signal.signal(signal.SIGTERM, test_handler)
+    try:
+        with pytest.raises(BaseException) as raised:
+            module.certify_main(["build"])
+        handler_after_certification = signal.getsignal(signal.SIGTERM)
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+
+    assert isinstance(raised.value, SystemExit)
+    assert raised.value.code == 143
+    assert handler_after_certification is test_handler
 
 
 def test_the_release_parser_has_no_staging_upload_interval() -> None:

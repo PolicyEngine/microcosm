@@ -5948,11 +5948,11 @@ def test_a_failed_spine_run_confirms_its_final_commit_before_its_outcome(tmp_pat
 
     assert client.read_back_waits == [120.0]
     final_commit = [
-        event["status"]
+        (event["event_type"], event["stage_id"], event["status"])
         for event in emitter.events
-        if event["stage_id"] == "staging_final_commit"
+        if event["details"].get("check") == "staging_final_commit"
     ]
-    assert final_commit == ["started", "completed"]
+    assert final_commit == [("progress", None, "completed")]
     assert [
         event["status"] for event in emitter.events if event["event_type"] == "run"
     ] == ["failed"]

@@ -1349,3 +1349,39 @@ def test_a_local_only_run_has_no_final_commit_to_confirm(tmp_path):
     assert callable(getattr(telemetry, "confirm_final_commit", None))
 
     assert telemetry.confirm_final_commit(wait_seconds=120.0) is None
+
+
+class _MissingCredential(FakeEmitterClient):
+    """An emitter with no Hugging Face credential: every commit stays pending."""
+
+    def _receipt(self, repository, run_id):
+        return {
+            **super()._receipt(repository, run_id),
+            "pending_files": 3,
+            "last_error_code": "CREDENTIAL_MISSING",
+        }
+
+
+def test_a_receipt_check_confirms_without_reading_the_hub_back(tmp_path):
+    """The check after an interrupt: the Hub comparison can outlast the grace."""
+    emitter = FakeEmitterClient()
+    telemetry = _closed_remote_run(tmp_path, emitter)
+
+    assert "read_back" in inspect.signature(telemetry.confirm_final_commit).parameters
+    check = telemetry.confirm_final_commit(wait_seconds=30.0, read_back=False)
+
+    assert check.confirmed is True
+    assert check.method == "receipt"
+    assert "read_back_run_files" not in emitter.calls
+
+
+def test_a_missing_credential_ends_the_check_at_once(tmp_path):
+    """Waiting cannot help a commit that has no credential."""
+    emitter = _MissingCredential()
+    telemetry = _closed_remote_run(tmp_path, emitter)
+
+    check = telemetry.confirm_final_commit(wait_seconds=120.0)
+
+    assert check.confirmed is False
+    assert check.reason == "CREDENTIAL_MISSING"
+    assert "read_back_run_files" not in emitter.calls

@@ -4362,7 +4362,7 @@ def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_a
     assert sorted(tmp_path.rglob("*")) == before
 
 
-def _remote_uk_run(tmp_path, name):
+def _remote_uk_run(tmp_path, name, client=None):
     """A remote UK staging run and the build's emitter, on one in-memory client.
 
     The emitter stays open after the run's outcome, as the full build's does.
@@ -4372,7 +4372,7 @@ def _remote_uk_run(tmp_path, name):
     from test_support.microcosm_build.emitter import FakeEmitterClient
     from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
 
-    client = FakeEmitterClient()
+    client = client if client is not None else FakeEmitterClient()
     emitter = FakeTelemetryEmitter(
         TelemetryRun(
             run_id=name,
@@ -4401,12 +4401,22 @@ def _remote_uk_run(tmp_path, name):
     return bundle, emitter, client
 
 
-def _final_commit_statuses(emitter):
-    return [
-        event["status"]
+def _final_commit_events(emitter):
+    """The final-commit check's reports: progress events outside any stage."""
+    events = [
+        event
         for event in emitter.events
-        if event["stage_id"] == "staging_final_commit"
+        if event["details"].get("check") == "staging_final_commit"
     ]
+    assert all(
+        (event["event_type"], event["stage_id"]) == ("progress", None)
+        for event in events
+    )
+    return events
+
+
+def _final_commit_statuses(emitter):
+    return [event["status"] for event in _final_commit_events(emitter)]
 
 
 def _run_statuses(emitter):
@@ -4426,7 +4436,7 @@ def test_a_finalized_remote_run_confirms_its_final_commit_without_the_flag(
     )
 
     assert client.read_back_waits == [120.0]
-    assert _final_commit_statuses(emitter) == ["started", "completed"]
+    assert _final_commit_statuses(emitter) == ["completed"]
     # Without --staging-read-back the run's own documents keep that record.
     assert bundle.delivery_summary["read_back"] == "not_requested"
 
@@ -4449,13 +4459,9 @@ def test_an_unconfirmed_final_commit_warns_and_the_build_goes_on(
         SimpleNamespace(staging_read_back=False), bundle
     )
 
-    assert _final_commit_statuses(emitter) == ["started", "failed"]
-    failed = [
-        event
-        for event in emitter.events
-        if (event["stage_id"], event["status"]) == ("staging_final_commit", "failed")
-    ]
-    assert failed[0]["details"]["reason"] == "NO_COMMITTED_FILES"
+    assert _final_commit_statuses(emitter) == ["failed"]
+    (failed,) = _final_commit_events(emitter)
+    assert failed["details"]["reason"] == "NO_COMMITTED_FILES"
     assert bundle.validate_local_bundle()["progress"]["status"] == "completed"
     assert "not confirmed" in capsys.readouterr().err
 
@@ -4472,13 +4478,15 @@ def test_a_failed_run_confirms_its_final_commit_before_its_outcome(
     rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
 
     assert client.read_back_waits == [120.0]
-    assert _final_commit_statuses(emitter) == ["started", "completed"]
+    assert _final_commit_statuses(emitter) == ["completed"]
     assert _run_statuses(emitter) == ["failed"]
 
 
-def test_a_terminated_run_waits_at_most_30_seconds_for_its_final_commit(
+def test_a_terminated_run_checks_its_final_commit_by_receipt_only(
     tmp_path, monkeypatch
 ):
+    """The Hub comparison can take up to 60 seconds, past the grace a
+    supervisor gives after SIGTERM, so the check reads the receipt."""
     from microcosm.build.termination import BuildTerminatedError
     from microcosm.build.uk_runtime import rowwise_staging
 
@@ -4487,9 +4495,55 @@ def test_a_terminated_run_waits_at_most_30_seconds_for_its_final_commit(
 
     rowwise_staging.fail_staging_run_bundle(bundle, BuildTerminatedError())
 
-    assert client.read_back_waits == [30.0]
-    assert _final_commit_statuses(emitter) == ["started", "completed"]
+    assert "read_back_run_files" not in client.calls
+    (report,) = _final_commit_events(emitter)
+    assert (report["status"], report["details"]["method"]) == (
+        "completed",
+        "receipt",
+    )
     assert _run_statuses(emitter) == ["failed"]
+
+
+def test_a_failed_uk_run_keeps_the_stage_it_failed_in(tmp_path, monkeypatch):
+    """The check's report must not end the build's stage or take its place."""
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-stage")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+    emitter.transition_stage("calibration", message="Solving.")
+
+    rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
+
+    (failure,) = [event for event in emitter.events if event["event_type"] == "run"]
+    assert failure["details"]["failed_during"] == "calibration"
+    assert [
+        event["status"]
+        for event in emitter.events
+        if event["stage_id"] == "calibration"
+    ] == ["started", "failed"]
+
+
+def test_an_interrupt_during_the_check_still_records_the_failure(tmp_path, monkeypatch):
+    from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    class InterruptedReadBack(FakeEmitterClient):
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            raise KeyboardInterrupt
+
+    bundle, emitter, client = _remote_uk_run(
+        tmp_path, "uk-final-interrupted", client=InterruptedReadBack()
+    )
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    try:
+        rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
+    except KeyboardInterrupt:
+        pytest.fail("the interrupt escaped the build's close-out")
+
+    assert _run_statuses(emitter) == ["failed"]
+    (report,) = _final_commit_events(emitter)
+    assert report["details"]["reason"] == "interrupted"
 
 
 def test_a_blocked_run_confirms_its_final_commit_before_its_outcome(tmp_path):
@@ -4509,5 +4563,5 @@ def test_a_blocked_run_confirms_its_final_commit_before_its_outcome(tmp_path):
     )
 
     assert client.read_back_waits == [120.0]
-    assert _final_commit_statuses(emitter) == ["started", "completed"]
+    assert _final_commit_statuses(emitter) == ["completed"]
     assert _run_statuses(emitter) == ["blocked"]
