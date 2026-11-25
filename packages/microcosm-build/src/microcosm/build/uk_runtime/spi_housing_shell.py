@@ -24,8 +24,10 @@ never modified.
 Council tax stays a target of the chained QRF on every row. After the support
 rules, a Great Britain row's drawn bill is replaced by the 2024-25 statute at
 its reference Band D (``spi_housing_council_tax``): the expected Band D of the
-cell the SPI-copy area stage (``spi_copy_areas``) draws the row's area from,
-its region by households, for the row's nation and drawn band, less the
+cell the SPI-copy area stage (``spi_copy_areas``), which runs after the
+shell, draws the row's area from: its region by the households of its drawn
+band where the region holds that band, else by households (María's ruling of
+2026-11-25), for the row's nation and drawn band, less the
 single-adult discount where ``council_tax_single_adult_raw`` is 1. A Northern
 Ireland row keeps the chained draw (María's ruling of 2026-11-14), and every
 band and every other chained amount is the draw's. The drawn council tax

@@ -10897,7 +10897,7 @@
        "additionalProperties": false,
        "required": [
         "definition_of",
-        "level",
+        "levels",
         "stream",
         "seed"
        ],
@@ -10905,8 +10905,13 @@
         "definition_of": {
          "type": "string"
         },
-        "level": {
-         "type": "string"
+        "levels": {
+         "type": "array",
+         "minItems": 1,
+         "uniqueItems": true,
+         "items": {
+          "type": "string"
+         }
         },
         "stream": {
          "type": "string"

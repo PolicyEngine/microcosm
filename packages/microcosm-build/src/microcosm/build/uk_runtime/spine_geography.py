@@ -38,12 +38,16 @@ clone's area as its household's:
   vintage; a system with households none of which is flagged is reported, as
   a boolean, not refused (C-6).
 - **The SPI-copy area stage, ``spi_copy_areas``**
-  (:class:`UKSPICopyAreasStageTransform`), after the SPI support channel and
-  its income band donors (``spi_support_channel`` and
-  ``spi_income_band_donors``), gives every row those stages copied a key and
+  (:class:`UKSPICopyAreasStageTransform`), after the housing shell
+  (``spi_housing_shell``), which draws the copies' council-tax band, gives
+  every row the SPI support channel and its income band donors
+  (``spi_support_channel`` and ``spi_income_band_donors``) copied a key and
   a place of its own, where the copy had its parent's: a geography key over
-  its own copy path, an area drawn at L3 (its region, by households) with
-  G2's definition, then G3's local authority, G4's BRMA and G5's flag. Its
+  its own copy path, an area drawn with G2's definition by the FRS rows'
+  rule, at L2 (its region, by the households of the band the shell drew)
+  where that cell holds the band and at L3 (its region, by households)
+  otherwise (María's ruling of 2026-11-25), then G3's local authority, G4's
+  BRMA and G5's flag. Its
   Northern Ireland copies draw their BRMA from the census counts on their
   own benefit units, with G4's seed and salts, after one engine call over
   their households alone materialises their ``LHA_category`` (C-9, María's
@@ -1442,9 +1446,10 @@ UK_SPI_COPY_AREAS_REWRITE_COLUMNS = (
     _BRMA_COLUMN,
     RFDR_COLUMN,
 )
-#: The level every copy is drawn at: its inputs are missing by rule (C-5,
-#: C-10), so it draws in its region by households.
-_COPY_LEVEL = UK_ATOMIC_FALLBACK_LEVELS[-1].name
+#: The levels a copy is drawn at: its decile is missing and its band the one
+#: the housing shell drew, so it draws in its region by that band's households
+#: (L2), or by households where the cell holds none of the band (L3).
+_COPY_LEVELS = tuple(level.name for level in UK_ATOMIC_FALLBACK_LEVELS[2:])
 #: The two copies the support channel makes, by their ordinal on its branch
 #: (the copy-id table's ``spi_support_channel`` field): the SPI copy
 #: (``spi_support_channel``) and the income band donor
@@ -1484,7 +1489,7 @@ def spi_copy_areas_operation_parameters() -> tuple[tuple[str, dict[str, object]]
     one simulation over every clone's copies; then which rows it re-places
     (the copies the support channel's branch makes, read on the support and
     geographic branches), the key it gives them, the area draw (G2's
-    definition at L3, with G2's stream and seed), the stages whose lookups it
+    definition at L2 or L3, with G2's stream and seed), the stages whose lookups it
     re-runs (G3, G4 with Northern Ireland's count-table draw, seed and salts,
     and G5) and the columns it rewrites.
     """
@@ -1509,7 +1514,7 @@ def spi_copy_areas_operation_parameters() -> tuple[tuple[str, dict[str, object]]
                 },
                 "area_draw": {
                     "definition_of": ATOMIC_AREA_ASSIGN_STAGE_NAME,
-                    "level": _COPY_LEVEL,
+                    "levels": list(_COPY_LEVELS),
                     "stream": UK_SPINE_ATOMIC_AREA_STREAM,
                     "seed": UK_SPINE_ATOMIC_AREA_SEED,
                 },
@@ -1828,7 +1833,7 @@ class UKSPICopyAreasResult:
                 for system, count in self.flagged_by_system.items()
             },
             "no_flagged_copy": dict(self.no_flagged_copy),
-            "level": _COPY_LEVEL,
+            "levels": list(_COPY_LEVELS),
             "seed": int(self.seed),
             "stream": list(self.stream),
             "definition_sha256": self.definition_sha256,
@@ -1884,7 +1889,8 @@ def assign_uk_spi_copy_areas(
     On the rows the SPI support channel copied (an SPI copy or an income band
     donor, :func:`uk_spi_copy_keys`), in turn: each copy's own geography key;
     its area, drawn by G2's ``definition`` on a narrow frame of the copies
-    (their inputs are missing by rule, so every copy draws at L3), derived
+    (their decile is missing and their band the one the housing shell drew,
+    so every copy draws at L2 or L3), derived
     and validated; its local authority (G3); its BRMA (G4, Northern Ireland's
     copies drawn on their own benefit units after one engine call, a single
     simulation, over their households alone); and its fuel-relief flag (G5).
@@ -1898,8 +1904,9 @@ def assign_uk_spi_copy_areas(
 
     Refused, naming columns and declared constants only: a frame without a
     column the stage rewrites or reads, every refusal of
-    :func:`uk_spi_copy_keys`, repeated keys, a copy drawn at any level but
-    L3, engine values not aligned to the Northern Ireland copies' benefit
+    :func:`uk_spi_copy_keys`, repeated keys, a copy drawn at a level that
+    reads a decile (L0 or L1), engine values not aligned to the Northern
+    Ireland copies' benefit
     units or a scratch frame without one of their households, and every
     refusal of :func:`draw_uk_spine_areas`,
     :func:`uk_local_authorities`, :func:`uk_area_brmas` and
@@ -1929,10 +1936,11 @@ def assign_uk_spi_copy_areas(
         draw = draw_uk_spine_areas(
             rewritten.loc[copies], definition=definition, supports=supports
         )
-        if not (np.asarray(draw.levels, dtype=object) == _COPY_LEVEL).all():
+        if not np.isin(np.asarray(draw.levels, dtype=object), _COPY_LEVELS).all():
             raise ValueError(
-                f"{what} draws every copy at {_COPY_LEVEL}, its region by "
-                "households; the draw placed some copies at another level."
+                f"{what} draws every copy at {' or '.join(_COPY_LEVELS)}, its "
+                "region by its drawn band's households or by households; the "
+                "draw placed some copies at a level that reads a decile."
             )
         for column in UK_SPINE_AREA_COLUMNS:
             rewritten[column] = _rewrite(

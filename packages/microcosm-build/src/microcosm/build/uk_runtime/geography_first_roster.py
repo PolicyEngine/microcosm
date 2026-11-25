@@ -63,7 +63,7 @@ GEOGRAPHY_FIRST_STAGES: tuple[str, ...] = (
 
 #: The operations a geography-first spine runs inside stages that are not its
 #: own, by stage, in the spine's order: the housing shell's derive prices the
-#: Great Britain copies' council tax at their region's expected Band D, which
+#: Great Britain copies' council tax at their draw cell's expected Band D, which
 #: the council-tax localisation then localises, and the main-residence
 #: localiser runs inside the WAS chain.
 GEOGRAPHY_FIRST_OPERATIONS: Mapping[str, tuple[str, ...]] = MappingProxyType(

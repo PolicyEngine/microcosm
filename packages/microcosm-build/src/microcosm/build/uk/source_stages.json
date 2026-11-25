@@ -1449,7 +1449,7 @@
   {
    "artifacts": [],
    "grain": "household",
-   "notes": "Draws each geographic clone's atomic area within its FRS region (microcosm#931) with the shared atomic-area operator, on the three conditioned supports the operation names: a 2021 output area in England and Wales, a 2022 output area in Scotland and a 2021 data zone in Northern Ireland. The draw is conditioned on the household's IMD decile, its imd_decile as \"1\" to \"10\" and missing where it is 0, and, where council_tax_band_observed is true, on its council-tax band, by which England, Wales and Scotland weight each area's households; Northern Ireland's supports carry no band, so it draws by households. A household whose cell holds no area falls back a level at a time, L0 (decile, by band), L1 (decile, by households), L2 (by band) and L3 (by households), each within the region, as the shared fallback-level chooser picks it, and a level's dropped input is missing, so one definition serves every level. The inputs are a narrow, transient frame keyed on geography_household_key, so each clone's draw depends on its key, its own inputs, the supports and the stream alone, and growing K never moves an existing clone's area. A copy of the SPI support channel would draw at L3, its decile and band missing by rule; none exists yet here, and spi_copy_areas draws the copies' areas. The stage writes the three assignment columns and the ten ladder columns in the graph's string dtype, and refuses when the shared operator's mapping-integrity validation fails. Its evidence gives K, the seed, the stream, the definition's and supports' digests, the validation outcome and the distinct source households by system, by level and by fallback reason, rounded by the shared disclosure rules; no key, area code or count of a cell.",
+   "notes": "Draws each geographic clone's atomic area within its FRS region (microcosm#931) with the shared atomic-area operator, on the three conditioned supports the operation names: a 2021 output area in England and Wales, a 2022 output area in Scotland and a 2021 data zone in Northern Ireland. The draw is conditioned on the household's IMD decile, its imd_decile as \"1\" to \"10\" and missing where it is 0, and, where council_tax_band_observed is true, on its council-tax band, by which England, Wales and Scotland weight each area's households; Northern Ireland's supports carry no band, so it draws by households. A household whose cell holds no area falls back a level at a time, L0 (decile, by band), L1 (decile, by households), L2 (by band) and L3 (by households), each within the region, as the shared fallback-level chooser picks it, and a level's dropped input is missing, so one definition serves every level. The inputs are a narrow, transient frame keyed on geography_household_key, so each clone's draw depends on its key, its own inputs, the supports and the stream alone, and growing K never moves an existing clone's area. A copy of the SPI support channel would draw at L2 or L3, its decile missing and its band the one the housing shell draws; none exists yet here, and spi_copy_areas, after the shell, draws the copies' areas. The stage writes the three assignment columns and the ten ladder columns in the graph's string dtype, and refuses when the shared operator's mapping-integrity validation fails. Its evidence gives K, the seed, the stream, the definition's and supports' digests, the validation outcome and the distinct source households by system, by level and by fallback reason, rounded by the shared disclosure rules; no key, area code or count of a cell.",
    "operations": [
     {
      "constraints": [
@@ -2146,151 +2146,6 @@
     "spi_income_band_donor_lower_bound"
    ],
    "notes": "Reserves SPI-channel households for every Table 2.5 band from GBP 200,000 so the top of the income distribution has support before calibration. A band seats enough donors that none starts above the maximum weight and never fewer than the minimum, at equal weights of the build tax year's published taxpayers over the band's count. Carriers are FRS adults seated by identity-keyed draws on household weight times the tape's own band propensity given region, sex and age band; their households are copied whole at clone index 2 with the synthetic flag. The mass the donors carry is taken in proportion from the households of each donor's region, so the national total and every region's mass are unchanged (microcosm#1063). On a clone-first spine each geographic clone seats its own donors by the same walk, and every clone takes the same seats, sized against the eligible households counted in distinct source households. Each donor weighs its band's weight over the clone count, and each clone's regions fund their own donors at one mass scale for every clone; a spine without household_clone_index is one clone (microcosm#931). The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves)."
-  },
-  {
-   "artifacts": [
-    {
-     "format": "json",
-     "kind": "public_aggregate_reference",
-     "resource": "frs_release.json",
-     "role": "frs_release",
-     "runtime_sha256_required": true
-    },
-    {
-     "format": "json",
-     "kind": "public_aggregate_reference",
-     "resource": "local_authority_names.json",
-     "role": "local_authority_names",
-     "runtime_sha256_required": true
-    },
-    {
-     "format": "json",
-     "kind": "public_aggregate_reference",
-     "resource": "brma_area_layer.json",
-     "role": "brma_area_layer",
-     "runtime_sha256_required": true
-    },
-    {
-     "format": "json",
-     "kind": "public_aggregate_reference",
-     "resource": "brma_private_rented_households.json",
-     "role": "count_resource",
-     "runtime_sha256_required": true
-    },
-    {
-     "format": "json",
-     "kind": "public_aggregate_reference",
-     "resource": "rfdr_area_layer.json",
-     "role": "rfdr_area_layer",
-     "runtime_sha256_required": true
-    }
-   ],
-   "grain": "household",
-   "notes": "Gives every row the SPI support channel copied, an SPI copy (spi_support_channel) or an income band donor (spi_income_band_donors), a key and a place of its own, where each copy had its parent's (microcosm#931). The key is geography_household_key over the copy's own path, read on the support channel's and the geographic clones' branches as geographic_identity reads a path, with the FRS vintage frs_release.json pins for its source_year; the area is drawn at L3, its region by households, with atomic_area_assign's definition, stream and seed, since a copy's decile and band inputs are missing by rule; then its local authority (as local_authority), its BRMA (as area_brma) and its fuel-relief flag (as rfdr). A Great Britain copy reads its BRMA off its area through the layer. Northern Ireland's copies draw theirs from the census count table on their own benefit units with area_brma's seed and salts, after one engine call over their households alone materialises their LHA_category, one simulation over every clone's copies (engine_simulations), so each copy takes a draw of its own (María's ruling of 2026-11-11). Every other row is left as it was, and each rewrite keeps its column's dtype; the copies later stages make inherit their parent's key and area. Its evidence gives K, the seed, the stream, the digests, the validation and roster outcomes and, among clone-0 rows, the distinct source households copied, by kind and system, and those whose copies are flagged, by Great Britain system, rounded by the shared disclosure rules; where one system of a kind rests on one or two source households, every system of that kind is withheld, zeros included, since at one clone the support channel's and the band donors' own copy counts would give it back by difference; no key or area code.",
-   "operations": [
-    {
-     "consumed_only": true,
-     "kind": "materialize_rules_engine_predictors",
-     "predictors": [
-      "LHA_category"
-     ]
-    },
-    {
-     "area_draw": {
-      "definition_of": "atomic_area_assign",
-      "level": "L3",
-      "seed": 0,
-      "stream": "uk-spine-atomic-area-v1"
-     },
-     "brma": {
-      "as_stage": "area_brma",
-      "assignment_grain": "benunit",
-      "cell_columns": [
-       "region",
-       "LHA_category"
-      ],
-      "collapse_method": "uniform_member_pick",
-      "collapse_to": "household",
-      "count_resource": "brma_private_rented_households.json",
-      "count_table_systems": [
-       "uk_ni_data_zone_2021"
-      ],
-      "engine_households": "northern_ireland_copies",
-      "engine_simulations": "one",
-      "salts": {
-       "benunit": "brma",
-       "household_pick": "brma:household_pick"
-      },
-      "seed": 0
-     },
-     "copies": {
-      "branch": "spi_support_channel",
-      "kinds": {
-       "1": "spi_support_copy",
-       "2": "income_band_donor"
-      },
-      "paths_require": [
-       "spi_support_channel",
-       "geographic_support"
-      ]
-     },
-     "key": {
-      "column": "geography_household_key",
-      "source": "frs",
-      "vintage_resource": "frs_release.json"
-     },
-     "kind": "assign_spi_copy_areas",
-     "local_authority": {
-      "as_stage": "local_authority"
-     },
-     "rewrites": [
-      "geography_household_key",
-      "atomic_area_code",
-      "atomic_area_system",
-      "atomic_area_basis",
-      "oa_code",
-      "lsoa_code",
-      "msoa_code",
-      "local_authority_code",
-      "ward_code",
-      "constituency_code",
-      "region_code",
-      "itl3_code",
-      "itl2_code",
-      "itl1_code",
-      "local_authority",
-      "brma",
-      "in_rural_fuel_duty_relief_area"
-     ],
-     "rfdr": {
-      "as_stage": "rfdr",
-      "require_flagged": false
-     }
-    }
-   ],
-   "outputs": [],
-   "rewrites": [
-    "geography_household_key",
-    "atomic_area_code",
-    "atomic_area_system",
-    "atomic_area_basis",
-    "oa_code",
-    "lsoa_code",
-    "msoa_code",
-    "local_authority_code",
-    "ward_code",
-    "constituency_code",
-    "region_code",
-    "itl3_code",
-    "itl2_code",
-    "itl1_code",
-    "local_authority",
-    "brma",
-    "in_rural_fuel_duty_relief_area"
-   ],
-   "source": "Microcosm structural operator (microcosm#931): atomic_area_assign's draw and the local_authority, area_brma and rfdr lookups, re-run on the rows the SPI support channel copied",
-   "stage": "spi_copy_areas",
-   "survey": "Family Resources Survey 2024-25"
   },
   {
    "stage": "hmrc_spi_income_spine",
@@ -3775,7 +3630,7 @@
      "gate_calibration": "cross_fitted"
     },
     {
-     "formula": "After the band draw and the chained amounts, on the Great Britain rows the SPI support channel copied (SPI copies and income band donors): the 2024-25 statute (council_tax_band_d.uk_statutory_council_tax) at the copy's reference Band D, the exact expected 2024-25 Band D of the cell spi_copy_areas drew its area from (its region, by households, as council_tax_localise takes it), for its nation and drawn band, less the single-adult discount where council_tax_single_adult_raw is 1. Northern Ireland's rows keep the chained draw. The bill reads neither the drawn area nor its local authority, so council_tax_localise localises it once.",
+     "formula": "After the band draw and the chained amounts, on the Great Britain rows the SPI support channel copied (SPI copies and income band donors): the 2024-25 statute (council_tax_band_d.uk_statutory_council_tax) at the copy's reference Band D, the exact expected 2024-25 Band D of the cell spi_copy_areas draws its area from (its region, by the households of its drawn band where the region holds that band, else by households, as council_tax_localise takes it), for its nation and drawn band, less the single-adult discount where council_tax_single_adult_raw is 1. Northern Ireland's rows keep the chained draw. The bill reads neither the drawn area nor its local authority, so council_tax_localise localises it once.",
      "kind": "derive",
      "output": "council_tax"
     }
@@ -3800,7 +3655,155 @@
     "housing_benefit_reported",
     "council_tax_benefit_reported"
    ],
-   "notes": "Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent's housing, drawn for the parent's income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit's Housing Benefit and the reference person's council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. The QRF's sign gates are cross-fitted (gate_calibration: cross_fitted; microcosm#1359), as lcfs_consumption's are: each is calibrated on the donors its fold gates left out, so a sign is drawn at its donor rate on households the gates were not fitted to. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient's own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged. Council tax stays a target of the chained QRF on every row, so every band and every other chained amount is the draw's. After the learned zeros and the tenure rules, a Great Britain row's drawn council tax is replaced by the 2024-25 statute at its reference Band D (the stage's derive of council_tax): the expected 2024-25 Band D of the cell spi_copy_areas draws the row's area from, its region by households, recomputed on the conditioned atomic-area supports as council_tax_localise recomputes it, for the row's nation and drawn band, less the single-adult discount where council_tax_single_adult_raw is 1. A Northern Ireland row keeps the chained draw (María's ruling of 2026-11-14). The bill reads neither the drawn area nor its local authority, so council_tax_localise localises it once. The council tax benefit is capped at the bill written. Loading the committed Band D holds Scotland's vendored resource to the pinned Chronicle feed, and before it reads a row the stage checks that its Scottish declaration maps the facts to the frame's period, as council_tax_localise does; it refuses unless the bill's checks hold on what it writes, and its receipt records the bill's method, inputs and checks under council_tax, with no number."
+   "notes": "Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent's housing, drawn for the parent's income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit's Housing Benefit and the reference person's council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. The QRF's sign gates are cross-fitted (gate_calibration: cross_fitted; microcosm#1359), as lcfs_consumption's are: each is calibrated on the donors its fold gates left out, so a sign is drawn at its donor rate on households the gates were not fitted to. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient's own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged. Council tax stays a target of the chained QRF on every row, so every band and every other chained amount is the draw's. After the learned zeros and the tenure rules, a Great Britain row's drawn council tax is replaced by the 2024-25 statute at its reference Band D (the stage's derive of council_tax): the expected 2024-25 Band D of the cell spi_copy_areas, which runs after the shell, draws the row's area from, its region by the households of its drawn band where the region holds that band and by households otherwise, recomputed on the conditioned atomic-area supports as council_tax_localise recomputes it, for the row's nation and drawn band, less the single-adult discount where council_tax_single_adult_raw is 1. A Northern Ireland row keeps the chained draw (María's ruling of 2026-11-14). The bill reads neither the drawn area nor its local authority, so council_tax_localise localises it once. The council tax benefit is capped at the bill written. Loading the committed Band D holds Scotland's vendored resource to the pinned Chronicle feed, and before it reads a row the stage checks that its Scottish declaration maps the facts to the frame's period, as council_tax_localise does; it refuses unless the bill's checks hold on what it writes, and its receipt records the bill's method, inputs and checks under council_tax, with no number."
+  },
+  {
+   "artifacts": [
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "frs_release.json",
+     "role": "frs_release",
+     "runtime_sha256_required": true
+    },
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "local_authority_names.json",
+     "role": "local_authority_names",
+     "runtime_sha256_required": true
+    },
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "brma_area_layer.json",
+     "role": "brma_area_layer",
+     "runtime_sha256_required": true
+    },
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "brma_private_rented_households.json",
+     "role": "count_resource",
+     "runtime_sha256_required": true
+    },
+    {
+     "format": "json",
+     "kind": "public_aggregate_reference",
+     "resource": "rfdr_area_layer.json",
+     "role": "rfdr_area_layer",
+     "runtime_sha256_required": true
+    }
+   ],
+   "grain": "household",
+   "notes": "Gives every row the SPI support channel copied, an SPI copy (spi_support_channel) or an income band donor (spi_income_band_donors), a key and a place of its own, where each copy had its parent's (microcosm#931). The key is geography_household_key over the copy's own path, read on the support channel's and the geographic clones' branches as geographic_identity reads a path, with the FRS vintage frs_release.json pins for its source_year; the area is drawn with atomic_area_assign's definition, stream and seed by the FRS rows' rule, from the copy's decile, missing by rule, and the band spi_housing_shell drew for it, at L2 (its region by that band's households) where the region's cell holds the band and at L3 (its region by households) otherwise (María's ruling of 2026-11-25), so the stage runs after the shell; then its local authority (as local_authority), its BRMA (as area_brma) and its fuel-relief flag (as rfdr). A Great Britain copy reads its BRMA off its area through the layer. Northern Ireland's copies draw theirs from the census count table on their own benefit units with area_brma's seed and salts, after one engine call over their households alone materialises their LHA_category, one simulation over every clone's copies (engine_simulations), so each copy takes a draw of its own (María's ruling of 2026-11-11). Every other row is left as it was, and each rewrite keeps its column's dtype; the copies later stages make inherit their parent's key and area. Its evidence gives K, the seed, the stream, the digests, the validation and roster outcomes and, among clone-0 rows, the distinct source households copied, by kind and system, and those whose copies are flagged, by Great Britain system, rounded by the shared disclosure rules; where one system of a kind rests on one or two source households, every system of that kind is withheld, zeros included, since at one clone the support channel's and the band donors' own copy counts would give it back by difference; no key or area code.",
+   "operations": [
+    {
+     "consumed_only": true,
+     "kind": "materialize_rules_engine_predictors",
+     "predictors": [
+      "LHA_category"
+     ]
+    },
+    {
+     "area_draw": {
+      "definition_of": "atomic_area_assign",
+      "seed": 0,
+      "stream": "uk-spine-atomic-area-v1",
+      "levels": [
+       "L2",
+       "L3"
+      ]
+     },
+     "brma": {
+      "as_stage": "area_brma",
+      "assignment_grain": "benunit",
+      "cell_columns": [
+       "region",
+       "LHA_category"
+      ],
+      "collapse_method": "uniform_member_pick",
+      "collapse_to": "household",
+      "count_resource": "brma_private_rented_households.json",
+      "count_table_systems": [
+       "uk_ni_data_zone_2021"
+      ],
+      "engine_households": "northern_ireland_copies",
+      "engine_simulations": "one",
+      "salts": {
+       "benunit": "brma",
+       "household_pick": "brma:household_pick"
+      },
+      "seed": 0
+     },
+     "copies": {
+      "branch": "spi_support_channel",
+      "kinds": {
+       "1": "spi_support_copy",
+       "2": "income_band_donor"
+      },
+      "paths_require": [
+       "spi_support_channel",
+       "geographic_support"
+      ]
+     },
+     "key": {
+      "column": "geography_household_key",
+      "source": "frs",
+      "vintage_resource": "frs_release.json"
+     },
+     "kind": "assign_spi_copy_areas",
+     "local_authority": {
+      "as_stage": "local_authority"
+     },
+     "rewrites": [
+      "geography_household_key",
+      "atomic_area_code",
+      "atomic_area_system",
+      "atomic_area_basis",
+      "oa_code",
+      "lsoa_code",
+      "msoa_code",
+      "local_authority_code",
+      "ward_code",
+      "constituency_code",
+      "region_code",
+      "itl3_code",
+      "itl2_code",
+      "itl1_code",
+      "local_authority",
+      "brma",
+      "in_rural_fuel_duty_relief_area"
+     ],
+     "rfdr": {
+      "as_stage": "rfdr",
+      "require_flagged": false
+     }
+    }
+   ],
+   "outputs": [],
+   "rewrites": [
+    "geography_household_key",
+    "atomic_area_code",
+    "atomic_area_system",
+    "atomic_area_basis",
+    "oa_code",
+    "lsoa_code",
+    "msoa_code",
+    "local_authority_code",
+    "ward_code",
+    "constituency_code",
+    "region_code",
+    "itl3_code",
+    "itl2_code",
+    "itl1_code",
+    "local_authority",
+    "brma",
+    "in_rural_fuel_duty_relief_area"
+   ],
+   "source": "Microcosm structural operator (microcosm#931): atomic_area_assign's draw and the local_authority, area_brma and rfdr lookups, re-run on the rows the SPI support channel copied",
+   "stage": "spi_copy_areas",
+   "survey": "Family Resources Survey 2024-25"
   },
   {
    "artifacts": [
@@ -3887,7 +3890,7 @@
    "nonnegative_outputs": [
     "council_tax_frs_bill"
    ],
-   "notes": "Prices each Great Britain household's council tax at the local authority the spine drew for it, after private_rent and just before the WAS chain (María's rulings of 2026-11-06, 2026-11-13 and 2026-11-14, microcosm#931). Before it rewrites anything, it keeps the paid bill, max(council_tax - council_tax_rebate, 0), as council_tax_frs_bill on every row; was_wealth's council-tax predictor, which was_lisa builds through was_wealth, reads that column, so the area does not enter it, and the release boundary drops it. A household's ratio is its authority's (local_authority_code) 2024-25 Band D over the expected Band D of its own draw cell, recomputed exactly from the inputs atomic_area_assign drew it on, each of the cell's areas weighted as the draw weights it; the rows the SPI support channel copied, SPI copies and income band donors, take the cell spi_copy_areas drew them from, their region by households. A row of the FRS channel whose bill frs_council_tax observed gross (council_tax_bill_provenance observed_gross) takes the ratio; a missing bill, or one netted of a reduction of unknown size (missing, unknown_reduction), takes the 2024-25 statute where council_tax_band_observed holds (the authority's Band D times its band's statutory proportion, less the single-adult discount where council_tax_single_adult_raw is 1) and the ratio on frs_council_tax's bill where it does not. The rebate and the one person's reported council tax reduction are scaled by the same ratio and capped at the new bill. Northern Ireland, which pays domestic rates, keeps every row as it is, with no cap. A Great Britain row whose drawn area is not an area of its recomputed cell is refused. The WAS chain's HBAI net income reads the localised bill and reduction. The weights pass through, and the stage records its household mass receipt. Its evidence gives K, the Band D resources' and the supports' digests, the method and its checks as booleans, with the distinct source households on each path (the FRS channel's over every clone, the support channel's among clone-0 rows) and, among clone-0 rows, those whose reductions were capped and Northern Ireland's whose reductions exceed their bill, counted through receipt_counts.",
+   "notes": "Prices each Great Britain household's council tax at the local authority the spine drew for it, after private_rent and just before the WAS chain (María's rulings of 2026-11-06, 2026-11-13 and 2026-11-14, microcosm#931). Before it rewrites anything, it keeps the paid bill, max(council_tax - council_tax_rebate, 0), as council_tax_frs_bill on every row; was_wealth's council-tax predictor, which was_lisa builds through was_wealth, reads that column, so the area does not enter it, and the release boundary drops it. A household's ratio is its authority's (local_authority_code) 2024-25 Band D over the expected Band D of its own draw cell, recomputed exactly from the inputs atomic_area_assign drew it on, each of the cell's areas weighted as the draw weights it; the rows the SPI support channel copied, SPI copies and income band donors, take the cell spi_copy_areas drew them from, their region by the households of their drawn band where it holds that band, else by households. A row of the FRS channel whose bill frs_council_tax observed gross (council_tax_bill_provenance observed_gross) takes the ratio; a missing bill, or one netted of a reduction of unknown size (missing, unknown_reduction), takes the 2024-25 statute where council_tax_band_observed holds (the authority's Band D times its band's statutory proportion, less the single-adult discount where council_tax_single_adult_raw is 1) and the ratio on frs_council_tax's bill where it does not. The rebate and the one person's reported council tax reduction are scaled by the same ratio and capped at the new bill. Northern Ireland, which pays domestic rates, keeps every row as it is, with no cap. A Great Britain row whose drawn area is not an area of its recomputed cell is refused. The WAS chain's HBAI net income reads the localised bill and reduction. The weights pass through, and the stage records its household mass receipt. Its evidence gives K, the Band D resources' and the supports' digests, the method and its checks as booleans, with the distinct source households on each path (the FRS channel's over every clone, the support channel's among clone-0 rows) and, among clone-0 rows, those whose reductions were capped and Northern Ireland's whose reductions exceed their bill, counted through receipt_counts.",
    "operations": [
     {
      "artifact_role": "scotland_band_d_facts",

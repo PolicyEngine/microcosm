@@ -26,9 +26,12 @@ of both; it runs no stage:
 - :func:`uk_draw_inputs` is the narrow transient frame the draw reads: each
   household's geography key and region, its decile as "1" to "10" (missing
   for 0, no observed decile) and its band where ``council_tax_band_observed``
-  (missing otherwise). Rows the SPI support channel copied get both inputs
-  missing, so they draw at L3, the level the SPI-copy area stage draws them
-  at, though a copy keeps its parent's decile and band flag (C-5, C-10).
+  (missing otherwise). Rows the SPI support channel copied get the decile
+  missing and, as their band, the one the housing shell drew for them, so
+  the SPI-copy area stage, which runs after the shell, draws them by the FRS
+  rows' rule: at L2 where their region's cell holds homes of that band, else
+  at L3 (María's ruling of 2026-11-25); a copy keeps its parent's decile and
+  band flag (C-5, C-10).
 - :func:`uk_draw_levels` gives each household its level: the first whose
   inputs are present and whose cell has mass in the weight it samples by
   there, the chooser's rule, with the chooser's arguments read from the
@@ -434,8 +437,12 @@ def uk_draw_inputs(household: pd.DataFrame) -> pd.DataFrame:
       ``council_tax_band_observed`` is true, missing otherwise (O14 iv).
 
     A row the SPI support channel copied (:func:`uk_support_channel_copies`)
-    gets both inputs missing, whatever its decile and flag, which it keeps
-    from its parent (C-5, C-10).
+    gets its decile missing and, as its band, its ``council_tax_band`` where
+    that is a band A to I, whatever its flag: the band the housing shell drew
+    for it, which runs before the copies' area draw, so a copy is drawn by
+    the band as an FRS row with an observed band is (microcosm#931). Its
+    decile and flag, which it keeps from its parent, are not read (C-5,
+    C-10).
 
     Refused, by column: a missing column, a missing or blank key or region, a
     decile column that is not integer or holds codes outside 0 to 10, a flag
@@ -487,8 +494,10 @@ def uk_draw_inputs(household: pd.DataFrame) -> pd.DataFrame:
         pd.NA if copy or value == FRS_IMD_DECILE_UNOBSERVED else str(int(value))
         for value, copy in zip(deciles.tolist(), copies.tolist(), strict=True)
     ]
+    # An FRS row's band where the survey observed it; a copy's, the band the
+    # housing shell drew, where it is a band A to I (microcosm#931).
     band_inputs = [
-        str(band) if flag and not copy else pd.NA
+        str(band) if (band in UK_COUNCIL_TAX_BANDS if copy else flag) else pd.NA
         for band, flag, copy in zip(
             bands.tolist(), flags.tolist(), copies.tolist(), strict=True
         )
@@ -620,7 +629,8 @@ def uk_draw_levels(
     takes its unweighted levels only. So a household's level is the first of
     :data:`UK_ATOMIC_FALLBACK_LEVELS` whose inputs are present and whose cell
     has mass in the weight it samples by there, and a household with neither
-    input, an SPI-channel row among them, takes L3. Returns level names.
+    input takes L3; an SPI-channel row, which has a band and no decile, takes
+    L2 or L3. Returns level names.
     """
 
     spec = validate_assignment_spec(definition)

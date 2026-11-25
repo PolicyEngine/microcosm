@@ -15,8 +15,8 @@ decile and samples areas by their households in the household's council-tax
 band. Where an input is missing or its cell is empty, the draw falls back,
 level by level, to the region alone. Every later stage runs on the clones and
 sees each clone's area. The SPI support channel's copies and its income band
-donors draw an area of their own in `spi_copy_areas`, once both stages have
-made them. Every later copy keeps its parent's area. Each household's area then
+donors draw an area of their own in `spi_copy_areas`, after the housing shell
+has drawn their council-tax band. Every later copy keeps its parent's area. Each household's area then
 stays fixed through enrichment, calibration and export. The dense line builds
 on a spine of K clones and the national line on a spine of one, and both ship
 the areas (María's rulings of 4 and 6 November 2026). For the UK this order
@@ -273,17 +273,19 @@ order:
    counts, as `frs_brma` did.
 7. `spi_support_channel` and `spi_income_band_donors` copy FRS households whose
    incomes the SPI income stage then draws from SPI taxpayers' records.
-   `spi_copy_areas` gives each such copy a key over its own copy path and an
-   area of its own. The area is drawn within the copy's region by all
-   households (L3), not by its parent's decile or band (María's ruling of
-   6 November 2026). The stage then sets the copy's local authority, BRMA and
-   rural fuel duty relief flag as the stages above do. Northern Ireland's
+   `spi_housing_shell` draws each copy's housing, its council-tax band among
+   it, and prices the Great Britain copies' council tax by the 2024-25 statute
+   at the expected Band D of the cell the copy's area will be drawn from.
+   `spi_copy_areas` then gives each such copy a key over its own copy path and
+   an area of its own, by the FRS rows' rule: within its region by the
+   households of the band the shell drew (L2), or by all households where the
+   region holds none of that band (L3). It does not read the parent's decile
+   (María's rulings of 6 and 25 November 2026; until the second, copies drew
+   by all households alone). The stage then sets the copy's local authority,
+   BRMA and rural fuel duty relief flag as the stages above do. Northern Ireland's
    copies draw their BRMA from census counts on their own benefit units
    (María's ruling of 11 November 2026).
 8. Later stages price or place by area:
-   - `spi_housing_shell` prices the Great Britain copies' council tax by the
-     2024-25 statute at their region's expected Band D, for the band the shell
-     draws for them.
    - `private_rent` reads each Great Britain private rent off its BRMA's list of
      rents, at its rank among the FRS private rents of its region and size.
    - `council_tax_localise`, just before the WAS chain, takes each Great Britain

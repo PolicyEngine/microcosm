@@ -34,9 +34,10 @@ capped at the bill outside Northern Ireland):
   D(a) / E``, ``a`` the household's own ``local_authority_code``: one
   correctly rounded division of the two exact rationals, made once for each
   distinct expected Band D and authority. Rows the SPI support channel
-  copied (SPI copies and income band donors) have both draw inputs missing
-  by rule, so their cell is their region by households, the L3 cell the
-  SPI-copy area stage (``spi_copy_areas``) drew them from.
+  copied (SPI copies and income band donors) have their decile missing and
+  the band the housing shell drew, so their cell is their region by that
+  band's households where it holds the band (L2) and by households otherwise
+  (L3), the cell the SPI-copy area stage (``spi_copy_areas``) drew them from.
 - **The draw-cell guard.** Every Great Britain row's drawn
   ``atomic_area_code`` must be an area of its recomputed cell (in its own
   system, with the support's codes matching every input its level keeps)
@@ -46,7 +47,7 @@ capped at the bill outside Northern Ireland):
   a later stage changed a draw input or the ladder changed.
 - **The paths**, by nation first and channel second. Northern Ireland, which
   pays domestic rates, keeps every row as it is, with no cap. A Great
-  Britain row the SPI support channel copied takes the ratio at its L3 cell,
+  Britain row the SPI support channel copied takes the ratio at its cell,
   whatever bill provenance it inherited. A Great Britain row of the FRS
   channel follows ``frs_council_tax``'s ``council_tax_bill_provenance``:
   ``observed_gross`` takes the ratio; ``missing`` and ``unknown_reduction``
@@ -766,7 +767,8 @@ def uk_council_tax_references(
     and ``supports`` the three decoded conditioned supports it declares. The
     row's level is recomputed as G2 chose it (``uk_draw_inputs``,
     ``uk_draw_levels``, ``uk_draw_frame``); a row the SPI support channel
-    copied has both inputs missing, so it takes L3. For every Great Britain
+    copied has its decile missing and its drawn band, so it takes L2 or L3.
+    For every Great Britain
     row, the draw-cell guard runs, then
     :func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_draw_cell_expectations`,
     which the housing shell's reference calls too, gives the exact mean of its

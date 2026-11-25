@@ -308,8 +308,8 @@ microcosm#1006, comments 5812328880 and 5814299594):
 
 `frs_hmrc_spine_leaves` now runs with the source stages, before the geographic
 clones, and `frs_brma` retired into `area_brma` (microcosm#931). The SPI block
-(`spi_support_channel`, `spi_income_band_donors`, `spi_copy_areas`,
-`hmrc_spi_income_spine`) runs right after `area_brma`, still ahead of
+(`spi_support_channel`, `spi_income_band_donors`, `hmrc_spi_income_spine`)
+runs right after `area_brma`, and `spi_copy_areas` after `spi_housing_shell`, still ahead of
 `was_wealth`, `regional_property_uprating`, `nts_bus_travel`,
 `lcfs_consumption`, `etb_vat` and `etb_services`. Those six
 stages condition on income, and the support stages copy whole FRS households.
@@ -375,8 +375,9 @@ so the chain's other draws are as before. After the learned zeros and the
 tenure rules, each Great Britain row the SPI support channel copied takes the
 2024-25 statute bill for its nation and drawn band, less the single-adult
 discount where it applies, at its reference Band D: the expected 2024-25
-Band D of the cell `spi_copy_areas` draws its area from, its region by
-households. The drawn council tax benefit is then capped at that bill. The
+Band D of the cell `spi_copy_areas` draws its area from, its region by the
+households of the drawn band, or by all households where the region holds
+none of it. The drawn council tax benefit is then capped at that bill. The
 bill reads neither the copy's area nor its local authority, so
 `council_tax_localise` stays the one step that prices council tax by area.
 Bands are drawn as before, and Northern Ireland's copies keep the chained bill

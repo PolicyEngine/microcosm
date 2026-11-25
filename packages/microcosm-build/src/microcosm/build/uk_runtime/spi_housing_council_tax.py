@@ -7,19 +7,24 @@ chained QRF of amounts whose first target is ``council_tax``. This module
 prices that bill by the statute on the Great Britain rows, and states what
 the shell's stage declares for it. It draws nothing and calls no engine.
 
-- **The reference.** A copy's draw inputs are missing by rule, so the
-  SPI-copy area stage (``spi_copy_areas``) draws its area at L3
-  (:data:`UK_SPI_COPY_DRAW_LEVEL`), its region by households. Its reference
-  Band D is the exact expected 2024-25 Band D of that cell under the draw's
-  own weights: ``E = sum(households x D) / sum(households)`` over the
-  region's areas, ``D`` each area's local authority's Band D.
-  :func:`uk_spi_housing_council_tax_inputs` takes it from
+- **The reference.** The SPI-copy area stage (``spi_copy_areas``), which
+  runs after the shell, draws a copy's area by the FRS rows' rule from its
+  decile, missing, and the band the shell drew: at L2, its region by that
+  band's households, where the region's cell holds the band, else at L3, its
+  region by households (:data:`UK_SPI_COPY_DRAW_LEVELS`; María's ruling of
+  2026-11-25). Its reference Band D is the exact expected 2024-25 Band D of
+  that cell under the draw's own weights: ``E = sum(w x D) / sum(w)`` over the
+  region's areas, ``w`` the band's households or all households and ``D``
+  each area's local authority's Band D. The cell is the region's and the
+  band's alone, so :func:`uk_spi_housing_council_tax_inputs` takes one
+  reference for each Great Britain region of the rows and each band its
+  nation prices, before the shell draws a band, from
   :func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_draw_cell_expectations`,
   the call the council-tax localisation (``council_tax_localise``) makes for
-  the same rows, on a narrow frame of the region alone whose decile and band
-  inputs are present and missing (:func:`uk_spi_copy_draw_frame`). It reads each
-  row's region, support channel and copy lineage, and no area column,
-  geography key, decile or band flag.
+  the same rows, on a narrow frame of the region and band whose decile input
+  is missing (:func:`uk_spi_copy_draw_frame`); the bill reads the reference
+  of the band drawn. It reads each row's region, support channel and copy
+  lineage, and no area column, geography key, decile or band flag.
 - **The bill.** On a Great Britain row, one whose region's nation
   :data:`~microcosm.build.uk_runtime.council_tax_band_d.UK_COUNCIL_TAX_BAND_RATIOS`
   prices, :func:`uk_spi_statutory_council_tax` gives the 2024-25 statute
@@ -46,7 +51,7 @@ the shell's stage declares for it. It draws nothing and calls no engine.
   as chained, every reduction within its bill, finite and nonnegative, and
   every rebate equal to its reduction.
 - **The evidence** (:func:`uk_spi_housing_council_tax_evidence`): the method,
-  the reference, the copy level, the two Band D resources with their digests
+  the reference, the copy levels, the two Band D resources with their digests
   and the Scottish feed's source commit, the supports' digests and the
   checks. Its leaves are strings and booleans (the source commit is ``None``
   for a Band D a test supplies without a feed), never a number, and its keys
@@ -94,14 +99,17 @@ from microcosm.build.uk_runtime.council_tax_band_d import (
     UKCouncilTaxBandD,
     uk_statutory_council_tax,
 )
-from microcosm.build.uk_runtime.council_tax_constants import UK_NATION_BY_REGION
+from microcosm.build.uk_runtime.council_tax_constants import (
+    UK_COUNCIL_TAX_BANDS,
+    UK_NATION_BY_REGION,
+)
 from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 from microcosm.build.uk_runtime.local_authority_input import (
     UK_LOCAL_AUTHORITY_CODE_COLUMN,
 )
 
 __all__ = [
-    "UK_SPI_COPY_DRAW_LEVEL",
+    "UK_SPI_COPY_DRAW_LEVELS",
     "UK_SPI_HOUSING_COUNCIL_TAX_ARTIFACTS",
     "UK_SPI_HOUSING_COUNCIL_TAX_CHANNEL_COLUMN",
     "UK_SPI_HOUSING_COUNCIL_TAX_CHECKS",
@@ -131,9 +139,9 @@ UK_SPI_HOUSING_COUNCIL_TAX_EVIDENCE = "council_tax"
 #: What a Great Britain row's bill is priced at: the expected Band D of the
 #: cell the SPI-copy area stage drew the row's area from.
 UK_SPI_HOUSING_COUNCIL_TAX_REFERENCE = "expected_band_d_of_copy_draw_cell"
-#: The level every copy is drawn at: the last of the fallback ladder, its
-#: region by households.
-UK_SPI_COPY_DRAW_LEVEL = UK_ATOMIC_FALLBACK_LEVELS[-1].name
+#: The levels a copy is drawn at: L2, its region by its drawn band's
+#: households, where the cell holds the band, else L3, its region by households.
+UK_SPI_COPY_DRAW_LEVELS = tuple(level.name for level in UK_ATOMIC_FALLBACK_LEVELS[2:])
 #: The support channel's step of the copy lineage: its marker column and the
 #: marker's value on the rows the channel copied, the rows the housing shell
 #: redraws.
@@ -170,7 +178,8 @@ UK_SPI_HOUSING_COUNCIL_TAX_FORMULA = (
     "SPI support channel copied (SPI copies and income band donors): the 2024-25 "
     "statute (council_tax_band_d.uk_statutory_council_tax) at the copy's "
     "reference Band D, the exact expected 2024-25 Band D of the cell "
-    "spi_copy_areas drew its area from (its region, by households, as "
+    "spi_copy_areas draws its area from (its region, by the households of its "
+    "drawn band where the region holds that band, else by households, as "
     "council_tax_localise takes it), for its nation and drawn band, less the "
     "single-adult discount where council_tax_single_adult_raw is 1. Northern "
     "Ireland's rows keep the chained draw. The bill reads neither the drawn area "
@@ -232,52 +241,62 @@ def _levies_council_tax(region: object) -> bool:
     return isinstance(region, str) and region in _GREAT_BRITAIN_REGIONS
 
 
+def _reference_keys(regions: Sequence[str]) -> set[tuple[str, str]]:
+    """Each Great Britain region of ``regions`` with each band its nation
+    prices: the cells a copy can be drawn from, by region and drawn band."""
+
+    return {
+        (region, band)
+        for region in set(regions)
+        if _levies_council_tax(region)
+        for band in UK_COUNCIL_TAX_BAND_RATIOS[UK_NATION_BY_REGION[region]]
+    }
+
+
 @dataclass(frozen=True)
 class UKSPIHousingCouncilTaxInputs:
-    """The rows the SPI support channel copied, and each one's reference.
+    """The rows the SPI support channel copied, and the references they read.
 
-    In the household table's row order: ``household_ids``, ``regions``,
-    ``great_britain`` (whether the region's nation levies council tax) and
-    ``reference_band_d``, the exact expected 2024-25 Band D of the row's copy
-    draw cell on a Great Britain row and ``None`` elsewhere. ``band_d`` is
-    the Band D the references were taken at, and ``support_sha256`` the
-    digests of the supports given, by system. Nothing but the digests prints
-    in the repr, and ``band_d`` takes no part in a comparison.
+    In the household table's row order: ``household_ids``, ``regions`` and
+    ``great_britain`` (whether the region's nation levies council tax).
+    ``reference_band_d`` maps each Great Britain region of the rows and each
+    band its nation prices, ``(region, band)``, to the exact expected 2024-25
+    Band D of the cell a copy of that region and drawn band is drawn from,
+    and holds no other key: a copy's draw cell is its region's and band's
+    alone. ``band_d`` is the Band D the references were taken at, and
+    ``support_sha256`` the digests of the supports given, by system. Nothing
+    but the digests prints in the repr, and ``band_d`` takes no part in a
+    comparison.
     """
 
     household_ids: tuple[object, ...] = field(repr=False)
     regions: tuple[str, ...] = field(repr=False)
     great_britain: tuple[bool, ...] = field(repr=False)
-    reference_band_d: tuple[Fraction | None, ...] = field(repr=False)
+    reference_band_d: Mapping[tuple[str, str], Fraction] = field(repr=False)
     band_d: UKCouncilTaxBandD = field(repr=False, compare=False)
     support_sha256: Mapping[str, str]
 
     def __post_init__(self) -> None:
-        rows = (
-            self.household_ids,
-            self.regions,
-            self.great_britain,
-            self.reference_band_d,
-        )
+        rows = (self.household_ids, self.regions, self.great_britain)
         held = (
             all(isinstance(values, tuple) for values in rows)
             and len({len(values) for values in rows}) == 1
             and all(type(flag) is bool for flag in self.great_britain)
             and self.great_britain
             == tuple(_levies_council_tax(region) for region in self.regions)
+            and isinstance(self.reference_band_d, Mapping)
+            and set(self.reference_band_d) == _reference_keys(self.regions)
             and all(
-                isinstance(reference, Fraction) if flag else reference is None
-                for reference, flag in zip(
-                    self.reference_band_d, self.great_britain, strict=True
-                )
+                isinstance(reference, Fraction)
+                for reference in self.reference_band_d.values()
             )
         )
         if not held:
             raise ValueError(
-                f"{_WHAT} takes inputs holding one household_id, region, Great "
-                "Britain flag and reference per row, a Fraction reference on "
-                "every row whose region's nation levies council tax and none "
-                "elsewhere; these do not."
+                f"{_WHAT} takes inputs holding one household_id, region and Great "
+                "Britain flag per row, and a Fraction reference for each Great "
+                "Britain region of the rows and each band its nation prices, and "
+                "for no other; these do not."
             )
         if not isinstance(self.band_d, UKCouncilTaxBandD):
             raise TypeError(f"{_WHAT} prices bills at a UKCouncilTaxBandD.")
@@ -302,18 +321,25 @@ def _require_columns(household: pd.DataFrame, columns: Sequence[str]) -> None:
         )
 
 
-def uk_spi_copy_draw_frame(household: pd.DataFrame) -> pd.DataFrame:
-    """The draw inputs of ``household``'s rows at the copy level.
+def uk_spi_copy_draw_frame(
+    household: pd.DataFrame, bands: Sequence[object] | None = None
+) -> pd.DataFrame:
+    """The draw inputs of ``household``'s rows at the copy levels.
 
-    The narrow frame the SPI-copy area stage's draw leaves a copy at L3, one
-    row per household in the table's row order and index: the region as the
-    table holds it, and :data:`~microcosm.build.uk_runtime.atomic_area_conditioning.DECILE_INPUT_COLUMN`
-    and :data:`~microcosm.build.uk_runtime.atomic_area_conditioning.BAND_INPUT_COLUMN`
-    present and missing on every row, each in the graph's string dtype
-    (``StringDtype("python")``). It reads ``region`` alone.
+    The narrow frame the SPI-copy area stage's draw reads for a copy, one row
+    per household in the table's row order and index: the region as the table
+    holds it,
+    :data:`~microcosm.build.uk_runtime.atomic_area_conditioning.DECILE_INPUT_COLUMN`
+    missing on every row, and
+    :data:`~microcosm.build.uk_runtime.atomic_area_conditioning.BAND_INPUT_COLUMN`
+    the row's entry of ``bands`` where that is a band A to I and missing
+    otherwise (every row, without ``bands``), each in the graph's string dtype
+    (``StringDtype("python")``). With its drawn band a copy's level is L2
+    where its region's cell holds the band, else L3. It reads ``region``
+    alone.
 
-    Refused, naming the column: a table without ``region``, and a missing,
-    blank or padded region.
+    Refused, naming the column: a table without ``region``, a missing, blank
+    or padded region, and ``bands`` of another length than the table.
     """
 
     if not isinstance(household, pd.DataFrame):
@@ -330,6 +356,18 @@ def uk_spi_copy_draw_frame(household: pd.DataFrame) -> pd.DataFrame:
         )
     string = pd.StringDtype(storage="python")
     missing = [pd.NA] * len(household)
+    if bands is None:
+        band_inputs = missing
+    else:
+        band_list = list(bands)
+        if len(band_list) != len(household):
+            raise ValueError(
+                f"{_WHAT} reads one band per row it prices; the bands and the "
+                "table differ in length."
+            )
+        band_inputs = [
+            str(band) if band in UK_COUNCIL_TAX_BANDS else pd.NA for band in band_list
+        ]
     return pd.DataFrame(
         {
             REGION_COLUMN: pd.Series(
@@ -338,7 +376,9 @@ def uk_spi_copy_draw_frame(household: pd.DataFrame) -> pd.DataFrame:
             DECILE_INPUT_COLUMN: pd.Series(
                 missing, index=household.index, dtype=string
             ),
-            BAND_INPUT_COLUMN: pd.Series(missing, index=household.index, dtype=string),
+            BAND_INPUT_COLUMN: pd.Series(
+                band_inputs, index=household.index, dtype=string
+            ),
         },
         index=household.index,
     )
@@ -351,7 +391,7 @@ def uk_spi_housing_council_tax_inputs(
     supports: Mapping[str, AtomicSupport],
     band_d: UKCouncilTaxBandD,
 ) -> UKSPIHousingCouncilTaxInputs:
-    """The rows the SPI support channel copied, and each one's reference Band D.
+    """The rows the SPI support channel copied, and the references they read.
 
     ``definition`` is the area draw's (G2,
     :func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_conditioned_assignment_definition`)
@@ -360,13 +400,16 @@ def uk_spi_housing_council_tax_inputs(
     housing shell's rule; they must be exactly the rows the support channel's
     lineage marks as its copies
     (:func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_support_channel_copies`).
-    Their systems come from the definition's region selectors on
-    :func:`uk_spi_copy_draw_frame`, and the Great Britain rows take
+    The shell has not drawn their band yet, and a copy's draw cell is its
+    region's and drawn band's alone, so each Great Britain region of the rows
+    and each band its nation prices take
     :func:`~microcosm.build.uk_runtime.atomic_area_conditioning.uk_draw_cell_expectations`
-    on that frame, over the local authority codes' 2024-25 Band D: the call
-    the council-tax localisation makes for the same rows, so each reference is
-    the region's, by households. The digests are
-    keyed by the supports given, never by the systems the rows fall in.
+    on :func:`uk_spi_copy_draw_frame` of that region and band, over the local
+    authority codes' 2024-25 Band D: the call the council-tax localisation
+    makes for the same rows, so each reference is the cell's, L2's by the
+    band's households where the region holds the band, else L3's by
+    households. The digests are keyed by the supports given, never by the
+    systems the rows fall in.
 
     Refused, naming columns and declared constants only: a ``band_d`` that is
     not a :class:`~microcosm.build.uk_runtime.council_tax_band_d.UKCouncilTaxBandD`;
@@ -420,27 +463,35 @@ def uk_spi_housing_council_tax_inputs(
     great_britain = np.asarray(
         [_levies_council_tax(region) for region in regions], dtype=bool
     )
-    try:
-        reference = uk_draw_cell_expectations(
-            frame,
-            great_britain,
-            spec,
-            supports,
-            value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
-            values=band_d.band_d,
+    cells = sorted(_reference_keys(regions))
+    references: dict[tuple[str, str], Fraction] = {}
+    if cells:
+        cell_frame = uk_spi_copy_draw_frame(
+            pd.DataFrame({REGION_COLUMN: [region for region, _ in cells]}),
+            bands=[band for _, band in cells],
         )
-    except ValueError as error:
-        raise ValueError(
-            f"{_WHAT} takes the expected {UK_BAND_D_FISCAL_YEAR} Band D of each "
-            f"copy's draw cell: {error}"
-        ) from error
+        try:
+            expected = uk_draw_cell_expectations(
+                cell_frame,
+                np.ones(len(cells), dtype=bool),
+                spec,
+                supports,
+                value_column=UK_LOCAL_AUTHORITY_CODE_COLUMN,
+                values=band_d.band_d,
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"{_WHAT} takes the expected {UK_BAND_D_FISCAL_YEAR} Band D of each "
+                f"copy's draw cell: {error}"
+            ) from error
+        references = dict(zip(cells, expected.tolist(), strict=True))
     return UKSPIHousingCouncilTaxInputs(
         household_ids=tuple(
             household[_HOUSEHOLD_ID_COLUMN].to_numpy(dtype=object)[rows].tolist()
         ),
         regions=regions,
         great_britain=tuple(bool(flag) for flag in great_britain.tolist()),
-        reference_band_d=tuple(reference.tolist()),
+        reference_band_d=MappingProxyType(references),
         band_d=band_d,
         support_sha256=MappingProxyType(
             {system: supports[system].sha256 for system in sorted(supports)}
@@ -603,11 +654,19 @@ def uk_spi_council_tax_bills(
     bills = amounts.copy()
     rows = np.flatnonzero(np.asarray(inputs.great_britain, dtype=bool))
     if len(rows):
+        regions = [inputs.regions[row] for row in rows.tolist()]
+        bands = drawn[rows].tolist()
+        # The reference of the cell the row's region and drawn band name; a band
+        # its nation does not price has none, and the statute's band check
+        # refuses it before the reference is read.
         bills[rows] = uk_spi_statutory_council_tax(
-            regions=[inputs.regions[row] for row in rows.tolist()],
-            bands=drawn[rows].tolist(),
+            regions=regions,
+            bands=bands,
             single_adult=single[rows].tolist(),
-            reference_band_d=[inputs.reference_band_d[row] for row in rows.tolist()],
+            reference_band_d=[
+                inputs.reference_band_d.get((region, band))
+                for region, band in zip(regions, bands, strict=True)
+            ],
         )
     return bills
 
@@ -690,7 +749,7 @@ def uk_spi_housing_council_tax_evidence(
     """The block the housing shell's receipt carries under
     :data:`UK_SPI_HOUSING_COUNCIL_TAX_EVIDENCE`.
 
-    The method, the reference, the copy level, the two Band D resources with
+    The method, the reference, the copy levels, the two Band D resources with
     their digests and the Scottish feed's ``source_commit`` (read from the
     feed as
     :meth:`~microcosm.build.uk_runtime.council_tax_band_d.UKCouncilTaxBandD.evidence`
@@ -733,7 +792,7 @@ def uk_spi_housing_council_tax_evidence(
     return {
         "method": UK_SPI_HOUSING_COUNCIL_TAX_METHOD,
         "reference": UK_SPI_HOUSING_COUNCIL_TAX_REFERENCE,
-        "copy_draw_level": UK_SPI_COPY_DRAW_LEVEL,
+        "copy_draw_levels": list(UK_SPI_COPY_DRAW_LEVELS),
         "band_d": {
             "england_wales": {
                 "resource": UK_BAND_D_ENGLAND_WALES_RESOURCE,
