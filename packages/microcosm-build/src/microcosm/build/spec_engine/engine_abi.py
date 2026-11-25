@@ -4,6 +4,12 @@ The bundle owns take-up treatments; the installed rules engine owns the ABI
 facts those treatments consume.  This module joins those authorities only to
 emit and verify ``engine_abi.lock.json``.  The generated lock is the one exact
 runtime/source pin: vintage rows index its version rather than copying it.
+
+Deriving the lock imports policyengine-us, builds two tax-benefit systems and
+indexes policyengine-us's source code. A process that passed the full check can
+hand the build processes it starts a record of what it compared
+(:func:`engine_abi_lock_check_environment`); a child with its parent's record
+compares those values instead of deriving the lock again.
 """
 
 from __future__ import annotations
@@ -11,9 +17,11 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import os
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
@@ -41,6 +49,47 @@ _REMAINING_STAGE_VERSIONED_CONTRACTS = (
 _ACTIVE_TAKE_UP_MANIFEST_PROGRAM_BINDINGS: ContextVar[
     tuple[tuple[str, str, str], ...] | None
 ] = ContextVar("active_take_up_manifest_program_bindings", default=None)
+#: The environment variable through which a process that passed the lock check
+#: hands a record of that check to the build processes it starts.
+ENGINE_ABI_LOCK_CHECK_RECORD_VARIABLE = "MICROCOSM_ENGINE_ABI_LOCK_CHECK_RECORD"
+_LOCK_CHECK_RECORD_SCHEMA_VERSION = 1
+_LOCK_CHECK_RECORD_KEYS = frozenset(
+    {"schema_version", "issuer_pid", "lock_sha256", "engine", "domains_sha256"}
+)
+_SHA256_HEX_DIGITS = frozenset("0123456789abcdef")
+
+
+@dataclass(frozen=True)
+class _LockCheckInputs:
+    """What one passed lock check compared, which a child process must match.
+
+    Besides microcosm's own code, the fresh derivation reads only the installed
+    policyengine-us and the bundle's typed take-up and sources domains.
+    Microcosm's code is not recorded: a record reaches only the issuing
+    process's direct children, which run the same checkout within the same run.
+    A source edit during a base run is the base stage's run-config check to
+    catch (its builder code digest), not this record's.
+    """
+
+    lock_sha256: str
+    engine_version: str
+    domains_sha256: str
+
+    def record(self, *, issuer_pid: int) -> dict[str, object]:
+        return {
+            "schema_version": _LOCK_CHECK_RECORD_SCHEMA_VERSION,
+            "issuer_pid": issuer_pid,
+            "lock_sha256": self.lock_sha256,
+            "engine": {
+                "package": POLICYENGINE_US_PACKAGE,
+                "version": self.engine_version,
+            },
+            "domains_sha256": self.domains_sha256,
+        }
+
+
+#: Lock files this process has checked, by path, with what each check compared.
+_PASSED_LOCK_CHECKS: dict[str, _LockCheckInputs] = {}
 
 
 def active_take_up_manifest_program_bindings() -> (
@@ -417,6 +466,12 @@ def assert_engine_abi_lock_current(
 
     Bundles without typed take-up do not need an ABI lock.  A lock with no
     take-up surface is refused because it has no bundle mapping to attest.
+
+    A process whose parent passed this check for the same lock and handed it a
+    record (:func:`engine_abi_lock_check_environment`) compares the lock file's
+    SHA-256, the installed policyengine-us version and the take-up and sources
+    domains with that record instead of deriving the lock again, and refuses
+    to run when any of them differs.
     """
 
     take_up = domains.get("take_up")
@@ -428,45 +483,82 @@ def assert_engine_abi_lock_current(
             )
         return None
 
+    parent_check = _parent_lock_check()
+    if parent_check is not None:
+        parsed = _lock_matching_parent_check(
+            lock_resource,
+            domains,
+            parent_check,
+            schema_registry=schema_registry,
+        )
+        _PASSED_LOCK_CHECKS[str(lock_resource)] = parent_check
+        return parsed
+
     try:
         expected_payload = engine_abi_lock_payload_from_domains(domains)
     except importlib.metadata.PackageNotFoundError:
+        expected_payload = None
+    if expected_payload is None:
         # The engine distribution is absent, so currency is unattestable in
         # this environment (e.g. the wheels gate's engine-less venv). The
         # committed lock is still validated structurally — present, schema-
         # valid, canonical UTF-8 JSON in canonical byte form — and returned
         # unattested. Every environment that regenerates the lock or builds
         # against engine facts installs the engine and takes the attested
-        # path above, which stays fail-closed on any drift.
-        if not lock_resource.is_file():
-            raise SpecValidationError(
-                "engine_abi.lock.json is required for a bundle with a "
-                "policy-engine ABI"
-            ) from None
-        try:
-            raw = lock_resource.read_bytes()
-        except OSError as error:
-            raise SpecValidationError(
-                f"unable to read generated lock: {error}",
-                source=ENGINE_ABI_LOCK_FILENAME,
-            ) from error
-        try:
-            parsed = json.loads(raw)
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise SpecValidationError(
-                "generated lock is not canonical UTF-8 JSON",
-                source=ENGINE_ABI_LOCK_FILENAME,
-            ) from error
-        schema_registry.validate(parsed, ENGINE_ABI_LOCK_SCHEMA_ID)
+        # path below, which stays fail-closed on any drift.
+        raw, parsed = _read_schema_valid_lock(lock_resource, schema_registry)
         if raw != canonical_json_bytes(parsed) + b"\n":
             raise SpecValidationError(
                 "generated lock is not in canonical byte form",
                 source=ENGINE_ABI_LOCK_FILENAME,
-            ) from None
-        assert isinstance(parsed, Mapping)
+            )
         return parsed
     schema_registry.validate(expected_payload, ENGINE_ABI_LOCK_SCHEMA_ID)
     expected_bytes = canonical_json_bytes(expected_payload) + b"\n"
+    raw, parsed = _read_schema_valid_lock(lock_resource, schema_registry)
+    if raw != expected_bytes:
+        raise SpecValidationError(
+            "generated lock is stale or non-canonical; regenerate it from the "
+            "fresh installed engine ABI",
+            source=ENGINE_ABI_LOCK_FILENAME,
+        )
+    engine = _require_mapping(expected_payload["engine"], location="engine")
+    _PASSED_LOCK_CHECKS[str(lock_resource)] = _LockCheckInputs(
+        lock_sha256=hashlib.sha256(raw).hexdigest(),
+        engine_version=str(engine["version"]),
+        domains_sha256=_lock_check_domains_sha256(domains),
+    )
+    return parsed
+
+
+def engine_abi_lock_check_environment(root: Traversable | Path) -> dict[str, str]:
+    """Environment entries that hand this process's lock check to a child.
+
+    Returns the record of the check this process passed for ``root``'s lock
+    file (fully, or by matching its own parent's record), bound to this
+    process's ID, or nothing when no such check passed here.  A child honours
+    the record only when its parent process issued it, so a record inherited
+    from further up the process tree is ignored and that child runs the full
+    check.
+    """
+
+    lock_resource = root.joinpath(*PurePosixPath(ENGINE_ABI_LOCK_FILENAME).parts)
+    passed = _PASSED_LOCK_CHECKS.get(str(lock_resource))
+    if passed is None:
+        return {}
+    return {
+        ENGINE_ABI_LOCK_CHECK_RECORD_VARIABLE: json.dumps(
+            passed.record(issuer_pid=os.getpid()),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    }
+
+
+def _read_schema_valid_lock(
+    lock_resource: Traversable | Path,
+    schema_registry: SchemaRegistry,
+) -> tuple[bytes, Mapping[str, object]]:
     if not lock_resource.is_file():
         raise SpecValidationError(
             "engine_abi.lock.json is required for a bundle with a policy-engine ABI"
@@ -486,21 +578,142 @@ def assert_engine_abi_lock_current(
             source=ENGINE_ABI_LOCK_FILENAME,
         ) from error
     schema_registry.validate(parsed, ENGINE_ABI_LOCK_SCHEMA_ID)
-    if raw != expected_bytes:
-        raise SpecValidationError(
-            "generated lock is stale or non-canonical; regenerate it from the "
-            "fresh installed engine ABI",
+    assert isinstance(parsed, Mapping)
+    return raw, parsed
+
+
+def _lock_check_domains_sha256(domains: Mapping[str, object]) -> str:
+    """Digest the two bundle domains the fresh lock derivation reads."""
+
+    take_up = _require_mapping(domains.get("take_up"), location="take_up")
+    sources = _require_mapping(domains.get("sources"), location="sources")
+    return hashlib.sha256(
+        canonical_json_bytes({"take_up": take_up, "sources": sources})
+    ).hexdigest()
+
+
+def _is_sha256_hex(value: object) -> bool:
+    return (
+        isinstance(value, str) and len(value) == 64 and set(value) <= _SHA256_HEX_DIGITS
+    )
+
+
+def _parent_lock_check() -> _LockCheckInputs | None:
+    """Read the lock check record this process's parent handed it, if any."""
+
+    raw = os.environ.get(ENGINE_ABI_LOCK_CHECK_RECORD_VARIABLE)
+    if raw is None:
+        return None
+
+    def malformed(reason: str) -> SpecValidationError:
+        return SpecValidationError(
+            f"{ENGINE_ABI_LOCK_CHECK_RECORD_VARIABLE} holds a malformed lock "
+            f"check record: {reason}; refusing to run",
             source=ENGINE_ABI_LOCK_FILENAME,
         )
-    assert isinstance(parsed, Mapping)
+
+    try:
+        record = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise malformed("it is not JSON") from error
+    if not isinstance(record, dict) or set(record) != _LOCK_CHECK_RECORD_KEYS:
+        raise malformed(
+            f"it must be an object with keys {sorted(_LOCK_CHECK_RECORD_KEYS)}"
+        )
+    if record["schema_version"] != _LOCK_CHECK_RECORD_SCHEMA_VERSION:
+        raise malformed(f"schema_version {record['schema_version']!r} is not 1")
+    issuer_pid = record["issuer_pid"]
+    if (
+        isinstance(issuer_pid, bool)
+        or not isinstance(issuer_pid, int)
+        or issuer_pid < 1
+    ):
+        raise malformed("issuer_pid must be a positive process ID")
+    for field in ("lock_sha256", "domains_sha256"):
+        if not _is_sha256_hex(record[field]):
+            raise malformed(f"{field} must be a lowercase SHA-256 hex digest")
+    engine = record["engine"]
+    if (
+        not isinstance(engine, dict)
+        or set(engine) != {"package", "version"}
+        or engine["package"] != POLICYENGINE_US_PACKAGE
+        or not isinstance(engine["version"], str)
+        or not engine["version"]
+    ):
+        raise malformed(
+            f"engine must name package {POLICYENGINE_US_PACKAGE!r} and a version"
+        )
+    if issuer_pid != os.getppid():
+        # Issued further up the process tree, not by this process's parent.
+        return None
+    return _LockCheckInputs(
+        lock_sha256=record["lock_sha256"],
+        engine_version=engine["version"],
+        domains_sha256=record["domains_sha256"],
+    )
+
+
+def _lock_matching_parent_check(
+    lock_resource: Traversable | Path,
+    domains: Mapping[str, object],
+    parent_check: _LockCheckInputs,
+    *,
+    schema_registry: SchemaRegistry,
+) -> Mapping[str, object]:
+    """Return the lock if it and its inputs are those the parent checked."""
+
+    raw, parsed = _read_schema_valid_lock(lock_resource, schema_registry)
+    observed_lock_sha256 = hashlib.sha256(raw).hexdigest()
+    if observed_lock_sha256 != parent_check.lock_sha256:
+        raise SpecValidationError(
+            "engine_abi.lock.json: the lock file differs from the one the parent "
+            f"process checked (SHA-256 {observed_lock_sha256}, parent checked "
+            f"{parent_check.lock_sha256}); refusing to run",
+            source=ENGINE_ABI_LOCK_FILENAME,
+        )
+    try:
+        installed_version: str | None = _installed_engine_version(
+            POLICYENGINE_US_PACKAGE
+        )
+    except importlib.metadata.PackageNotFoundError:
+        installed_version = None
+    if installed_version != parent_check.engine_version:
+        observed = "not installed" if installed_version is None else installed_version
+        raise SpecValidationError(
+            "engine_abi.lock.json: the installed policyengine-us differs from "
+            "the one the parent process checked the lock file against "
+            f"({observed}, parent checked {parent_check.engine_version}); "
+            "refusing to run",
+            source=ENGINE_ABI_LOCK_FILENAME,
+        )
+    observed_domains_sha256 = _lock_check_domains_sha256(domains)
+    if observed_domains_sha256 != parent_check.domains_sha256:
+        raise SpecValidationError(
+            "engine_abi.lock.json: the take-up and sources domains differ from "
+            "those the parent process checked the lock file against (SHA-256 "
+            f"{observed_domains_sha256}, parent checked "
+            f"{parent_check.domains_sha256}); refusing to run",
+            source=ENGINE_ABI_LOCK_FILENAME,
+        )
+    if parsed.get("engine") != {
+        "package": POLICYENGINE_US_PACKAGE,
+        "version": parent_check.engine_version,
+    }:
+        raise SpecValidationError(
+            "engine_abi.lock.json: the lock file does not name the policyengine-us "
+            "version the parent process checked it against; refusing to run",
+            source=ENGINE_ABI_LOCK_FILENAME,
+        )
     return parsed
 
 
 __all__ = [
+    "ENGINE_ABI_LOCK_CHECK_RECORD_VARIABLE",
     "ENGINE_ABI_LOCK_FILENAME",
     "ENGINE_ABI_LOCK_SCHEMA_ID",
     "assert_engine_abi_lock_current",
     "emit_engine_abi_lock",
+    "engine_abi_lock_check_environment",
     "engine_abi_lock_bytes",
     "engine_abi_lock_bytes_from_domains",
     "engine_abi_lock_payload",
