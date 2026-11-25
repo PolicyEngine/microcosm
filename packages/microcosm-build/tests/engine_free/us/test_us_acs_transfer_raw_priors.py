@@ -16,6 +16,19 @@ supplemental donor columns: the passive partnership/S-corp subset, set to zero
 where the row's line 32 is zero (``reconcile_acs_passive_partnership_s_corp``),
 and, on the ACS local lane, ``partnership_income``, kept at zero where the
 row's ACS ``SEMP`` already counts it (``semp_covers_partnership_income``).
+They reach one more on the recipient side: where a row already observes an
+earlier target, the export keeps the observed value (the transfer fills only
+null cells), while the later targets are drawn on the row's raw draw. ASEC
+clone-0 rows hold the source-written
+``self_employed_pension_contributions_desired`` before post-PUF batch 3 and
+lack its later targets, so that batch runs with the pension observed on some
+rows.
+
+No other decode or export rule changes a value ahead of a later target in the
+plans these tests read: boolean raw draws are exactly 0 or 1, which the
+boolean decode keeps; the immigration pair, ``weeks_unemployed``, the
+second-home year and the adult-care expense never precede a later target;
+and no int-typed target does.
 
 The fixture (:mod:`test_support.microcosm_build.qrf_raw_priors`) puts the
 year ahead of ``health_savings_account_ald``, and the components ahead of
@@ -52,7 +65,9 @@ production's declared ACS plan draws them. These tests pin that:
   in the plan's order, each target on the earlier raw draws, and the
   patterns together cover every recipient row. Where the batch draws the
   passive subset, some rows draw a zero line 32 under a nonzero passive
-  draw, which the export zeroes;
+  draw, which the export zeroes. In post-PUF batch 3 the rows that observe
+  the pension are still drawn, some draw a pension other than the observed
+  one, and the export keeps the observed value there;
 - the ACS local lane's run of the declared batch that holds
   ``partnership_income`` draws every later target on the raw partnership
   draws, in memory and banked, while the export zeroes some of them;
@@ -792,6 +807,8 @@ def _active_plan(
         *_args: object, targets: tuple[str, ...], **_kwargs: object
     ) -> NoReturn:
         # The transfer's loop fits the batches of its local ``active`` plan.
+        # This reads production's local variable by name, so renaming it
+        # raises a KeyError here: the check fails loudly rather than passing.
         active = list(inspect.currentframe().f_back.f_locals["active"])
         assert active[0][2] == targets
         widened.append(active)
@@ -868,6 +885,16 @@ _PASSIVE = "passive_partnership_s_corp_income"
 #: Seed and share of the zeros in the supplemental line-32 columns.
 _LINE_32_ZERO_SEED = 20261125
 _LINE_32_ZERO_SHARE = 0.6
+#: A target some recipients already observe ahead of later targets in its
+#: batch. Canonical post-PUF execution requires ASEC rows to hold the
+#: source-written pension before batch 3, while only PUF clones produce the
+#: batch's later targets (``stacked_spine``: the post-PUF producer surfaces,
+#: ``_post_puf_producer_mask`` and the activation check), so ASEC clone-0
+#: rows enter that batch observing the pension and lacking the rest.
+_OBSERVED_PENSION = "self_employed_pension_contributions_desired"
+#: Seed of the observed pension values, and the share of rows left unobserved.
+_OBSERVED_PENSION_SEED = 17233
+_UNOBSERVED_PENSION_SHARE = 0.5
 
 
 def _with_batch_columns(donor: Frame, entity: str, targets: Sequence[str]) -> Frame:
@@ -897,6 +924,21 @@ def _with_batch_columns(donor: Frame, entity: str, targets: Sequence[str]) -> Fr
     return donor.with_columns(entity, **dict(zip(missing, amounts, strict=True)))
 
 
+def _with_observed_pension(recipient: Frame, entity: str) -> tuple[Frame, pd.Series]:
+    """``recipient`` observing the pension on a seeded half of its rows.
+
+    The observed values are positive amounts, and the other rows are null.
+    Returns the recipient and its pension column.
+    """
+
+    rows = len(recipient.table(entity))
+    rng = np.random.default_rng(_OBSERVED_PENSION_SEED)
+    pension = np.round(rng.lognormal(7.0, 1.0, rows), 2)
+    pension[rng.random(rows) < _UNOBSERVED_PENSION_SHARE] = np.nan
+    observing = recipient.with_columns(entity, **{_OBSERVED_PENSION: pension})
+    return observing, observing.table(entity)[_OBSERVED_PENSION]
+
+
 def _patterns(steps: list[ChainStep]) -> dict[tuple, list[ChainStep]]:
     """Each availability pattern's steps, in call order, in one run."""
 
@@ -919,7 +961,10 @@ def _run_whole_batch(
 
     Every availability pattern must draw the batch in the plan's order, each
     target on the earlier raw draws, and the patterns together must draw every
-    recipient row once. ``run`` names the run in failure messages.
+    recipient row once. Each target's provenance must count the recipient
+    cells the transfer filled: every row of a target the recipient lacks, and
+    the null rows of one it observes in part. ``run`` names the run in failure
+    messages.
     """
 
     entity, family, targets = batch
@@ -944,10 +989,19 @@ def _run_whole_batch(
         f"{run}the patterns drew {len(drawn_rows)} rows, not each of the "
         f"{len(rows)} eligible rows once"
     )
+    recipient = frames[0].table(entity)
     assert {
         (record.column, record.imputed_recipient_rows)
         for record in result.imputed_inputs
-    } == {(target, len(rows)) for target in targets}, run
+    } == {
+        (
+            target,
+            int(recipient[target].isna().sum())
+            if target in recipient.columns
+            else len(rows),
+        )
+        for target in targets
+    }, run
     return patterns, result
 
 
@@ -1000,11 +1054,17 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
     # The transfer draws each such batch whole at runtime, under its
     # production name, in memory and banked. The donor gets a supplemental
     # column for each batch target the fixture lacks; the recipient is the
-    # fixture's, which lacks every target and has every required predictor,
-    # so every recipient row is eligible.
+    # fixture's, which has every required predictor and lacks every target
+    # except the pension, observed on some rows where a batch draws it ahead
+    # of later targets. Every recipient row lacks a later target, so every
+    # row is eligible.
     assert runtime_batches
+    observed_runs: list[str] = []
     for number, (entity, batch, targets, shared) in enumerate(sorted(runtime_batches)):
         recipient, donor = acs_raw_prior_fixture()
+        observed: pd.Series | None = None
+        if _OBSERVED_PENSION in targets[:-1]:
+            recipient, observed = _with_observed_pension(recipient, entity)
         frames = (recipient, _with_batch_columns(donor, entity, targets))
         for path, bank in (
             ("in memory", None),
@@ -1023,6 +1083,23 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
             for chain in patterns.values():
                 fixture_order = [step.target for step in chain if step.target in shared]
                 assert fixture_order == list(shared), run
+            if observed is not None:
+                # The rows that observe the pension were drawn with the rest,
+                # and the chain check above fed the later targets their raw
+                # pension draw; the export keeps the observed value there,
+                # and on some rows that value is not the raw draw.
+                pension = result.frame.table(entity)[_OBSERVED_PENSION]
+                raw = _raw_draws(patterns, _OBSERVED_PENSION, pension.index)
+                held = observed.notna()
+                assert held.any() and raw[held].notna().all(), run
+                assert (pension[held] == observed[held]).all(), (
+                    f"{run}the export did not keep the observed pension"
+                )
+                assert (raw[held] != observed[held]).any(), (
+                    f"{run}every observed pension equals its raw draw, so the "
+                    "chain check cannot tell which one reached the later targets"
+                )
+                observed_runs.append(run)
             if _PASSIVE not in targets:
                 continue
             # The export zeroes the passive subset where the row drew a zero
@@ -1039,6 +1116,13 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
                 "subset, so the passive reconciliation never fired"
             )
             assert (exported.loc[cleared, _PASSIVE] == 0.0).all(), run
+
+    # Post-PUF batch 3 draws the pension ahead of later targets, so the
+    # observed case ran, in memory and banked.
+    assert observed_runs, (
+        f"no whole batch draws {_OBSERVED_PENSION!r} ahead of a later target; "
+        "revisit the observed case"
+    )
 
     # The declared ACS plan chains each fixture family whole in one batch.
     declared = plans["declared ACS plan"]
