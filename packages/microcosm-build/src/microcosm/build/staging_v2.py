@@ -810,7 +810,11 @@ class StagingRunBundleWriterV2:
 
     In ``local_and_remote`` mode the run's files go to ``emitter_client``, the
     build's local emitter, which commits them to ``repo_id`` with the build's
-    own Hugging Face credential and reads them back on request. The delivery
+    own Hugging Face credential and reads them back on request. The writer
+    hands them over, forced, at three points only: when the run starts (its
+    construction), when an artifact is added and when the run ends. Stage
+    events and calibration progress in between are written locally and reach
+    the repository with the next of those hand-overs. The delivery
     summary in each document carries the emitter's counts as of that
     document's hand-over: the files it attempted to commit (plus any it did
     not accept) and the files it committed. A document never counts the
@@ -901,7 +905,6 @@ class StagingRunBundleWriterV2:
         self._artifacts: list[dict[str, Any]] = []
         self._events: list[dict[str, Any]] = []
         self._calibration_events: list[dict[str, Any]] = []
-        self._last_upload_at = 0.0
         self._delivery = {
             "contract_version": STAGING_CONTRACT_VERSION,
             "enabled": True,
@@ -922,6 +925,10 @@ class StagingRunBundleWriterV2:
             timestamp=self.started_at,
         )
         self._persist_bundle()
+        # The run's first hand-over is forced, so its folder exists in the
+        # repository from the start even if the build dies before its next
+        # hand-over (an artifact or the end).
+        self._maybe_upload(force=True)
 
     @property
     def repo_run_prefix(self) -> str:
@@ -1006,7 +1013,6 @@ class StagingRunBundleWriterV2:
             event_type="calibration",
         )
         self._persist_bundle()
-        self._maybe_upload()
 
     def add_artifact(
         self,
@@ -1414,13 +1420,11 @@ class StagingRunBundleWriterV2:
             )
 
     def _maybe_upload(self, *, force: bool = False) -> None:
+        # Only forced states are handed over: the run's start, an artifact and
+        # the run's end. Progress in between stays local until then.
         hand_over = self._hand_over
-        if hand_over is None or not hand_over.enabled:
+        if not force or hand_over is None or not hand_over.enabled:
             return
-        now = self._monotonic()
-        if not force and now - self._last_upload_at < self.upload_interval_seconds:
-            return
-        self._last_upload_at = now
         # The documents carry the emitter's counts as of this hand-over.
         hand_over.receipt()
         self._record_delivery()

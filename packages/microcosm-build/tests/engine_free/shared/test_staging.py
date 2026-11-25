@@ -1,5 +1,6 @@
 import inspect
 import json
+import time
 
 import pytest
 
@@ -91,9 +92,8 @@ def test_staging_run_bundle_writer_hands_repo_paths_to_the_emitter(tmp_path) -> 
         "latest_staging.json",
         "runs.json",
     } <= set(emitter.paths(US_STAGING))
-    # Unforced changes wait for the writer's own interval, then go as one
-    # hand-over the emitter commits after its interval.
-    assert all(not item.flush for item in emitter.run_file_requests[:-1])
+    # Every hand-over is forced: the run's start, then this stage.
+    assert all(item.flush for item in emitter.run_file_requests)
 
 
 def test_the_emitter_merges_this_run_into_the_existing_runs_index(tmp_path) -> None:
@@ -134,7 +134,7 @@ def test_the_emitter_merges_this_run_into_the_existing_runs_index(tmp_path) -> N
     assert [run["run_id"] for run in local["runs"]] == ["newer"]
 
 
-def test_hand_over_failures_never_raise_and_disable_after_three(tmp_path, capsys):
+def test_hand_over_failures_never_raise_and_pause_after_three(tmp_path, capsys):
     emitter = FakeEmitterClient(accept_run_files=False)
     telemetry = StagingRunBundleWriter(
         run_id="run-1",
@@ -145,17 +145,19 @@ def test_hand_over_failures_never_raise_and_disable_after_three(tmp_path, capsys
         upload_interval_seconds=0.0,
     )
     # Staging telemetry is best-effort: hand-overs the emitter does not accept
-    # never raise, and after three in a row the run stops handing files over.
-    # The writer's own "created" stage was the first.
+    # never raise, and after three in a row the run stops handing files over
+    # until its final state. The writer's own "created" stage was the first.
     telemetry.stage("one", force_upload=True)
     telemetry.stage("two", force_upload=True)
-    assert telemetry.repo_id is None
+    # The configured destination stays on record; the delivery counts say
+    # what reached it.
+    assert telemetry.repo_id == "org/staging"
     requests = len(emitter.run_file_requests)
     telemetry.stage("three", force_upload=True)
     assert len(emitter.run_file_requests) == requests == 3
     err = capsys.readouterr().err
     assert "staging hand-over failed" in err
-    assert "disabling staging hand-overs" in err
+    assert "pausing staging hand-overs" in err
     # Nothing reached the repo, and the run says so. A configured destination
     # is not evidence of delivery.
     assert telemetry.uploads_succeeded == 0
@@ -276,8 +278,12 @@ def test_uploads_succeeded_is_zero_for_a_local_only_run(tmp_path):
 
 
 def test_us_version_1_bundle_matches_fixed_fixture(tmp_path, monkeypatch):
+    # The run's start hand-over writes the pointer and the index right after
+    # the "created" stage; the final hand-over rewrites both.
     timestamps = iter(
         [
+            "2026-01-01T00:00:01+00:00",
+            "2026-01-01T00:00:01+00:00",
             "2026-01-01T00:00:01+00:00",
             "2026-01-01T00:00:02+00:00",
             "2026-01-01T00:00:03+00:00",
@@ -319,8 +325,8 @@ def test_us_version_1_bundle_matches_fixed_fixture(tmp_path, monkeypatch):
     assert (run_dir / "events.ndjson").read_text().splitlines() == (
         V1_FIXTURE / "events.ndjson"
     ).read_text().splitlines()
-    # An infinite interval hands over only the forced final state.
-    assert len(emitter.run_file_requests) == 1
+    # Only the run's start and its final state are handed over.
+    assert len(emitter.run_file_requests) == 2
     assert (
         emitter.hub_files[(US_STAGING, "latest_staging.json")]
         == (run_dir / "latest_staging.json").read_bytes()
@@ -370,7 +376,7 @@ def test_the_run_start_is_handed_over_once_and_flushed(tmp_path):
 
 def test_only_the_start_result_files_and_end_are_handed_over(tmp_path, monkeypatch):
     """Progress between those points stays local, however long the run takes."""
-    monkeypatch.setattr(staging_module.time, "monotonic", _HourlyClock())
+    monkeypatch.setattr(time, "monotonic", _HourlyClock())
     emitter = FakeEmitterClient()
     telemetry = _remote_writer(tmp_path, emitter)
     after_start = len(emitter.run_file_requests)

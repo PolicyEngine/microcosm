@@ -98,12 +98,14 @@ from microcosm.build.gates import (
     target_profile_coverage_gate,
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.run_outcome import classify_failure
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
 )
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -12960,7 +12962,7 @@ class _BuildProgress:
             if self.staging_bundle is not None:
                 self.staging_bundle.fail(error)
         finally:
-            self.emitter.fail(error)
+            _fail_emitter(self.emitter, error)
 
     def complete(self) -> None:
         if self.staging_bundle is not None:
@@ -12971,6 +12973,20 @@ class _BuildProgress:
 #: The progress coordinator for the build in flight, so the entry point can
 #: report failure without threading another handle back through the call stack.
 _ACTIVE_PROGRESS: _BuildProgress | None = None
+
+
+def _fail_emitter(emitter: LocalTelemetryEmitter, error: BaseException) -> None:
+    """Record the build's failure; a SIGTERM as a termination, as UK builds do."""
+
+    if isinstance(error, BuildTerminatedError):
+        classified = classify_failure(error)
+        emitter.fail(
+            error,
+            failure_class=classified.failure_class or "terminated",
+            error_code=classified.error_code,
+        )
+        return
+    emitter.fail(error)
 
 
 class _WorkCounter:
@@ -15185,7 +15201,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     An uncaught build error previously left the dashboard status at ``running``
     forever. SIGKILL remains outside the reach of an in-process handler; this
-    closes the ordinary exception and termination half of the gap.
+    closes the ordinary exception and termination half of the gap. A SIGTERM
+    raises ``BuildTerminatedError`` (``microcosm.build.termination``), which
+    closes the staging run as failed and records a termination with the
+    emitter, and the program then exits 143.
 
     A build returns ``None``. ``--dry-run-gates-report`` leaves through
     ``SystemExit`` with the report's exit code: 1 on any certain failure, 2 on
@@ -15198,6 +15217,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     build's telemetry has completed its staging run and its emitter, which
     closes on that outcome.
     """
+
+    with raise_on_sigterm():
+        try:
+            _main_with_close_out(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _main_with_close_out(argv: Sequence[str] | None) -> None:
+    """Run :func:`_main` and record how it ended (see :func:`main`)."""
 
     global _ACTIVE_DRY_RUN
     _ACTIVE_DRY_RUN = None
@@ -15227,7 +15256,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     file=sys.stderr,
                 )
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.fail(error)
+            _fail_emitter(_ACTIVE_EMITTER, error)
         raise
     try:
         _finish_national_gate_shadow(

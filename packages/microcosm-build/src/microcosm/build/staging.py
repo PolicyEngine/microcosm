@@ -1,11 +1,17 @@
 """Staging telemetry for long-running Microcosm builds.
 
 Production releases are contract artifacts: they are only published after the
-build completes and validates. Staging telemetry is intentionally weaker and
-more incremental: it lets dashboards monitor a candidate build before it is a
-release by writing small JSON artifacts under ``runs/<run_id>/`` and,
-optionally, handing them to the build's local emitter, which commits them to a
-staging Hugging Face dataset repo with the build's own credential.
+build completes and validates. Staging telemetry is intentionally weaker: it
+records a candidate build before it is a release by writing small JSON
+artifacts under ``runs/<run_id>/`` and, optionally, handing them to the
+build's local emitter, which commits them to a staging Hugging Face dataset
+repo with the build's own credential.
+
+The writer hands the run's files over at three points only: when the run
+starts, when a result file is attached and when the run ends. Stage events
+and calibration progress in between are written locally and reach the repo
+with the next of those hand-overs; the build's hosted telemetry is the live
+record of a running build.
 """
 
 from __future__ import annotations
@@ -14,7 +20,6 @@ import json
 import math
 import shutil
 import sys
-import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -73,9 +78,9 @@ class StagingRunBundleWriter:
         emitter_client: The build's local emitter (the interface's
             ``EmitterClient``), which commits the handed-over files. Without
             one, a configured repository receives nothing.
-        upload_interval_seconds: Minimum interval between best-effort progress
-            hand-overs, and the emitter's interval between its commits of
-            them. Final states are always handed over.
+        upload_interval_seconds: The emitter's interval between its commits
+            of unforced hand-overs. The writer forces every hand-over it
+            makes.
     """
 
     run_id: str
@@ -97,7 +102,6 @@ class StagingRunBundleWriter:
         self.path_prefix = self.path_prefix.strip().strip("/").strip()
         if not self.path_prefix:
             self.path_prefix = DEFAULT_STAGING_PREFIX
-        self._last_upload_at = 0.0
         self._hand_over = (
             RunFileHandOver(
                 self.emitter_client,
@@ -121,7 +125,10 @@ class StagingRunBundleWriter:
             "updated_at": self.started_at,
         }
         self._write_run_manifest()
-        self.stage("created", message="Staging run created.")
+        # The run's first hand-over is forced, so its folder exists in the
+        # repository from the start even if the build dies before its next
+        # hand-over (a result file or the end).
+        self.stage("created", message="Staging run created.", force_upload=True)
 
     @property
     def repo_run_prefix(self) -> str:
@@ -154,12 +161,12 @@ class StagingRunBundleWriter:
         run_index_entry: dict[str, Any] | None = None,
         flush: bool,
     ) -> None:
-        if self._hand_over is None or not self.repo_id:
+        if self._hand_over is None or not self._hand_over.enabled:
             return
         # Best-effort: staging telemetry must never fail (or stall) a build.
         # After three hand-overs in a row the emitter does not accept (no
-        # emitter, or one that does not answer), stop for the rest of the run;
-        # local staging artifacts are still written.
+        # emitter, or one that does not answer), pause until the run's final
+        # state; local staging artifacts are still written.
         result = self._hand_over.hand_over(
             files,
             latest_pointer=latest_pointer,
@@ -171,20 +178,17 @@ class StagingRunBundleWriter:
         warn_hand_over_failure(self._hand_over.repository, result)
         if result.became_paused:
             print(
-                "warning: disabling staging hand-overs for this run after "
-                "three in a row failed; local staging artifacts are still "
-                "written.",
+                "warning: pausing staging hand-overs for this run after three "
+                "in a row failed, until its final state; local staging "
+                "artifacts are still written.",
                 file=sys.stderr,
             )
-            self.repo_id = None
 
     def _maybe_upload(self, *, force: bool = False) -> None:
-        if not self.repo_id:
+        # Only forced states are handed over: the run's start, a result file
+        # and the run's end. Progress in between stays local until then.
+        if not force or self._hand_over is None or not self._hand_over.enabled:
             return
-        now = time.monotonic()
-        if not force and now - self._last_upload_at < self.upload_interval_seconds:
-            return
-        self._last_upload_at = now
         files = [
             (filename, self.run_dir / filename)
             for filename in (
@@ -339,7 +343,6 @@ class StagingRunBundleWriter:
         )
         self._write_progress()
         self._write_calibration_progress()
-        self._maybe_upload()
 
     def attach_artifact(
         self,
@@ -362,7 +365,17 @@ class StagingRunBundleWriter:
             self._hand_over_files([(source.name, local)], flush=force_upload)
         self._maybe_upload(force=force_upload)
 
+    def _reopen_for_final_state(self) -> None:
+        """Hand the final state over even after failures paused hand-overs.
+
+        A run whose remote copy stays ``running`` forever is the gap the v20
+        national run met; the emitter retries its commits itself.
+        """
+        if self._hand_over is not None:
+            self._hand_over.reopen()
+
     def fail(self, error: BaseException) -> None:
+        self._reopen_for_final_state()
         self.stage(
             "failed",
             status="failed",
@@ -373,6 +386,7 @@ class StagingRunBundleWriter:
         )
 
     def complete(self) -> None:
+        self._reopen_for_final_state()
         self.stage(
             "complete",
             status="passed",

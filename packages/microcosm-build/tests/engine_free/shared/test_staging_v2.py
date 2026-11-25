@@ -403,9 +403,10 @@ def test_remote_failures_are_best_effort_and_preserve_repository(tmp_path, capsy
 
     delivery = telemetry.delivery_summary
     assert delivery["configured_repository"] == UK_STAGING
-    # The three files the emitter did not accept count as attempts.
+    # The run start's three files and this stage's three, none of which the
+    # emitter accepted, count as attempts.
     assert len(emitter.run_file_requests[-1].files) == 3
-    assert delivery["upload_attempts"] == 3
+    assert delivery["upload_attempts"] == 6
     assert delivery["upload_successes"] == 0
     assert delivery["last_error_code"] == "UPLOAD_FAILED"
     assert telemetry.validate_local_bundle()["progress"]["status"] == "running"
@@ -549,8 +550,7 @@ def test_remote_delivery_matches_local_delivery_after_completion(tmp_path):
     # The documents carry the emitter's counts after the hand-over that
     # delivered them; this emitter commits at once.
     expected = telemetry.delivery_summary
-    assert expected["upload_attempts"] == len(telemetry._upload_paths())
-    assert expected["upload_successes"] == expected["upload_attempts"]
+    assert expected["upload_successes"] == expected["upload_attempts"] > 0
     remote = _remote_files(emitter)
     for filename in ("run_manifest.json", "progress.json"):
         document = json.loads(remote[f"runs/uk-smoke-5-42/{filename}"])
