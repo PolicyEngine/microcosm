@@ -96,6 +96,11 @@ from microcosm.calibrate.diagnostics import (  # noqa: E402 - after the compat g
     target_surface_payload,
     write_calibration_diagnostics,
 )
+from microcosm.calibrate.dropped_matrix import (  # noqa: E402 - after compat gate
+    ConstraintMatrixDroppedError,
+    DroppedConstraintMatrix,
+    without_constraint_matrix,
+)
 from microcosm.calibrate.exact_k import (  # noqa: E402 - after the compat gate
     assert_exact_k_support,
     exact_k_design_feasibility,
@@ -206,6 +211,8 @@ __all__ = [
     "TARGET_LOSS_ATTRIBUTION_WARNING_CODES",
     "TARGET_LOSS_BASIS_HASH_ALGORITHM",
     "CalibrationProblem",
+    "ConstraintMatrixDroppedError",
+    "DroppedConstraintMatrix",
     "CalibrationHierarchy",
     "CalibrationHierarchySeed",
     "CalibrationResult",
@@ -235,6 +242,7 @@ __all__ = [
     "effective_sample_size",
     "rebuild_calibration_result",
     "refit_l0_selection",
+    "without_constraint_matrix",
     "diagnostics_payload",
     "past_cap_census",
     "relative_error_loss",

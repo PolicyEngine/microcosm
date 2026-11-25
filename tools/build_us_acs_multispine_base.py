@@ -8,10 +8,26 @@ builder, while this historical command and its helper imports keep working.
 
 from __future__ import annotations
 
-import importlib.util
 import sys
-import warnings
 from pathlib import Path
+
+if __name__ == "__main__":
+    # The one thread setting, MICROCOSM_THREADS, fills the OpenMP, BLAS,
+    # numexpr and joblib thread variables, and the libraries read those when
+    # they load. The imports below load numpy before the implementation file
+    # does, so this comes first. Without the setting nothing is set. This runs
+    # only for the command: tests and other tools import this file. The helper
+    # is loaded from this file's folder, which is not on the import path under
+    # ``python -m`` or ``python -P``. E402 is ignored for this file in
+    # pyproject for this block.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from us_build_thread_environment import set_build_thread_environment
+
+    del sys.path[0]
+    set_build_thread_environment()
+
+import importlib.util
+import warnings
 from types import ModuleType
 
 from microcosm.build.us_runtime.h5_io import (

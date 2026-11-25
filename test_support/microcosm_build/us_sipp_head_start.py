@@ -14,6 +14,9 @@ import pytest
 
 import microcosm.build.us_runtime.sipp_head_start as module
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    read_sipp_december_person_rows,
+)
 from microcosm.build.us_runtime.sipp_head_start import (
     HEAD_START_SIPP_DICTIONARY_URL,
     SIPP_2023_HEAD_START_DONOR_REVISION,
@@ -28,8 +31,8 @@ from microcosm.build.us_runtime.sipp_head_start import (
     US_SIPP_HEAD_START_OUTPUT_COLUMNS,
     US_SIPP_HEAD_START_REQUIRED_SOURCE_COLUMNS,
     US_SIPP_HEAD_START_STAGE_NAME,
+    build_sipp_2023_head_start_donor,
     impute_us_sipp_head_start,
-    load_sipp_2023_head_start_donor,
     us_sipp_head_start_signal_gate,
     us_sipp_head_start_summary,
     with_us_sipp_head_start_input,
@@ -49,6 +52,16 @@ def _load_tail_fixtures():
 
 
 _TAIL = _load_tail_fixtures()
+
+
+def _head_start_donor_from_file(path: Path, **read_options) -> pd.DataFrame:
+    return build_sipp_2023_head_start_donor(
+        read_sipp_december_person_rows(
+            path,
+            columns=SIPP_HEAD_START_SOURCE_COLUMNS,
+            **read_options,
+        )
+    )
 
 
 def _source_row(

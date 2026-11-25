@@ -1,0 +1,3575 @@
+{
+  "diff": {
+    "added": [
+      {
+        "column": "family_spine",
+        "dtype": "str",
+        "table": "family"
+      },
+      {
+        "column": "ADJHSG",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "FS",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "GRNTP",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "NP",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "PUMA",
+        "dtype": "str",
+        "table": "household"
+      },
+      {
+        "column": "RNTP",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "SERIALNO",
+        "dtype": "str",
+        "table": "household"
+      },
+      {
+        "column": "ST",
+        "dtype": "str",
+        "table": "household"
+      },
+      {
+        "column": "TAXAMT",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "TEN",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "TYPEHUGQ",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "VEH",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "acs_annual_property_tax",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "acs_monthly_contract_rent",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "acs_monthly_gross_rent",
+        "dtype": "float64",
+        "table": "household"
+      },
+      {
+        "column": "county_fips_2023",
+        "dtype": "str",
+        "table": "household"
+      },
+      {
+        "column": "household_spine",
+        "dtype": "str",
+        "table": "household"
+      },
+      {
+        "column": "puma",
+        "dtype": "str",
+        "table": "household"
+      },
+      {
+        "column": "puma_geoid",
+        "dtype": "str",
+        "table": "household"
+      },
+      {
+        "column": "marital_unit_spine",
+        "dtype": "str",
+        "table": "marital_unit"
+      },
+      {
+        "column": "ACS_MIL",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "ADJINC",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "AGEP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "CIT",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "COW",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "DDRS",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "DEAR",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "DEYE",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "DOUT",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "DPHY",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "DREM",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "ESR",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "FWKHP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "HINS3",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "HINS4",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "HINS5",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "HINS6",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "HINS7",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "INDP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "INTP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "MAR",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "OCCP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "OIP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "PAP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "POBP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "PWGTP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "RELSHIPP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "RETP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "SCHG",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "SEMP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "SEX",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "SPORDER",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "SSIP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "SSP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "WAGP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "WKHP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "WKL",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "WKWN",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "YOEP",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "acs_interest_dividend_rental_income",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "acs_retirement_income",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "acs_social_security_income",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "detailed_industry_recode",
+        "dtype": "int16",
+        "table": "person"
+      },
+      {
+        "column": "is_spm_independent_minor_role",
+        "dtype": "bool",
+        "table": "person"
+      },
+      {
+        "column": "major_industry_recode",
+        "dtype": "int16",
+        "table": "person"
+      },
+      {
+        "column": "parent_1_id",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "parent_2_id",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "passive_partnership_s_corp_income",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "person_spine",
+        "dtype": "str",
+        "table": "person"
+      },
+      {
+        "column": "receives_wic",
+        "dtype": "bool",
+        "table": "person"
+      },
+      {
+        "column": "ssi_reported",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "strike_benefits",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "worked_last_year",
+        "dtype": "bool",
+        "table": "person"
+      },
+      {
+        "column": "years_since_us_entry",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "receives_snap",
+        "dtype": "bool",
+        "table": "spm_unit"
+      },
+      {
+        "column": "receives_tanf",
+        "dtype": "bool",
+        "table": "spm_unit"
+      },
+      {
+        "column": "spm_unit_spine",
+        "dtype": "str",
+        "table": "spm_unit"
+      },
+      {
+        "column": "tax_unit_spine",
+        "dtype": "str",
+        "table": "tax_unit"
+      }
+    ],
+    "declared_renames_not_applied": [],
+    "dtype_changed": [
+      {
+        "column": "H_TENURE",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "household"
+      },
+      {
+        "column": "household_vehicles_owned",
+        "dtype_after": "int64",
+        "dtype_before": "int32",
+        "table": "household"
+      },
+      {
+        "column": "household_vehicles_value",
+        "dtype_after": "float64",
+        "dtype_before": "float32",
+        "table": "household"
+      },
+      {
+        "column": "ACTC_CRD",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "AGI",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "ANN_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "A_FNLWGT",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "A_HRS1",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "A_HSCOL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "A_MJOCC",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "A_SEX",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "CAID",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "CAP_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "CHAMPVA",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "CHSP_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "CSP_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "CTC_CRD",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DIS_SC1",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DIS_SC2",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DIS_VAL1",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DIS_VAL2",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DIV_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DST_SC1",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DST_SC1_YNG",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DST_SC2",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DST_SC2_YNG",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DST_VAL1",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DST_VAL1_YNG",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DST_VAL2",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "DST_VAL2_YNG",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "EIT_CRED",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "FEDTAX_AC",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "FEDTAX_BC",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "FRSE_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "HRSWK",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "IHSFLG",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "INT_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "I_ERNVAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "I_SEVAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "MARG_TAX",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "MCARE",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "MIL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "MOOP",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "NOW_GRP",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "NOW_MRK",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "OI_OFF",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "OI_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PAW_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEAFEVER",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEDISDRS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEDISEAR",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEDISEYE",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEDISOUT",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEDISPHY",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEDISREM",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEINUSYR",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEIO1COW",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEIOOCC",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEMCPREM",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PENATVTY",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEN_SC1",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PEN_SC2",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PF_SEQ",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PHIP_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PMED_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PNSN_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "POCCU2",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "POTC_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PRCITSHP",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PRDTHSP",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "PRDTRACE",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "P_SEQ",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "RESNSS1",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "RESNSS2",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "RESNSSI1",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "RESNSSI2",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "RETCB_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "RNT_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SEMP_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_ACTC",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_BBSUBVAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_CAPHOUSESUB",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_CAPWKCCXPNS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_CHILDCAREXPNS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_CHILDSUPPD",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_EITC",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_ENGVAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_FAMTYPE",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_FEDTAX",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_FEDTAXBC",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_FICA",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_HAGE",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_HHISP",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_HMARITALSTATUS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_HRACE",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_ID",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_MEDXPNS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_NUMADULTS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_NUMKIDS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_NUMPER",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_POOR",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_POVTHRESHOLD",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_RESOURCES",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_SCHLUNCH",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_SNAPSUB",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_STTAX",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_TENMORTSTATUS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_TOTVAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_WCOHABIT",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_WEIGHT",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_WFOSTER22",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_WICVAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_WKXPNS",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_WNEWHEAD",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_WNEWPARENT",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SPM_WUI_LT15",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SSI_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SSI_YN",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SS_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "SS_YN",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "STATETAX_A",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "STATETAX_B",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "TAX_ID",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "TAX_INC",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "UC_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "VET_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "WC_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "WICYN",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "WKSWORK",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "WSAL_VAL",
+        "dtype_after": "float64",
+        "dtype_before": "int64",
+        "table": "person"
+      },
+      {
+        "column": "cps_race",
+        "dtype_after": "int64",
+        "dtype_before": "int16",
+        "table": "person"
+      },
+      {
+        "column": "fsla_overtime_premium",
+        "dtype_after": "float64",
+        "dtype_before": "float32",
+        "table": "person"
+      },
+      {
+        "column": "treasury_tipped_occupation_code",
+        "dtype_after": "int64",
+        "dtype_before": "int16",
+        "table": "person"
+      },
+      {
+        "column": "second_home_mortgage_origination_year",
+        "dtype_after": "int64",
+        "dtype_before": "float64",
+        "table": "tax_unit"
+      }
+    ],
+    "prior": {
+      "files": [
+        {
+          "name": "prior_sample_columns.csv",
+          "sha256": "759e72a029a4fe0723d6009da574d79636b3172468bf5cf1d9e24def3f6ed159"
+        }
+      ],
+      "label": "the sample column list sent with the County Files agreement"
+    },
+    "removed": [
+      {
+        "column": "has_marketplace_health_coverage",
+        "dtype": "bool",
+        "table": "person"
+      },
+      {
+        "column": "medicare_part_b_premiums",
+        "dtype": "float64",
+        "table": "person"
+      },
+      {
+        "column": "weeks_worked",
+        "dtype": "float64",
+        "table": "person"
+      }
+    ],
+    "renamed": [
+      {
+        "dtype_after": "bool",
+        "dtype_before": "bool",
+        "from": "would_claim_wic",
+        "reason": "policyengine-us names the WIC take-up input takes_up_wic_if_eligible; it defines no would_claim_wic.",
+        "table": "person",
+        "to": "takes_up_wic_if_eligible"
+      }
+    ],
+    "tables_added": [],
+    "tables_removed": []
+  },
+  "files": [
+    {
+      "format": "hdf5",
+      "name": "populace_us_2024_acs_local.h5",
+      "other_keys": [
+        {
+          "key": "_populace_staging_metadata",
+          "pandas_type": "series_table",
+          "rows": 1,
+          "value": "{\"artifact_kind\": \"calibrated_local_area_artifact\", \"entity_hdf_format\": \"fixed_nullable\", \"household_weight_kind\": \"calibrated\"}"
+        },
+        {
+          "key": "_time_period",
+          "pandas_type": "series_table",
+          "rows": 1,
+          "value": 2024
+        }
+      ],
+      "root_attributes": {},
+      "sha256": "82314a3b5a6a95762faf6eb4f5b499ce56608ad6a39a27b75e11c75b4945bd3c",
+      "size_bytes": 10637811669,
+      "tables": [
+        {
+          "columns": [
+            {
+              "dtype": "str",
+              "name": "PERIDNUM",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "int64",
+              "name": "PH_SEQ",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "P_SEQ",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "int64",
+              "name": "A_LINENO",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "PF_SEQ",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEAFEVER",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PENATVTY",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEINUSYR",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "int64",
+              "name": "PEPAR1",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "PEPAR2",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "PRDTHSP",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PRDTRACE",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PRCITSHP",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PECOHAB",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "PEIO1COW",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEDISEAR",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEDISEYE",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEDISREM",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEDISPHY",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEDISDRS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEDISOUT",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "int64",
+              "name": "A_AGE",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "A_SEX",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "A_ENRLW",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "A_MJOCC",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "A_HSCOL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "A_FTPT",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "A_FNLWGT",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "A_FAMREL",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "A_FAMTYP",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "int64",
+              "name": "A_SPOUSE",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "A_MARITL",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "A_HRS1",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "int64",
+              "name": "A_EXPRRP",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "ACTC_CRD",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "AGI",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "ANN_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "CAID",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "CAP_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "CHAMPVA",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "CHSP_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "CSP_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "CTC_CRD",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DIS_SC1",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DIS_SC2",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DIS_VAL1",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DIS_VAL2",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DIV_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DST_SC1",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DST_SC2",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DST_SC1_YNG",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DST_SC2_YNG",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DST_VAL1",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DST_VAL2",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DST_VAL1_YNG",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "DST_VAL2_YNG",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "EIT_CRED",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "FEDTAX_AC",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "FEDTAX_BC",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "FRSE_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "HRSWK",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "IHSFLG",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "INT_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "I_ERNVAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "I_SEVAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "LKWEEKS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "MARG_TAX",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "MCARE",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "MIL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "MOOP",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_CAID",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_CHAMPVA",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_COV",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_DIR",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_GRP",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_IHSFLG",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_MCAID",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_MCARE",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_MIL",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_MRK",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_MRKS",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_MRKUN",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_NONM",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_OTHMT",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_PCHIP",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_PRIV",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_PUB",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "NOW_VACARE",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "OI_OFF",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "OI_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PAW_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEMCPREM",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEN_SC1",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEN_SC2",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PHIP_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PMED_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PNSN_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "POCCU2",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "POTC_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PTOTVAL",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "float64",
+              "name": "RESNSS1",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "RESNSS2",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "RESNSSI1",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "RESNSSI2",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "RETCB_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "RNT_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SEMP_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_ACTC",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_BBSUBVAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_CAPHOUSESUB",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_CAPWKCCXPNS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_CHILDCAREXPNS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_CHILDSUPPD",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_EITC",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_ENGVAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_EQUIVSCALE",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_FAMTYPE",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_FEDTAX",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_FEDTAXBC",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_FICA",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_GEOADJ",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_HAGE",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_HHISP",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_HMARITALSTATUS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_HRACE",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_ID",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_MEDXPNS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_NUMADULTS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_NUMKIDS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_NUMPER",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_POOR",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_POVTHRESHOLD",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_RESOURCES",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_SCHLUNCH",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_SNAPSUB",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_STTAX",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_TENMORTSTATUS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_TOTVAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_WCOHABIT",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_WEIGHT",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_WFOSTER22",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_WICVAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_WKXPNS",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_WNEWHEAD",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_WNEWPARENT",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SPM_WUI_LT15",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SSI_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SSI_YN",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SS_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "SS_YN",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "STATETAX_A",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "STATETAX_B",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "TAX_INC",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "UC_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "VET_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "WC_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "WICYN",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "WKSWORK",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "WSAL_VAL",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "TAX_ID",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "PEIOOCC",
+              "null_count": 3420942
+            },
+            {
+              "dtype": "float64",
+              "name": "CENSUS_TAX_ID",
+              "null_count": 3530060
+            },
+            {
+              "dtype": "int64",
+              "name": "source_year",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "source_household_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "source_person_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "source_row_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "person_tax_unit_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "tax_unit_role_input",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_related_to_head_or_spouse",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "person_spm_unit_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "person_family_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "person_marital_unit_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "person_household_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "person_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "age",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_female",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "employment_income_before_lsr",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "self_employment_income_before_lsr",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "taxable_interest_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "qualified_dividend_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "non_qualified_dividend_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "long_term_capital_gains_before_response",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "short_term_capital_gains",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "social_security_retirement",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "social_security_disability",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "social_security_survivors",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "social_security_dependents",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "taxable_private_pension_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "tax_exempt_private_pension_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "taxable_ira_distributions",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "alimony_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "miscellaneous_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "rental_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "farm_operations_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "unemployment_compensation",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "health_insurance_premiums_without_medicare_part_b",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "other_medical_expenses",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "over_the_counter_health_expenses",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_marketplace_health_coverage_at_interview",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_medicaid_health_coverage_at_interview",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_esi",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_champva_health_coverage_at_interview",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_tricare_health_coverage_at_interview",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_va_health_coverage_at_interview",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_other_means_tested_health_coverage_at_interview",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_indian_health_service_coverage_at_interview",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "self_employment_income_last_year",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "previous_year_income_available",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_household_head",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_separated",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_surviving_spouse",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_medicare_if_eligible",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "pre_subsidy_rent",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_disabled",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_blind",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_full_time_college_student",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "own_children_in_household",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "veterans_benefits",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_pregnant",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "child_support_received",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "child_support_expense",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "disability_benefits",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "workers_compensation",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "weeks_unemployed",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "traditional_401k_contributions_desired",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "roth_401k_contributions_desired",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "traditional_ira_contributions_desired",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "roth_ira_contributions_desired",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "self_employed_pension_contributions_desired",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "taxable_401k_distributions",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "taxable_403b_distributions",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "tax_exempt_ira_distributions",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "keogh_distributions",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "taxable_sep_distributions",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "ssn_card_type",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "immigration_status_str",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "person_source_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "person_support_channel",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "person_support_clone_index",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "tax_exempt_interest_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "long_term_capital_gains_on_collectibles",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "non_sch_d_capital_gains",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "alimony_expense",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "salt_refund_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "charitable_cash_donations",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "charitable_non_cash_donations",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "real_estate_taxes",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "home_mortgage_interest",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "investment_interest_expense",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "investment_income_elected_form_4952",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "student_loan_interest",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "educator_expense",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "qualified_tuition_expenses",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "casualty_loss",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "unreimbursed_business_employee_expenses",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "estate_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "farm_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "farm_rent_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "partnership_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "s_corp_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "partnership_self_employment_net_earnings",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "estate_income_would_be_qualified",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "farm_operations_income_would_be_qualified",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "farm_rent_income_would_be_qualified",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "partnership_s_corp_income_would_be_qualified",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "rental_income_would_be_qualified",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "self_employment_income_would_be_qualified",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "sstb_self_employment_income_would_be_qualified",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "business_is_sstb",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "qualified_bdc_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "qualified_reit_and_ptp_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "sstb_self_employment_income_before_lsr",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "sstb_unadjusted_basis_qualified_property",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "sstb_w2_wages_from_qualified_business",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "unadjusted_basis_qualified_property",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "w2_wages_from_qualified_business",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "schedule_d_capital_gain_distributions",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_incapable_of_self_care",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "pre_subsidy_care_expenses",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "educational_assistance",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_pursuing_credential_for_american_opportunity_credit",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "attends_eligible_educational_institution_for_american_opportunity_credit",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_american_opportunity_credit_1098_t_or_exception",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_american_opportunity_credit_institution_ein",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "weekly_hours_worked_before_lsr",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "hours_worked_last_week",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_snap_abawd_discretionary_exempt",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "bank_account_assets",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "stock_assets",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "bond_assets",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "meets_ssi_disability_criteria",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_head_start_if_eligible",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_ssi_if_eligible",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "tip_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "treasury_tipped_occupation_code",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "cps_race",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_hispanic",
+              "null_count": 0
+            },
+            {
+              "dtype": "int16",
+              "name": "detailed_occupation_recode",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "has_never_worked",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_military",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_computer_scientist",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_farmer_fisher",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_executive_administrative_professional",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "hourly_wage",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_paid_hourly",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_union_member_or_covered",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "fsla_overtime_premium",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_medicaid_if_eligible",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "other_health_insurance_premiums",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "health_insurance_premiums",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_self_employed",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "is_spm_independent_minor_role",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "receives_wic",
+              "null_count": 0
+            },
+            {
+              "dtype": "int16",
+              "name": "detailed_industry_recode",
+              "null_count": 0
+            },
+            {
+              "dtype": "int16",
+              "name": "major_industry_recode",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "worked_last_year",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "strike_benefits",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "passive_partnership_s_corp_income",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "person_spine",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "SPORDER",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "ADJINC",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "PWGTP",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "AGEP",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "CIT",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "COW",
+              "null_count": 1542526
+            },
+            {
+              "dtype": "float64",
+              "name": "DDRS",
+              "null_count": 317477
+            },
+            {
+              "dtype": "float64",
+              "name": "DEAR",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "DEYE",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "DOUT",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "DPHY",
+              "null_count": 317477
+            },
+            {
+              "dtype": "float64",
+              "name": "DREM",
+              "null_count": 317477
+            },
+            {
+              "dtype": "float64",
+              "name": "HINS3",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "HINS4",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "HINS5",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "HINS6",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "HINS7",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "INTP",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "MAR",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "ACS_MIL",
+              "null_count": 755441
+            },
+            {
+              "dtype": "float64",
+              "name": "OIP",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "PAP",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "RELSHIPP",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "RETP",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "SCHG",
+              "null_count": 2850008
+            },
+            {
+              "dtype": "float64",
+              "name": "SEMP",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "SEX",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "SSIP",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "SSP",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "WAGP",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "WKHP",
+              "null_count": 1820131
+            },
+            {
+              "dtype": "float64",
+              "name": "WKL",
+              "null_count": 714273
+            },
+            {
+              "dtype": "float64",
+              "name": "WKWN",
+              "null_count": 1820131
+            },
+            {
+              "dtype": "float64",
+              "name": "YOEP",
+              "null_count": 3104761
+            },
+            {
+              "dtype": "float64",
+              "name": "ESR",
+              "null_count": 714273
+            },
+            {
+              "dtype": "float64",
+              "name": "INDP",
+              "null_count": 1542526
+            },
+            {
+              "dtype": "float64",
+              "name": "OCCP",
+              "null_count": 1542526
+            },
+            {
+              "dtype": "float64",
+              "name": "POBP",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "FWKHP",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "ssi_reported",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "acs_social_security_income",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "acs_retirement_income",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "acs_interest_dividend_rental_income",
+              "null_count": 674473
+            },
+            {
+              "dtype": "float64",
+              "name": "parent_1_id",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "parent_2_id",
+              "null_count": 166321
+            },
+            {
+              "dtype": "float64",
+              "name": "years_since_us_entry",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_wic_if_eligible",
+              "null_count": 0
+            }
+          ],
+          "name": "person",
+          "rows": 3587263,
+          "storage": "fixed"
+        },
+        {
+          "columns": [
+            {
+              "dtype": "int64",
+              "name": "household_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "state_fips",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "H_TENURE",
+              "null_count": 1529668
+            },
+            {
+              "dtype": "str",
+              "name": "tenure_type",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "household_source_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "household_support_channel",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "household_support_clone_index",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "congressional_district_geoid",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "block_geoid",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "tract_geoid",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "county_fips",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "place_fips",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "sldu",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "sldl",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "cbsa_code",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "net_worth",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "auto_loan_balance",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "auto_loan_interest",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "qualified_passenger_vehicle_loan_interest",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "household_vehicles_owned",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "household_vehicles_value",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "household_spine",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "SERIALNO",
+              "null_count": 57240
+            },
+            {
+              "dtype": "str",
+              "name": "ST",
+              "null_count": 57240
+            },
+            {
+              "dtype": "str",
+              "name": "PUMA",
+              "null_count": 57240
+            },
+            {
+              "dtype": "str",
+              "name": "puma_geoid",
+              "null_count": 57240
+            },
+            {
+              "dtype": "str",
+              "name": "puma",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "NP",
+              "null_count": 57240
+            },
+            {
+              "dtype": "float64",
+              "name": "ADJHSG",
+              "null_count": 57240
+            },
+            {
+              "dtype": "float64",
+              "name": "TEN",
+              "null_count": 238500
+            },
+            {
+              "dtype": "float64",
+              "name": "RNTP",
+              "null_count": 1250798
+            },
+            {
+              "dtype": "float64",
+              "name": "GRNTP",
+              "null_count": 1250798
+            },
+            {
+              "dtype": "float64",
+              "name": "TAXAMT",
+              "null_count": 598224
+            },
+            {
+              "dtype": "float64",
+              "name": "TYPEHUGQ",
+              "null_count": 57240
+            },
+            {
+              "dtype": "float64",
+              "name": "FS",
+              "null_count": 57240
+            },
+            {
+              "dtype": "float64",
+              "name": "VEH",
+              "null_count": 238500
+            },
+            {
+              "dtype": "float64",
+              "name": "acs_monthly_contract_rent",
+              "null_count": 1250798
+            },
+            {
+              "dtype": "float64",
+              "name": "acs_monthly_gross_rent",
+              "null_count": 1250798
+            },
+            {
+              "dtype": "float64",
+              "name": "acs_annual_property_tax",
+              "null_count": 598224
+            },
+            {
+              "dtype": "str",
+              "name": "county_fips_2023",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "household_weight",
+              "null_count": 0
+            }
+          ],
+          "name": "household",
+          "rows": 1586908,
+          "storage": "fixed"
+        },
+        {
+          "columns": [
+            {
+              "dtype": "int64",
+              "name": "tax_unit_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "filing_status_input",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "tax_unit_source_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "tax_unit_support_channel",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "tax_unit_support_clone_index",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "domestic_production_ald",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "unrecaptured_section_1250_gain",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "first_home_mortgage_balance",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "second_home_mortgage_balance",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "first_home_mortgage_interest",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "second_home_mortgage_interest",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "first_home_mortgage_origination_year",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "second_home_mortgage_origination_year",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "health_savings_account_ald",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_eitc",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "would_file_taxes_voluntarily",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_aca_if_eligible",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "selected_marketplace_plan_benchmark_ratio",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "tax_unit_spine",
+              "null_count": 0
+            }
+          ],
+          "name": "tax_unit",
+          "rows": 2175528,
+          "storage": "fixed"
+        },
+        {
+          "columns": [
+            {
+              "dtype": "int64",
+              "name": "spm_unit_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "spm_unit_pre_subsidy_childcare_expenses",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "receives_housing_assistance",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_housing_assistance_if_eligible",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "spm_unit_tenure_type",
+              "null_count": 0
+            },
+            {
+              "dtype": "float64",
+              "name": "spm_unit_energy_subsidy",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "spm_unit_source_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "spm_unit_support_channel",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "spm_unit_support_clone_index",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_tanf_if_eligible",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "takes_up_snap_if_eligible",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "receives_snap",
+              "null_count": 0
+            },
+            {
+              "dtype": "bool",
+              "name": "receives_tanf",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "spm_unit_spine",
+              "null_count": 0
+            }
+          ],
+          "name": "spm_unit",
+          "rows": 1589568,
+          "storage": "fixed"
+        },
+        {
+          "columns": [
+            {
+              "dtype": "int64",
+              "name": "family_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "family_source_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "family_support_channel",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "family_support_clone_index",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "family_spine",
+              "null_count": 0
+            }
+          ],
+          "name": "family",
+          "rows": 1594874,
+          "storage": "fixed"
+        },
+        {
+          "columns": [
+            {
+              "dtype": "int64",
+              "name": "marital_unit_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "marital_unit_source_id",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "marital_unit_support_channel",
+              "null_count": 0
+            },
+            {
+              "dtype": "int64",
+              "name": "marital_unit_support_clone_index",
+              "null_count": 0
+            },
+            {
+              "dtype": "str",
+              "name": "marital_unit_spine",
+              "null_count": 0
+            }
+          ],
+          "name": "marital_unit",
+          "rows": 2867105,
+          "storage": "fixed"
+        }
+      ]
+    }
+  ],
+  "kind": "microcosm_us_release_schema_manifest",
+  "schema_version": 1
+}

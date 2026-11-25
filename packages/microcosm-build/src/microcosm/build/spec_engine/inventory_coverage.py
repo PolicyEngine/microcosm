@@ -352,7 +352,7 @@ EXPECTED_HASHES = {
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
     "full_checkpoint": "ecf64f2bfbb59ffaaa717d8a09d38e56a38d6d43c1aa0a209d57492b038fb19a",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "1b208fff4f6d878c522147fee617177544bda8963c940f98a4bfc37507cb955f",
+    "graph_nodes": "ea67473e331b8849b3b48ecac89509661d904f2356ff2161a04715e569c79e91",
     "geography_assignment": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
     "late_families": "7857518a5327a816acae80d55a04f43e7445a5e47be822d3ccb747bcb375e199",
     "late_resource_semantics": "4464b646c45dff39a500e07bf60a8505d45725712fc27dcfc6de1e839fd6b0c3",
@@ -407,8 +407,14 @@ EXPECTED_HASHES = {
     # The ACS transfer fitting and drawing one QRF target at a time, and
     # freeing each target's forests before the next, moves both again:
     # acs_transfer's attested bytes change; no draw, RNG rule or QRF target does.
-    "seed_map": "9fa0124345af93d0ce251e2fa09260aca5ff3c2fedc3921cfe21e0a64c71111f",
-    "seed_protocol": "cbbb249d1a9b99627759f5433db12122e31f90d6e937742f6bf93898bd81333a",
+    # The QRF draw's default thread count, joblib.cpu_count() in place of
+    # os.cpu_count() in microcosm.fit.qrf, moves both again; no draw changes.
+    # calibrate's return_frame option in solve moves both again; the default
+    # is unchanged, and no draw changes.
+    # microcosm#1686's shared SIPP person-file read moves both again: the five
+    # SIPP donor tables are byte-identical, and no draw changes.
+    "seed_map": "74aa4ed49e24b76e6126d440180a71553c767f0cc60156ddd183033fd8972505",
+    "seed_protocol": "24bb621745b2b753c1f89843c90f29949c0ad764df4cdcd315afdbf9aa7f6403",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
@@ -529,10 +535,11 @@ def _without_operational_bindings(value: object) -> object:
     """Strip execution-profile subtrees before semantic inventory digesting.
 
     ``worker_execution`` is the primary-QRF worker's execution binding: its
-    semantic identity hashes the interpreter binary, ABI, ``pyvenv.cfg``,
-    the installed distributions' RECORD files, and the resolved fit
-    controls (CPU count included), and its audit aliases spell the
-    interpreter path. All of that authenticates an environment for replay
+    semantic identity hashes the interpreter binary, ABI, ``pyvenv.cfg`` and
+    the installed distributions' RECORD files, its audit aliases spell the
+    interpreter path, and its audit thread controls record the fit-job and
+    prediction-worker counts (the CPU count included). All of that
+    authenticates or describes an environment for replay
     and legitimately differs between macOS and the Linux CI runners; none
     of it is spec evidence. Inventory digests are therefore computed over
     the receipt with the whole subtree removed, as they were before the

@@ -278,8 +278,9 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     # producer keeps the partial registry and leaves the verdict to the gates.
     ledger_unsupported = {}
     # Microcosm-derived facts compile beside the feed: the high-value homes
-    # local cells (microcosm#1240) and region rows (microcosm#1301), and DESNZ's
-    # energy split onto constituencies (microcosm#1095).
+    # local cells (microcosm#1240) and region rows (microcosm#1301), DESNZ's
+    # energy split onto constituencies (microcosm#1095), and CenTax's parent
+    # cells (microcosm#1399).
     facts = (*artifact.facts, *uk_derived_fact_rows())
     for period in _LEDGER_COMPILE_PARITY_PERIODS:
         compilation = compile_uk_target_registry(facts, target_period=period)

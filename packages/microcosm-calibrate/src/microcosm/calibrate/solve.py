@@ -288,9 +288,15 @@ class CalibrationResult:
 
     Attributes:
         frame: A new :class:`~microcosm.frame.Frame` whose ``weight_entity``
-            weights are :class:`~microcosm.frame.WeightKind.CALIBRATED`.
+            weights are :class:`~microcosm.frame.WeightKind.CALIBRATED`, or
+            ``None`` when :func:`calibrate` ran with ``return_frame=False``
+            (or a caller dropped the frame with :func:`dataclasses.replace`).
+            Under pandas copy-on-write it shares the input frame's column
+            memory (:meth:`~microcosm.frame.Frame.with_weights` does not copy
+            tables).
         weight_entity: The entity whose weights were calibrated.
-        weights: The calibrated weight values (also on :attr:`frame`).
+        weights: The calibrated weight values (also on :attr:`frame`, when
+            the result carries one).
         initial_weights: The input weight values. These remain the frame's
             original weights even when the optimizer is initialized from
             ``warm_start_weights``.
@@ -332,10 +338,11 @@ class CalibrationResult:
             learned gate state.
 
     The result is a frozen record; the calibrated frame is the primary product
-    and every operator downstream consumes :attr:`frame`.
+    and every operator downstream consumes :attr:`frame`, except a caller that
+    asked for weights and diagnostics only (``return_frame=False``).
     """
 
-    frame: Frame
+    frame: Frame | None
     weight_entity: str
     weights: np.ndarray
     initial_weights: np.ndarray
@@ -461,8 +468,8 @@ class L0RefitResult:
     selected_mask: np.ndarray
 
     @property
-    def frame(self) -> Frame:
-        """The post-L0-refit sparse frame."""
+    def frame(self) -> Frame | None:
+        """The post-L0-refit sparse frame (``None`` if the refit carries none)."""
         return self.refit.frame
 
     @property
@@ -2447,6 +2454,7 @@ def calibrate(
     warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     retain_best_objective: bool = False,
+    return_frame: bool = True,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
@@ -2617,12 +2625,25 @@ def calibrate(
             ``options["iterate_selection"] == "best_feasible_objective"``.
             Without an L2 penalty the solve already keeps its best target-loss
             epoch, and the flag changes nothing.
+        return_frame: ``True`` (default) returns the calibrated frame as
+            :attr:`CalibrationResult.frame`. ``False`` returns ``frame=None``
+            for a caller that needs only the weights and diagnostics, so the
+            result keeps nothing of the input's tables alive. Every other
+            field is the same, and the calibrated weights pass the same
+            weight checks :meth:`~microcosm.frame.Frame.with_weights` makes
+            (forward kind transition, the mass policy), so a vector that
+            breaks them is refused either way. Building the frame also
+            re-checks the input frame's table invariants; without a frame
+            they are not re-checked (they already held when the input frame
+            was built, unless a caller changed its tables in place since).
 
     Returns:
-        A :class:`CalibrationResult` with the calibrated frame, per-target
-        diagnostics, loss trajectory, and any skipped targets.
+        A :class:`CalibrationResult` with the calibrated frame (``None`` when
+        ``return_frame=False``), per-target diagnostics, loss trajectory, and
+        any skipped targets.
 
     Raises:
+        TypeError: If ``return_frame`` is not a bool.
         ValueError: If ``method`` is unknown, ``mass`` is not ``"free"`` or
             ``"conserve"``, ``epochs`` is not positive, ``max_weight_ratio`` is
             given and is not ``> 0``, or ``target_records`` is given and is not
@@ -2652,6 +2673,10 @@ def calibrate(
             "and deprecated alias 'apg' -> 'adam'."
         )
     _check_mass(mass)
+    if not isinstance(return_frame, bool):
+        raise TypeError(
+            f"return_frame must be a bool, got {type(return_frame).__name__}."
+        )
     if mass_reason is not None:
         if mass != FREE_MASS:
             raise ValueError(
@@ -2946,6 +2971,7 @@ def calibrate(
         mass,
         targets,
         mass_reason=mass_reason,
+        return_frame=return_frame,
     )
 
     diagnostics = _build_diagnostics(problem, frame, w0, final_weights)
@@ -3260,7 +3286,8 @@ def _apply_weights(
     targets: TargetSet,
     *,
     mass_reason: str | None = None,
-) -> Frame:
+    return_frame: bool = True,
+) -> Frame | None:
     """Place the calibrated weights on the frame with the right mass policy.
 
     ``mass="conserve"`` uses the kernel's ``CONSERVE_MASS`` (the total is held
@@ -3269,21 +3296,26 @@ def _apply_weights(
     moved on purpose to fit the targets, and the change is recorded on the
     frame's mass log with the caller's ``mass_reason`` when supplied, else a
     generic reason naming the calibration.
+
+    With ``return_frame=False`` no frame is built: the weights go through the
+    same weight checks ``Frame.with_weights`` makes
+    (``Frame._checked_weight_change``), and ``None`` is returned.
     """
     if mass == CONSERVE_MASS:
         from microcosm.frame import CONSERVE_MASS as FRAME_CONSERVE
 
-        return frame.with_weights(weight_entity, calibrated, mass=FRAME_CONSERVE)
-    factor = calibrated.total / initial.total if initial.total != 0 else None
-    reason = mass_reason or (
-        f"calibrated {weight_entity!r} weights to {len(targets)} target(s) "
-        "(capped weighted-MAPE loss); total mass free to move"
-    )
-    return frame.with_weights(
-        weight_entity,
-        calibrated,
-        mass=MassChange(factor=factor, reason=reason),
-    )
+        policy: str | MassChange = FRAME_CONSERVE
+    else:
+        factor = calibrated.total / initial.total if initial.total != 0 else None
+        reason = mass_reason or (
+            f"calibrated {weight_entity!r} weights to {len(targets)} target(s) "
+            "(capped weighted-MAPE loss); total mass free to move"
+        )
+        policy = MassChange(factor=factor, reason=reason)
+    if not return_frame:
+        frame._checked_weight_change(weight_entity, calibrated, mass=policy)
+        return None
+    return frame.with_weights(weight_entity, calibrated, mass=policy)
 
 
 def _phase_callback(
@@ -3465,6 +3497,14 @@ def refit_l0_selection(
         selected_mask = selection.weights > (
             _PRUNE_REL_ATOL * float(np.mean(selection.initial_weights))
         )
+        if selection.frame is None:
+            raise ValueError(
+                "refit_l0_selection selects the survivors from the selection's "
+                "calibrated frame, and this selection carries none (it was "
+                "calibrated with return_frame=False). Calibrate the selection "
+                "with return_frame=True, or pass support and k for an exact-k "
+                "refit, which selects from the original frame."
+            )
         subset_source = selection.frame
         selected_inclusion_probabilities = None
     else:

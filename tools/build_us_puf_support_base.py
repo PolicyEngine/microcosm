@@ -18,20 +18,38 @@ and a named ``--stage`` run by hand records that stage.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+if __name__ == "__main__":
+    # The one thread setting, MICROCOSM_THREADS, fills the OpenMP, BLAS,
+    # numexpr and joblib thread variables, and the libraries read those when
+    # they load, so this comes before numpy. Without the setting nothing is
+    # set. It runs only for the command: tests and other tools import this
+    # file. The helper is loaded from this file's folder, which is not on the
+    # import path under ``python -m`` or ``python -P``. Stage subprocesses
+    # inherit the values, and the run configuration records them, except
+    # LOKY_MAX_CPU_COUNT and NUMEXPR_MAX_THREADS (``_stage_run_config``). E402
+    # is ignored for this file in pyproject for this block.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from us_build_thread_environment import set_build_thread_environment
+
+    del sys.path[0]
+    set_build_thread_environment()
+
 import argparse
 import hashlib
 import json
 import os
 import shutil
 import subprocess
-import sys
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from threadpoolctl import threadpool_info
 
 from microcosm.build import FitWeightRecord, GateResult, weights_audit_gate
 from microcosm.build.frame_checkpoint import write_frame_checkpoint
@@ -946,11 +964,7 @@ def _run_staged_all(
     """
 
     pipeline_steps = _pipeline_steps_for(args)
-    runtime = StageRuntime(
-        args.checkpoint_dir,
-        _pipeline_for(args),
-        run_config=_stage_run_config(args),
-    )
+    runtime = _open_stage_runtime(args)
     completed_prefix = runtime.context.completed
     remaining = pipeline_steps[len(completed_prefix) :]
     if not remaining and completed_prefix == pipeline_steps:
@@ -1264,8 +1278,51 @@ def _pooled_income_years(args: argparse.Namespace) -> tuple[int, ...]:
     return tuple(sorted(set(years)))
 
 
+#: QRF thread counts the first run records and a resume does not compare: they
+#: change no imputed value. Everything else in ``thread_environment`` stays
+#: compared, including ``blas_threads_in_use``: on Linux the OpenBLAS count
+#: changes output bytes, and with no thread variable set it follows the host's
+#: CPUs, so a resume on a host where OpenBLAS uses a different count is refused.
+_RESUME_IGNORED_RUN_CONFIG_PATHS = (
+    ("thread_environment", "POPULACE_FIT_N_JOBS"),
+    ("thread_environment", "POPULACE_FIT_PREDICT_WORKERS"),
+)
+
+
+def _blas_threads_in_use() -> list[list[object]]:
+    """Each loaded BLAS library, as ``[name, thread count]``, in sorted order.
+
+    threadpoolctl reads the counts from the libraries themselves, so this holds
+    whatever chose them: a thread variable, ``MICROCOSM_THREADS`` or, with
+    neither, the CPUs OpenBLAS found on the host. It does not report Apple's
+    Accelerate, so where numpy and scipy use Accelerate, as on Apple-silicon
+    Macs, the list is empty.
+    """
+
+    return sorted(
+        [pool["internal_api"], pool["num_threads"]]
+        for pool in threadpool_info()
+        if pool["user_api"] == "blas"
+    )
+
+
+def _open_stage_runtime(args: argparse.Namespace) -> StageRuntime:
+    """Open the checkpoint directory, refusing a resume with changed settings."""
+
+    return StageRuntime(
+        args.checkpoint_dir,
+        _pipeline_for(args),
+        run_config=_stage_run_config(args),
+        resume_ignored_run_config_paths=_RESUME_IGNORED_RUN_CONFIG_PATHS,
+    )
+
+
 def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
-    """Return the canonical inputs and settings locked across stage resumes."""
+    """Return the canonical inputs and settings recorded by the first run.
+
+    A resume must supply equal values, except for
+    ``_RESUME_IGNORED_RUN_CONFIG_PATHS``.
+    """
 
     def path(value: Path | None) -> str | None:
         return None if value is None else str(value.resolve())
@@ -1284,6 +1341,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             else os.environ.get(name)
         )
         for name in (
+            "MICROCOSM_THREADS",
             "OMP_NUM_THREADS",
             "OPENBLAS_NUM_THREADS",
             "MKL_NUM_THREADS",
@@ -1295,6 +1353,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             "PYTHONHASHSEED",
         )
     }
+    thread_environment["blas_threads_in_use"] = _blas_threads_in_use()
     config: dict[str, object] = {
         "allow_geography_ladder_gate_failures": bool(
             args.allow_geography_ladder_gate_failures
@@ -2692,11 +2751,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             f"--location-rule {_location_rule(args)} pipeline "
             f"{list(pipeline_steps)}."
         )
-    runtime = StageRuntime(
-        args.checkpoint_dir,
-        _pipeline_for(args),
-        run_config=_stage_run_config(args),
-    )
+    runtime = _open_stage_runtime(args)
     if args.stage in runtime.context.completed:
         if args.stage == "source_construction" and args.asec_h5 is not None:
             _require_completed_source_receipt_matches_pins(
