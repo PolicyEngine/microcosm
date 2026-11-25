@@ -120,6 +120,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # re-application and per-origin gate (#1022); exact boundary
         # functions are pinned below.
         "acs_local_ssi_medicaid_take_up.py",
+        # Local-lane ACS-unit voluntary-filing fill (#1720); the exact
+        # boundary function is pinned below.
+        "acs_local_voluntary_filing.py",
         # Legacy local-lane per-origin native SNAP receipt-anchor gate
         # (#1022); the exact boundary function is pinned below.
         "acs_local_receipt_anchors.py",
@@ -296,6 +299,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # selects the donor role through resolve_acs_donor_channel). Outside
         # the registry.
         "acs_local_weeks_deferrals.py",
+        # Local-lane voluntary-filing fill of ACS tax units with the donor's
+        # SIPP model (#1720); outside the registry.
+        "acs_local_voluntary_filing.py",
         # Legacy local-lane Head Start take-up fill, ACS VEH availability
         # receipt and grade helpers (#1022); tag-free, the take-up stage
         # passes the spine masks. Outside the registry.
@@ -3731,6 +3737,40 @@ def test_acs_local_ssi_disability_provenance_is_limited_to_reviewed_boundaries()
         "acs_local_ssi_disability_signal_gate",
         "with_acs_local_ssi_disability_criteria",
     )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
+def test_acs_local_voluntary_filing_provenance_is_limited_to_reviewed_boundaries() -> (
+    None
+):
+    """Pin the ACS-unit voluntary-filing fill (#1720).
+
+    The predictor view, the SIPP loader and the receipt helpers read no origin
+    tag; only the stage, which selects the ACS rows, does.
+    """
+
+    source = (_US_RUNTIME / "acs_local_voluntary_filing.py").read_text()
+    boundaries = ("with_acs_local_voluntary_filing",)
     assert (
         tuple(
             sorted(

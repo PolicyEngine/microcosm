@@ -93,6 +93,11 @@ from microcosm.build.us_runtime.acs_local_ssi_disability import (
     require_acs_local_ssi_disability_donor,
     with_acs_local_ssi_disability_criteria,
 )
+from microcosm.build.us_runtime.acs_local_voluntary_filing import (
+    ACS_LOCAL_VOLUNTARY_FILING_ISSUE,
+    load_acs_local_voluntary_filing_donor,
+    with_acs_local_voluntary_filing,
+)
 from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_DISABILITY_ITEMS,
     ACS_LOCAL_DISABILITY_COLUMNS,
@@ -590,6 +595,11 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     ssi_disability_donor, ssi_disability_identity = _load_ssi_disability_donor(
         args.sipp_donor, period=args.period
     )
+    # microcosm#1720: the voluntary-filing model reads the same verified SIPP
+    # file, so nothing is downloaded twice.
+    voluntary_filing_donor, voluntary_filing_identity = _load_voluntary_filing_donor(
+        ssi_disability_identity
+    )
     base_rows = _row_counts(base)
     base_mass = float(base.weights_for("household").total)
     puma_ladder_sha256 = _sha256(args.puma_ladder)
@@ -708,6 +718,16 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     )
     del ssi_disability_donor
     gc.collect()
+    # microcosm#1720: the donor's SIPP voluntary-filing model on the ACS tax
+    # units, before the input-null audit; recorded, never graded.
+    result, voluntary_filing = _with_local_voluntary_filing(
+        result,
+        sipp_donor=voluntary_filing_donor,
+        donor_identity=voluntary_filing_identity,
+        seed=args.seed,
+    )
+    del voluntary_filing_donor
+    gc.collect()
     telemetry.transition_stage("audit_inputs")
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
@@ -817,6 +837,7 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     summary.update(work_disability)
     summary.update(income)
     summary.update(ssi_disability)
+    summary.update(voluntary_filing)
     summary["local_esi_premiums"] = local_esi_premiums
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
@@ -1179,6 +1200,53 @@ def _with_local_ssi_disability(
             "details": dict(gate.details),
         },
     }
+
+
+def _load_voluntary_filing_donor(
+    ssi_identity: Mapping[str, object],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The SIPP filing donor, from the file the SSI loader resolved.
+
+    The SSI disability loader has resolved (and, on first use, downloaded)
+    the pinned full SIPP 2023 file; this reads the same path, checking its
+    length and sha-256 again (microcosm#1720).
+    """
+
+    try:
+        return load_acs_local_voluntary_filing_donor(Path(str(ssi_identity["path"])))
+    except (KeyError, OSError, ValueError) as exc:
+        raise SystemExit(
+            "The pinned full SIPP 2023 donor for the ACS local voluntary-filing "
+            f"model ({ACS_LOCAL_VOLUNTARY_FILING_ISSUE}) is unavailable: {exc}"
+        ) from exc
+
+
+def _with_local_voluntary_filing(
+    result: AcsMultispineResult,
+    *,
+    sipp_donor: pd.DataFrame,
+    donor_identity: dict[str, object],
+    seed: int,
+) -> tuple[AcsMultispineResult, dict[str, object]]:
+    """Run the ACS local voluntary-filing stage; return the summary entry.
+
+    It fills only missing ACS-unit ``would_file_taxes_voluntarily`` and
+    records a receipt (``acs_local_voluntary_filing``); nothing is graded.
+    """
+
+    try:
+        frame, receipt = with_acs_local_voluntary_filing(
+            result.frame,
+            sipp_donor=sipp_donor,
+            donor_identity=donor_identity,
+            seed=seed,
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            "ACS local voluntary-filing stage failed "
+            f"({ACS_LOCAL_VOLUNTARY_FILING_ISSUE}): {exc}"
+        ) from exc
+    return replace(result, frame=frame), {"acs_local_voluntary_filing": receipt}
 
 
 def _require_donor_spm_independence_role(base: Frame) -> None:

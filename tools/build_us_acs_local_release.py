@@ -212,6 +212,10 @@ from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
     US_VEHICLES_OWNED_COLUMN,
     US_VEHICLES_VALUE_COLUMN,
 )
+from microcosm.build.us_runtime.acs_local_voluntary_filing import (
+    ACS_LOCAL_VOLUNTARY_FILING_COLUMN,
+    ACS_LOCAL_VOLUNTARY_FILING_ISSUE,
+)
 from microcosm.build.us_runtime.acs_local_weeks_deferrals import (
     ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
     ACS_LOCAL_WEEKS_DEFERRALS_ISSUE,
@@ -1020,6 +1024,14 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             strict=True,
         )
     },
+    # microcosm#1720: staging runs the donor's SIPP voluntary-filing model on
+    # the ACS tax units.
+    ("tax_unit", ACS_LOCAL_VOLUNTARY_FILING_COLUMN): (
+        "the engine default False makes no ACS tax unit a voluntary filer, so "
+        "Medicaid's non-filer rules apply to more of them "
+        f"({ACS_LOCAL_VOLUNTARY_FILING_ISSUE}); re-run staging with the current "
+        "builder"
+    ),
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
 
@@ -4950,6 +4962,7 @@ def finalize_reviewed_limitations(
                 *ACS_LOCAL_STATUS_INPUTS_COLUMNS,
                 *ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
                 *ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+                ACS_LOCAL_VOLUNTARY_FILING_COLUMN,
             ],
             "reason": (
                 "Staging writes these inputs on ACS rows from ACS items or the "
@@ -4983,7 +4996,13 @@ def finalize_reviewed_limitations(
                 "post-processing: weeks 0 without UC, 401(k) deferrals 0 "
                 "without wages. The shared plan keeps the traditional IRA and "
                 "self-employed pension leaves. The deferrals lower the ACS rows' "
-                "AGI."
+                "AGI. would_file_taxes_voluntarily (tax unit) comes from the "
+                "donor release's own SIPP model (voluntary_filing: the weighted "
+                "QRF on the pinned full SIPP 2023 file's December filing "
+                "answers), run on the ACS tax units with tax-unit wages, the "
+                "head's age and sex, JOINT filing status and the household's "
+                "persons under 18 as predictors; it reads the file staging "
+                "already verifies for the SSI disability model."
             ),
             "treatment": (
                 "Written at staging only in missing ACS cells; donor rows keep "

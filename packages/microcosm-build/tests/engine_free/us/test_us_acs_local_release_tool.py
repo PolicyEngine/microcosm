@@ -595,6 +595,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         staged["columns"]
     )
     assert set(module.ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS) <= set(staged["columns"])
+    assert "would_file_taxes_voluntarily" in staged["columns"]
     for fragment in (
         "microcosm#1720",
         "A_MARITL",
@@ -606,6 +607,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "LKWEEKS",
         "RETCB_VAL",
         "weeks 0 without UC",
+        "SIPP 2023",
     ):
         assert fragment in staged["reason"], fragment
     assert "NEVER_DEFAULT_FILLED" in staged["treatment"]
@@ -6655,7 +6657,7 @@ _REVIEWED_FILLS_RETIRED_SINCE_767312D60 = {
 
 
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
-    """Release 767312d60 default-filled 79 columns; the stack now fills 34 of
+    """Release 767312d60 default-filled 79 columns; the stack now fills 35 of
     them (NEVER_DEFAULT_FILLED), and every other one has a register entry,
     except one the reviewed engine no longer defines, as does each reviewed
     fill added since."""
@@ -6676,14 +6678,15 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     assert len(released) == 79
     now_filled = released & set(module.NEVER_DEFAULT_FILLED)
     registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
-    # 34 are filled natively, 1 is retired and 44 are registered. The ACS
+    # 35 are filled natively, 1 is retired and 43 are registered. The ACS
     # vehicle count returned to a reviewed fill after the microcosm#1064 review
     # (VEH counts vehicles available, not owned): it left NEVER_DEFAULT_FILLED
     # and gained an entry together, so this still holds. microcosm#1720:
     # staging maps the ACS rows' marital, military and occupation status and
     # attributes their self-employed health premiums, and draws their weeks
-    # unemployed and three retirement deferrals.
-    assert len(now_filled) == 34
+    # unemployed and three retirement deferrals, and their tax units'
+    # voluntary filing.
+    assert len(now_filled) == 35
     assert _REVIEWED_FILLS_RETIRED_SINCE_767312D60 <= released - now_filled
     assert (
         registered

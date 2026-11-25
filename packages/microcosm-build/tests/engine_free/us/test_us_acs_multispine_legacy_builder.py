@@ -307,6 +307,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     sipp_path = tmp_path / "pu2023.csv"
     sipp_training = pd.DataFrame({"age": [40.0]})
     sipp_identity = {"path": str(sipp_path), "sha256": "5" * 64}
+    # microcosm#1720: the voluntary-filing model reads the same file.
+    filing_training = pd.DataFrame({"employment_income": [1.0]})
+    filing_identity = {"path": str(sipp_path), "sha256": "5" * 64}
+    filing_receipt = {"issue": "microcosm#1720", "filled_units": 1}
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -474,6 +478,19 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         order.append("ssi_disability")
         return ssi_filled, ssi_receipt
 
+    def fake_filing_load(path):
+        captured["filing_load"] = path
+        order.append("filing_load")
+        return filing_training, filing_identity
+
+    def fake_filing_stage(frame, *, sipp_donor, donor_identity, seed):
+        assert frame is ssi_filled
+        assert sipp_donor is filing_training
+        assert donor_identity is filing_identity
+        captured["filing_seed"] = seed
+        order.append("voluntary_filing")
+        return ssi_filled, filing_receipt
+
     def fake_ssi_gate(frame, *, receipt):
         assert frame is ssi_filled
         assert receipt is ssi_receipt
@@ -626,6 +643,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         builder, "with_acs_local_ssi_disability_criteria", fake_ssi_stage
     )
     monkeypatch.setattr(builder, "acs_local_ssi_disability_signal_gate", fake_ssi_gate)
+    monkeypatch.setattr(
+        builder, "load_acs_local_voluntary_filing_donor", fake_filing_load
+    )
+    monkeypatch.setattr(builder, "with_acs_local_voluntary_filing", fake_filing_stage)
 
     # microcosm#454: the ESI employer premium's donor qualifier and gates.
     def qualify_esi_premium_donor(frame):
@@ -794,6 +815,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert order == [
         "esi_premium_donor",
         "sipp_load",
+        "filing_load",
         "acs_fetch",
         "receipt_anchor_gate",
         "immigration",
@@ -801,6 +823,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "income_gate",
         "ssi_disability",
         "ssi_disability_gate",
+        "voluntary_filing",
         "null_audit",
         "esi_premium_gates",
         "write",
@@ -846,6 +869,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert captured["sipp_load"] == (sipp_path, 2024)
     assert captured["ssi_seed"] == 11
     assert summary["acs_local_ssi_disability"] == ssi_receipt
+    # microcosm#1720: one SIPP path for both models; the build seed draws.
+    assert captured["filing_load"] == Path(str(sipp_path))
+    assert captured["filing_seed"] == 11
+    assert summary["acs_local_voluntary_filing"] == filing_receipt
     assert summary["acs_local_ssi_disability_gate"] == {
         "name": "acs_local_ssi_disability_signal",
         "passed": True,
