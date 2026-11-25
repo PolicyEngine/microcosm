@@ -2,7 +2,7 @@
 kind: proposal
 client: "Living Wage Institute"
 title: "County Files proof of concept: methods — a PolicyEngine methods note"
-status: "v0.3 (2026-11-24): sent to LWI"
+status: "v0.3 (2026-11-24): final, in the private dataset for LWI"
 pe-doc:
   psl_foundation: false
   split_tables: true
