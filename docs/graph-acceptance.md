@@ -831,7 +831,16 @@ lock unchanged:
     inserting into a shallow copy of a wide one gives pandas'
     `PerformanceWarning`, and row-wise operations on it are slower; a deep
     copy merges the blocks into the layout the old copy had, which is what
-    the UK and US graph kernels make before calling their runtimes. And a
+    the UK and US graph kernels make before calling their runtimes. That
+    merge copies each block and then stacks the copies into one block per
+    dtype, and `Frame()` copies the result again, so a UK stage's peak falls
+    by less than the copy the context no longer holds: from projection to
+    the kernel's `Frame`, on an invented table of 20 float64 and 2 int64
+    columns, the peak goes from 3.45x the columns read to 2.86x, while what
+    stays held goes from 2.20x to 1.11x. Copying each dtype's columns
+    straight into one new block, and adopting it without a second copy,
+    would lower that peak; that change belongs to the kernels' own copies
+    (`_minimal_frame`, `context_frame`), not to the executor. And a
     kernel that runs a BLAS product directly on input columns sees them at
     their offsets in the population's blocks rather than in a fresh copy,
     which on Apple's Accelerate can move the last bit of `np.dot`.
