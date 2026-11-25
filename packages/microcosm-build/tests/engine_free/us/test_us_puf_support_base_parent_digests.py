@@ -55,7 +55,11 @@ def builder() -> ModuleType:
 
 
 class _Hashing:
-    """Records what the builder hashes; the files are still hashed for real.
+    """Records each file the tool's ``_sha256`` hashes, still hashing it, and
+    each ``builder_code_identity`` call.
+
+    Hashing inside other modules (the ladder loader, for one) is not
+    recorded.
 
     The builder's source digest is a stand-in, ``source_sha256``, so a test
     can change the builder's code by changing it; ``code_identity_calls``
@@ -264,7 +268,9 @@ def test_a_step_process_hashes_a_file_the_parent_gave_no_digest_for(
     builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     inputs = _write_inputs(tmp_path)
-    other_puf = tmp_path / "other_puf.h5"
+    # Same file name, another directory: only the full path matches.
+    other_puf = tmp_path / "elsewhere" / "puf_2024.h5"
+    other_puf.parent.mkdir()
     other_puf.write_bytes(b"another processed puf")
     hashing = _Hashing(builder, monkeypatch)
     steps = _StepProcesses(builder, monkeypatch)
@@ -520,8 +526,8 @@ def test_a_malformed_digest_variable_is_refused(
 # still hashes them; a step process compares each pin with the parent's
 # digest for the same resolved path instead, except household_location_
 # assignment (block_v1), which reads the files and so hashes them itself.
-# source_construction, the other step that reads them, compares the digests
-# of the bytes it reads with the pins. Under block_v1 the run config also
+# source_construction, the other step that reads them, hashes each file
+# again once it has read it and compares that digest with the pin. Under block_v1 the run config also
 # holds the location ladder's digest, which every step takes from the parent.
 
 #: Income years without a canonical pin, so a fixture file's own digest is
@@ -591,7 +597,7 @@ def _step_hashes(builder, monkeypatch, hashing, command, environment) -> list[Pa
     return sorted(hashing.files)
 
 
-def test_step_processes_compare_the_asec_pins_with_the_parent_s_digests(
+def test_step_processes_take_the_asec_digests_from_the_parent_not_the_files(
     builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     inputs = _write_pooled_inputs(tmp_path)
@@ -695,3 +701,31 @@ def test_a_resume_after_a_changed_asec_file_or_ladder_is_refused(
     with pytest.raises(refusal[0], match=refusal[1]):
         builder._dispatch(builder._parse_args(argv), None)
     assert steps.started == []
+
+
+def test_relative_and_symlinked_paths_find_the_parent_s_digests(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A step process gets the parent's own argument strings
+    # (_stage_cli_args), so its lookup must use each path's resolved form.
+    inputs = _write_pooled_inputs(tmp_path)
+    csv_link = tmp_path / "puf_csv_link.csv"
+    csv_link.symlink_to(inputs.puf_csv)
+    monkeypatch.chdir(tmp_path)
+    hashing = _Hashing(builder, monkeypatch)
+    steps = _StepProcesses(builder, monkeypatch)
+    argv = _pooled_parent_argv(tmp_path, inputs, block_v1=False)
+    argv[argv.index(str(inputs.puf_h5))] = "inputs/puf_2024.h5"
+    argv[argv.index(str(inputs.puf_csv))] = csv_link.name
+    for year, path in inputs.asec.items():
+        argv[argv.index(f"{year}={path}")] = f"{year}=inputs/{path.name}"
+
+    builder._dispatch(builder._parse_args(argv), None)
+
+    assert len(steps.started) == len(builder.PIPELINE_STEPS)
+    for command, environment in steps.started:
+        assert "inputs/puf_2024.h5" in command
+        assert csv_link.name in command
+        assert (
+            _step_hashes(builder, monkeypatch, hashing, command, environment) == []
+        ), _step_name(command)

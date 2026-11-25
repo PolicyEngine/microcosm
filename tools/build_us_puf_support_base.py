@@ -859,12 +859,12 @@ def _require_completed_source_receipt_matches_pins(
     )
 
 
-#: Steps that read the pinned ASEC files and check no digest of the bytes
-#: they read, so they hash the files for the pin check themselves rather
-#: than take the parent's digests. ``household_location_assignment`` reads
-#: the CPS household geography from them under ``block_v1``.
-#: ``source_construction``, the other step that reads them, compares the
-#: digests of the bytes it read with the pins
+#: Steps that read the pinned ASEC files and hash them nowhere else, so they
+#: hash them for the pin check themselves rather than take the parent's
+#: digests. ``household_location_assignment`` reads the CPS household
+#: geography from them under ``block_v1``. ``source_construction``, the
+#: other step that reads them, hashes each file again once it has read it
+#: and compares that digest with the pin
 #: (``_require_receipt_digests_match_pins``).
 _STEPS_HASHING_THEIR_ASEC_SOURCES = frozenset({HOUSEHOLD_LOCATION_STAGE_NAME})
 
@@ -991,7 +991,8 @@ def _run_staged_all(
     child's stage; a child that exits nonzero stops the run, which main()
     records as that stage's failure. The children start no emitter.
     ``verified_asec_sha256`` holds the digests this process's pin check
-    computed (``_verify_asec_source_digests``), which the children reuse.
+    computed (``_verify_asec_source_digests``), which the children's pin
+    checks use, except in ``_STEPS_HASHING_THEIR_ASEC_SOURCES``.
     """
 
     pipeline_steps = _pipeline_steps_for(args)
@@ -1000,7 +1001,7 @@ def _run_staged_all(
     # Each step process takes the input and builder source digests from this
     # run config, which the resume check just compared with the locked one,
     # and the ASEC digests from the pin check, instead of hashing the files
-    # again.
+    # again; household_location_assignment hashes the ASEC files itself.
     digests_environment = _parent_digests_environment(
         run_config, verified_asec_sha256 or {}
     )
@@ -1540,11 +1541,13 @@ def _builder_tool_path() -> Path:
 #: ``os.getppid()``); otherwise it hashes the file itself, as a named
 #: ``--stage`` run by hand does when the variable is unset. A malformed
 #: variable stops the process. The parent ignores the variable and hashes
-#: everything at every start, comparing the result with the locked run
-#: config and the ASEC pins before it starts a step, so a resume after an
-#: input or the builder's code changed is still refused. What goes unnoticed
-#: is one of those files changing while the run is under way, a ``git pull``
-#: in the same checkout included. The process-ID comparison does not identify
+#: these files at every start, comparing the result with the locked run
+#: config and the ASEC pins before it starts a step, so a resume after one
+#: of them changed is still refused. (Other inputs, such as ``--acs-h5``,
+#: are recorded by path only, as before.) What goes unnoticed, in the steps
+#: that take the parent's digests, is one of these files changing while the
+#: run is under way, a ``git pull`` in the same checkout included. The
+#: process-ID comparison does not identify
 #: the run: a copy of the variable used where process IDs repeat (a fresh
 #: container) can match, as ``MICROCOSM_TELEMETRY_PARENT_PID`` can.
 PARENT_DIGESTS_VARIABLE = "MICROCOSM_US_BASE_PARENT_DIGESTS"
