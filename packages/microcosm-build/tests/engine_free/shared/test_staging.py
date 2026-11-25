@@ -140,18 +140,19 @@ def test_hand_over_failures_never_raise_and_pause_after_three(tmp_path, capsys):
     )
     # Staging telemetry is best-effort: hand-overs the emitter does not accept
     # never raise, and after three in a row the run stops handing files over
-    # until its final state. The run's start was the first; a result file is
-    # handed over on its own, then with the run's files.
-    first = tmp_path / "first.json"
-    first.write_text(json.dumps({"targets": 1}))
-    telemetry.attach_artifact("first", first)
+    # until its final state. The run's start was the first; each result file
+    # goes with the run's files in one more.
+    for name in ("first", "second"):
+        result = tmp_path / f"{name}.json"
+        result.write_text(json.dumps({"name": name}))
+        telemetry.attach_artifact(name, result)
     # The configured destination stays on record; the delivery counts say
     # what reached it.
     assert telemetry.repo_id == "org/staging"
     requests = len(emitter.run_file_requests)
-    second = tmp_path / "second.json"
-    second.write_text(json.dumps({"targets": 2}))
-    telemetry.attach_artifact("second", second)
+    third = tmp_path / "third.json"
+    third.write_text(json.dumps({"name": "third"}))
+    telemetry.attach_artifact("third", third)
     assert len(emitter.run_file_requests) == requests == 3
     err = capsys.readouterr().err
     assert "staging hand-over failed" in err
@@ -204,7 +205,9 @@ def test_uploads_succeeded_counts_files_the_emitter_committed(tmp_path):
     assert telemetry.uploads_succeeded == receipt["files_committed"]
 
 
-def test_an_attached_artifact_is_handed_over_once_beside_the_run(tmp_path):
+def test_an_attached_artifact_goes_with_every_later_hand_over(tmp_path):
+    """The emitter skips bytes it already committed, so a result file it
+    missed reaches the repo with the next hand-over."""
     emitter = FakeEmitterClient()
     telemetry = StagingRunBundleWriter(
         run_id="run-g",
@@ -219,14 +222,12 @@ def test_an_attached_artifact_is_handed_over_once_beside_the_run(tmp_path):
     telemetry.attach_artifact("calibration_diagnostics", artifact)
     telemetry.complete()
 
-    carrying = [
-        request
-        for request in emitter.run_file_requests
-        if any(item.relative_path == "diagnostics.json" for item in request.files)
-    ]
-    assert len(carrying) == 1
-    assert [item.local_path for item in carrying[0].files] == [artifact]
-    assert carrying[0].flush is True
+    attached, completed = emitter.run_file_requests[1:]
+    for request in (attached, completed):
+        files = {item.relative_path: item.local_path for item in request.files}
+        assert files["diagnostics.json"] == artifact
+        assert "run_manifest.json" in files
+        assert request.flush is True
     assert emitter.hub_files[("org/staging", "runs/run-g/diagnostics.json")] == (
         artifact.read_bytes()
     )

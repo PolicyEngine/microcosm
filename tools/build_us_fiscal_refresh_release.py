@@ -101,11 +101,7 @@ from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.run_outcome import classify_failure
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
-from microcosm.build.staging_storage import (
-    FINAL_COMMIT_WAIT_SECONDS,
-    confirm_and_report_final_commit,
-    final_commit_wait_seconds,
-)
+from microcosm.build.staging_storage import confirm_and_report_final_commit
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
@@ -12958,9 +12954,7 @@ class _BuildProgress:
             if self.staging_bundle is not None:
                 self.staging_bundle.fail(error)
                 confirm_and_report_final_commit(
-                    self.staging_bundle,
-                    self.emitter,
-                    wait_seconds=final_commit_wait_seconds(error),
+                    self.staging_bundle, self.emitter, error=error
                 )
         finally:
             _fail_emitter(self.emitter, error)
@@ -12968,11 +12962,7 @@ class _BuildProgress:
     def complete(self) -> None:
         if self.staging_bundle is not None:
             self.staging_bundle.complete()
-            confirm_and_report_final_commit(
-                self.staging_bundle,
-                self.emitter,
-                wait_seconds=FINAL_COMMIT_WAIT_SECONDS,
-            )
+            confirm_and_report_final_commit(self.staging_bundle, self.emitter)
         self.emitter.complete()
 
 
@@ -14819,7 +14809,19 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     either tier is refused: a certified build is never changed.
     Certification opens its own staging run where the build staged
     (:func:`_certify_progress`) and marks it failed if it does not finish.
+    A SIGTERM is recorded as a termination, as in :func:`main`, and the
+    command then exits 143.
     """
+
+    with raise_on_sigterm():
+        try:
+            _certify_main_with_close_out(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _certify_main_with_close_out(argv: Sequence[str] | None) -> None:
+    """Run the certification and record how it ended (see :func:`certify_main`)."""
 
     global _ACTIVE_EMITTER
     parser = _certify_parser()
@@ -14942,7 +14944,7 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
             if telemetry is not None:
                 telemetry.fail(error)
             elif _ACTIVE_EMITTER.available:
-                _ACTIVE_EMITTER.fail(error)
+                _fail_emitter(_ACTIVE_EMITTER, error)
         except Exception as telemetry_error:  # pragma: no cover - defensive
             # A failing failure-report must not replace the real traceback.
             print(
@@ -15277,7 +15279,7 @@ def _main_with_close_out(argv: Sequence[str] | None) -> None:
         # closed the emitter by now (see the docstring), so this records an
         # outcome only on an emitter that something left open.
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.fail(error)
+            _fail_emitter(_ACTIVE_EMITTER, error)
         raise
     if dry_run_exit is not None:
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:

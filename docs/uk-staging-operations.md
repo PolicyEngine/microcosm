@@ -148,12 +148,19 @@ empty repository identifier is invalid in remote mode.
 Once a remote run has completed, failed or been refused by its release checks,
 the build confirms its final commit before it reports the run's outcome to its
 hosted telemetry: the emitter commits the run's pending files, waiting up to
-120 seconds (30 after a SIGTERM), and compares the Hub's copy of each with the
-bytes it committed. The build reports the result as a `staging_final_commit`
-stage, `completed` or `failed` with `confirmed`, `reason` and
-`files_compared`. A check that fails prints a warning and changes neither the
-build's outcome nor the run's delivery summary; a run whose final state the
-emitter did not accept is not read back (`reason` `not_handed_over`).
+120 seconds, then compares the Hub's copy of each with the bytes it committed
+(one more request of up to 60 seconds). After an interrupt (a SIGTERM or
+Ctrl-C) the build reads the emitter's receipts instead, for up to 30 seconds,
+until no file is pending, so the check fits in the 60 seconds a supervisor
+allows between SIGTERM and SIGKILL. The build reports the result as one
+`progress` event outside any stage, `completed` or `failed`, whose details
+hold `check` (`staging_final_commit`), `method` (`read_back` or `receipt`),
+`confirmed`, `reason` and `files_compared`; being outside any stage, it does
+not change the stage a failure is recorded in. A check that fails, or that an
+interrupt ends (`reason` `interrupted`), prints a warning and changes neither
+the build's outcome nor the run's delivery summary. A run whose final state
+the emitter did not accept is not checked (`reason` `not_handed_over`), and a
+missing credential (`CREDENTIAL_MISSING`) ends the check at once.
 
 `--staging-read-back`, valid only in remote mode, makes that check strict:
 the authenticated read-back is recorded in the delivery summary (`read_back`

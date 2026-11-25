@@ -1187,13 +1187,17 @@ class StagingRunBundleWriterV2:
         self._persist_bundle()
         self._terminal_upload()
 
-    def confirm_final_commit(self, *, wait_seconds: float) -> FinalCommitCheck | None:
-        """Have the emitter read the ended run's final state back from the Hub.
+    def confirm_final_commit(
+        self, *, wait_seconds: float, read_back: bool = True
+    ) -> FinalCommitCheck | None:
+        """Check that the ended run's final state reached the Hub, through the emitter.
 
-        The emitter first commits the run's pending files, waiting up to
-        ``wait_seconds``. A check that fails warns and returns; it never fails
-        the build, and the delivery summary's ``read_back`` stays the record
-        of :meth:`verify_remote`. A run without remote staging has nothing to
+        With ``read_back`` the emitter commits the run's pending files, waiting
+        up to ``wait_seconds``, and compares the Hub's copies; without it only
+        its receipts are read (see ``RunFileHandOver.confirm_final_commit``).
+        A check that fails warns and returns; it never fails the build, and
+        the delivery summary's ``read_back`` stays the record of
+        :meth:`verify_remote`. A run without remote staging has nothing to
         check.
         """
         if self._hand_over is None:
@@ -1202,7 +1206,9 @@ class StagingRunBundleWriterV2:
             raise StagingContractError(
                 "Only a completed, blocked or failed staging run has a final commit."
             )
-        check = self._hand_over.confirm_final_commit(wait_seconds=wait_seconds)
+        check = self._hand_over.confirm_final_commit(
+            wait_seconds=wait_seconds, read_back=read_back
+        )
         if not check.confirmed:
             warn_final_commit_unconfirmed(self._hand_over.repository, check)
         return check

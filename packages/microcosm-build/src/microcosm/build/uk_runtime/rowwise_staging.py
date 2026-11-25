@@ -55,13 +55,10 @@ from microcosm.build.staging_dataset import (
     write_sidecars,
 )
 from microcosm.build.staging_storage import (
-    FINAL_COMMIT_WAIT_SECONDS,
+    CheckTelemetry,
     FinalCommitCheck,
-    StageTelemetry,
     confirm_and_report_final_commit,
-    final_commit_wait_seconds,
     report_final_commit,
-    report_final_commit_started,
 )
 from microcosm.build.staging_v2 import (
     StagingContractError,
@@ -468,11 +465,7 @@ def fail_staging_run_bundle(
             except Exception:
                 pass
             if staging_bundle.status != "running":
-                confirm_final_commit(
-                    staging_bundle,
-                    _ACTIVE_EMITTER,
-                    wait_seconds=final_commit_wait_seconds(error),
-                )
+                confirm_final_commit(staging_bundle, _ACTIVE_EMITTER, error=error)
     finally:
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
             _ACTIVE_EMITTER.fail(
@@ -622,25 +615,23 @@ _finalize_staging_run_bundle = finalize_staging_run_bundle
 
 def confirm_final_commit(
     staging_bundle: StagingRunBundleWriterV2,
-    emitter: StageTelemetry | None,
+    emitter: CheckTelemetry | None,
     *,
     read_back: bool = False,
-    wait_seconds: float = FINAL_COMMIT_WAIT_SECONDS,
+    error: BaseException | None = None,
 ) -> None:
     """Confirm a closed run's final commit and report it before the run's outcome.
 
-    Every remote run has the emitter read its final state back; a failure
-    warns and is reported as a failed ``staging_final_commit`` stage. With
-    ``read_back`` (``--staging-read-back``) the check is
+    Every remote run has the emitter check its final state, reading it back,
+    or, after an interrupt (``error``), reading its receipts; a failure warns
+    and is reported (``staging_storage.confirm_and_report_final_commit``).
+    With ``read_back`` (``--staging-read-back``) the check is
     :meth:`~microcosm.build.staging_v2.StagingRunBundleWriterV2.verify_remote`,
     whose failure fails the build and is recorded in the delivery summary.
     """
     if not read_back:
-        confirm_and_report_final_commit(
-            staging_bundle, emitter, wait_seconds=wait_seconds
-        )
+        confirm_and_report_final_commit(staging_bundle, emitter, error=error)
         return
-    report_final_commit_started(emitter)
     try:
         result = staging_bundle.verify_remote()
     except StagingReadBackError:

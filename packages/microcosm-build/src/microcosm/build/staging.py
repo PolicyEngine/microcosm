@@ -114,6 +114,10 @@ class StagingRunBundleWriter:
         )
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
+        #: Each attached result file's local copy, by its name in the run's
+        #: folder; every hand-over carries them, and the emitter skips bytes
+        #: it has already committed.
+        self._artifact_files: dict[str, Path] = {}
         self._progress: dict[str, Any] = {
             "schema_version": STAGING_SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -188,7 +192,11 @@ class StagingRunBundleWriter:
             )
 
     def _hand_over_run(self) -> None:
-        """Hand the run's current files over: its start, a result file, its end."""
+        """Hand the run's folder over as it stands: its start, a result file, its end.
+
+        Every attached result file goes with the run's documents, so the final
+        hand-over also carries any the emitter missed while hand-overs paused.
+        """
         if self._hand_over is None or not self._hand_over.enabled:
             return
         files = [
@@ -201,6 +209,14 @@ class StagingRunBundleWriter:
             )
             if (self.run_dir / filename).exists()
         ]
+        # A result file named like one of the run's documents is not sent in
+        # its place: the documents describe the run.
+        documents = {filename for filename, _ in files}
+        files.extend(
+            (filename, local)
+            for filename, local in self._artifact_files.items()
+            if filename not in documents and local.exists()
+        )
         pointer = self._write_latest_pointer()
         self._write_runs_index()
         # The emitter merges this run's entry into the repository's runs.json
@@ -360,9 +376,8 @@ class StagingRunBundleWriter:
             "path": source.name,
             "staging_path": f"{self.repo_run_prefix}/{source.name}",
         }
+        self._artifact_files[source.name] = local
         self._write_run_manifest()
-        if local.exists():
-            self._hand_over_files([(source.name, local)])
         self._hand_over_run()
 
     def _reopen_for_final_state(self) -> None:
@@ -394,12 +409,16 @@ class StagingRunBundleWriter:
         )
         self._hand_over_run()
 
-    def confirm_final_commit(self, *, wait_seconds: float) -> FinalCommitCheck | None:
-        """Have the emitter read the ended run's final state back from the Hub.
+    def confirm_final_commit(
+        self, *, wait_seconds: float, read_back: bool = True
+    ) -> FinalCommitCheck | None:
+        """Check that the ended run's final state reached the Hub, through the emitter.
 
-        The emitter first commits the run's pending files, waiting up to
-        ``wait_seconds``. A check that fails warns and returns; it never
-        fails the build. A run without remote staging has nothing to check.
+        With ``read_back`` the emitter commits the run's pending files, waiting
+        up to ``wait_seconds``, and compares the Hub's copies; without it only
+        its receipts are read (see ``RunFileHandOver.confirm_final_commit``).
+        A check that fails warns and returns; it never fails the build. A run
+        without remote staging has nothing to check.
         """
         if self._hand_over is None:
             return None
@@ -407,7 +426,9 @@ class StagingRunBundleWriter:
             raise RuntimeError(
                 "Only a completed or failed staging run has a final commit."
             )
-        check = self._hand_over.confirm_final_commit(wait_seconds=wait_seconds)
+        check = self._hand_over.confirm_final_commit(
+            wait_seconds=wait_seconds, read_back=read_back
+        )
         if not check.confirmed:
             warn_final_commit_unconfirmed(self._hand_over.repository, check)
         return check

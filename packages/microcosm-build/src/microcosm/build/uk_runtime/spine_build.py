@@ -58,7 +58,6 @@ from microcosm.build.staging_cli import (
     add_staging_arguments,
     validate_staging_arguments,
 )
-from microcosm.build.staging_storage import final_commit_wait_seconds
 from microcosm.build.staging_v2 import (
     StagingRunBundleWriterV2,
     disabled_staging_delivery,
@@ -1141,11 +1140,7 @@ def _close_failed_telemetry(
             # Before the emitter records the outcome, which ends the run's
             # telemetry.
             if staging_bundle.status != "running":
-                confirm_final_commit(
-                    staging_bundle,
-                    emitter,
-                    wait_seconds=final_commit_wait_seconds(error),
-                )
+                confirm_final_commit(staging_bundle, emitter, error=error)
     finally:
         if emitter is not None and emitter.available:
             emitter.fail(error, failure_class=failure_class, error_code=error_code)
