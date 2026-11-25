@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 import hashlib
 import importlib.util
+import io
 import json
 import math
 import shlex
@@ -814,13 +816,16 @@ def _materialize_county_fixture(
     households=None,
     county_column="planning_region",
     overlaps=None,
+    state_matrix=None,
+    extra_args=(),
 ):
     """Materialize a state_county fixture, with a fake engine.
 
     By default three households and no county support move. ``households``
     replaces the household table (one person each, design weight 10), and
     ``overlaps`` stands in for the ladder's county-PUMA overlaps that minimum
-    support reads.
+    support reads. ``state_matrix`` replaces the two state parents' rows
+    (return count, AGI); ``extra_args`` are added to the materialize argv.
     """
     from microcosm.build import ledger_artifact
     from microcosm.build.us_runtime import county_facts as county_facts_module
@@ -921,6 +926,7 @@ def _materialize_county_fixture(
             "0.01",
             "--county-holdout-fraction",
             "0.5",
+            *extra_args,
         ]
     )
     parents = [_state_spec(), _state_spec("adjusted_gross_income", 1000.0)]
@@ -979,7 +985,12 @@ def _materialize_county_fixture(
     materialized = SimpleNamespace(
         compiled_specs=parents,
         matrix=sparse.csr_array(
-            np.asarray([[1] * len(ids), [10] * len(ids)], np.float32)
+            np.asarray(
+                state_matrix
+                if state_matrix is not None
+                else [[1] * len(ids), [10] * len(ids)],
+                np.float32,
+            )
         ),
         chunk_stats=[],
         carrier_check={},
@@ -1126,9 +1137,13 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
     written = json.loads((args.checkpoint_dir / "county_reliability.json").read_text())
     assert written["county_column"] == "planning_region"
     assert written["counties"]["01001"]["distinct_source_households"] == 1
-    assert (args.checkpoint_dir / "county_reliability.csv").read_text() == (
-        county.reliability_csv(written)
-    )
+    csv_text = (args.checkpoint_dir / "county_reliability.csv").read_text()
+    assert csv_text == county.reliability_csv(written)
+    # Without --county-drop-empty-soi-rows, no drop mark and no CSV column.
+    assert "county_drop_empty_soi_rows" not in identity
+    assert county.ZERO_MEASURE_SOI_ROWS_DROPPED not in written
+    assert county.ZERO_MEASURE_SOI_ROWS_DROPPED not in written["counties"]["01001"]
+    assert csv_text.splitlines()[0].split(",") == county.reliability_csv_columns()
 
 
 def _export_county_fixture(module, monkeypatch, run, out_h5, weights):
@@ -1760,3 +1775,196 @@ def test_projected_county_rows_give_the_same_soi_surface_as_full_rows(
     assert [(s.name, s.value, s.metadata) for s in projected.specs] == [
         (s.name, s.value, s.metadata) for s in full.specs
     ]
+
+
+def test_a_county_whose_households_all_have_zero_agi_refuses_or_drops_its_row(
+    monkeypatch, tmp_path
+) -> None:
+    """microcosm#922: 01003's only household has AGI 0, so its AGI row is empty.
+
+    The state row stores no zero, so the county has a household but no entry.
+    By default attach_surface refuses the run; with
+    --county-drop-empty-soi-rows it drops that row with a receipt.
+    """
+    zero_agi = [[1, 1, 1], [10, 0, 10]]
+    for name in ("default", "drop"):
+        (tmp_path / name).mkdir()
+    with pytest.raises(SystemExit, match="no supporting household"):
+        _materialize_county_fixture(
+            monkeypatch, tmp_path / "default", state_matrix=zero_agi
+        )
+    surface = json.loads(
+        (tmp_path / "default" / "checkpoint" / "county_surface.json").read_text()
+    )
+    assert "zero_measure_soi_rows_dropped" not in surface
+    (agi_row,) = surface["unsupported_targets"]
+    assert agi_row.startswith("county_01003__")
+
+    run = _materialize_county_fixture(
+        monkeypatch,
+        tmp_path / "drop",
+        state_matrix=zero_agi,
+        extra_args=("--county-drop-empty-soi-rows",),
+    )
+    checkpoint = run.args.checkpoint_dir
+    surface = json.loads((checkpoint / "county_surface.json").read_text())
+    (dropped,) = surface["zero_measure_soi_rows_dropped"]
+    assert dropped["target"] == agi_row
+    assert dropped["county_fips"] == "01003"
+    assert dropped["cell_members"] == ["01003"]
+    assert dropped["concept"] == "adjusted_gross_income"
+    assert dropped["households"] == 1
+    identity = json.loads((checkpoint / "run_identity.json").read_text())
+    assert identity["county_targets_dropped"] == [agi_row]
+    assert identity["county_drop_empty_soi_rows"] is True
+    assert run.county.refresh_recipe("release", identity).endswith(
+        " --county-drop-empty-soi-rows"
+    )
+    assert identity["zero_measure_soi_rows_dropped"] == [
+        {
+            "target": agi_row,
+            "county_fips": "01003",
+            "cell_members": ["01003"],
+            "concept": "adjusted_gross_income",
+        }
+    ]
+    loaded, design, registry, records, matrix = run.module.load_checkpoint_surface(
+        checkpoint, identity
+    )
+    # The default fixture's 12 rows less the dropped AGI row.
+    assert matrix.shape == (11, 3)
+    assert agi_row not in {spec.name for spec in registry}
+
+    # Calibrate grades 01003 without its AGI row; the packaged report and its
+    # CSV name the row in 01003's cell (review of #1660).
+    for record in records:
+        if record.get("state_county_parent_target_name"):
+            record["role"] = "holdout"
+    evidence = run.module.calibration_evidence(
+        frame=loaded,
+        roles=records,
+        matrix=matrix,
+        design_weights=design,
+        weights=np.asarray([10.0, 75.0, 15.0]),
+        target_loss_cap=1.0,
+        checkpoint_dir=checkpoint,
+        identity=identity,
+    )
+    assert agi_row not in {record["name"] for record in records}
+    summary = {
+        "county_reliability": evidence["county_reliability"],
+        "run_identity_sha256": hashlib.sha256(
+            json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "weights_sha256": "fixture-weights",
+    }
+    run.county.write_reports(checkpoint, summary, identity=identity)
+    (checkpoint / "calibration_summary.json").write_text(json.dumps(summary))
+    files = {}
+    packaged = run.county.package_reports(files, checkpoint, identity)
+    report = files["county_reliability.json"]
+    assert report["unsupported_targets"] == [agi_row]
+    assert (
+        report["zero_measure_soi_rows_dropped"]
+        == (identity["zero_measure_soi_rows_dropped"])
+    )
+    cells = report["counties"]
+    assert cells["01003"]["zero_measure_soi_rows_dropped"] == [agi_row]
+    assert cells["01001"]["zero_measure_soi_rows_dropped"] == []
+    # 01003 is still graded, from its other rows and validation families.
+    assert cells["01003"]["grade"] in {"A", "B", "C", "D"}
+    rows = {
+        row["county_fips"]: row
+        for row in csv.DictReader(io.StringIO(packaged["county_reliability.csv"]))
+    }
+    assert rows["01003"]["zero_measure_soi_rows_dropped"] == agi_row
+    assert rows["01001"]["zero_measure_soi_rows_dropped"] == ""
+
+
+def test_the_reliability_report_marks_every_member_of_a_dropped_combined_cell(
+    tmp_path,
+) -> None:
+    county = _county()
+    row = {
+        "target": "county_15009__soi_agi",
+        "county_fips": "15009",
+        "cell_members": ["15005", "15009"],
+        "concept": "adjusted_gross_income",
+    }
+    identity = {
+        "geographies": "state,county",
+        "county_column": "county_fips_2023",
+        "county_targets_dropped": [row["target"]],
+        "county_drop_empty_soi_rows": True,
+        "zero_measure_soi_rows_dropped": [row],
+    }
+    summary = {
+        "county_reliability": {
+            "schema_version": 3,
+            "counties": {
+                code: {"grade": "B", "status": "supported"}
+                for code in ("15001", "15005", "15009")
+            },
+        },
+        "run_identity_sha256": "stamp",
+        "weights_sha256": "weights",
+    }
+
+    county.write_reports(tmp_path, summary, identity=identity)
+
+    report = json.loads((tmp_path / "county_reliability.json").read_text())
+    marks = {
+        code: cell["zero_measure_soi_rows_dropped"]
+        for code, cell in report["counties"].items()
+    }
+    assert marks == {"15001": [], "15005": [row["target"]], "15009": [row["target"]]}
+    rows = list(
+        csv.DictReader(io.StringIO((tmp_path / "county_reliability.csv").read_text()))
+    )
+    assert [row_["zero_measure_soi_rows_dropped"] for row_ in rows] == [
+        "",
+        row["target"],
+        row["target"],
+    ]
+    # A flagged identity from older code names dropped targets but not their
+    # cells: refused, never an unmarked report.
+    older = {
+        key: value
+        for key, value in identity.items()
+        if key != "zero_measure_soi_rows_dropped"
+    }
+    with pytest.raises(SystemExit, match="re-run --stage materialize"):
+        county.write_reports(tmp_path, summary, identity=older)
+    # With nothing dropped, the older identity needs no cells.
+    county.write_reports(
+        tmp_path, summary, identity={**older, "county_targets_dropped": []}
+    )
+    report = json.loads((tmp_path / "county_reliability.json").read_text())
+    assert report["zero_measure_soi_rows_dropped"] == []
+    assert report["counties"]["15005"]["zero_measure_soi_rows_dropped"] == []
+
+
+def test_dropping_empty_soi_rows_never_drops_a_county_without_households() -> None:
+    county = _county()
+    households = pd.DataFrame(
+        {"household_id": [1, 2], "state_fips": [1, 1], "county_fips": [1001, 1001]}
+    )
+    specs = [
+        SimpleNamespace(
+            name=f"county_{code}__agi",
+            value=5.0,
+            metadata={
+                "county_fips": code,
+                "source_measure_id": "adjusted_gross_income",
+                "state_county_parent_target_name": "agi",
+            },
+        )
+        for code in ("01001", "01003")
+    ]
+
+    rows = county.zero_measure_soi_rows(
+        specs, households, ["county_01001__agi", "county_01003__agi"]
+    )
+
+    assert [row["county_fips"] for row in rows] == ["01001"]
+    assert rows[0]["households"] == 2

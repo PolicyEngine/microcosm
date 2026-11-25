@@ -370,7 +370,8 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # The QRF draw's default thread count, joblib.cpu_count() in
             # microcosm.fit.qrf, moves it again.
             # calibrate's return_frame option in solve moves it again.
-            "spec_sha256": "2e3093b6acc4926e80e96b080c3bfe2727baa22127ebfb9faf8a1ef05eda0f50",
+            # microcosm#1686's shared SIPP person-file read moves it again.
+            "spec_sha256": "499389d4b1f0c967c54a6f2fa81b8a07a7e59c045bf2a8fe6bb909f08561d049",
         },
     }
 

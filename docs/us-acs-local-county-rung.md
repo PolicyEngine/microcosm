@@ -105,6 +105,29 @@ are also reported and refused outside that smoke exception. The exception
 does not excuse missing source facts or mismatched county boundaries, and
 development samples cannot be packaged as releases.
 
+`--county-drop-empty-soi-rows` (off by default) drops, instead of refusing, a
+county IRS SOI row that is empty although the county has households: every
+household's measure is 0 (for example AGI), and the state row stores no zero.
+Each dropped row is recorded in `county_surface.json`
+(`zero_measure_soi_rows_dropped`), the run identity and the reliability report,
+and the refresh recipe repeats the flag. Calibration grades such a county
+without the row, so the reliability report also names each dropped row in its
+county cells (`zero_measure_soi_rows_dropped`; a combined cell's row marks
+every member county) and in a `zero_measure_soi_rows_dropped` column of
+`county_reliability.csv`. Only a run with the flag has that key and column. A
+county with no household is refused either way.
+`tools/check_us_acs_county_agi_support.py` lists, before R2, the counties whose
+AGI row would be empty (exit status 2), and exits 3 when R2 would refuse the run
+whatever the flag: a county outside the ladder, or a ladder county without a
+household-universe record after minimum support.
+
+**Temporary for the County Files proof of concept (microcosm#1647); removal
+tracked in microcosm#1661. Do not use for the final County Files build.** There
+every county must be supported well:
+a county whose AGI row would be empty needs a real fix, for example more
+household support (minimum support that also covers counties whose SOI rows
+would be empty) or a declared cell with its own ruling, not a dropped target.
+
 Calibration writes schema-3 `county_reliability.json` and a flat
 `county_reliability.csv` next to its calibration outputs, and packaging
 publishes both (the CSV is refused unless it is the flattening of the bound

@@ -8,6 +8,7 @@ import re
 import shlex
 import subprocess
 import sys
+import weakref
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -3285,6 +3286,22 @@ def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> No
 
     assert base_load < tail_presence < selection < tail_retention < regate < mass_repair
     assert "Post-selection weeks-unemployed input signal failed" in source
+
+
+def test_sipp_person_file_read_covers_every_donor_table_column() -> None:
+    builder = _load_builder_module()
+
+    columns = builder._SIPP_2023_DONOR_SOURCE_COLUMNS
+
+    assert len(columns) == len(set(columns))
+    for donor_columns in (
+        builder.SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+        builder.SIPP_SSI_DISABILITY_SOURCE_COLUMNS,
+        builder.SIPP_HEAD_START_SOURCE_COLUMNS,
+        builder.SIPP_VEHICLE_SOURCE_COLUMNS,
+        builder.SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
+    ):
+        assert set(donor_columns) <= set(columns)
 
 
 def test_sipp_vehicle_donor_override_parses(monkeypatch) -> None:
@@ -8990,16 +9007,40 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         lambda path: pd.DataFrame(),
     )
 
-    def fake_load_sipp_financial_asset_donor(
+    class FakeSippDecemberPersonRows:
+        pass
+
+    def fake_read_sipp_december_person_rows(
         path,
         *,
+        columns,
         expected_sha256=None,
         expected_size_bytes=None,
     ):
-        captured["sipp_financial_asset_donor_path"] = path
-        captured["sipp_financial_asset_donor_sha256"] = expected_sha256
-        captured["sipp_financial_asset_donor_size_bytes"] = expected_size_bytes
-        return pd.DataFrame()
+        captured.setdefault("sipp_person_file_reads", []).append(
+            {
+                "path": path,
+                "columns": tuple(columns),
+                "sha256": expected_sha256,
+                "size_bytes": expected_size_bytes,
+            }
+        )
+        person_rows = FakeSippDecemberPersonRows()
+        captured["sipp_person_rows_reference"] = weakref.ref(person_rows)
+        return person_rows
+
+    def fake_sipp_donor_builder(donor_name):
+        def build_donor(person_rows, **options):
+            captured.setdefault("sipp_donor_builds", []).append(
+                (
+                    donor_name,
+                    person_rows is captured["sipp_person_rows_reference"](),
+                    options,
+                )
+            )
+            return pd.DataFrame()
+
+        return build_donor
 
     monkeypatch.setattr(
         builder,
@@ -9008,9 +9049,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
-        "load_sipp_2023_financial_asset_donor",
-        fake_load_sipp_financial_asset_donor,
+        "read_sipp_december_person_rows",
+        fake_read_sipp_december_person_rows,
     )
+    for builder_name, donor_name in (
+        ("build_sipp_2023_financial_asset_donor", "financial_assets"),
+        ("build_sipp_2023_ssi_disability_donor", "ssi_disability"),
+        ("build_sipp_2023_head_start_donor", "head_start"),
+        ("build_sipp_2023_vehicle_donor", "vehicles"),
+        ("build_sipp_2023_voluntary_filing_donor", "voluntary_filing"),
+    ):
+        monkeypatch.setattr(
+            builder,
+            builder_name,
+            fake_sipp_donor_builder(donor_name),
+        )
 
     def fake_with_scf_wealth_inputs(
         frame, *, seed, time_period, scf_donor, sipp_donor=None
@@ -9075,17 +9128,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ),
     )
 
-    def fake_load_sipp_vehicle_donor(
-        path,
-        *,
-        expected_sha256=None,
-        expected_size_bytes=None,
-    ):
-        captured["sipp_vehicle_donor_path"] = path
-        captured["sipp_vehicle_donor_sha256"] = expected_sha256
-        captured["sipp_vehicle_donor_size_bytes"] = expected_size_bytes
-        return pd.DataFrame()
-
     def fake_with_sipp_vehicle_inputs(frame, *, seed, time_period, sipp_donor):
         captured["sipp_vehicle_stage_called"] = True
         captured["sipp_vehicle_seed"] = seed
@@ -9101,11 +9143,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(
         builder,
-        "load_sipp_2023_vehicle_donor",
-        fake_load_sipp_vehicle_donor,
-    )
-    monkeypatch.setattr(
-        builder,
         "with_us_sipp_vehicle_inputs",
         fake_with_sipp_vehicle_inputs,
     )
@@ -9114,19 +9151,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_sipp_vehicles_signal_gate",
         fake_sipp_vehicles_signal_gate,
     )
-
-    def fake_load_ssi_disability_donor(
-        path,
-        *,
-        expected_sha256=None,
-        expected_size_bytes=None,
-        time_period=2024,
-    ):
-        captured["ssi_disability_donor_path"] = path
-        captured["ssi_disability_donor_sha256"] = expected_sha256
-        captured["ssi_disability_donor_size_bytes"] = expected_size_bytes
-        captured["ssi_disability_donor_period"] = time_period
-        return pd.DataFrame()
 
     def fake_with_ssi_disability_criteria(frame, *, seed, time_period, sipp_donor):
         captured["ssi_disability_stage_called"] = True
@@ -9143,11 +9167,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(
         builder,
-        "load_sipp_2023_ssi_disability_donor",
-        fake_load_ssi_disability_donor,
-    )
-    monkeypatch.setattr(
-        builder,
         "with_us_ssi_disability_criteria",
         fake_with_ssi_disability_criteria,
     )
@@ -9156,17 +9175,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "us_ssi_disability_criteria_signal_gate",
         fake_ssi_disability_signal_gate,
     )
-
-    def fake_load_sipp_head_start_donor(
-        path,
-        *,
-        expected_sha256=None,
-        expected_size_bytes=None,
-    ):
-        captured["sipp_head_start_donor_path"] = path
-        captured["sipp_head_start_donor_sha256"] = expected_sha256
-        captured["sipp_head_start_donor_size_bytes"] = expected_size_bytes
-        return pd.DataFrame()
 
     def fake_with_sipp_head_start_input(
         frame,
@@ -9189,11 +9197,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         )
 
-    monkeypatch.setattr(
-        builder,
-        "load_sipp_2023_head_start_donor",
-        fake_load_sipp_head_start_donor,
-    )
     monkeypatch.setattr(
         builder,
         "with_us_sipp_head_start_input",
@@ -9304,17 +9307,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         lambda frame, *, assignment_priors, prior_basis: "ssi-digest-sentinel",
     )
 
-    def fake_load_voluntary_filing_donor(
-        path,
-        *,
-        expected_sha256=None,
-        expected_size_bytes=None,
-    ):
-        captured["voluntary_filing_donor_path"] = path
-        captured["voluntary_filing_donor_sha256"] = expected_sha256
-        captured["voluntary_filing_donor_size_bytes"] = expected_size_bytes
-        return pd.DataFrame()
-
     def fake_with_voluntary_filing_input(frame, *, seed, time_period, sipp_donor):
         captured["voluntary_filing_stage_called"] = True
         captured["voluntary_filing_seed"] = seed
@@ -9328,11 +9320,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         )
 
-    monkeypatch.setattr(
-        builder,
-        "load_sipp_2023_voluntary_filing_donor",
-        fake_load_voluntary_filing_donor,
-    )
     monkeypatch.setattr(
         builder,
         "with_us_voluntary_filing_input",
@@ -9356,6 +9343,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     def fake_with_sipp_tip_inputs(frame, *, seed, time_period, sipp_donor):
         captured["sipp_tip_stage_called"] = True
+        captured["sipp_person_rows_alive_at_tip_stage"] = (
+            captured["sipp_person_rows_reference"]() is not None
+        )
         return frame
 
     def fake_sipp_tips_signal_gate(frame):
@@ -10385,50 +10375,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
     assert captured["sipp_tip_stage_called"] is True
     assert captured["sipp_tip_gate_called"] is True
-    assert captured["sipp_financial_asset_donor_path"] == Path("pu2023.csv")
-    assert (
-        captured["sipp_financial_asset_donor_sha256"]
-        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256
-    )
-    assert (
-        captured["sipp_financial_asset_donor_size_bytes"]
-        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES
-    )
+    assert captured["sipp_person_file_reads"] == [
+        {
+            "path": Path("pu2023.csv"),
+            "columns": builder._SIPP_2023_DONOR_SOURCE_COLUMNS,
+            "sha256": builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
+            "size_bytes": builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
+        }
+    ]
+    assert captured["sipp_donor_builds"] == [
+        ("financial_assets", True, {}),
+        ("ssi_disability", True, {"time_period": builder.PERIOD}),
+        ("head_start", True, {}),
+        ("vehicles", True, {}),
+        ("voluntary_filing", True, {}),
+    ]
+    assert captured["sipp_person_rows_alive_at_tip_stage"] is False
     assert captured["sipp_scf_wealth_blend_called"] is True
     assert captured["sipp_scf_wealth_blend_gate_required"] is True
-    assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
-    assert (
-        captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256
-    )
-    assert (
-        captured["sipp_vehicle_donor_size_bytes"]
-        == builder.SIPP_2023_VEHICLE_DONOR_SIZE_BYTES
-    )
     assert captured["sipp_vehicle_stage_called"] is True
     assert captured["sipp_vehicle_seed"] == 42
     assert captured["sipp_vehicle_gate_called"] is True
-    assert captured["ssi_disability_donor_path"] == Path("pu2023.csv")
-    assert (
-        captured["ssi_disability_donor_sha256"]
-        == builder.SIPP_2023_SSI_DISABILITY_DONOR_SHA256
-    )
-    assert (
-        captured["ssi_disability_donor_size_bytes"]
-        == builder.SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES
-    )
-    assert captured["ssi_disability_donor_period"] == builder.PERIOD
     assert captured["ssi_disability_stage_called"] is True
     assert captured["ssi_disability_seed"] == 42
     assert captured["ssi_disability_gate_called"] is True
-    assert captured["sipp_head_start_donor_path"] == Path("pu2023.csv")
-    assert (
-        captured["sipp_head_start_donor_sha256"]
-        == builder.SIPP_2023_HEAD_START_DONOR_SHA256
-    )
-    assert (
-        captured["sipp_head_start_donor_size_bytes"]
-        == builder.SIPP_2023_HEAD_START_DONOR_SIZE_BYTES
-    )
     assert captured["sipp_head_start_stage_called"] is True
     assert captured["sipp_head_start_seed"] == 0
     assert captured["sipp_head_start_period"] == builder.PERIOD
@@ -10555,15 +10525,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         assert "final_medicaid_diagnostics_called" not in captured
     else:
         assert captured["final_medicaid_diagnostics_called"] is True
-    assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
-    assert (
-        captured["voluntary_filing_donor_sha256"]
-        == builder.SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256
-    )
-    assert (
-        captured["voluntary_filing_donor_size_bytes"]
-        == builder.SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES
-    )
     assert captured["voluntary_filing_stage_called"] is True
     assert captured["voluntary_filing_seed"] == 0
     assert captured["voluntary_filing_gate_called"] is True

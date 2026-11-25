@@ -921,6 +921,34 @@ entries:
     consumers: []
     notes: []
   - entity: person
+    column: strike_benefits
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Strike benefits (ASEC other-income code 12). The ACS asks no separate item: OIP is
+      one combined amount. Neither the shared plan nor the local income pass transfers
+      the column; the donor carries it only as a component of the OIP predictor analog
+      (ACS_LOCAL_OTHER_INCOME_DONOR_COMPONENTS). No respondent in the pinned public ASEC
+      person files reports code 12, so every donor-spine value is 0 too
+      (microcosm#922).
+    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
+      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
+          tanf, wic]
+        verdict: harmless
+        note: >-
+          0 is the value the donor gives every person: no pinned ASEC respondent reports
+          strike benefits, so a QRF transfer from the donor would also draw 0 on these
+          rows. HUD unearned income, school-meal and WIC income, Missouri and Texas TANF
+          unearned income, Marin and San Bernardino general relief and several state
+          child-care and assistance programs count it directly; the other consumers read
+          it only through those programs' results. The fill differs from the true value
+          only for ACS respondents whose OIP includes strike pay, which no pinned ASEC
+          year observes.
+  - entity: person
     column: tip_income
     fill_value: "0"
     spines: [acs_2024_1yr]

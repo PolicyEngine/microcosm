@@ -38,8 +38,9 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # The QRF draw's default thread count, joblib.cpu_count() in
     # microcosm.fit.qrf, moves the fit kernels' bytes again.
     # calibrate's return_frame option in solve moves it again.
+    # microcosm#1686's shared SIPP person-file read moves it again.
     assert first.spec_sha256 == (
-        "6ba1402eced96554e5d31781bf5a24b77d8b5421324d2da374b3806913a5d9bd"
+        "c0431e2baa14c8fcc5fb3475f8cca5391d3c87c814f84f4256a7710b942b8c0b"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
