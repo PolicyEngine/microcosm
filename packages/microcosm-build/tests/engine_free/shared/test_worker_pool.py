@@ -18,6 +18,7 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import microcosm.build.worker_pool as worker_pool_module
@@ -1048,3 +1049,76 @@ def test_the_identity_helper_names_nan_keys_frame_cells_and_scalar_arrays() -> N
             runs({"total": np.array(1.0)}, {"total": np.array(2.0)}),
             worker_counts=(1, 2),
         )
+
+
+class _WeightedSeries(pd.Series):
+    """Like policyengine-core's MicroSeries: weights kept in ``_metadata``."""
+
+    _metadata = ["weights"]
+
+    @property
+    def _constructor(self):
+        return _WeightedSeries
+
+
+class _LabelledArray(np.ndarray):
+    """Like policyengine-core's EnumArray: an attribute beside the codes."""
+
+    def __new__(cls, codes, possible_values):
+        array = np.asarray(codes).view(cls)
+        array.possible_values = possible_values
+        return array
+
+
+def test_canonical_bytes_keep_the_state_subclasses_carry() -> None:
+    import enum
+
+    first = _WeightedSeries([1.0, 2.0, 3.0])
+    first.weights = np.array([1.0, 1.0, 1.0])
+    second = _WeightedSeries([1.0, 2.0, 3.0])
+    second.weights = np.array([5.0, 0.0, 9.0])
+    assert canonical_result_bytes(first) != canonical_result_bytes(second)
+
+    class FilingStatus(enum.Enum):
+        SINGLE = "single"
+        JOINT = "joint"
+
+    class Tenure(enum.Enum):
+        OWNER = "owner"
+        RENTER = "renter"
+
+    assert canonical_result_bytes(
+        _LabelledArray([0, 1], FilingStatus)
+    ) != canonical_result_bytes(_LabelledArray([0, 1], Tenure))
+
+
+def test_canonical_bytes_keep_numpy_scalar_and_record_types() -> None:
+    record_type = [("a", "<i8")]
+    assert canonical_result_bytes(
+        np.rec.array([(1,)], dtype=record_type)[0]
+    ) != canonical_result_bytes(np.array([(1,)], dtype=record_type)[0])
+    if np.longlong is not np.int64:
+        assert canonical_result_bytes(np.longlong(1)) != canonical_result_bytes(
+            np.int64(1)
+        )
+        assert canonical_result_bytes(
+            np.array([1], dtype=np.longlong)
+        ) != canonical_result_bytes(np.array([1], dtype=np.int64))
+
+
+def test_canonical_bytes_are_equal_for_equal_multiindexes_built_differently() -> None:
+    sliced = pd.MultiIndex.from_tuples(
+        [(1, "a"), (2, "b"), (3, "c")], names=["unit", "code"]
+    )[:2]
+    built = pd.MultiIndex.from_tuples([(1, "a"), (2, "b")], names=["unit", "code"])
+    assert canonical_result_bytes(sliced) == canonical_result_bytes(built)
+
+
+def test_canonical_bytes_refuse_pandas_values_they_cannot_encode_with_type_error() -> (
+    None
+):
+    import pyarrow as pa
+
+    timestamps = pd.Series(pd.array([1, 2], dtype=pd.ArrowDtype(pa.timestamp("ns"))))
+    with pytest.raises(TypeError, match="canonical_result_bytes"):
+        canonical_result_bytes(timestamps)

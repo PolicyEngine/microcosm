@@ -321,3 +321,65 @@ def test_a_scope_collected_while_another_holds_the_lock_does_not_hang(
     thread.start()
     thread.join(10)
     assert finished.is_set()
+
+
+def test_a_scope_closing_never_puts_back_a_module_another_scope_removed(
+    monkeypatch, tmp_path
+) -> None:
+    """A garbage collection during one scope's close can free a suspended scope
+    whose cleanup removes a module; the first scope must not then put it back."""
+    import microcosm.build.us_runtime.engine_lifecycle as lifecycle
+
+    variables_dir = tmp_path / "variables"
+    name = "7520001_-123_income_tax"
+
+    class Holder:
+        pass
+
+    try:
+        holder = Holder()
+        context = temporary_engine_variable_modules(variables_dir)
+        context.__enter__()
+        holder.context = context
+        holder.itself = holder
+        _register_variable_module(name, variables_dir)
+        explicit = EngineVariableModuleScope(variables_dir).open()
+        del holder, context
+
+        real_registrations = lifecycle._registrations
+
+        def registrations_then_collect(directory):
+            found = real_registrations(directory)
+            gc.collect()  # Frees the suspended scope, which removes the module.
+            return found
+
+        monkeypatch.setattr(lifecycle, "_registrations", registrations_then_collect)
+        explicit.close()
+        assert name not in sys.modules
+    finally:
+        sys.modules.pop(name, None)
+
+
+def test_an_earlier_scope_closing_keeps_a_later_open_scopes_reregistered_module(
+    tmp_path,
+) -> None:
+    """Core names modules after id(system), so a new system can take a dead one's
+    name. An earlier scope's snapshot of the old module must not replace the
+    module a later, still-open scope registered under that name."""
+    variables_dir = tmp_path / "variables"
+    name = "7530001_-123_income_tax"
+    try:
+        stale = _variable_module(name, variables_dir)
+        sys.modules[name] = stale
+        earlier = EngineVariableModuleScope(variables_dir).open()
+        later = EngineVariableModuleScope(variables_dir).open()
+        current = _variable_module(name, variables_dir)
+        sys.modules[name] = current
+
+        earlier.close()
+        assert sys.modules[name] is current
+
+        later.close()
+        assert sys.modules[name] is stale
+    finally:
+        sys.modules.pop(name, None)
