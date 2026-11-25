@@ -15,10 +15,13 @@ How it works:
   default rules (``us_runtime/engine_lifecycle.py``).
 * **Start-up data sent once per worker.** ``initializer(*initargs)`` runs once
   in each worker, and whatever it returns is passed to every unit that worker
-  runs as ``unit_function(state, unit)``. Spawn pickles ``initargs`` once per
-  worker start, so a frame passed there crosses once per worker, not once per
-  unit; while a worker starts, the parent briefly holds that pickled copy too.
-  A unit itself should be small (indices, a request descriptor).
+  runs as ``unit_function(state, unit)``. ``initargs`` are pickled and sent
+  over the worker's own pipe once per worker start, after its process has
+  started, so a frame passed there crosses once per worker, not once per unit;
+  while it is sent, the parent briefly holds the pickled copy too. Workers
+  started together import their modules at the same time. A worker that dies
+  while receiving its start-up data counts as a failed start. A unit itself
+  should be small (indices, a request descriptor).
 * **Worker replacement.** With ``max_units_per_worker``, a worker is told to
   stop after that many units and a fresh one takes its place, so memory that
   an engine leaves behind does not build up. The replacement starts only after
@@ -55,7 +58,9 @@ How it works:
   while each worker starts, so another thread of the parent that reads the
   environment, or starts a subprocess, at that moment sees them too.
 * **No orphaned workers.** Each worker exits as soon as its parent process
-  dies, even in the middle of a unit, once the unit lets other threads run:
+  dies (it watches a pipe only the parent holds, and, within a second, its
+  parent process ID, in case a child the parent forked holds copies of the
+  pipe), even in the middle of a unit, once the unit lets other threads run:
   Python and NumPy code does so often, but a long call into C code that holds
   the interpreter lock delays the exit until it returns. A pool that is
   garbage-collected or left open at interpreter exit kills its workers, and a
@@ -396,24 +401,40 @@ def _exit_when_parent_dies() -> None:
     if parent is None:  # pragma: no cover - a pool worker always has a parent
         return
 
+    parent_pid = os.getppid()
+
     def watch() -> None:
-        wait_for_any([parent.sentinel])
+        # A child the parent forked keeps copies of the pipe's write end, so
+        # the pipe alone may never close; the parent process ID changes when
+        # the worker is handed to a new parent.
+        while not wait_for_any([parent.sentinel], timeout=1.0):
+            if os.getppid() != parent_pid:
+                break
         os._exit(_PARENT_GONE_EXIT_CODE)
 
     threading.Thread(target=watch, name="worker-pool-parent", daemon=True).start()
 
 
-def _worker_main(receive, connection, initializer, initargs, unit_function) -> None:
+def _worker_main(receive, connection, initializer, unit_function) -> None:
     """Run in each worker: start up once, then run units until told to stop.
 
-    ``receive`` reads units from the parent; ``connection`` sends messages to it.
+    ``receive`` reads the start-up data and then units from the parent;
+    ``connection`` sends messages to it.
     """
     _exit_when_parent_dies()
+    try:
+        initargs = receive.recv()
+    except (EOFError, OSError):
+        return
+    except Exception as error:
+        _send_quietly(connection, ("start_error", _summary(error), _formatted(error)))
+        return
     try:
         state = None if initializer is None else initializer(*initargs)
     except Exception as error:
         _send_quietly(connection, ("start_error", _summary(error), _formatted(error)))
         return
+    del initargs
     if not _send_quietly(connection, ("ready", os.getpid())):
         return
     while True:
@@ -753,26 +774,38 @@ class WorkerPool:
 
     def report(self) -> WorkerPoolReport:
         with self._shared.lock:
-            return WorkerPoolReport(
-                worker_starts=self._worker_starts,
-                units_completed=self._units_completed,
-                failed_attempts=tuple(self._failed_attempts),
-                max_live_workers=self._max_live_workers,
-                peak_worker_memory_bytes=self._shared.peak_memory,
-                workers_stopped_over_cap=self._shared.workers_stopped_over_cap,
+            values = (
+                self._worker_starts,
+                self._units_completed,
+                list(self._failed_attempts),
+                self._max_live_workers,
+                self._shared.peak_memory,
+                self._shared.workers_stopped_over_cap,
             )
+        starts, completed, failed, live, peak, stopped = values
+        return WorkerPoolReport(
+            worker_starts=starts,
+            units_completed=completed,
+            failed_attempts=tuple(failed),
+            max_live_workers=live,
+            peak_worker_memory_bytes=peak,
+            workers_stopped_over_cap=stopped,
+        )
 
     def map(self, units: Iterable[object]) -> Iterator[object]:
         """Run ``unit_function(state, unit)`` for each unit; yield results in order."""
-        if self._closed:
-            raise WorkerPoolError("The worker pool is closed.")
-        if self._map_owner is not None:
-            raise WorkerPoolError("The worker pool is already running a map.")
         token = object()
-        self._map_owner = token
-        units = list(units)
+        took_turn = False
         delivered_all = False
         try:
+            units = list(units)
+            with self._shared.lock:
+                if self._closed:
+                    raise WorkerPoolError("The worker pool is closed.")
+                if self._map_owner is not None:
+                    raise WorkerPoolError("The worker pool is already running a map.")
+                self._map_owner = token
+                took_turn = True
             for index, result in self._run(units):
                 if index == len(units) - 1:
                     # Every result is out: the map is over even if the caller
@@ -786,7 +819,7 @@ class WorkerPool:
             # A finished map's generator may be closed after a later map
             # began; only the map that holds the turn may give it up.
             self._release_map_turn(token)
-            if not delivered_all:
+            if took_turn and not delivered_all:
                 self.close()
 
     def _release_map_turn(self, token: object) -> None:
@@ -799,14 +832,10 @@ class WorkerPool:
             return
         self._closed = True
         shared = self._shared
+        # The memory thread stops at its next poll. It is not joined: a garbage
+        # collection can close the pool from the memory thread itself, or from a
+        # thread holding the lock the memory thread is waiting for.
         shared.stop.set()
-        # A garbage collection in the memory thread can close the pool there,
-        # and a thread cannot join itself.
-        if (
-            self._monitor is not None
-            and self._monitor is not threading.current_thread()
-        ):
-            self._monitor.join()
         with shared.lock:
             workers = list(shared.workers)
         for worker in workers:
@@ -862,6 +891,12 @@ class WorkerPool:
             # Take in finished results and exits without waiting, so idle
             # workers get new units even while the caller holds a result.
             self._wait_and_handle(run, block=False)
+            held = None
+            if next_index in run.results:
+                # Take the result now, so its place in the window goes to a new
+                # unit before the caller gets it.
+                held = (next_index, run.results.pop(next_index))
+                next_index += 1
             window_end = min(count, next_index + settings.units_ahead)
             waiting = len(run.retries) + max(0, window_end - next_new)
             self._kill_workers_past_their_stop_deadline()
@@ -871,6 +906,7 @@ class WorkerPool:
                     not worker.ready
                     or worker.retiring
                     or worker.connection_lost
+                    or worker.killed
                     or worker.unit_index is not None
                 ):
                     continue
@@ -883,11 +919,9 @@ class WorkerPool:
                     break
                 if not self._send_unit(worker, index, run):
                     heapq.heappush(run.retries, index)
-            if next_index in run.results:
-                result = run.results.pop(next_index)
-                next_index += 1
-                yield next_index - 1, result
-                del result
+            if held is not None:
+                yield held
+                held = None
                 continue
             self._wait_and_handle(run, block=True)
 
@@ -940,13 +974,34 @@ class WorkerPool:
             and not worker.connection_lost
             and worker.unit_index is None
         )
+        started = []
+        payload = None
         while (
             available < waiting and len(self._shared.workers) < self._settings.workers
         ):
-            self._start_worker()
+            if payload is None:
+                payload = self._start_up_payload()
+            started.append(self._start_worker())
             available += 1
+        # Every new process imports at once while the parent sends each its
+        # start-up data in turn.
+        for worker in started:
+            try:
+                worker.to_worker.send_bytes(payload)
+            except OSError:
+                # The worker died while reading it; its exit counts as a
+                # failed start.
+                worker.connection_lost = True
 
-    def _start_worker(self) -> None:
+    def _start_up_payload(self):
+        try:
+            return ForkingPickler.dumps(self._initargs)
+        except Exception as error:
+            raise WorkerPoolError(
+                f"The workers' start-up data could not be pickled: {_summary(error)}"
+            ) from error
+
+    def _start_worker(self) -> _Worker:
         # Two one-way pipes: socket pairs carry large results several times
         # slower on macOS.
         units_out, units_in = self._context.Pipe(duplex=False)
@@ -954,19 +1009,11 @@ class WorkerPool:
         child_ends = (units_out, messages_in)
         process = self._context.Process(
             target=_worker_main,
-            args=(
-                units_out,
-                messages_in,
-                self._initializer,
-                self._initargs,
-                self._unit_function,
-            ),
+            args=(units_out, messages_in, self._initializer, self._unit_function),
             name=f"worker-pool-{self._worker_starts + 1}",
             daemon=True,
         )
-        # Not under the state's lock: with spawn, ``start`` blocks until the
-        # worker has read its start-up data, which can take as long as the
-        # worker's imports, and the memory thread needs the lock meanwhile.
+        # Not under the state's lock, so the memory thread can act meanwhile.
         try:
             with _environment_for_start(self._settings.worker_environment):
                 process.start()
@@ -996,9 +1043,17 @@ class WorkerPool:
             self._max_live_workers = max(
                 self._max_live_workers, len(self._shared.workers)
             )
+        return worker
 
     def _send_unit(self, worker: _Worker, index: int, run: _Run) -> bool:
-        """Send a unit to an idle worker; False if the worker has gone."""
+        """Give a unit to an idle worker; False if the worker can no longer take it.
+
+        The unit is assigned and its attempt counted, under the lock, before it
+        is written: the memory thread then either kills the worker before the
+        assignment (and the unit is not given to it) or sees the new unit and
+        does not act on an earlier reading. A worker that dies while the unit
+        is being written is charged through its exit, like any other death.
+        """
         try:
             payload = ForkingPickler.dumps((index, run.units[index]))
         except Exception as error:
@@ -1010,15 +1065,16 @@ class WorkerPool:
                 label=label,
                 causes=[cause],
             ) from error
+        with self._shared.lock:
+            if worker.killed or worker.connection_lost or _has_exited(worker):
+                return False
+            worker.unit_index = index
+            worker.units_sent += 1
+            run.attempts[index] += 1
         try:
             worker.to_worker.send_bytes(payload)
         except OSError:
             worker.connection_lost = True
-            return False
-        run.attempts[index] += 1
-        with self._shared.lock:
-            worker.unit_index = index
-            worker.units_sent += 1
         return True
 
     def _send_stop(self, worker: _Worker) -> None:
