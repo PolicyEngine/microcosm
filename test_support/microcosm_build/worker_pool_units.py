@@ -181,3 +181,17 @@ def write_pid_then_sleep(state, unit):
     (Path(directory) / f"worker-{os.getpid()}").write_text("running")
     time.sleep(seconds)
     return os.getpid()
+
+
+def mark_then_sleep(state, unit):
+    """Write ``marker`` (if given) when the unit starts, then sleep."""
+    value, marker, seconds = unit
+    if marker:
+        Path(marker).write_text(str(os.getpid()))
+    time.sleep(seconds)
+    return value
+
+
+def array_after_sleep(state, seconds):
+    time.sleep(seconds)
+    return np.ones(1_000)

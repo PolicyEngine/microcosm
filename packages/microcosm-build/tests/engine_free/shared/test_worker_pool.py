@@ -7,12 +7,15 @@ import gc
 import multiprocessing
 import os
 import signal
+import stat
 import subprocess
 import sys
+import threading
 import time
+import weakref
 from collections import Counter
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -312,6 +315,8 @@ def test_closing_an_unfinished_map_stops_every_worker() -> None:
         {"memory_cap_bytes": 0},
         {"max_units_ahead": 0},
         {"memory_poll_seconds": 0.0},
+        # Longer than a thread can wait for, which would end the memory thread.
+        {"memory_poll_seconds": 1e10},
     ],
 )
 def test_settings_refuse_values_that_cannot_run(setting) -> None:
@@ -343,6 +348,22 @@ def test_process_memory_bytes_sees_this_process_grow() -> None:
     del held
 
 
+def _held_by_another_thread(lock) -> bool:
+    """Whether a thread other than a fresh one holds ``lock`` (an RLock)."""
+    acquired = []
+
+    def try_to_acquire() -> None:
+        got = lock.acquire(timeout=0.05)
+        acquired.append(got)
+        if got:
+            lock.release()
+
+    thread = threading.Thread(target=try_to_acquire)
+    thread.start()
+    thread.join()
+    return not acquired[0]
+
+
 def test_the_memory_cap_is_enforced_while_another_worker_starts(monkeypatch) -> None:
     """Starting a worker can block for as long as the worker takes to import.
 
@@ -356,7 +377,7 @@ def test_the_memory_cap_is_enforced_while_another_worker_starts(monkeypatch) -> 
     @contextlib.contextmanager
     def recording_environment_for_start(environment):
         # Entered around ``process.start()`` in the pool's worker start.
-        starts_under_lock.append(pool._shared.lock.locked())
+        starts_under_lock.append(_held_by_another_thread(pool._shared.lock))
         with real_environment_for_start(environment):
             yield
 
@@ -549,6 +570,168 @@ def test_a_function_defined_where_workers_cannot_import_it_is_refused(
 
     with pytest.raises(TypeError, match="importable"):
         WorkerPool(WorkerPoolSettings(workers=1), unit_function=typed_at_the_prompt)
+
+
+def test_a_finished_maps_generator_cannot_release_a_running_maps_turn() -> None:
+    with WorkerPool(
+        WorkerPoolSettings(workers=2), unit_function=units.sleep_then_return
+    ) as pool:
+        first = pool.map([(0, 0.0)])
+        assert next(first) == 0  # Its last result: the map is over.
+        second = pool.map([(10, 0.0), (11, 2.0)])
+        assert next(second) == 10
+        first.close()  # Must not end the second map's turn.
+        with pytest.raises(WorkerPoolError, match="already running"):
+            next(pool.map([(20, 0.0)]))
+        assert list(second) == [11]
+
+
+def test_closing_from_inside_the_memory_thread_stops_every_worker(monkeypatch) -> None:
+    """A garbage collection can run in any thread, including the memory thread
+    while it holds the pool's lock, and close an abandoned map there."""
+    pool = WorkerPool(
+        WorkerPoolSettings(workers=2, memory_poll_seconds=0.05),
+        unit_function=units.sleep_then_return,
+    )
+    armed = threading.Event()
+    outcome: dict[str, str] = {}
+    real_has_exited = worker_pool_module._has_exited
+
+    def has_exited(worker):
+        # Called by the memory thread with the pool's lock held.
+        if (
+            armed.is_set()
+            and threading.current_thread().name == "worker-pool-memory"
+            and "close" not in outcome
+        ):
+            outcome["close"] = "started"
+            try:
+                pool.close()
+                outcome["close"] = "finished"
+            except BaseException as error:
+                outcome["close"] = repr(error)
+        return real_has_exited(worker)
+
+    monkeypatch.setattr(worker_pool_module, "_has_exited", has_exited)
+    results = pool.map([(0, 0.0), (1, 30.0)])
+    assert next(results) == 0
+    armed.set()
+    deadline = time.monotonic() + 30
+    while outcome.get("close") in (None, "started") and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    assert outcome.get("close") == "finished"
+    assert multiprocessing.active_children() == []
+    with pytest.raises(WorkerPoolError, match="closed"):
+        next(results)
+
+
+def test_a_stale_memory_reading_does_not_kill_a_worker_on_a_later_unit(
+    monkeypatch, tmp_path
+) -> None:
+    marker = tmp_path / "unit-0-started"
+    real_reading = worker_pool_module.process_memory_bytes
+    stale = threading.Event()
+
+    def reading(pid):
+        if (
+            threading.current_thread().name == "worker-pool-memory"
+            and marker.exists()
+            and not stale.is_set()
+        ):
+            # Read during unit 0, acted on after unit 1 has started.
+            stale.set()
+            time.sleep(1.5)
+            return 10 * 1024**3
+        return real_reading(pid)
+
+    monkeypatch.setattr(worker_pool_module, "process_memory_bytes", reading)
+    settings = WorkerPoolSettings(
+        workers=1,
+        memory_cap_bytes=400 * MIB,
+        memory_poll_seconds=0.05,
+        max_attempts=1,
+    )
+    with WorkerPool(settings, unit_function=units.mark_then_sleep) as pool:
+        assert list(pool.map([(0, str(marker), 0.3), (1, "", 3.0)])) == [0, 1]
+        assert pool.report().failed_attempts == ()
+
+
+def test_workers_exchange_messages_over_pipes() -> None:
+    """Socket pairs carry large results several times slower on macOS."""
+    with WorkerPool(WorkerPoolSettings(workers=1), unit_function=units.echo) as pool:
+        assert list(pool.map([0])) == [0]
+        (worker,) = pool._shared.workers
+        for end in (worker.to_worker, worker.from_worker):
+            assert stat.S_ISFIFO(os.fstat(end.fileno()).st_mode)
+
+
+def test_an_idle_worker_gets_its_next_unit_while_the_caller_holds_a_result() -> None:
+    with WorkerPool(
+        WorkerPoolSettings(workers=1), unit_function=units.record_run_times
+    ) as pool:
+        results = pool.map([(0, 0.0), (1, 0.0)])
+        next(results)
+        time.sleep(1.0)  # The caller works on result 0.
+        resumed = time.monotonic()
+        (_, unit_one_started, _) = next(results)
+
+    assert unit_one_started < resumed
+
+
+def test_a_result_already_handed_back_is_not_kept_while_map_waits() -> None:
+    with WorkerPool(
+        WorkerPoolSettings(workers=1), unit_function=units.array_after_sleep
+    ) as pool:
+        results = pool.map([0.0, 2.0])
+        first = next(results)
+        reference = weakref.ref(first)
+        del first
+        observed: dict[str, bool] = {}
+        timer = threading.Timer(
+            1.0, lambda: observed.setdefault("alive", reference() is not None)
+        )
+        timer.start()
+        next(results)
+        timer.join()
+
+    assert observed == {"alive": False}
+
+
+def test_a_stopped_worker_is_killed_at_its_deadline_between_maps(monkeypatch) -> None:
+    monkeypatch.setattr(worker_pool_module, "_STOP_SECONDS", 1.0)
+    with WorkerPool(
+        WorkerPoolSettings(workers=1, max_units_per_worker=1, memory_poll_seconds=0.1),
+        initializer=units.start_lingering_thread,
+        unit_function=units.echo,
+    ) as pool:
+        assert list(pool.map([0])) == [0]
+        (worker,) = pool._shared.workers  # Told to stop; kept alive by a thread.
+        deadline = time.monotonic() + 20
+        while (
+            not worker_pool_module._has_exited(worker) and time.monotonic() < deadline
+        ):
+            time.sleep(0.1)
+        assert worker_pool_module._has_exited(worker)
+
+
+def test_a_kill_the_operating_system_refuses_does_not_raise(monkeypatch) -> None:
+    def refuse(pid, signal_number):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(worker_pool_module.os, "kill", refuse)
+    read_end, write_end = os.pipe()
+    try:
+        worker = SimpleNamespace(
+            exited=False,
+            pidfd=None,
+            pid=999_999,
+            process=SimpleNamespace(sentinel=read_end),
+        )
+        worker_pool_module._kill(worker)
+    finally:
+        os.close(read_end)
+        os.close(write_end)
 
 
 # ---------------------------------------------------------------------------
