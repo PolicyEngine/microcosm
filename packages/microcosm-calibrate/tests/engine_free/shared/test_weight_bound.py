@@ -302,21 +302,67 @@ def test_a_warm_start_keeps_the_declared_bound() -> None:
 
 
 def test_the_softmax_parametrization_holds_the_declared_bound() -> None:
+    """The softmax mass path bounds against the reference, in the loop too.
+
+    Under ``mass_parametrization="softmax"`` the per-step projection and the
+    in-loop receipt read the cap the solver builds from the reference
+    (``softmax_cap``), not from the starting weights.
+    """
+
     shared = weight_bound_reference(STARTING, "mean")
-    result = calibrate(
-        _frame(STARTING),
-        _targets_first(50.0),
+    solve = dict(
         weight_entity="household",
         epochs=400,
         learning_rate=0.05,
         mass="conserve",
         mass_parametrization="softmax",
+    )
+    result = calibrate(
+        _frame(STARTING),
+        _targets_first(50.0),
+        **solve,
         max_weight_ratio=3.0,
         max_weight_reference=shared,
     )
     assert (result.weights <= 3.0 * shared * (1 + 1e-12)).all()
     assert result.weights[0] == pytest.approx(29.0, rel=1e-5)
     assert result.weights.sum() == pytest.approx(STARTING.sum())
+    assert result.options["mass_parametrization"] == "softmax"
+    # Every weight the loop evaluated stayed within its declared cap, up to
+    # the float32 error of the softmax normalizer.
+    in_loop = result.options["iterate_selection_receipt"][
+        "softmax_in_loop_max_cap_ratio"
+    ]
+    assert in_loop == pytest.approx(1.0, abs=1e-5)
+    # Against its own starting weight the same solve takes the row to 50.
+    own = calibrate(
+        _frame(STARTING), _targets_first(50.0), **solve, max_weight_ratio=3.0
+    )
+    assert own.weights[0] == pytest.approx(50.0, rel=0.02)
+
+
+def test_the_softmax_parametrization_starts_from_the_bound() -> None:
+    # Two times the mean (19.3) is below the heavy rows' starting weight (27).
+    shared = weight_bound_reference(STARTING, "mean")
+    result = calibrate(
+        _frame(STARTING),
+        _targets(4.0),  # the light rows already hit it: nothing to fit
+        weight_entity="household",
+        epochs=5,
+        mass="conserve",
+        mass_parametrization="softmax",
+        max_weight_ratio=2.0,
+        max_weight_reference=shared,
+    )
+    bound = 2.0 * shared
+    assert result.options["weight_bound"]["records_started_above_bound"] == 2
+    assert (result.weights <= bound * (1 + 1e-12)).all()
+    assert result.weights.sum() == pytest.approx(STARTING.sum())
+    # No weight the loop evaluated passed its cap, from the first epoch on.
+    assert (
+        result.options["iterate_selection_receipt"]["softmax_in_loop_max_cap_ratio"]
+        <= 1.0 + 1e-5
+    )
 
 
 def test_bounds_that_cannot_hold_the_mass_are_refused() -> None:
