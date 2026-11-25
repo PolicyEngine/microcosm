@@ -213,9 +213,11 @@ def _largest_block(frame) -> int:
 
 
 def _land_rtol(frame) -> float:
-    """The float32 bound for corporate_land_value, one year from the data."""
+    """The float32 bound for corporate_land_value, one year from the data:
+    shareholding's, which it multiplies by a national total (policyengine-uk
+    2.179.2), as business rates and corporate SDLT do."""
 
-    key = UK_ENGINE_POPULATION.corrected["corporate_land_value"]
+    key = UK_ENGINE_POPULATION.corrected["shareholding"]
     return pool_share_rtol(
         _largest_block(frame),
         frame.n("household"),
@@ -312,8 +314,7 @@ def test_corrected_blocks_are_exact_and_say_on_what_basis(differing):
     assert correction["siblings_match"] is True
     assert correction["periods"] == [str(D), str(P)]
     corrections = [
-        block["corporate_land_value"]
-        for block in correction["corrections_by_block"].values()
+        block["shareholding"] for block in correction["corrections_by_block"].values()
     ]
     assert max(abs(c - 1.0) for c in corrections) > 1e-3
     reach = representation["population_reach"]
@@ -343,19 +344,20 @@ def test_corrected_blocks_are_exact_and_say_on_what_basis(differing):
         assert "engine_population_reach" not in resolution["provider"]
 
 
-#: The corrected formulas and two values that multiply a share by a national
-#: total, each with the allocation key its share divides by.
+#: The corrected formulas and three values that multiply a share by a
+#: national total, each with the allocation key its share divides by.
 SHARE_VALUES = (
     ("shareholding", "corporate_sector_wealth"),
     ("consumption_shareholding", "consumption"),
     ("business_rates", "corporate_sector_wealth"),
+    ("corporate_land_value", "corporate_sector_wealth"),
     ("corporate_sdlt", "corporate_sector_wealth"),
 )
 
 
 def test_every_corrected_formula_takes_the_pools_value_in_every_block(differing):
     """Each block's correction is ``f_b * S_b / S`` for every share formula,
-    and in each block's engine the three share formulas, and what multiplies
+    and in each block's engine the two share formulas, and what multiplies
     a share by a national total, take the pool's value for every household
     to float32 rounding (microcosm#931)."""
 

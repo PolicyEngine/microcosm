@@ -31,8 +31,10 @@ import pytest
 from microcosm.frame.adapters.engine_population import (
     MEASURE_PASS,
     FormulaRunRecorder,
+    PoolShareError,
     PopulationDeclarationError,
     check_key_sums,
+    check_supplied_totals,
     check_uniform_growth,
     inject_pool_shares,
     judge,
@@ -94,7 +96,9 @@ def test_the_declaration_classifies_exactly_the_engines_list():
     from policyengine_uk.utils.household_subset import WHOLE_POPULATION_VARIABLES
 
     assert UK_ENGINE_POPULATION.classified() == WHOLE_POPULATION_VARIABLES
-    assert len(WHOLE_POPULATION_VARIABLES) == 19
+    # 2.179.2 takes corporate_land_value and consumer_incident_tax_revenue_change
+    # off the list: each now reads the shares, which a block sets.
+    assert len(WHOLE_POPULATION_VARIABLES) == 17
 
 
 def test_the_declaration_validates_against_the_installed_engine(system):
@@ -118,6 +122,24 @@ def test_the_allocation_keys_are_the_engines_adds_of_household_inputs(system):
     assert len(COICOP) == 12
 
 
+def test_the_supplied_totals_are_the_engines_uk_totals_of_each_key(system):
+    # Each share divides by the sum of its key's components' UK totals
+    # wherever the data supplies them (utils/uk_totals.py); the declaration
+    # names exactly those inputs, and the components are the key's adds.
+    from policyengine_uk.utils import uk_totals
+
+    declaration = UK_ENGINE_POPULATION
+    assert set(declaration.supplied_totals) == set(declaration.corrected)
+    for formula, key in declaration.corrected.items():
+        components = tuple(uk_totals.components(key))
+        assert components == declaration.key_adds[key], formula
+        assert declaration.supplied_totals[formula] == tuple(
+            uk_totals.total_name(component) for component in components
+        )
+        for name in declaration.supplied_totals[formula]:
+            assert system.variables[name].is_input_variable(), name
+
+
 @pytest.mark.parametrize("reference", sorted(UK_ENGINE_POPULATION.digests))
 def test_every_pinned_source_is_the_reviewed_one(reference):
     assert source_sha256(reference) == UK_ENGINE_POPULATION.digests[reference]
@@ -133,8 +155,11 @@ def _source_file(system, name):
 def test_the_pins_cover_every_source_a_class_rests_on(system):
     # Every corrected, zero-at-policy and inert formula, the inert rule's sink
     # and levels, the constructor's structural reforms (adjust_budgets would
-    # rescale spending by a population total) and the Universal Credit
-    # modifier the window rests on; nothing else.
+    # rescale spending by a population total), the Universal Credit
+    # modifier the window rests on, and the two helpers the corrected shares
+    # read: which totals the data supplies (uk_totals.py) and which
+    # simulations take the weighted total instead (data_source.py); nothing
+    # else.
     declaration = UK_ENGINE_POPULATION
     names = {*declaration.corrected, *declaration.zero_at_policy}
     for name, rule in declaration.inert.items():
@@ -143,6 +168,8 @@ def test_the_pins_cover_every_source_a_class_rests_on(system):
         "policyengine_uk/reforms/policyengine/adjust_budgets.py",
         "policyengine_uk/reforms/reforms.py",
         "policyengine_uk.scenarios.uc_reform:add_universal_credit_reform",
+        "policyengine_uk/utils/uk_totals.py",
+        "policyengine_uk/utils/data_source.py",
     }
     assert set(declaration.digests) == required
 
@@ -225,9 +252,6 @@ PREDICATE_MOVES = {
         },
     ),
     "carbon_tax": ({"gov.contrib.ubi_center.carbon_tax.rate": 50.0},),
-    "consumer_incident_tax_revenue_change": (
-        {f"{_BUDGET}.consumer_incident_tax_change": 1.0},
-    ),
     "education_budget_change": ({f"{_BUDGET}.education": 1.0},),
     "nhs_budget_change": ({f"{_BUDGET}.nhs": 1.0},),
     "other_public_spending_budget_change": ({f"{_BUDGET}.other_public_spending": 1.0},),
@@ -381,6 +405,9 @@ def test_attendance_reaches_household_taxes_only_through_the_vat_change():
         }
     )
     assert readers["attends_private_school"] == {
+        # A dataset check's list of columns a dataset must supply for its
+        # first period if it supplies them at all; no formula reads it.
+        "data/core_route_checks.py:FIRST_PERIOD_COLUMNS",
         "data/filter_dataset.py:filter_dataset",
         "utils/household_subset.py:WHOLE_POPULATION_VARIABLES",
         # A calibration script, run by hand; no formula imports it.
@@ -413,6 +440,8 @@ def test_attendance_reaches_household_taxes_only_through_the_vat_change():
 AXIS_FREE_REDUCTIONS = {
     "brma": [".any()"],
     "capital_gains_tax": ["np.any(", "np.max("],
+    "council_tax_reduction_income_tax_on_other_counted_income": [".any()"],
+    "council_tax_reduction_tax_deduction": [".any()"],
     "ebr_council_tax_rebate": ["np.any("],
     "esa_income_eligible": [".any()"],
     "is_cared_for_by_carer_benefit_recipient": ["np.max("],
@@ -785,6 +814,20 @@ WHOLE_ARRAY_BRANCHES = {
     "variables/gov/hmrc/pensions/private_pension_contributions_tax.py:_top_slice_charge": [
         "i + 1 < len(thresholds)",
     ],
+    # Zeroing income and charges nobody has changes nobody's tax: the
+    # shortcut is the without-earnings tax, which zeroes the rest.
+    "variables/gov/local_authorities/council_tax_reduction/council_tax_reduction_income_tax_on_other_counted_income.py:council_tax_reduction_income_tax_on_other_counted_income.formula": [
+        "not any((person(variable, period) != 0).any() for variable in zeroed)",
+    ],
+    # Each branch of income tax is read only where a scheme uses it; where no
+    # unit is in that scheme, the stand-in reaches no unit's selected value.
+    "variables/gov/local_authorities/council_tax_reduction/council_tax_reduction_tax_deduction.py:council_tax_reduction_tax_deduction.formula": [
+        "(scotland & (without_universal_credit | pensioner_scheme)).any()",
+        "(without_universal_credit | pensioner_scheme).any()",
+        "other_schemes.any()",
+        "pensioner_scheme.any()",
+        "with_universal_credit.any()",
+    ],
     # A parameter list.
     "variables/gov/ofgem/warm_home_discount.py:warm_home_discount.formula": [
         "len(benefits) == 0",
@@ -1098,6 +1141,21 @@ def test_a_share_read_at_a_period_never_injected_is_caught(pool_engine, system):
     assert ("corrected_derived", "shareholding", str(D)) in kinds
     assert ("corrected_not_input", "shareholding", str(D)) in kinds
     recorder.disarm()
+
+
+def test_a_block_whose_data_supplies_a_uk_total_is_refused(pool_engine, system):
+    # A release frame carries the UK totals (policyengine-uk#2896): a block
+    # over one would divide by them and then take the pool-share factor too,
+    # so it is refused by name. Without them the check passes.
+    tables, _pool = pool_engine
+    declaration = uk_engine_population(system)
+    person, benunit, household = _subset(tables, 1)
+    check_supplied_totals(_simulation(person, benunit, household), declaration, (D, P))
+    supplied = household.assign(uk_total_corporate_wealth=1.0e12)
+    with pytest.raises(PoolShareError, match="supplies uk_total_corporate_wealth"):
+        check_supplied_totals(
+            _simulation(person, benunit, supplied), declaration, (D, P)
+        )
 
 
 def test_a_twelve_input_key_that_rounds_apart_stays_inside_the_bound():

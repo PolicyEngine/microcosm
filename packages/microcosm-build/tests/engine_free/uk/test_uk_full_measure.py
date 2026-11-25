@@ -879,7 +879,7 @@ def test_a_block_without_a_key_column_gets_no_correction(monkeypatch, tmp_path):
     ]
     partial[1][1].table("household").drop(columns=["corporate_wealth"], inplace=True)
     representation = full_measure._engine_population_representation(pool, partial)
-    assert representation["checks"]["weight_share_inputs"]["corporate_land_value"][
+    assert representation["checks"]["weight_share_inputs"]["shareholding"][
         "missing_columns"
     ] == ["corporate_wealth"]
     assert full_measure._block_pool_shares(representation) is None

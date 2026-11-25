@@ -6,16 +6,22 @@ total, a weighted rank or median, or records spread by weight. Over an engine
 block or batch that holds part of the pool they read the part, not the pool
 (microcosm#931). :data:`UK_ENGINE_POPULATION` classifies each one for the
 shared machinery in :mod:`microcosm.frame.adapters.engine_population`,
-reviewed against policyengine-uk 2.177.7:
+reviewed against policyengine-uk 2.179.2:
 
-- corrected: ``shareholding``, ``corporate_land_value`` and
-  ``consumption_shareholding`` allocate by ``x / sum(x * w)``, so a block's
-  own value times its pool-mass factor and key sums is the pool's;
+- corrected: ``shareholding`` and ``consumption_shareholding`` allocate by
+  ``x / sum(x * w)`` where the data supplies no UK total of their key, so a
+  block's own value times its pool-mass factor and key sums is the pool's;
+  ``corporate_land_value`` and ``consumer_incident_tax_revenue_change``
+  read those shares, so they take the corrected values. Where the data
+  supplies the UK totals (``utils/uk_totals.py``, policyengine-uk#2896),
+  the shares divide by them instead and are already the pool's, so a block
+  whose data supplies any is refused (``supplied_totals``); the build adds
+  them only to release frames, which no engine block computes over;
 - stored: ``months_since_last_birthday`` and ``attends_private_school``
   are inputs the spine stores;
 - zero at policy: the labour supply response, the employer NI incidence
-  responses, the carbon tax and the four contributed budget changes are zero
-  while their parameters are (checked at each run);
+  responses, the carbon tax and the three contributed budget changes are
+  zero while their parameters are (checked at each run);
 - inert: before the spine stores attendance, a batched call may compute it
   only where it reaches household totals through
   ``private_school_vat_change``, which is zero while the private school VAT
@@ -29,10 +35,12 @@ reviewed against policyengine-uk 2.177.7:
   then hold the attendance rates and the population factor the formula reads
   as the adapter's own tree does.
 
-The window: policyengine-uk's constructor draws which Universal Credit
-claimants are new claimants by benefit-unit position for the rebalancing
-years (``scenarios/uc_reform.py``, ``REBALANCING_YEARS``), so blocks and
-batches refuse any work from 2026 on.
+The window: policyengine-uk's constructor takes each benefit unit's stored
+new-claimant draw where the dataset supplies one for the year
+(``uc_new_claimant_health_element_draw``), and otherwise draws which
+Universal Credit claimants are new claimants by benefit-unit position for
+the rebalancing years (``scenarios/uc_reform.py``, ``REBALANCING_YEARS``),
+so blocks and batches refuse any work from 2026 on.
 
 Kept apart from the adapter module, as the concept mapping is, so that
 editing the declaration never moves the adapter's source hash. Nothing here
@@ -96,15 +104,16 @@ def _as_baseline(path: str) -> ParameterTest:
 UK_ENGINE_POPULATION = PopulationDeclaration(
     engine="policyengine_uk",
     distribution="policyengine-uk",
-    reviewed_version="2.177.7",
+    reviewed_version="2.179.2",
     list_source="policyengine_uk.utils.household_subset:WHOLE_POPULATION_VARIABLES",
     weight_variable="household_weight",
     corrected={
-        # shareholding.py and corporate_land_value.py: corporate_sector_wealth
-        # over its weighted total (times the aggregate corporate land value).
+        # shareholding.py: corporate_sector_wealth over its weighted total
+        # where the data supplies no UK total (corporate_land_value.py takes
+        # this share times the aggregate corporate land value).
         "shareholding": "corporate_sector_wealth",
-        "corporate_land_value": "corporate_sector_wealth",
-        # consumption_share.py: consumption over its weighted total.
+        # consumption_share.py: consumption over its weighted total where the
+        # data supplies no UK total.
         "consumption_shareholding": "consumption",
     },
     key_adds={
@@ -129,9 +138,6 @@ UK_ENGINE_POPULATION = PopulationDeclaration(
         ),
         # Both incidence terms carry the rate.
         "carbon_tax": _zero("gov.contrib.ubi_center.carbon_tax.rate"),
-        "consumer_incident_tax_revenue_change": _zero(
-            f"{_BUDGET}.consumer_incident_tax_change"
-        ),
         "education_budget_change": _zero(f"{_BUDGET}.education"),
         "nhs_budget_change": _zero(f"{_BUDGET}.nhs"),
         "other_public_spending_budget_change": _zero(
@@ -171,12 +177,19 @@ UK_ENGINE_POPULATION = PopulationDeclaration(
             "policyengine-uk's constructor draws which Universal Credit "
             "claimants are new claimants (the health element they receive) "
             "with one random number per benefit unit in the order the "
-            "simulation holds them, for each rebalancing year from 2026, so "
-            "a block or batch draws other statuses than the pool"
+            "simulation holds them, for each rebalancing year from 2026 whose "
+            "dataset supplies no stored draw, so a block or batch draws other "
+            "statuses than the pool"
         ),
     ),
     # Recorded for the receipts: what reads the corrected shares.
-    observed=("LVT", "business_rates", "corporate_sdlt"),
+    observed=(
+        "LVT",
+        "business_rates",
+        "consumer_incident_tax_revenue_change",
+        "corporate_land_value",
+        "corporate_sdlt",
+    ),
     # create_structural_reforms_from_parameters (reforms/reforms.py) applies
     # these in the constructor, before any guard is armed; adjust_budgets
     # would rescale spending by a population total.
@@ -199,40 +212,53 @@ UK_ENGINE_POPULATION = PopulationDeclaration(
             "gov.simulation.private_school_vat.private_school_factor",
         ),
     },
+    # utils/uk_totals.py: each share divides by the sum of its key's
+    # components' UK totals (uk_total_<component>) wherever the data supplies
+    # them, which the build does only in release frames.
+    supplied_totals={
+        "shareholding": tuple(
+            f"uk_total_{name}"
+            for name in ("corporate_wealth", "private_pension_wealth")
+        ),
+        "consumption_shareholding": tuple(
+            f"uk_total_{name}" for name in _COICOP_CONSUMPTION
+        ),
+    },
     digests={
         "policyengine_uk/variables/household/wealth/shareholding.py": (
-            "95fae830757b8db478cab62c1e84b093af268abd8d0ed21a518c65b0d635a52b"
-        ),
-        "policyengine_uk/variables/household/wealth/corporate_land_value.py": (
-            "2082f7890365a40c20c68a7e2cbc7d9cccfeacb13ce0684670bb960e138bcae2"
+            "b8c93fc2112d3bef8271a074dc460f99622a1e5dd9bf1c08b4078a88a7d1abcf"
         ),
         "policyengine_uk/variables/household/consumption/consumption_share.py": (
-            "b2e59e6f3a32f33482630938e385c07762265da2cf9f0848cd011a6166ad30cf"
+            "fec2dbb5138530ce3344eab69a955707129773022b89d958ee98d9baf47c0e85"
+        ),
+        # Which totals the shares divide by, and which simulations take the
+        # weighted total: the corrected class rests on both.
+        "policyengine_uk/utils/uk_totals.py": (
+            "bf9758cc0cacb3bdb31ac32a8dfdbd6a7b0fc9047337ad140df8f67805be7e07"
+        ),
+        "policyengine_uk/utils/data_source.py": (
+            "e4a65269bf83a289fd7f0f1bf58e02de166f823581d1f350e9f41139ffa8344b"
         ),
         "policyengine_uk/variables/contrib/ubi_center/carbon_tax.py": (
-            "ce9ce9c9fe346c9b6fcaeec6cd03fed602c1168bbd691a0fca24c797f3235627"
-        ),
-        "policyengine_uk/variables/contrib/policyengine/"
-        "consumer_incident_tax_revenue_change.py": (
-            "47dfa0d09317dd652bbbcecd46a76466d72eade2abaaf9a0a3bd7e5df9cf4304"
+            "2897017163404b79c307896cfb665d3cc945063ba77aeac9436a6e39766fc3c4"
         ),
         "policyengine_uk/variables/contrib/policyengine/education_budget_change.py": (
-            "4f1723792c35d41f3a13d1d790825bff830f5332fb2e134202ef8f266978d469"
+            "6563be0736d66cad7ce9d68d5ec6425f8fd94cdc9b3ee4bd5c6ca645948df172"
         ),
         "policyengine_uk/variables/contrib/policyengine/nhs_budget_change.py": (
-            "667a919cd07f0ad61c860473268770e7e76e77202e9f595c0e6e88711b5b6c48"
+            "2aba7e0d5bbf06fc8763c8d677222165660da82902ea92f71fdfe856d3eee0cd"
         ),
         "policyengine_uk/variables/contrib/policyengine/"
         "other_public_spending_budget_change.py": (
-            "3ce3ac97d8a473f60732fcefdf4e4e6430958493f7ae132f14555a641a5488f1"
+            "5b532c4ea45f1d88523fda688a6b23cd0d62faedfd795c13900dd12717e76f12"
         ),
         "policyengine_uk/variables/contrib/policyengine/employer_ni/"
         "employer_ni_response_capital_incidence.py": (
-            "6cb5bdd539d22342f0c614c8561ad0b86d45fdd545c3e814c819cbeff64512bd"
+            "97a243da5297886a134a2e0eea01e1f5fbe85cec9471638c316df9ec8fd4ddc3"
         ),
         "policyengine_uk/variables/contrib/policyengine/employer_ni/"
         "employer_ni_response_consumer_incidence.py": (
-            "abfef8b2f57cc489282b09634e1d96f7464a64040e1ed701f01cdc8d30268058"
+            "84e04722873c4e188c7d723c54ff6a47b64a633aec8abaa7e2b409c74154ede0"
         ),
         "policyengine_uk/variables/gov/simulation/labour_supply_response/"
         "employment_income_behavioral_response.py": (
@@ -257,7 +283,7 @@ UK_ENGINE_POPULATION = PopulationDeclaration(
             "51341a9f1494944eeea945bcc614f047de568bc455a00936f794d4b5984e42eb"
         ),
         "policyengine_uk.scenarios.uc_reform:add_universal_credit_reform": (
-            "ca13079bb2043c8965dd2cc9397c13c58b7f98f8e58b2c678ab7602f72a55935"
+            "4de81fd0a156fe5109892886e43ae1e93a4b172ee15cea64784b55aadc415d9a"
         ),
     },
 )

@@ -42,6 +42,7 @@ from microcosm.frame.adapters.engine_population import (
     assert_groups_nest_in_households,
     check_key_sums,
     check_restated_parameters,
+    check_supplied_totals,
     check_uniform_growth,
     derived_watched_periods,
     factor_spread,
@@ -1203,6 +1204,62 @@ def test_a_block_computing_in_the_window_or_before_its_data_is_refused(fake_engi
     assert numbers_are_years([*late.refusals, *early.refusals])
 
 
+def _supplying_system():
+    """The fake system with a plain input a share may divide by in place of
+    the block's own key total."""
+
+    system = _fake_system()
+    system.variables["key_total"] = FakeVariable("key_total")
+    return system
+
+
+def test_a_block_whose_data_supplies_a_total_its_share_divides_by_is_refused(
+    fake_engine,
+):
+    declaration = _declaration(supplied_totals={"share": ("key_total",)})
+    shares, _scales = _block_shares(scaled=True)
+
+    def open_block(simulation):
+        return EngineBlock(
+            simulation,
+            shares["0"],
+            declaration=declaration,
+            policy=MEASURE_PASS,
+            periods=(D, P),
+            dataset_year=D,
+        )
+
+    clean = open_block(_block("0", system=_supplying_system()))
+    assert clean.refusals == [] and clean.receipt()["applied"] is True
+    clean.close()
+    simulation = _block("0", system=_supplying_system())
+    simulation.set_input("key_total", D, np.full(len(BLOCKS["0"]), 1.0e6))
+    refused = open_block(simulation)
+    (refusal,) = refused.refusals
+    assert refusal.startswith("share: the data supplies key_total")
+    assert refused.receipt()["applied"] is False
+    assert numbers_are_years(refused.refusals)
+    refused.close()
+    # The check itself, as a pass that raises meets it.
+    with pytest.raises(PoolShareError, match="supplies key_total"):
+        check_supplied_totals(simulation, declaration, (D, P))
+
+
+def test_a_supplied_total_is_a_plain_input_of_its_formulas_entity(fake_engine):
+    system = _supplying_system()
+    validate_declaration(
+        _declaration(supplied_totals={"share": ("key_total",)}), system
+    )
+    with pytest.raises(PopulationDeclarationError, match="rates is no longer a plain"):
+        validate_declaration(
+            _declaration(supplied_totals={"share": ("rates",)}), system
+        )
+    with pytest.raises(PopulationDeclarationError, match="no variables"):
+        validate_declaration(
+            _declaration(supplied_totals={"share": ("missing_total",)}), system
+        )
+
+
 def test_an_engine_its_declaration_does_not_describe_is_recorded_never_armed():
     # Without the fake engine's module the declaration's own list cannot be
     # read, so it does not validate.
@@ -1315,6 +1372,9 @@ def test_pool_shares_are_one_blocks_for_the_declared_formulas():
         ),
         ({"restated": {"attendance": ()}}, "names the parameters it reads"),
         ({"restated": {"attendance": ("gov.vat_rate",) * 2}}, "repeat"),
+        ({"supplied_totals": {"rates": ("key_total",)}}, "Only a corrected formula"),
+        ({"supplied_totals": {"share": ()}}, "name its inputs"),
+        ({"supplied_totals": {"share": ("key_total",) * 2}}, "repeat"),
     ],
 )
 def test_a_declaration_refuses_overlapping_or_incomplete_classes(changes, message):
@@ -1328,6 +1388,14 @@ def test_the_declaration_digest_follows_its_content():
     restating = _declaration(restated={"attendance": ("gov.vat_rate",)})
     assert restating.sha256 != _declaration().sha256
     assert restating.to_json()["restated"] == {"attendance": ["gov.vat_rate"]}
+    # A declaration without supplied totals keeps the digest it had before
+    # the field; one with them carries them, and the correction reads them.
+    supplying = _declaration(supplied_totals={"share": ("key_total",)})
+    assert "supplied_totals" not in _declaration().to_json()
+    assert supplying.to_json()["supplied_totals"] == {"share": ["key_total"]}
+    assert supplying.sha256 != _declaration().sha256
+    assert "key_total" in supplying.correction_reads()
+    assert "key_total" not in _declaration().correction_reads()
     assert _declaration().classified() == {
         "share",
         "months",

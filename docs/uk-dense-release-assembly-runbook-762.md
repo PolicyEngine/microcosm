@@ -155,8 +155,9 @@ role refuses `--rotated-holdout`). The engine may resolve in a single block or
 per clone (`--engine-blocks K`, K the spine's clone count; any other count is
 refused). Per clone, each block's engine weights are
 scaled to the pool's mass, and in every simulation the block builds,
-policyengine-uk's share formulas (`shareholding`, `corporate_land_value`,
-`consumption_shareholding`) are corrected to the pool's denominator. A guard
+policyengine-uk's share formulas (`shareholding` and
+`consumption_shareholding`, which `corporate_land_value` reads) are corrected
+to the pool's denominator. A guard
 judges every whole-population formula the block ran against the UK
 declaration. Nothing a block computes may fall in the Universal Credit
 rebalancing years (2026 on), where policyengine-uk draws new-claimant status

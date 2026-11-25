@@ -45,8 +45,9 @@ constructor applies is switched on. The verdict carries names, periods and
 booleans only.
 
 One block's life. :class:`EngineBlock` runs these on a block's own engine,
-in order: it validates the declaration, refuses work in the window, runs
-checks (a) and (b), injects the shares and arms the recorder; it gives every
+in order: it validates the declaration, refuses work in the window and
+data that supplies a total a share divides by (whose share is already the
+pool's), runs checks (a) and (b), injects the shares and arms the recorder; it gives every
 simulation the caller builds afterwards the same arrays and recorder, and at
 the block's end checks that each still holds the block's keys and weights and
 judges them all. A country's caller passes its declaration and a pass.
@@ -123,6 +124,7 @@ __all__ = [
     "assert_groups_nest_in_households",
     "check_key_sums",
     "check_restated_parameters",
+    "check_supplied_totals",
     "check_uniform_growth",
     "derived_watched_periods",
     "factor_spread",
@@ -1019,8 +1021,12 @@ class PopulationDeclaration:
     None; ``restated`` maps stored formulas a caller may compute over the
     pool itself, from household-local engine values, to the parameter paths
     that computation reads, which every batch's engine must hold as the
-    caller's tree does (:func:`check_restated_parameters`); ``digests`` pins
-    the sources the classification rests on (:func:`source_sha256`).
+    caller's tree does (:func:`check_restated_parameters`);
+    ``supplied_totals`` maps corrected formulas to the inputs that, where the
+    data supplies them, each divides by in place of the simulated total, so
+    that its share is already the pool's (:func:`check_supplied_totals`);
+    ``digests`` pins the sources the classification rests on
+    (:func:`source_sha256`).
     ``reviewed_version`` is the engine release the classification was
     reviewed against; validation rests on the digests.
     """
@@ -1040,6 +1046,7 @@ class PopulationDeclaration:
     observed: tuple[str, ...] = ()
     constructor_factories: tuple[str, ...] = ()
     restated: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    supplied_totals: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     digests: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -1058,6 +1065,16 @@ class PopulationDeclaration:
             "restated",
             _frozen_mapping(
                 {name: _names(paths) for name, paths in dict(self.restated).items()}
+            ),
+        )
+        object.__setattr__(
+            self,
+            "supplied_totals",
+            _frozen_mapping(
+                {
+                    name: _names(inputs)
+                    for name, inputs in dict(self.supplied_totals).items()
+                }
             ),
         )
         object.__setattr__(self, "digests", _frozen_mapping(self.digests))
@@ -1085,6 +1102,10 @@ class PopulationDeclaration:
         missing_keys = set(self.corrected.values()) - set(self.key_adds)
         if missing_keys:
             raise ValueError(f"Keys {sorted(missing_keys)} name no inputs.")
+        if not set(self.supplied_totals) <= set(self.corrected):
+            raise ValueError("Only a corrected formula divides by a supplied total.")
+        if not all(self.supplied_totals.values()):
+            raise ValueError("A corrected formula's supplied totals name its inputs.")
 
     def classified(self) -> frozenset[str]:
         return frozenset(
@@ -1108,7 +1129,8 @@ class PopulationDeclaration:
 
     def correction_reads(self) -> frozenset[str]:
         """What a pool-share correction reads: the corrected formulas, their
-        keys, the keys' inputs and the weight variable. No simulation a block
+        keys, the keys' inputs, the totals the data may supply in place of a
+        key's simulated total, and the weight variable. No simulation a block
         builds may set any of them (:meth:`EngineBlock.refuse_substitution`)."""
 
         return frozenset(
@@ -1116,6 +1138,7 @@ class PopulationDeclaration:
                 *self.corrected,
                 *self.corrected.values(),
                 *(add for adds in self.key_adds.values() for add in adds),
+                *(name for names in self.supplied_totals.values() for name in names),
                 self.weight_variable,
             }
         )
@@ -1130,7 +1153,7 @@ class PopulationDeclaration:
         return predicates
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        content = {
             "engine": self.engine,
             "distribution": self.distribution,
             "reviewed_version": self.reviewed_version,
@@ -1151,6 +1174,13 @@ class PopulationDeclaration:
             "restated": {name: list(paths) for name, paths in self.restated.items()},
             "digests": dict(self.digests),
         }
+        # Only a declaration that names supplied totals carries the key, so a
+        # declaration without them keeps the digest it had before the field.
+        if self.supplied_totals:
+            content["supplied_totals"] = {
+                name: list(names) for name, names in self.supplied_totals.items()
+            }
+        return content
 
     @property
     def sha256(self) -> str:
@@ -1207,7 +1237,8 @@ def validate_declaration(declaration: PopulationDeclaration, system: Any) -> Non
 
     Its own list equals the declared classes; every named variable exists;
     every share formula is a formula over its key, every key a sum of plain
-    inputs of the key's entity exactly as declared; the pinned sources are
+    inputs of the key's entity exactly as declared, and every supplied total
+    a plain input of its formula's entity; the pinned sources are
     unchanged; the window's source starts at the window; every constructor
     factory resolves; every predicate's and every restatement's parameters
     exist. Callers validate when they first need the declaration, never at
@@ -1232,6 +1263,7 @@ def validate_declaration(declaration: PopulationDeclaration, system: Any) -> Non
         set(declaration.watched())
         | set(declaration.corrected.values())
         | {add for adds in declaration.key_adds.values() for add in adds}
+        | {name for names in declaration.supplied_totals.values() for name in names}
         | {declaration.weight_variable}
     )
     absent = sorted(name for name in needed if name not in variables)
@@ -1274,6 +1306,22 @@ def validate_declaration(declaration: PopulationDeclaration, system: Any) -> Non
                 or leaf.entity.key != entity
             ):
                 problems.append(f"{add} is no longer a plain {entity} input.")
+    for formula, names in declaration.supplied_totals.items():
+        formula_variable = variables.get(formula)
+        if formula_variable is None:
+            continue
+        entity = formula_variable.entity.key
+        for name in names:
+            supplied = variables.get(name)
+            if supplied is None:
+                continue
+            if (
+                _is_formula(supplied)
+                or _list_of(getattr(supplied, "adds", None))
+                or _list_of(getattr(supplied, "subtracts", None))
+                or supplied.entity.key != entity
+            ):
+                problems.append(f"{name} is no longer a plain {entity} input.")
     for reference, expected in declaration.digests.items():
         try:
             actual = source_sha256(reference)
@@ -1939,6 +1987,34 @@ def validate_pool_shares(
             )
 
 
+def check_supplied_totals(
+    simulation: Any, declaration: PopulationDeclaration, periods: Iterable[Any]
+) -> None:
+    """Refuse a block whose data supplies a total a corrected formula divides by.
+
+    Where the data supplies the whole population's total of a share's key
+    (the declaration's ``supplied_totals``), the engine divides each row's
+    key by it, so the block's own share is already the pool's and the
+    pool-share factor would scale it a second time; where the data supplies
+    some rows' totals and not others', no one factor corrects the formula.
+    Either way the block does not stand for the pool, so a block whose data
+    holds a nonzero supplied total at any period it computes at is refused
+    (:class:`PoolShareError`). The message names the formula and the input,
+    never a value.
+    """
+
+    for formula, names in declaration.supplied_totals.items():
+        for name in names:
+            for period in periods:
+                if np.any(np.asarray(_values(simulation.calculate(name, period))) != 0):
+                    raise PoolShareError(
+                        f"{formula}: the data supplies {name}, a total the share "
+                        "divides by in place of the block's own, so the share is "
+                        "already the pool's and the pool-share factor would "
+                        "scale it again."
+                    )
+
+
 class EngineBlock:
     """One engine block or batch standing for the pool, over its life.
 
@@ -1957,6 +2033,8 @@ class EngineBlock:
     - a period before the dataset's year is refused: the engine does not
       project back to it, so a correction from that year's totals does not
       hold there;
+    - data that supplies a total a corrected formula divides by is refused
+      (:func:`check_supplied_totals`): the share would already be the pool's;
     - check (a) at the dataset's year (:func:`check_key_sums`);
     - check (b) from the dataset's year to every later period, on each key
       and on the weight variable (:func:`check_uniform_growth`);
@@ -2045,6 +2123,7 @@ class EngineBlock:
                 f"{self.dataset_year}, which the engine does not project to, so "
                 "a correction from that year's totals does not hold there."
             )
+        check_supplied_totals(simulation, self.declaration, self.periods)
         self.key_sum_gaps = check_key_sums(
             simulation, self.shares, self.dataset_year, weight_variable=weight
         )

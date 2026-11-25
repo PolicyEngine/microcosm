@@ -54,8 +54,9 @@ UK_ENGINE_BLOCK_EXACT_BASIS = "pool_share_injection_with_population_guard"
 UK_ENGINE_BLOCK_EXACT_SCOPE = (
     "per-clone engine blocks stand for the pool: each block's household weights "
     "are scaled to the pool's mass, and in every simulation the block builds "
-    "shareholding, corporate_land_value and consumption_shareholding are set at "
-    "each period it computes to the block's own value times its pool-mass "
+    "shareholding and consumption_shareholding, which corporate_land_value and "
+    "consumer_incident_tax_revenue_change read, are set at each period it "
+    "computes to the block's own value times its pool-mass "
     "factor times its allocation-key total over the pool's, the engine carrying "
     "each key and the weights by one factor per year (checked per block); "
     "months_since_last_birthday and attends_private_school are stored inputs, "
@@ -83,8 +84,9 @@ _BLOCK_FACTOR_AGREEMENT = 1e-6
 #: declaration names for each key (``UK_ENGINE_POPULATION.key_adds``), which a
 #: test holds them to, and which the engine's own adds are held to.
 UK_WEIGHT_SHARE_FORMULA_INPUTS: Mapping[str, tuple[str, ...]] = {
-    # corporate_land_value and shareholding allocate by corporate_sector_wealth.
-    "corporate_land_value": ("corporate_wealth", "private_pension_wealth"),
+    # shareholding allocates by corporate_sector_wealth; since policyengine-uk
+    # 2.179.2 corporate_land_value is that share times the aggregate corporate
+    # land value, so it reads the corrected share and needs no key of its own.
     "shareholding": ("corporate_wealth", "private_pension_wealth"),
     # consumption_shareholding allocates by the engine's consumption total.
     "consumption_shareholding": (
