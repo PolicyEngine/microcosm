@@ -53,6 +53,9 @@ COLUMN_VALUES: dict[str, Callable[[], object]] = {
     "category_ordered": lambda: pd.Categorical(
         ["x", "y", "x", "z", "y", "x"], categories=["z", "y", "x"], ordered=True
     ),
+    "category_range": lambda: pd.Categorical.from_codes(
+        [0, 1, 0, 2, 1, 0], categories=pd.RangeIndex(3)
+    ),
     "category_object": lambda: pd.Categorical(
         ["x", "y", "x", "z", "y", "x"],
         categories=pd.Index(["x", "y", "z"], dtype=object),
@@ -171,6 +174,18 @@ def test_every_index_kind_is_kept(index_kind):
     _assert_same_as_pandas_copy(copy_table(source), source)
 
 
+def test_categorical_codes_keep_their_integer_type():
+    template = pd.Categorical(["a", "b", "a", "b"])
+    wide_codes = template._from_backing_data(np.array([0, 1, 0, 1], dtype=np.int16))
+    source = pd.DataFrame({"category": wide_codes, "float64": np.ones(4)}, copy=False)
+
+    copied = copy_table(source)
+
+    assert copied["category"].cat.codes.dtype == np.int16
+    _assert_same_as_pandas_copy(copied, source)
+    assert copy_series(source["category"]).cat.codes.dtype == np.int16
+
+
 @pytest.mark.parametrize(
     "source",
     [
@@ -219,7 +234,7 @@ def test_the_copy_shares_no_memory_with_its_source(source_layout):
     copied = copy_table(source)
 
     assert shares_memory(copied, source) == []
-    for name in ("category", "category_ordered", "category_object"):
+    for name in ("category", "category_ordered", "category_range", "category_object"):
         assert copied[name].cat.categories.array is not (
             source[name].cat.categories.array
         )
@@ -262,6 +277,12 @@ def _write_into_categories(table, name):
     categories[0] = categories[1] + "_written"
 
 
+def _write_into_categories_array(table, name):
+    # A RangeIndex of categories returns its cached values writable.
+    categories = np.asarray(table[name].cat.categories)
+    categories[0] = categories[1]
+
+
 #: Writes a kernel might make into its own copy. Some raise for some column
 #: types (a read-only array, a ufunc a type lacks). ``to_numpy()`` returns a
 #: separate converted array for some extension types, so a write into it may
@@ -275,14 +296,21 @@ WRITES: dict[str, Callable[[pd.DataFrame, str], None]] = {
     "to_numpy item": _write_into_to_numpy,
     "np.add.at into to_numpy": _add_at_into_to_numpy,
     "categories item": _write_into_categories,
+    "np.asarray(categories) item": _write_into_categories_array,
 }
 
 
 def _applies(write: str, name: str) -> bool:
     if write == "categories item":
+        return name.startswith("category") and name != "category_range"
+    if write == "np.asarray(categories) item":
         return name.startswith("category")
     if write == "np.add.at into to_numpy":
         return name in {"float64", "int64", "float32", "int32"}
+    if write in {"values item", "to_numpy item"}:
+        # For a NumPy column both return a read-only array, so the write
+        # always raises; for an extension column they can reach its memory.
+        return not isinstance(COLUMN_VALUES[name](), np.ndarray)
     return True
 
 
@@ -307,7 +335,7 @@ def test_a_write_into_the_copy_leaves_the_source_unchanged(source_layout, write,
     except (TypeError, ValueError):
         pass
     else:
-        if write != "to_numpy item":
+        if write not in {"to_numpy item", "np.asarray(categories) item"}:
             assert memory_digest(copied) != copy_before, "the write did not land"
 
     assert memory_digest(source) == before
@@ -333,25 +361,71 @@ def test_a_pandas_write_into_the_copy_is_made_in_place():
     ]
 
 
-def test_a_range_index_is_rebuilt_and_other_indexes_are_viewed():
-    # A view of a RangeIndex shares the cache holding its values once
-    # materialized, and np.asarray returns that cached array writable.
-    ranged = _one_block_per_column(index=pd.RangeIndex(1, 7, name="row"))
-    copied = copy_table(ranged)
-    np.asarray(copied.index)[0] = 99
-    assert list(np.asarray(ranged.index)) == [1, 2, 3, 4, 5, 6]
+def _read_only_index(values: np.ndarray) -> pd.Index:
+    values.setflags(write=False)
+    return pd.Index(values, name="row", copy=False)
 
-    indexed = _one_block_per_column(index=INDEX_KINDS["int64"]())
-    assert np.shares_memory(
-        np.asarray(copy_table(indexed).index), np.asarray(indexed.index)
-    )
+
+#: Labels the copy must not let a write reach. A RangeIndex view would share
+#: the cache holding its materialized values, which np.asarray returns
+#: writable; a view of an index over writable memory would share it.
+WRITABLE_LABELS: dict[str, Callable[[], pd.Index]] = {
+    "range": lambda: pd.RangeIndex(1, 7, name="row"),
+    "int64": lambda: pd.Index(np.array([5, 3, 9, 1, 7, 2]), name="row"),
+    "object": lambda: pd.Index(list("uvwxyz"), dtype=object, name="row"),
+    "datetime": lambda: pd.DatetimeIndex(
+        pd.date_range("2020-01-01", periods=6), name="row"
+    ),
+}
+
+
+@pytest.mark.parametrize("axis", ["index", "columns"])
+@pytest.mark.parametrize("labels", WRITABLE_LABELS)
+def test_a_write_into_the_copy_s_labels_leaves_the_source_s_unchanged(axis, labels):
+    source = _one_block_per_column(names=COLUMNS[:6])
+    source = source.set_axis(WRITABLE_LABELS[labels](), axis=axis)
+    before = list(getattr(source, axis))
+
+    for copied in (copy_table(source), copy_table(source.iloc[:, [0, 1]])):
+        target = getattr(copied, axis)
+        pd.testing.assert_index_equal(
+            target, getattr(source, axis)[: len(target)], exact=True
+        )
+        values = np.asarray(target)
+        try:
+            values[0] = values[1]
+        except ValueError:
+            pass
+        target.name = "renamed"
+
+    assert list(getattr(source, axis)) == before
+    assert getattr(source, axis).name == "row"
+
+
+def test_an_index_over_read_only_memory_is_viewed():
+    # The executor's kernel inputs hold such indexes; a write into them raises.
+    source = _one_block_per_column(index=_read_only_index(np.array([5, 3, 9, 1, 7, 2])))
+
+    copied = copy_table(source)
+
+    assert np.shares_memory(np.asarray(copied.index), np.asarray(source.index))
+    with pytest.raises(ValueError, match="read-only"):
+        np.asarray(copied.index)[0] = 0
 
 
 @pytest.mark.parametrize("column", PANDAS_COPIED_VALUES)
 def test_two_dimensional_extension_columns_are_copied_by_pandas(column):
     values = {**COLUMN_VALUES, **PANDAS_COPIED_VALUES}
+    values[f"{column}_second"] = values[column]
     source = _one_block_per_column(
-        names=("float64", column, "float64_second", "Int64", "category"),
+        names=(
+            "float64",
+            column,
+            "float64_second",
+            "Int64",
+            f"{column}_second",
+            "category",
+        ),
         values=values,
     )
 
@@ -372,10 +446,12 @@ def _assert_categories_and_range_index_are_new(copied, source):
 
 
 def test_numpy_dtypes_sharing_a_name_are_copied_by_pandas():
+    # pandas merges both into one float64 block, in column order.
     source = pd.DataFrame(
         {
             "native": np.arange(3, dtype="<f8"),
             "swapped": np.arange(3, dtype=">f8"),
+            "native_second": np.arange(3, 6, dtype="<f8"),
         },
         copy=False,
     )
@@ -451,7 +527,7 @@ def test_copying_a_table_of_one_block_per_column_holds_one_copy_at_its_peak():
     assert copied.shape == source.shape
     # pandas' own deep copy of this table peaks at about three copies.
     assert (held - baseline) / column_bytes < 1.02
-    assert (peak - baseline) / column_bytes < 1.05
+    assert (peak - baseline) / column_bytes < 1.03
 
 
 SERIES_VALUES: dict[str, Callable[[], object]] = {
@@ -498,16 +574,29 @@ def test_a_series_copy_equals_pandas_deep_copy_and_shares_no_memory(kind, index_
         assert np.asarray(source.index)[0] != 99
 
 
-def test_a_series_subclass_is_copied_by_pandas():
-    class Subclassed(pd.Series):
-        @property
-        def _constructor(self):
-            return Subclassed
+class _SubclassedSeries(pd.Series):
+    _metadata = ["note"]
 
-    source = Subclassed(np.arange(3.0))
+    @property
+    def _constructor(self):
+        return _SubclassedSeries
+
+
+@pytest.mark.parametrize("kind", ["int64", "category"])
+def test_a_series_subclass_is_copied_by_pandas(kind):
+    source = _SubclassedSeries(SERIES_VALUES[kind](), name="stratum")
+    source.note = "kept"
 
     copied = copy_series(source)
 
-    assert type(copied) is Subclassed
+    assert type(copied) is _SubclassedSeries
+    assert copied.note == "kept"
     pd.testing.assert_series_equal(copied, source.copy(deep=True), check_exact=True)
-    assert not np.shares_memory(copied.to_numpy(), source.to_numpy())
+    assert not any(
+        np.shares_memory(array, other)
+        for array in column_arrays(copied)
+        for other in column_arrays(source)
+    )
+    if kind == "category":
+        _write_into_categories(copied.to_frame("stratum"), "stratum")
+        assert list(source.cat.categories) == ["a", "b", "c"]

@@ -24,7 +24,7 @@ import pytest
 from microcosm.build.uk_runtime.graph_kernels import _minimal_frame
 from microcosm.build.uk_runtime.graph_population import context_frame
 from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 from microcosm.graph import executor as graph_executor
 from microcosm.graph.decl import Node, Owned, Slice
 from microcosm.graph.population import Population
@@ -58,12 +58,30 @@ PERSON_VALUES: dict[str, Callable[[], object]] = {
     ),
     "str": lambda: pd.array(list("abcdefghijkl"), dtype="str"),
     "category": lambda: pd.Categorical(list("xyxzyxxyxzyx")),
+    "category_range": lambda: pd.Categorical.from_codes(
+        [0, 1, 0, 2, 1, 0] * 2, categories=pd.RangeIndex(3)
+    ),
 }
 PERSON_COLUMNS = tuple(PERSON_VALUES)
-STRATA_VALUES: dict[str, Callable[[], object]] = {
-    "object": lambda: np.array(list("aabbccaabbcc"), dtype=object),
-    "category": lambda: pd.Categorical(list("aabbccaabbcc")),
+#: Row 1 differs from row 0 here too.
+STRATA_VALUES: dict[str, Callable[[], pd.Series]] = {
+    "object": lambda: pd.Series(list("abcabcabcabc"), dtype=object),
+    "str": lambda: pd.Series(list("abcabcabcabc"), dtype="str"),
+    "int64": lambda: pd.Series(np.arange(_PERSONS, dtype=np.int64) % 3),
+    "category": lambda: pd.Series(pd.Categorical(list("abcabcabcabc"))),
 }
+#: The population's own metadata and the mass log the node's key binds, which
+#: context_frame carries; both differ from what the node's params would give.
+_POPULATION_METADATA = {"time_period": "2023", "source": "invented"}
+_MASS_LOG = (
+    MassChangeRecord(
+        entity="household",
+        old_total=4.0,
+        new_total=4.0,
+        declared_factor=1.0,
+        reason="an invented conserving step",
+    ),
+)
 
 
 def _population(strata_kind: str = "object") -> Population:
@@ -77,6 +95,7 @@ def _population(strata_kind: str = "object") -> Population:
             **{name: values() for name, values in PERSON_VALUES.items()},
         }
     )
+    person.attrs["receipt"] = {"stage": "invented"}
     frame = Frame(
         {
             "person": person,
@@ -98,8 +117,8 @@ def _population(strata_kind: str = "object") -> Population:
         },
         UK_NATIONAL_SCHEMA,
         {"household": Weights(np.array([1.5, 2.0, 0.5]), WeightKind.DESIGN)},
-        pd.Series(STRATA_VALUES[strata_kind](), name="stratum"),
-        metadata={"time_period": "2024"},
+        STRATA_VALUES[strata_kind]().rename("stratum"),
+        metadata=_POPULATION_METADATA,
     )
     return Population.from_frame(frame, "survey")
 
@@ -130,6 +149,7 @@ def _context(population: Population, person_columns=PERSON_COLUMNS):
         sources={},
         tolerances={},
         numerics={},
+        mass_log=_MASS_LOG,
     )
 
 
@@ -240,6 +260,40 @@ def test_the_kernel_frame_shares_no_memory_with_its_context(builder):
     )
 
 
+@pytest.mark.parametrize("builder", BUILDERS)
+def test_a_pandas_write_into_the_kernel_frame_is_made_in_place(builder):
+    # Nothing else refers to the Frame's tables and strata, so pandas writes
+    # into their memory rather than copying first, as into the old Frame.
+    build, _ = BUILDERS[builder]
+    frame = build(_context(_population("int64")))
+    targets = {entity: frame.table(entity) for entity in UK_NATIONAL_SCHEMA.entities}
+
+    def addresses():
+        located = {
+            (entity, str(name)): [
+                array.__array_interface__["data"][0] for array in column_arrays(column)
+            ]
+            for entity, table in targets.items()
+            for name, column in table.items()
+        }
+        located["strata"] = [
+            array.__array_interface__["data"][0]
+            for array in column_arrays(frame.strata)
+        ]
+        return located
+
+    before = addresses()
+    for table in targets.values():
+        # Over the labels only: a live column Series would be a second
+        # reference to the memory, and pandas would copy before writing.
+        for name, dtype in table.dtypes.items():
+            if not isinstance(dtype, pd.CategoricalDtype):
+                _write_with_loc(table, name)
+    _write_with_loc(frame.strata, None)
+
+    assert addresses() == before
+
+
 def _write_with_loc(values: pd.DataFrame | pd.Series, name: str | None) -> None:
     if name is None:
         values.loc[values.index[0]] = values.iloc[1]
@@ -279,9 +333,17 @@ def _write_into_categories(values, name):
     categories[0] = categories[1] + "_written"
 
 
+def _write_into_categories_array(values, name):
+    # A RangeIndex of categories returns its cached values writable.
+    categories = np.asarray(_column(values, name).cat.categories)
+    categories[0] = categories[1]
+
+
 #: Writes a kernel might make into a column of its own Frame. Some raise for
-#: some column types (a read-only array, a ufunc a type lacks); the rest must
-#: change only the Frame.
+#: some column types (a read-only array, a ufunc a type lacks), and
+#: ``to_numpy()`` and ``np.asarray`` can return a separate converted array, so
+#: those two writes may land nowhere; every other write that does not raise
+#: lands in the Frame, and in the Frame alone.
 WRITES: dict[str, Callable] = {
     "loc": _write_with_loc,
     "array item": _write_into_array,
@@ -289,7 +351,9 @@ WRITES: dict[str, Callable] = {
     "to_numpy item": _write_into_to_numpy,
     "np.add.at into to_numpy": _add_at_into_to_numpy,
     "categories item": _write_into_categories,
+    "np.asarray(categories) item": _write_into_categories_array,
 }
+_MAY_LAND_NOWHERE = {"to_numpy item", "np.asarray(categories) item"}
 #: The strata take the column writes and a write into their index.
 STRATA_WRITES: dict[str, Callable] = {
     **{write: WRITES[write] for write in WRITES if write != "np.add.at into to_numpy"},
@@ -297,12 +361,28 @@ STRATA_WRITES: dict[str, Callable] = {
 }
 
 
-def _applies(write: str, name: str) -> bool:
+def _applies(write: str, name: str, *, numpy_typed: bool) -> bool:
     if write == "categories item":
         return name == "category"
+    if write == "np.asarray(categories) item":
+        return name.startswith("category")
     if write == "np.add.at into to_numpy":
         return name in {"float64", "int64", "float32", "int32"}
+    if write in {"values item", "to_numpy item"}:
+        # For a NumPy column both return a read-only array, so the write
+        # always raises; for an extension column they can reach its memory.
+        return not numpy_typed
     return True
+
+
+def _write_and_check_it_landed(write: str, target: pd.DataFrame | pd.Series, name):
+    before = memory_digest(target)
+    try:
+        {**WRITES, **STRATA_WRITES}[write](target, name)
+    except (TypeError, ValueError):
+        return
+    if write not in _MAY_LAND_NOWHERE:
+        assert memory_digest(target) != before, "the write did not land"
 
 
 def _population_digests(population: Population) -> dict[str, str]:
@@ -326,7 +406,9 @@ def _context_digests(context) -> tuple[bytes, dict[str, str]]:
         for builder in BUILDERS
         for write in WRITES
         for name in PERSON_COLUMNS
-        if _applies(write, name)
+        if _applies(
+            write, name, numpy_typed=isinstance(PERSON_VALUES[name](), np.ndarray)
+        )
     ],
 )
 def test_a_write_into_a_person_column_changes_neither_context_nor_population(
@@ -339,10 +421,7 @@ def test_a_write_into_a_person_column_changes_neither_context_nor_population(
     context_before = _context_digests(context)
     frame = build(context)
 
-    try:
-        WRITES[write](frame.table("person"), name)
-    except (TypeError, ValueError):
-        pass
+    _write_and_check_it_landed(write, frame.table("person"), name)
 
     assert _context_digests(context) == context_before
     assert _population_digests(population) == population_before
@@ -378,7 +457,12 @@ def test_a_write_into_a_table_index_changes_neither_context_nor_population(
         for builder in BUILDERS
         for write in STRATA_WRITES
         for strata_kind in STRATA_VALUES
-        if write != "categories item" or strata_kind == "category"
+        if write == "index item"
+        or _applies(
+            write,
+            strata_kind,
+            numpy_typed=isinstance(STRATA_VALUES[strata_kind]().dtype, np.dtype),
+        )
     ],
 )
 def test_a_write_into_the_strata_changes_neither_context_nor_population(
@@ -391,10 +475,7 @@ def test_a_write_into_the_strata_changes_neither_context_nor_population(
     context_before = _context_digests(context)
     frame = build(context)
 
-    try:
-        STRATA_WRITES[write](frame.strata, None)
-    except (TypeError, ValueError):
-        pass
+    _write_and_check_it_landed(write, frame.strata, None)
 
     assert _context_digests(context) == context_before
     assert _population_digests(population) == population_before

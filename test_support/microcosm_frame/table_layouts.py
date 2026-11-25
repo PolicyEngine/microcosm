@@ -99,6 +99,7 @@ def memory_digest(table: pd.DataFrame | pd.Series) -> str:
     digest = hashlib.sha256()
     frame = table.to_frame() if isinstance(table, pd.Series) else table
     digest.update(repr(list(frame.columns)).encode())
+    digest.update(repr((frame.index.names, frame.columns.names)).encode())
     digest.update(
         np.asarray(frame.index).tobytes()
         if frame.index.dtype.kind in "biuf"

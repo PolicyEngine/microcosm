@@ -17,27 +17,37 @@ some platforms depends on how an operand is aligned, see the same layout. The
 values, index and column labels, ``attrs`` and flags are equal. Three things
 differ, and each leaves the copy further from its source than pandas' copy does:
 
-- a categorical column's categories are copied too, where pandas' copy shares
+- A categorical column's categories are copied too, where pandas' copy shares
   them with the source, so a write into them (``.cat.categories.values[0] =``,
-  for example) changes only the copy;
-- a ``RangeIndex`` is rebuilt, because a view of one shares the cache that holds
-  its values once materialized, and ``np.asarray(index)`` returns that cached
-  array writable; other indexes are views of the source's, as in pandas' copy;
-- the order of pandas' internal list of blocks follows the order its
-  consolidation gives (one-dimensional extension blocks, then NumPy blocks, each
-  by dtype name), which is the order of ``copy(deep=True)`` for a table holding
-  one block per column and may differ for others. Nothing reads a table block by
+  for example) changes only the copy. The codes keep their integer type.
+- The index and the column labels share no writable memory with the source's.
+  A ``RangeIndex`` (also as categories) is rebuilt, because a view of one
+  shares the cache that holds its values once materialized, and
+  ``np.asarray(index)`` returns that cached array writable. A plain index over
+  read-only NumPy memory, as the graph executor's kernel inputs have, is a view
+  of the source's, as in pandas' copy, and any other index is deep-copied. A
+  ``CategoricalIndex`` still shares its categories, as in pandas' copy.
+- pandas' internal list of blocks is in the order its consolidation gives
+  (one-dimensional extension blocks, then NumPy blocks, each by dtype name and
+  then column position). That is the order of ``copy(deep=True)`` whenever
+  pandas has to merge blocks, as for a kernel input holding two or more columns
+  of one NumPy dtype, and may differ otherwise. Nothing reads a table block by
   block in that order: values, layout and every column's memory are the same.
 
+A pyarrow-backed column is copied as pandas copies it, sharing its Arrow
+buffers with the source. pyarrow treats them as immutable, but ``np.<ufunc>.at``
+writes through the read-only array ``to_numpy()`` returns for a numeric one.
+The graph store accepts no pyarrow-backed column, so no kernel input holds one.
+
 A table this module cannot build block for block is copied with
-``copy(deep=True)``, and then its categorical columns' categories are copied and
-a ``RangeIndex`` is rebuilt, so only the third difference does not apply. These
-are a pandas subclass, whose type and metadata only its own methods keep; a
-table with a column whose block pandas stores in two dimensions but builds from
-an extension array (``datetime64``, ``timedelta64``, timezone-aware datetimes
-and periods); a table with two NumPy dtypes of one name; and any table under a
-pandas without ``pandas.api.internals.create_dataframe_from_blocks`` (added in
-pandas 3.0).
+``copy(deep=True)``, and then its categorical columns' categories and its index
+and column labels are copied as above, so only the third difference does not
+apply. These are a pandas subclass, whose type and metadata only its own methods
+keep; a table with a column whose block pandas stores in two dimensions but
+builds from an extension array (``datetime64``, ``timedelta64``, timezone-aware
+datetimes and periods); a table with two NumPy dtypes of one name; and any table
+under a pandas without ``pandas.api.internals.create_dataframe_from_blocks``
+(added in pandas 3.0).
 """
 
 from __future__ import annotations
@@ -64,8 +74,9 @@ _TWO_DIMENSIONAL_EXTENSION_DTYPES = (pd.DatetimeTZDtype, pd.PeriodDtype)
 def copy_table(table: pd.DataFrame) -> pd.DataFrame:
     """``table.copy(deep=True)``, built with one copy of each column.
 
-    The copy shares no column memory with ``table``. See the module docstring
-    for what matches pandas' copy and the three ways the copy differs.
+    The copy shares no memory with ``table`` other than a pyarrow-backed
+    column's buffers. See the module docstring for what matches pandas' copy
+    and the three ways the copy differs.
 
     Args:
         table: The table to copy. It is only read.
@@ -108,23 +119,24 @@ def copy_table(table: pd.DataFrame) -> pd.DataFrame:
             values[row] = columns[position][1].to_numpy()
         blocks.append((values, np.array(positions, dtype=np.intp)))
     copied = create_dataframe_from_blocks(
-        blocks, index=_index_of_copy(table.index), columns=table.columns.view()
+        blocks, index=_copied_index(table.index), columns=_copied_index(table.columns)
     )
     return copied.__finalize__(table, method="copy")
 
 
 def copy_series(series: pd.Series) -> pd.Series:
-    """``series.copy(deep=True)``, with categories copied and a new ``RangeIndex``.
+    """``series.copy(deep=True)``, with its categories and index copied.
 
     The same two differences from pandas' copy as :func:`copy_table` makes, for
     the same reasons. A series of a type :func:`copy_table` leaves to pandas is
-    copied with ``copy(deep=True)``, and its ``RangeIndex`` rebuilt.
+    copied with ``copy(deep=True)``, and then its categories and index copied.
 
     Args:
         series: The series to copy. It is only read.
 
     Returns:
-        A new series that shares no memory with ``series``.
+        A new series that shares no memory with ``series`` other than
+        pyarrow buffers.
     """
 
     dtype = series.dtype
@@ -137,7 +149,7 @@ def copy_series(series: pd.Series) -> pd.Series:
     values = _copied_values(series)
     copied = pd.Series(
         values,
-        index=_index_of_copy(series.index),
+        index=_copied_index(series.index),
         name=series.name,
         dtype=values.dtype,
         copy=False,
@@ -152,31 +164,45 @@ def _copied_values(column: pd.Series) -> np.ndarray | ExtensionArray:
         return column.to_numpy().copy()
     values = column.array
     if isinstance(values, pd.Categorical):
-        dtype = pd.CategoricalDtype(
-            values.categories.copy(deep=True), ordered=values.ordered
-        )
-        return pd.Categorical.from_codes(
-            values.codes.copy(), dtype=dtype, validate=False
-        )
+        # rename_categories copies the codes in their own integer type and
+        # keeps the categories it is given; from_codes would narrow the codes.
+        return values.rename_categories(_copied_index(values.categories))
     return values.copy()
 
 
 def _pandas_copy(data: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
-    """``data.copy(deep=True)``, with categories copied and a new ``RangeIndex``."""
+    """``data.copy(deep=True)``, with its categories and labels copied as above."""
 
     copied = data.copy(deep=True)
     if isinstance(copied, pd.DataFrame):
         for position, (_, column) in enumerate(copied.items()):
             if isinstance(column.dtype, pd.CategoricalDtype):
                 copied.isetitem(position, _copied_values(column))
-    if type(data.index) is pd.RangeIndex:
-        copied.index = _index_of_copy(data.index)
+        copied.columns = _copied_index(data.columns)
+    elif isinstance(copied.dtype, pd.CategoricalDtype):
+        # The series' own constructor keeps a subclass's type, and
+        # __finalize__ its metadata, as copy(deep=True) does.
+        copied = data._constructor(
+            _copied_values(data), index=copied.index, name=copied.name, copy=False
+        ).__finalize__(data, method="copy")
+    copied.index = _copied_index(data.index)
     return copied
 
 
-def _index_of_copy(index: pd.Index) -> pd.Index:
-    """The index a copy carries: a view of ``index``, or a new ``RangeIndex``."""
+def _copied_index(index: pd.Index) -> pd.Index:
+    """An index equal to ``index`` that shares no writable memory with it.
+
+    A ``RangeIndex`` is rebuilt; a view of one would share the cache holding
+    its materialized values. A plain index over read-only NumPy memory is
+    viewed, as pandas' copy views it, and any other index is deep-copied.
+    """
 
     if type(index) is pd.RangeIndex:
         return pd.RangeIndex(index.start, index.stop, index.step, name=index.name)
-    return index.view()
+    if (
+        type(index) is pd.Index
+        and isinstance(index.dtype, np.dtype)
+        and not np.asarray(index).flags.writeable
+    ):
+        return index.view()
+    return index.copy(deep=True)
