@@ -28,14 +28,21 @@ production's declared ACS plan draws them. These tests pin that:
   family (both components, ``farm_rent_income``,
   ``first_home_mortgage_balance`` and the year) and resumed: the retry loads
   that target and the ones before it from their checkpoints and draws the
-  later targets fresh;
+  later targets fresh. It holds as well when a bank keeps one target's
+  checkpoint between targets of its family that the retry rebuilds (the year
+  between the balance and the HSA deduction, and the partnership earnings
+  between the other person targets);
 - the year is snapped and the components zeroed only on export. Each
   exported year is the donor support point nearest its raw draw, and the
   decoder sends an exact midpoint between two support points to the lower one;
-- production's plans put the fixture's targets in the fixture's order. For
-  each production batch that holds two or more of them, a transfer of those
-  targets run under the batch's name draws them in that order, in memory and
-  banked;
+- production's plans put the fixture's targets in the fixture's order. The
+  plans are the batches ``transfer_acs_inputs`` itself plans, up to its
+  activation filter, for the declared ACS plan, each stacked gap-fill
+  direction and each stacked post-PUF group. Each batch that holds two or
+  more fixture targets then runs whole under its production name, in memory
+  and banked, with supplemental donor columns for its other targets: every
+  availability pattern draws the batch in the plan's order, each target on
+  the earlier raw draws, and the patterns together cover every recipient row;
 - the fixture would catch the change on the running platform: a chain fed
   the snapped year, the zeroed components or the zeroed partnership earnings
   alone draws different later targets.
@@ -58,9 +65,11 @@ passing.
 from __future__ import annotations
 
 import platform
-from collections.abc import Mapping
+import shutil
+from collections.abc import Mapping, Sequence
 from importlib.metadata import version
 from pathlib import Path
+from typing import NoReturn
 
 import numpy as np
 import pandas as pd
@@ -76,12 +85,11 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
-from microcosm.build.us_runtime.multispine_pool import (
-    pool_pre_clone_gap_fill_target_families,
-)
+from microcosm.build.us_runtime.stacked_spine import stacked_gap_fill_plan
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_TRANSFER_GROUPS,
 )
+from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.microcosm_build.qrf_chain_doubles import (
     FitThenPredictQRF,
     table_bytes_digest,
@@ -161,8 +169,9 @@ def _transfer(
     target_families: Mapping[
         str, Mapping[str, tuple[str, ...]]
     ] = RAW_PRIOR_FIXTURE_FAMILIES,
+    frames: tuple[Frame, Frame] | None = None,
 ) -> AcsTransferResult:
-    recipient, donor = acs_raw_prior_fixture()
+    recipient, donor = acs_raw_prior_fixture() if frames is None else frames
     return transfer_acs_inputs(
         recipient,
         donor,
@@ -394,20 +403,23 @@ def _chains(steps: list[ChainStep]) -> dict[str, list[list[ChainStep]]]:
 
 
 def _assert_chain_feeds_raw_draws(
-    chain: list[ChainStep], targets: tuple[str, ...]
+    chain: list[ChainStep], targets: tuple[str, ...], *, run: str = ""
 ) -> None:
-    """One pattern drew ``targets`` in order, each on the earlier raw draws."""
+    """One pattern drew ``targets`` in order, each on the earlier raw draws.
 
-    assert [step.target for step in chain] == list(targets)
+    ``run`` names the run in failure messages.
+    """
+
+    assert [step.target for step in chain] == list(targets), run
     for position, step in enumerate(chain):
-        assert list(step.priors.columns) == list(targets[:position])
-        assert step.priors.index.equals(step.index)
+        assert list(step.priors.columns) == list(targets[:position]), run
+        assert step.priors.index.equals(step.index), run
         for earlier, prior in enumerate(targets[:position]):
             fed = step.priors[prior]
-            assert fed.dtype == np.dtype(np.float64)
+            assert fed.dtype == np.dtype(np.float64), run
             assert fed.to_numpy().tobytes() == chain[earlier].raw_draw.tobytes(), (
-                f"{step.target!r} was drawn on a {prior!r} prior that is not "
-                "the raw draw"
+                f"{run}{step.target!r} was drawn on a {prior!r} prior that is "
+                "not the raw draw"
             )
 
 
@@ -513,6 +525,84 @@ def _interrupt_after_writing(
     monkeypatch.setattr(bank, "write_target", write_then_interrupt)
 
 
+def _assert_resume_reuses_raw_draws(
+    resumed: AcsTransferResult,
+    resumed_bank: AcsTransferTargetBankStore,
+    steps: list[ChainStep],
+    recorded_banked: tuple[
+        list[ChainStep], AcsTransferResult, AcsTransferTargetBankStore
+    ],
+    *,
+    loaded: str,
+    rebuilt: Sequence[str],
+) -> None:
+    """A banked retry rebuilt exactly ``rebuilt`` and loaded every other target.
+
+    ``steps`` are the retry's ``fit_draw_next`` calls. Its priors, raw draws,
+    checkpoints and outputs must equal the uninterrupted run's, and the
+    loaded target ``loaded`` must reach a rebuilt target as a prior.
+    """
+
+    reference_steps, uninterrupted, reference_bank = recorded_banked
+    order = _bank_order(reference_bank)
+    receipt = resumed_bank.receipt()["targets"]
+    reference_receipt = reference_bank.receipt()["targets"]
+    assert [
+        (receipt[str(index)]["source"], receipt[str(index)]["load_status"])
+        for index in range(len(order))
+    ] == [
+        ("rebuilt", "missing") if target in rebuilt else ("checkpoint", "resumed")
+        for target in order
+    ]
+    # Each rebuilt target was fitted fresh for every pattern; no loaded one was.
+    reference = {_step_key(step): step for step in reference_steps}
+    assert sorted(_step_key(step) for step in steps) == sorted(
+        key for key in reference if key[0] in rebuilt
+    )
+
+    # Every prior fed to a fresh fit is the uninterrupted run's raw draw.
+    for step in steps:
+        rows = tuple(step.index)
+        expected = reference[_step_key(step)]
+        assert list(step.priors.columns) == list(expected.priors.columns)
+        for prior in step.priors.columns:
+            fed = step.priors[prior]
+            assert fed.dtype == np.dtype(np.float64)
+            assert (
+                fed.to_numpy().tobytes() == reference[(prior, rows)].raw_draw.tobytes()
+            ), (
+                f"on resume, {step.target!r} was drawn on a {prior!r} prior that "
+                "is not the uninterrupted run's raw draw"
+            )
+        assert step.raw_draw.tobytes() == expected.raw_draw.tobytes(), step.target
+
+    # Every target, loaded or rebuilt, holds the uninterrupted run's raw draw
+    # and chain states.
+    for index in range(len(order)):
+        for digest in ("raw_draw_sha256", "content_metadata_sha256"):
+            assert (
+                receipt[str(index)][digest] == reference_receipt[str(index)][digest]
+            ), (
+                order[index],
+                digest,
+            )
+
+    # The loaded prior reached a fresh fit. Where the export changes it (the
+    # year and the components), it did so with values the export changes.
+    fed_loaded = [
+        step.priors[loaded].to_numpy() for step in steps if loaded in step.priors
+    ]
+    assert fed_loaded, f"no target drawn on resume was fed {loaded!r}"
+    if loaded == ORIGINATION_YEAR:
+        _recipient, donor = acs_raw_prior_fixture()
+        support = origination_year_support(donor)
+        assert (~np.isin(np.concatenate(fed_loaded), support)).any()
+    elif loaded in SELF_EMPLOYMENT_COMPONENTS:
+        assert (np.concatenate(fed_loaded) != 0.0).any()
+
+    _assert_same_transfer(resumed, uninterrupted)
+
+
 #: Every checkpoint after which a resumed transfer feeds a loaded prior to a
 #: fresh fit: each fixture target that has a later target in its family.
 _RESUME_POINTS: tuple[str, ...] = tuple(
@@ -533,8 +623,7 @@ def test_resumed_bank_draws_later_targets_on_loaded_raw_draws(
     # that checkpoint into the priors and fits the later targets fresh. A cold
     # run draws ``loaded`` itself, and a run resumed from a complete bank fits
     # nothing, so only such a retry feeds a loaded prior to a new fit.
-    reference_steps, uninterrupted, reference_bank = recorded_banked
-    order = _bank_order(reference_bank)
+    order = _bank_order(recorded_banked[2])
     resumed_from = order.index(loaded) + 1
 
     root = tmp_path / "bank"
@@ -552,57 +641,71 @@ def test_resumed_bank_draws_later_targets_on_loaded_raw_draws(
     resumed = _transfer(target_bank=resumed_bank)
 
     # The resume loaded ``loaded`` and every target before it from their
-    # checkpoints, and fitted every later target fresh for every pattern.
+    # checkpoints, and fitted every later target fresh.
+    _assert_resume_reuses_raw_draws(
+        resumed,
+        resumed_bank,
+        steps,
+        recorded_banked,
+        loaded=loaded,
+        rebuilt=order[resumed_from:],
+    )
+
+
+#: Fixture targets with targets of their own family on both sides: a bank
+#: that keeps one of these checkpoints and drops the rest of its family's
+#: makes a retry rebuild targets on both sides of a loaded one.
+_MIXED_BANK_KEPT: tuple[str, ...] = (ORIGINATION_YEAR, _PARTNERSHIP)
+
+
+@pytest.mark.parametrize("kept", _MIXED_BANK_KEPT)
+def test_mixed_bank_draws_rebuilt_targets_on_a_loaded_raw_draw(
+    kept: str,
+    recorded_banked: tuple[
+        list[ChainStep], AcsTransferResult, AcsTransferTargetBankStore
+    ],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The bank loads each target on its own, so it can hold a later target's
+    # checkpoint while an earlier one is missing (as the mixed-hole test in
+    # test_us_acs_transfer.py shows). A retry then rebuilds the earlier
+    # targets of ``kept``'s family, loads ``kept`` from its checkpoint into
+    # the priors, and draws the later targets fresh on it.
+    reference_bank = recorded_banked[2]
+    order = _bank_order(reference_bank)
+    family = next(targets for targets in _FAMILY_TARGETS.values() if kept in targets)
+    position = family.index(kept)
+    assert 0 < position < len(family) - 1, family
+    rebuilt = tuple(target for target in family if target != kept)
+
+    root = tmp_path / "bank"
+    shutil.copytree(reference_bank.root, root)
+    copied = _bank_store(root)
+    for index, target in enumerate(order):
+        if target in rebuilt:
+            copied.target_path(index, target).unlink()
+
+    steps: list[ChainStep] = []
+    monkeypatch.setattr(acs_transfer_module, "QRF", prior_recording_qrf(steps))
+    resumed_bank = _bank_store(root)
+    resumed = _transfer(target_bank=resumed_bank)
+
+    # Within ``kept``'s family the receipt reads rebuilt, checkpoint, rebuilt.
     receipt = resumed_bank.receipt()["targets"]
-    reference_receipt = reference_bank.receipt()["targets"]
-    assert [
-        (receipt[str(index)]["source"], receipt[str(index)]["load_status"])
-        for index in range(len(order))
-    ] == [("checkpoint", "resumed")] * resumed_from + [("rebuilt", "missing")] * (
-        len(order) - resumed_from
+    assert [receipt[str(order.index(target))]["source"] for target in family] == (
+        ["rebuilt"] * position
+        + ["checkpoint"]
+        + ["rebuilt"] * (len(family) - position - 1)
     )
-    reference = {_step_key(step): step for step in reference_steps}
-    assert sorted(_step_key(step) for step in steps) == sorted(
-        key for key in reference if key[0] in order[resumed_from:]
+    _assert_resume_reuses_raw_draws(
+        resumed,
+        resumed_bank,
+        steps,
+        recorded_banked,
+        loaded=kept,
+        rebuilt=rebuilt,
     )
-
-    # Every prior fed to a fresh fit is the uninterrupted run's raw draw.
-    for step in steps:
-        rows = tuple(step.index)
-        expected = reference[_step_key(step)]
-        assert list(step.priors.columns) == list(expected.priors.columns)
-        for prior in step.priors.columns:
-            fed = step.priors[prior]
-            assert fed.dtype == np.dtype(np.float64)
-            assert (
-                fed.to_numpy().tobytes() == reference[(prior, rows)].raw_draw.tobytes()
-            ), (
-                f"on resume, {step.target!r} was drawn on a {prior!r} prior that "
-                "is not the uninterrupted run's raw draw"
-            )
-        assert step.raw_draw.tobytes() == expected.raw_draw.tobytes(), step.target
-
-    # Every target, loaded or rebuilt, holds the uninterrupted run's raw draw.
-    for index in range(len(order)):
-        assert (
-            receipt[str(index)]["raw_draw_sha256"]
-            == reference_receipt[str(index)]["raw_draw_sha256"]
-        ), order[index]
-
-    # The loaded prior reached a fresh fit. Where the export changes it (the
-    # year and the components), it did so with values the export changes.
-    fed_loaded = [
-        step.priors[loaded].to_numpy() for step in steps if loaded in step.priors
-    ]
-    assert fed_loaded, f"no target drawn on resume was fed {loaded!r}"
-    if loaded == ORIGINATION_YEAR:
-        _recipient, donor = acs_raw_prior_fixture()
-        support = origination_year_support(donor)
-        assert (~np.isin(np.concatenate(fed_loaded), support)).any()
-    elif loaded in SELF_EMPLOYMENT_COMPONENTS:
-        assert (np.concatenate(fed_loaded) != 0.0).any()
-
-    _assert_same_transfer(resumed, uninterrupted)
 
 
 # ---------------------------------------------------------------------------
@@ -610,38 +713,125 @@ def test_resumed_bank_draws_later_targets_on_loaded_raw_draws(
 # ---------------------------------------------------------------------------
 
 
-def _production_batches() -> dict[str, list[tuple[str, str, tuple[str, ...]]]]:
-    """Each production plan's chained batches, in the plan's order."""
+#: One planned batch: its entity, its (production) family name and its targets.
+_Batch = tuple[str, str, tuple[str, ...]]
 
-    def split(
-        families: dict[str, dict[str, tuple[str, ...]]],
-    ) -> list[tuple[str, str, tuple[str, ...]]]:
-        return acs_transfer_module._split_large_target_families(
-            [
-                (entity, family, tuple(targets))
-                for entity, entity_families in families.items()
-                for family, targets in sorted(entity_families.items())
-            ],
-            max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
-        )
+
+class _PlanRecordedError(Exception):
+    """Stops a transfer once it has planned its batches."""
+
+
+def _plan_recipient() -> Frame:
+    """One person on production's US entities, lacking every transfer target."""
+
+    person = pd.DataFrame(
+        {"person_id": [1]}
+        | {
+            US_SCHEMA.membership_column(group): [1]
+            for group in US_SCHEMA.group_entities
+        }
+    )
+    return Frame(
+        {US_SCHEMA.person_entity: person}
+        | {
+            group: pd.DataFrame({US_SCHEMA.id_column(group): [1]})
+            for group in US_SCHEMA.group_entities
+        },
+        US_SCHEMA,
+        {"household": Weights(np.ones(1), WeightKind.DESIGN)},
+        pd.Series("acs_2024_1yr", index=person.index, dtype=object),
+    )
+
+
+def _active_plan(
+    target_families: Mapping[str, Mapping[str, Sequence[str]]],
+) -> list[_Batch]:
+    """The batches ``transfer_acs_inputs`` plans for ``target_families``.
+
+    The transfer itself plans: it normalizes the families in the recipient's
+    entity order, splits them into bounded batches and keeps the targets the
+    recipient lacks. It stops at that activation filter, before any fit. The
+    recipient lacks every target, as an ACS recipient lacks the PUF targets.
+    The stacked callers also pass regime-evidence targets, which can only
+    widen an active batch back to its planned targets; with every target
+    lacking, the active batches already are the planned ones.
+    """
+
+    activation_filter = acs_transfer_module._missing_target_families
+    recorded: list[list[_Batch]] = []
+
+    def record_then_stop(families: Sequence[_Batch], *, recipient: Frame) -> NoReturn:
+        recorded.append(activation_filter(families, recipient=recipient))
+        raise _PlanRecordedError
+
+    recipient = _plan_recipient()
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(acs_transfer_module, "_missing_target_families", record_then_stop)
+        with pytest.raises(_PlanRecordedError):
+            transfer_acs_inputs(
+                recipient,
+                recipient,
+                target_families=target_families,
+                max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+            )
+    (active,) = recorded
+    return active
+
+
+def _production_batches() -> dict[str, list[_Batch]]:
+    """Each production plan's batches, as the transfer plans them, in order.
+
+    The staging builder passes the declared ACS plan. Stacked gap fill passes
+    each direction's families (``stacked_gap_fill_plan``), and canonical
+    post-PUF execution passes each late-transfer group's families.
+    """
 
     return {
-        "declared ACS plan": split(declared_acs_transfer_target_families()),
-        "stacked gap fill": split(pool_pre_clone_gap_fill_target_families()),
-        "stacked post-PUF transfer": [
-            (group.entity, group.family, tuple(group.targets))
+        "declared ACS plan": _active_plan(declared_acs_transfer_target_families()),
+        **{
+            f"stacked gap-fill direction {direction.name!r}": _active_plan(
+                direction.target_families
+            )
+            for direction in stacked_gap_fill_plan()
+        },
+        **{
+            f"stacked post-PUF group {group.name!r}": _active_plan(
+                group.target_families
+            )
             for group in CANONICAL_US_LATE_TRANSFER_GROUPS
-        ],
+        },
     }
 
 
-def _pattern_orders(steps: list[ChainStep]) -> set[tuple[str, ...]]:
-    """The targets each availability pattern drew, in call order, in one run."""
+#: Seed of the supplemental donor columns.
+_SUPPLEMENT_SEED = 1723
 
-    orders: dict[tuple, list[str]] = {}
+
+def _with_batch_columns(donor: Frame, entity: str, targets: Sequence[str]) -> Frame:
+    """``donor`` with a column for each of ``targets`` that it lacks.
+
+    The fixture has donor columns for its own targets only. Each supplemental
+    column is a positive amount from one seeded stream, so its target has one
+    sign regime and its fits stay cheap. The fixture's columns are unchanged.
+    """
+
+    table = donor.table(entity)
+    missing = [target for target in targets if target not in table.columns]
+    amounts = np.random.default_rng(_SUPPLEMENT_SEED).lognormal(
+        7.0, 1.0, (len(missing), len(table))
+    )
+    return donor.with_columns(
+        entity, **dict(zip(missing, np.round(amounts, 2), strict=True))
+    )
+
+
+def _patterns(steps: list[ChainStep]) -> dict[tuple, list[ChainStep]]:
+    """Each availability pattern's steps, in call order, in one run."""
+
+    patterns: dict[tuple, list[ChainStep]] = {}
     for step in steps:
-        orders.setdefault(tuple(step.index), []).append(step.target)
-    return {tuple(order) for order in orders.values()}
+        patterns.setdefault(tuple(step.index), []).append(step)
+    return patterns
 
 
 def test_production_draws_the_fixture_targets_in_the_fixture_order(
@@ -653,7 +843,7 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
     # estate flag. Each batch is one chain; separate batches never condition
     # on each other.
     plans = _production_batches()
-    runtime_batches: set[tuple[str, str, tuple[str, ...]]] = set()
+    runtime_batches: set[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = set()
     for plan, batches in plans.items():
         for entity, batch, targets in batches:
             for chain in RAW_PRIOR_FIXTURE_FAMILIES.get(entity, {}).values():
@@ -669,26 +859,53 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
                 # the batch's order.
                 assert acs_transfer_module._model_target_names(targets) == targets
                 if len(shared) > 1:
-                    runtime_batches.add((entity, batch, tuple(shared)))
+                    runtime_batches.add((entity, batch, targets, tuple(shared)))
 
-    # The transfer draws each such batch in that order at runtime. The order
-    # matters only where a batch holds two or more fixture targets; the
-    # fixture has donor columns for those targets only, so each run holds
-    # the batch's fixture targets, under the batch's production name.
+    # The transfer draws each such batch whole at runtime, under its
+    # production name, in memory and banked. The donor gets a supplemental
+    # column for each batch target the fixture lacks; the recipient is the
+    # fixture's, which lacks every target and has every required predictor,
+    # so every recipient row is eligible.
     assert runtime_batches
-    for number, (entity, batch, shared) in enumerate(sorted(runtime_batches)):
+    for number, (entity, batch, targets, shared) in enumerate(sorted(runtime_batches)):
+        recipient, donor = acs_raw_prior_fixture()
+        frames = (recipient, _with_batch_columns(donor, entity, targets))
+        rows = recipient.table(entity).index
         for path, bank in (
             ("in memory", None),
             ("banked", _bank_store(tmp_path / f"order_{number}")),
         ):
+            run = f"the transfer, {path}, of {entity} batch {batch!r}: "
             steps: list[ChainStep] = []
             monkeypatch.setattr(acs_transfer_module, "QRF", prior_recording_qrf(steps))
-            _transfer(target_bank=bank, target_families={entity: {batch: shared}})
-            orders = _pattern_orders(steps)
-            assert orders == {shared}, (
-                f"the transfer, {path}, draws {entity} batch {batch!r} as "
-                f"{sorted(orders)}; the plan orders it {list(shared)}"
+            result = _transfer(
+                target_bank=bank,
+                target_families={entity: {batch: targets}},
+                frames=frames,
             )
+            patterns = _patterns(steps)
+            orders = {
+                tuple(step.target for step in chain) for chain in patterns.values()
+            }
+            assert orders == {targets}, (
+                f"{run}draws {sorted(orders)}; the plan orders it {list(targets)}"
+            )
+            for chain in patterns.values():
+                # The fixture's targets reach the draw boundary in the
+                # fixture's order, and each draw is fed the earlier raw draws.
+                fixture_order = [step.target for step in chain if step.target in shared]
+                assert fixture_order == list(shared), run
+                _assert_chain_feeds_raw_draws(chain, targets, run=run)
+            # The patterns together cover every eligible row, once.
+            drawn_rows = [row for chain in patterns.values() for row in chain[0].index]
+            assert sorted(drawn_rows) == sorted(rows), (
+                f"{run}the patterns drew {len(drawn_rows)} rows, not each of the "
+                f"{len(rows)} eligible rows once"
+            )
+            assert {
+                (record.column, record.imputed_recipient_rows)
+                for record in result.imputed_inputs
+            } == {(target, len(rows)) for target in targets}, run
 
     # The declared ACS plan chains each fixture family whole in one batch.
     declared = plans["declared ACS plan"]
