@@ -509,3 +509,189 @@ def test_a_malformed_digest_variable_is_refused(
     with _as_step_process(monkeypatch, {_DIGESTS_VARIABLE: value}):
         with pytest.raises(SystemExit, match=_DIGESTS_VARIABLE):
             builder._stage_run_config(builder._parse_args(_step_argv(command)))
+
+
+# --------------------------------------------------------------------------
+# The pinned ASEC sources and the block_v1 location ladder
+# --------------------------------------------------------------------------
+#
+# With --asec-h5-sha256 pins, every process compares each pinned ASEC file
+# with its pin before any stage runs (_verify_asec_source_digests). The parent
+# still hashes them; a step process compares each pin with the parent's
+# digest for the same resolved path instead, except household_location_
+# assignment (block_v1), which reads the files and so hashes them itself.
+# source_construction, the other step that reads them, compares the digests
+# of the bytes it reads with the pins. Under block_v1 the run config also
+# holds the location ladder's digest, which every step takes from the parent.
+
+#: Income years without a canonical pin, so a fixture file's own digest is
+#: an admissible pin.
+_FIXTURE_ASEC_YEARS = (2019, 2020)
+
+
+def _write_pooled_inputs(tmp_path: Path) -> SimpleNamespace:
+    inputs = _write_inputs(tmp_path)
+    inputs.asec = {}
+    for year in _FIXTURE_ASEC_YEARS:
+        path = tmp_path / "inputs" / f"census_cps_{year}.h5"
+        path.write_bytes(f"asec income year {year}".encode())
+        inputs.asec[year] = path
+    inputs.ladder = tmp_path / "inputs" / "ladder.npz"
+    inputs.ladder.write_bytes(b"block ladder")
+    inputs.crosswalk = tmp_path / "inputs" / "crosswalk.csv"
+    inputs.crosswalk.write_bytes(b"source_geography_id,target_geography_id,weight\n")
+    return inputs
+
+
+def _pooled_parent_argv(
+    tmp_path: Path, inputs: SimpleNamespace, *, block_v1: bool
+) -> list[str]:
+    argv: list[str] = []
+    for year, path in inputs.asec.items():
+        argv += ["--asec-h5", f"{year}={path}"]
+        argv += ["--asec-h5-sha256", f"{year}={_sha256(path)}"]
+    argv += [
+        "--puf-h5",
+        str(inputs.puf_h5),
+        "--puf-source-year-csv",
+        str(inputs.puf_csv),
+        "--out",
+        str(tmp_path / "out"),
+        "--stage",
+        "all",
+        "--checkpoint-dir",
+        str(tmp_path / "checkpoints"),
+    ]
+    if block_v1:
+        argv += [
+            "--location-rule",
+            "block_v1",
+            "--block-ladder-artifact",
+            str(inputs.ladder),
+            "--congressional-district-vintage-crosswalk",
+            str(inputs.crosswalk),
+        ]
+    else:
+        argv.append("--without-block-ladder")
+    return argv
+
+
+def _asec_paths(inputs: SimpleNamespace) -> list[Path]:
+    return sorted(path.resolve() for path in inputs.asec.values())
+
+
+def _step_hashes(builder, monkeypatch, hashing, command, environment) -> list[Path]:
+    """What one step process hashes in its ASEC pin check and run config."""
+
+    hashing.clear()
+    with _as_step_process(monkeypatch, environment):
+        step = builder._parse_args(_step_argv(command))
+        builder._verify_asec_source_digests(step)
+        builder._stage_run_config(step)
+    return sorted(hashing.files)
+
+
+def test_step_processes_compare_the_asec_pins_with_the_parent_s_digests(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    inputs = _write_pooled_inputs(tmp_path)
+    hashing = _Hashing(builder, monkeypatch)
+    steps = _StepProcesses(builder, monkeypatch)
+    parent = builder._parse_args(_pooled_parent_argv(tmp_path, inputs, block_v1=False))
+
+    builder._dispatch(parent, None)
+
+    # The parent hashed each pinned ASEC file and each PUF file once.
+    assert sorted(hashing.files) == sorted(
+        [*_asec_paths(inputs), inputs.puf_h5.resolve(), inputs.puf_csv.resolve()]
+    )
+    assert [_step_name(command) for command, _env in steps.started] == list(
+        builder.PIPELINE_STEPS
+    )
+    for command, environment in steps.started:
+        assert (
+            _step_hashes(builder, monkeypatch, hashing, command, environment) == []
+        ), _step_name(command)
+
+
+def test_under_block_v1_only_the_location_step_hashes_the_asec_files(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    inputs = _write_pooled_inputs(tmp_path)
+    hashing = _Hashing(builder, monkeypatch)
+    steps = _StepProcesses(builder, monkeypatch)
+    parent = builder._parse_args(_pooled_parent_argv(tmp_path, inputs, block_v1=True))
+
+    builder._dispatch(parent, None)
+
+    assert sorted(hashing.files) == sorted(
+        [
+            *_asec_paths(inputs),
+            inputs.puf_h5.resolve(),
+            inputs.puf_csv.resolve(),
+            inputs.ladder.resolve(),
+        ]
+    )
+    locked = _locked_run_config(builder, parent)
+    assert locked["block_ladder_artifact_sha256"] == _sha256(inputs.ladder)
+    assert [_step_name(command) for command, _env in steps.started] == list(
+        builder.BLOCK_V1_PIPELINE_STEPS
+    )
+    for command, environment in steps.started:
+        hashed = _step_hashes(builder, monkeypatch, hashing, command, environment)
+        if _step_name(command) == builder.HOUSEHOLD_LOCATION_STAGE_NAME:
+            # It reads the ASEC files, so it hashes them; the ladder's and
+            # the PUF files' digests are the parent's.
+            assert hashed == _asec_paths(inputs)
+        else:
+            assert hashed == [], _step_name(command)
+
+
+def test_a_step_refuses_a_parent_asec_digest_that_differs_from_its_pin(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    inputs = _write_pooled_inputs(tmp_path)
+    _Hashing(builder, monkeypatch)
+    steps = _StepProcesses(builder, monkeypatch)
+    builder._dispatch(
+        builder._parse_args(_pooled_parent_argv(tmp_path, inputs, block_v1=False)),
+        None,
+    )
+    command, environment = steps.started[1]
+    payload = json.loads(environment[_DIGESTS_VARIABLE])
+    payload["file_sha256"][str(inputs.asec[2019].resolve())] = "e" * 64
+
+    with _as_step_process(monkeypatch, {_DIGESTS_VARIABLE: json.dumps(payload)}):
+        with pytest.raises(
+            SystemExit, match=r"ASEC 2019 source .* failed digest verification"
+        ):
+            builder._verify_asec_source_digests(
+                builder._parse_args(_step_argv(command))
+            )
+
+
+@pytest.mark.parametrize("changed", ("asec", "ladder"))
+def test_a_resume_after_a_changed_asec_file_or_ladder_is_refused(
+    builder: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    changed: str,
+) -> None:
+    inputs = _write_pooled_inputs(tmp_path)
+    _Hashing(builder, monkeypatch)
+    steps = _StepProcesses(builder, monkeypatch)
+    argv = _pooled_parent_argv(tmp_path, inputs, block_v1=True)
+    builder._dispatch(builder._parse_args(argv), None)
+    steps.started.clear()
+
+    if changed == "asec":
+        inputs.asec[2020].write_bytes(b"changed asec income year 2020")
+        refusal = (SystemExit, r"ASEC 2020 source .* failed digest verification")
+    else:
+        inputs.ladder.write_bytes(b"changed block ladder")
+        refusal = (ValueError, "run_config differs")
+
+    # The parent hashes both again and refuses before any step starts.
+    with pytest.raises(refusal[0], match=refusal[1]):
+        builder._dispatch(builder._parse_args(argv), None)
+    assert steps.started == []
