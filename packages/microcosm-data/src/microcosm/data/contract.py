@@ -321,13 +321,15 @@ BE_RELEASES: frozenset[str] = frozenset(
 )
 #: The files BE's release contract adds to the base set
 #: (``microcosm/build/be/release_contract.json`` in the build shard, which
-#: this shard cannot import), each of which a BE build also declares as an
-#: artifact.
-_BE_ADDED_RELEASE_FILES = (
-    "source_coverage.json",
-    "demographics.json",
-    "reform_validation.json",
-)
+#: this shard cannot import), each by the artifact key a BE build declares it
+#: under. In a build folder the key is the file's role, and the emitter hands
+#: the demographics and the reform validation to the collector by role.
+_BE_ADDED_RELEASE_ARTIFACTS = {
+    "source_coverage": "source_coverage.json",
+    "demographics": "demographics.json",
+    "reform_validation": "reform_validation.json",
+}
+_BE_ADDED_RELEASE_FILES = tuple(_BE_ADDED_RELEASE_ARTIFACTS.values())
 #: The files a build of a BE release in the national-default role carries:
 #: the base set and :data:`_BE_ADDED_RELEASE_FILES`. A build-shard test holds
 #: this list equal to the release contract's. As with a UK release's files,
@@ -2219,7 +2221,11 @@ def _check_be_engines(manifest: Mapping, failures: list[str]) -> None:
             isinstance(packages, Mapping)
             and bool(packages)
             and all(
-                isinstance(version, str) and version for version in packages.values()
+                isinstance(package, str)
+                and package
+                and isinstance(version, str)
+                and version
+                for package, version in packages.items()
             )
         )
         model_well_formed = isinstance(model, str) and bool(model)
@@ -2231,24 +2237,44 @@ def _check_be_engines(manifest: Mapping, failures: list[str]) -> None:
         ):
             failures.append(
                 f"build_manifest.json 'engines.{name}' must record its "
-                "'packages' (each package's version) or its 'model'."
+                "'packages' (each package's name and version), its 'model', or "
+                "both, each well formed."
             )
 
 
 def _check_be_release_artifacts(manifest: Mapping, failures: list[str]) -> None:
-    """A BE build declares each file its release contract adds to the base set.
+    """A BE build declares each file its release contract adds to the base set,
+    under the key :data:`_BE_ADDED_RELEASE_ARTIFACTS` gives it.
 
     The publisher hands the emitter only the two manifests and the declared
     artifacts, so a file the contract requires that is present but not
-    declared would not be published. The calibration diagnostics are
-    declared already (:func:`_check_calibration_diagnostics_declaration`).
+    declared would not be published; and an artifact's key is its role in a
+    build folder, by which the emitter hands the demographics and the reform
+    validation to the collector. The calibration diagnostics are checked
+    the same way already (:func:`_check_calibration_diagnostics_declaration`).
     """
-    for filename in _BE_ADDED_RELEASE_FILES:
+    artifacts = manifest.get("artifacts")
+    declared = artifacts if isinstance(artifacts, Mapping) else {}
+    for key, filename in _BE_ADDED_RELEASE_ARTIFACTS.items():
         if _artifact_by_path(manifest, filename) is None:
             failures.append(
                 f"release_manifest.json artifacts must include {filename!r} for "
                 "BE releases."
             )
+            continue
+        entry = declared.get(key)
+        if isinstance(entry, Mapping) and entry.get("path") == filename:
+            continue
+        other_keys = sorted(
+            str(other)
+            for other, other_entry in declared.items()
+            if isinstance(other_entry, Mapping) and other_entry.get("path") == filename
+        )
+        failures.append(
+            f"release_manifest.json declares {filename!r} under the key "
+            f"{', '.join(repr(other) for other in other_keys)}; a BE build "
+            f"declares it under {key!r}, the role its build folder gives it."
+        )
 
 
 def _check_us_release_dataset_file(

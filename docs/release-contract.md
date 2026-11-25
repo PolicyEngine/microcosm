@@ -260,10 +260,13 @@ carry:
   published before the move do (`_check_be_engines`), in the local-area role
   as in the national-default one. Its release manifest need not carry
   `built_with_core_package`, `built_with_model_package` or
-  `compatible_core_packages`. A PolicyEngine record it does carry, in either
-  manifest, is checked as above. It
-  declares each file BE's release contract adds as an artifact
-  (`_check_be_release_artifacts`).
+  `compatible_core_packages`. A PolicyEngine record it does carry is checked
+  as above wherever the build's role checks it: the local-area contract checks
+  no `runtime` record for any build. It declares each file BE's release
+  contract adds as an artifact under its own key (`source_coverage`,
+  `demographics`, `reform_validation`), since a build folder's key is the
+  file's role and the emitter hands the demographics and the reform
+  validation to the collector by role (`_check_be_release_artifacts`).
 
   A new US build in a build folder declares exactly one microdata file, its
   release's (`US_RELEASE_DATASET_FILES`; `microcosm_us_2024.h5` for a national
