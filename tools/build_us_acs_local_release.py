@@ -343,6 +343,21 @@ MASS_PARAMETRIZATION_CHOICES = ("projection", "softmax")
 #: vector in that file and ``--l2-anchor`` names it (microcosm#1729).
 L2_ANCHOR_INITIAL = "initial"
 L2_ANCHOR_PRESETS = (L2_ANCHOR_INITIAL, "uniform")
+#: What ``--max-weight-ratio`` multiplies for each household (microcosm#1729):
+#: the declared reference of the weight bound. ``own`` is the household's own
+#: starting weight, the bound every solve has used. The others are shared
+#: weights (``microcosm.calibrate.weight_bound.weight_bound_reference``): the
+#: mean starting weight, or the mean starting weight of the household's state
+#: or district, so that a donor row, which starts about 27 times heavier than
+#: an ACS row, gets no larger a bound than the ACS rows beside it.
+WEIGHT_BOUND_OWN = "own"
+#: Reference name -> (shared reference kind, household column of its groups).
+WEIGHT_BOUND_REFERENCES = {
+    WEIGHT_BOUND_OWN: ("own", None),
+    "mean": ("mean", None),
+    "state_mean": ("group_mean", "state_fips"),
+    "district_mean": ("group_mean", "congressional_district_geoid"),
+}
 #: The penalty settings every solve had before they were options: a solver
 #: stamp or summary that lacks them was solved with these.
 HISTORICAL_PENALTY = {
@@ -2635,10 +2650,11 @@ def _solver_settings(args, target_loss: dict, l2_anchor: dict | None = None) -> 
 
     ``target_loss`` is the stamp :func:`release_target_loss_weights` returns,
     so weights calibrated under another loss weighting, or under none (a run
-    from before the weights), are never warm-started from. ``l2_anchor`` is
-    the stamp :func:`release_l2_anchor` returns: ``None`` for the default
-    anchor, which adds no key, so a stamp from before the option compares
-    equal to a request for the default.
+    from before the weights), are never warm-started from. ``l2_anchor`` holds
+    the stamps of the options a build asked for by name
+    (:func:`release_l2_anchor`, :func:`release_weight_bound`): ``None`` for
+    the defaults, which add no key, so a stamp from before the options
+    compares equal to a request for the defaults.
     """
 
     return {
@@ -2751,6 +2767,47 @@ def release_l2_anchor(args, household_ids) -> tuple[dict, dict | None]:
         {"l2_anchor": anchor, "l2_anchor_weights": vector},
         {"l2_anchor": anchor, "l2_anchor_weights_sha256": _weights_digest(vector)},
     )
+
+
+def release_weight_bound(args, households, design_weights) -> tuple[dict, dict | None]:
+    """The weight-bound keywords for ``calibrate``, and the stamp describing them.
+
+    The default (``--weight-bound-reference own``) gives no keyword and no
+    stamp: ``--max-weight-ratio`` multiplies each household's own starting
+    weight, as in every release. Any other reference passes the shared
+    reference vector as ``max_weight_reference``, so the bound is
+    ``--max-weight-ratio`` times that reference.
+    """
+
+    name = getattr(args, "weight_bound_reference", WEIGHT_BOUND_OWN)
+    if name == WEIGHT_BOUND_OWN:
+        return {}, None
+    from microcosm.calibrate.weight_bound import weight_bound_reference
+
+    kind, column = WEIGHT_BOUND_REFERENCES[name]
+    if column is not None and column not in households.columns:
+        raise SystemExit(
+            f"--weight-bound-reference {name} needs the household column "
+            f"{column}, which the checkpoint does not have."
+        )
+    try:
+        reference = weight_bound_reference(
+            design_weights,
+            kind,
+            groups=None if column is None else households[column].to_numpy(),
+        )
+    except ValueError as error:
+        raise SystemExit(f"--weight-bound-reference {name}: {error}") from error
+    admitted = float(args.max_weight_ratio * reference.sum())
+    total = float(np.sum(design_weights))
+    if admitted < total * (1.0 - 1e-12):
+        # The solver refuses the same bounds; say so before the solve starts.
+        raise SystemExit(
+            f"--weight-bound-reference {name} with --max-weight-ratio "
+            f"{args.max_weight_ratio!r} admits a total weight of {admitted:,.0f}, "
+            f"below the {total:,.0f} the solve conserves. Raise --max-weight-ratio."
+        )
+    return {"max_weight_reference": reference}, {"weight_bound_reference": name}
 
 
 def release_target_loss_caps(args, target_set, train_specs, loss_weights):
@@ -3059,6 +3116,7 @@ def calibrate_surface(
     mass_parametrization: str = HISTORICAL_PENALTY["mass_parametrization"],
     target_loss_scales: np.ndarray | None = None,
     l2_anchor: dict | None = None,
+    weight_bound: dict | None = None,
 ):
     """Epoch-batched warm-start calibration of ``target_set``.
 
@@ -3070,15 +3128,16 @@ def calibrate_surface(
     release weights (:func:`release_target_loss_weights`), and ``None`` (equal
     weights) is for harnesses. Returns ``(result, epochs_done)``.
 
-    An option added after the first release (``target_loss_scales``, and the
-    ``l2_anchor`` keywords :func:`release_l2_anchor` returns) reaches
+    An option added after the first release (``target_loss_scales``, the
+    ``l2_anchor`` keywords :func:`release_l2_anchor` returns and the
+    ``weight_bound`` keywords :func:`release_weight_bound` returns) reaches
     ``calibrate`` only when a caller sets it, so a run that sets none makes
     the call every release has made.
     """
 
     from microcosm.calibrate import calibrate
 
-    optional = dict(l2_anchor or {})
+    optional = {**(l2_anchor or {}), **(weight_bound or {})}
     if target_loss_scales is not None:
         optional["target_loss_scales"] = target_loss_scales
     batch = epoch_batch if epoch_batch > 0 else epochs
@@ -3253,7 +3312,11 @@ def do_calibrate(args) -> None:
     l2_anchor, l2_anchor_stamp = release_l2_anchor(
         args, frame.table("household")["household_id"].to_numpy()
     )
-    settings = _solver_settings(args, target_loss, l2_anchor_stamp)
+    weight_bound, weight_bound_stamp = release_weight_bound(
+        args, frame.table("household"), design_weights
+    )
+    named_options = {**(l2_anchor_stamp or {}), **(weight_bound_stamp or {})}
+    settings = _solver_settings(args, target_loss, named_options or None)
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
     warm, done = None, 0
     if args.resume and resume_npz.exists():
@@ -3378,6 +3441,7 @@ def do_calibrate(args) -> None:
         target_loss_weights=solver_loss["weights"],
         target_loss_scales=solver_loss["scales"],
         l2_anchor=l2_anchor,
+        weight_bound=weight_bound,
         warm=warm,
         done=done,
         on_batch=save,
@@ -3417,7 +3481,13 @@ def do_calibrate(args) -> None:
         "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
         "l2_basis": args.l2_basis,
-        **(l2_anchor_stamp or {}),
+        **named_options,
+        # Only a solve under a declared reference records its bound.
+        **(
+            {"weight_bound": result.options["weight_bound"]}
+            if "weight_bound" in result.options
+            else {}
+        ),
         "mass_parametrization": args.mass_parametrization,
         "seed": args.seed,
         "initial_loss": round(result.initial_loss, 6),
@@ -7031,6 +7101,10 @@ def do_package(args) -> dict:
         refresh_recipe["release"] += (
             f" --target-weight-rule {recorded_settings['target_loss']['weighting']}"
         )
+    if recorded_settings.get("weight_bound_reference") is not None:
+        refresh_recipe["release"] += (
+            f" --weight-bound-reference {recorded_settings['weight_bound_reference']}"
+        )
     if recorded_settings.get("l2_anchor") is not None:
         refresh_recipe["release"] += f" --l2-anchor {recorded_settings['l2_anchor']}"
         if recorded_settings.get("l2_anchor_weights_sha256") is not None:
@@ -7381,6 +7455,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=800)
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
+    parser.add_argument(
+        "--weight-bound-reference",
+        choices=sorted(WEIGHT_BOUND_REFERENCES),
+        default=WEIGHT_BOUND_OWN,
+        help=(
+            "What --max-weight-ratio multiplies for each household. 'own' "
+            "(default) is its own starting weight, as every solve has used. "
+            "'mean', 'state_mean' and 'district_mean' are one shared weight: "
+            "the mean starting weight overall, or of the household's state or "
+            "district, so a row that starts heavier gets no larger a bound. A "
+            "row that starts above the bound is pulled down to it before the "
+            "solve, which moves starting mass off the heavy rows; it changes "
+            "the weights (microcosm.calibrate.weight_bound)."
+        ),
+    )
     parser.add_argument("--target-loss-cap", type=float, default=1.0)
     parser.add_argument(
         "--county-target-loss-cap",

@@ -763,3 +763,80 @@ def test_anchor_weights_must_fit_the_checkpoint(calibrate_run, tmp_path) -> None
     ):
         with pytest.raises(SystemExit, match=match):
             module.release_l2_anchor(anchor(name, **arrays), households)
+
+
+# ---------------------------------------------------------------------------
+# Item 5: the weight bound against a declared reference
+# ---------------------------------------------------------------------------
+
+
+def test_the_cli_bounds_against_each_households_own_weight_by_default() -> None:
+    module = _FIXTURE._load_tool_module()
+    assert _cli(module).weight_bound_reference == "own"
+    assert _cli(
+        module, "--weight-bound-reference", "district_mean"
+    ).weight_bound_reference == ("district_mean")
+    with pytest.raises(SystemExit):
+        _cli(module, "--weight-bound-reference", "median")
+    households = SimpleNamespace(columns=[])
+    assert module.release_weight_bound(_cli(module), households, np.ones(3)) == (
+        {},
+        None,
+    )
+
+
+def test_a_shared_reference_reaches_calibrate_and_the_stamp(calibrate_run) -> None:
+    design = np.asarray([1.0, 2.0, 3.0, 4.0, 5.0])
+    calls = calibrate_run.run(
+        weight_bound_reference="mean", max_weight_ratio=1.5, epochs=60, epoch_batch=30
+    )
+    bound = 1.5 * design.mean()  # 4.5 for every household
+    for call in calls:
+        assert set(call["kwargs"]) == HISTORICAL_CALIBRATE_KEYWORDS | {
+            "max_weight_reference"
+        }
+        np.testing.assert_allclose(call["kwargs"]["max_weight_reference"], 3.0)
+    weights = _saved_weights(calibrate_run)
+    # One absolute bound for every household, whatever its starting weight.
+    assert (weights <= bound * (1 + 1e-12)).all()
+    assert weights.sum() == pytest.approx(design.sum())
+    summary = _summary(calibrate_run)
+    assert summary["weight_bound_reference"] == "mean"
+    assert summary["solver_settings"]["weight_bound_reference"] == "mean"
+    # The heaviest household (5) starts above the shared bound (4.5).
+    assert summary["weight_bound"]["reference"] == "declared"
+    assert summary["weight_bound"]["records_started_above_bound"] == 1
+    assert summary["weight_bound"]["realized_max_ratio_to_reference"] <= 1.5 * (
+        1 + 1e-12
+    )
+    # Another reference is another solve: a resume refuses these weights.
+    with pytest.raises(SystemExit, match="different solver settings"):
+        calibrate_run.run(max_weight_ratio=1.5, epochs=60, epoch_batch=30, resume=True)
+
+
+def test_an_area_mean_reference_reads_the_households_area() -> None:
+    import pandas as pd
+
+    module = _FIXTURE._load_tool_module()
+    households = pd.DataFrame({"state_fips": [6, 6, 36, 36, 36]})
+    design = np.asarray([27.0, 1.0, 27.0, 1.0, 2.0])
+    args = SimpleNamespace(weight_bound_reference="state_mean", max_weight_ratio=5.0)
+
+    keywords, stamp = module.release_weight_bound(args, households, design)
+
+    np.testing.assert_allclose(
+        keywords["max_weight_reference"], [14.0, 14.0, 10.0, 10.0, 10.0]
+    )
+    assert stamp == {"weight_bound_reference": "state_mean"}
+    args.weight_bound_reference = "district_mean"
+    with pytest.raises(SystemExit, match="congressional_district_geoid"):
+        module.release_weight_bound(args, households, design)
+
+
+def test_bounds_that_cannot_hold_the_mass_stop_before_the_solve() -> None:
+    import pandas as pd
+
+    module = _FIXTURE._load_tool_module()
+    args = SimpleNamespace(weight_bound_reference="mean", max_weight_ratio=0.5)
+    with pytest.raises(SystemExit, match="Raise --max-weight-ratio"):
+        module.release_weight_bound(args, pd.DataFrame(), np.asarray([1.0, 2.0, 3.0]))
