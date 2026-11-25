@@ -303,6 +303,8 @@ _NESTING_HELD: Mapping[str, str] = {
             "isa_subscriptions",
             "pip_points",
             "trading_allowance_receipts",
+            # main's new-claimant draw (microcosm#1687), the roster's last.
+            "uc_new_claimant_draw",
         ),
         _AFTER_MERGE,
     ),

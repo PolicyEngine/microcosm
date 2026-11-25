@@ -780,8 +780,9 @@ def test_the_spine_gate_kernel_keys_on_its_checks_not_the_energy_level(monkeypat
 
 
 def _hand_over_context(households: int):
-    """A UK kernel's context as the executor hands it over: frozen slices of
-    an invented population, with its household weights and strata."""
+    """A UK kernel's context as the executor hands it over: read-only views of
+    an invented population's tables (main's microcosm#1724), with its
+    household weights and strata."""
 
     import numpy as np
     import pandas as pd
@@ -816,7 +817,9 @@ def _hand_over_context(households: int):
         {"household": Weights(values=np.ones(households), kind=WeightKind.DESIGN)},
     )
     tables = {
-        entity: executor._freeze_frame(population.table(entity))
+        entity: executor._read_only_table(
+            population.table(entity), list(population.table(entity).columns)
+        )
         for entity in population.entities
     }
     return population, SimpleNamespace(
@@ -863,7 +866,11 @@ def test_a_kernel_frame_is_one_copy_of_its_context():
     finally:
         tracemalloc.stop()
     assert held < 1.5 * size
-    assert peak < 1.5 * size
+    # The executor hands read-only views, one block per column (main's
+    # microcosm#1724): pandas copies them and then joins the copies into one
+    # block, so two copies are alive for a moment, no more than the frozen
+    # copy and the frame's own were before. One is held once the frame is built.
+    assert peak < 2.5 * size
     # The run's mass log and metadata replace the stage defaults, ...
     assert frame.mass_log == (record,)
     assert dict(frame.metadata) == {"time_period": "2025"}

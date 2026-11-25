@@ -2591,8 +2591,9 @@ class TestSupportSplitRecomputeAcrossGeographicClones:
                                 value = ast.Attribute(base, value.attr, ast.Load())
                         assert ast.unparse(value) in passed, (stage, function.name)
                         built[stage] += 1
-        # Ten stages, main's pip_points among them.
-        assert len(built) == 10 and all(built.values()), built
+        # Eleven stages, main's pip_points and uc_new_claimant_draw (microcosm#1687)
+        # among them.
+        assert len(built) == 11 and all(built.values()), built
 
 
 # --- copy ids at the copy-id table's declared radices (microcosm#931) ----------
