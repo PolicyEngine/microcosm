@@ -845,10 +845,10 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         ]
 
     # The scorer opens on the written H5 with the plan recorded before export,
-    # keeping its household batch files in the build's --out.
+    # keeping its household batch files in a directory in the build's --out.
     assert [ast.unparse(call) for call in calls_to("_open_post_export_scorer")] == [
         "_open_post_export_scorer(post_export_scoring_plan, dataset_path, "
-        "batch_directory=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY)"
+        "batch_parent=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY)"
     ]
     # It opens the file the build wrote, which the record pins by digest
     # (never a previous run's bytes at the same path, microcosm#443), and

@@ -16,7 +16,9 @@ from __future__ import annotations
 # ruff: noqa: F811
 import gc
 import pickle
+import shutil
 import types
+import weakref
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -223,7 +225,7 @@ def test_a_batch_file_whose_bytes_changed_is_refused(builder, tmp_path) -> None:
     try:
         first_file = sorted(scorer.batch_directory.iterdir())[0]
         first_file.write_bytes(first_file.read_bytes() + b"changed")
-        with pytest.raises(ValueError, match="SHA-256"):
+        with pytest.raises(builder.PostExportBatchFileError, match="SHA-256"):
             scorer._score([_AGE_KEY], label="age")
     finally:
         scorer.close()
@@ -233,10 +235,82 @@ def test_a_missing_batch_file_is_refused(builder, tmp_path) -> None:
     scorer = _open_scorer(builder, _nested_frame(), tmp_path)
     try:
         sorted(scorer.batch_directory.iterdir())[-1].unlink()
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(builder.PostExportBatchFileError, match="cannot be read"):
             scorer._score([_AGE_KEY], label="age")
     finally:
         scorer.close()
+
+
+@pytest.mark.parametrize(
+    ("writer", "consumer", "filename"),
+    [
+        (
+            "_write_ssi_social_security_holdout",
+            "_ssi_social_security_holdout_consumer",
+            "us_ssi_social_security_holdout.json",
+        ),
+        (
+            "_write_medicare_irmaa_holdout",
+            "_medicare_irmaa_holdout_consumer",
+            "us_medicare_irmaa_holdout.json",
+        ),
+    ],
+)
+def test_a_holdout_raises_a_refused_batch_file_instead_of_reporting_it(
+    builder, tmp_path, writer, consumer, filename
+) -> None:
+    """A held-out report records a measurement it cannot make as unavailable;
+    a batch file that changed or went missing is not such a measurement, and
+    stops certification as it does in every other post-export stage."""
+
+    scorer = _open_scorer(builder, _nested_frame(), tmp_path / "h5")
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+    try:
+        first_file = sorted(scorer.batch_directory.iterdir())[0]
+        first_file.write_bytes(first_file.read_bytes() + b"changed")
+        with pytest.raises(builder.PostExportBatchFileError):
+            getattr(builder, writer)(
+                release_dir=release_dir,
+                dataset_path=scorer.dataset_path,
+                release_id="fixture-release",
+                post_export_scorer=scorer,
+                baseline_plan=builder._record_post_export_baseline_plan(
+                    getattr(builder, consumer)
+                ),
+            )
+    finally:
+        scorer.close()
+    assert not (release_dir / filename).exists()
+
+
+def test_a_pass_frees_each_batch_before_it_reads_the_next(
+    builder, tmp_path, monkeypatch
+) -> None:
+    """Between batches the scorer holds no batch frame: the frame read for a
+    batch is freed (the batch engine holds its own copy of the data) before
+    the next batch's file is read."""
+
+    batch_files = builder._PostExportBatchFiles
+    read_batch = batch_files.__getitem__
+    served: list[weakref.ref] = []
+    alive_at_each_read: list[int] = []
+
+    def tracked_read(self, position):
+        alive_at_each_read.append(sum(ref() is not None for ref in served))
+        batch_frame = read_batch(self, position)
+        # A Frame takes no weak reference; its person table, the same object
+        # on every call, lives exactly as long as it.
+        served.append(weakref.ref(batch_frame.table("person")))
+        return batch_frame
+
+    monkeypatch.setattr(batch_files, "__getitem__", tracked_read)
+    scorer = _open_scorer(builder, _nested_frame(), tmp_path)
+    try:
+        scorer._score([_AGE_KEY], label="age")
+    finally:
+        scorer.close()
+    assert alive_at_each_read == [0] * scorer.n_batches
 
 
 def test_closing_the_scorer_removes_its_batch_files(builder, tmp_path) -> None:
@@ -260,31 +334,59 @@ def test_a_scorer_dropped_without_closing_removes_its_batch_files(
     assert not directory.exists()
 
 
-def test_a_given_batch_directory_holds_the_files_and_is_removed_at_close(
+def test_a_given_parent_holds_the_scorers_own_directory_until_close(
     builder, tmp_path
 ) -> None:
-    directory = tmp_path / "post_export_batches"
+    parent = tmp_path / "post_export_batches"
     scorer = _open_scorer(
-        builder, _nested_frame(), tmp_path / "h5", batch_directory=directory
+        builder, _nested_frame(), tmp_path / "h5", batch_parent=parent
     )
-    assert scorer.batch_directory == directory
-    assert len(sorted(directory.iterdir())) == scorer.n_batches
+    assert scorer.batch_directory.parent == parent
+    assert len(sorted(scorer.batch_directory.iterdir())) == scorer.n_batches
+    scorer.close()
+    # The scorer made the parent, and removes it once its own directory is gone.
+    assert not parent.exists()
+
+
+def test_a_given_parent_that_exists_is_kept_with_what_it_holds(
+    builder, tmp_path
+) -> None:
+    parent = tmp_path / "post_export_batches"
+    parent.mkdir()
+    kept = parent / "another_scorers_batch"
+    kept.write_bytes(b"not this scorer's")
+    scorer = _open_scorer(
+        builder, _nested_frame(), tmp_path / "h5", batch_parent=parent
+    )
+    directory = scorer.batch_directory
     scorer.close()
     assert not directory.exists()
+    assert kept.read_bytes() == b"not this scorer's"
 
 
-def test_a_given_batch_directory_that_exists_is_refused_and_kept(
+def test_a_scorer_freed_late_leaves_a_newer_scorers_files_in_the_same_parent(
     builder, tmp_path
 ) -> None:
-    directory = tmp_path / "post_export_batches"
-    directory.mkdir()
-    kept = directory / "another_scorers_batch"
-    kept.write_bytes(b"not this scorer's")
-    with pytest.raises(FileExistsError):
-        _open_scorer(
-            builder, _nested_frame(), tmp_path / "h5", batch_directory=directory
-        )
-    assert kept.read_bytes() == b"not this scorer's"
+    """A scorer that was neither closed nor freed (a failed certification whose
+    exception is still held) whose parent is then emptied, as placing a build
+    for certification does, must not remove a newer scorer's files there when
+    it is finally freed."""
+
+    parent = tmp_path / "out" / "post_export_batches"
+    earlier = _open_scorer(
+        builder, _nested_frame(), tmp_path / "earlier", batch_parent=parent
+    )
+    shutil.rmtree(parent)
+    newer = _open_scorer(
+        builder, _nested_frame(), tmp_path / "newer", batch_parent=parent
+    )
+    try:
+        del earlier
+        gc.collect()
+        assert len(sorted(newer.batch_directory.iterdir())) == newer.n_batches
+        newer._score([_AGE_KEY], label="age")
+    finally:
+        newer.close()
 
 
 def test_a_scorer_that_cannot_write_its_batches_leaves_no_files(
@@ -305,27 +407,30 @@ def test_a_scorer_that_cannot_write_its_batches_leaves_no_files(
             )
         },
     )
-    directory = tmp_path / "post_export_batches"
+    parent = tmp_path / "post_export_batches"
     # Python 3.13 raises AttributeError for a local function, 3.14
     # PicklingError.
     with pytest.raises((pickle.PicklingError, AttributeError)):
-        _open_scorer(builder, frame, tmp_path / "h5", batch_directory=directory)
+        _open_scorer(builder, frame, tmp_path / "h5", batch_parent=parent)
     gc.collect()
-    assert not directory.exists()
+    assert not parent.exists()
 
 
 def test_certification_removes_an_earlier_attempts_batch_files(
     builder, tmp_path
 ) -> None:
-    """Certification's batch directory is named for it in the build's
-    ``--out``; placing the build removes one an earlier, killed attempt left."""
+    """Certification's scorer keeps its batch directory in a parent named for
+    it in the build's ``--out``; placing the build removes what an earlier,
+    killed attempt left there."""
 
     release_root = tmp_path / "out"
     build_dir = release_root / "build"
     build_dir.mkdir(parents=True)
     stale = release_root / builder.US_POST_EXPORT_BATCH_DIRECTORY
-    stale.mkdir()
-    (stale / "batch-00000.pickle").write_bytes(b"an earlier attempt's batch")
+    (stale / "post-export-batches-earlier").mkdir(parents=True)
+    (stale / "post-export-batches-earlier" / "batch-00000.pickle").write_bytes(
+        b"an earlier attempt's batch"
+    )
     record = SimpleNamespace(
         build="fixture-build",
         release_root=release_root,
