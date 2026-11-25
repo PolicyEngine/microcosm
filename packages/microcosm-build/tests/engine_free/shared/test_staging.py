@@ -25,9 +25,8 @@ def test_staging_run_bundle_writer_sends_no_telemetry_events(tmp_path) -> None:
         run_dir=tmp_path / "run-a",
         repo_id=US_STAGING,
         emitter_client=emitter,
-        upload_interval_seconds=0,
     )
-    telemetry.stage("calibrating", force_upload=True)
+    telemetry.stage("calibrating")
     telemetry.fail(RuntimeError("synthetic"))
 
     assert emitter.run_file_requests
@@ -69,16 +68,14 @@ def test_staging_run_bundle_writer_hands_repo_paths_to_the_emitter(tmp_path) -> 
         run_dir=run_dir,
         repo_id=US_STAGING,
         emitter_client=emitter,
-        upload_interval_seconds=0,
     )
-    telemetry.stage("target_compilation", force_upload=True)
 
+    # The run's start is its first hand-over.
     request = emitter.run_file_requests[-1]
     assert request.repository == US_STAGING
     assert request.run_id == "run-b"
     assert request.prefix == "runs"
     assert request.flush is True
-    assert request.commit_interval_seconds == 0
     assert {item.relative_path: item.local_path for item in request.files} == {
         "run_manifest.json": run_dir / "run_manifest.json",
         "progress.json": run_dir / "progress.json",
@@ -92,8 +89,7 @@ def test_staging_run_bundle_writer_hands_repo_paths_to_the_emitter(tmp_path) -> 
         "latest_staging.json",
         "runs.json",
     } <= set(emitter.paths(US_STAGING))
-    # Every hand-over is forced: the run's start, then this stage.
-    assert all(item.flush for item in emitter.run_file_requests)
+    assert len(emitter.run_file_requests) == 1
 
 
 def test_the_emitter_merges_this_run_into_the_existing_runs_index(tmp_path) -> None:
@@ -121,7 +117,6 @@ def test_the_emitter_merges_this_run_into_the_existing_runs_index(tmp_path) -> N
         run_dir=tmp_path / "newer",
         repo_id=US_STAGING,
         emitter_client=emitter,
-        upload_interval_seconds=0,
     )
     telemetry.complete()
 
@@ -142,18 +137,21 @@ def test_hand_over_failures_never_raise_and_pause_after_three(tmp_path, capsys):
         run_dir=tmp_path / "run",
         repo_id="org/staging",
         emitter_client=emitter,
-        upload_interval_seconds=0.0,
     )
     # Staging telemetry is best-effort: hand-overs the emitter does not accept
     # never raise, and after three in a row the run stops handing files over
-    # until its final state. The writer's own "created" stage was the first.
-    telemetry.stage("one", force_upload=True)
-    telemetry.stage("two", force_upload=True)
+    # until its final state. The run's start was the first; a result file is
+    # handed over on its own, then with the run's files.
+    first = tmp_path / "first.json"
+    first.write_text(json.dumps({"targets": 1}))
+    telemetry.attach_artifact("first", first)
     # The configured destination stays on record; the delivery counts say
     # what reached it.
     assert telemetry.repo_id == "org/staging"
     requests = len(emitter.run_file_requests)
-    telemetry.stage("three", force_upload=True)
+    second = tmp_path / "second.json"
+    second.write_text(json.dumps({"targets": 2}))
+    telemetry.attach_artifact("second", second)
     assert len(emitter.run_file_requests) == requests == 3
     err = capsys.readouterr().err
     assert "staging hand-over failed" in err
@@ -178,7 +176,6 @@ def test_a_build_without_an_emitter_keeps_its_staging_files_local(
         candidate_release_id="run-1",
         run_dir=tmp_path / "run",
         repo_id="org/staging",
-        upload_interval_seconds=0.0,
     )
     telemetry.complete()
 
@@ -197,10 +194,7 @@ def test_uploads_succeeded_counts_files_the_emitter_committed(tmp_path):
         run_dir=tmp_path / "run-c",
         repo_id="org/staging",
         emitter_client=emitter,
-        upload_interval_seconds=0.0,
     )
-
-    telemetry.stage("target_compilation", force_upload=True)
 
     receipt = emitter.run_files_receipt("org/staging", "run-c")
     assert telemetry.uploads_succeeded == receipt["files_committed"]
@@ -218,13 +212,12 @@ def test_an_attached_artifact_is_handed_over_once_beside_the_run(tmp_path):
         run_dir=tmp_path / "run-g",
         repo_id="org/staging",
         emitter_client=emitter,
-        upload_interval_seconds=0.0,
     )
     artifact = tmp_path / "diagnostics.json"
     artifact.write_text(json.dumps({"targets": 3}))
 
     telemetry.attach_artifact("calibration_diagnostics", artifact)
-    telemetry.stage("validation", force_upload=True)
+    telemetry.complete()
 
     carrying = [
         request
@@ -271,7 +264,7 @@ def test_uploads_succeeded_is_zero_for_a_local_only_run(tmp_path):
         run_dir=tmp_path / "run-d",
     )
 
-    telemetry.stage("target_compilation", force_upload=True)
+    telemetry.stage("target_compilation")
 
     assert telemetry.uploads_succeeded == 0
     assert (tmp_path / "run-d" / "progress.json").is_file()
@@ -303,7 +296,6 @@ def test_us_version_1_bundle_matches_fixed_fixture(tmp_path, monkeypatch):
         run_dir=run_dir,
         repo_id=US_STAGING,
         emitter_client=emitter,
-        upload_interval_seconds=float("inf"),
         started_at="2026-01-01T00:00:00+00:00",
     )
     telemetry.stage("calibrating", message="Calibration started.", n_targets=2)

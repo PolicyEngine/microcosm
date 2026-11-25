@@ -93,7 +93,9 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
     assert args.target_weight_rule == "nation_grain_family_equal_sqrt_count"
     assert args.expected_constituency_vintage == "2024_pcon"
     assert args.sample_seed == 578
-    assert args.staging_upload_interval_seconds == 300.0
+    # Staging run files are committed at the run's start, result files and
+    # end, so there is no upload interval.
+    assert not hasattr(args, "staging_upload_interval_seconds")
     assert args._explicit_arguments == frozenset()
     cli.validate_cli_args(args)
     explicit = arguments(tmp_path, "--epochs", "8", "--n-clones", "2")
@@ -1550,8 +1552,6 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
-        "--staging-upload-interval-seconds",
-        "0",
         staging=None,
         on_prepare=_drive_epochs,
     )
@@ -1885,8 +1885,6 @@ def test_a_staged_dense_bundle_names_its_build_and_candidate_release_for_the_col
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
-        "--staging-upload-interval-seconds",
-        "0",
         "--staging-run-id",
         "uk-dense-staging-run",
         staging=None,
@@ -2626,8 +2624,6 @@ def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
-        "--staging-upload-interval-seconds",
-        "0",
         "--staging-read-back",
         staging=None,
     )

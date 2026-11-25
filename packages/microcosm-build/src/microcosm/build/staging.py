@@ -8,10 +8,12 @@ build's local emitter, which commits them to a staging Hugging Face dataset
 repo with the build's own credential.
 
 The writer hands the run's files over at three points only: when the run
-starts, when a result file is attached and when the run ends. Stage events
-and calibration progress in between are written locally and reach the repo
-with the next of those hand-overs; the build's hosted telemetry is the live
-record of a running build.
+starts, when a result file is attached and when the run ends. Every hand-over
+is forced, so the emitter commits it at its next cycle. Stage events and
+calibration progress in between are written locally and reach the repo with
+the next of those hand-overs; the build's hosted telemetry is the live record
+of a running build. Once the run has ended, :meth:`confirm_final_commit` has
+the emitter read the final state back.
 """
 
 from __future__ import annotations
@@ -27,8 +29,10 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.build.staging_storage import (
+    FinalCommitCheck,
     RunFileEmitter,
     RunFileHandOver,
+    warn_final_commit_unconfirmed,
     warn_hand_over_failure,
 )
 
@@ -78,9 +82,6 @@ class StagingRunBundleWriter:
         emitter_client: The build's local emitter (the interface's
             ``EmitterClient``), which commits the handed-over files. Without
             one, a configured repository receives nothing.
-        upload_interval_seconds: The emitter's interval between its commits
-            of unforced hand-overs. The writer forces every hand-over it
-            makes.
     """
 
     run_id: str
@@ -89,7 +90,6 @@ class StagingRunBundleWriter:
     repo_id: str | None = None
     path_prefix: str = DEFAULT_STAGING_PREFIX
     emitter_client: RunFileEmitter | None = None
-    upload_interval_seconds: float = 30.0
     started_at: str = field(default_factory=_now)
 
     def __post_init__(self) -> None:
@@ -108,7 +108,6 @@ class StagingRunBundleWriter:
                 repository=self.repo_id.strip(),
                 run_id=self.run_id,
                 prefix=self.path_prefix,
-                commit_interval_seconds=self.upload_interval_seconds,
             )
             if self.repo_id
             else None
@@ -125,10 +124,11 @@ class StagingRunBundleWriter:
             "updated_at": self.started_at,
         }
         self._write_run_manifest()
-        # The run's first hand-over is forced, so its folder exists in the
+        self.stage("created", message="Staging run created.")
+        # The run's start is handed over, so its folder exists in the
         # repository from the start even if the build dies before its next
         # hand-over (a result file or the end).
-        self.stage("created", message="Staging run created.", force_upload=True)
+        self._hand_over_run()
 
     @property
     def repo_run_prefix(self) -> str:
@@ -136,6 +136,11 @@ class StagingRunBundleWriter:
         # root-level fallback here: writing runs to the repo root is the
         # failure this class now refuses, not an alternative layout.
         return f"{self.path_prefix}/{self.run_id}"
+
+    @property
+    def remote_staging(self) -> bool:
+        """Whether the run's files go to a repository, through the emitter."""
+        return self._hand_over is not None
 
     @property
     def uploads_succeeded(self) -> int:
@@ -159,7 +164,6 @@ class StagingRunBundleWriter:
         *,
         latest_pointer: Path | None = None,
         run_index_entry: dict[str, Any] | None = None,
-        flush: bool,
     ) -> None:
         if self._hand_over is None or not self._hand_over.enabled:
             return
@@ -171,7 +175,6 @@ class StagingRunBundleWriter:
             files,
             latest_pointer=latest_pointer,
             run_index_entry=run_index_entry,
-            flush=flush,
         )
         if result.accepted:
             return
@@ -184,10 +187,9 @@ class StagingRunBundleWriter:
                 file=sys.stderr,
             )
 
-    def _maybe_upload(self, *, force: bool = False) -> None:
-        # Only forced states are handed over: the run's start, a result file
-        # and the run's end. Progress in between stays local until then.
-        if not force or self._hand_over is None or not self._hand_over.enabled:
+    def _hand_over_run(self) -> None:
+        """Hand the run's current files over: its start, a result file, its end."""
+        if self._hand_over is None or not self._hand_over.enabled:
             return
         files = [
             (filename, self.run_dir / filename)
@@ -207,7 +209,6 @@ class StagingRunBundleWriter:
             files,
             latest_pointer=pointer,
             run_index_entry=self.run_summary(),
-            flush=force,
         )
 
     def _write_latest_pointer(self) -> Path:
@@ -293,9 +294,9 @@ class StagingRunBundleWriter:
         *,
         status: str = "running",
         message: str | None = None,
-        force_upload: bool = False,
         **details: Any,
     ) -> None:
+        """Record a stage locally; it reaches the repo with the next hand-over."""
         updated_at = _now()
         self._progress.update(
             {
@@ -317,7 +318,6 @@ class StagingRunBundleWriter:
                 "details": details,
             }
         )
-        self._maybe_upload(force=force_upload)
 
     def calibration_progress(self, event: dict[str, object]) -> None:
         if event.get("kind") != "calibration_epoch":
@@ -350,8 +350,8 @@ class StagingRunBundleWriter:
         path: Path | str,
         *,
         copy: bool = False,
-        force_upload: bool = True,
     ) -> None:
+        """Record a result file and hand it over with the run's current files."""
         source = Path(path)
         local = self.run_dir / source.name if copy else source
         if copy and source.resolve() != local.resolve():
@@ -362,8 +362,8 @@ class StagingRunBundleWriter:
         }
         self._write_run_manifest()
         if local.exists():
-            self._hand_over_files([(source.name, local)], flush=force_upload)
-        self._maybe_upload(force=force_upload)
+            self._hand_over_files([(source.name, local)])
+        self._hand_over_run()
 
     def _reopen_for_final_state(self) -> None:
         """Hand the final state over even after failures paused hand-overs.
@@ -380,10 +380,10 @@ class StagingRunBundleWriter:
             "failed",
             status="failed",
             message=str(error),
-            force_upload=True,
             error_type=type(error).__name__,
             traceback=traceback.format_exc(),
         )
+        self._hand_over_run()
 
     def complete(self) -> None:
         self._reopen_for_final_state()
@@ -391,5 +391,23 @@ class StagingRunBundleWriter:
             "complete",
             status="passed",
             message="Staging run completed.",
-            force_upload=True,
         )
+        self._hand_over_run()
+
+    def confirm_final_commit(self, *, wait_seconds: float) -> FinalCommitCheck | None:
+        """Have the emitter read the ended run's final state back from the Hub.
+
+        The emitter first commits the run's pending files, waiting up to
+        ``wait_seconds``. A check that fails warns and returns; it never
+        fails the build. A run without remote staging has nothing to check.
+        """
+        if self._hand_over is None:
+            return None
+        if self._progress.get("status") == "running":
+            raise RuntimeError(
+                "Only a completed or failed staging run has a final commit."
+            )
+        check = self._hand_over.confirm_final_commit(wait_seconds=wait_seconds)
+        if not check.confirmed:
+            warn_final_commit_unconfirmed(self._hand_over.repository, check)
+        return check

@@ -54,8 +54,18 @@ from microcosm.build.staging_dataset import (
     write_access_problem,
     write_sidecars,
 )
+from microcosm.build.staging_storage import (
+    FINAL_COMMIT_WAIT_SECONDS,
+    FinalCommitCheck,
+    StageTelemetry,
+    confirm_and_report_final_commit,
+    final_commit_wait_seconds,
+    report_final_commit,
+    report_final_commit_started,
+)
 from microcosm.build.staging_v2 import (
     StagingContractError,
+    StagingReadBackError,
     StagingRunBundleWriterV2,
     disabled_staging_delivery,
 )
@@ -76,9 +86,9 @@ from microcosm.build.uk_runtime.staging import UK_STAGED_DATASET_PREFIX
 
 __all__ = [
     "STAGED_DATASET_PHASES",
-    "STAGING_UPLOAD_INTERVAL_SECONDS",
     "add_staging_artifact",
     "block_staging_run_bundle",
+    "confirm_final_commit",
     "UK_COLLECTOR_COUNTRY_CODE",
     "bundle_emitter",
     "bundle_provenance",
@@ -102,19 +112,12 @@ __all__ = [
     "thinned_epochs",
 ]
 
-# Best-effort staging-bundle upload cadence. The Hub allows about 128 commits per
-# hour per repository and one cycle is up to eight single-file commits, so
-# the shared 30-second default exhausts the budget on a multi-hour solve
-# and loses uploads (the v20 national run did); five minutes keeps a
-# 1,500-epoch run well inside it.
-STAGING_UPLOAD_INTERVAL_SECONDS = 300.0
 STAGED_DATASET_PHASES = {
     "uploaded": "dataset_staged",
     "already_staged": "dataset_staged",
     "failed": "dataset_stage_failed",
     "skipped": "dataset_stage_skipped",
 }
-_STAGING_UPLOAD_INTERVAL_SECONDS = STAGING_UPLOAD_INTERVAL_SECONDS
 _STAGED_DATASET_PHASES = STAGED_DATASET_PHASES
 _ACTIVE_EMITTER: LocalTelemetryEmitter | None = None
 #: The releases a staged UK build can be a candidate for: each release role's
@@ -233,7 +236,6 @@ def create_staging_run_bundle(
         run_kind="calibration",
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
-        upload_interval_seconds=args.staging_upload_interval_seconds,
         emitter_client=None if local_only else _emitter_client(),
     )
 
@@ -288,7 +290,6 @@ def stage(
 
     emitter_details = dict(details)
     message = emitter_details.pop("message", None)
-    emitter_details.pop("force_upload", None)
     if "status" in emitter_details:
         emitter_details["result_status"] = emitter_details.pop("status")
     if _ACTIVE_EMITTER is not None:
@@ -453,25 +454,32 @@ def fail_staging_run_bundle(
             staging_bundle, classified.block, gate_statuses=None, read_back=False
         )
         return
-    if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-        _ACTIVE_EMITTER.fail(
-            error,
-            failure_class=classified.failure_class or "error",
-            error_code=classified.error_code,
-        )
-    if staging_bundle is None:
-        return
-    if staging_bundle.status != "running":
-        return
+    # The staging run closes first and its final commit is confirmed before
+    # the emitter records the outcome, which ends the run's telemetry.
     try:
-        staging_bundle.fail(
-            error,
-            error_code=classified.error_code or "BUILD_FAILED",
-            failure_class=classified.failure_class,
-        )
-        staging_bundle.validate_local_bundle()
-    except Exception:
-        pass
+        if staging_bundle is not None and staging_bundle.status == "running":
+            try:
+                staging_bundle.fail(
+                    error,
+                    error_code=classified.error_code or "BUILD_FAILED",
+                    failure_class=classified.failure_class,
+                )
+                staging_bundle.validate_local_bundle()
+            except Exception:
+                pass
+            if staging_bundle.status != "running":
+                confirm_final_commit(
+                    staging_bundle,
+                    _ACTIVE_EMITTER,
+                    wait_seconds=final_commit_wait_seconds(error),
+                )
+    finally:
+        if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
+            _ACTIVE_EMITTER.fail(
+                error,
+                failure_class=classified.failure_class or "error",
+                error_code=classified.error_code,
+            )
 
 
 def block_staging_run_bundle(
@@ -533,10 +541,13 @@ def close_run_blocked(
                 )
             except StagingContractError as failure:
                 _warn_telemetry("could not close the staging run", failure)
+            else:
+                confirm_final_commit(staging_bundle, emitter)
         else:
             try:
-                if read_back:
-                    staging_bundle.verify_remote()
+                # Before the emitter records the block, which ends the run's
+                # telemetry.
+                confirm_final_commit(staging_bundle, emitter, read_back=read_back)
             finally:
                 try:
                     staging_bundle.validate_local_bundle()
@@ -592,10 +603,13 @@ def finalize_staging_run_bundle(
             _warn_telemetry("could not close the staging run", error)
         else:
             try:
-                if args.staging_read_back:
-                    # Requested explicitly, so a failed read-back is the run's
-                    # failure, as on the national command.
-                    staging_bundle.verify_remote()
+                # With --staging-read-back, requested explicitly, a failed
+                # read-back is the run's failure, as on the national command.
+                confirm_final_commit(
+                    staging_bundle,
+                    _ACTIVE_EMITTER,
+                    read_back=bool(args.staging_read_back),
+                )
             finally:
                 try:
                     staging_bundle.validate_local_bundle()
@@ -604,6 +618,40 @@ def finalize_staging_run_bundle(
 
 
 _finalize_staging_run_bundle = finalize_staging_run_bundle
+
+
+def confirm_final_commit(
+    staging_bundle: StagingRunBundleWriterV2,
+    emitter: StageTelemetry | None,
+    *,
+    read_back: bool = False,
+    wait_seconds: float = FINAL_COMMIT_WAIT_SECONDS,
+) -> None:
+    """Confirm a closed run's final commit and report it before the run's outcome.
+
+    Every remote run has the emitter read its final state back; a failure
+    warns and is reported as a failed ``staging_final_commit`` stage. With
+    ``read_back`` (``--staging-read-back``) the check is
+    :meth:`~microcosm.build.staging_v2.StagingRunBundleWriterV2.verify_remote`,
+    whose failure fails the build and is recorded in the delivery summary.
+    """
+    if not read_back:
+        confirm_and_report_final_commit(
+            staging_bundle, emitter, wait_seconds=wait_seconds
+        )
+        return
+    report_final_commit_started(emitter)
+    try:
+        result = staging_bundle.verify_remote()
+    except StagingReadBackError:
+        report_final_commit(
+            emitter, FinalCommitCheck(confirmed=False, reason="READ_BACK_FAILED")
+        )
+        raise
+    report_final_commit(
+        emitter,
+        FinalCommitCheck(confirmed=True, files_compared=int(result["files"])),
+    )
 
 
 def _warn_telemetry(what: str, error: BaseException) -> None:

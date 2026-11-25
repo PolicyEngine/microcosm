@@ -3744,8 +3744,6 @@ def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
             str(tmp_path / "put2223uk.tab"),
             "--hmrc-ods",
             str(tmp_path / "hmrc.ods"),
-            "--staging-upload-interval-seconds",
-            "0",
         ]
     )
     state = SimpleNamespace(build_id="uk-spine-attempt-fixture")
@@ -3753,7 +3751,7 @@ def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
     bundle = spine_build._create_staging_run_bundle(args, state=state)
 
     assert bundle.emitter_client is emitter.client
-    bundle.stage("input_verification", force_upload=True)
+    # The run's start reached the emitter when the bundle opened.
     request = emitter.client.run_file_requests[-1]
     assert (request.repository, request.run_id, request.prefix) == (
         "policyengine/populace-uk-staging",

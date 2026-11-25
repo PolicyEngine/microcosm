@@ -9,7 +9,6 @@ only reads the repository, for the tools that fetch a staged bundle.
 
 from __future__ import annotations
 
-import math
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -24,14 +23,37 @@ from microcosm_emitter_interface.staging import (
     unavailable_run_files_receipt,
 )
 
+from microcosm.build.termination import BuildTerminatedError
+
 __all__ = [
+    "FINAL_COMMIT_STAGE",
+    "FINAL_COMMIT_WAIT_SECONDS",
+    "TERMINATED_FINAL_COMMIT_WAIT_SECONDS",
+    "FinalCommitCheck",
+    "FinalCommitWriter",
     "HandOverResult",
     "HuggingFaceDatasetStorage",
     "RunFileEmitter",
     "RunFileHandOver",
+    "StageTelemetry",
     "StagingRepositoryConfig",
+    "confirm_and_report_final_commit",
+    "final_commit_wait_seconds",
+    "report_final_commit",
+    "report_final_commit_started",
+    "warn_final_commit_unconfirmed",
     "warn_hand_over_failure",
 ]
+
+#: How long a build waits for the emitter to commit its run's final state
+#: before reading it back; the emitter spaces two commits to one repository
+#: at least 10 seconds apart and retries a failed commit itself.
+FINAL_COMMIT_WAIT_SECONDS = 120.0
+#: The same wait after a SIGTERM. The Modal stage runner sends SIGKILL 60
+#: seconds after SIGTERM, and the emitter needs up to 15 of them to finish.
+TERMINATED_FINAL_COMMIT_WAIT_SECONDS = 30.0
+#: The stage under which a build reports the check to its hosted telemetry.
+FINAL_COMMIT_STAGE = "staging_final_commit"
 
 
 @dataclass(frozen=True)
@@ -129,15 +151,39 @@ class HandOverResult:
     reason: str | None = None
 
 
+@dataclass(frozen=True)
+class FinalCommitCheck:
+    """Whether the Hub holds a closed run's final state, as the emitter read it.
+
+    ``reason`` names why it was not confirmed: ``not_handed_over`` when the
+    emitter did not accept the final state, else the read-back's error code
+    or status; never exception text. ``files_compared`` is how many files the
+    emitter compared, when it said.
+    """
+
+    confirmed: bool
+    reason: str | None = None
+    files_compared: int | None = None
+
+    def details(self) -> dict[str, Any]:
+        """The check as the details of a telemetry event."""
+        return {
+            "confirmed": self.confirmed,
+            "reason": self.reason,
+            "files_compared": self.files_compared,
+        }
+
+
 class RunFileHandOver:
     """Hand one staging run's files to the build's local emitter.
 
     The emitter copies the files' bytes before it answers, so the writer may
-    rewrite them at once. It writes every pending path of the repository in
-    one Hugging Face commit per cycle: an unforced hand-over one
-    ``commit_interval_seconds`` after its last commit to the repository, and
-    one with ``flush`` at the next cycle. Its receipts say how many files it
-    attempted to commit and how many it committed.
+    rewrite them at once. Every hand-over is forced: the emitter commits it
+    at its next cycle, one Hugging Face commit per repository carrying every
+    pending path, with two commits to one repository at least 10 seconds
+    apart, and it skips a file whose bytes it has already committed. Its
+    receipts say how many files it attempted to commit and how many it
+    committed.
 
     A hand-over the emitter does not accept (no emitter, no answer in time,
     or a refused request) never raises. After ``max_consecutive_failures`` of
@@ -153,7 +199,6 @@ class RunFileHandOver:
         repository: str,
         run_id: str,
         prefix: str = "runs",
-        commit_interval_seconds: float = 30.0,
         max_consecutive_failures: int = 3,
     ) -> None:
         if max_consecutive_failures < 1:
@@ -162,12 +207,6 @@ class RunFileHandOver:
         self.repository = repository
         self.run_id = run_id
         self.prefix = prefix
-        # The request needs a finite interval. A writer with an infinite one
-        # hands over only forced states, which the emitter commits at once.
-        interval = float(commit_interval_seconds)
-        self.commit_interval_seconds = (
-            max(0.0, interval) if math.isfinite(interval) else 0.0
-        )
         self.max_consecutive_failures = max_consecutive_failures
         self.consecutive_failures = 0
         self.enabled = True
@@ -219,7 +258,6 @@ class RunFileHandOver:
         *,
         latest_pointer: Path | None = None,
         run_index_entry: Mapping[str, Any] | None = None,
-        flush: bool = False,
     ) -> HandOverResult:
         """Hand over ``(relative path, local path)`` pairs under the run's folder."""
         offered = len(files) + (latest_pointer is not None)
@@ -239,8 +277,7 @@ class RunFileHandOver:
                 prefix=self.prefix,
                 latest_pointer=latest_pointer,
                 run_index_entry=run_index_entry,
-                flush=flush,
-                commit_interval_seconds=self.commit_interval_seconds,
+                flush=True,
             )
         except ValueError:
             receipt = {
@@ -287,6 +324,29 @@ class RunFileHandOver:
         except Exception:
             return unavailable_read_back()
 
+    def confirm_final_commit(self, *, wait_seconds: float) -> FinalCommitCheck:
+        """Whether the Hub holds the run's last hand-over, read back by the emitter.
+
+        The emitter compares the Hub with what it committed, so a run whose
+        last hand-over it did not accept is not read back: that comparison
+        would be with an older state of the run.
+        """
+        if self.last_accepted is not True:
+            return FinalCommitCheck(confirmed=False, reason="not_handed_over")
+        result = self.read_back(wait_seconds=wait_seconds)
+        self.receipt()
+        files = result.get("files")
+        compared = int(files) if isinstance(files, int) else None
+        status = result.get("status")
+        if status == "passed" and self.files_committed >= 1:
+            return FinalCommitCheck(confirmed=True, files_compared=compared)
+        reason = (
+            "NO_COMMITTED_FILES"
+            if status == "passed"
+            else str(result.get("error_code") or status or "unavailable")
+        )
+        return FinalCommitCheck(confirmed=False, reason=reason, files_compared=compared)
+
     def reopen(self) -> None:
         """Hand over again after a pause, for the run's final state."""
         self.consecutive_failures = 0
@@ -301,3 +361,120 @@ def warn_hand_over_failure(repository: str, result: HandOverResult) -> None:
         "files are still written.",
         file=sys.stderr,
     )
+
+
+def warn_final_commit_unconfirmed(repository: str, check: FinalCommitCheck) -> None:
+    """Report a final commit the emitter could not confirm, without failing."""
+    print(
+        "warning: the staging run's final commit to "
+        f"{repository} was not confirmed ({check.reason}); the local staging "
+        "files are complete and the build's outcome is unchanged.",
+        file=sys.stderr,
+    )
+
+
+def final_commit_wait_seconds(error: BaseException | None = None) -> float:
+    """How long a build that ends with ``error`` waits for its final commit."""
+    seen: set[int] = set()
+    link = error
+    while link is not None and id(link) not in seen:
+        if isinstance(link, BuildTerminatedError):
+            return TERMINATED_FINAL_COMMIT_WAIT_SECONDS
+        seen.add(id(link))
+        link = link.__cause__ or link.__context__
+    return FINAL_COMMIT_WAIT_SECONDS
+
+
+class StageTelemetry(Protocol):
+    """The stage call of the build's hosted telemetry (``LocalTelemetryEmitter``)."""
+
+    def transition_stage(
+        self,
+        stage_id: str,
+        *,
+        status: str = ...,
+        message: str | None = ...,
+        **details: Any,
+    ) -> None: ...
+
+
+class FinalCommitWriter(Protocol):
+    """A staging writer whose closed run can confirm its final commit."""
+
+    @property
+    def remote_staging(self) -> bool: ...
+
+    def confirm_final_commit(
+        self, *, wait_seconds: float
+    ) -> FinalCommitCheck | None: ...
+
+
+def _transition(
+    telemetry: StageTelemetry | None, status: str, message: str, **details: Any
+) -> None:
+    if telemetry is None:
+        return
+    # The report is evidence about the staging copy; it must never change how
+    # the build closes.
+    try:
+        telemetry.transition_stage(
+            FINAL_COMMIT_STAGE, status=status, message=message, **details
+        )
+    except Exception:
+        pass
+
+
+def report_final_commit_started(telemetry: StageTelemetry | None) -> None:
+    """Tell the build's telemetry that the final-commit check has started."""
+    _transition(
+        telemetry,
+        "started",
+        "Confirming that the staging repository holds the run's final state.",
+    )
+
+
+def report_final_commit(
+    telemetry: StageTelemetry | None, check: FinalCommitCheck
+) -> None:
+    """Tell the build's telemetry what the final-commit check found."""
+    _transition(
+        telemetry,
+        "completed" if check.confirmed else "failed",
+        (
+            "The staging repository holds the run's final state."
+            if check.confirmed
+            else "The staging run's final commit was not confirmed."
+        ),
+        **check.details(),
+    )
+
+
+def confirm_and_report_final_commit(
+    writer: FinalCommitWriter,
+    telemetry: StageTelemetry | None,
+    *,
+    wait_seconds: float = FINAL_COMMIT_WAIT_SECONDS,
+) -> FinalCommitCheck | None:
+    """Confirm a closed run's final commit and report it to the build's telemetry.
+
+    Call it after the run's final state is handed over and before the run's
+    outcome reaches the emitter, which drops a run's events after its
+    outcome. A run without remote staging has nothing to confirm. A check
+    that fails warns and is reported; it never raises.
+    """
+    if not writer.remote_staging:
+        return None
+    report_final_commit_started(telemetry)
+    try:
+        check = writer.confirm_final_commit(wait_seconds=wait_seconds)
+    except Exception as error:
+        print(
+            "warning: the staging run's final commit could not be checked "
+            f"({type(error).__name__}); the build's outcome is unchanged.",
+            file=sys.stderr,
+        )
+        check = FinalCommitCheck(confirmed=False, reason=type(error).__name__)
+    if check is None:
+        return None
+    report_final_commit(telemetry, check)
+    return check

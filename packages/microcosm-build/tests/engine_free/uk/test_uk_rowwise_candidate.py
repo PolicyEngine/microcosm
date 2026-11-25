@@ -742,7 +742,7 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
     )
     assert dense.target_weight_rule == "nation_grain_family_equal_sqrt_count"
     assert dense.expected_constituency_vintage == "2024_pcon"
-    assert dense.staging_upload_interval_seconds == 300.0
+    assert not hasattr(dense, "staging_upload_interval_seconds")
     assert dense._explicit_arguments == frozenset()
     builder._validate_cli_args(dense)
 

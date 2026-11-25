@@ -623,14 +623,7 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
     share_fake_hub(monkeypatch, hub)
     out = tmp_path / "national"
 
-    assert (
-        builder.main(
-            _argv(
-                input_h5, out, "--epochs", "5", "--staging-upload-interval-seconds", "0"
-            )
-        )
-        == 0
-    )
+    assert builder.main(_argv(input_h5, out, "--epochs", "5")) == 0
 
     manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
     run_id = manifest["build_id"]

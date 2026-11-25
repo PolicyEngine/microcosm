@@ -111,7 +111,6 @@ def _remote_recorder(tmp_path, emitter=None, **kwargs):
         "delivery_mode": "local_and_remote",
         "repo_id": UK_STAGING,
         "emitter_client": emitter,
-        "upload_interval_seconds": 0,
         **kwargs,
     }
     return _recorder(tmp_path, **options), emitter
@@ -145,7 +144,7 @@ def test_staging_run_bundle_writer_sends_no_telemetry_events(tmp_path) -> None:
     """The writer hands over its files; hosted telemetry stays the build's."""
     assert "emitter" not in inspect.signature(StagingRunBundleWriterV2).parameters
     telemetry, emitter = _remote_recorder(tmp_path)
-    telemetry.stage("input_verification", force_upload=True)
+    telemetry.stage("input_verification")
     telemetry.complete()
     telemetry.verify_remote()
 
@@ -399,14 +398,15 @@ def test_remote_failures_are_best_effort_and_preserve_repository(tmp_path, capsy
         tmp_path, FakeEmitterClient(accept_run_files=False)
     )
 
-    telemetry.stage("input_verification", force_upload=True)
+    telemetry.stage("input_verification")
 
     delivery = telemetry.delivery_summary
     assert delivery["configured_repository"] == UK_STAGING
-    # The run start's three files and this stage's three, none of which the
-    # emitter accepted, count as attempts.
+    # The run start's three files, which the emitter did not accept, count as
+    # attempts; the stage event stays local.
+    assert len(emitter.run_file_requests) == 1
     assert len(emitter.run_file_requests[-1].files) == 3
-    assert delivery["upload_attempts"] == 6
+    assert delivery["upload_attempts"] == 3
     assert delivery["upload_successes"] == 0
     assert delivery["last_error_code"] == "UPLOAD_FAILED"
     assert telemetry.validate_local_bundle()["progress"]["status"] == "running"
@@ -449,13 +449,16 @@ def test_remote_read_back_validates_the_written_run(tmp_path):
 
 def test_remote_read_back_requires_a_final_run_status(tmp_path):
     telemetry, emitter = _remote_recorder(tmp_path)
+    # Only the run's start has reached the emitter.
+    calls = list(emitter.calls)
+    files = dict(emitter.hub_files)
 
     with pytest.raises(StagingContractError, match="completed, blocked or failed"):
         telemetry.verify_remote()
 
     assert telemetry.delivery_summary["read_back"] == "not_requested"
-    assert emitter.hub_files == {}
-    assert emitter.calls == []
+    assert emitter.hub_files == files
+    assert emitter.calls == calls
 
 
 @pytest.mark.parametrize("final_status", ["completed", "failed"])
@@ -572,7 +575,7 @@ def test_delivery_counts_are_what_the_emitter_reported(tmp_path):
             }
 
     telemetry, emitter = _remote_recorder(tmp_path, NotYetCommitted())
-    telemetry.stage("input_verification", force_upload=True)
+    telemetry.stage("input_verification")
     telemetry.complete()
 
     delivery = telemetry.delivery_summary
@@ -631,7 +634,7 @@ def test_read_back_fails_when_the_final_state_was_not_handed_over(tmp_path):
     """The Hub can match what the emitter committed and still be stale."""
 
     telemetry, emitter = _remote_recorder(tmp_path)
-    telemetry.stage("input_verification", force_upload=True)
+    telemetry.stage("input_verification")
     emitter.accept_run_files = False
     telemetry.complete()
 
@@ -703,7 +706,7 @@ def test_a_failed_read_back_keeps_its_error_code_through_later_uploads(tmp_path)
         telemetry.verify_remote()
 
     # A successful upload afterwards cannot clear the failed verdict's code.
-    telemetry._maybe_upload(force=True)
+    telemetry._hand_over_run()
 
     delivery = telemetry.delivery_summary
     assert delivery["read_back"] == "failed"
@@ -1032,30 +1035,9 @@ def test_version_2_cli_uses_country_owned_repository_configuration(monkeypatch):
 
     args = parser.parse_args([])
     assert args.staging_repo_id == "example/configured-staging"
-    assert args.staging_upload_interval_seconds == 30.0
     assert not hasattr(args, "staging_prefix")
     with pytest.raises(SystemExit):
         parser.parse_args(["--staging-prefix", "candidate-runs"])
-
-
-def test_version_2_cli_lets_a_long_running_command_slow_its_upload_cadence():
-    """A multi-hour solve at 30 s exhausts the Hub's commit budget (v20 run)."""
-
-    repository = StagingRepositoryConfig(
-        default_repo_id="example/default-staging",
-        repo_id_environment_variable="EXAMPLE_STAGING_REPO_ID",
-    )
-    parser = argparse.ArgumentParser()
-    add_staging_arguments(
-        parser, repository=repository, default_upload_interval_seconds=300
-    )
-    assert parser.parse_args([]).staging_upload_interval_seconds == 300.0
-    assert (
-        parser.parse_args(
-            ["--staging-upload-interval-seconds", "45"]
-        ).staging_upload_interval_seconds
-        == 45.0
-    )
 
 
 def test_typed_artifacts_reject_one_scalar_individual_record(tmp_path):
@@ -1127,17 +1109,29 @@ def test_storage_only_reads_a_staged_file_through_the_hub_cache(tmp_path):
         assert not hasattr(storage, removed), removed
 
 
+def _add_aggregate_artifact(telemetry, tmp_path, name):
+    source = tmp_path / f"{name}.json"
+    source.write_text(json.dumps({"target_count": 3, "mean_loss": 0.25}))
+    telemetry.add_artifact(
+        name,
+        source,
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+
+
 def _paused_remote_recorder(tmp_path):
     emitter = FakeEmitterClient(accept_run_files=False)
     telemetry, _ = _remote_recorder(tmp_path, emitter)
     telemetry.set_sample(_sample())
-    # Three consecutive hand-overs the emitter does not accept pause the
-    # run's hand-overs until its final state.
-    for stage in ("input_verification", "sampling", "calibrating"):
-        telemetry.stage(stage, force_upload=True)
+    # Three consecutive hand-overs the emitter does not accept (the run's
+    # start and two artifacts) pause the run's hand-overs until its final
+    # state.
+    for name in ("first-summary", "second-summary"):
+        _add_aggregate_artifact(telemetry, tmp_path, name)
     assert telemetry.delivery_summary["last_error_code"] == "UPLOAD_FAILED"
     requests_paused = len(emitter.run_file_requests)
-    telemetry.stage("diagnostics", force_upload=True)
+    _add_aggregate_artifact(telemetry, tmp_path, "third-summary")
     assert len(emitter.run_file_requests) == requests_paused == 3
     return telemetry, emitter
 
@@ -1183,25 +1177,13 @@ def test_a_final_state_the_emitter_does_not_accept_stays_local(tmp_path, capsys)
     assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"
 
 
-class _HourlyMonotonic:
-    """A monotonic clock that moves on an hour each time it is read."""
-
-    def __init__(self) -> None:
-        self.seconds = 1_000_000.0
-
-    def __call__(self) -> float:
-        self.seconds += 3600.0
-        return self.seconds
-
-
 def _remote_run(tmp_path, emitter):
-    """A remote run with the writer's own commit schedule (no interval given)."""
+    """A remote run handing its files to ``emitter``."""
     return _recorder(
         tmp_path,
         delivery_mode="local_and_remote",
         repo_id=UK_STAGING,
         emitter_client=emitter,
-        monotonic=_HourlyMonotonic(),
     )
 
 

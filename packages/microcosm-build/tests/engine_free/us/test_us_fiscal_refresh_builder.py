@@ -15631,7 +15631,6 @@ def test_staging_bundle_defaults_on_and_no_staging_disables_files(
             staging_repo_id=None,
             staging_run_id=None,
             staging_prefix=args.staging_prefix,
-            staging_upload_interval_seconds=60.0,
             epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
             dense_default_dataset=False,
         )
@@ -15677,7 +15676,6 @@ def test_build_progress_hands_staging_files_to_the_build_emitter(
         staging_repo_id="policyengine/populace-us-staging",
         staging_run_id=None,
         staging_prefix="runs",
-        staging_upload_interval_seconds=60.0,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -15685,7 +15683,7 @@ def test_build_progress_hands_staging_files_to_the_build_emitter(
     progress = module._build_progress(
         args, release_root=tmp_path, release_id="rel-1", emitter=emitter
     )
-    progress.stage("target_compilation", force_upload=True)
+    progress.stage("target_compilation")
     progress.fail(RuntimeError("build exploded"))
 
     client = emitter.client
@@ -15834,7 +15832,6 @@ def test_us_short_run_forwards_each_solve_first_epoch_so_the_epoch_falls_at_the_
         staging_repo_id=None,
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
-        staging_upload_interval_seconds=60.0,
         epochs=epochs,
         dense_default_dataset=False,
     )
@@ -15892,7 +15889,6 @@ def test_us_build_progress_stride_keeps_long_runs_under_the_row_cap(
         staging_repo_id=None,
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
-        staging_upload_interval_seconds=60.0,
         epochs=epochs,
         dense_default_dataset=dense_default_dataset,
     )
@@ -16035,7 +16031,6 @@ def _remote_build_progress(module, tmp_path, client=None):
         staging_repo_id="policyengine/populace-us-staging",
         staging_run_id=None,
         staging_prefix="runs",
-        staging_upload_interval_seconds=60.0,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -16179,7 +16174,6 @@ def test_build_progress_replaces_any_previous_active_run(tmp_path) -> None:
         staging_repo_id=None,
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
-        staging_upload_interval_seconds=60.0,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -16246,7 +16240,6 @@ def test_staging_bundle_refuses_a_destinationless_namespace(tmp_path) -> None:
         staging_repo_id="",
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
-        staging_upload_interval_seconds=60.0,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -20715,7 +20708,6 @@ def _build_record_fixture(
             "no_staging": True,
             "repo_id": None,
             "prefix": "runs",
-            "upload_interval_seconds": 30.0,
         },
     )
     path = builder._write_us_build_record(release_root, payload)
@@ -21290,6 +21282,8 @@ def test_certification_stages_where_its_build_staged(
 
     staged = tmp_path / "staged"
     staged.mkdir()
+    # A record written before the upload interval was removed still carries
+    # it; certification ignores it.
     path, _ = _build_record_fixture(
         builder,
         staged,
@@ -21345,7 +21339,6 @@ def test_certification_stages_where_its_build_staged(
         "staging_dir": None,
         "staging_repo_id": "policyengine/populace-us-staging",
         "staging_prefix": "builds",
-        "staging_upload_interval_seconds": 12.0,
         "release_root": record.release_root,
         "release_id": record.build,
         "run_id": "b-certify",
