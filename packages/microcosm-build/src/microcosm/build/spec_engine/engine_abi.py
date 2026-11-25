@@ -65,8 +65,9 @@ class _LockCheckInputs:
 
     Besides microcosm's own code, the fresh derivation reads only the installed
     policyengine-us and the bundle's typed take-up and sources domains.
-    Microcosm's code is not recorded: a record reaches only the issuing
-    process's direct children, which run the same checkout within the same run.
+    Microcosm's code is not recorded: only the issuing process's direct
+    children act on a record (others ignore it), and they run the same
+    checkout within the same run.
     A source edit during a base run is the base stage's run-config check to
     catch (its builder code digest), not this record's.
 
@@ -671,7 +672,7 @@ def _lock_matching_parent_check(
     observed_lock_sha256 = hashlib.sha256(raw).hexdigest()
     if observed_lock_sha256 != parent_check.lock_sha256:
         raise SpecValidationError(
-            "engine_abi.lock.json: the lock file differs from the one the parent "
+            "the lock file differs from the one the parent "
             f"process checked (SHA-256 {observed_lock_sha256}, parent checked "
             f"{parent_check.lock_sha256}); refusing to run",
             source=ENGINE_ABI_LOCK_FILENAME,
@@ -685,7 +686,7 @@ def _lock_matching_parent_check(
     if installed_version != parent_check.engine_version:
         observed = "not installed" if installed_version is None else installed_version
         raise SpecValidationError(
-            "engine_abi.lock.json: the installed policyengine-us differs from "
+            "the installed policyengine-us differs from "
             "the one the parent process checked the lock file against "
             f"({observed}, parent checked {parent_check.engine_version}); "
             "refusing to run",
@@ -694,7 +695,7 @@ def _lock_matching_parent_check(
     observed_domains_sha256 = _lock_check_domains_sha256(domains)
     if observed_domains_sha256 != parent_check.domains_sha256:
         raise SpecValidationError(
-            "engine_abi.lock.json: the take-up and sources domains differ from "
+            "the take-up and sources domains differ from "
             "those the parent process checked the lock file against (SHA-256 "
             f"{observed_domains_sha256}, parent checked "
             f"{parent_check.domains_sha256}); refusing to run",
@@ -705,7 +706,7 @@ def _lock_matching_parent_check(
         "version": parent_check.engine_version,
     }:
         raise SpecValidationError(
-            "engine_abi.lock.json: the lock file does not name the policyengine-us "
+            "the lock file does not name the policyengine-us "
             "version the parent process checked it against; refusing to run",
             source=ENGINE_ABI_LOCK_FILENAME,
         )

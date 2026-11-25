@@ -411,8 +411,9 @@ final_owner_stage: …
   compilation; engine bumps fail closed until the lock is regenerated
   and every bundle-owned treatment re-reviewed. The engine owns its
   facts; the bundle owns treatments and pipelines; neither derives from
-  the other at build time. A process that passed the full comparison can
-  pass the processes it starts a record of it in
+  the other at build time. A process that passed the comparison (fully, or
+  by matching its own parent's record) can pass the processes it starts a
+  record of it in
   `MICROCOSM_ENGINE_ABI_LOCK_CHECK_RECORD` (the lock file's SHA-256, the
   installed policyengine-us version and a digest of the take-up and
   sources domains, bound to the issuing process ID). A direct child
