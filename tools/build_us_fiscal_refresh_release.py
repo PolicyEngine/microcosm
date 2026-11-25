@@ -1827,7 +1827,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional local path to the sha-pinned SIPP 2023 slim CSV that "
             "feeds tip_income and Treasury tipped-occupation coverage. When "
-            "omitted the immutable donor revision is fetched and verified."
+            "omitted the donor is fetched from tag 1.115.5 and verified."
         ),
     )
     parser.add_argument(
@@ -1837,7 +1837,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
             "file that feeds financial assets, SSI disability criteria, "
             "household vehicle count/value, and measured voluntary tax filing. "
-            "When omitted the immutable donor revision is fetched and verified."
+            "When omitted the donor is fetched from tag 1.115.5 and verified."
         ),
     )
     parser.add_argument(

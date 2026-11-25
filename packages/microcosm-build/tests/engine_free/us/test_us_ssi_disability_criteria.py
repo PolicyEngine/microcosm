@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_ssi_disability_criteria.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.us_runtime.voluntary_filing import (
+    SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION,
+)
 from test_support.microcosm_build.us_ssi_disability_criteria import *
 
 
@@ -48,7 +51,7 @@ def test_archived_coordinates_exact_predictors_and_pinned_artifact() -> None:
         "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
     )
     assert SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES == 3_726_010_471
-    assert SIPP_2023_SSI_DISABILITY_DONOR_REVISION in (
+    assert f"/resolve/{SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION}/" in (
         SIPP_2023_SSI_DISABILITY_DONOR_URL
     )
     assert SSI_DISABILITY_ARCHIVED_SIPP_URL.endswith("datasets/sipp/sipp.py#L63-L105")

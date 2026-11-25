@@ -371,7 +371,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm.fit.qrf, moves it again.
             # calibrate's return_frame option in solve moves it again.
             # microcosm#1686's shared SIPP person-file read moves it again.
-            "spec_sha256": "499389d4b1f0c967c54a6f2fa81b8a07a7e59c045bf2a8fe6bb909f08561d049",
+            # The SIPP 2023 donor download tag and the financial-asset cache lookup
+            # move it again.
+            "spec_sha256": "9f56635edf7da4efa90d01e6ab263eb5f17267ab4bf5b2ad843d76b27f00cfb2",
         },
     }
 

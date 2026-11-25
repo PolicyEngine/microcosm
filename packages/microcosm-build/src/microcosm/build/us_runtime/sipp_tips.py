@@ -13,9 +13,9 @@ This is a direct port of that method, pinned to the retired implementation at
 (``datasets/sipp/sipp.py`` and ``calibration/source_impute.py``).  The final
 pipeline switched its live downloader to SIPP 2024 without pinning the Census
 zip.  Microcosm instead uses the same pipeline's fixed SIPP 2023 slim extract,
-whose immutable mirror revision and content SHA-256 are pinned below.  That is
-the donor used to build the reference eCPS and avoids accepting a silently
-reissued public-use file.
+whose recorded mirror revision, download tag and content SHA-256 are pinned
+below.  That is the donor used to build the reference eCPS and avoids accepting
+a silently reissued public-use file.
 
 Two PolicyEngine-US person inputs are produced:
 
@@ -46,6 +46,7 @@ from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
     "CENSUS_OCCUPATION_CODE_TO_TTOC",
+    "SIPP_2023_TIP_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_TIP_DONOR_REVISION",
     "SIPP_2023_TIP_DONOR_SHA256",
     "SIPP_2023_TIP_DONOR_URL",
@@ -67,15 +68,20 @@ __all__ = [
 
 US_SIPP_TIPS_STAGE_NAME = "sipp_tips"
 
-# The immutable mirror revision containing the retired pipeline's SIPP 2023
+# The recorded mirror revision containing the retired pipeline's SIPP 2023
 # slim donor.  The repository name is assembled so the live-tree guard does not
 # mistake this historical input coordinate for a runtime package dependency.
+# SIPP_2023_TIP_DONOR_REVISION is the recorded coordinate these bytes were
+# pinned and measured at, kept as the record key.
+# SIPP_2023_TIP_DONOR_DOWNLOAD_REVISION is where the same bytes are served now.
+# Both name bytes identified by the SHA-256 below.
 SIPP_2023_TIP_DONOR_REVISION = "21280dca5995e978d706740a8a4b9b7860cfd7b6"
+SIPP_2023_TIP_DONOR_DOWNLOAD_REVISION = "1.115.5"
 _RETIRED_DATA_REPOSITORY = "policyengine-" + "us-data"
 SIPP_2023_TIP_DONOR_URL = (
     "https://huggingface.co/policyengine/"
     f"{_RETIRED_DATA_REPOSITORY}/resolve/"
-    f"{SIPP_2023_TIP_DONOR_REVISION}/pu2023_slim.csv"
+    f"{SIPP_2023_TIP_DONOR_DOWNLOAD_REVISION}/pu2023_slim.csv"
 )
 SIPP_2023_TIP_DONOR_SHA256 = (
     "1f0bcb8e045ef1118e8eba4b4a2997bdaaf947bd0dd09d41fa7c7d5657a3d7d5"

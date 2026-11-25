@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_sipp_head_start.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.us_runtime.voluntary_filing import (
+    SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION,
+)
 from test_support.microcosm_build.us_sipp_head_start import *
 
 
@@ -24,7 +27,9 @@ def test_source_coordinates_and_operation_contract_are_exact() -> None:
         "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
     )
     assert SIPP_2023_HEAD_START_DONOR_SIZE_BYTES == 3_726_010_471
-    assert SIPP_2023_HEAD_START_DONOR_REVISION in SIPP_2023_HEAD_START_DONOR_URL
+    assert f"/resolve/{SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION}/" in (
+        SIPP_2023_HEAD_START_DONOR_URL
+    )
     assert HEAD_START_SIPP_DICTIONARY_URL.endswith("2023/2023_SIPP_Data_Dictionary.pdf")
     assert SIPP_HEAD_START_READ_PARAMETERS == {
         "table": "sipp_person",
