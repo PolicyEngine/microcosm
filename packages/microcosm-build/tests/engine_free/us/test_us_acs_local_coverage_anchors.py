@@ -12,11 +12,13 @@ import pytest
 
 from microcosm.build.us_runtime import acs_multispine
 from microcosm.build.us_runtime.acs_local_coverage_anchors import (
+    ACS_DIRECT_PURCHASE_CHOICE_SOURCE,
     ACS_DIRECT_PURCHASE_TYPES,
     ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS,
     ACS_LOCAL_COVERAGE_ANCHORS_ISSUE,
     ACS_LOCAL_COVERAGE_ANCHORS_METHOD,
     acs_local_direct_purchase_donor_shares,
+    choose_acs_direct_purchase_types,
     with_acs_local_coverage_anchors,
 )
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE, AcsPumsSource
@@ -224,18 +226,90 @@ def test_the_acs_items_replace_the_draws() -> None:
     assert direct["hins2_no_rows"] == 3
     assert direct["set_false_from_draw"] == {_MARKETPLACE: 1, _OTHER: 1}
     assert direct["hins2_yes_rows"] == 4
-    assert direct["hins2_yes_draw_kept_rows"] == 2
-    assert direct["hins2_yes_type_drawn_rows"] == 2
-    assert direct["type_drawn_by_type"] == {
+    choice = direct["choice"]
+    assert choice["source"] == ACS_DIRECT_PURCHASE_CHOICE_SOURCE
+    assert choice["rows"] == 4
+    assert choice["draw_kept_rows"] == 2
+    assert choice["type_drawn_rows"] == 2
+    assert choice["type_drawn_by_type"] == {
         "marketplace_only": 1,
         "non_marketplace_only": 1,
         "both": 0,
     }
-    assert direct["unresolved_rows"] == 0
-    assert direct["draw_key"] == "acs_2024_1yr:SERIALNO:SPORDER"
-    assert direct["seed"] == 7
+    assert choice["unresolved_rows"] == 0
+    assert choice["draw_key"] == "acs_2024_1yr:SERIALNO:SPORDER"
+    assert choice["seed"] == 7
     assert "HIMRKS" in receipt["not_loaded"]
     json.dumps(receipt, allow_nan=False)
+
+
+def test_the_choice_is_one_function_over_the_direct_purchasers() -> None:
+    """The Marketplace-versus-other choice, alone: the function a ruling on
+    HIMRKS would change. Draws with a type stand; rows with none take the
+    donor's type for their age band; a band without shares stays unresolved."""
+
+    rows = pd.DataFrame(
+        {
+            "person_household_id": [1, 2, 3, 4, 5],
+            "SPORDER": [1, 1, 1, 1, 2],
+            "age": [40.0, 70.0, 30.0, 80.0, 50.0],
+        }
+    )
+    household = pd.DataFrame(
+        {"household_id": [1, 2, 3, 4, 5], "SERIALNO": ["A", "B", "C", "D", "E"]}
+    )
+    shares = {
+        "bands": {
+            "under_65": {
+                "shares": {
+                    "marketplace_only": 0.0,
+                    "non_marketplace_only": 0.0,
+                    "both": 1.0,
+                }
+            },
+            "65_plus": {"shares": None},
+        }
+    }
+    marketplace, other, receipt = choose_acs_direct_purchase_types(
+        rows,
+        household,
+        drawn_marketplace=np.asarray([True, False, False, False, False]),
+        drawn_other=np.asarray([False, True, False, False, False]),
+        donor_shares=shares,
+        seed=11,
+    )
+    assert marketplace.tolist() == [True, False, True, False, True]
+    assert other.tolist() == [False, True, True, False, True]
+    assert receipt == {
+        "source": ACS_DIRECT_PURCHASE_CHOICE_SOURCE,
+        "rows": 5,
+        "draw_kept_rows": 2,
+        "type_drawn_rows": 2,
+        "type_drawn_by_type": {
+            "marketplace_only": 0,
+            "non_marketplace_only": 0,
+            "both": 2,
+        },
+        "unresolved_rows": 1,
+        "donor_shares": shares,
+        "draw_key": "acs_2024_1yr:SERIALNO:SPORDER",
+        "draw_salt": "acs_local_direct_purchase_type",
+        "seed": 11,
+    }
+    # No row needs a draw: no key is built, so no household is needed.
+    kept_marketplace, kept_other, kept = choose_acs_direct_purchase_types(
+        rows.iloc[:2],
+        household.iloc[:0],
+        drawn_marketplace=np.asarray([True, False]),
+        drawn_other=np.asarray([False, True]),
+        donor_shares=shares,
+        seed=11,
+    )
+    assert (kept_marketplace.tolist(), kept_other.tolist()) == (
+        [True, False],
+        [False, True],
+    )
+    assert kept["type_drawn_rows"] == 0
 
 
 def _mixed_rows(n: int = 40) -> list[tuple]:
@@ -259,7 +333,7 @@ def test_the_type_draw_is_keyed_on_the_record_not_the_row_order() -> None:
     frame = _acs_frame(_mixed_rows())
     first, receipt = with_acs_local_coverage_anchors(frame, mixed, seed=3)
     again, _ = with_acs_local_coverage_anchors(frame, mixed, seed=3)
-    types = receipt["direct_purchase"]["type_drawn_by_type"]
+    types = receipt["direct_purchase"]["choice"]["type_drawn_by_type"]
     assert types["marketplace_only"] > 0 and types["both"] > 0
     assert types["non_marketplace_only"] == 0
     pd.testing.assert_frame_equal(first.table("person"), again.table("person"))
@@ -299,7 +373,7 @@ def test_a_band_without_donor_purchasers_falls_back_to_all_ages() -> None:
     result, receipt = with_acs_local_coverage_anchors(_acs_frame(), donor, seed=7)
     # The 65+ row with nothing drawn takes the all-ages type (Marketplace only).
     assert result.table("person")[_MARKETPLACE].iloc[4] == True  # noqa: E712
-    assert receipt["direct_purchase"]["unresolved_rows"] == 0
+    assert receipt["direct_purchase"]["choice"]["unresolved_rows"] == 0
 
 
 @pytest.mark.parametrize(
@@ -557,6 +631,6 @@ def test_a_real_transfer_keeps_every_other_draw_and_takes_the_acs_items(
     receipt = with_step.provenance["acs_local_coverage_anchors"]
     assert receipt["acs_persons"] == 20
     assert set(ACS_DIRECT_PURCHASE_TYPES) == set(
-        receipt["direct_purchase"]["type_drawn_by_type"]
+        receipt["direct_purchase"]["choice"]["type_drawn_by_type"]
     )
     json.dumps(with_step.provenance, allow_nan=False)

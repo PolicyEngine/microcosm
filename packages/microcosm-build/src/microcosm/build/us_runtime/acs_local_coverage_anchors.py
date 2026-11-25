@@ -27,7 +27,10 @@ chain and every other draw are unchanged.
   non-Marketplace only, or both) at the donor ASEC role's conditional shares
   among direct purchasers, by age band (under 65, 65 and over: at 65+ direct
   purchase is mostly Medigap). The draw is keyed on
-  ``acs_2024_1yr:SERIALNO:SPORDER`` and the build seed.
+  ``acs_2024_1yr:SERIALNO:SPORDER`` and the build seed. This choice among
+  direct purchasers is one function, :func:`choose_acs_direct_purchase_types`,
+  so a ruling on ``HIMRKS`` changes that function and nothing else in the
+  stage.
 - **Blanks.** The 2024 PUMS dictionary lists no blank code for HINS1 or
   HINS2; a blank that arrives anyway keeps the transfer's draw and is counted.
 - **Not loaded:** ``HIMRKS`` (Subsidized Marketplace Coverage), which could
@@ -58,12 +61,14 @@ from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
+    "ACS_DIRECT_PURCHASE_CHOICE_SOURCE",
     "ACS_DIRECT_PURCHASE_TYPES",
     "ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS",
     "ACS_LOCAL_COVERAGE_ANCHORS_ISSUE",
     "ACS_LOCAL_COVERAGE_ANCHORS_METHOD",
     "ACS_LOCAL_COVERAGE_SOURCE_COLUMNS",
     "acs_local_direct_purchase_donor_shares",
+    "choose_acs_direct_purchase_types",
     "with_acs_local_coverage_anchors",
 ]
 
@@ -92,6 +97,11 @@ _AGE_BANDS: tuple[tuple[str, float, float], ...] = (
 )
 _DRAW_KEY_FORMAT = f"{ACS_2024_1YR_SPINE}:SERIALNO:SPORDER"
 _DRAW_SALT = "acs_local_direct_purchase_type"
+#: Where the Marketplace-versus-other choice comes from today. A ruling on
+#: HIMRKS changes :func:`choose_acs_direct_purchase_types` and this name.
+ACS_DIRECT_PURCHASE_CHOICE_SOURCE = (
+    "transfer_draws_else_donor_asec_type_shares_by_age_band"
+)
 _SOURCE_LABELS: Mapping[str, str] = {
     _EMPLOYER_ITEM: "Insurance through a current or former employer or union",
     _DIRECT_ITEM: "Insurance purchased directly from an insurance company",
@@ -230,6 +240,92 @@ def _json_ready(value: Any) -> Any:
     return value
 
 
+def choose_acs_direct_purchase_types(
+    rows: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    drawn_marketplace: np.ndarray,
+    drawn_other: np.ndarray,
+    donor_shares: Mapping[str, Any],
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    """The Marketplace-versus-other choice for ACS direct purchasers.
+
+    The one function a ruling on HIMRKS (Subsidized Marketplace Coverage,
+    which the loader does not read) changes; the HINS2 == 2 rule, ``has_esi``
+    and the rest of the stage stay. Today the shared transfer's draws stand
+    where either flag is True. Where both are False, one draw keyed on
+    ``acs_2024_1yr:SERIALNO:SPORDER`` and ``seed`` picks the type at the
+    donor ASEC role's shares in the person's age band (``donor_shares``, from
+    :func:`acs_local_direct_purchase_donor_shares`); a band without shares
+    leaves both False and counts the row as unresolved.
+
+    Args:
+        rows: The HINS2 == 1 person rows, with ``age``, ``SPORDER`` and
+            ``person_household_id``.
+        household: The household table, for ``SERIALNO``.
+        drawn_marketplace: The transferred Marketplace flag of ``rows``.
+        drawn_other: The transferred non-Marketplace direct-purchase flag of
+            ``rows``.
+        donor_shares: The donor's type shares by age band.
+        seed: The build seed.
+
+    Returns:
+        The two flags for ``rows``, in their order, and the receipt of the
+        choice.
+
+    Raises:
+        ValueError: If a row needs a draw and its key cannot be built.
+    """
+
+    drawn_marketplace = np.asarray(drawn_marketplace, dtype=bool)
+    drawn_other = np.asarray(drawn_other, dtype=bool)
+    marketplace = drawn_marketplace.copy()
+    other = drawn_other.copy()
+    to_draw = ~drawn_marketplace & ~drawn_other
+    drawn_types: dict[str, int] = dict.fromkeys(ACS_DIRECT_PURCHASE_TYPES, 0)
+    unresolved = np.zeros(len(rows), dtype=bool)
+    if to_draw.any():
+        positions = np.flatnonzero(to_draw)
+        try:
+            keys = _acs_draw_keys(household, rows.iloc[positions])
+        except ValueError as exc:
+            raise ValueError(
+                f"ACS direct-purchase type draw: {exc} "
+                f"({ACS_LOCAL_COVERAGE_ANCHORS_ISSUE})"
+            ) from exc
+        uniforms = stable_identity_uniforms(
+            keys.tolist(), seed=int(seed), salt=_DRAW_SALT
+        )
+        age = pd.to_numeric(rows[_AGE], errors="coerce").to_numpy(dtype=np.float64)
+        for name, mask in _band_masks(age[positions]).items():
+            if not mask.any():
+                continue
+            chosen_rows = positions[mask]
+            shares = donor_shares["bands"][name]["shares"]
+            if shares is None:
+                unresolved[chosen_rows] = True
+                continue
+            band_marketplace, band_other, chosen = _draw_types(uniforms[mask], shares)
+            marketplace[chosen_rows] = band_marketplace
+            other[chosen_rows] = band_other
+            for choice in chosen:
+                drawn_types[choice] += 1
+    receipt: dict[str, Any] = {
+        "source": ACS_DIRECT_PURCHASE_CHOICE_SOURCE,
+        "rows": int(len(rows)),
+        "draw_kept_rows": int((~to_draw).sum()),
+        "type_drawn_rows": int((to_draw & ~unresolved).sum()),
+        "type_drawn_by_type": drawn_types,
+        "unresolved_rows": int(unresolved.sum()),
+        "donor_shares": dict(donor_shares),
+        "draw_key": _DRAW_KEY_FORMAT,
+        "draw_salt": _DRAW_SALT,
+        "seed": int(seed),
+    }
+    return marketplace, other, receipt
+
+
 def with_acs_local_coverage_anchors(
     frame: Frame,
     donor: Frame,
@@ -287,40 +383,21 @@ def with_acs_local_coverage_anchors(
 
     no_direct = direct.eq(2).to_numpy(dtype=bool)
     yes_direct = direct.eq(1).to_numpy(dtype=bool)
-    neither_drawn = ~drawn_marketplace & ~drawn_other
-    to_draw = yes_direct & neither_drawn
     marketplace = np.where(no_direct, False, drawn_marketplace)
     other = np.where(no_direct, False, drawn_other)
-
-    donor_shares = acs_local_direct_purchase_donor_shares(donor)
-    drawn_types: dict[str, int] = dict.fromkeys(ACS_DIRECT_PURCHASE_TYPES, 0)
-    unresolved = np.zeros(len(person), dtype=bool)
-    if to_draw.any():
-        positions = np.flatnonzero(to_draw)
-        try:
-            keys = _acs_draw_keys(frame.table("household"), person.iloc[positions])
-        except ValueError as exc:
-            raise ValueError(
-                f"ACS direct-purchase type draw: {exc} "
-                f"({ACS_LOCAL_COVERAGE_ANCHORS_ISSUE})"
-            ) from exc
-        uniforms = stable_identity_uniforms(
-            keys.tolist(), seed=int(seed), salt=_DRAW_SALT
-        )
-        bands = _band_masks(age[positions])
-        for name, mask in bands.items():
-            shares = donor_shares["bands"][name]["shares"]
-            if not mask.any():
-                continue
-            rows = positions[mask]
-            if shares is None:
-                unresolved[rows] = True
-                continue
-            m, o, chosen = _draw_types(uniforms[mask], shares)
-            marketplace[rows] = m
-            other[rows] = o
-            for choice in chosen:
-                drawn_types[choice] += 1
+    # The Marketplace-versus-other choice among direct purchasers is the one
+    # place a HIMRKS ruling would change.
+    yes_rows = np.flatnonzero(yes_direct)
+    chosen_marketplace, chosen_other, choice = choose_acs_direct_purchase_types(
+        person.iloc[yes_rows],
+        frame.table("household"),
+        drawn_marketplace=drawn_marketplace[yes_rows],
+        drawn_other=drawn_other[yes_rows],
+        donor_shares=acs_local_direct_purchase_donor_shares(donor),
+        seed=seed,
+    )
+    marketplace[yes_rows] = chosen_marketplace
+    other[yes_rows] = chosen_other
 
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables.update({name: frame.link(name) for name in frame.links})
@@ -358,9 +435,9 @@ def with_acs_local_coverage_anchors(
         },
         "direct_purchase": {
             "rule": (
-                "HINS2 == 2: both flags False; HINS2 == 1: the draws stand "
-                "where one is True, else one keyed type draw at the donor "
-                "ASEC role's shares by age band; a blank keeps the draws"
+                "HINS2 == 2: both flags False; HINS2 == 1: "
+                "choose_acs_direct_purchase_types (see choice.source); a "
+                "blank keeps the draws"
             ),
             "hins2_no_rows": int(no_direct.sum()),
             "set_false_from_draw": {
@@ -368,14 +445,7 @@ def with_acs_local_coverage_anchors(
                 _OTHER_DIRECT: int((no_direct & drawn_other).sum()),
             },
             "hins2_yes_rows": int(yes_direct.sum()),
-            "hins2_yes_draw_kept_rows": int((yes_direct & ~neither_drawn).sum()),
-            "hins2_yes_type_drawn_rows": int((to_draw & ~unresolved).sum()),
-            "type_drawn_by_type": drawn_types,
-            "unresolved_rows": int(unresolved.sum()),
-            "donor_shares": donor_shares,
-            "draw_key": _DRAW_KEY_FORMAT,
-            "draw_salt": _DRAW_SALT,
-            "seed": int(seed),
+            "choice": choice,
             "weighted_shares": {
                 column: {
                     "native": _weighted_share(weights, final),
