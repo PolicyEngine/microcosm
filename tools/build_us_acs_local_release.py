@@ -2635,6 +2635,14 @@ def _with_local_aca_take_up(
         "ACS ACA take-up: weighted share of eligible units "
         f"{receipt['take_up']['weighted_take_up_share_of_eligible']}"
     )
+    anchor = receipt.get("anchor") or {}
+    thinning = anchor.get("thinning") or {}
+    log(
+        f"ACS ACA anchors: {anchor.get('anchored_tax_units')} kept, "
+        f"{thinning.get('thinned_tax_units')} thinned in "
+        f"{len(thinning.get('thinned_states') or [])} state(s); anchor share "
+        f"of takers {receipt['take_up'].get('anchor_share_of_takers')}"
+    )
     return frame, receipt
 
 
@@ -5258,11 +5266,16 @@ def finalize_reviewed_limitations(
                 "carry are reported, not met (microcosm#168). The anchor is "
                 "the manifest stage's own column, "
                 "reported_has_subsidized_marketplace_health_coverage_at_interview, "
-                "where staging writes it on ACS persons; staging does not load "
-                "the PUMS subsidy item HIMRKS, so no unit is anchored, the "
-                "fiscal lane's rule when that column is absent. Anchors would "
-                "take up even above a state's residual, and the receipt "
-                "records the excess. "
+                "which staging writes on ACS persons from the PUMS subsidy "
+                "item HIMRKS; it reads False where absent, the fiscal lane's "
+                "rule. Where a state's anchors weigh more than its residual "
+                "return count, each stays anchored with probability residual "
+                "/ anchored weight on its own keyed draw "
+                "(acs_local_aca_subsidized_anchor_keep), the Medicaid stage's "
+                "HINS4 rule in the shared microcosm.build.anchor_thinning; a "
+                "unit not kept is an ordinary non-anchor. The draw meets the "
+                "residual in expectation only, and the kept anchors' excess "
+                "over each table is recorded. "
                 "The plan ratio is (premium + credit) / SLCSP for takers, "
                 "clipped to 0.5-1.5, and 1.0 otherwise; the feed carries no "
                 "bronze count, so the ratio is not calibrated, as on the "
@@ -5279,8 +5292,11 @@ def finalize_reviewed_limitations(
                 "(us_local_aca_take_up_materialize) are recorded and "
                 "materialize never stops on them. The receipt records each "
                 "table's state residuals, ACS capacity and delivery, every "
-                "shortfall and donor excess, and the people per return of "
-                "each set of rows. The consumer export applies the recorded "
+                "shortfall and donor excess, each state's anchored weight, "
+                "keep probability and thinned rows, the share of ACS takers "
+                "that are anchors, and the people per return of each set of "
+                "rows. A thinned state is reported, not graded against the "
+                "tolerance. The consumer export applies the recorded "
                 "assignment and must reproduce its digest."
             ),
             "calibration_blocker": False,

@@ -627,10 +627,29 @@ def _takers(result: Frame) -> set:
     return set(units.loc[acs, "tax_unit_id"].to_numpy()[flags])
 
 
+def _thinning(receipt: dict) -> dict:
+    return receipt["anchor"]["thinning"]
+
+
+def _as_tables(receipt: dict, scale: float, *, key: str = "acs_anchored") -> dict:
+    """Counts of donor + ``scale`` x each state's ``key`` in ``receipt``."""
+
+    return {
+        name: pd.DataFrame(
+            {
+                "state_fips": [row["state_fips"] for row in entry["states"]],
+                "target": [row["donor"] + scale * row[key] for row in entry["states"]],
+            }
+        )
+        for name, entry in receipt["tables"].items()
+    }
+
+
 def test_the_manifest_anchor_column_anchors_acs_units(frame) -> None:
-    """The stage reads the manifest's own anchor column where staging writes
-    it on ACS persons (as the fiscal lane does), so a staged subsidy item
-    needs no new rule here. A unit stored False stays out."""
+    """The stage reads the manifest's own anchor column on ACS persons (as the
+    fiscal lane does), so the staged subsidy item needs no rule of its own.
+    Below every residual no anchor is thinned. A unit stored False stays
+    out."""
 
     candidates = _eligible_acs_units(frame)
     anchored = set(candidates[::3])
@@ -641,54 +660,179 @@ def test_the_manifest_anchor_column_anchors_acs_units(frame) -> None:
     units[TAKE_UP] = flags
     staged = _with_reported_anchor(_with_tax_unit(frame, units), anchored | {excluded})
 
-    # Every residual is 0, so only the anchors take up.
-    result, receipt = _assign(staged, _targets(frame, fraction=0.0))
+    # Each residual is 0.6 of the ACS capacity, above a third of it.
+    result, receipt = _assign(staged, _targets(frame, fraction=0.6))
 
-    assert _takers(result) == anchored
+    takers = _takers(result)
+    assert anchored <= takers
+    assert excluded not in takers
     assert receipt["anchor"]["column"] == ANCHOR
     assert receipt["anchor"]["column_on_acs_persons"] is True
     assert receipt["anchor"]["reported_tax_units"] == len(anchored) + 1
     assert receipt["anchor"]["anchored_tax_units"] == len(anchored)
-    for row in receipt["tables"][RETURNS]["states"]:
-        assert row["residual"] == 0.0
-        assert row["acs_delivered"] == pytest.approx(row["acs_anchored"])
-        assert row["anchor_excess"] == pytest.approx(row["acs_anchored"])
+    thinning = _thinning(receipt)
+    assert thinning["table"] == RETURNS
+    assert thinning["anchor_tax_units"] == len(anchored)
+    assert thinning["thinned_tax_units"] == 0
+    assert thinning["thinned_states"] == []
+    for row in thinning["states"]:
+        assert row["keep_probability"] == 1.0
+        assert 0 < row["anchor_mass"] < row["residual"]
+    shares = receipt["take_up"]
+    assert shares["anchored_taker_tax_units"] == len(anchored)
+    assert shares["anchor_share_of_takers"] == pytest.approx(
+        len(anchored) / shares["taker_tax_units"]
+    )
     gate = acs_local_aca_take_up_signal_gate(result, receipt=receipt)
     assert gate.passed, gate.failures
-
-
-def test_anchors_above_a_residual_all_take_up_and_the_excess_is_reported(
-    frame,
-) -> None:
-    """With an anchor, a state's anchored mass can exceed its residual: every
-    anchor takes up (preserve_true_anchors), no other ACS unit does, and the
-    receipt and the grade report the excess without failing."""
-
-    anchored = set(_eligible_acs_units(frame)[::3])
-    staged = _with_reported_anchor(frame, anchored)
-    _measured, first = _assign(staged, _targets(frame, fraction=0.0))
-    tables = {
-        name: pd.DataFrame(
-            {
-                "state_fips": [row["state_fips"] for row in entry["states"]],
-                "target": [
-                    row["donor"] + 0.5 * row["acs_anchored"] for row in entry["states"]
-                ],
-            }
-        )
-        for name, entry in first["tables"].items()
+    assert gate.details["thinned_states"] == []
+    assert "anchors_thinned" not in {
+        row["status"] for row in gate.details["binding_states"]
     }
 
-    result, receipt = _assign(staged, tables)
 
-    assert _takers(result) == anchored
-    rows = receipt["tables"][RETURNS]["states"]
-    assert all(row["acs_anchored"] > 0 for row in rows)
-    for row in rows:
-        assert row["residual"] == pytest.approx(0.5 * row["acs_anchored"])
-        assert row["anchor_excess"] == pytest.approx(0.5 * row["acs_anchored"])
+def test_anchors_above_a_residual_are_thinned_to_it(frame) -> None:
+    """Where a state's anchors weigh more than its residual return count, each
+    is kept with probability residual / anchored mass on its own keyed draw;
+    a unit not kept is an ordinary non-anchor that the joint step can still
+    fill with. The grade reports such a state and does not fail it."""
+
+    every = set(_eligible_acs_units(frame))
+    staged = _with_reported_anchor(frame, every)
+    _measured, first = _assign(staged, _targets(frame, fraction=0.0))
+
+    result, receipt = _assign(staged, _as_tables(first, 0.5, key="acs_capacity"))
+
+    thinning = _thinning(receipt)
+    assert thinning["stream"] == "acs_local_aca_subsidized_anchor_keep"
+    assert thinning["thinned_states"] == ["06", "36", "48"]
+    returns = {row["state_fips"]: row for row in receipt["tables"][RETURNS]["states"]}
+    for row in thinning["states"]:
+        assert row["anchor_mass"] == pytest.approx(
+            returns[row["state_fips"]]["acs_capacity"]
+        )
+        assert row["keep_probability"] == pytest.approx(
+            row["residual"] / row["anchor_mass"]
+        )
+        assert 0 < row["thinned_rows"] < row["anchor_rows"]
+    kept = receipt["anchor"]["anchored_tax_units"]
+    assert kept + thinning["thinned_tax_units"] == len(every)
+    # Kept anchors take up. The joint step fills a kept mass below the
+    # residual with non-anchors, here only thinned units; above it the kept
+    # anchors' excess stays.
+    takers = _takers(result)
+    assert takers <= every
+    assert len(takers) == kept + thinning["thinned_tax_units_taking_up"]
+    for row in returns.values():
+        assert row["acs_delivered"] >= row["residual"]
+        assert row["acs_delivered"] <= (1 + 1e-9) * max(
+            row["acs_anchored"], row["residual"] + row["acs_max_unit_weight"]
+        )
+    shares = receipt["take_up"]
+    assert shares["taker_tax_units"] == len(takers)
+    assert shares["anchor_share_of_takers"] == pytest.approx(kept / len(takers))
     gate = acs_local_aca_take_up_signal_gate(result, receipt=receipt)
     assert gate.passed, gate.failures
     assert {row["status"] for row in gate.details["binding_states"]} == {
-        "anchor_excess"
+        "anchors_thinned"
     }
+    assert gate.details["thinned_states"] == ["06", "36", "48"]
+    assert set(gate.details["anchor_excess_states"]) == {CMS, RETURNS, AMOUNT}
+
+
+def test_a_thinned_state_delivers_its_residual_within_the_tolerance() -> None:
+    """With enough anchors the keep draw's noise is small: each thinned state
+    delivers its residual return count within the grade's tolerance."""
+
+    large = _frame(n_acs=12_000, seed=4)
+    staged = _with_reported_anchor(large, set(_eligible_acs_units(large)))
+    _measured, first = _assign(staged, _targets(large, fraction=0.0))
+
+    result, receipt = _assign(staged, _as_tables(first, 0.9, key="acs_capacity"))
+
+    assert _thinning(receipt)["thinned_states"] == ["06", "36", "48"]
+    for row in receipt["tables"][RETURNS]["states"]:
+        assert row["residual"] > 0
+        assert abs(row["acs_delivered"] - row["residual"]) <= 0.02 * row["residual"]
+
+
+def test_the_anchor_keep_draw_is_keyed_on_the_record(frame) -> None:
+    """Renumbered tax units keep the same anchors; another seed keeps others.
+    (A frame's tax units are sorted by id, so the row order of the keep draw
+    itself is tested on the shared helper.)"""
+
+    every = set(_eligible_acs_units(frame))
+    staged = _with_reported_anchor(frame, every)
+    _measured, first = _assign(staged, _targets(frame, fraction=0.0))
+    tables = _as_tables(first, 0.5, key="acs_capacity")
+    result, receipt = _assign(staged, tables)
+    acs = _acs_units(frame)
+
+    shift = 10_000
+    units = staged.table("tax_unit").copy()
+    units.loc[acs, "tax_unit_id"] += shift
+    person = staged.table("person").copy()
+    moved = person[spine_column("person")].eq(ACS_2024_1YR_SPINE)
+    person.loc[moved, "person_tax_unit_id"] += shift
+    renumbered = Frame(
+        {
+            **{entity: staged.table(entity) for entity in staged.entities},
+            "tax_unit": units,
+            "person": person,
+        },
+        staged.schema,
+        {"household": staged.weights_for("household")},
+    )
+    again, again_receipt = _assign(renumbered, tables)
+    assert (
+        again.table("tax_unit").loc[acs, TAKE_UP].tolist()
+        == result.table("tax_unit").loc[acs, TAKE_UP].tolist()
+    )
+    assert _thinning(again_receipt)["states"] == _thinning(receipt)["states"]
+
+    other, other_receipt = _assign(staged, tables, seed=8)
+    assert _takers(other) != _takers(result)
+    assert [row["keep_probability"] for row in _thinning(other_receipt)["states"]] == (
+        pytest.approx([row["keep_probability"] for row in _thinning(receipt)["states"]])
+    )
+
+
+def test_thinning_leaves_donor_rows_and_stored_acs_true_alone(frame) -> None:
+    """Donor cells keep their stored values, a donor person's anchor cell is
+    not read, and a stored ACS take-up True stands even where every reported
+    anchor is released."""
+
+    candidates = _eligible_acs_units(frame)
+    stored, reported = candidates[:6], set(candidates[6:])
+    units = frame.table("tax_unit").copy()
+    flags = units[TAKE_UP].astype(object)
+    flags[units["tax_unit_id"].isin(stored).to_numpy()] = True
+    units[TAKE_UP] = flags
+    staged = _with_reported_anchor(_with_tax_unit(frame, units), reported)
+    person = staged.table("person").copy()
+    donor_persons = person[spine_column("person")].eq(ASEC_PUF_DONOR_SPINE)
+    person.loc[donor_persons, ANCHOR] = True
+    staged = Frame(
+        {
+            entity: person if entity == "person" else staged.table(entity)
+            for entity in staged.entities
+        },
+        staged.schema,
+        {"household": staged.weights_for("household")},
+    )
+
+    # Every residual is 0: the reported anchors are all released.
+    result, receipt = _assign(staged, _targets(frame, fraction=0.0))
+
+    after = result.table("tax_unit")
+    donor = ~_acs_units(frame)
+    for column in ACS_LOCAL_ACA_TAKE_UP_COLUMNS:
+        assert after.loc[donor, column].tolist() == units.loc[donor, column].tolist()
+    assert _takers(result) == set(stored)
+    thinning = _thinning(receipt)
+    assert thinning["thinned_tax_units"] == len(reported)
+    assert thinning["anchor_tax_units"] == len(reported)
+    assert {row["keep_probability"] for row in thinning["states"]} == {0.0}
+    assert sum(row["stored_true_mass"] for row in thinning["states"]) > 0
+    assert receipt["anchor"]["stored_true_tax_units"] == len(stored)
+    assert receipt["anchor"]["anchored_tax_units"] == len(stored)

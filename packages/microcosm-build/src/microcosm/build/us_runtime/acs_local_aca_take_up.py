@@ -55,20 +55,31 @@ cells; donor values and any stored ACS value are kept.
   the fiscal lane does.
 - **Anchor.** The anchor is the manifest stage's own column,
   ``reported_has_subsidized_marketplace_health_coverage_at_interview``,
-  where staging writes it on the ACS persons. The fiscal lane reads it as
+  which staging writes on the ACS persons from the PUMS item that separates
+  subsidized Marketplace coverage (``HIMRKS``). The fiscal lane reads it as
   False where the column is absent, because observed Marketplace coverage
   is broader than subsidized coverage (``_aca_source_person_table``), and
-  so does this stage. Staging writes none today: it does not load the PUMS
-  item that separates subsidized Marketplace coverage (``HIMRKS``), so
-  every ACS taker is drawn. Where anchors exist they take up even above a
-  state's residual (the stage's ``preserve_true_anchors``), and the receipt
-  records the excess. A stored ACS take-up cell (staging writes none) is
-  kept: a stored ``True`` is an anchor too, and a unit stored ``False``
-  stays out of the stage.
+  so does this stage. Kept anchors take up (the stage's
+  ``preserve_true_anchors``). A stored ACS take-up cell (staging writes
+  none) is kept: a stored ``True`` is an anchor that is never thinned, and
+  a unit stored ``False`` stays out of the stage.
+- **Thinning.** Where a state's anchors weigh more than its residual in the
+  binding table, each reported anchor there stays anchored with probability
+  (residual - stored-True mass) / anchored mass, on its own keyed draw: the
+  Medicaid stage's rule for its ``HINS4`` anchors, in the shared
+  :func:`~microcosm.build.anchor_thinning.thin_anchors_to_residuals`. The
+  mass is counted as the binding operation counts it, over its domain,
+  where the credit is positive. A unit not kept is an ordinary non-anchor,
+  which the joint step can still select where the kept anchors fall short
+  of the residual. The draw meets the residual in expectation, so a thinned
+  state's delivery is reported, not graded against the tolerance. The
+  receipt records each state's anchored mass, keep probability and thinned
+  rows, and the kept anchors' excess over every table's residual.
 - **Draws** come from seeded blake2b uniforms on the donor stage's stream
   (``aca:takes_up_aca_if_eligible``), keyed on
   ``acs_2024_1yr:SERIALNO:<lowest SPORDER of the unit>``, so a unit's draw
-  depends only on the build seed and its own record.
+  depends only on the build seed and its own record. The anchor keep draw
+  has a stream of its own.
 
 The receipt records, per table and state, the count, the donor rows'
 contribution, the residual, the ACS capacity and delivery, the pooled total
@@ -88,6 +99,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.anchor_thinning import thin_anchors_to_residuals
 from microcosm.build.gates import GateResult
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
@@ -155,14 +167,23 @@ _TARGET_BASIS = (
     "operation that reads the table), floored at 0"
 )
 _ANCHOR_RULE = (
-    "the manifest stage's own anchor column where staging writes it on the "
-    "ACS persons, read as the fiscal lane reads it (False where the column "
-    "is absent: observed Marketplace coverage is broader than subsidized "
-    "coverage, _aca_source_person_table); staging writes none today, since "
-    "it does not load the PUMS subsidy item HIMRKS. A stored ACS take-up "
-    "True is also an anchor, and a stored False stays out of the stage. "
-    "Anchors take up even above a state's residual (preserve_true_anchors), "
-    "and the excess is recorded"
+    "the manifest stage's own anchor column on the ACS persons, which "
+    "staging writes from the PUMS subsidy item HIMRKS, read as the fiscal "
+    "lane reads it (False where the column is absent: observed Marketplace "
+    "coverage is broader than subsidized coverage, _aca_source_person_table). "
+    "A stored ACS take-up True is also an anchor and is never thinned, and "
+    "a stored False stays out of the stage. Kept anchors take up "
+    "(preserve_true_anchors); their excess over any residual is recorded"
+)
+#: The anchor keep draw's own blake2b stream, apart from the take-up draw.
+_ANCHOR_KEEP_STREAM = "acs_local_aca_subsidized_anchor_keep"
+_THINNING_RULE = (
+    "where a state's counted stored-True and reported anchor mass in the "
+    "binding table exceeds its residual, each reported anchor there stays "
+    "anchored with probability (residual - stored-True mass) / reported "
+    "anchor mass, on a keyed draw: the Medicaid stage's HINS4 rule "
+    "(microcosm.build.anchor_thinning). A unit not kept is an ordinary "
+    "non-anchor, which the stage can still select"
 )
 #: The columns of the fiscal lane's ACA tax-unit table the stage reads.
 _ENGINE_TABLE_COLUMNS = (
@@ -428,6 +449,17 @@ def _state_sums(
     return {str(state): float(value) for state, value in sums.items()}
 
 
+def _state_counts(states: np.ndarray, selected: np.ndarray) -> dict[str, int]:
+    """The number of selected rows in each state (every state listed)."""
+
+    counts = (
+        pd.Series(np.asarray(selected, dtype=bool))
+        .groupby(np.asarray(states).astype(str), sort=True)
+        .sum()
+    )
+    return {str(state): int(value) for state, value in counts.items()}
+
+
 def _state_max(
     table: pd.DataFrame, selected: np.ndarray, column: str
 ) -> dict[str, float]:
@@ -588,8 +620,10 @@ def _rows(
                     "acs_capacity": capacity,
                     "acs_delivered": delivered,
                     "acs_max_unit_weight": sums["max_unit"][name].get(state, 0.0),
-                    # Anchors take up even above the residual (the stage's
-                    # preserve_true_anchors); recorded, not graded.
+                    # Kept anchors take up even above a residual (the stage's
+                    # preserve_true_anchors): the keep draw meets the binding
+                    # table only in expectation and no other table at all.
+                    # Recorded, not graded.
                     "acs_anchored": anchored,
                     "anchor_excess": max(anchored - residual, 0.0),
                     "pooled": pooled,
@@ -866,7 +900,35 @@ def with_acs_local_aca_take_up(
         else np.zeros(len(units_of), dtype=bool)
     )
     reported_units = np.isin(acs_ids, units_of.to_numpy()[reported])
-    anchored = (acs_flag_present & acs_stored) | (~acs_flag_present & reported_units)
+    stored_true = acs_flag_present & acs_stored
+    reported_anchor = ~acs_flag_present & reported_units
+    # Reported anchors above a state's residual in the binding table are
+    # thinned to it: the Medicaid stage's HINS4 rule, on this stage's own
+    # keep stream. A stored True is never thinned.
+    binding = _binding_table(plan, tables)
+    binding_role = plan.roles[binding]
+    binding_residuals = residual_tables[binding]
+    thinning = thin_anchors_to_residuals(
+        groups=engine[_STATE].to_numpy(),
+        weights=pd.to_numeric(engine[binding_role.weight], errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64),
+        counted=_domain(engine, binding_role, label=f"ACS {binding}"),
+        fixed=stored_true,
+        anchors=reported_anchor,
+        residuals=dict(
+            zip(
+                binding_residuals[_STATE],
+                binding_residuals["target"].to_numpy(dtype=np.float64),
+                strict=True,
+            )
+        ),
+        keys=keys,
+        seed=int(seed),
+        stream=_ANCHOR_KEEP_STREAM,
+    )
+    thinned = reported_anchor & ~thinning.kept
+    anchored = stored_true | thinning.kept
 
     stage_units = engine.loc[staged, list(_ENGINE_TABLE_COLUMNS)].reset_index(drop=True)
     stage_units[plan.draw_column] = stable_identity_uniforms(
@@ -979,12 +1041,31 @@ def with_acs_local_aca_take_up(
     )
     takers = take_up & eligible
     names = tuple(tables)
-    binding = _binding_table(plan, tables)
     clipped = takers & np.isfinite(ratio)
 
     def weighted_share(selected: np.ndarray, within: np.ndarray) -> float | None:
         total = float(weights[within].sum())
         return float(weights[selected & within].sum()) / total if total > 0 else None
+
+    states = engine[_STATE].to_numpy()
+    anchor_rows = _state_counts(states, reported_anchor)
+    thinned_rows = _state_counts(states, thinned)
+    returning_rows = _state_counts(states, thinned & take_up)
+    thinning_rows = [
+        {
+            _STATE: str(state),
+            "residual": float(residual),
+            "stored_true_mass": thinning.fixed_mass.get(str(state), 0.0),
+            "anchor_mass": thinning.anchor_mass.get(str(state), 0.0),
+            "keep_probability": thinning.keep_probability.get(str(state), 1.0),
+            "anchor_rows": anchor_rows.get(str(state), 0),
+            "thinned_rows": thinned_rows.get(str(state), 0),
+            "thinned_rows_taking_up": returning_rows.get(str(state), 0),
+        }
+        for state, residual in zip(
+            binding_residuals[_STATE], binding_residuals["target"], strict=True
+        )
+    ]
 
     receipt: dict[str, Any] = {
         "issue": ACS_LOCAL_ACA_TAKE_UP_ISSUE,
@@ -1006,8 +1087,20 @@ def with_acs_local_aca_take_up(
             "column_on_acs_persons": bool(plan.anchor in person),
             "reported_acs_persons": int(reported.sum()),
             "reported_tax_units": int(reported_units.sum()),
-            "stored_true_tax_units": int((acs_flag_present & acs_stored).sum()),
+            "stored_true_tax_units": int(stored_true.sum()),
             "anchored_tax_units": int(anchored.sum()),
+            "thinning": {
+                "rule": _THINNING_RULE,
+                "table": binding,
+                "weight": binding_role.weight,
+                "stream": _ANCHOR_KEEP_STREAM,
+                "draw_key": _DRAW_KEY_FORMAT,
+                "anchor_tax_units": int(reported_anchor.sum()),
+                "thinned_tax_units": int(thinned.sum()),
+                "thinned_tax_units_taking_up": int((thinned & take_up).sum()),
+                "thinned_states": thinning.thinned_groups,
+                "states": thinning_rows,
+            },
         },
         "engine_prepass": {
             "rows": "donor_households_then_acs_households",
@@ -1041,6 +1134,13 @@ def with_acs_local_aca_take_up(
             "stored_false_rows_kept": int((acs_flag_present & ~acs_stored).sum()),
             "unfilled_acs_rows": int((~final_flag_present).sum()),
             "taker_tax_units": int(takers.sum()),
+            "anchored_taker_tax_units": int((takers & anchored).sum()),
+            "anchor_share_of_takers": (
+                float((takers & anchored).sum()) / float(takers.sum())
+                if takers.any()
+                else None
+            ),
+            "weighted_anchor_share_of_takers": weighted_share(anchored, takers),
             "weighted_take_up_share_of_eligible": weighted_share(takers, eligible),
             "weighted_take_up_share": weighted_share(
                 take_up, np.ones(len(take_up), dtype=bool)
@@ -1177,7 +1277,24 @@ def _residual_failures(name: str, rows: object) -> list[str]:
     return failures
 
 
-def _binding_grades(rows: list) -> tuple[list[str], list[dict[str, Any]]]:
+def _keep_probabilities(receipt: Mapping[str, Any]) -> dict[str, float]:
+    """Each binding-table state's anchor keep probability in the receipt."""
+
+    anchor = receipt.get("anchor")
+    thinning = anchor.get("thinning") if isinstance(anchor, Mapping) else None
+    rows = thinning.get("states") if isinstance(thinning, Mapping) else None
+    if not isinstance(rows, list):
+        return {}
+    return {
+        str(row.get(_STATE)): _finite(row.get("keep_probability"))
+        for row in rows
+        if isinstance(row, Mapping)
+    }
+
+
+def _binding_grades(
+    rows: list, keep: Mapping[str, float]
+) -> tuple[list[str], list[dict[str, Any]]]:
     """Grade each state of the binding table; return failures and statuses."""
 
     tolerance = ACS_LOCAL_ACA_RETURNS_RELATIVE_TOLERANCE
@@ -1192,14 +1309,19 @@ def _binding_grades(rows: list) -> tuple[list[str], list[dict[str, Any]]]:
         delivered = _finite(row.get("acs_delivered"))
         step = _finite(row.get("acs_max_unit_weight"))
         anchored = _finite(row.get("acs_anchored", 0.0))
+        probability = keep.get(str(state))
         if not all(np.isfinite([residual, capacity, delivered])):
             continue
         error = (delivered - residual) / residual if residual > 0 else None
-        if residual <= 0:
+        if probability is not None and probability < 1.0:
+            # The reported anchors above the residual were thinned to it on
+            # a keyed draw, which meets it in expectation only: reported.
+            status = "anchors_thinned"
+        elif residual <= 0:
             status = "donor_meets_count"
         elif np.isfinite(anchored) and anchored >= residual:
-            # Every anchor takes up (preserve_true_anchors), even above the
-            # residual: the excess is reported, not failed.
+            # Anchors that are never thinned (a stored True) take up even
+            # above the residual: the excess is reported, not failed.
             status = "anchor_excess"
         elif capacity <= 0:
             status = "no_acs_capacity"
@@ -1231,6 +1353,7 @@ def _binding_grades(rows: list) -> tuple[list[str], list[dict[str, Any]]]:
                 "anchor_excess": (
                     max(anchored - residual, 0.0) if np.isfinite(anchored) else None
                 ),
+                "keep_probability": probability,
             }
         )
     return failures, graded
@@ -1280,10 +1403,26 @@ def _receipt_failures(
         failures += _residual_failures(str(name), rows)
     binding_entry = tables[binding]
     rows = binding_entry.get("states") if isinstance(binding_entry, Mapping) else None
-    binding_failures, graded = _binding_grades(rows if isinstance(rows, list) else [])
+    keep = _keep_probabilities(receipt)
+    binding_failures, graded = _binding_grades(
+        rows if isinstance(rows, list) else [], keep
+    )
     failures += binding_failures
     details["binding_table"] = binding
     details["binding_states"] = graded
+    details["thinned_states"] = sorted(
+        state for state, probability in keep.items() if probability < 1.0
+    )
+    # Kept anchors above a table's residual: reported per table, not failed.
+    details["anchor_excess_states"] = {
+        str(name): sum(
+            1
+            for row in entry.get("states") or []
+            if isinstance(row, Mapping) and _finite(row.get("anchor_excess")) > 0
+        )
+        for name, entry in tables.items()
+        if isinstance(entry, Mapping)
+    }
     details["composition"] = receipt.get("composition")
     details["receipt"] = {"present": True, "failures": len(failures)}
     return failures
@@ -1304,10 +1443,12 @@ def acs_local_aca_take_up_signal_gate(
     delivered ACS count within
     :data:`ACS_LOCAL_ACA_RETURNS_RELATIVE_TOLERANCE` of its residual, or of
     one unit's weight, where the ACS capacity exceeds it, and equal to the
-    capacity where it does not. States the donor rows already meet, states
-    whose anchors alone meet the residual (every anchor takes up), states
-    without ACS capacity, shortfalls, excesses, the CMS people, the amounts
-    and the people per return are reported, not failed.
+    capacity where it does not. States whose reported anchors the receipt
+    thinned to the residual (the keep draw meets it in expectation only),
+    states the donor rows already meet, states whose stored anchors alone
+    meet the residual, states without ACS capacity, shortfalls, excesses,
+    the kept anchors' excess over any table, the CMS people, the amounts and
+    the people per return are reported, not failed.
 
     The ACS local release records this verdict in its receipt and in a
     diagnostic shadow entry and never stops on it (microcosm#1720).

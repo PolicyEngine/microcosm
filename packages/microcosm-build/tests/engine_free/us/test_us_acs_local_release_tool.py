@@ -592,9 +592,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     assert staged["status"] == "reviewed_modeling_decision"
     assert staged["calibration_blocker"] is False
     assert set(module.ACS_LOCAL_STATUS_INPUTS_COLUMNS) <= set(staged["columns"])
-    assert {"is_self_employed", "health_insurance_premiums"} <= set(
-        staged["columns"]
-    )
+    assert {"is_self_employed", "health_insurance_premiums"} <= set(staged["columns"])
     assert set(module.ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS) <= set(staged["columns"])
     assert "would_file_taxes_voluntarily" in staged["columns"]
     assert "takes_up_housing_assistance_if_eligible" in staged["columns"]
@@ -727,9 +725,12 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "floored at zero",
         "closest to the residual average",
         "microcosm#168",
-        "no unit is anchored",
         "reported_has_subsidized_marketplace_health_coverage_at_interview",
-        "records the excess",
+        "probability residual / anchored weight",
+        "acs_local_aca_subsidized_anchor_keep",
+        "microcosm.build.anchor_thinning",
+        "in expectation only",
+        "excess over each table is recorded",
         "clipped to 0.5-1.5",
         "no bronze count",
         "HIMRKS",
@@ -737,7 +738,13 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "acs_local_staged_inputs",
     ):
         assert fragment in aca["reason"], fragment
-    for fragment in ("report-only", "us_local_aca_take_up_materialize", "digest"):
+    for fragment in (
+        "report-only",
+        "us_local_aca_take_up_materialize",
+        "keep probability and thinned rows",
+        "share of ACS takers",
+        "digest",
+    ):
         assert fragment in aca["treatment"], fragment
     assert "EITC take-up is the take-up contract's seeded draw" in defaults
     assert "WIC take-up the national generator's draw" in defaults
