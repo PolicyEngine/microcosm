@@ -195,11 +195,13 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert local.sipp_donor == Path("pu2023.csv")
 
 
+@pytest.mark.parametrize("allow_default", [False, True])
 @pytest.mark.parametrize("staging_hours_pass", [True, False])
 def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     staging_hours_pass: bool,
+    allow_default: bool,
 ) -> None:
     builder = _load_builder_module()
     manifest = _manifest()
@@ -475,11 +477,15 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "prepare_acs_local_hours_donor",
         lambda frame, **kwargs: (frame, frame, {"source_agreement": True}),
     )
-    monkeypatch.setattr(
-        builder,
-        "_require_dense_donor_coverage",
-        lambda frame, **kwargs: None,
-    )
+
+    def fake_dense_coverage(frame, **kwargs):
+        captured["dense_coverage"] = kwargs
+        return {
+            column: {"entity": "person", "engine_default": 0, "reason": reason}
+            for column, reason in kwargs.get("allowed_default_columns", {}).items()
+        }
+
+    monkeypatch.setattr(builder, "_require_dense_donor_coverage", fake_dense_coverage)
     monkeypatch.setattr(
         builder,
         "acs_local_transfer_target_families",
@@ -578,6 +584,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "--geography-seed",
         "19",
     ]
+    allowances = {
+        "s_corp_income": "the donor holds S-corp income in partnership_income",
+        "passive_partnership_s_corp_income": "the split is unknown",
+    }
+    if allow_default:
+        for column, reason in allowances.items():
+            arguments += ["--allow-default-donor-column", f"{column}={reason}"]
     if not staging_hours_pass:
         with pytest.raises(
             SystemExit, match="Local staging hours gate failed.*asec_puf"
@@ -649,7 +662,24 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "sub_puma_geographic_precision",
         "acs_spm_independence_role_household_partition",
         "acs_group_quarters_children_outside_spm_universe",
-    ]
+    ] + (["allowed_default_valued_donor_columns"] if allow_default else [])
+    if allow_default:
+        recorded = {
+            column: {"entity": "person", "engine_default": 0, "reason": reason}
+            for column, reason in allowances.items()
+        }
+        assert captured["dense_coverage"]["allowed_default_columns"] == allowances
+        assert summary["orchestration"]["allow_default_donor_columns"] == allowances
+        assert summary["allowed_default_donor_columns"] == recorded
+        limitation = summary["reviewed_limitations"][-1]
+        assert limitation["columns"] == recorded
+        assert limitation["issue"] == "microcosm#922"
+        assert limitation["calibration_blocker"] is False
+    else:
+        # Without the flag the gate call and the summary are unchanged.
+        assert "allowed_default_columns" not in captured["dense_coverage"]
+        assert "allow_default_donor_columns" not in summary["orchestration"]
+        assert "allowed_default_donor_columns" not in summary
     assert summary["reviewed_limitations"][2]["unavailable_exact_geography"] == [
         "block_geoid",
         "tract_geoid",
@@ -1173,6 +1203,193 @@ def test_dense_donor_default_consumed_optional_feature_fails_hard() -> None:
     message = str(exc.value)
     assert "person.employment_income_before_lsr" in message
     assert "every observed donor value equals the engine default" in message
+
+
+class _LineThirtyTwoEngine(_DefaultsEngine):
+    _defaults = {
+        **_DefaultsEngine._defaults,
+        "s_corp_income": 0.0,
+        "passive_partnership_s_corp_income": 0.0,
+    }
+
+
+_LINE_32_PLAN = {
+    "person": {
+        "puf_tax_itemization": ("s_corp_income", "passive_partnership_s_corp_income")
+    }
+}
+_LINE_32_ALLOWANCES = {
+    "s_corp_income": "the donor holds S-corp income in partnership_income",
+    "passive_partnership_s_corp_income": "the split is unknown",
+}
+
+
+def _line_32_frame(**columns: list[float]) -> Frame:
+    base = _frame()
+    base.person["s_corp_income"] = [0.0, 0.0]
+    base.person["passive_partnership_s_corp_income"] = [0.0, 0.0]
+    for column, values in columns.items():
+        base.person[column] = values
+    return base
+
+
+def test_dense_donor_default_columns_still_fail_without_an_allowance() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            _line_32_frame(),
+            engine=_LineThirtyTwoEngine(),
+            donor_channel=None,
+            target_families=_LINE_32_PLAN,
+        )
+
+    message = str(exc.value)
+    for column in _LINE_32_ALLOWANCES:
+        assert (
+            f"person.{column}: every observed donor value equals the engine "
+            "default (0.0)"
+        ) in message
+    assert "--allow-default-donor-column" not in message
+
+
+def test_allowed_default_donor_columns_pass_and_are_returned() -> None:
+    builder = _load_builder_module()
+
+    allowed = builder._require_dense_donor_coverage(
+        _line_32_frame(),
+        engine=_LineThirtyTwoEngine(),
+        donor_channel=None,
+        target_families=_LINE_32_PLAN,
+        allowed_default_columns=_LINE_32_ALLOWANCES,
+    )
+
+    assert allowed == {
+        column: {"entity": "person", "engine_default": 0.0, "reason": reason}
+        for column, reason in _LINE_32_ALLOWANCES.items()
+    }
+    # Without allowances a passing gate returns nothing to record.
+    assert (
+        builder._require_dense_donor_coverage(
+            _line_32_frame(
+                s_corp_income=[0.0, 10.0], passive_partnership_s_corp_income=[0.0, 5.0]
+            ),
+            engine=_LineThirtyTwoEngine(),
+            donor_channel=None,
+            target_families=_LINE_32_PLAN,
+        )
+        == {}
+    )
+
+
+def test_an_allowance_skips_only_its_own_default_failure() -> None:
+    builder = _load_builder_module()
+    base = _line_32_frame(employment_income_before_lsr=[0.0, 0.0])
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_LineThirtyTwoEngine(),
+            donor_channel=None,
+            target_families=_LINE_32_PLAN,
+            allowed_default_columns=_LINE_32_ALLOWANCES,
+        )
+
+    message = str(exc.value)
+    assert "person.employment_income_before_lsr: every observed donor value" in message
+    assert "person.s_corp_income" not in message
+
+
+@pytest.mark.parametrize(
+    ("base_columns", "plan", "allowances", "expected"),
+    [
+        pytest.param(
+            {},
+            {"person": {"health": ("has_esi",)}},
+            {"has_esi": "reason"},
+            "person.has_esi: transfer-consumed column is absent",
+            id="absent",
+        ),
+        pytest.param(
+            {"has_esi": [np.nan, np.nan]},
+            {"person": {"health": ("has_esi",)}},
+            {"has_esi": "reason"},
+            "person.has_esi: transfer-consumed column has no observed donor values",
+            id="no-observed-values",
+        ),
+        pytest.param(
+            {"mystery_input": [0.0, 0.0]},
+            {"person": {"health": ("mystery_input",)}},
+            {"mystery_input": "reason"},
+            "--allow-default-donor-column mystery_input: the engine reports no default",
+            id="unknown",
+        ),
+        pytest.param(
+            {"alimony_income": [0.0, 0.0]},
+            _LINE_32_PLAN,
+            {**_LINE_32_ALLOWANCES, "alimony_income": "reason"},
+            "--allow-default-donor-column alimony_income: not a transfer-consumed",
+            id="not-transfer-consumed",
+        ),
+        pytest.param(
+            {"s_corp_income": [0.0, 25.0]},
+            _LINE_32_PLAN,
+            _LINE_32_ALLOWANCES,
+            "--allow-default-donor-column s_corp_income: the donor has values "
+            "other than the engine default",
+            id="stale",
+        ),
+    ],
+)
+def test_an_allowance_still_refuses_absent_unknown_and_unconsumed_columns(
+    base_columns, plan, allowances, expected
+) -> None:
+    builder = _load_builder_module()
+    base = _line_32_frame(**base_columns)
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_LineThirtyTwoEngine(),
+            donor_channel=None,
+            target_families=plan,
+            allowed_default_columns=allowances,
+        )
+
+    assert expected in str(exc.value)
+
+
+def test_allow_default_donor_column_arguments_parse_or_refuse() -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--base-h5",
+            "d.h5",
+            "--out-h5",
+            "c.h5",
+            "--allow-default-donor-column",
+            "s_corp_income=held in partnership_income",
+            "--allow-default-donor-column",
+            " passive_partnership_s_corp_income = split = unknown ",
+        ]
+    )
+    assert builder._default_donor_column_allowances(
+        args.allow_default_donor_column
+    ) == {
+        "s_corp_income": "held in partnership_income",
+        "passive_partnership_s_corp_income": "split = unknown",
+    }
+    default = builder._parse_args(["--base-h5", "d.h5", "--out-h5", "c.h5"])
+    assert default.allow_default_donor_column is None
+    assert builder._default_donor_column_allowances(None) == {}
+    for values, match in (
+        (["s_corp_income"], "must be COLUMN=REASON"),
+        (["=reason"], "must be COLUMN=REASON"),
+        (["s_corp_income=  "], "must be COLUMN=REASON"),
+        (["a=x", "a=y"], "more than once"),
+    ):
+        with pytest.raises(SystemExit, match=match):
+            builder._default_donor_column_allowances(values)
 
 
 def test_signal_bearing_release_exclusion_is_irrelevant_to_donor_gate(

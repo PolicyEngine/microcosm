@@ -17,6 +17,19 @@ failure, and the rule, seed and both ladders' sha256 are recorded in the
 summary (``household_location``, ``orchestration``, ``geography_ladder``) and
 the staging H5's root attributes. The legacy default is unchanged.
 
+``--allow-default-donor-column COLUMN=REASON`` (repeatable; default none) lets
+the dense-donor coverage gate accept a transfer-consumed donor column although
+every donor value equals the engine default. It skips that one failure only:
+an absent, unknown or not transfer-consumed column is still refused, and so is
+an allowance for a column with donor signal. The summary records each
+allowance and its reason (``allowed_default_donor_columns``,
+``orchestration.allow_default_donor_columns``) and a reviewed limitation. It
+exists for the County Files proof of concept's patched donor (microcosm#922);
+without it the gate, the outputs and the summary are unchanged. Temporary for
+the County Files proof of concept (microcosm#1647); removal tracked in
+microcosm#1661. Do not use for the final County Files build: its donor is a
+new national build that carries these columns.
+
 Telemetry: after parsing its arguments the builder starts the emitter
 (``microcosm.build.program_telemetry``, pipeline ``us_acs_multispine_staging``),
 records a stage change at each main phase (``load_donor``,
@@ -110,6 +123,7 @@ from microcosm.build.us_runtime.acs_pums import (
 )
 from microcosm.build.us_runtime.acs_transfer import (
     ACS_DONOR_CHANNEL_AUTO,
+    ASEC_PUF_DONOR_SPINE,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     TargetFamilies,
     acs_derived_transfer_expectations,
@@ -340,7 +354,50 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "identity is pinned into the staging summary."
         ),
     )
+    parser.add_argument(
+        "--allow-default-donor-column",
+        action="append",
+        metavar="COLUMN=REASON",
+        help=(
+            "Let the dense-donor coverage gate accept the transfer-consumed "
+            "donor column COLUMN although every donor value equals the engine "
+            "default, for the stated REASON; repeat for more columns (default: "
+            "none). Only that failure is skipped: an absent, unknown or not "
+            "transfer-consumed column is still refused, and so is an allowance "
+            "for a column with donor signal. Each allowance and its reason is "
+            "recorded in the summary (microcosm#922). Temporary for the County "
+            "Files proof of concept (microcosm#1647); removal tracked in "
+            "microcosm#1661. Do not use for the final County Files build."
+        ),
+    )
     return parser.parse_args(argv)
+
+
+#: The reviewed limitation an allowance adds to the staging summary.
+DEFAULT_DONOR_COLUMN_LIMITATION = "allowed_default_valued_donor_columns"
+DEFAULT_DONOR_COLUMN_ISSUE = "microcosm#922"
+
+
+def _default_donor_column_allowances(
+    values: list[str] | None,
+) -> dict[str, str]:
+    """``--allow-default-donor-column`` values as ``{column: reason}``."""
+
+    allowances: dict[str, str] = {}
+    for value in values or ():
+        column, separator, reason = value.partition("=")
+        column, reason = column.strip(), reason.strip()
+        if not separator or not column or not reason:
+            raise SystemExit(
+                f"--allow-default-donor-column {value!r} must be COLUMN=REASON "
+                "with a column name and a non-empty reason."
+            )
+        if column in allowances:
+            raise SystemExit(
+                f"--allow-default-donor-column names {column!r} more than once."
+            )
+        allowances[column] = reason
+    return allowances
 
 
 def _donor_release_identity(
@@ -509,6 +566,9 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     summary_path = args.summary or args.out_h5.with_suffix(".summary.json")
     _validate_artifact_paths(args, summary_path=summary_path)
     _validate_location_arguments(args)
+    default_donor_allowances = _default_donor_column_allowances(
+        args.allow_default_donor_column
+    )
     block_location = args.location_rule != US_LOCATION_RULE_LEGACY
     block_ladder: UsLocationLadder | None = None
     base_location: dict[str, object] | None = None
@@ -540,10 +600,18 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     _require_ssi_disability_donor(base)
     _require_donor_work_experience(base)
     transfer_plan = declared_acs_transfer_target_families()
-    _require_dense_donor_coverage(
-        base,
-        donor_channel=args.donor_channel,
-        target_families=transfer_plan,
+    # Without an allowance the gate is called exactly as before.
+    allowance_options: dict[str, object] = {}
+    if default_donor_allowances:
+        allowance_options["allowed_default_columns"] = default_donor_allowances
+    allowed_default_columns = (
+        _require_dense_donor_coverage(
+            base,
+            donor_channel=args.donor_channel,
+            target_families=transfer_plan,
+            **allowance_options,
+        )
+        or {}
     )
     # microcosm#1022: resolve and verify the pinned SIPP donor before the ACS
     # fetch and transfer, so an unavailable donor fails in minutes, not hours.
@@ -718,6 +786,14 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
             base_location=base_location,
             ladder_agreement=ladder_agreement,
             gate=location_gate,
+        )
+    if default_donor_allowances:
+        summary["orchestration"]["allow_default_donor_columns"] = dict(
+            default_donor_allowances
+        )
+        summary["allowed_default_donor_columns"] = allowed_default_columns
+        summary["reviewed_limitations"].append(
+            _default_donor_column_limitation(allowed_default_columns)
         )
     summary["local_hours_source"] = result.provenance.get("local_hours_source")
     summary["acs_self_employment_identity_gate"] = {
@@ -1151,8 +1227,19 @@ def _require_dense_donor_coverage(
     *,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     target_families: TargetFamilies | None = None,
-) -> None:
-    """Fail unless every column consumed by the QRF plan has donor signal."""
+    allowed_default_columns: Mapping[str, str] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Fail unless every column consumed by the QRF plan has donor signal.
+
+    ``allowed_default_columns`` (``--allow-default-donor-column``) maps a
+    column to the reason it may carry only the engine default. For those
+    columns the gate skips only the "every observed donor value equals the
+    engine default" failure. It still refuses a listed column that is absent
+    or has no observed value, one that is not transfer-consumed, one the
+    engine has no default for, and one with donor signal (a stale
+    allowance). Returns the applied allowances: column -> entity, engine
+    default and reason; empty without allowances.
+    """
 
     if engine is None:
         from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -1169,8 +1256,23 @@ def _require_dense_donor_coverage(
         ) from exc
 
     failures: list[str] = []
+    allowances = dict(allowed_default_columns or {})
     present_values: dict[str, Any] = {}
     owners: dict[str, str] = {}
+    consumed = {column for columns in requirements.values() for column in columns}
+    allowance_defaults = engine.default_values(sorted(allowances)) if allowances else {}
+    for column in allowances:
+        if column not in consumed:
+            failures.append(
+                f"--allow-default-donor-column {column}: not a transfer-consumed "
+                "donor column of this plan, so there is nothing to allow."
+            )
+        elif column not in allowance_defaults:
+            failures.append(
+                f"--allow-default-donor-column {column}: the engine reports no "
+                "default for it (unknown, formula-owned or a declared source "
+                "input)."
+            )
     for entity, columns in requirements.items():
         if entity not in selected.entities:
             failures.extend(
@@ -1205,18 +1307,65 @@ def _require_dense_donor_coverage(
     defaults = engine.default_values(sorted(present_values))
     default_gate = default_valued_columns_gate(present_values, defaults)
     default_valued = default_gate.details["default_valued_columns"]
+    allowed: dict[str, dict[str, object]] = {}
     for column, default in sorted(default_valued.items()):
+        if column in allowances:
+            allowed[column] = {
+                "entity": owners[column],
+                "engine_default": _json_scalar(default),
+                "reason": allowances[column],
+            }
+            continue
         failures.append(
             f"{owners[column]}.{column}: every observed donor value equals "
             f"the engine default ({default!r}); QRF transfer requires usable "
             "target/predictor signal."
         )
+    for column in sorted(set(allowances) & set(present_values) - set(default_valued)):
+        if column in allowance_defaults:
+            failures.append(
+                f"--allow-default-donor-column {column}: the donor has values "
+                "other than the engine default, so the allowance is stale."
+            )
 
     if failures:
         raise SystemExit(
             "Dense ASEC-by-PUF donor failed the hard ACS transfer-consumption "
             f"gate; selected channel={resolved_channel!r}:\n  " + "\n  ".join(failures)
         )
+    return allowed
+
+
+def _json_scalar(value: object) -> object:
+    """A NumPy scalar as its Python value, for the JSON summary."""
+
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def _default_donor_column_limitation(
+    allowed: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    """The reviewed limitation for ``--allow-default-donor-column`` columns."""
+
+    return {
+        "id": DEFAULT_DONOR_COLUMN_LIMITATION,
+        "status": "reviewed_default_valued_donor_columns",
+        "issue": DEFAULT_DONOR_COLUMN_ISSUE,
+        "affected_spines": [ASEC_PUF_DONOR_SPINE, ACS_2024_1YR_SPINE],
+        "columns": {column: dict(record) for column, record in allowed.items()},
+        "reason": (
+            "The dense-donor coverage gate accepted these transfer-consumed "
+            "donor columns although every donor value equals the engine "
+            "default (--allow-default-donor-column, with the reason recorded "
+            "for each column)."
+        ),
+        "treatment": (
+            "Donor rows keep the engine default in these columns. The QRF "
+            "transfer has no donor signal for them, so the ACS rows' values "
+            "carry no information from the donor either."
+        ),
+        "calibration_blocker": False,
+    }
 
 
 def _column_owner(frame: Frame, column: str) -> str | None:
