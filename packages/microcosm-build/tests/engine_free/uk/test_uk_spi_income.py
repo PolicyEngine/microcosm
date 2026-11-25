@@ -737,6 +737,42 @@ def test_hmrc_earned_income_reads_the_profit_after_loss_relief(tmp_path) -> None
         np.testing.assert_array_equal(after[column], before[column])
 
 
+def test_hmrc_employed_income_is_floored_at_zero(tmp_path) -> None:
+    """A negative miscellaneous employment leaf can take the employed-income
+    identity below zero: the column holds zero there, the earned and assessable
+    totals are those of a zero identity, and the helper names that row alone
+    (microcosm#931)."""
+
+    donor_path = tmp_path / SPI_DONOR_FILENAME
+    _write_donor(donor_path)
+    raw = pd.read_csv(donor_path, delimiter="\t")
+    donor = spi_income._prepare_spi_donor(raw, seed=7).assign(
+        tax_free_savings_income=0.0, loss_relief=0.0
+    )
+    misc = SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN
+    others = [c for c in spi_income.SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS if c != misc]
+    first, second = donor.index[0], donor.index[1]
+    donor.loc[[first, second], others] = 0.0
+    donor.loc[[first, second], misc] = -500.0
+    donor.loc[second, SPI_HMRC_PAY_COLUMN] = 1_000.0
+
+    floored = spi_income.hmrc_employed_income_floored(donor)
+    derived = spi_income.derive_hmrc_income_auxiliaries(donor)
+    zero_identity = donor.copy()
+    zero_identity.loc[first, misc] = 0.0
+    reference = spi_income.derive_hmrc_income_auxiliaries(zero_identity)
+
+    assert floored[0] and not floored[1]
+    assert derived.loc[second, SPI_HMRC_EMPLOYED_INCOME_COLUMN] == 500.0
+    assert (derived[SPI_HMRC_EMPLOYED_INCOME_COLUMN] >= 0.0).all()
+    for column in (
+        SPI_HMRC_EMPLOYED_INCOME_COLUMN,
+        SPI_HMRC_TOTAL_EARNED_INCOME_COLUMN,
+        HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
+    ):
+        assert derived.loc[first, column] == reference.loc[first, column]
+
+
 def test_spi_donor_rejects_leaf_reconciliation_drift(tmp_path) -> None:
     donor_path = tmp_path / SPI_DONOR_FILENAME
     _write_donor(donor_path)

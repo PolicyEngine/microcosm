@@ -384,11 +384,11 @@ SPI_HMRC_EMPLOYED_INCOME_SOURCE_COLUMN_MAP = {
     SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN: ("MOTHINC",),
 }
 SPI_HMRC_EMPLOYED_INCOME_FORMULA = (
-    "max(0, hmrc_spi_pay + hmrc_spi_employment_benefits - "
+    "max(0, max(0, hmrc_spi_pay + hmrc_spi_employment_benefits - "
     "hmrc_spi_employment_expenses) + hmrc_spi_incapacity_benefit_income + "
     "hmrc_spi_other_social_security_income + hmrc_spi_taxable_termination_pay + "
     "hmrc_spi_unemployment_benefit_income + "
-    "hmrc_spi_miscellaneous_employment_income"
+    "hmrc_spi_miscellaneous_employment_income)"
 )
 # The FRS instrument can source three full concepts and two explicitly named
 # subsets. The remaining full SPI concepts are donor-only: they must be absent
@@ -1176,6 +1176,8 @@ class UKSPIIncomeImputationResult:
     pension_coherence: Mapping[str, object] | None = None
     employment_pay_floor: Mapping[str, object] | None = None
     gift_anchor: Mapping[str, object] | None = None
+    #: The employed-income identity's floor at zero on the SPI rows.
+    employed_income_floor: Mapping[str, object] | None = None
     #: Each gated target's gate outcome, for the fits not on the in-sample gate.
     gate_outcomes: Mapping[str, str] | None = None
     #: How the stage-1 donor frame was drawn, for a design other than the
@@ -2087,6 +2089,9 @@ def impute_uk_spi_income_support(
     # Non-ISA interest is the stage-1 taxable draw; ISA interest is the stage-2
     # draw beside it (microcosm#1360).
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw
+    employed_income_floor = _employed_income_floor_receipt(
+        person, household, spi_people=spi_people
+    )
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _move_losses_brought_forward_to_loss_relief(person, spi_people=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
@@ -2147,6 +2152,7 @@ def impute_uk_spi_income_support(
         pension_coherence=pension_coherence,
         employment_pay_floor=pay_floor_receipt,
         gift_anchor=gift_anchor,
+        employed_income_floor=employed_income_floor,
         donor_frame=donor_frame_receipt,
         gate_outcomes={
             **gate_outcomes(SPI_DONOR_FIT_NAME, stage1_evidence),
@@ -3301,6 +3307,77 @@ def _derive_policyengine_employment_input(
     return result
 
 
+def _hmrc_employed_income_before_floor(numeric: pd.DataFrame) -> np.ndarray:
+    """The HMRC employed-income identity over its leaves, before its floor."""
+
+    return (
+        np.maximum(
+            numeric[SPI_HMRC_PAY_COLUMN]
+            + numeric[SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN]
+            - numeric[SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN],
+            0.0,
+        )
+        + numeric[SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN]
+        + numeric[SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN]
+        + numeric[SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN]
+        + numeric[SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN]
+        + numeric[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN]
+    ).to_numpy(dtype=float)
+
+
+def hmrc_employed_income_floored(
+    person: pd.DataFrame,
+    *,
+    row_mask: pd.Series | np.ndarray | None = None,
+) -> np.ndarray:
+    """Which rows' employed income :func:`derive_hmrc_income_auxiliaries` floors.
+
+    One boolean per row of ``person``: true on a selected row whose
+    employed-income identity is below zero before the floor, which only a
+    negative miscellaneous employment leaf can make (microcosm#931).
+    """
+
+    _require_columns(
+        person, SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS, label="HMRC employed income"
+    )
+    mask = _hmrc_auxiliary_row_mask(person, row_mask)
+    numeric = person.loc[mask, list(SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS)].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    _require_finite_numeric(numeric, label="HMRC employed income leaves")
+    floored = np.zeros(len(person), dtype=bool)
+    floored[mask] = _hmrc_employed_income_before_floor(numeric) < 0.0
+    return floored
+
+
+def _employed_income_floor_receipt(
+    person: pd.DataFrame, household: pd.DataFrame, *, spi_people: pd.Series
+) -> dict[str, object]:
+    """The employed-income floor on the SPI rows, as the receipts count.
+
+    The distinct source households among geographic clone 0's rows whose
+    identity the floor lifts to zero, rounded (``receipt_counts``): a count
+    of one or two is "<3", and no row's value is given (microcosm#931).
+    """
+
+    floored = hmrc_employed_income_floored(person, row_mask=spi_people)
+    tables = {"person": person, "household": household}
+    sources = record_source_households(tables, "person", stage="The SPI income stage")
+    counted = record_clone_zero_rows(tables, "person")
+    return {
+        "rule": (
+            "hmrc_spi_employed_income is the employed-income identity floored at "
+            "zero, which only a negative miscellaneous employment leaf can take "
+            "below it"
+        ),
+        "floored": {
+            "source_households": rounded_count(
+                distinct_count(sources, floored & counted)
+            )
+        },
+    }
+
+
 def derive_hmrc_income_auxiliaries(
     person: pd.DataFrame,
     *,
@@ -3350,19 +3427,11 @@ def derive_hmrc_income_auxiliaries(
     # Taxable interest is the non-ISA interest the producer stores
     # (microcosm#1360), held non-negative with the other leaves above.
     taxable_interest = numeric["savings_interest_income"]
-    employed_income = (
-        np.maximum(
-            numeric[SPI_HMRC_PAY_COLUMN]
-            + numeric[SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN]
-            - numeric[SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN],
-            0.0,
-        )
-        + numeric[SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN]
-        + numeric[SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN]
-        + numeric[SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN]
-        + numeric[SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN]
-        + numeric[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN]
-    ).to_numpy(dtype=float)
+    # The miscellaneous employment leaf may be negative, as the tape's MOTHINC
+    # is on a few records, and can take the identity below zero; employed
+    # income is floored at zero there, as the stage declares it non-negative,
+    # and the earned and assessable totals add the floored value (microcosm#931).
+    employed_income = np.maximum(_hmrc_employed_income_before_floor(numeric), 0.0)
     total_earned = (
         employed_income
         + numeric[SPI_HMRC_OTHER_INCOME_COLUMN]
@@ -4701,6 +4770,7 @@ __all__ = [
     "VerifiedSPIDonorIdentity",
     "assert_frs_hmrc_auxiliary_crosswalk_available",
     "derive_hmrc_income_auxiliaries",
+    "hmrc_employed_income_floored",
     "impute_uk_spi_income_support",
     "verify_spi_donor_identity",
 ]

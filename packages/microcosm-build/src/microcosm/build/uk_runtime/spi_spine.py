@@ -495,6 +495,7 @@ class UKSPIIncomeSpineResult:
             "gift_anchor": self.imputation.gift_anchor,
             "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
             "employment_pay_floor": self.imputation.employment_pay_floor,
+            "employed_income_floor": self.imputation.employed_income_floor,
             "targets": {
                 "count": len(self.source_targets.targets),
                 "classification": dict(self.replay_report.summary),
