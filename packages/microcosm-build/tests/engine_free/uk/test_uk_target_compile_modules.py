@@ -33,7 +33,9 @@ from microcosm.build.uk_runtime import (
 )
 from microcosm.build.uk_runtime.target_compile_modules import (
     EXCLUDED_DIRECT_IMPORTS,
+    UK_FULL_PROBLEM_LOSS_WEIGHT_MODULE_NAMES,
     UK_TARGET_COMPILE_MODULE_NAMES,
+    uk_full_problem_loss_weight_modules,
     uk_target_compile_modules,
 )
 from test_support.microcosm_build.first_party_imports import (
@@ -451,9 +453,6 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
             FULL_TARGETS,
             FULL_PROBLEM,
         ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.build.uk_runtime.national_doctrine": (
-            FULL_TARGETS,
-        ),
         "microcosm.build.uk_runtime.local_doctrine -> microcosm.build.uk_runtime.national_doctrine": (
             FULL_TARGETS,
         ),
@@ -553,17 +552,6 @@ UNCLASSIFIED_IMPORTS = MappingProxyType(
         # it, in uk.full.national-gates@1, which reads the solve's result.
         "microcosm.build.uk_runtime.graph_national -> microcosm.calibrate.solve": (
             NATIONAL,
-        ),
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.calibrate.solve": (
-            FULL_TARGETS,
-        ),
-        # The same kind of edge as the one above, added with microcosm#1729:
-        # graph_targets imports the shared rules only to put them in the full
-        # problem's loss-weight hash. The target, selection and measures
-        # kernels run none of it, so hashing it there would re-run target
-        # compilation and the measures on every edit to a shared rule.
-        "microcosm.build.uk_runtime.graph_targets -> microcosm.calibrate.target_loss_rules": (
-            FULL_TARGETS,
         ),
         "microcosm.calibrate.artifacts -> microcosm.calibrate.solve": (
             FULL_TARGETS,
@@ -808,6 +796,16 @@ def test_full_problem_loss_weights_hash_what_target_weights_reads(monkeypatch):
     assert geography_constants_module in weights
     assert calibrate_solve in weights
     assert calibrate_target_loss_rules in weights
+    # The kernel hashes the declared tuple, whole and in its order. The
+    # modules are named there, not imported by graph_targets, whose other
+    # kernels run none of them (microcosm#1729).
+    assert weights == uk_full_problem_loss_weight_modules()
+    assert [module.__name__ for module in weights] == list(
+        UK_FULL_PROBLEM_LOSS_WEIGHT_MODULE_NAMES
+    )
+    imported = first_party_imports(graph_targets.__name__)
+    assert calibrate_solve.__name__ not in imported
+    assert calibrate_target_loss_rules.__name__ not in imported
 
 
 def test_the_national_kernels_leave_calibrate_solve_unhashed():

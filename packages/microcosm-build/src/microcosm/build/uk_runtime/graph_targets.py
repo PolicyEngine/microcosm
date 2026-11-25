@@ -16,10 +16,7 @@ import numpy as np
 import pandas as pd
 
 import microcosm.calibrate.artifacts as calibrate_artifacts
-import microcosm.calibrate.geography_constants as geography_constants
 import microcosm.calibrate.matrix as calibrate_matrix
-import microcosm.calibrate.solve as calibrate_solve
-import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
 import microcosm.calibrate.target_selection as calibrate_target_selection
 from microcosm.build import cross_grain
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
@@ -56,8 +53,6 @@ from . import (
     ladder_targets,
     ledger_targets,
     local_doctrine,
-    local_rowwise,
-    national_doctrine,
     support_floor,
     target_weights,
 )
@@ -669,31 +664,19 @@ class UKFullProblemKernel(_TargetKernel):
     ref = "uk.full.problem@1"
 
     def implementation_hash(self) -> str:
-        # The loss weights the problem binds are built by
-        # ``local_rowwise.prepare_uk_full_solve`` from the rules in
-        # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
-        # edit there re-keys the problem instead of replaying a stale vector.
-        # ``target_weights`` reads the UK-wide geography codes from
-        # ``geography_constants``, and the loss scales the problem stores from
-        # ``calibrate.solve.default_target_loss_scales`` (microcosm#1492). All
-        # of ``calibrate.solve`` is hashed: ``calibrate.adam@1``, whose hash
-        # every UK solve kernel embeds, already hashes it, so an edit there
-        # re-solves anyway and re-keys only this node besides. The arithmetic
-        # of every rule is the shared ``calibrate.target_loss_rules``
-        # (microcosm#1729), which ``target_weights`` and ``national_doctrine``
-        # call, so an edit to a shared rule re-keys the problem too.
+        # Beside the target modules, the problem hashes the modules that
+        # decide the loss weights and scales it binds, so an edit to one of
+        # them re-keys the problem instead of replaying a stale vector.
+        # ``target_compile_modules`` names them and says why each is there.
+        # They are named, not imported here: the other kernels of this module
+        # run none of that code (microcosm#1729).
+        from .target_compile_modules import uk_full_problem_loss_weight_modules
+
         return hashlib.sha256(
             canonical_json(
                 {
                     "targets": super().implementation_hash(),
-                    "weights": source_hash(
-                        local_rowwise,
-                        national_doctrine,
-                        target_weights,
-                        geography_constants,
-                        calibrate_solve,
-                        calibrate_target_loss_rules,
-                    ),
+                    "weights": source_hash(*uk_full_problem_loss_weight_modules()),
                 }
             )
         ).hexdigest()
