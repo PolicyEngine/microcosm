@@ -254,14 +254,16 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "spi_income_band_donors": ("spi",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
     # The area draw, the fuel-relief flag's roster, the SPI copies' own draw,
-    # the council-tax localisation's draw cells and the housing shell's
-    # reference Band D for SPI copies read the three conditioned atomic-area
-    # supports, whose bytes enter their nodes' keys (microcosm#931).
+    # the council-tax localisation's draw cells, the housing shell's
+    # reference Band D for SPI copies and the high-value support copies' own
+    # draw read the three conditioned atomic-area supports, whose bytes enter
+    # their nodes' keys (microcosm#931).
     "atomic_area_assign": _ATOMIC_SUPPORT_SOURCES,
     "rfdr": _ATOMIC_SUPPORT_SOURCES,
     "spi_copy_areas": _ATOMIC_SUPPORT_SOURCES,
     "spi_housing_shell": _ATOMIC_SUPPORT_SOURCES,
     "council_tax_localise": _ATOMIC_SUPPORT_SOURCES,
+    "high_value_home_support": _ATOMIC_SUPPORT_SOURCES,
 }
 
 _SPLIT_SOURCE_DESCRIPTIONS = {
@@ -759,6 +761,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
     # The support splits copy whole households, so their surfaces are open.
+    # The high-value split then places its copies, and Northern Ireland's
+    # take one engine materialization of LHA_category over their households
+    # (microcosm#931).
     "high_value_home_support": None,
     "cgt_support_split": None,
     "cgt_incidence_clone": None,
@@ -1568,12 +1573,21 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "uc_latent_deduction_rate", "float64"),
         _Cell("benunit", "uc_deduction_combination", "string"),
     ),
-    # The support split writes only its lineage cells: copies carry every
-    # other column of their source household unchanged (microcosm#1045).
+    # The support split writes its lineage cells, then rewrites its copies'
+    # keys and areas, the cells the identity and area stages own, and their
+    # council tax, the cells G6 owns; every other column of a copy is its
+    # source household's (microcosm#1045, microcosm#931).
     "high_value_home_support": (
         _Cell("household", "household_is_high_value_support_copy", "bool"),
         _Cell("household", "high_value_support_copies", "int64"),
         _Cell("household", "high_value_support_copy_index", "int64"),
+        _Cell("household", "geography_household_key", "string"),
+        *_cells("household", UK_SPINE_AREA_COLUMNS, "string"),
+        _Cell("household", "local_authority", "string"),
+        _Cell("household", "brma", "string"),
+        _Cell("household", "in_rural_fuel_duty_relief_area", "bool"),
+        *_cells("household", ("council_tax", "council_tax_rebate")),
+        _Cell("person", "council_tax_benefit_reported", "float64"),
     ),
     "cgt_support_split": (
         _Cell("household", "household_is_cgt_support_copy", "bool"),

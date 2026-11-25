@@ -296,10 +296,17 @@ order:
      at a keyed point inside its weighted slice of that constituency and its
      geographic clone, and the chain's later wealth draws condition on it
      (María's rulings of 6 and 17 November 2026).
-9. Copies made after `spi_copy_areas`, by `high_value_home_support`,
-   `cgt_support_split`, `cgt_incidence_clone` and `cgt_residential_split`, keep
-   their parent's key, area, ladder, local authority, BRMA, rural fuel duty
-   relief flag, council tax and rebate.
+9. `high_value_home_support` gives each copy it makes a place of its own, as
+   another clone of its household would get (María's ruling of 25 November
+   2026). A copy gets its own key over its copy path. Its area is drawn from
+   its own draw inputs, which are its parent's, so it is drawn at its parent's
+   level. Then it gets its local authority, BRMA and rural fuel duty relief
+   flag. In Great Britain, its council tax, rebate and reduction are scaled by
+   its new authority's Band D over its parent's. Its home value and every
+   other column stay its parent's.
+10. Copies made after that, by `cgt_support_split`, `cgt_incidence_clone` and
+    `cgt_residential_split`, keep their parent's key, area, ladder, local
+    authority, BRMA, rural fuel duty relief flag, council tax and rebate.
 
 A clone's draw keys on its geography key, on the stage's own stream
 (`uk-spine-atomic-area-v1`, seed 0), and its level depends only on its own

@@ -11029,6 +11029,248 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "copies",
+      "key",
+      "area_draw",
+      "local_authority",
+      "brma",
+      "rfdr",
+      "council_tax",
+      "rewrites"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_high_value_copy_areas"
+      },
+      "copies": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "branch",
+        "paths_require"
+       ],
+       "properties": {
+        "branch": {
+         "type": "string"
+        },
+        "paths_require": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "key": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "column",
+        "source",
+        "vintage_resource"
+       ],
+       "properties": {
+        "column": {
+         "type": "string"
+        },
+        "source": {
+         "type": "string"
+        },
+        "vintage_resource": {
+         "type": "string"
+        }
+       }
+      },
+      "area_draw": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "definition_of",
+        "levels",
+        "draw_inputs",
+        "stream",
+        "seed"
+       ],
+       "properties": {
+        "definition_of": {
+         "type": "string"
+        },
+        "levels": {
+         "type": "array",
+         "minItems": 1,
+         "uniqueItems": true,
+         "items": {
+          "type": "string"
+         }
+        },
+        "draw_inputs": {
+         "type": "string"
+        },
+        "stream": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer",
+         "minimum": 0
+        }
+       }
+      },
+      "local_authority": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        }
+       }
+      },
+      "brma": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage",
+        "engine_households",
+        "engine_simulations",
+        "count_resource",
+        "count_table_systems",
+        "cell_columns",
+        "assignment_grain",
+        "collapse_to",
+        "collapse_method",
+        "seed",
+        "salts"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        },
+        "engine_households": {
+         "type": "string"
+        },
+        "engine_simulations": {
+         "type": "string"
+        },
+        "count_resource": {
+         "type": "string"
+        },
+        "count_table_systems": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "cell_columns": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        },
+        "assignment_grain": {
+         "type": "string"
+        },
+        "collapse_to": {
+         "type": "string"
+        },
+        "collapse_method": {
+         "type": "string"
+        },
+        "seed": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "salts": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "rfdr": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "as_stage",
+        "require_flagged"
+       ],
+       "properties": {
+        "as_stage": {
+         "type": "string"
+        },
+        "require_flagged": {
+         "type": "boolean"
+        }
+       }
+      },
+      "council_tax": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "authority_column",
+        "band_d_resources",
+        "band_d_year",
+        "scaled_columns",
+        "rule",
+        "excluded_regions"
+       ],
+       "properties": {
+        "authority_column": {
+         "type": "string"
+        },
+        "band_d_resources": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "band_d_year": {
+         "type": "string"
+        },
+        "scaled_columns": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         }
+        },
+        "rule": {
+         "type": "string"
+        },
+        "excluded_regions": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "rewrites": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "tenure_type",
       "excluded_regions",
       "identity",

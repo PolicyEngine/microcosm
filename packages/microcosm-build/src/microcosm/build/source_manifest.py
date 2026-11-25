@@ -90,13 +90,14 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "expand_geographic_clones",
         "key_households_by_clone_path",
         # microcosm#931: each clone's atomic area, its local authority, BRMA
-        # and fuel-relief flag, the SPI copies' own areas, and private rents
-        # read off the drawn area's BRMA.
+        # and fuel-relief flag, the SPI copies' and the high-value support
+        # copies' own areas, and private rents read off the drawn area's BRMA.
         "assign_atomic_area",
         "resolve_local_authority",
         "assign_area_brma",
         "assign_rfdr_flags",
         "assign_spi_copy_areas",
+        "assign_high_value_copy_areas",
         "localise_private_rents",
         # microcosm#931: England and Wales main residences read off each
         # owner's constituency inside the WAS chain.

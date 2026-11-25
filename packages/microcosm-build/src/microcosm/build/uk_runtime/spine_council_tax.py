@@ -206,12 +206,15 @@ __all__ = [
     "UKCouncilTaxLocaliseResult",
     "UKCouncilTaxLocaliseStageTransform",
     "UKCouncilTaxReferences",
+    "UKCouncilTaxRelocalisation",
     "UKSpineCouncilTax",
     "council_tax_localise_operation_parameters",
     "localise_uk_council_tax",
     "localise_uk_spine_council_tax",
+    "relocalise_uk_council_tax",
     "uk_council_tax_band_ratio_text",
     "uk_council_tax_references",
+    "uk_scotland_band_d_verification",
 ]
 
 #: The stage's name, as the geography-first roster leaf states it.
@@ -1030,6 +1033,132 @@ def localise_uk_council_tax(
         capped=capped,
         references=references,
     )
+
+
+@dataclass(frozen=True)
+class UKCouncilTaxRelocalisation:
+    """The rescaled columns of the copies placed in another authority after
+    G6, on their tables' indexes and in their row order, float64, and which
+    household rows moved authority. Nothing here prints in the repr."""
+
+    council_tax: pd.Series = field(repr=False)
+    council_tax_rebate: pd.Series = field(repr=False)
+    council_tax_benefit_reported: pd.Series = field(repr=False)
+    moved: np.ndarray = field(repr=False)
+
+
+def relocalise_uk_council_tax(
+    household: pd.DataFrame,
+    person: pd.DataFrame,
+    *,
+    rows: np.ndarray,
+    authorities_before: Sequence[object],
+    band_d: UKCouncilTaxBandD,
+) -> UKCouncilTaxRelocalisation:
+    """G6's localisation carried to copies placed in another authority after it.
+
+    ``rows`` marks the household rows a later stage placed again, in
+    ``household``'s row order, and ``authorities_before`` gives every row's
+    ``local_authority_code`` before that stage placed it. On each Great
+    Britain row of ``rows`` whose authority changed, the bill, the rebate and
+    each of its persons' reported reductions are multiplied by the new
+    authority's 2024-25 Band D over the former one's: one correctly rounded
+    product of exact rationals, each float64 taken exactly. A copy placed
+    again keeps its parent's draw inputs and so its draw cell, and G6 gives a
+    household of one cell every amount in proportion to its authority's Band
+    D (the ratio paths scale by it, the statute's bill is a multiple of it
+    and each cap is the bill), so the product is G6's amount at the new
+    authority, to rounding (microcosm#931). Every other row, Northern
+    Ireland's among them, which G6 leaves as they are, keeps its values bit
+    for bit, and so do the persons of every other household.
+
+    Refused, naming columns only: a missing column; a bill, rebate or
+    reduction that is not float64, or not finite and nonnegative on every
+    row; a person whose household is absent; ``rows`` or
+    ``authorities_before`` not aligned to ``household``; a moved row without
+    an authority before or after; and an authority without a 2024-25 Band D.
+    """
+
+    if not isinstance(band_d, UKCouncilTaxBandD):
+        raise TypeError(f"{_WHAT} prices bills at a UKCouncilTaxBandD.")
+    _require_columns(
+        household,
+        (
+            _HOUSEHOLD_ID_COLUMN,
+            REGION_COLUMN,
+            UK_LOCAL_AUTHORITY_CODE_COLUMN,
+            *UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES,
+        ),
+        "household",
+    )
+    _require_columns(person, (_PERSON_HOUSEHOLD_COLUMN, _REDUCTION_COLUMN), "person")
+    bill = _amounts(household, _BILL_COLUMN, "household")
+    rebate = _amounts(household, _REBATE_COLUMN, "household")
+    members = _members(household, person)
+    placed = np.asarray(rows, dtype=bool)
+    before = np.asarray(list(authorities_before), dtype=object)
+    if placed.shape != (len(household),) or before.shape != (len(household),):
+        raise ValueError(
+            f"{_WHAT} rescales the households placed again row by row; the rows "
+            "and the authorities before must align to the household table."
+        )
+    candidates = np.flatnonzero(placed & _great_britain(household))
+    after = _codes(household, UK_LOCAL_AUTHORITY_CODE_COLUMN, candidates)
+    previous = _texts(before[candidates])
+    if any(code is None or not code for code in previous):
+        raise ValueError(
+            f"{_WHAT} rescales a household placed again from the "
+            f"{UK_LOCAL_AUTHORITY_CODE_COLUMN!r} it held before; some such "
+            "household held none."
+        )
+    values = band_d.band_d
+    if not all(code in values for code in (*previous, *after)):
+        raise ValueError(
+            f"{_WHAT} rescales each Great Britain household placed again by its "
+            f"authorities' {UK_BAND_D_FISCAL_YEAR} Band D; some household's "
+            f"{UK_LOCAL_AUTHORITY_CODE_COLUMN!r}, before or after, has none."
+        )
+    moved = np.zeros(len(household), dtype=bool)
+    factor_of_row: dict[int, Fraction] = {}
+    factors: dict[tuple[str, str], Fraction] = {}
+    for row, old, new in zip(candidates.tolist(), previous, after, strict=True):
+        if old == new:
+            continue
+        key = (str(old), str(new))
+        if key not in factors:
+            factors[key] = values[key[1]] / values[key[0]]
+        factor_of_row[row] = factors[key]
+        moved[row] = True
+    new_bill = bill.copy()
+    new_rebate = rebate.copy()
+    for row, factor in factor_of_row.items():
+        new_bill[row] = float(Fraction(float(bill[row])) * factor)
+        new_rebate[row] = float(Fraction(float(rebate[row])) * factor)
+    reduction = members.reduction
+    new_reduction = reduction.copy()
+    for position in np.flatnonzero(moved[members.owner]).tolist():
+        factor = factor_of_row[int(members.owner[position])]
+        new_reduction[position] = float(Fraction(float(reduction[position])) * factor)
+    return UKCouncilTaxRelocalisation(
+        council_tax=pd.Series(new_bill, index=household.index, name=_BILL_COLUMN),
+        council_tax_rebate=pd.Series(
+            new_rebate, index=household.index, name=_REBATE_COLUMN
+        ),
+        council_tax_benefit_reported=pd.Series(
+            new_reduction, index=person.index, name=_REDUCTION_COLUMN
+        ),
+        moved=moved,
+    )
+
+
+def uk_scotland_band_d_verification() -> tuple[str, dict[str, object]]:
+    """The Scottish Band D resource's feed check, as G6 declares it first: a
+    stage that prices council tax at that resource declares it too."""
+
+    kind, parameters = council_tax_localise_operation_parameters()[0]
+    if kind != _VERIFY_VENDORED_FACT_RESOURCE_KIND:
+        raise RuntimeError(f"{_WHAT} declares the Scottish feed check first.")
+    return kind, dict(parameters)
 
 
 def _bitwise_equal(left: np.ndarray, right: np.ndarray) -> bool:

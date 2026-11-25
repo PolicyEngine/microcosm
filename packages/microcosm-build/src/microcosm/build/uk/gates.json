@@ -743,7 +743,7 @@
         "copies": 6,
         "maximum_relative_mass_deviation": 1e-09
       },
-      "notes": "Stage-time gate over the high-value home support receipt (microcosm#1240 fix 1). Total household mass is conserved to the declared deviation; the receipt restates the ruled stratum (owner households at or above the 0.95 weighted rank of main_residence_value within their region) and copy count (6); every region with owner households selects at least one; copies created equal five per selected household. Since microcosm#931 the stratum ranks the values was_wealth reads off each England and Wales owner's constituency, which the regional property uprating returns to their knots, and every copy keeps its parent's value, area and geography key (uk_copy_area_agreement checks the area and the key). The stage assigns no value, and its one draw only orders owners tied on value, so it holds no distributional threshold."
+      "notes": "Stage-time gate over the high-value home support receipt (microcosm#1240 fix 1). Total household mass is conserved to the declared deviation; the receipt restates the ruled stratum (owner households at or above the 0.95 weighted rank of main_residence_value within their region) and copy count (6); every region with owner households selects at least one; copies created equal five per selected household. Since microcosm#931 the stratum ranks the values was_wealth reads off each England and Wales owner's constituency, which the regional property uprating returns to their knots; every copy keeps its parent's value and draws a key and an area of its own at its parent's level, with its council tax rescaled to its new authority (María's ruling of 2026-11-25), and uk_copy_area_agreement holds it to its parent's region and clone index. The stage assigns no value, and its split's one draw only orders owners tied on value, so it holds no distributional threshold."
     },
     {
       "id": "uk_stage_cgt_support_split_mass",
@@ -985,26 +985,7 @@
           ],
           "high_value_support": [
             "region",
-            "household_clone_index",
-            "geography_household_key",
-            "atomic_area_code",
-            "atomic_area_system",
-            "atomic_area_basis",
-            "oa_code",
-            "lsoa_code",
-            "msoa_code",
-            "local_authority_code",
-            "ward_code",
-            "constituency_code",
-            "region_code",
-            "itl3_code",
-            "itl2_code",
-            "itl1_code",
-            "local_authority",
-            "brma",
-            "in_rural_fuel_duty_relief_area",
-            "council_tax",
-            "council_tax_rebate"
+            "household_clone_index"
           ],
           "cgt_support_split": [
             "region",
@@ -1077,7 +1058,7 @@
           ]
         }
       },
-      "notes": "Every copy the spine makes after spi_copy_areas equals its immediate parent, the household its id names with the copy layer's copy-id field cleared (copy_id_table.parent), on the columns spi_copy_areas rewrites (the geography key, the area and ladder, local_authority, brma and the Rural Fuel Duty Relief flag) and on region and household_clone_index (C-11, C-20, microcosm#931): the high-value support, CGT support split, CGT incidence clone and CGT residential split copies. The SPI support channel's copies and income band donors draw areas of their own, so they are held on region and household_clone_index alone. The check reads the transferred frame; it is declared on cgt_residential_split, the last copy layer, whose receipt the gate requires. Its details are booleans by layer and column, and its texts name the layer and column, never an id, a count or a value."
+      "notes": "Every copy the spine makes after high_value_home_support equals its immediate parent, the household its id names with the copy layer's copy-id field cleared (copy_id_table.parent), on the columns spi_copy_areas rewrites (the geography key, the area and ladder, local_authority, brma and the Rural Fuel Duty Relief flag), on council_tax and council_tax_rebate, and on region and household_clone_index (C-11, C-20, microcosm#931): the CGT support split, CGT incidence clone and CGT residential split copies. The SPI support channel's copies and income band donors, and the high-value support copies (María's ruling of 2026-11-25), draw areas of their own, so they are held on region and household_clone_index alone. The check reads the transferred frame; it is declared on cgt_residential_split, the last copy layer, whose receipt the gate requires. Its details are booleans by layer and column, and its texts name the layer and column, never an id, a count or a value."
     },
     {
       "id": "uk_council_tax_reduction_within_bill",
@@ -1100,7 +1081,7 @@
         ],
         "absolute_tolerance": 1e-09
       },
-      "notes": "Outside excluded_regions, each household's council_tax_rebate, and its persons' council_tax_benefit_reported summed, must be at most its council_tax plus absolute_tolerance, with every value read finite and non-negative. council_tax_localise is the last spine stage that writes these columns."
+      "notes": "Outside excluded_regions, each household's council_tax_rebate, and its persons' council_tax_benefit_reported summed, must be at most its council_tax plus absolute_tolerance, with every value read finite and non-negative. council_tax_localise writes these columns, and high_value_home_support, the last spine stage that writes them, rescales its copies' to their new authority."
     },
     {
       "id": "uk_stage_property_purchases_fit",

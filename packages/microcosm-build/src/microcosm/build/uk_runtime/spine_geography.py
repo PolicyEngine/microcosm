@@ -56,6 +56,13 @@ clone's area as its household's:
   clone: the ruling rests on ``LHA_category`` reading only a household's own
   bedroom entitlement and shared-rate status. Every other row is left as it
   was.
+- **The high-value support copies** (:func:`assign_uk_high_value_copy_areas`),
+  which ``high_value_home_support`` places once it makes them, as another
+  clone of the household would be placed (María's ruling of 2026-11-25): a
+  key over the copy's own path, an area drawn with G2's definition from its
+  own draw inputs, which are its parent's, so at its parent's level, then
+  G3's local authority, G4's BRMA and G5's flag. The SPI-copy area stage and
+  this placement share :func:`place_uk_copies`.
 
 G2, G3 and G5 compute with keyed integer draws, exact integer sampling
 masses and string lookups, so each is bitwise, the class of every spine stage
@@ -183,6 +190,7 @@ from microcosm.build.uk_runtime.geography_first_roster import (
 from microcosm.build.uk_runtime.geography_sources import LAD23_NAMES_SHA256
 from microcosm.build.uk_runtime.household_lineage import (
     GEOGRAPHIC_SUPPORT_BRANCH,
+    HIGH_VALUE_SUPPORT_INDEX_COLUMN,
     UK_COPY_LINEAGE,
 )
 from microcosm.build.uk_runtime.local_authority_input import (
@@ -228,6 +236,8 @@ __all__ = [
     "BRMA_COUNT_ARTIFACT_ROLE",
     "BRMA_LAYER_ARTIFACT_ROLE",
     "BRMA_LAYER_RESOURCE",
+    "HIGH_VALUE_COPY_AREAS_OPERATION_KIND",
+    "HIGH_VALUE_SUPPORT_BRANCH",
     "LOCAL_AUTHORITY_ARTIFACT_ROLE",
     "LOCAL_AUTHORITY_OPERATION_KIND",
     "LOCAL_AUTHORITY_STAGE_NAME",
@@ -239,6 +249,7 @@ __all__ = [
     "SPI_COPY_AREAS_STAGE_NAME",
     "UK_AREA_BRMA_OUTPUT_COLUMNS",
     "UK_ATOMIC_AREA_ASSIGN_OUTPUT_COLUMNS",
+    "UK_HIGH_VALUE_COPY_AREAS_REWRITE_COLUMNS",
     "UK_LOCAL_AUTHORITY_OUTPUT_COLUMNS",
     "UK_RFDR_OUTPUT_COLUMNS",
     "UK_SPI_COPY_AREAS_REWRITE_COLUMNS",
@@ -246,6 +257,7 @@ __all__ = [
     "UKAreaBRMAStageTransform",
     "UKAtomicAreaAssignResult",
     "UKAtomicAreaAssignStageTransform",
+    "UKHighValueCopyAreasResult",
     "UKLocalAuthorityResult",
     "UKLocalAuthorityStageTransform",
     "UKRFDRResult",
@@ -254,20 +266,26 @@ __all__ = [
     "UKSPICopyAreasStageTransform",
     "UKSpineAreaDraw",
     "area_brma_operation_parameters",
+    "assign_uk_high_value_copy_areas",
     "assign_uk_spi_copy_areas",
     "assign_uk_spine_areas",
     "assign_uk_spine_brmas",
     "atomic_area_assign_operation_parameters",
     "draw_uk_spine_areas",
     "flag_uk_spine_rfdr",
+    "high_value_copy_area_parameters",
     "load_committed_brma_counts",
     "load_committed_brma_layer",
     "load_committed_rfdr_layer",
     "local_authority_operation_parameters",
+    "place_uk_copies",
     "resolve_uk_spine_local_authorities",
     "rfdr_operation_parameters",
     "spi_copy_areas_operation_parameters",
     "uk_area_brmas",
+    "uk_copy_area_artifacts",
+    "uk_copy_area_predictor_operation",
+    "uk_high_value_copy_keys",
     "uk_local_authorities",
     "uk_rfdr_flags",
     "uk_spi_copy_keys",
@@ -1476,9 +1494,9 @@ _CHECKS_NOT_RUN = "not_run"
 #: The mass record on the engine call's scratch frame, which holds the copies'
 #: households alone and is discarded once ``LHA_category`` is read.
 _SCRATCH_MASS_REASON = (
-    "spi_copy_areas engine call: a scratch subset of the frame holding the "
-    "Northern Ireland SPI-channel copies' households, read for LHA_category "
-    "only and discarded"
+    "copy-area engine call: a scratch subset of the frame holding the "
+    "Northern Ireland copies' households, read for LHA_category only and "
+    "discarded"
 )
 
 
@@ -1656,7 +1674,7 @@ def uk_spi_copy_keys(
 
 
 def _rewrite(
-    column: pd.Series, rows: np.ndarray, values: Sequence[object]
+    column: pd.Series, rows: np.ndarray, values: Sequence[object], *, what: str
 ) -> pd.Series:
     """``column`` with ``values`` at ``rows``, in the column's own dtype."""
 
@@ -1665,7 +1683,7 @@ def _rewrite(
     rewritten = pd.Series(data, index=column.index, dtype=column.dtype)
     if rewritten.dtype != column.dtype:
         raise ValueError(
-            f"The SPI-copy area stage keeps {column.name!r} in its dtype "
+            f"{what} keeps {column.name!r} in its dtype "
             f"{column.dtype}; the rewrite gave {rewritten.dtype}."
         )
     return rewritten
@@ -1871,6 +1889,90 @@ def _definition_sha256(definition: Mapping[str, object]) -> str:
     ).hexdigest()
 
 
+def place_uk_copies(
+    frame: Frame,
+    copies: np.ndarray,
+    keys: Sequence[str],
+    *,
+    levels: tuple[str, ...],
+    level_rule: str,
+    definition: Mapping[str, object],
+    supports: Mapping[str, AtomicSupport],
+    engine: object,
+    brma_layer: BRMAAreaLayer,
+    count_resource: Mapping[str, Any],
+    rfdr_layer: RFDRAreaLayer,
+    what: str,
+) -> pd.DataFrame:
+    """``frame``'s household table with each row at ``copies`` re-keyed and
+    re-placed as the spine places a household.
+
+    In turn: each copy's key from ``keys``, in row order, refused where the
+    keys then repeat; its area, drawn by G2's ``definition`` on a narrow frame
+    of the copies (:func:`draw_uk_spine_areas`), derived and validated, and
+    refused where a copy is drawn at a level outside ``levels``
+    (``level_rule`` says which cells they are); its local authority (G3); its
+    BRMA (G4, :func:`_copy_brmas`); and its fuel-relief flag (G5). Here G4
+    runs before G5, the reverse of their order on the spine; neither reads the
+    other's column. Each rewrite keeps its column's dtype, and every other row
+    and column is the frame's own. The SPI-copy area stage and the high-value
+    home support stage place their copies through it (microcosm#931).
+    """
+
+    household = frame.table("household")
+    rewritten = household.copy()
+    rewritten[IDENTITY_COLUMN] = _rewrite(
+        household[IDENTITY_COLUMN], copies, keys, what=what
+    )
+    if not rewritten[IDENTITY_COLUMN].is_unique:
+        raise ValueError(
+            f"{what} gives every copy a key of its own; the keys repeat, so a "
+            "copy's source and path repeat another household's (microcosm#931)."
+        )
+    if not copies.any():
+        return rewritten
+    draw = draw_uk_spine_areas(
+        rewritten.loc[copies], definition=definition, supports=supports
+    )
+    if not np.isin(np.asarray(draw.levels, dtype=object), levels).all():
+        raise ValueError(
+            f"{what} draws every copy at {' or '.join(levels)}, {level_rule}; the "
+            "draw placed some copies at another level."
+        )
+    for column in UK_SPINE_AREA_COLUMNS:
+        rewritten[column] = _rewrite(
+            household[column],
+            copies,
+            draw.columns[column].to_numpy(dtype=object),
+            what=what,
+        )
+    rewritten[UK_LOCAL_AUTHORITY_INPUT_COLUMN] = _rewrite(
+        household[UK_LOCAL_AUTHORITY_INPUT_COLUMN],
+        copies,
+        uk_local_authorities(draw.columns[UK_LOCAL_AUTHORITY_CODE_COLUMN]).to_numpy(
+            dtype=object
+        ),
+        what=what,
+    )
+    placed = _with_household(frame, rewritten)
+    rewritten[_BRMA_COLUMN] = _rewrite(
+        household[_BRMA_COLUMN],
+        copies,
+        _copy_brmas(
+            placed,
+            copies,
+            engine=engine,
+            layer=brma_layer,
+            count_resource=count_resource,
+            what=what,
+        ),
+        what=what,
+    )
+    flags = uk_rfdr_flags(rewritten.loc[copies], layer=rfdr_layer, supports=supports)
+    rewritten[RFDR_COLUMN] = _rewrite(household[RFDR_COLUMN], copies, flags, what=what)
+    return rewritten
+
+
 def assign_uk_spi_copy_areas(
     frame: Frame,
     *,
@@ -1921,55 +2023,23 @@ def assign_uk_spi_copy_areas(
     _require_columns(household, UK_SPI_COPY_AREAS_REWRITE_COLUMNS, what)
     lineage = _copy_rows(household, what)
     copies = lineage.copies
-    keys = _copy_keys(household, lineage, what)
-    rewritten = household.copy()
-    rewritten[IDENTITY_COLUMN] = _rewrite(household[IDENTITY_COLUMN], copies, keys)
-    if not rewritten[IDENTITY_COLUMN].is_unique:
-        raise ValueError(
-            f"{what} gives every copy a key of its own; the keys repeat, so a "
-            "copy's source and path repeat another household's (microcosm#931)."
-        )
+    rewritten = place_uk_copies(
+        frame,
+        copies,
+        _copy_keys(household, lineage, what),
+        levels=_COPY_LEVELS,
+        level_rule="its region by its drawn band's households or by households",
+        definition=definition,
+        supports=supports,
+        engine=engine,
+        brma_layer=brma_layer,
+        count_resource=count_resource,
+        rfdr_layer=rfdr_layer,
+        what=what,
+    )
     by_kind: dict[str, dict[str, int]] = {}
     flagged_by_system: dict[str, int] = {}
     no_flagged: dict[str, bool] = {}
-    if copies.any():
-        draw = draw_uk_spine_areas(
-            rewritten.loc[copies], definition=definition, supports=supports
-        )
-        if not np.isin(np.asarray(draw.levels, dtype=object), _COPY_LEVELS).all():
-            raise ValueError(
-                f"{what} draws every copy at {' or '.join(_COPY_LEVELS)}, its "
-                "region by its drawn band's households or by households; the "
-                "draw placed some copies at a level that reads a decile."
-            )
-        for column in UK_SPINE_AREA_COLUMNS:
-            rewritten[column] = _rewrite(
-                household[column], copies, draw.columns[column].to_numpy(dtype=object)
-            )
-        rewritten[UK_LOCAL_AUTHORITY_INPUT_COLUMN] = _rewrite(
-            household[UK_LOCAL_AUTHORITY_INPUT_COLUMN],
-            copies,
-            uk_local_authorities(draw.columns[UK_LOCAL_AUTHORITY_CODE_COLUMN]).to_numpy(
-                dtype=object
-            ),
-        )
-        placed = _with_household(frame, rewritten)
-        rewritten[_BRMA_COLUMN] = _rewrite(
-            household[_BRMA_COLUMN],
-            copies,
-            _copy_brmas(
-                placed,
-                copies,
-                engine=engine,
-                layer=brma_layer,
-                count_resource=count_resource,
-                what=what,
-            ),
-        )
-        flags = uk_rfdr_flags(
-            rewritten.loc[copies], layer=rfdr_layer, supports=supports
-        )
-        rewritten[RFDR_COLUMN] = _rewrite(household[RFDR_COLUMN], copies, flags)
     result = _with_household(frame, rewritten)
     sources = record_source_households(
         result, "household", stage=SPI_COPY_AREAS_STAGE_NAME
@@ -2089,3 +2159,285 @@ class UKSPICopyAreasStageTransform:
         if self.last_result is None:
             raise RuntimeError("checkpoint metadata requires a completed stage run.")
         return {"evidence": self.last_result.evidence()}
+
+
+# --- The high-value home support copies' areas -------------------------------------
+
+#: The high-value home support stage's branch of the copy lineage, read off
+#: the lineage by its index column, so that the two cannot drift.
+HIGH_VALUE_SUPPORT_BRANCH = next(
+    branch.name
+    for branch in UK_COPY_LINEAGE.branches
+    if branch.index == HIGH_VALUE_SUPPORT_INDEX_COLUMN
+)
+HIGH_VALUE_COPY_AREAS_OPERATION_KIND = "assign_high_value_copy_areas"
+#: The columns the high-value home support stage rewrites on its copies to
+#: place them: the SPI-copy area stage's, the geography key, G2's three
+#: assignment and ten ladder columns, G3's local authority, G4's BRMA and
+#: G5's flag (microcosm#931).
+UK_HIGH_VALUE_COPY_AREAS_REWRITE_COLUMNS = UK_SPI_COPY_AREAS_REWRITE_COLUMNS
+#: Every level of G2's ladder. A copy keeps every draw input of its parent,
+#: so it draws at its parent's level, as another clone of its household
+#: would (María's ruling of 2026-11-25).
+_HIGH_VALUE_COPY_LEVELS = tuple(level.name for level in UK_ATOMIC_FALLBACK_LEVELS)
+#: The branches a high-value copy's path may take at its stage's place: the
+#: support channel's, its own and the geographic clones'.
+_HIGH_VALUE_STAGE_BRANCHES = (
+    SUPPORT_CHANNEL_BRANCH,
+    HIGH_VALUE_SUPPORT_BRANCH,
+    GEOGRAPHIC_SUPPORT_BRANCH,
+)
+
+
+def uk_copy_area_predictor_operation() -> tuple[str, dict[str, object]]:
+    """The engine predictor a copy placement consumes: ``LHA_category``, which
+    Northern Ireland's copies read to draw their BRMA (C-9)."""
+
+    return (
+        _PREDICTORS_OPERATION_KIND,
+        {"predictors": list(UK_BRMA_PREDICTORS), "consumed_only": True},
+    )
+
+
+def uk_copy_area_artifacts() -> tuple[tuple[str, str], ...]:
+    """The artifacts a copy placement reads, by (role, resource): the FRS
+    release (G1b's vintage), the names roster (G3), the BRMA layer and counts
+    (G4) and the RFDR layer (G5)."""
+
+    return _spi_copy_areas_artifacts()
+
+
+def high_value_copy_area_parameters() -> dict[str, object]:
+    """The reviewed placement of the high-value home support stage's copies,
+    as its ``assign_high_value_copy_areas`` operation declares it.
+
+    Which rows it re-places (the copies the stage's own branch makes, read on
+    the support, high-value and geographic branches), the key it gives them,
+    the area draw (G2's definition, at the level each copy's draw inputs give
+    it, which are its parent's, with G2's stream and seed) and the stages
+    whose lookups it re-runs (G3, G4 with Northern Ireland's count-table
+    draw, seed and salts, and G5), as the SPI-copy area stage declares its
+    own (microcosm#931).
+    """
+
+    return {
+        "copies": {
+            "branch": HIGH_VALUE_SUPPORT_BRANCH,
+            "paths_require": list(_HIGH_VALUE_STAGE_BRANCHES),
+        },
+        "key": {
+            "column": IDENTITY_COLUMN,
+            "source": GEOGRAPHIC_IDENTITY_SOURCE,
+            "vintage_resource": FRS_RELEASE_RESOURCE,
+        },
+        "area_draw": {
+            "definition_of": ATOMIC_AREA_ASSIGN_STAGE_NAME,
+            "levels": list(_HIGH_VALUE_COPY_LEVELS),
+            "draw_inputs": "parent",
+            "stream": UK_SPINE_ATOMIC_AREA_STREAM,
+            "seed": UK_SPINE_ATOMIC_AREA_SEED,
+        },
+        "local_authority": {"as_stage": LOCAL_AUTHORITY_STAGE_NAME},
+        "brma": {
+            "as_stage": AREA_BRMA_STAGE_NAME,
+            "engine_households": _ENGINE_HOUSEHOLDS,
+            "engine_simulations": _ENGINE_SIMULATIONS,
+            **_brma_draw_parameters(),
+        },
+        "rfdr": {"as_stage": RFDR_STAGE_NAME, "require_flagged": False},
+    }
+
+
+def _high_value_copy_rows(household: pd.DataFrame, what: str) -> _CopyRows:
+    """The rows the high-value home support stage copied, through the shared
+    reader with the support, high-value and geographic branches required."""
+
+    sources, paths = copy_paths(
+        household, UK_COPY_LINEAGE, require=_HIGH_VALUE_STAGE_BRANCHES
+    )
+    if any(
+        step not in _HIGH_VALUE_STAGE_BRANCHES for path in paths for step, _ in path
+    ):
+        raise ValueError(
+            f"{what} places its copies right after it makes them, before any "
+            "later copy step; a household's path takes a branch other than "
+            f"{list(_HIGH_VALUE_STAGE_BRANCHES)}."
+        )
+    ordinals = np.asarray(
+        [dict(path).get(HIGH_VALUE_SUPPORT_BRANCH, 0) for path in paths],
+        dtype=np.int64,
+    )
+    return _CopyRows(
+        sources=sources, paths=paths, copies=ordinals != 0, ordinals=ordinals
+    )
+
+
+def uk_high_value_copy_keys(
+    household: pd.DataFrame, *, what: str = "The high-value home support stage"
+) -> tuple[np.ndarray, list[str]]:
+    """Which rows the high-value home support stage copied, and each one's
+    own key.
+
+    A copy's key is ``household_draw_key`` over the geography identity's
+    source, the FRS vintage frs_release.json pins for its ``source_year``,
+    its true source and its copy path read on the support, high-value and
+    geographic branches, as the SPI-copy area stage keys its copies
+    (:func:`uk_spi_copy_keys`). So clone 0's copies keep their keys as K
+    grows, and a copy's key differs from its parent's, whose path has no
+    high-value step. Returns the copy mask and the copies' keys, in row
+    order.
+
+    Refused, by name: a frame without one of the three branches' columns,
+    malformed lineage, a path taking a later branch, a non-integer
+    ``source_year`` and a year the release pins no vintage for.
+    """
+
+    rows = _high_value_copy_rows(household, what)
+    return rows.copies, _copy_keys(household, rows, what)
+
+
+@dataclass(frozen=True)
+class UKHighValueCopyAreasResult:
+    """The high-value copies' placement and what its evidence reads of it,
+    counted among clone-0 rows. The source counts are exact and print only
+    rounded, every system withheld where one rests on one or two
+    (:func:`_copy_sources_by_system`)."""
+
+    frame: Frame = field(repr=False)
+    #: The rows the stage's copies hold, in the household table's row order.
+    copies: np.ndarray = field(repr=False)
+    clone_count: int
+    seed: int
+    stream: tuple[object, ...]
+    definition_sha256: str
+    support_sha256: Mapping[str, str]
+    brma_layer_sha256: str
+    brma_method: str
+    count_resource_sha256: str
+    rfdr_layer_sha256: str
+    rfdr_method: str
+    by_system: Mapping[str, int] = field(repr=False)
+    #: "pass" where copies were drawn, "not_run" for a frame without one.
+    checks: str
+
+    def evidence(self) -> dict[str, object]:
+        draw = _brma_draw_parameters()
+        return {
+            "clone_count": int(self.clone_count),
+            "counted_among": "clone_0",
+            "copy_source_households": _copy_sources_by_system(self.by_system),
+            "levels": list(_HIGH_VALUE_COPY_LEVELS),
+            "seed": int(self.seed),
+            "stream": list(self.stream),
+            "definition_sha256": self.definition_sha256,
+            "support_sha256": dict(self.support_sha256),
+            "validation": {
+                "outcome": self.checks,
+                "scope": ATOMIC_GEOGRAPHY_VALIDATION_SCOPE,
+            },
+            "local_authority_vintage": UK_LOCAL_AUTHORITY_VINTAGE,
+            "names_source_sha256": LAD23_NAMES_SHA256,
+            "brma": {
+                "layer_sha256": self.brma_layer_sha256,
+                "method": self.brma_method,
+                "count_resource_sha256": self.count_resource_sha256,
+                "engine_households": _ENGINE_HOUSEHOLDS,
+                "engine_simulations": _ENGINE_SIMULATIONS,
+                "seed": draw["seed"],
+                "salts": draw["salts"],
+            },
+            "rfdr": {
+                "roster": self.checks,
+                "require_flagged": False,
+                "layer_sha256": self.rfdr_layer_sha256,
+                "method": self.rfdr_method,
+            },
+            "rewrites": list(UK_HIGH_VALUE_COPY_AREAS_REWRITE_COLUMNS),
+        }
+
+
+def assign_uk_high_value_copy_areas(
+    frame: Frame,
+    *,
+    stage: str,
+    definition: Mapping[str, object],
+    supports: Mapping[str, AtomicSupport],
+    engine: object,
+    brma_layer: BRMAAreaLayer,
+    brma_layer_sha256: str,
+    count_resource: Mapping[str, Any],
+    count_resource_sha256: str,
+    rfdr_layer: RFDRAreaLayer,
+    rfdr_layer_sha256: str,
+) -> UKHighValueCopyAreasResult:
+    """``frame`` with every high-value support copy re-keyed and re-placed.
+
+    On the rows the high-value home support stage (``stage``) copied
+    (:func:`uk_high_value_copy_keys`), through :func:`place_uk_copies`: each
+    copy's own geography key; its area, drawn by G2's ``definition`` from its
+    own draw inputs, which are its parent's, so at its parent's level, as
+    another clone of its household would be (María's ruling of 2026-11-25);
+    its local authority (G3); its BRMA (G4, Northern Ireland's copies drawn
+    on their own benefit units after one engine call, a single simulation,
+    over their households alone); and its fuel-relief flag (G5). Its value
+    and every other column stay its parent's, and every other row is left as
+    it was. The evidence counts, among clone-0 rows, the distinct source
+    households copied, by system; on a frame without a copy it says the
+    validation and the roster check did not run.
+
+    Refused, naming columns and declared constants only: a frame without a
+    column the placement rewrites or reads, every refusal of
+    :func:`uk_high_value_copy_keys`, repeated keys, engine values not aligned
+    to the Northern Ireland copies' benefit units or a scratch frame without
+    one of their households, and every refusal of
+    :func:`draw_uk_spine_areas`, :func:`uk_local_authorities`,
+    :func:`uk_area_brmas` and :func:`uk_rfdr_flags`.
+    """
+
+    what = "The high-value home support stage"
+    if not isinstance(frame, Frame):
+        raise TypeError(f"{what} places the copies of a Frame.")
+    validate_uk_national_frame(frame)
+    household = frame.table("household")
+    _require_columns(household, UK_HIGH_VALUE_COPY_AREAS_REWRITE_COLUMNS, what)
+    lineage = _high_value_copy_rows(household, what)
+    copies = lineage.copies
+    rewritten = place_uk_copies(
+        frame,
+        copies,
+        _copy_keys(household, lineage, what),
+        levels=_HIGH_VALUE_COPY_LEVELS,
+        level_rule="the level its parent's draw inputs give it",
+        definition=definition,
+        supports=supports,
+        engine=engine,
+        brma_layer=brma_layer,
+        count_resource=count_resource,
+        rfdr_layer=rfdr_layer,
+        what=what,
+    )
+    result = _with_household(frame, rewritten)
+    sources = record_source_households(result, "household", stage=stage)
+    zero_copies = _clone_zero(household) & copies
+    systems = rewritten[ASSIGNMENT_COLUMNS[1]].to_numpy(dtype=object)
+    stream = tuple(validate_assignment_spec(definition)["stream"])
+    return UKHighValueCopyAreasResult(
+        frame=result,
+        copies=copies,
+        clone_count=geographic_clone_count(household),
+        seed=int(stream[3]),
+        stream=stream,
+        definition_sha256=_definition_sha256(definition),
+        support_sha256=MappingProxyType(
+            {system: supports[system].sha256 for system in sorted(supports)}
+        ),
+        brma_layer_sha256=brma_layer_sha256,
+        brma_method=brma_layer.method,
+        count_resource_sha256=count_resource_sha256,
+        rfdr_layer_sha256=rfdr_layer_sha256,
+        rfdr_method=rfdr_layer.method,
+        by_system=MappingProxyType(
+            _sources_by(sources[zero_copies], systems[zero_copies], SYSTEMS)
+        ),
+        checks=_CHECKS_PASSED if copies.any() else _CHECKS_NOT_RUN,
+    )

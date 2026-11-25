@@ -3900,9 +3900,44 @@ stages:
   notes: 'Deterministically rescales owner rows by each region''s factor: its public house-price reference over the unweighted mean of main_residence_value_rank_basis, the WAS chain''s draw of the main residence, among its FRS-base owners in geographic clone 0, so a frame of K clones keeps the one-clone factor. was_wealth keeps that draw beside the values it reads off each England and Wales owner''s constituency, which it divides by the same factor, so the uprating returns those values to the constituency''s knots (microcosm#931); Scotland''s owners hold the draw itself, so the region''s unweighted owner mean matches the reference as before. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor has always scaled the property total; since microcosm#1063 it scales the total''s other components in the frame as well (land, other houses, buildings), so an owner''s property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.'
 - stage: high_value_home_support
   survey: Family Resources Survey 2024-25 and SPI synthetic support, after the WAS wealth draw and the regional property uprating
-  source: Microcosm structural operator (microcosm#1240 fix 1); no publisher input
+  source: 'Microcosm structural operator (microcosm#1240 fix 1), then atomic_area_assign''s draw and the local_authority, area_brma and rfdr lookups re-run on its copies, with their council tax at the 2024-25 Band D council_tax_localise prices at (microcosm#931)'
   grain: household
-  artifacts: []
+  artifacts:
+  - role: frs_release
+    kind: public_aggregate_reference
+    resource: frs_release.json
+    format: json
+    runtime_sha256_required: true
+  - role: local_authority_names
+    kind: public_aggregate_reference
+    resource: local_authority_names.json
+    format: json
+    runtime_sha256_required: true
+  - role: brma_area_layer
+    kind: public_aggregate_reference
+    resource: brma_area_layer.json
+    format: json
+    runtime_sha256_required: true
+  - role: count_resource
+    kind: public_aggregate_reference
+    resource: brma_private_rented_households.json
+    format: json
+    runtime_sha256_required: true
+  - role: rfdr_area_layer
+    kind: public_aggregate_reference
+    resource: rfdr_area_layer.json
+    format: json
+    runtime_sha256_required: true
+  - role: council_tax_band_d
+    kind: public_aggregate_reference
+    resource: council_tax_band_d_england_wales_2024_25.json
+    format: json
+    runtime_sha256_required: true
+  - role: scotland_band_d_facts
+    kind: public_aggregate_reference
+    resource: scotgov_band_d_council_tax_2024_25.json
+    format: json
+    runtime_sha256_required: true
   operations:
   - kind: split_top_value_owner_households
     stratum_lower: 0.95
@@ -3915,17 +3950,132 @@ stages:
     flag_column: household_is_high_value_support_copy
     copies_column: high_value_support_copies
     copy_index_column: high_value_support_copy_index
-    values: every column copied unchanged; the stratum's tie-break is the stage's only draw
+    values: every column copied unchanged, then each copy placed and its council tax rescaled by assign_high_value_copy_areas; its value and every other column stay its parent's
     weight_kind_out: importance
     conservation: exact_total
     declared_factor: 1.0
     reason: High-value home support divides every owner household in the top value stratum of its region into light copies at equal weight; every household's mass and the total household mass are conserved.
+  - kind: verify_vendored_fact_resource
+    artifact_role: scotland_band_d_facts
+    resource: scotgov_band_d_council_tax_2024_25.json
+    feed_pin: chronicle_feed.json
+    record_sets:
+    - scotgov.ctas2026.band_d.fy2024
+    source_vintage: 2024-25 (ScotGov CTAS 2026)
+    mapped_build_period: 2024
+    period_mapping: fiscal_year_2024_25_is_the_build_period
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - LHA_category
+    consumed_only: true
+  - kind: assign_high_value_copy_areas
+    copies:
+      branch: high_value_support
+      paths_require:
+      - spi_support_channel
+      - high_value_support
+      - geographic_support
+    key:
+      column: geography_household_key
+      source: frs
+      vintage_resource: frs_release.json
+    area_draw:
+      definition_of: atomic_area_assign
+      levels:
+      - L0
+      - L1
+      - L2
+      - L3
+      draw_inputs: parent
+      stream: uk-spine-atomic-area-v1
+      seed: 0
+    local_authority:
+      as_stage: local_authority
+    brma:
+      as_stage: area_brma
+      engine_households: northern_ireland_copies
+      engine_simulations: one
+      count_resource: brma_private_rented_households.json
+      count_table_systems:
+      - uk_ni_data_zone_2021
+      cell_columns:
+      - region
+      - LHA_category
+      assignment_grain: benunit
+      collapse_to: household
+      collapse_method: uniform_member_pick
+      seed: 0
+      salts:
+        benunit: brma
+        household_pick: brma:household_pick
+    rfdr:
+      as_stage: rfdr
+      require_flagged: false
+    council_tax:
+      authority_column: local_authority_code
+      band_d_resources:
+        england_wales: council_tax_band_d_england_wales_2024_25.json
+        scotland: scotgov_band_d_council_tax_2024_25.json
+      band_d_year: 2024-25
+      scaled_columns:
+        household:
+        - council_tax
+        - council_tax_rebate
+        person:
+        - council_tax_benefit_reported
+      rule: 'on each copy whose local_authority_code changed, every scaled column times the new authority''s Band D over the former one''s, one correctly rounded product of exact rationals: council_tax_localise''s amount at the new authority, since the copy keeps its parent''s draw cell'
+      excluded_regions:
+      - NORTHERN_IRELAND
+    rewrites:
+    - geography_household_key
+    - atomic_area_code
+    - atomic_area_system
+    - atomic_area_basis
+    - oa_code
+    - lsoa_code
+    - msoa_code
+    - local_authority_code
+    - ward_code
+    - constituency_code
+    - region_code
+    - itl3_code
+    - itl2_code
+    - itl1_code
+    - local_authority
+    - brma
+    - in_rural_fuel_duty_relief_area
+    - council_tax
+    - council_tax_rebate
+    - council_tax_benefit_reported
   outputs:
   - household_is_high_value_support_copy
   - high_value_support_copies
   - high_value_support_copy_index
-  rewrites: []
-  notes: 'Spine-only, deterministic, mass-conserving support split (microcosm#1240). Within each FRS region, every owner household in the top five per cent of the region''s owner weight by main_residence_value is copied six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots) and its ids minted in the copy-id table''s high_value_support field. The stage runs after the regional property uprating, so it selects on the values was_wealth reads off each England and Wales owner''s constituency, which the uprating returns to their knots (microcosm#931), and every copy keeps its parent''s value, area and geography key. The exact-total correction lands on one of the 64 heaviest households the stage leaves whole, and on a root or copy only where none of them can carry it (copy_rule). No value is assigned here; the one draw is the stratum''s tie-break, a uniform keyed on each household''s own household_id (seed, salt) that orders owners tied on value, so no copy or clone ordinal ranks highest on every tie.'
+  rewrites:
+  - geography_household_key
+  - atomic_area_code
+  - atomic_area_system
+  - atomic_area_basis
+  - oa_code
+  - lsoa_code
+  - msoa_code
+  - local_authority_code
+  - ward_code
+  - constituency_code
+  - region_code
+  - itl3_code
+  - itl2_code
+  - itl1_code
+  - local_authority
+  - brma
+  - in_rural_fuel_duty_relief_area
+  - council_tax
+  - council_tax_rebate
+  - council_tax_benefit_reported
+  notes: 'Spine-only, deterministic, mass-conserving support split (microcosm#1240). Within each FRS region, every owner household in the top five per cent of the region''s owner weight by main_residence_value is copied six ways at equal weight, each copy carrying its index in high_value_support_copy_index (0 on roots) and its ids minted in the copy-id table''s high_value_support field. The stage runs after the regional property uprating, so it selects on the values was_wealth reads off each England and Wales owner''s constituency, which the uprating returns to their knots (microcosm#931). The exact-total correction lands on one of the 64 heaviest households the stage leaves whole, and on a root or copy only where none of them can carry it (copy_rule). The split''s one draw is the stratum''s tie-break, a uniform keyed on each household''s own household_id (seed, salt) that orders owners tied on value, so no copy or clone ordinal ranks highest on every tie. Each copy then takes a place of its own, as another clone of its household would (María''s ruling of 2026-11-25), where before it kept its parent''s: geography_household_key over its own path, read on the support channel''s, its own and the geographic clones'' branches, with the FRS vintage frs_release.json pins for its source_year; an area drawn with atomic_area_assign''s definition, stream and seed from its own draw inputs, which are its parent''s, so at its parent''s level (draw_inputs); then its local authority (as local_authority), its BRMA (as area_brma; Northern Ireland''s copies draw theirs on their own benefit units after one engine call over their households alone materialises their LHA_category, one simulation over every clone''s copies) and its fuel-relief flag (as rfdr). On each Great Britain copy whose local_authority_code changed, the bill, the rebate and the person council tax reduction council_tax_localise wrote at its parent''s authority are multiplied by the new authority''s 2024-25 Band D over the former one''s, one correctly rounded product of exact rationals; the copy keeps its parent''s draw cell, so this is the amount council_tax_localise gives it at the new authority, to rounding. Northern Ireland''s copies keep their parent''s bill, which council_tax_localise leaves as it is. A copy''s value and every other column stay its parent''s, and the copies later stages make inherit its key and area (uk_copy_area_agreement holds this stage''s copies to their parent''s region and clone index only). Its evidence adds, among clone-0 rows, the distinct source households copied, by system, every system withheld where one rests on one or two, and those whose copies changed authority, rounded by the shared disclosure rules; no key or area code.'
 - stage: property_components
   survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Property Rental Income Statistics 2026 (tax year 2024-25)
   source: https://www.gov.uk/government/statistics/property-rental-income-statistics

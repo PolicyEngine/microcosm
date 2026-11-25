@@ -28,6 +28,10 @@ from microcosm.frame import WeightKind
 from test_support.microcosm_build.uk_clone_first_frames import (
     assert_copy_ids_follow_lineage,
 )
+from test_support.microcosm_build.uk_conditioned_support_fixtures import (
+    toy_conditioned_support_payloads,
+)
+from test_support.microcosm_build.uk_council_tax_fixtures import invented_band_d
 
 #: The stratum's declared tie-break, which every direct call passes.
 TIE = {"seed": hv.HIGH_VALUE_SUPPORT_TIE_SEED, "salt": hv.HIGH_VALUE_SUPPORT_TIE_SALT}
@@ -237,7 +241,9 @@ def test_the_stage_ranks_on_the_declared_tie_break(monkeypatch) -> None:
     monkeypatch.setattr(hv, "select_high_value_support_households", recording)
     hv.split_high_value_support_households(_frame(), stratum_lower=0.9)
 
-    ((_, payload),) = hv.high_value_support_operation_parameters()
+    payload = dict(hv.high_value_support_operation_parameters())[
+        hv.HIGH_VALUE_SUPPORT_OPERATION_KIND
+    ]
     assert hv.high_value_support_tie_break() == (payload["seed"], payload["salt"])
     assert hv.high_value_support_tie_break() == (0, "high_value_home_support:value_tie")
     (call,) = calls
@@ -252,8 +258,9 @@ def test_the_stage_ranks_on_the_declared_tie_break(monkeypatch) -> None:
         "weight) is at or above stratum_lower is selected"
     )
     assert payload["values"] == (
-        "every column copied unchanged; the stratum's tie-break is the stage's "
-        "only draw"
+        "every column copied unchanged, then each copy placed and its council "
+        "tax rescaled by assign_high_value_copy_areas; its value and every "
+        "other column stay its parent's"
     )
     with pytest.raises(TypeError, match="seed"):
         select(**_owners([1.0, 2.0]))
@@ -339,10 +346,12 @@ def _localised_owners(n: int = 40):
 
 
 def test_every_high_value_copy_keeps_its_parents_value_draw_and_area() -> None:
-    """Each copy equals the row the copy-id table names its parent on every
-    column but its ids and the stage's own three: the localised value, the
-    kept draw, the property total, the seat and the geography key
-    (C-19, microcosm#931)."""
+    """The split alone: each copy equals the row the copy-id table names its
+    parent on every column but its ids and the split's own three, the
+    localised value, the kept draw, the property total, the seat and the
+    geography key among them (C-19, microcosm#931). The stage then places
+    each copy (test_uk_high_value_copy_areas), and only its value and the
+    other columns stay its parent's."""
 
     result = hv.split_high_value_support_households(
         _localised_owners(), stratum_lower=0.9
@@ -651,7 +660,9 @@ def test_the_copy_rule_names_the_one_exception() -> None:
         CGT_SUPPORT_EXACT_TOTAL_EXCEPTION,
     )
 
-    ((_, payload),) = hv.high_value_support_operation_parameters()
+    payload = dict(hv.high_value_support_operation_parameters())[
+        hv.HIGH_VALUE_SUPPORT_OPERATION_KIND
+    ]
     expected = (
         "every selected household becomes copies rows at weight / copies, "
         "except where none of the 64 heaviest households left whole, tried "
@@ -665,7 +676,8 @@ def test_the_copy_rule_names_the_one_exception() -> None:
     stage = load_country_spec("uk").sources.stage_map()[
         hv.HIGH_VALUE_SUPPORT_STAGE_NAME
     ]
-    (operation,) = stage.operations
+    operation = stage.operations[0]
+    assert operation.kind == hv.HIGH_VALUE_SUPPORT_OPERATION_KIND
     assert operation.parameters["copy_rule"] == expected
     packaged = json.loads(
         (Path(hv.__file__).parents[1] / "uk" / "source_stages.json").read_text()
@@ -724,22 +736,30 @@ def test_stage_manifest_restates_the_code_dictionary() -> None:
     stage = next(
         s for s in spec.sources.stages if s.stage == hv.HIGH_VALUE_SUPPORT_STAGE_NAME
     )
-    transform = hv.UKHighValueHomeSupportStageTransform(stage=stage)
+    # The packaged stage is the reviewed one: the transform checks its
+    # operations, outputs, rewrites and artifacts as it is built.
+    transform = hv.UKHighValueHomeSupportStageTransform(
+        stage=stage,
+        engine=object(),
+        supports=toy_conditioned_support_payloads(),
+        band_d=invented_band_d(),
+    )
     assert transform.output_columns() == tuple(stage.outputs)
-    # The manifest declares the stratum's tie-break the stage walks on
-    # (microcosm#931).
-    (operation,) = stage.operations
+    assert tuple(stage.rewrites) == hv.UK_HIGH_VALUE_SUPPORT_REWRITES
+    # The manifest declares the stratum's tie-break the stage walks on, on
+    # the split, its first operation (microcosm#931).
+    operation = stage.operations[0]
+    assert operation.kind == hv.HIGH_VALUE_SUPPORT_OPERATION_KIND
     assert (
         operation.parameters["seed"],
         operation.parameters["salt"],
     ) == hv.high_value_support_tie_break()
+    assert [o.kind for o in stage.operations] == [
+        kind for kind, _ in hv.high_value_support_operation_parameters()
+    ]
     names = [s.stage for s in spec.sources.stages]
     assert names.index("regional_property_uprating") + 1 == names.index(
         hv.HIGH_VALUE_SUPPORT_STAGE_NAME
     )
-    out = transform(_frame())
-    assert HIGH_VALUE_SUPPORT_COPY_COLUMN in out.table("household").columns
-    assert (
-        transform.checkpoint_metadata()["evidence"]["stage"]
-        == hv.HIGH_VALUE_SUPPORT_STAGE_NAME
-    )
+    # The whole stage runs in test_uk_high_value_copy_areas, on frames whose
+    # copies the spine's area stages can place.

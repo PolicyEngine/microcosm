@@ -1279,10 +1279,14 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                 if isinstance(walk_seed, int):
                     stage_seeds[str(operation.parameters["tie_salt"])] = walk_seed
                 continue
-            if operation.kind == "assign_spi_copy_areas":
-                # The SPI copies' areas are drawn with the area draw's seed on
-                # its stream, and Northern Ireland's copies' BRMAs with the
-                # BRMA's seed under its benefit-unit salt (microcosm#931).
+            if operation.kind in (
+                "assign_spi_copy_areas",
+                "assign_high_value_copy_areas",
+            ):
+                # The SPI copies' and the high-value support copies' areas are
+                # drawn with the area draw's seed on its stream, and Northern
+                # Ireland's copies' BRMAs with the BRMA's seed under its
+                # benefit-unit salt (microcosm#931).
                 draw = operation.parameters.get("area_draw") or {}
                 if isinstance(draw.get("seed"), int):
                     stage_seeds[str(draw["stream"])] = draw["seed"]
@@ -2654,10 +2658,15 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["uc_deduction_attributes"]
             )
         )
+    # The high-value copies' own keys and areas on the supports' graph
+    # sources, held to the geography block's pins before the stage is built,
+    # and their council tax at the committed Band D (microcosm#931).
     if "high_value_home_support" in stage_names:
-        implementations["high_value_home_support"] = (
-            UKHighValueHomeSupportStageTransform(
-                stage=stages_by_name["high_value_home_support"]
+        implementations["high_value_home_support"] = _GraphSourceTransform(
+            lambda sources: UKHighValueHomeSupportStageTransform(
+                stage=stages_by_name["high_value_home_support"],
+                engine=engine,
+                supports=_source_supports(sources, support_pins),
             )
         )
     if "cgt_support_split" in stage_names:

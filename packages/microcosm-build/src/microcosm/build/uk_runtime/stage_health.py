@@ -5618,16 +5618,18 @@ def _copy_area_agreement_gate(
 ) -> GateResult:
     """Every copy of a declared layer carries its parent's area (microcosm#931).
 
-    The spine's copy layers copy whole households, and the SPI-copy area stage
-    gives the support channel's copies and band donors areas of their own, so
-    a copy made after it inherits its parent's area, ladder, local authority,
-    BRMA, fuel-relief flag and geography key (C-11). This check reads the
-    phase's frame: for each layer ``columns_by_copy_layer`` names (a copy-id
-    field), every household minted in it must equal its immediate parent,
-    the household whose id is its id with that field's digits cleared
-    (``copy_id_table.parent``), on that layer's columns
-    (``copy_agreement.rows_agree_with_parents``). The support channel's copies
-    are held on their region and clone index only, since they draw the rest.
+    The spine's copy layers copy whole households. The SPI-copy area stage
+    gives the support channel's copies and band donors areas of their own,
+    and the high-value home support stage its own copies (María's ruling of
+    2026-11-25), so a copy made after that inherits its parent's area,
+    ladder, local authority, BRMA, fuel-relief flag and geography key (C-11).
+    This check reads the phase's frame: for each layer
+    ``columns_by_copy_layer`` names (a copy-id field), every household minted
+    in it must equal its immediate parent, the household whose id is its id
+    with that field's digits cleared (``copy_id_table.parent``), on that
+    layer's columns (``copy_agreement.rows_agree_with_parents``). The support
+    channel's and the high-value support copies are held on their region and
+    clone index only, since they draw the rest.
     Its details are booleans per layer and column, and its texts name the
     layer and column, never an id, a value or a count.
     """

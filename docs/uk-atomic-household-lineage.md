@@ -12,7 +12,7 @@ Each copy step marks its copies with a marker column, an ordinal column or both.
 | --- | --- | --- | --- |
 | `spi_support_channel` | `spi_support_channel` (an SPI copy, ordinal 1) and `spi_income_band_donors` (an income band donor, ordinal 2) | `household_support_channel` (`spi` on a copy, `frs` on an original) and `household_support_clone_index` | Its own, from `spi_copy_areas` |
 | `cgt_support_split` | `cgt_support_split` | `household_is_cgt_support_copy` and `cgt_support_copy_index` | Its parent's |
-| `high_value_support` | `high_value_home_support` | `household_is_high_value_support_copy` and `high_value_support_copy_index` | Its parent's |
+| `high_value_support` | `high_value_home_support` | `household_is_high_value_support_copy` and `high_value_support_copy_index` | Its own, from `high_value_home_support` |
 | `cgt_incidence_clone` | `cgt_incidence_clone` (one twin, ordinal 1) | `household_is_capital_gains_clone` | Its parent's |
 | `cgt_residential_split` | `cgt_residential_split` | `household_is_cgt_residential_clone` and `cgt_residential_clone_index` | Its parent's |
 | `geographic_support` | `geographic_expand` | `household_clone_index` | Its own, from `geographic_identity` and `atomic_area_assign` |
@@ -45,12 +45,13 @@ Ordinals run below the bound. Copy k in a field takes `id + k * radix` on all fi
 
 `geography_household_key` is `household_draw_key` over the source (`frs`), the FRS vintage `frs_release.json` pins for the household's `source_year`, its true source and its copy path. It leaves out a row's own (copy) ids, row order, the clone count, sample size, weights and financial values. Exact int64 ids above `2**53` stay distinct.
 
-Two stages write it:
+Three stages write it:
 
 - `geographic_identity`, right after `geographic_expand`, keys every clone. Clone 0's path is empty and clone k's is `(("geographic_support", k),)`. So clone 0's key is the key a one-clone spine gives its household, and a larger K never changes an existing key. `atomic_area_assign` draws each clone's atomic area on its key, and the larger geographies derive from that area.
 - `spi_copy_areas`, right after `spi_housing_shell`, which draws the copies' council-tax band, gives every SPI copy and income band donor a key over its own path on the support and geographic branches. It then draws the copy's area within its region by the households of that band, or by all households where the region holds none of it. Until then a copy repeats its parent's key.
+- `high_value_home_support`, once it splits the top value stratum, gives every copy it makes a key over its own path on the support, high-value and geographic branches. It then draws the copy's area from the copy's own draw inputs, which are its parent's, so at its parent's level, as another clone of the household would be drawn (María's ruling of 25 November 2026). In Great Britain it scales the copy's council tax, rebate and reduction to its new local authority's Band D.
 
-Copies made later, by `high_value_home_support`, `cgt_support_split`, `cgt_incidence_clone` and `cgt_residential_split`, keep their parent's key. They also keep its area, ladder, local authority, BRMA, rural fuel duty relief flag, council tax and rebate. The transferred-phase gate `uk_copy_area_agreement` holds each of them to its parent on those columns, its region and its clone index, and each support-channel copy to its parent on region and clone index. So the key names an area draw, not a row. A household that has later copies shares its key with them, and a release's keys are not unique per row. A household's own identity is its true source and copy path.
+Copies made later, by `cgt_support_split`, `cgt_incidence_clone` and `cgt_residential_split`, keep their parent's key. They also keep its area, ladder, local authority, BRMA, rural fuel duty relief flag, council tax and rebate. The transferred-phase gate `uk_copy_area_agreement` holds each of them to its parent on those columns, its region and its clone index, and each support-channel copy and high-value copy to its parent on region and clone index. So the key names an area draw, not a row. A household that has later copies shares its key with them, and a release's keys are not unique per row. A household's own identity is its true source and copy path.
 
 ## Shared lineage readers
 
@@ -87,7 +88,7 @@ These checks establish only the internal consistency of supplied descriptions. A
 Tests on invented data hold each piece. None reads survey data or a licensed file.
 
 - `test_uk_geographic_expand.py` and `test_uk_geographic_identity.py` hold the clones, their ids, indices and source columns, and their keys, which equal `household_draw_key` itself, are unique and stay put as K grows.
-- `test_uk_household_lineage.py` runs the strict reader on the support channel's, CGT and geographic branches at one clone and at two, with its refusals. `test_uk_high_value_home_support.py` reads the high-value branch.
+- `test_uk_household_lineage.py` runs the strict reader on the support channel's, CGT and geographic branches at one clone and at two, with its refusals. `test_uk_high_value_home_support.py` reads the high-value branch, and `test_uk_high_value_copy_areas.py` the high-value copies' own keys and areas.
 - `test_uk_spine_geography.py` holds the support channel's copies to keys and areas of their own. `test_uk_stage_health.py` and the shared `test_copy_agreement.py` hold later copies to their parents.
 - `test_source_lineage.py`, `test_uk_geographic_clone_collapse.py` and `test_uk_receipt_counts.py` hold the readers, the folds and the counts, and `test_uk_copy_id_table.py` the id fields.
 - `test_uk_clone_first_nesting.py` runs the real expansion, copy and draw stages at several clone counts up to 15. It holds clone 0 to the one-clone frame, exactly or within stated tolerances, and the CGT support split only approximately. `test_h2_clone_first.py`, which runs after merge, runs the H2 spine at one clone and at four. Its keys are unique through `area_brma`, the support channel's copies repeat their parent's key until `spi_copy_areas` gives each its own, and later copies carry their parents' keys.
