@@ -118,6 +118,7 @@ from types import MappingProxyType
 
 __all__ = [
     "MODEL_NAMED_COLUMN_PATTERN",
+    "US_AUXILIARY_STORED_COLUMNS",
     "US_STORED_NON_VARIABLE_COLUMNS",
     "CertifiedEngine",
     "StoredInputRefusalError",
@@ -259,6 +260,33 @@ _TAX_UNIT_CONSTRUCTION = (
 #: register entry to the producer definition it names.
 _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marital_unit")
 
+#: Auxiliary columns: person attributes a build carries for conditioning
+#: (imputation predictors) and calibration (target margins) that no rule
+#: consumes, so their presence is not a tax-benefit modeling claim
+#: (microcosm#297). Unlike a pending engine input, an auxiliary column is not
+#: waiting for an engine variable, so its entry does not expire with an engine
+#: bump; an analysis reads it by joining on ``person_id``. Each is part of
+#: :data:`US_STORED_NON_VARIABLE_COLUMNS`, and its reason starts with
+#: ``Auxiliary``.
+US_AUXILIARY_STORED_COLUMNS: Mapping[str, str] = MappingProxyType(
+    {
+        "cps_educational_attainment": (
+            "Auxiliary: the person's highest completed education level, one of "
+            "seven classes (the ACS S1501 population-25-and-over categories) or "
+            "not_in_universe under age 15, classified from the CPS ASEC A_HGA "
+            "code that an exact (income year, PERIDNUM) join reads from the "
+            "pinned official Census person member, written by "
+            "microcosm.build.us_runtime.educational_attainment "
+            "(US_CPS_EDUCATIONAL_ATTAINMENT_COLUMN; microcosm#297) when the "
+            "fiscal-refresh build runs with --cps-educational-attainment. It "
+            "conditions imputation and binds the ACS S1501 state attainment "
+            "targets; no rule reads it, and policyengine-us defines no "
+            "variable for it."
+        ),
+    }
+)
+
+
 #: Reviewed register of lowercase stored columns that are deliberately not
 #: policyengine-us variables: column -> why the engine may ignore it.
 #:
@@ -288,6 +316,8 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: (microcosm#1073) likewise postdate them: their producer is
 #: ``scf_education_debt.US_SCF_EDUCATION_DEBT_OUTPUT_COLUMNS``, and they leave
 #: the register once the pinned engine carries policyengine-us#9721 and #9724.
+#: The auxiliary columns (:data:`US_AUXILIARY_STORED_COLUMNS`) postdate the
+#: files too and rest on their producer the same way.
 #:
 #: Two model-named non-variable columns that the published default, its
 #: receipt child and the ACS local-area release store are deliberately absent,
@@ -322,6 +352,7 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: that rule against the installed engine.
 US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
     {
+        **US_AUXILIARY_STORED_COLUMNS,
         "county_fips_2023": (
             "The household's five-digit 2023 county-equivalent FIPS, produced "
             "by microcosm.build.us_runtime.county_vintage and the block/PUMA "
