@@ -27,6 +27,9 @@ from microcosm.build.us_runtime.acs_inputs import (
     with_acs_spm_independence_role,
     without_acs_group_quarters_children,
 )
+from microcosm.build.us_runtime.acs_local_coverage_anchors import (
+    with_acs_local_coverage_anchors,
+)
 from microcosm.build.us_runtime.acs_local_esi_premiums import (
     acs_local_esi_premium_transfer_target_families,
     with_acs_local_esi_premium_anchor,
@@ -146,6 +149,7 @@ def build_optional_acs_multispine(
     se_health_premiums: bool = False,
     weeks_deferrals: bool = False,
     group_quarters_housing: bool = False,
+    coverage_anchors: bool = False,
     native_receipt_anchors: bool = False,
     wic_take_up: bool = False,
     semp_covers_partnership_income: bool = False,
@@ -198,6 +202,12 @@ def build_optional_acs_multispine(
     extension of that call alone; every earlier fit has drawn by then, so
     their draws are unchanged. Its receipt is
     ``provenance["acs_local_weeks_deferrals"]``.
+    ``coverage_anchors`` (the ACS local lane, microcosm#1720) writes ACS
+    ``HINS1`` over the transferred ``has_esi`` and applies ``HINS2`` to the
+    two transferred direct-purchase flags, after every transfer (so the
+    shared plan's chain and every other draw are unchanged) and before the
+    self-employed premium attribution, which reads ``has_esi``. Its receipt
+    is ``provenance["acs_local_coverage_anchors"]``.
     ``se_health_premiums`` (the ACS local lane, microcosm#1720) runs the
     donor's self-employed premium attribution
     (:func:`~.other_health_insurance.attribute_us_se_health_premiums`) on the
@@ -551,6 +561,14 @@ def build_optional_acs_multispine(
         transferred.frame if weeks_deferrals_frame is None else weeks_deferrals_frame
     )
     del transferred, weeks_deferrals_frame
+    coverage_receipt = None
+    if coverage_anchors:
+        # Local lane only (microcosm#1720): native HINS1/HINS2 over the
+        # shared transfer's coverage draws. After every transfer, so no other
+        # draw moves; before the premium attribution, which reads has_esi.
+        transferred_frame, coverage_receipt = with_acs_local_coverage_anchors(
+            transferred_frame, base, seed=seed
+        )
     se_health_receipt = None
     if se_health_premiums:
         # Local lane only (microcosm#1720): the donor's rule, unchanged, after
@@ -648,6 +666,10 @@ def build_optional_acs_multispine(
         provenance["wic_take_up"] = _json_ready(wic_take_up_receipt)
     if status_inputs_receipt is not None:
         provenance["acs_local_status_inputs"] = status_inputs_receipt
+    if coverage_receipt is not None:
+        provenance["acs_local_coverage_anchors"] = _json_ready_mapping(
+            coverage_receipt
+        )
     if se_health_receipt is not None:
         provenance["acs_local_se_health_premiums"] = _json_ready_mapping(
             se_health_receipt

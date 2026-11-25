@@ -603,6 +603,13 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         module.NEVER_DEFAULT_FILLED
     )
     assert "acs_local_group_quarters_housing" in staged["treatment"]
+    # A6: the coverage flags are overrides of draws, not never-default columns.
+    assert set(module.ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS) <= set(staged["columns"])
+    for column in module.ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS:
+        assert ("person", column) not in module.NEVER_DEFAULT_FILLED
+    for fragment in ("HINS1 == 1", "NOW_GRP", "HIMRKS"):
+        assert fragment in staged["reason"], fragment
+    assert "acs_local_coverage_anchors" in staged["treatment"]
     for fragment in (
         "microcosm#1720",
         "A_MARITL",

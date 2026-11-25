@@ -637,7 +637,13 @@ file.
   self-employment income, Social Security, retirement and investment income,
   household head and tenure where both sources observe them. It does not use
   ACS's own employer-coverage (`HINS1`), class-of-worker (`COW`) or
-  employment-status (`ESR`) items.
+  employment-status (`ESR`) items. Staging does load `HINS1` and writes
+  `has_esi` from it on ACS rows (microcosm#1720,
+  `acs_local_coverage_anchors`), but only after every transfer, so the
+  premium is still drawn without it: an ACS person can carry a premium
+  without `has_esi`, or `has_esi` without a premium, as with the drawn flag
+  before. Conditioning the premium on `HINS1` would change the premium pass's
+  draws.
 - **A second verdict on the transferred rows' cells.** The gates recompute the
   MEPS-IC assignment on the rows that carry the raw coverage columns. They
   compare the transferred rows with those rows and cannot check them against

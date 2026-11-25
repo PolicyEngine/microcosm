@@ -313,6 +313,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # on the ACS-only frame after the shared transfer and before pooling;
         # tag-free. Outside the registry.
         "acs_local_group_quarters_housing.py",
+        # Local-lane employer and direct-purchase coverage of ACS rows from
+        # HINS1/HINS2 (#1720), on the ACS-only frame after every transfer and
+        # before pooling; tag-free (the donor role through
+        # resolve_acs_donor_channel). Outside the registry.
+        "acs_local_coverage_anchors.py",
         # Legacy local-lane Head Start take-up fill, ACS VEH availability
         # receipt and grade helpers (#1022); tag-free, the take-up stage
         # passes the spine masks. Outside the registry.

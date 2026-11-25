@@ -654,6 +654,8 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
         weeks_deferrals=True,
         # microcosm#975: no housing take-up in group quarters.
         group_quarters_housing=True,
+        # microcosm#1720: has_esi and the direct-purchase flags from HINS1/2.
+        coverage_anchors=True,
         native_receipt_anchors=True,
         # microcosm#1154: the ACS rows' WIC decisions, drawn before pooling.
         wic_take_up=True,
@@ -837,6 +839,9 @@ def _build(args: argparse.Namespace, telemetry: LocalTelemetryEmitter) -> int:
     )
     summary["acs_local_group_quarters_housing"] = result.provenance.get(
         "acs_local_group_quarters_housing"
+    )
+    summary["acs_local_coverage_anchors"] = result.provenance.get(
+        "acs_local_coverage_anchors"
     )
     summary.update(immigration)
     summary.update(work_disability)
