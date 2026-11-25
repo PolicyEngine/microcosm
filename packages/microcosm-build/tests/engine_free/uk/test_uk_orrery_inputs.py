@@ -734,3 +734,24 @@ def test_inputs_command_refuses_a_missing_upstream_file(tmp_path, capsys):
     assert "not a regular file" in capsys.readouterr().err
     assert not output.exists()
     assert not any(tmp_path.glob(".inputs.*.partial"))
+
+
+def test_inputs_command_refuses_an_upstream_file_behind_a_symbolic_link(
+    tmp_path, capsys
+):
+    """An upstream file is read once, as the schema is: never through a link."""
+    out = build_directory_with_upstream_files(tmp_path)
+    name = upstream_names(out)[0]
+    elsewhere = tmp_path / "elsewhere.json"
+    (out / name).rename(elsewhere)
+    (out / name).symlink_to(elsewhere)
+    output = tmp_path / "inputs"
+
+    with pytest.raises(SystemExit) as refusal:
+        orrery_inputs.main(
+            ["--schema", str(out / SCHEMA_NAME), "--output", str(output)]
+        )
+
+    assert refusal.value.code == 2
+    assert name in capsys.readouterr().err
+    assert not output.exists()
