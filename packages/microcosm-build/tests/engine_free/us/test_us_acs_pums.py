@@ -162,6 +162,10 @@ _IMMIGRATION_SOURCES = {
     "CIT": 5,
     "YOEP": 2015,
     "POBP": 303,
+    # microcosm#1720: employer and direct-purchase coverage, loaded like the
+    # other coverage items.
+    "HINS1": 1,
+    "HINS2": 2,
     "HINS3": 2,
     "HINS4": 1,
     "HINS5": 2,

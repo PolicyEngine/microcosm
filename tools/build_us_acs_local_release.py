@@ -137,6 +137,9 @@ from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.program_telemetry import program_telemetry
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
+from microcosm.build.us_runtime.acs_local_coverage_anchors import (
+    ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS,
+)
 from microcosm.build.us_runtime.acs_local_esi_premiums import (
     acs_local_esi_premium_anchor_gate,
     acs_local_esi_premium_gate_payload,
@@ -4965,6 +4968,7 @@ def finalize_reviewed_limitations(
                 *ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
                 ACS_LOCAL_VOLUNTARY_FILING_COLUMN,
                 "takes_up_housing_assistance_if_eligible",
+                *ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS,
             ],
             "reason": (
                 "Staging writes these inputs on ACS rows from ACS items or the "
@@ -5010,13 +5014,24 @@ def finalize_reviewed_limitations(
                 "has no housing unit (microcosm#975): a lane-own step after "
                 "the shared transfer, whose plan is unchanged, rather than the "
                 "structural policy inside the shared transfer that "
-                "microcosm#975 proposed."
+                "microcosm#975 proposed. has_esi is ACS HINS1 == 1 (employer "
+                "or union coverage, current or former, own or a family "
+                "member's, at interview; the donor reads ASEC NOW_GRP), written "
+                "over the shared transfer's draw after every transfer, so no "
+                "other draw moves, and before the self-employed premium "
+                "attribution reads it. HINS2 (any direct purchase) sets both "
+                "direct-purchase flags False where it is 2; where it is 1 the "
+                "draws stand unless both are False, and then one keyed draw "
+                "picks the type at the donor ASEC role's shares among direct "
+                "purchasers by age band. HIMRKS (Subsidized Marketplace "
+                "Coverage) is not loaded."
             ),
             "treatment": (
                 "Written at staging only in missing ACS cells, except the "
-                "group-quarters housing take-up flag, which overrides the "
-                "shared transfer's draw; donor rows keep the donor release's "
-                "values. The staging summary's receipts record each rule, its "
+                "group-quarters housing take-up flag and the three coverage "
+                "flags, which override the shared transfer's draws; donor rows "
+                "keep the donor release's values. The staging summary's "
+                "receipts record each rule, its "
                 "source columns and the filled and true rows "
                 "(acs_local_status_inputs: also the agreement of is_military "
                 "with POCCU2 52 and ESR 4 or 5; acs_local_se_health_premiums: "
@@ -5026,9 +5041,12 @@ def finalize_reviewed_limitations(
                 "post-processing counts; acs_local_voluntary_filing: the SIPP "
                 "identity and the ACS and donor true shares; "
                 "acs_local_group_quarters_housing: the units turned False by "
-                "TYPEHUGQ). Recorded, not graded. A null in any column but the "
-                "housing flag stops materialize (NEVER_DEFAULT_FILLED), so a "
-                "staging run from before them is refused there."
+                "TYPEHUGQ; acs_local_coverage_anchors: the agreement of each "
+                "native value with the draw it replaces and the donor's type "
+                "shares). Recorded, not graded. A null in any column that "
+                "replaced an engine default stops materialize "
+                "(NEVER_DEFAULT_FILLED), so a staging run from before them is "
+                "refused there."
             ),
             "calibration_blocker": False,
         },

@@ -106,7 +106,10 @@ _PERSON_REQUIRED = (
 # all other income (OIP), the local income pass's child-support predictor
 # (microcosm#1022, acs_local_income), and the public assistance income the
 # local lane's receipt-anchor receipt records (microcosm#1022,
-# acs_local_receipt_anchors). The employment status (ESR) the immigration
+# acs_local_receipt_anchors), and the employer-coverage and direct-purchase
+# items (HINS1, HINS2) the local lane writes has_esi and the two
+# direct-purchase flags from (microcosm#1720, acs_local_coverage_anchors).
+# The employment status (ESR) the immigration
 # stage reads and the weeks worked (WKWN) the local lane maps natively are
 # required above, for the work-experience inputs. Older or minimal source
 # fixtures remain loadable; an absent column stays absent and a Census blank
@@ -124,6 +127,8 @@ _PERSON_OPTIONAL: tuple[str, ...] = (
     "CIT",
     "YOEP",
     "POBP",
+    "HINS1",
+    "HINS2",
     "HINS3",
     "HINS4",
     "HINS5",

@@ -20,10 +20,12 @@ unchanged, on the ACS-only frame after the shared transfer:
   without employer-sponsored coverage (``has_esi``), and is 0 elsewhere.
 - **Inputs.** The self-employment total is native ACS ``SEMP``, blank under
   15, which reads as 0 here, the reviewed fill's value. The SSTB component, the
-  premium, Social Security disability and ``has_esi`` come from the shared
-  transfer, whose post-transfer structure (``_apply_post_transfer_structure``)
-  has already zeroed the self-employment components where ``SEMP`` stands, so
-  the stage must run after it.
+  premium and Social Security disability come from the shared transfer, whose
+  post-transfer structure (``_apply_post_transfer_structure``) has already
+  zeroed the self-employment components where ``SEMP`` stands, so the stage
+  must run after it. ``has_esi`` is ACS ``HINS1`` on the local lane: the
+  coverage step (:mod:`~.acs_local_coverage_anchors`) writes it over the
+  transferred draw first.
 - **Null cells only.** A stored ACS value stands; donor rows are never seen.
 
 With this stage the ACS rows' MAGI is final before the release tool assigns

@@ -294,6 +294,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     se_health_receipt = {"issue": "microcosm#1720", "self_employed_rows": 0}
     weeks_deferrals_receipt = {"issue": "microcosm#1720", "acs_persons": 1}
     group_quarters_receipt = {"issue": "microcosm#975", "group_quarters_spm_units": 1}
+    coverage_receipt = {"issue": "microcosm#1720", "acs_persons": 1}
     # What the ACS local SSI disability-criteria stage returns
     # (microcosm#1022): the null audit, hours gate and export must see it.
     ssi_filled = Frame(
@@ -426,6 +427,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                 "acs_local_se_health_premiums": se_health_receipt,
                 "acs_local_weeks_deferrals": weeks_deferrals_receipt,
                 "acs_local_group_quarters_housing": group_quarters_receipt,
+                "acs_local_coverage_anchors": coverage_receipt,
                 "spm_independence_role": _spm_role_receipt(persons=1),
             },
         )
@@ -794,6 +796,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "se_health_premiums": True,
         "weeks_deferrals": True,
         "group_quarters_housing": True,
+        "coverage_anchors": True,
         "native_receipt_anchors": True,
         "wic_take_up": True,
         "semp_covers_partnership_income": True,
@@ -887,6 +890,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert summary["acs_local_se_health_premiums"] == se_health_receipt
     assert summary["acs_local_weeks_deferrals"] == weeks_deferrals_receipt
     assert summary["acs_local_group_quarters_housing"] == group_quarters_receipt
+    assert summary["acs_local_coverage_anchors"] == coverage_receipt
     assert summary["acs_local_receipt_anchors_gate"] == {
         "name": "acs_local_receipt_anchor_signal",
         "passed": True,
