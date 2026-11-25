@@ -18693,7 +18693,8 @@ def test_qrf_tail_register_refusal_is_wired_into_the_evidence_certification() ->
     [owner_check] = _calls_named(gate, "_evidence_known_failures")
     [register_refusal] = _calls_named(gate, "_qrf_tail_register_evidence_refusal")
     assert ast.unparse(register_refusal.args[0]) == "failures"
-    certify = _builder_function(builder, "certify_main")
+    # certify_main runs this body under its SIGTERM handler.
+    certify = _builder_function(builder, "_certify_main_with_close_out")
     [checked] = _calls_named(certify, "_refuse_an_unowned_evidence_certification")
     [placed] = _calls_named(certify, "_place_build_for_certification")
     [scored] = _calls_named(certify, "_certify_us_build")
