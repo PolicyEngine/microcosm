@@ -1923,6 +1923,13 @@ def test_staged_final_export_records_the_previous_checkpoint_without_writing_one
         return fake_export(*export_args)
 
     @contextmanager
+    def recording_profiler(stage_name: str, checkpoint_dir: Path):
+        assert checkpoint_dir == args.checkpoint_dir
+        events.append(f"start profiling {stage_name}")
+        yield
+        events.append(f"finish profiling {stage_name} without an error")
+
+    @contextmanager
     def recording_gate_shadow(_args):
         # Saved only when the step calls it, unlike the real one, which also
         # saves on exit: a step that leaves out its own call shows here.
@@ -1941,6 +1948,7 @@ def test_staged_final_export_records_the_previous_checkpoint_without_writing_one
         link_all_stage_checkpoint(checkpoint_dir, source)
 
     monkeypatch.setattr(builder, "_export_staged_result", recording_export)
+    monkeypatch.setattr(builder, "profile_stage", recording_profiler)
     monkeypatch.setattr(builder, "_armed_stage_gate_shadow", recording_gate_shadow)
     monkeypatch.setattr(
         builder.StageRuntime,
@@ -1951,12 +1959,15 @@ def test_staged_final_export_records_the_previous_checkpoint_without_writing_one
 
     builder._run_outer_stage(args)
 
-    # The observations are saved before the step is recorded as complete.
+    # The step runs inside the profiler, and its observations are saved
+    # before it is recorded as complete.
     assert events == [
+        "start profiling final_export",
         "export",
         "save gate-shadow observations",
         "record final_export as complete",
         f"link alias to {previous_checkpoint.name}",
+        "finish profiling final_export without an error",
     ]
     # The export was given the previous step's frame, and no checkpoint file
     # for final_export exists: only the alias was added.
