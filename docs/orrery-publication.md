@@ -29,7 +29,9 @@ recorded no execution registers the schema and its upstream files only, with
 no overlay. A failed or refused build has no dataset manifest, so the step
 registers the same files by name in the build's own evidence manifest,
 `orrery.evidence-manifest.json` (`build_kind` `uk_graph_evidence`,
-`releasable` false).
+`releasable` false). When the step registers nothing, it writes no such
+record and removes one an earlier attempt left in a reused output directory,
+so staging never takes that attempt's files for this one's.
 
 `microcosm.build.staging_dataset.output_role` gives the roles above to the
 three kinds of input, registered under `orrery/` in a dataset bundle or by

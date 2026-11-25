@@ -26,6 +26,7 @@ are never written.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -74,6 +75,8 @@ FAILURE_MARKER_NAME = "orrery.failure.json"
 FAILURE_BUNDLE_DIRECTORY = "orrery-failure"
 #: The bound the collector's projection applies to a schema or overlay input.
 _MAX_INPUT_BYTES = 32 * 1024 * 1024
+#: The collector's bound on one upstream file of an ``orrery-inputs`` submission.
+_MAX_UPSTREAM_BYTES = 64 * 1024 * 1024
 _UPSTREAM_FILE = re.compile(r"upstream-([0-9a-f]{64})\.json")
 #: Each recorded run's native evidence files, by their field in the index.
 _RUN_EVIDENCE_FIELDS = ("graph", "manifest", "binding", "summaries")
@@ -225,7 +228,9 @@ def finalize_graph(
     This runs inside the temporary build directory, including on exceptions.
     A dataset ``manifest``, when the build produced one, registers the files
     under ``orrery/``; a failed or refused build, which has none, gets its own
-    evidence manifest (``orrery.evidence-manifest.json``). ``published_root``
+    evidence manifest (``orrery.evidence-manifest.json``), or, when nothing
+    is registered, none, and an earlier attempt's is removed from the build
+    and published directories. ``published_root``
     is where the registered files will be published, by default the build's
     output directory. A graph failure does not replace the dataset's
     verdict: it registers no graph file and says so.
@@ -338,19 +343,43 @@ def _reject_constant(constant: str) -> None:
     raise ValueError(f"The graph schema holds a non-finite number ({constant}).")
 
 
-def _read_schema(path: Path) -> tuple[bytes, dict[str, object]]:
-    """Read a saved schema's bytes, refusing links, devices and oversized files."""
+def _read_regular_file(path: Path, label: str, limit: int) -> bytes:
+    """Read a file once, refusing links, devices and files over ``limit`` bytes."""
 
-    descriptor = os.open(
-        path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
-    )
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as error:
+        raise ValueError(
+            f"{label} {path} is not a regular file that can be read ({error.strerror})."
+        ) from error
     with os.fdopen(descriptor, "rb") as stream:
         info = os.fstat(stream.fileno())
         if not stat.S_ISREG(info.st_mode):
-            raise ValueError(f"Graph schema {path} is not a regular file.")
-        payload = stream.read(_MAX_INPUT_BYTES + 1)
-    if len(payload) > _MAX_INPUT_BYTES:
-        raise ValueError(f"Graph schema {path} is larger than 32 MiB.")
+            raise ValueError(f"{label} {path} is not a regular file.")
+        payload = stream.read(limit + 1)
+    if len(payload) > limit:
+        raise ValueError(f"{label} {path} is larger than {limit // 2**20} MiB.")
+    return payload
+
+
+def _read_upstream_file(directory: Path, name: str) -> bytes:
+    """An upstream file's bytes, read once and checked against its name's digest."""
+
+    payload = _read_regular_file(
+        directory / name, "Upstream graph evidence", _MAX_UPSTREAM_BYTES
+    )
+    if hashlib.sha256(payload).hexdigest() != _UPSTREAM_FILE.fullmatch(name)[1]:
+        raise ValueError(f"Upstream graph evidence digest mismatch: {name}.")
+    return payload
+
+
+def _read_schema(path: Path) -> tuple[bytes, dict[str, object]]:
+    """Read a saved schema's bytes, refusing links, devices and oversized files."""
+
+    payload = _read_regular_file(path, "Graph schema", _MAX_INPUT_BYTES)
     value = json.loads(
         payload.decode("utf-8"),
         object_pairs_hook=_unique_object,
@@ -412,7 +441,7 @@ def write_orrery_inputs(
         )
         files[EXECUTION_OVERLAY_NAME] = execution_overlay_bytes(execution)
     for name in linked_upstream_names(schema, execution):
-        files[name] = _checked_upstream_file(schema_path.parent, name).read_bytes()
+        files[name] = _read_upstream_file(schema_path.parent, name)
     _write_new_directory(output, files)
     return tuple(sorted(files))
 
