@@ -91,7 +91,7 @@ recorded as `status: error` and warned. Without the flags the manifest says
 is scored with `tools/score_uk_national_candidate.py`, given `--reference-h5`
 and `--reference-record`.
 
-The role's doctrine is the campaign posture (1,500 epochs, `family_equal`,
+The role's doctrine is the campaign posture (1,500 epochs, `loss_family_equal`,
 learning rate 0.02, seed 0): a certified cut passes no solve flags and records
 no overrides. It writes `microcosm_uk_2024_25.h5`,
 `calibration_diagnostics.json`, `build_record.json`,

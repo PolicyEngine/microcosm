@@ -256,7 +256,11 @@ def _seam_weights(frame, registry, doctrine: UKNationalSolveDoctrine) -> np.ndar
         l0_lambda=doctrine.l0_lambda,
         target_loss_cap=doctrine.target_loss_cap,
         target_loss_weights=uk_national_target_loss_weights(
-            families, rule=doctrine.target_weight_rule
+            families,
+            rule=doctrine.target_weight_rule,
+            contract_target_ids=[
+                spec.metadata.get("contract_target_id") for spec in registry.specs
+            ],
         ),
     )
     return result.weights
@@ -344,7 +348,7 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     assert run_config["doctrine_overrides"] == {
         "epochs": {"default": 1500, "effective": 5}
     }
-    assert run_config["doctrine"]["target_weight_rule"] == "family_equal"
+    assert run_config["doctrine"]["target_weight_rule"] == "loss_family_equal"
     assert run_config["doctrine"]["seed"] == 0
     assert run_config["allow_unpinned_feed"] is False
     assert run_config["chronicle_feed_pin"] == pin.to_dict()
@@ -485,7 +489,9 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     )
     assert manifest["parameters"]["n_clones"] is None
     assert manifest["parameters"]["doctrine"]["clone_count"] is None
-    assert manifest["parameters"]["doctrine"]["target_weight_rule"] == "family_equal"
+    assert (
+        manifest["parameters"]["doctrine"]["target_weight_rule"] == "loss_family_equal"
+    )
     assert manifest["fit"]["national_by_family"][0]["family"] == "dwp_universal_credit"
     assert manifest["gate"]["scope"] == list(UK_CALIBRATION_GATE_SCOPE)
     assert manifest["gate"]["posture"] == "calibration_seam"
@@ -595,14 +601,14 @@ def test_uk_national_role_records_doctrine_overrides(monkeypatch, tmp_path):
     assert record["run_config"]["doctrine_overrides"] == {
         "epochs": {"default": 1500, "effective": 5},
         "target_loss_cap": {"default": 10.0, "effective": 4.0},
-        "target_weight_rule": {"default": "family_equal", "effective": "uniform"},
+        "target_weight_rule": {"default": "loss_family_equal", "effective": "uniform"},
     }
     assert record["run_config"]["doctrine"]["target_weight_rule"] == "uniform"
     assert record["run_config"]["doctrine"]["target_loss_cap"] == 4.0
     manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
     assert manifest["solve"]["target_weight_rule"] == "uniform"
     assert manifest["solve"]["target_weight_rule_override"] == {
-        "default": "family_equal",
+        "default": "loss_family_equal",
         "effective": "uniform",
     }
     operations = json.loads((out / "operations.json").read_text())
@@ -1085,7 +1091,7 @@ def test_uk_national_dry_run_prints_the_plan_and_writes_nothing(
     assert plan["targets"]["active"] == plan["targets"]["compiled"] == 1
     assert plan["targets"]["register_sha256"] == registry.version
     assert plan["doctrine"]["epochs"] == 1500
-    assert plan["doctrine"]["target_weight_rule"] == "family_equal"
+    assert plan["doctrine"]["target_weight_rule"] == "loss_family_equal"
     assert plan["doctrine_overrides"] == {}
     assert plan["parameters"]["release_role"] == "national"
     assert plan["engine"] == "not_run"
