@@ -95,8 +95,10 @@ per-state recalibration of the ASEC lane is not applied; the release's state
 SNAP household targets reweight instead. Other ``takes_up_*`` flags on ACS
 rows are not this stage's: SSI and Medicaid take-up are assigned after an
 engine pre-pass by
-:mod:`~microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up`, and Early
-Head Start, the ACA credit and the rest still ship at the engine default
+:mod:`~microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up`, ACA
+take-up and the Marketplace plan ratio after one more by
+:mod:`~microcosm.build.us_runtime.acs_local_aca_take_up` (microcosm#1720),
+and Early Head Start and the rest still ship at the engine default
 (microcosm#1022); the gate here does not grade them.
 """
 

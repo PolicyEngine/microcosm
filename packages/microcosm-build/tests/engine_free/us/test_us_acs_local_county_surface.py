@@ -970,7 +970,10 @@ def _materialize_county_fixture(
     # counts from the ledger feed and runs an engine pre-pass this fixture
     # cannot support; this test checks county hooks only.
     monkeypatch.setattr(
-        module, "acs_local_ssi_medicaid_take_up_targets", lambda *_a: {}
+        module, "_compiled_fiscal_registry", lambda *_a: (SimpleNamespace(specs=[]), [])
+    )
+    monkeypatch.setattr(
+        module, "acs_local_ssi_medicaid_take_up_targets", lambda *_a, **_k: {}
     )
     monkeypatch.setattr(
         module,
@@ -978,6 +981,14 @@ def _materialize_county_fixture(
         lambda frame, *, seed, **_k: (frame, {"seed": seed, "assigned_sha256": "stub"}),
     )
     monkeypatch.setattr(module, "_write_ssi_medicaid_take_up", lambda *_a: "stub")
+    # microcosm#1720: likewise the ACA take-up stage.
+    monkeypatch.setattr(module, "acs_local_aca_take_up_targets", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        module,
+        "_with_local_aca_take_up",
+        lambda frame, *, seed, **_k: (frame, {"seed": seed, "assigned_sha256": "stub"}),
+    )
+    monkeypatch.setattr(module, "_write_aca_take_up", lambda *_a: "stub")
     monkeypatch.setattr(
         module.cd_surface,
         "sample_staging_frame",
@@ -1168,6 +1179,13 @@ def _export_county_fixture(module, monkeypatch, run, out_h5, weights):
     monkeypatch.setattr(
         module, "_with_recorded_ssi_medicaid_take_up", lambda frame, *a: frame
     )
+    # microcosm#1720: likewise the recorded ACA take-up.
+    monkeypatch.setattr(
+        module,
+        "_recorded_aca_take_up",
+        lambda *a, **k: ({"assigned_sha256": "", "assignment_file": ""}, None),
+    )
+    monkeypatch.setattr(module, "_with_recorded_aca_take_up", lambda frame, *a: frame)
     monkeypatch.setattr(
         module,
         "_with_live_stored_inputs",

@@ -42,6 +42,7 @@ STAGE_ENTRIES = {
         "us_local_hours_materialize",
         "us_local_self_employment_identity_materialize",
         "us_local_ssi_medicaid_take_up_materialize",
+        "us_local_aca_take_up_materialize",
     ),
     "calibrate": (
         "us_local_hours_calibrate",

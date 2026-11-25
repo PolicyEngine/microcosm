@@ -2264,6 +2264,19 @@
       "notes": "US ACS local release (tools/build_us_acs_local_release.py): ACS SSI and Medicaid take-up after materialize assigns them; the verdict is recorded in run_identity.json. Exits at once on failure."
     },
     {
+      "id": "us_local_aca_take_up_materialize",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "diagnostic",
+      "parameters": {
+        "check": "aca_take_up_signal",
+        "residual_relative_tolerance": 1e-09,
+        "saturated_relative_tolerance": 1e-06,
+        "acs_local_aca_returns_relative_tolerance": 0.02
+      },
+      "notes": "US ACS local release (tools/build_us_acs_local_release.py): ACS ACA take-up and plan ratio after materialize assigns them (microcosm#1720); the verdict is recorded in run_identity.json. Report-only: materialize never stops on it."
+    },
+    {
       "id": "us_local_hours_calibrate",
       "gate": "stage_health",
       "phase": "assembled",

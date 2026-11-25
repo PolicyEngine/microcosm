@@ -97,15 +97,16 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
     "us_local": {
         # Moved by the entries that pin the thresholds they compare against
         # (review of #1635, rounds 1 and 2), then by the lane's two ESI
-        # premium entries (microcosm#454, d2283 PR 0).
+        # premium entries (microcosm#454, d2283 PR 0), then by the ACA
+        # take-up stage's diagnostic entry (microcosm#1720).
         "gates_manifest_sha256": (
-            "016410cb9f1b7b6f9ec977ef9cd1edb40abeea2f1877ee3c958d95e7c4c05374"
+            "910d0c0d7c3ac2ba03fbb1e6fedd2a1b40e0bea7f06f8738b0a37fad33c0c126"
         ),
         "policy_sha256": (
-            "fb38b4ceb7bc719ecaab8f6e9c013a78f8aef40490d00656bc4cd0c94a51b9cc"
+            "cb21d4dfa9a779fd680a7dabe97210886fd3b0fe9feb706f8f95f1329b2b8759"
         ),
         "spec_fingerprint": (
-            "c3774138d171c169b3a61d8dcb5bd15fdf65a65f5da13ecdd0a1792ffcfc5023"
+            "5fe6a6082d8c58456d8964438593a60cde2a912636a0b7d49851ef317be63bc3"
         ),
     },
 }

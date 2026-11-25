@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import functools
 import importlib.util
 import inspect
@@ -667,7 +668,33 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in ("PEDIS*", "SERIALNO:SPORDER", "acs_local_ssi_medicaid_take_up"):
         assert fragment in ssi["reason"]
     defaults = by_id["acs_take_up_engine_defaults"]["reason"]
-    assert "(ACA, Early Head Start and the rest)" in defaults
+    # microcosm#1720: ACA take-up left the engine defaults.
+    assert "(Early Head Start, CHIP and the rest)" in defaults
+    assert "(acs_local_aca_take_up, microcosm#1720)" in defaults
+    assert "ACA, Early Head Start" not in defaults
+    assert by_id["acs_take_up_engine_defaults"]["treatment"] == (
+        "Tracked via microcosm#1720."
+    )
+    aca = by_id["acs_local_aca_take_up"]
+    assert aca["status"] == "reviewed_modeling_decision"
+    assert aca["calibration_blocker"] is False
+    assert aca["columns"] == [
+        "takes_up_aca_if_eligible",
+        "selected_marketplace_plan_benchmark_ratio",
+    ]
+    for fragment in (
+        "aca_marketplace_inputs",
+        "floored at zero",
+        "closest to the residual average",
+        "microcosm#168",
+        "no unit is anchored",
+        "clipped to 0.5-1.5",
+        "no bronze count",
+        "HINS1 and HINS2",
+    ):
+        assert fragment in aca["reason"], fragment
+    for fragment in ("report-only", "us_local_aca_take_up_materialize", "digest"):
+        assert fragment in aca["treatment"], fragment
     assert "EITC take-up is the take-up contract's seeded draw" in defaults
     assert "WIC take-up the national generator's draw" in defaults
     assert "Medicare take-up is native ACS HINS3" in defaults
@@ -2692,6 +2719,178 @@ def test_ssi_medicaid_consumers_accept_a_current_checkpoint(tmp_path) -> None:
     assert path == tmp_path / module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME
 
 
+def _aca_fixtures():
+    """The ACA take-up stage's engine-free fixtures (#1720)."""
+
+    spec = importlib.util.spec_from_file_location(
+        "acs_local_aca_take_up_fixtures",
+        Path(__file__).with_name("test_us_acs_local_aca_take_up.py"),
+    )
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+def _aca_receipt(module, checkpoint_dir: Path, **overrides) -> dict:
+    """A current ACA materialize receipt whose recorded file exists (#1720)."""
+
+    path = checkpoint_dir / module.ACS_ACA_TAKE_UP_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"recorded ACA assignment")
+    receipt = {
+        "issue": "microcosm#1720",
+        "method": module.ACS_LOCAL_ACA_TAKE_UP_METHOD,
+        "seed": 0,
+        "assigned_sha256": "c" * 64,
+        "gate": {"passed": True, "failures": [], "report_only": True},
+        "assignment_file": {"name": path.name, "sha256": module._sha256(path)},
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        "absent",
+        "wrong_issue",
+        "wrong_method",
+        "untyped_seed",
+        "no_file_record",
+        "missing_file",
+        "changed_file",
+    ],
+)
+def test_aca_consumers_refuse_a_checkpoint_without_the_assignment(
+    tmp_path, edit
+) -> None:
+    """microcosm#1720: calibrate and the export need the recorded ACS ACA
+    assignment, the lane's convention for every drawn column."""
+
+    module = _load_tool_module()
+    receipt = _aca_receipt(module, tmp_path)
+    recorded = tmp_path / module.ACS_ACA_TAKE_UP_FILENAME
+    if edit == "wrong_issue":
+        receipt["issue"] = "microcosm#1022"
+    elif edit == "wrong_method":
+        receipt["method"] = "engine_default"
+    elif edit == "untyped_seed":
+        receipt["seed"] = "0"
+    elif edit == "no_file_record":
+        del receipt["assignment_file"]
+    elif edit == "missing_file":
+        recorded.unlink()
+    elif edit == "changed_file":
+        recorded.write_bytes(b"another assignment")
+    identity = {} if edit == "absent" else {"acs_local_aca_take_up": receipt}
+    with pytest.raises(SystemExit, match=r"microcosm#1720.*Re-run --stage materialize"):
+        module._recorded_aca_take_up(identity, tmp_path)
+
+
+def test_aca_consumers_accept_a_checkpoint_whose_report_only_grade_failed(
+    tmp_path,
+) -> None:
+    """The ACA grade is report-only: a failed verdict does not refuse."""
+
+    module = _load_tool_module()
+    receipt = _aca_receipt(
+        module,
+        tmp_path,
+        gate={"passed": False, "failures": ["invented miss"], "report_only": True},
+    )
+    recorded, path = module._recorded_aca_take_up(
+        {"acs_local_aca_take_up": receipt}, tmp_path
+    )
+    assert recorded == receipt
+    assert path == tmp_path / module.ACS_ACA_TAKE_UP_FILENAME
+
+
+def test_the_aca_stage_records_a_failed_grade_and_goes_on(monkeypatch) -> None:
+    """microcosm#1720: materialize never stops on the ACA grade."""
+
+    module = _load_tool_module()
+    receipt = {
+        "engine_prepass": {},
+        "take_up": {"column": "takes_up_aca_if_eligible", "filled_rows": 3},
+        "plan_ratio": {
+            "column": "selected_marketplace_plan_benchmark_ratio",
+            "filled_rows": 3,
+        },
+    }
+    receipt["take_up"]["weighted_take_up_share_of_eligible"] = 0.4
+    monkeypatch.setattr(
+        module,
+        "with_acs_local_aca_take_up",
+        lambda frame, **_k: (frame, copy.deepcopy(receipt)),
+    )
+    monkeypatch.setattr(
+        module,
+        "acs_local_aca_take_up_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_aca_take_up_signal",
+            passed=False,
+            failures=("state 06: invented miss.",),
+        ),
+    )
+    targets = {"target_tables": {}}
+    frame, recorded = module._with_local_aca_take_up(
+        "frame", seed=1, targets=targets, summary_path=Path("s"), hh_chunk=10
+    )
+    assert frame == "frame"
+    assert recorded["gate"] == {
+        "name": "acs_local_aca_take_up_signal",
+        "passed": False,
+        "failures": ["state 06: invented miss."],
+        "report_only": True,
+    }
+    assert recorded["engine_prepass"]["hh_chunk"] == 10
+
+    def broken(frame, *, receipt):
+        raise KeyError("tables")
+
+    monkeypatch.setattr(module, "acs_local_aca_take_up_signal_gate", broken)
+    _frame, recorded = module._with_local_aca_take_up(
+        "frame", seed=1, targets=targets, summary_path=Path("s"), hh_chunk=10
+    )
+    assert recorded["gate"]["passed"] is False
+    assert "the grade could not run" in recorded["gate"]["failures"][0]
+
+    def unreadable(frame, **_k):
+        raise ValueError("no SERIALNO")
+
+    monkeypatch.setattr(module, "with_acs_local_aca_take_up", unreadable)
+    with pytest.raises(SystemExit, match="microcosm#1720.*no SERIALNO"):
+        module._with_local_aca_take_up(
+            "frame", seed=1, targets=targets, summary_path=Path("s"), hh_chunk=10
+        )
+
+
+def test_the_recorded_aca_assignment_file_round_trips(tmp_path) -> None:
+    """The export rebuilds the stage's ACS inputs from the checkpoint file
+    and refuses a file that no longer matches the receipt's digest."""
+
+    module = _load_tool_module()
+    fixtures = _aca_fixtures()
+    frame = fixtures._frame(n_donor=60, n_acs=240)
+    assigned, receipt = fixtures._assign(frame)
+    path = tmp_path / module.ACS_ACA_TAKE_UP_FILENAME
+    receipt["assignment_file"] = {
+        "name": path.name,
+        "sha256": module._write_aca_take_up(assigned, path),
+    }
+    applied = module._with_recorded_aca_take_up(frame, receipt, path)
+    for column in module.ACS_LOCAL_ACA_TAKE_UP_COLUMNS:
+        assert (
+            applied.table("tax_unit")[column].tolist()
+            == assigned.table("tax_unit")[column].tolist()
+        )
+    with pytest.raises(SystemExit, match="microcosm#1720.*digest"):
+        module._with_recorded_aca_take_up(
+            frame, {**receipt, "assigned_sha256": "0" * 64}, path
+        )
+
+
 def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
     tmp_path, monkeypatch
 ) -> None:
@@ -2727,13 +2926,73 @@ def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
         module, "_load_staging_frame", lambda path: touched.append(path)
     )
 
-    def unavailable(feed):
+    # microcosm#1720: one compile serves the SSI/Medicaid and ACA counts.
+    compiles = []
+    monkeypatch.setattr(
+        module,
+        "_compiled_fiscal_registry",
+        lambda feed: compiles.append(feed) or (SimpleNamespace(specs=[]), []),
+    )
+
+    def unavailable(feed, *, compiled):
+        assert compiled[0].specs == []
         raise SystemExit(f"no SSA band counts in {Path(feed).name}")
 
     monkeypatch.setattr(module, "acs_local_ssi_medicaid_take_up_targets", unavailable)
     with pytest.raises(SystemExit, match="no SSA band counts in facts.jsonl"):
         module.do_materialize(args)
     assert touched == []
+    assert len(compiles) == 1
+
+
+def test_materialize_reads_the_aca_counts_from_the_same_compile(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1720: a feed without the ACA tables stops materialize
+    before the staging H5 is hashed, and the feed is compiled once."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_receipt_anchor_summary(),
+                "engine_versions": {
+                    "policyengine_us": module._installed_engine_version()
+                },
+            }
+        )
+    )
+    monkeypatch.setattr(
+        module,
+        "state_admin_surface",
+        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+    )
+    monkeypatch.setattr(module, "ladder_population", lambda *a, **k: {})
+    monkeypatch.setattr(module, "require_one_label_per_geography", lambda *a, **k: None)
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    compiled = (SimpleNamespace(specs=[]), [])
+    compiles = []
+    monkeypatch.setattr(
+        module,
+        "_compiled_fiscal_registry",
+        lambda feed: compiles.append(feed) or compiled,
+    )
+    monkeypatch.setattr(
+        module,
+        "acs_local_ssi_medicaid_take_up_targets",
+        lambda feed, *, compiled: {"compiled": compiled},
+    )
+    with pytest.raises(SystemExit, match="microcosm#1720.*cms_aca_aptc_recipients"):
+        module.do_materialize(args)
+    assert touched == []
+    assert len(compiles) == 1
 
 
 def test_calibrate_refuses_a_checkpoint_without_the_ssi_medicaid_assignment(
@@ -2755,6 +3014,37 @@ def test_calibrate_refuses_a_checkpoint_without_the_ssi_medicaid_assignment(
         lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
     )
     with pytest.raises(SystemExit, match=r"SSI/Medicaid take-up assignment"):
+        module.do_calibrate(args)
+
+
+def test_calibrate_refuses_a_checkpoint_without_the_aca_assignment(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1720: a checkpoint materialized before the ACA stage is
+    refused before the solve, as the export would refuse it."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_receipt_anchor_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {
+            "acs_local_take_up": _TAKE_UP_RECEIPT,
+            "acs_local_ssi_medicaid_take_up": _ssi_medicaid_receipt(
+                module, args.checkpoint_dir
+            ),
+        },
+    )
+    monkeypatch.setattr(module, "_require_reviewed_donor_lineage", lambda s: None)
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"no ACS local ACA take-up assignment"):
         module.do_calibrate(args)
 
 
@@ -3118,6 +3408,7 @@ def _record_current_materialization(module, args, identity: dict) -> dict:
     identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
         module, args.checkpoint_dir
     )
+    identity["acs_local_aca_take_up"] = _aca_receipt(module, args.checkpoint_dir)
     return identity
 
 
@@ -7233,6 +7524,7 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
         module, args.checkpoint_dir
     )
+    identity["acs_local_aca_take_up"] = _aca_receipt(module, args.checkpoint_dir)
     # A checkpoint materialized before #1019 is refused before any solve.
     monkeypatch.setattr(
         module, "_verify_run_identity", lambda args: {"staging_sha256": "s"}
@@ -7368,6 +7660,7 @@ def _calibrate_through_the_write(module, tmp_path: Path, monkeypatch, reads: lis
         lambda f, seed: (f, {"assigned_sha256": _TAKE_UP_RECEIPT["assigned_sha256"]}),
     )
     monkeypatch.setattr(module, "_with_recorded_ssi_medicaid_take_up", lambda f, *a: f)
+    monkeypatch.setattr(module, "_with_recorded_aca_take_up", lambda f, *a: f)
     monkeypatch.setattr(module, "project_input_only", lambda f, **k: (f, {}))
     monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *a, **k: ([], None))
 
@@ -7407,6 +7700,7 @@ def _calibrate_through_the_write(module, tmp_path: Path, monkeypatch, reads: lis
     identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
         module, args.checkpoint_dir
     )
+    identity["acs_local_aca_take_up"] = _aca_receipt(module, args.checkpoint_dir)
     return args, events
 
 
@@ -8114,11 +8408,17 @@ def _write_calibrated(
         lambda *a, **k: ({"assigned_sha256": "", "assignment_file": ""}, None),
     )
     monkeypatch.setattr(
+        module,
+        "_recorded_aca_take_up",
+        lambda *a, **k: ({"assigned_sha256": "", "assignment_file": ""}, None),
+    )
+    monkeypatch.setattr(
         module, "_resample_like_materialize", lambda frame, identity: frame
     )
     monkeypatch.setattr(
         module, "_with_recorded_ssi_medicaid_take_up", lambda frame, *a: frame
     )
+    monkeypatch.setattr(module, "_with_recorded_aca_take_up", lambda frame, *a: frame)
     monkeypatch.setattr(
         module,
         "_with_live_stored_inputs",
