@@ -1905,7 +1905,7 @@ def _run_with_graph_publication[Prepared](
     attempt: dict | None,
     record: dict,
 ) -> int:
-    """Export before temporary files disappear, even if a kernel raises."""
+    """Write the Orrery inputs before temporary files disappear, even if a kernel raises."""
     from .orrery_inputs import finalize_graph
 
     try:

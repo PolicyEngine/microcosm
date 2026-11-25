@@ -44,6 +44,7 @@ from microcosm.build.staging_dataset import StagedDatasetDelivery
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.errors import GraphRuntimeError
 from microcosm.graph.execution_overlay import execution_overlay_bytes
+from microcosm.graph.presentation import validate_presentation
 from microcosm.graph.schema import validate_graph_schema
 
 from .orrery_contract import public_summary_findings
@@ -188,6 +189,8 @@ def _graph_files(args: Namespace, output: Path) -> list[str]:
     if not schema_path.is_file():
         return []
     schema = json.loads(schema_path.read_bytes())
+    # The collector's projection refuses an invalid contract.
+    validate_presentation(schema)
     names = [SCHEMA_NAME]
     execution = None
     index_path = output / EVIDENCE_INDEX_NAME
@@ -394,6 +397,8 @@ def write_orrery_inputs(
     if os.path.lexists(requested_output) or os.path.lexists(output):
         raise ValueError(f"Output {requested_output} already exists.")
     schema_bytes, schema = _read_schema(schema_path)
+    # The collector's projection refuses an invalid contract.
+    validate_presentation(schema)
     files = {SCHEMA_NAME: schema_bytes}
     execution = None
     if evidence is not None and store is not None:
