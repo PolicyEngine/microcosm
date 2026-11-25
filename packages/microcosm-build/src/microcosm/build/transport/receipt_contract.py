@@ -245,6 +245,23 @@ def _ratio(target, mass):
     return target / mass if mass else (0 if target == 0 else None)
 
 
+def _audit_ratio(target, mass, assign_all):
+    """Return a target-to-mass ratio for the program and stratum audits.
+
+    A target far above a tiny mass overflows the ratio to infinity, which
+    canonical JSON refuses. An overflow means some stratum's target exceeds
+    its mass. Under the ``assign_all_eligible`` rule that stratum assigns its
+    whole pool, and the program and stratum audits record the overflow as
+    None, the value a zero mass already gets. Without the rule the stratum
+    refuses, and the refusal audit keeps the value ``_ratio`` gives, byte for
+    byte.
+    """
+    ratio = _ratio(target, mass)
+    if assign_all and ratio is not None and not math.isfinite(ratio):
+        return None
+    return ratio
+
+
 def _ordered_receipt_outputs(outputs, groups):
     pending, ordered = list(outputs), []
     while pending:
@@ -488,7 +505,9 @@ def assign_receipts_v2(
     its numerical check compares the expected mass with the pool's mass and
     passes, and its audit adds ``shortfall``, the target less that mass. The
     shortfall never moves to another stratum or program, and a later program in
-    the same exclusion group loses that whole pool.
+    the same exclusion group loses that whole pool. Under the rule, the program
+    and stratum audits record a target-to-mass ratio too large for a float as
+    None.
     """
     seed, rows, declared_groups = validate_receipt_v2(contract)
     # Read here, so validate_receipt_v2 keeps its three-part result.
@@ -675,10 +694,12 @@ def assign_receipts_v2(
             "target": total_target,
             "eligible_mass_before_exclusions": total_before,
             "eligible_mass": total_remaining,
-            "target_to_eligible_mass_before_exclusions": _ratio(
-                total_target, total_before
+            "target_to_eligible_mass_before_exclusions": _audit_ratio(
+                total_target, total_before, assign_all
             ),
-            "target_to_remaining_eligible_mass": _ratio(total_target, total_remaining),
+            "target_to_remaining_eligible_mass": _audit_ratio(
+                total_target, total_remaining, assign_all
+            ),
             "strata": stratum_audits,
             "outside_strata": {
                 "n_eligible": int((remaining & ~covered).sum()),
@@ -698,8 +719,12 @@ def assign_receipts_v2(
                 "filter": filter_name,
                 "eligible_mass": mass,
                 "eligible_mass_before_exclusions": before,
-                "target_to_eligible_mass_before_exclusions": _ratio(target, before),
-                "target_to_remaining_eligible_mass": rate,
+                "target_to_eligible_mass_before_exclusions": _audit_ratio(
+                    target, before, assign_all
+                ),
+                "target_to_remaining_eligible_mass": _audit_ratio(
+                    target, mass, assign_all
+                ),
                 "rate": rate,
             }
             stratum_audits.append(detail)

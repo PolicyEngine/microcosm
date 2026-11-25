@@ -1964,6 +1964,7 @@ def test_property_mass_rule_changes_only_strata_whose_target_exceeds_mass(
         profile=profile,
     )
     assert audit["status"] == "completed"
+    json.dumps(audit, allow_nan=False)
     if exceeded:
         with pytest.raises(
             ReceiptAssignmentRefused, match="exceeds eligible weighted mass"
@@ -2031,3 +2032,95 @@ def test_property_mass_rule_group_never_refuses_or_assigns_two_flags(
         assert ("shortfall" in row) == (row["target"] > row["eligible_mass"])
         if "shortfall" in row:
             assert row["n_receipts"] == row["eligible_mass"]
+
+
+# A target over a tiny mass overflows its ratio to infinity, which canonical
+# JSON refuses. Each case gives ages, exclusions, weights, the masses before
+# and after exclusions, the flags under the rule, then (before, remaining)
+# ratios without the rule and with it.
+_TINY = 5e-324
+_OVERFLOW = {
+    # One tiny pool overflows both ratios.
+    "tiny": (
+        (20,),
+        [False],
+        [_TINY],
+        _TINY,
+        _TINY,
+        [True],
+        (math.inf, math.inf),
+        (None, None),
+    ),
+    # The exclusion empties the pool, so its zero mass gives no remaining
+    # ratio and only the ratio before exclusions overflows.
+    "excluded": (
+        (20,),
+        [True],
+        [_TINY],
+        _TINY,
+        0.0,
+        [False],
+        (math.inf, None),
+        (None, None),
+    ),
+    # The exclusion leaves a tiny pool, so only the remaining ratio overflows.
+    "remaining": (
+        (20, 21),
+        [True, False],
+        [1.0, _TINY],
+        1.0,
+        _TINY,
+        [False, True],
+        (1.0, math.inf),
+        (1.0, None),
+    ),
+}
+
+
+def _overflow_inputs(ages, excluded):
+    person = _people(ages)
+    person["excluded"] = np.array(excluded)
+    program = _program()
+    program["exclude_columns"] = ["excluded"]
+    return person, _contract(program)
+
+
+@pytest.mark.parametrize("case", list(_OVERFLOW))
+def test_mass_rule_records_an_overflowing_ratio_as_none(case):
+    ages, excluded, weights, before, mass, flags, _, ratios = _OVERFLOW[case]
+    person, contract = _overflow_inputs(ages, excluded)
+    out, audit = _assign(
+        person, _declared(contract), weights=weights, targets={"alpha_total": 1.0}
+    )
+    assert out["receives_alpha"].tolist() == flags
+    row = {
+        **_row("alpha_total", 1.0, None, mass, before, *ratios, 1.0),
+        "shortfall": 1.0,
+    }
+    program_audit = _program_audit(
+        "alpha",
+        1.0,
+        before,
+        mass,
+        *ratios,
+        [_done(row, mass, sum(flags), mass)],
+        (0, 0.0),
+    )
+    expected = _audit({"receives_alpha": _finished(program_audit, mass, sum(flags))})
+    assert json.dumps(audit, allow_nan=False) == json.dumps(expected)
+
+
+@pytest.mark.parametrize("case", list(_OVERFLOW))
+def test_overflowing_ratios_without_the_mass_rule_refuse_as_before(case):
+    ages, excluded, weights, before, mass, _, ratios, _ = _OVERFLOW[case]
+    person, contract = _overflow_inputs(ages, excluded)
+    with pytest.raises(ReceiptAssignmentRefused) as refused:
+        _assign(person, contract, weights=weights, targets={"alpha_total": 1.0})
+    assert str(refused.value) == (
+        "Receipt target 'alpha_total' exceeds eligible weighted mass in declared order."
+    )
+    # Traced from a run of base 9189f745: the refusal audit keeps its infinities.
+    row = _row("alpha_total", 1.0, None, mass, before, *ratios, ratios[1])
+    program_audit = _program_audit("alpha", 1.0, before, mass, *ratios, [row], (0, 0.0))
+    expected = _audit({"receives_alpha": program_audit}, status="refused")
+    assert json.dumps(refused.value.audit) == json.dumps(expected)

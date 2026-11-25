@@ -17,6 +17,7 @@ from microcosm.build.transport.receipt_contract import (
 )
 from microcosm.build.transport.target_kernels import compile_target_surface
 from microcosm.graph import ArtifactValue, KernelContext, Node, NumericScope, Owned
+from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.transport_graph import (
     canonical_text,
     reference_document,
@@ -212,9 +213,10 @@ def test_v2_kernel_requires_bindings_and_sha_together(tmp_path, missing):
         TAKEUP_ASSIGN.run(replace(context, params=params))
 
 
+@pytest.mark.parametrize("weight", [0.5, 5e-324], ids=["half", "tiny"])
 @pytest.mark.parametrize("declared", [False, True], ids=["plain", "declared"])
 def test_v2_kernel_carries_the_mass_rule_through_the_contract_document(
-    tmp_path, declared
+    tmp_path, declared, weight
 ):
     context = _context(tmp_path)
     params = dict(context.params)
@@ -223,8 +225,9 @@ def test_v2_kernel_carries_the_mass_rule_through_the_contract_document(
         contract["target_exceeds_eligible_mass"] = "assign_all_eligible"
     params["receipt_contract"] = canonical_text(contract)
     params["receipt_contract_sha256"] = digest(contract)
-    # One adult of weight 0.5 against the surface's target of 1.
-    weights = {"person": SimpleNamespace(values=np.array([0.5]))}
+    # One adult of this weight against the surface's target of 1. The tiny
+    # weight overflows every target-to-mass ratio.
+    weights = {"person": SimpleNamespace(values=np.array([weight]))}
     context = replace(context, params=params, weights=weights)
     if not declared:
         with pytest.raises(
@@ -234,7 +237,8 @@ def test_v2_kernel_carries_the_mass_rule_through_the_contract_document(
         return
     result = TAKEUP_ASSIGN.run(context)
     assert result.columns["person", "receives_alpha"].tolist() == [True]
-    row = result.receipt["programs"]["receives_alpha"]["strata"][0]
+    program = result.receipt["programs"]["receives_alpha"]
+    row = program["strata"][0]
     assert (
         row["target"],
         row["eligible_mass"],
@@ -242,5 +246,15 @@ def test_v2_kernel_carries_the_mass_rule_through_the_contract_document(
         row["shortfall"],
         row["realized_mass"],
         row["n_receipts"],
-    ) == (1.0, 0.5, 1.0, 0.5, 0.5, 1)
+    ) == (1.0, weight, 1.0, 1.0 - weight, weight, 1)
+    ratio = {0.5: 2.0, 5e-324: None}[weight]
+    assert [
+        audit[field]
+        for audit in (program, row)
+        for field in (
+            "target_to_eligible_mass_before_exclusions",
+            "target_to_remaining_eligible_mass",
+        )
+    ] == [ratio] * 4
     json.dumps(result.receipt, allow_nan=False)
+    canonical_json(result.receipt)
