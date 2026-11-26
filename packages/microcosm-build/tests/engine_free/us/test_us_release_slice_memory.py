@@ -437,7 +437,12 @@ def test_release_drops_rules_pinned_from_the_released_simulation_and_its_branche
     branch = _stand_in_simulation(branch_system)
     simulation = _stand_in_simulation(own_system, pre_tcja_ctc=branch)
     simulation.baseline = _stand_in_simulation(baseline_system)
+    branch.parent_branch = simulation
+    simulation.baseline.parent_branch = simulation
+    # A clone copies its base system's ``simulation``: the engine it was made in.
     own_system.simulation = simulation
+    branch_system.simulation = branch
+    baseline_system.simulation = simulation.baseline
     live_simulation = _stand_in_simulation(live_system)
     live_system.simulation = live_simulation
     own_entry = _pinned_entry(own_system)
@@ -467,6 +472,48 @@ def test_release_drops_rules_pinned_from_the_released_simulation_and_its_branche
     gc.collect()
     assert clone_reference() is None
     assert own_system_reference() is None
+
+
+def test_release_drops_rules_pinned_in_branches_a_formula_already_removed(
+    monkeypatch,
+) -> None:
+    """A copy made in a branch that is no longer in ``branches`` goes too.
+
+    policyengine-us's marginal tax rates make a branch per adult, compute
+    household income in it (reaching New York's pinned lookup) and delete the
+    branch, so the release never walks that branch's system. The copy's
+    ``simulation`` names the deleted branch, whose ``parent_branch`` leads to
+    the released simulation, directly or through a walked branch.
+    """
+    own_system, kept_branch_system = _StandInSystem(), _StandInSystem()
+    kept_branch = _stand_in_simulation(kept_branch_system)
+    simulation = _stand_in_simulation(own_system, kept=kept_branch)
+    kept_branch.parent_branch = simulation
+    own_system.simulation = simulation
+    kept_branch_system.simulation = kept_branch
+
+    def deleted_branch_of(parent) -> _StandInSystem:
+        system = _StandInSystem()
+        deleted = _stand_in_simulation(system)
+        deleted.parent_branch = parent
+        system.simulation = deleted
+        return system
+
+    looping_system = _StandInSystem()
+    looping_simulation = _stand_in_simulation(looping_system)
+    looping_simulation.parent_branch = looping_simulation
+    looping_system.simulation = looping_simulation
+    cache = {
+        "deleted_branch": _pinned_entry(deleted_branch_of(simulation)),
+        "deleted_branch_of_a_branch": _pinned_entry(deleted_branch_of(kept_branch)),
+        "unrelated_with_a_parent_loop": _pinned_entry(looping_system),
+    }
+    unrelated_entry = cache["unrelated_with_a_parent_loop"]
+    _install_pinned_rules_cache(monkeypatch, cache)
+
+    release_engine_simulation(simulation)
+
+    assert cache == {"unrelated_with_a_parent_loop": unrelated_entry}
 
 
 def _caches_the_release_leaves_alone(case: str):

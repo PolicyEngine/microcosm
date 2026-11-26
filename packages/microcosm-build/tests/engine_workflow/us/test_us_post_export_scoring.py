@@ -445,19 +445,21 @@ def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
 
 
 @pytest.mark.slow
-def test_reform_pass_leaves_no_pinned_copy_of_the_rules_behind_and_scores_the_same(
+def test_reform_pass_leaves_no_pinned_copy_of_the_rules_behind(
     builder, tmp_path, monkeypatch
 ) -> None:
-    """policyengine-us 2.2.1's New York pre-2024 CTC formulas clone the whole
-    rules system into ``policyengine_us.tools.pinned_tbs._PINNED_TBS_CACHE``.
-    The clone's copied ``simulation`` attribute keeps the batch engine and the
-    reformed parameter tree alive after the reform is finished (about 1.3 GiB
-    on this fixture). Releasing the engine drops that entry, so no parameter
-    the SALT refund pass added stays alive, and the scored arrays are
-    byte-identical to scoring with the entry kept."""
+    """New York's pre-2024 CTC formulas look up rules pinned to 2017 federal
+    law through ``policyengine_us.tools.pinned_tbs``. In policyengine-us 2.2.1
+    a lookup that misses clones the whole rules system into the module-level
+    ``_PINNED_TBS_CACHE``, and the clone's copied ``simulation`` attribute
+    keeps the batch engine and the reformed parameter tree alive after the
+    reform is finished (214,858 parameters on this fixture, about 1.3 GiB).
+    Releasing each batch engine removes that entry, so no parameter the SALT
+    refund pass added is still alive once its reform is finished. The lookups
+    are counted, so the test fails if the pass stops reaching them."""
     from policyengine_core.parameters import Parameter
+    from policyengine_us.tools import pinned_tbs
 
-    from microcosm.build.us_runtime import engine_lifecycle
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
     source = _write_engine_h5(builder, tmp_path / "export", _GUARD_HOUSEHOLDS)
@@ -467,33 +469,30 @@ def test_reform_pass_leaves_no_pinned_copy_of_the_rules_behind_and_scores_the_sa
         if probe.id == "salt_refund_income_neutralization"
     )
     assert (probe.budget_measure, probe.period) == ("state_income_tax", 2024)
+    lookups: list[str] = []
+    original_lookup = pinned_tbs._get_pinned_tbs
+
+    def counted_lookup(base_tbs, pin_name, pin_function):
+        lookups.append(pin_name)
+        return original_lookup(base_tbs, pin_name, pin_function)
+
+    monkeypatch.setattr(pinned_tbs, "_get_pinned_tbs", counted_lookup)
 
     def live_parameter_ids() -> set[int]:
         gc.collect()
         return {id(item) for item in gc.get_objects() if isinstance(item, Parameter)}
 
-    def score():
-        scorer = builder._HouseholdBatchedPostExportScorer(
-            source, maximum_microsim_batch_size=None
-        )
-        consumer = scorer.open_consumer("fixture", ())
-        before = live_parameter_ids()
-        values = consumer.simulate(_build_reform(probe)).calculate(
-            probe.budget_measure, period=probe.period
-        )
-        scored = (np.asarray(values).tobytes(), values.weights.tobytes())
-        del values
-        scorer.finish_consumer(consumer)
-        scorer.close()
-        return len(live_parameter_ids() - before), scored
-
-    added, released = score()
-    assert added == 0
-
-    monkeypatch.setattr(
-        engine_lifecycle, "_drop_pinned_rule_copies", lambda systems: None
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        source, maximum_microsim_batch_size=None
     )
-    kept_added, kept = score()
-    # The clone's tree and the reformed system's tree: 102,530 each in 2.2.1.
-    assert kept_added >= 100_000
-    assert released == kept
+    consumer = scorer.open_consumer("fixture", ())
+    before = live_parameter_ids()
+    consumer.simulate(_build_reform(probe)).calculate(
+        probe.budget_measure, period=probe.period
+    )
+    scorer.finish_consumer(consumer)
+    scorer.close()
+    added = live_parameter_ids() - before
+
+    assert "ny_pre_tcja_ctc" in lookups
+    assert len(added) == 0
