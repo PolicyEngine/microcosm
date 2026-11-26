@@ -1474,7 +1474,9 @@ def test_a_share_of_parent_member_missing_leaves_the_rest_on_the_parents_factor(
         ("band_0", "band_1", "band_2"),
         kind="share_of_parent",
     )
-    out, receipt = apply_cross_grain_partitions(raw, reconciled, (partition,))
+    out, receipt = apply_cross_grain_partitions(
+        raw, reconciled, (partition,), signed_absent=(("band_2", "A1"),)
+    )
     assert out["value"].tolist() == pytest.approx([120.0, 40.0, 40.0])
     assert receipt["members_absent"] == [
         {
@@ -1498,6 +1500,56 @@ def test_a_share_of_parent_member_missing_leaves_the_rest_on_the_parents_factor(
     )
     assert whole["value"].tolist() == out["value"].tolist()
     assert whole_receipt["members_absent"] == []
+
+
+@pytest.mark.parametrize(
+    "signed_absent",
+    [
+        (),
+        # Signed elsewhere: another area's deferral, another member's.
+        (("band_2", "A2"),),
+        (("band_1", "A1"),),
+        # The contract prefix the surface's target ids may carry is the same id.
+        (("contract:band_1", "A1"),),
+    ],
+    ids=["nothing signed", "another area", "another member", "prefixed other"],
+)
+def test_a_share_of_parent_member_missing_without_a_signed_deferral_is_refused(
+    signed_absent,
+):
+    """Only a signed deferral may leave a share_of_parent member off the
+    frame; any other gap refuses, naming the partition, the area and the
+    member, so a feed gap does not leave a cell untargeted (microcosm#931)."""
+
+    raw, reconciled = _partition_surface(90.0, 120.0, [30.0, 30.0])
+    partition = CrossGrainPartition(
+        "children_with_households",
+        "total",
+        ("band_0", "band_1", "band_2"),
+        kind="share_of_parent",
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"'children_with_households' at 'A1' lacks member\(s\) \['band_2'\], "
+        "which no signed deferral",
+    ):
+        apply_cross_grain_partitions(
+            raw, reconciled, (partition,), signed_absent=signed_absent
+        )
+
+
+def test_a_signed_deferral_with_a_contract_prefix_still_signs_the_member():
+    raw, reconciled = _partition_surface(90.0, 120.0, [30.0, 30.0])
+    partition = CrossGrainPartition(
+        "children_with_households",
+        "total",
+        ("band_0", "band_1", "band_2"),
+        kind="share_of_parent",
+    )
+    _, receipt = apply_cross_grain_partitions(
+        raw, reconciled, (partition,), signed_absent=(("contract:band_2", "A1"),)
+    )
+    assert receipt["members_absent"][0]["absent_member_target_ids"] == ["band_2"]
 
 
 def test_a_parent_without_members_is_receipted_not_refused():

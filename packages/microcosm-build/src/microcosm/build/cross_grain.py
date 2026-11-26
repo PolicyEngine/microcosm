@@ -855,6 +855,8 @@ def apply_cross_grain_partitions(
     raw_frame: pd.DataFrame,
     reconciled_frame: pd.DataFrame,
     partitions: Iterable[CrossGrainPartition],
+    *,
+    signed_absent: Iterable[tuple[str, str]] = (),
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Rescale each partition's members onto their reconciled parent.
 
@@ -866,8 +868,11 @@ def apply_cross_grain_partitions(
     set onto the whole parent would move the missing members' mass onto the
     present ones. A ``share_of_parent`` member moves by the parent's factor,
     which no other member enters, so a partial set moves as it would in a
-    whole one and the absent members are recorded (a signed deferral whose
-    leg no control moves stays out of the frame, microcosm#931).
+    whole one. Such a member may be missing only where ``signed_absent``
+    holds its (target id, geography id) pair: a signed deferral whose leg no
+    control moves stays out of the frame (microcosm#931). The absent members
+    are recorded; any other missing member is refused, as a feed gap would
+    otherwise leave the cell untargeted with no refusal.
     """
 
     columns = _surface_columns(reconciled_frame)
@@ -875,6 +880,10 @@ def apply_cross_grain_partitions(
         raise ValueError("cross-grain partitions need the raw and reconciled surface.")
     partitions = tuple(partitions)
     _validate_partitions(partitions)
+    signed = {
+        (_contract_target_id(str(target_id)), str(geography_id))
+        for target_id, geography_id in signed_absent
+    }
     out = reconciled_frame.copy(deep=True)
     value_column = out.columns.get_loc(columns["value"])
     raw_values = raw_frame[columns["value"]].to_numpy(dtype=np.float64)
@@ -922,6 +931,17 @@ def apply_cross_grain_partitions(
                     raise ValueError(
                         f"cross-grain partition {partition.partition_id!r} at "
                         f"{geography_id!r} lacks member(s) {missing}."
+                    )
+                unsigned = [
+                    member
+                    for member in missing
+                    if (member, str(geography_id)) not in signed
+                ]
+                if unsigned:
+                    raise ValueError(
+                        f"cross-grain partition {partition.partition_id!r} at "
+                        f"{geography_id!r} lacks member(s) {unsigned}, which no "
+                        "signed deferral leaves off the frame."
                     )
                 members_absent.append(
                     {
