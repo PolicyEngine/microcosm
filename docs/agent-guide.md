@@ -534,6 +534,8 @@ what the tested engine reads or ignores must have an entry in
 `RECERTIFICATION_COLUMN_CHANGES`. It takes `--compatibility-wheel` and no
 `--parent-h5`. National parents only for now. See
 [the recertification runbook](us-compatibility-recertification.md).
+For a source-preserving probe of at most 32 complete households, use the
+[US compatibility engineering pilot](us-compatibility-engineering-pilot.md).
 
 Three US release seams refuse a stored column that is lowercase snake_case,
 not a variable of the engine the release is certified against, and not in the
