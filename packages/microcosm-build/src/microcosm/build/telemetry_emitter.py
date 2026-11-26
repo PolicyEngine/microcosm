@@ -36,9 +36,10 @@ convenience of people outside PolicyEngine who run Microcosm without access
 to the collector; PolicyEngine's own builds keep telemetry required.
 
 The adapter never starts an emitter older than ``MINIMUM_EMITTER_VERSION``.
-It reads the version from ``microcosm-emitter version`` first, because the
-emitter's telemetry module records the run's start as soon as the emitter
-starts, before its ``hello`` answer can name its release.
+It reads the version first, through the interface's ``emitter_version``
+(which runs ``microcosm-emitter version``), because the emitter's telemetry
+module records the run's start as soon as the emitter starts, before its
+``hello`` answer can name its release.
 """
 
 from __future__ import annotations
@@ -46,7 +47,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from importlib import resources as importlib_resources
@@ -57,14 +57,17 @@ from microcosm_emitter_interface import (
     COMMAND_ENVIRONMENT_VARIABLE,
     DEFAULT_COMMAND,
     PROTOCOL_VERSION,
+    CommandFailure,
     EmitterClient,
     EmitterStartupError,
+    EmitterVersion,
     HuggingFaceSettings,
     RequestFailure,
     StageDatasetBundle,
     TelemetryRun,
     TelemetrySettings,
     default_spool_path,
+    emitter_version,
 )
 from microcosm_emitter_interface.bundles import DatasetBundleReceipt, WriteAccess
 from microcosm_emitter_interface.launcher import StartupFailureReason, resolve_command
@@ -373,36 +376,33 @@ def _release_number(version: object) -> tuple[int, ...] | None:
 
 def _version_description(
     command: str, timeout: float
-) -> tuple[dict[str, Any] | None, tuple[VersionFailureKind, str] | None]:
-    """``command version``'s answer, or None and how ``version`` failed.
+) -> tuple[EmitterVersion | None, tuple[VersionFailureKind, str] | None]:
+    """What ``command version`` reports, or None and how ``version`` failed.
 
-    ``microcosm-emitter version`` (every release since 0.4.0, the first with
-    the command) prints the same description as the emitter's ``hello``
-    answer, and starts none of its modules. A failure is its kind and a
-    phrase for an error message.
+    The interface's ``emitter_version`` runs ``microcosm-emitter version``
+    (every release since 0.4.0, the first with the command), which prints
+    the same description as the emitter's ``hello`` answer and starts none
+    of its modules. A failure is its kind and a phrase for an error message.
     """
-    try:
-        answer = subprocess.run(
-            [command, "version"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return None, ("timeout", f"did not answer within {timeout:g} s")
-    except Exception as error:
-        return None, ("not_run", f"could not be run ({type(error).__name__})")
-    if answer.returncode != 0:
-        return None, ("exited", f"exited {answer.returncode}")
-    try:
-        description = json.loads(answer.stdout)
-    except ValueError:
-        description = None
-    if not isinstance(description, dict):
-        return None, ("not_an_answer", "printed no JSON object")
-    return description, None
+    answer = emitter_version(command=command, timeout=timeout)
+    if isinstance(answer, EmitterVersion):
+        return answer, None
+    return None, _version_failure(answer, timeout)
+
+
+def _version_failure(
+    failure: CommandFailure, timeout: float
+) -> tuple[VersionFailureKind, str]:
+    """The kind and phrase for a ``version`` the interface got no answer from."""
+    if failure.reason == "timed_out":
+        return "timeout", f"did not answer within {timeout:g} s"
+    if failure.reason == "unusable_output":
+        return "not_an_answer", "printed no JSON object"
+    if failure.exit_code is not None:
+        return "exited", f"exited {failure.exit_code}"
+    if failure.reason == "command_not_found":
+        return "not_run", "could not be run (the command was not found)"
+    return "not_run", f"could not be run ({failure.error_type or failure.reason})"
 
 
 def _version_refusal(
@@ -451,13 +451,15 @@ def _version_refusal(
 
 
 def _protocol_refusal(
-    command: str, description: Mapping[str, Any]
+    command: str, description: EmitterVersion
 ) -> TelemetryRequiredError | None:
-    """A required build's refusal of an emitter that lists no protocol version 1."""
-    versions = description.get("protocol_versions")
-    if not isinstance(versions, list) or not all(
-        type(version) is int for version in versions
-    ):
+    """A required build's refusal of an emitter that lists no protocol version 1.
+
+    The interface reports ``protocol_versions`` as None unless ``version``
+    printed a list of integers.
+    """
+    versions = description.protocol_versions
+    if versions is None:
         return TelemetryRequiredError(
             "version_failed",
             f"`{command} version` ran but printed no list of protocol versions, "
@@ -466,8 +468,9 @@ def _protocol_refusal(
     if PROTOCOL_VERSION not in versions:
         return TelemetryRequiredError(
             "unsupported_protocol_version",
-            f"`{command} version` lists protocol versions {versions}, not protocol "
-            f"version {PROTOCOL_VERSION}, the one this build sends, {_NOT_STARTED}.",
+            f"`{command} version` lists protocol versions {list(versions)}, not "
+            f"protocol version {PROTOCOL_VERSION}, the one this build sends, "
+            f"{_NOT_STARTED}.",
         )
     return None
 
@@ -510,10 +513,7 @@ def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
         return EmitterClient.start(**options)
     timeout = options.get("startup_timeout", STARTUP_TIMEOUT_SECONDS)
     description, failure = _version_description(command, timeout)
-    reported_version = (
-        None if description is None else description.get("emitter_version")
-    )
-    version = reported_version if isinstance(reported_version, str) else None
+    version = None if description is None else description.emitter_version
     installed = _release_number(version)
     if installed is not None and installed >= _MINIMUM_RELEASE:
         if required and description is not None:
