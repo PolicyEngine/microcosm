@@ -328,6 +328,35 @@ def test_training_sets_and_scores_match(tool, seed: int) -> None:
     assert _dumps(new_score) == _dumps(old_score)
 
 
+def test_diagnostics_name_each_matrix_row_by_the_shared_module(tool) -> None:
+    """The name ``calibration_diagnostics.json`` gives a matrix-row measure.
+
+    The diagnostics name a callable measure ``<module>.<qualified name>``.
+    Before microcosm#1728 moved ``csr_row_measure`` to the shared
+    ``microcosm.build.target_holdouts``, the district tool defined it, so the
+    name was ``us_acs_local_cd_surface.target_matrix_row[N]``. It is now
+    ``microcosm.build.target_holdouts.target_matrix_row[N]``: the targets and
+    weights are the same, but ``target_surface.sha256`` changes. María
+    accepted the new name on 26 Nov 2026; this pins it.
+    """
+
+    from microcosm.calibrate.diagnostics import _selector_payload
+
+    records = _records(5)
+    tool.cd_surface.assign_target_roles(records, fraction=0.5)
+    matrix = _matrix(len(records), 7, 5)
+    target_set = tool.cd_surface.calibration_target_set(records, matrix, 7)
+    rows = tool.cd_surface.train_rows(records)
+    assert rows
+    assert [_selector_payload(target.measure) for target in target_set.targets] == [
+        {
+            "kind": "callable",
+            "name": f"microcosm.build.target_holdouts.target_matrix_row[{row}]",
+        }
+        for row in rows
+    ]
+
+
 def test_scores_with_no_held_rows_match(tool) -> None:
     old, new = _records(3), _records(3)
     reference.cd_assign_target_roles(old, fraction=0.0)
