@@ -274,7 +274,9 @@ def test_the_national_build_passes_no_orrery_upload_flag(tmp_path, dry_run):
         reference=_reference(paths),
         dry_run=dry_run,
     )
-    assert not [flag for flag in argv if "orrery" in flag]
+    assert not [
+        option for option in argv if option.startswith("--") and "orrery" in option
+    ]
     assert not hasattr(full_build_cli.parse_args(argv[2:]), "publish_orrery")
 
 
