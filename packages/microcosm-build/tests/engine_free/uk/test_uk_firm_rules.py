@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.firms import FirmRuleOutputs
 from microcosm.build.uk_runtime.firm_rules import (
     UK_FIRM_DATA_YEARS_BY_VINTAGE,
     UK_FIRM_RULE_PERIOD_BY_VINTAGE,
@@ -200,3 +201,11 @@ def test_data_years_are_recorded_apart_from_the_rule_period() -> None:
     with pytest.raises(ValueError, match="2025-26"):
         data_years_for_vintage("2025-26")
     assert "1 January" in UK_FIRM_RULE_PERIOD_NOTE
+
+
+def test_align_refuses_outputs_without_the_vat_output() -> None:
+    outputs = FirmRuleOutputs(
+        firm_id=np.array([1, 2]), values={"other": [1.0, 2.0]}, provenance={}
+    )
+    with pytest.raises(ValueError, match="vat_liability_if_registered"):
+        align_rule_outputs(outputs, np.array([1, 2]))
