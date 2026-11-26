@@ -109,11 +109,17 @@ class CertifyError(RuntimeError):
     """A refusal the operator must act on."""
 
 
+def folder_manifest_path(release: str, build: str) -> str:
+    """The build's manifest in the build repository, inside its own folder."""
+
+    return f"{build_folder(release, build)}/{RELEASE_MANIFEST}"
+
+
 def manifest_uri(release: str, build: str, commit: str) -> str:
     """The build's folder manifest at ``commit``, as policyengine.py certifies it."""
 
-    folder = build_folder(release, build)
-    return f"hf://dataset/{BUILD_REPO}@{commit}/{folder}/{RELEASE_MANIFEST}"
+    path = folder_manifest_path(release, build)
+    return f"hf://dataset/{BUILD_REPO}@{commit}/{path}"
 
 
 class BuildPin(NamedTuple):
@@ -150,6 +156,10 @@ class PublishedBuild:
         return build_folder(self.release, self.build)
 
     @property
+    def manifest_path(self) -> str:
+        return folder_manifest_path(self.release, self.build)
+
+    @property
     def pin(self) -> BuildPin:
         return BuildPin(self.release, self.build, self.commit)
 
@@ -180,10 +190,15 @@ def publishing_commit(api: Any, release: str, build: str) -> str:
     of its manifest on ``main`` is the one that published it.
     """
 
-    path = f"{build_folder(release, build)}/{RELEASE_MANIFEST}"
-    infos = api.get_paths_info(
-        BUILD_REPO, [path], expand=True, revision="main", repo_type="dataset"
-    )
+    path = folder_manifest_path(release, build)
+    try:
+        infos = api.get_paths_info(
+            BUILD_REPO, [path], expand=True, revision="main", repo_type="dataset"
+        )
+    except Exception as error:
+        raise CertifyError(
+            f"could not ask the Hub which commit published {path}: {error}"
+        ) from error
     for info in infos:
         commit = getattr(getattr(info, "last_commit", None), "oid", None)
         if getattr(info, "path", None) == path and COMMIT_PATTERN.match(
@@ -196,15 +211,38 @@ def publishing_commit(api: Any, release: str, build: str) -> str:
     )
 
 
+def require_on_main(api: Any, commit: str) -> None:
+    """Refuse a commit outside ``main``'s history.
+
+    A build folder never changes on ``main``, but a commit on another ref,
+    such as a Hub pull request's, may hold an edited copy of it.
+    """
+
+    try:
+        history = api.list_repo_commits(
+            BUILD_REPO, repo_type="dataset", revision="main"
+        )
+    except Exception as error:
+        raise CertifyError(
+            f"could not list main's history in {BUILD_REPO}: {error}"
+        ) from error
+    if not any(entry.commit_id == commit for entry in history):
+        raise CertifyError(
+            f"commit {commit} is not in main's history in {BUILD_REPO}; pin a "
+            "commit on main that holds the build's folder."
+        )
+
+
 def read_published_build(
     release: str, build: str, *, commit: str | None = None, api: Any = None
 ) -> PublishedBuild:
     """Build ``build`` of ``release``, read from its own folder.
 
     ``releases.json`` at ``main``, downloaded afresh, must list the build and
-    not have withdrawn it. The build is pinned at ``commit``, or else at the
-    commit that published its folder, and its manifest there must name the
-    release and the build and record the packages it was built with.
+    not have withdrawn it. The build is pinned at ``commit``, which must be in
+    ``main``'s history, or else at the commit that published its folder, and
+    its manifest there must name the release and the build and record the
+    packages it was built with. A Hub failure is a refusal.
     """
 
     api = hub_api() if api is None else api
@@ -219,8 +257,16 @@ def read_published_build(
         )
     except ValueError as error:
         raise CertifyError(str(error)) from error
-    commit = commit or publishing_commit(api, release, build)
-    path = f"{build_folder(release, build)}/{RELEASE_MANIFEST}"
+    except Exception as error:
+        # Anything but an absent record: the Hub could not be asked.
+        raise CertifyError(
+            f"could not read releases.json at main in {BUILD_REPO}: {error}"
+        ) from error
+    if commit is None:
+        commit = publishing_commit(api, release, build)
+    else:
+        require_on_main(api, commit)
+    path = folder_manifest_path(release, build)
     try:
         local = api.hf_hub_download(
             repo_id=BUILD_REPO,
@@ -486,14 +532,46 @@ def validate_resume_worktree(
             "uk"
         ]
         certified = (record.get("data_package") or {}).get("release_manifest_path")
-        expected = (
-            f"{build_folder(NATIONAL_RELEASE, national_build)}/{RELEASE_MANIFEST}"
-        )
+        expected = folder_manifest_path(NATIONAL_RELEASE, national_build)
         if certified != expected:
             raise CertifyError(
                 "resume worktree's modified manifest certifies another build."
             )
     return paths
+
+
+BUNDLE_MANIFEST = "src/policyengine/data/bundle/manifest.json"
+
+
+def check_resumed_pins(
+    worktree: Path,
+    replayed: Sequence[str],
+    national: PublishedBuild,
+    dense: PublishedBuild | None,
+) -> None:
+    """Refuse a resumed worktree whose modified bundle pins other commits.
+
+    The first attempt's constant rewrite moved the certified constants to its
+    commits, so a resume that certifies other ones would leave them behind.
+    """
+
+    if BUNDLE_MANIFEST not in replayed:
+        return
+    record = json.loads((worktree / BUNDLE_MANIFEST).read_text())["data_releases"]["uk"]
+    revision = (record.get("data_package") or {}).get("release_manifest_revision")
+    if revision != national.commit:
+        raise CertifyError(
+            "resume worktree's modified manifest pins the national build at "
+            f"{revision!r}, not {national.commit}; use a fresh worktree to "
+            "certify another commit."
+        )
+    regional = record.get("regional_source_manifest_uri")
+    if dense is not None and regional != dense.manifest_uri:
+        raise CertifyError(
+            f"resume worktree's modified manifest routes regions to {regional!r}, "
+            f"not the local-area build at {dense.manifest_uri}; use a fresh "
+            "worktree to certify another one."
+        )
 
 
 def record_timing(path: Path, record: dict[str, Any]) -> None:
@@ -840,7 +918,7 @@ def fetch_regional_microdata(
             Path(
                 api.hf_hub_download(
                     repo_id=BUILD_REPO,
-                    filename=f"{build.folder}/{RELEASE_MANIFEST}",
+                    filename=build.manifest_path,
                     repo_type="dataset",
                     revision=build.commit,
                 )
@@ -1049,8 +1127,8 @@ def pr_body(context: dict[str, Any]) -> str:
             "- [ ] **Local-area revision constants.** The previous local-area "
             f"build shared commit `{context['shared_old_commit']}` with a national "
             "build, so rewriting quoted literals cannot tell the two builds' "
-            "constants apart, and its commit was not rewritten. Check that each "
-            "national revision constant names "
+            "constants apart, and this tool left the local-area commit to a "
+            "person. Check that each national revision constant names "
             f"`{context['national_commit']}` and each local-area one names "
             + (f"`{regional}`." if regional else "the local-area build's commit.")
         )
@@ -1411,6 +1489,8 @@ def certify(args: argparse.Namespace) -> int:
         and dense.commit != national.commit
         else None
     )
+
+    check_resumed_pins(worktree, replay_paths, national, dense)
 
     plan = {
         "base_ref": base_ref,
