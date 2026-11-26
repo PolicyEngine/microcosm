@@ -45,7 +45,8 @@ At one geographic clone and at two:
 - council_tax_localise leaves Northern Ireland's council tax, rebate and
   reduction bit for bit, an SPI copy of a Northern Ireland household among
   the rows; gives every Great Britain row on a ratio path its bill times the
-  ratio of its draw cell, the SPI copies at L3, and moves some; holds every
+  ratio of its draw cell, the SPI copies at L2 or L3 by their band, and moves
+  some; holds every
   Great Britain reduction and rebate within the new bill; keeps the paid bill
   from before it as ``council_tax_frs_bill``; and changes no other column.
 
@@ -524,7 +525,8 @@ def test_council_tax_localise_prices_great_britain_and_leaves_northern_ireland(
     households and their SPI copies keep their council tax, rebate and
     reduction bit for bit, and one reduction above its zero bill stays there.
     Every Great Britain row on a ratio path takes its bill times the ratio of
-    its own draw cell, the SPI copies at L3, and some ratios differ from one;
+    its own draw cell, the SPI copies at L2 or L3 by their band (María's
+    ruling of 2026-11-25), and some ratios differ from one;
     the statute rows are priced, every Great Britain reduction and rebate lies
     within the new bill, the kept bill is the paid bill from before the stage,
     and no other column moves."""
@@ -599,7 +601,7 @@ def test_council_tax_localise_prices_great_britain_and_leaves_northern_ireland(
         np.asarray(references.great_britain, dtype=bool), great_britain
     ), f"K={clones}"
     levels = np.asarray(references.levels, dtype=object)
-    assert (levels[copies & great_britain] == "L3").all(), f"K={clones}"
+    assert np.isin(levels[copies & great_britain], ("L2", "L3")).all(), f"K={clones}"
     provenance = household_before["council_tax_bill_provenance"].to_numpy(dtype=object)
     observed = household_before["council_tax_band_observed"].to_numpy(dtype=bool)
     statute = (

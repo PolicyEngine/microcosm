@@ -37,4 +37,6 @@ def test_country_adapter_compiles_the_same_full_graph_with_all_targets_default()
         "spi_copy_areas",
         "spi_housing_shell",
         "council_tax_localise",
+        # The high-value support copies' own areas (microcosm#931).
+        "high_value_home_support",
     }
