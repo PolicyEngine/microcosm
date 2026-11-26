@@ -250,8 +250,8 @@ def _sever_existing_attribute(target: Any, name: str) -> None:
 _PINNED_RULES_MODULE = "policyengine_us.tools.pinned_tbs"
 
 
-#: How many ``parent_branch`` links :func:`_drop_pinned_rule_copies` follows
-#: from the simulation a pinned copy was made in. policyengine-us formulas
+#: How many ``parent_branch`` links :func:`_made_in_released_simulation`
+#: follows from the simulation a pinned copy was made in. policyengine-us formulas
 #: branch at most a few levels deep; the bound only guards against a cycle.
 _MAXIMUM_BRANCH_DEPTH = 64
 
@@ -262,8 +262,9 @@ def _made_in_released_simulation(clone: Any, simulations: list[Any]) -> bool:
     Core's ``TaxBenefitSystem.clone`` copies the ``simulation`` attribute, so a
     pinned copy names the simulation its lookup ran in. That may be a branch a
     formula has already removed from ``branches`` (policyengine-us's marginal
-    tax rates make a branch per adult, compute household income in it and
-    delete it), which the release walk never reaches; its ``parent_branch``
+    tax rate formula makes a branch for each of its first
+    ``marginal_tax_rate_adults`` adults, computes household income in it and
+    deletes it), which the release walk never reaches; its ``parent_branch``
     still leads to the simulation it was made from.
 
     An attribute read that raises (a dead weak proxy, or a property of another
@@ -321,7 +322,7 @@ def _drop_pinned_rule_copies(systems: list[Any], simulations: list[Any]) -> None
     """
     module = sys.modules.get(_PINNED_RULES_MODULE)
     cache = getattr(module, "_PINNED_TBS_CACHE", None)
-    if not systems or not isinstance(cache, dict):
+    if not (systems or simulations) or not isinstance(cache, dict):
         return
     for pin_name, entry in tuple(cache.items()):
         if not isinstance(entry, tuple) or not entry:
