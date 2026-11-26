@@ -202,6 +202,25 @@ class TestMaterialize:
         )
         assert results["household_net_income"].shape == (us_bundle.n("household"),)
 
+    def test_a_caller_owned_engine_gives_materializes_arrays(
+        self, adapter, us_bundle
+    ) -> None:
+        """A caller that must check or release the engine builds it itself;
+        the engine holds the period alone and gives materialize's bytes."""
+
+        variables = ["employment_income", "household_net_income", "aca_ptc"]
+        expected = adapter.materialize(us_bundle, variables, period=2024)
+        simulation = adapter.build_microsimulation(us_bundle, 2024)
+        assert simulation.dataset.years == [2024]
+        actual = adapter.calculate_variables(
+            simulation, us_bundle, variables, period=2024
+        )
+
+        assert list(actual) == variables
+        for name in variables:
+            assert actual[name].dtype == expected[name].dtype, name
+            assert actual[name].tobytes() == expected[name].tobytes(), name
+
 
 class TestWriteDataset:
     def test_round_trips_and_carries_household_weight(
