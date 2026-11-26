@@ -97,12 +97,17 @@ def _record_value(variable: str, record_id: int):
 
 
 class _FakeEngineLedger:
-    """Records every engine the materializer builds, in order."""
+    """Records every engine the materializer builds, in order, and each
+    behavioral-response parameter comparison it makes."""
 
     def __init__(self) -> None:
         self.simulations: list[object] = []
         self.constructions: list[dict[str, object]] = []
         self.reform_systems: list[object] = []
+        # The fake engine's shared baseline system, which a JCT reform system's
+        # behavioral-response parameters are compared with.
+        self.shared_baseline_system = SimpleNamespace(name="shared baseline system")
+        self.behavioral_response_checks: list[tuple[object, object, int]] = []
 
 
 class _FakeHolders:
@@ -139,13 +144,19 @@ def _install_fake_engine(
     aggregate_delete_branch: bool = False,
     aggregate_household: int | None = None,
     aggregate_reform_only: bool = False,
-    aggregate_in_baseline: bool = False,
     clone_branches: bool = False,
     stored_inputs: dict[str, tuple[str, ...]] | None = None,
+    moved_behavioral_response_parameters: tuple[str, ...] = (),
 ):
-    """``aggregate_reads`` maps a variable to the population aggregates its
-    formula computes (in the slash-delimited ``aggregate_branch`` if given);
-    ``stored_inputs`` are known from construction, as dataset inputs are."""
+    """``aggregate_reads`` maps a variable to the watched formulas (population
+    aggregates or baseline-branch readers) its formula computes, in the
+    slash-delimited ``aggregate_branch`` if given; ``stored_inputs`` are known
+    from construction, as dataset inputs are. Every reform system reports
+    ``moved_behavioral_response_parameters`` as set off baseline.
+
+    As in policyengine-us, an engine computes under the reform it is given
+    with ``reform=`` or else the one its supplied system was built with, and
+    only an engine given ``reform=`` carries a ``baseline`` branch."""
 
     ledger = _FakeEngineLedger()
     aggregate_reads = dict(aggregate_reads or {})
@@ -165,6 +176,7 @@ def _install_fake_engine(
 
     class FakeMicrosimulation(_FakeHolders):
         default_tax_benefit_system = FakeSystem
+        default_tax_benefit_system_instance = ledger.shared_baseline_system
 
         def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
             super().__init__(stored_inputs)
@@ -174,9 +186,16 @@ def _install_fake_engine(
                 if simulation.dataset is not None
             ]
             frame = dataset["frame"]
+            policy_reform = (
+                reform
+                if reform is not None
+                else getattr(tax_benefit_system, "reform", None)
+            )
             ledger.constructions.append(
                 {
-                    "reform": reform,
+                    "reform": policy_reform,
+                    "reform_argument": reform,
+                    "tax_benefit_system": tax_benefit_system,
                     "households": tuple(
                         int(value) for value in frame.table("household")["household_id"]
                     ),
@@ -184,7 +203,7 @@ def _install_fake_engine(
                 }
             )
             self.dataset = dataset
-            self.reform = reform
+            self.reform = policy_reform
             self.tax_benefit_system = tax_benefit_system
             self.branches: dict[str, _FakeHolders] = {}
             self.clone_branches = clone_branches
@@ -220,7 +239,7 @@ def _install_fake_engine(
                     and aggregate_household not in self._ids("household")
                 ):
                     continue
-                holders = self.baseline if aggregate_in_baseline else self
+                holders = self
                 branch_parent = holders
                 if aggregate_branch is not None:
                     for branch_name in aggregate_branch.split("/"):
@@ -263,6 +282,14 @@ def _install_fake_engine(
     ):
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
+    def fake_moved_behavioral_response_parameters(
+        reform_system, baseline_system, period
+    ):
+        ledger.behavioral_response_checks.append(
+            (reform_system, baseline_system, period)
+        )
+        return list(moved_behavioral_response_parameters)
+
     monkeypatch.setitem(
         sys.modules,
         "policyengine_us",
@@ -273,6 +300,11 @@ def _install_fake_engine(
     )
     monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
     monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
+    monkeypatch.setattr(
+        builder,
+        "_moved_behavioral_response_parameters",
+        fake_moved_behavioral_response_parameters,
+    )
     monkeypatch.setattr(
         builder,
         "_make_zero_variable_reform",
