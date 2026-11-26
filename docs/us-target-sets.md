@@ -17,7 +17,9 @@ declared as data, for each product and mode, in
   `soi_surface_predicate`) select by the declarations.
 
 The declarations replaced the selection code without a change to any target
-surface (see "What the declarations select" below).
+surface (see "What the declarations select" below). The UK declares its target
+sets the same way, with the same shared reader and selector
+([UK target sets](uk-target-sets.md), microcosm#1759).
 
 ## The declaration
 

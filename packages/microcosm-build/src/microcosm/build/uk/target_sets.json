@@ -1,7 +1,7 @@
 {
  "version": 1,
  "country": "uk",
- "description": "The targets each UK build calibrates to (microcosm#1759): the level rule that places every compiled UK target at one geography level, the full build's selection of its solve surface by level, and the two calibration lines. microcosm.calibrate.target_sets reads this file; microcosm.build.uk_runtime.target_sets names its products. The US declares its target sets the same way, in us/target_sets.json (microcosm#1728).",
+ "description": "The targets each UK build calibrates to (microcosm#1759): the level rule that places every compiled UK target at one geography level, the full build's selection of its solve surface by level, and the two calibration lines. microcosm.calibrate.target_sets reads this file; microcosm.build.uk_runtime.target_sets names its products; docs/uk-target-sets.md explains it. The US declares its target sets the same way, in us/target_sets.json (microcosm#1728).",
  "level_rule": {
   "keys": [
    "geography_level",
