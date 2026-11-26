@@ -1187,17 +1187,22 @@ def _remote_run(tmp_path, emitter):
     )
 
 
-def test_the_run_start_is_handed_over_once_and_flushed(tmp_path):
+def test_the_run_start_is_handed_over_and_flushed(tmp_path):
     """The run's folder exists on the Hub from its start, whatever follows."""
     emitter = FakeEmitterClient()
 
     telemetry = _remote_run(tmp_path, emitter)
 
-    assert len(emitter.run_file_requests) == 1
-    start = emitter.run_file_requests[0]
-    assert start.flush is True
+    # The start's hand-over, then the two documents that carry the delivery
+    # counts once more, since the emitter's commit changed them.
+    start, refresh = emitter.run_file_requests
+    assert start.flush is True and refresh.flush is True
     assert {"run_manifest.json", "progress.json", "events.ndjson"} <= {
         item.relative_path for item in start.files
+    }
+    assert {item.relative_path for item in refresh.files} == {
+        "run_manifest.json",
+        "progress.json",
     }
     prefix = telemetry.repo_run_prefix
     progress = json.loads(_remote_files(emitter)[f"{prefix}/progress.json"])
