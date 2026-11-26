@@ -14,14 +14,20 @@ Two kinds of comparison:
   lifetimes and order the stage used to have. The inputs the stage passes it
   and the receipts it reports are checked against expressions written out here
   from what the stage computed before. These run on every platform.
-- Against SHA-256 digests recorded by running origin/main 402c3587d's
-  ``impute_uk_spi_income_support`` on the fixture. QRF draws are bitwise
+- Against SHA-256 digests recorded by running the geography-first spine's
+  ``impute_uk_spi_income_support`` (microcosm#931, at its merge of main
+  8c51b6eff) on the fixture: its keyed draws move the output and receipts
+  origin/main 402c3587d's recording froze. QRF draws are bitwise
   reproducible only within one platform (``docs/graph-qrf-cross-platform.md``),
-  so the digests are kept per operating system and machine: macOS arm64
-  natively, and Linux x86_64 (CI's platform) under Docker emulation on Apple
-  silicon. They are checked only where the platform and the versions of the
-  libraries that compute the draws match the recording; elsewhere those tests
-  skip. The in-sample scenario's digests are exact to the bit. The cross-fitted
+  so the digests are kept per operating system and machine. macOS arm64 is
+  recorded natively; Linux x86_64 (CI's platform) is recorded under Docker
+  emulation on Apple silicon, and awaits a recording of #931's draws, so the
+  frozen-digest tests skip there until it is made. On a platform without a
+  recording the test warns with the digests it observed before it skips, and
+  the run's warnings summary prints them, so a CI log can record the platform.
+  They are checked only where
+  the platform and the versions of the libraries that compute the draws match
+  the recording; elsewhere those tests skip. The in-sample scenario's digests are exact to the bit. The cross-fitted
   scenario's compare floats at eight significant digits, because its gates are
   calibrated through BLAS and the kernel BLAS loads on a given CPU moves the
   last bits of the transport receipt; the same-run comparison stays exact.
@@ -29,13 +35,14 @@ Two kinds of comparison:
 A change that is meant to move these outputs records new digests from its own
 code on each platform with
 ``python -m test_support.microcosm_build.uk_spi_forest_release``, says why the
-outputs move, and renames what here says the digests come from origin/main
-402c3587d. Any other change must leave them passing.
+outputs move, and renames what here says where the digests come from. Any
+other change must leave them passing.
 """
 
 from __future__ import annotations
 
 import platform
+import warnings
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -104,7 +111,7 @@ from test_support.microcosm_build.uk_spi_forest_release import (
 )
 
 # ---------------------------------------------------------------------------
-# origin/main's digests, by platform
+# The recorded digests, by platform
 # ---------------------------------------------------------------------------
 
 #: Recorded from the geography-first spine's SPI stage (microcosm#931); the
@@ -132,7 +139,9 @@ _STAGE2_SALT_NAMES_AS_RELEASED = {
 }
 
 #: Steps after stage 2 rewrite these on drawn rows, so the person table does not
-#: show the value stage 2 read or drew.
+#: show the value stage 2 read or drew. The owner-manager rule
+#: (_owner_manager_flags_from_draws) keeps a company's trade and property
+#: business to the owner's main employment, so it rewrites both flags.
 _INCOMES_REWRITTEN_AFTER_STAGE2 = frozenset({"self_employment_income"})
 _STAGE2_TARGETS_REWRITTEN_AFTER_THE_DRAW = frozenset(
     {
@@ -140,6 +149,7 @@ _STAGE2_TARGETS_REWRITTEN_AFTER_THE_DRAW = frozenset(
         "employer_pension_contributions",
         "trading_loss",
         "owned_company_carries_on_trade",
+        "owned_company_carries_on_property_business",
     }
 )
 
@@ -153,23 +163,38 @@ _RECORDED_DEPENDENCIES = {
 }
 
 
-def _origin_main_digests(scenario: str) -> dict[str, str]:
-    """This platform's recorded digests, or a skip where they do not apply."""
+def _recorded_digests(scenario: str, observed: dict[str, str]) -> dict[str, str]:
+    """This platform's recorded digests, or a skip where they do not apply.
+
+    On a platform without a recording, ``observed``, this run's digests, go
+    out in a warning first: pytest's warnings summary prints it, from xdist's
+    workers too, so a CI run on that platform reports what to record
+    (microcosm#931). The digests are of the invented scenario's output.
+    """
 
     here = (platform.system(), platform.machine())
-    recorded = _ORIGIN_MAIN_DIGESTS.get(here)
+    recorded = _RECORDED_DIGESTS.get(here)
     if recorded is None:
+        warnings.warn(
+            f"No SPI forest digests are recorded for {here}; the {scenario!r} "
+            f"scenario gave {dict(observed)} with {_installed_dependencies()}.",
+            stacklevel=2,
+        )
         pytest.skip(
-            f"origin/main's digests were recorded on {sorted(_ORIGIN_MAIN_DIGESTS)}, "
+            f"The digests were recorded on {sorted(_RECORDED_DIGESTS)}, "
             f"not {here}; the same-run checks still run here."
         )
-    installed = {name: version(name) for name in _RECORDED_DEPENDENCIES}
+    installed = _installed_dependencies()
     if installed != _RECORDED_DEPENDENCIES:
         pytest.skip(
-            f"origin/main's digests were recorded with {_RECORDED_DEPENDENCIES}, "
+            f"The digests were recorded with {_RECORDED_DEPENDENCIES}, "
             f"not {installed}; the same-run checks still run here."
         )
     return recorded[scenario]
+
+
+def _installed_dependencies() -> dict[str, str]:
+    return {name: version(name) for name in _RECORDED_DEPENDENCIES}
 
 
 # ---------------------------------------------------------------------------
@@ -261,10 +286,11 @@ def reference_run(tmp_path_factory) -> Callable[[str], _ReferenceRun]:
 
 
 @pytest.mark.parametrize("scenario", SPI_FOREST_SCENARIOS)
-def test_output_and_receipts_reproduce_origin_main(scenario, tracked_run) -> None:
-    expected = _origin_main_digests(scenario)
+def test_output_and_receipts_reproduce_the_recording(scenario, tracked_run) -> None:
+    observed = spi_frozen_digests(scenario, tracked_run(scenario).result)
+    expected = _recorded_digests(scenario, observed)
 
-    assert spi_frozen_digests(scenario, tracked_run(scenario).result) == expected
+    assert observed == expected
 
 
 @pytest.mark.parametrize("scenario", SPI_FOREST_SCENARIOS)
