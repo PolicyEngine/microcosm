@@ -465,6 +465,7 @@ class RunnerTests(unittest.TestCase):
         evidence=None,
         old_record=None,
         replayed=(),
+        fetched=None,
     ):
         if receipt is None and uc_code == 0:
             receipt = {
@@ -574,7 +575,10 @@ class RunnerTests(unittest.TestCase):
             patch.object(
                 runner,
                 "fetch_regional_microdata",
-                return_value={"microcosm_uk_2024_25_dense": root / "dense.h5"},
+                side_effect=lambda build, **kwargs: (
+                    (fetched.append(build) if fetched is not None else None)
+                    or {"microcosm_uk_2024_25_dense": root / "dense.h5"}
+                ),
             ),
             patch.object(runner.Shell, "__call__", side_effect=shell),
             patch.object(
@@ -702,6 +706,24 @@ class RunnerTests(unittest.TestCase):
                 )
                 body = (root / "certification.pr-body.md").read_text()
                 self.assertEqual(f"shared commit `{old_regional}`" in body, shared)
+
+    def test_a_resume_at_another_commit_refuses_before_any_download(self):
+        """An accepted mismatch downloads every regional H5; a resume that
+        would be refused must not download them first."""
+
+        details, fetched = [], []
+        with self.assertRaisesRegex(
+            runner.CertifyError, f"national build at '{'5' * 40}'"
+        ):
+            self.run_mock_pipeline(
+                resume=True,
+                replayed=["src/policyengine/data/bundle/manifest.json"],
+                old_record={"data_package": {"release_manifest_revision": "5" * 40}},
+                evidence=EVIDENCE,
+                call_details=details,
+                fetched=fetched,
+            )
+        self.assertEqual((details, fetched), ([], []))
 
     def test_a_resume_at_another_commit_refuses_before_any_command(self):
         """The resumed bundle names the first attempt's national commit, so a

@@ -571,6 +571,8 @@ class FakeHub:
 
     def list_repo_commits(self, repo_id, *, repo_type=None, revision=None):
         assert (repo_id, repo_type, revision) == (REPO, "dataset", "main")
+        if "commits" in self.failures:
+            raise self.failures["commits"]
         return [SimpleNamespace(commit_id=commit) for commit in self.history]
 
 
@@ -696,6 +698,27 @@ def test_a_hub_failure_is_a_refusal(tmp_path, failing, message):
     with pytest.raises(handoff.CertifyError, match=message) as refusal:
         handoff.read_published_build(handoff.NATIONAL_RELEASE, NATIONAL, api=hub)
     assert "503 Service Unavailable" in str(refusal.value)
+
+
+def test_a_failing_history_listing_is_a_refusal(tmp_path):
+    other = "5" * 40
+    hub = _national_hub(tmp_path, at=other)
+    hub.failures["commits"] = RuntimeError("503 Service Unavailable")
+    with pytest.raises(handoff.CertifyError, match="could not list main's history"):
+        handoff.read_published_build(
+            handoff.NATIONAL_RELEASE, NATIONAL, commit=other, api=hub
+        )
+
+
+def test_an_unreadable_releases_record_is_named_in_the_refusal(tmp_path):
+    hub = _national_hub(tmp_path)
+    hub.files[(REPO, "releases.json", "main")] = b"not json"
+    with pytest.raises(
+        handoff.CertifyError,
+        match="releases.json at main in policyengine/populace-uk-private: it is "
+        "not a readable JSON document",
+    ):
+        handoff.read_published_build(handoff.NATIONAL_RELEASE, NATIONAL, api=hub)
 
 
 def _bundle_at(worktree, revision, regional_uri):
@@ -833,6 +856,22 @@ def test_every_regional_microdata_file_is_fetched_and_checked(tmp_path):
     ]
     hub.files[(REPO, f"{folder}/other.H5", DENSE_COMMIT)] = b"changed"
     with pytest.raises(handoff.CertifyError, match="not the manifest's"):
+        handoff.fetch_regional_microdata(dense, timings=tmp_path / "t.jsonl", api=hub)
+
+
+def test_a_failing_regional_download_is_a_refusal(tmp_path):
+    folder = _folder(handoff.DENSE_RELEASE, DENSE)
+    entry = {"kind": "microdata", "path": "dense.h5", "repo_id": REPO,
+             "sha256": "0" * 64}  # fmt: skip
+    hub = _dense_hub(tmp_path, {"microcosm_uk_2024_25_dense": entry}, {})
+    hub.failures[f"{folder}/dense.h5"] = RuntimeError("503 Service Unavailable")
+    dense = _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    with pytest.raises(handoff.CertifyError, match="could not download") as refusal:
+        handoff.fetch_regional_microdata(dense, timings=tmp_path / "t.jsonl", api=hub)
+    assert f"{folder}/dense.h5 at {DENSE_COMMIT}" in str(refusal.value)
+    hub = _dense_hub(tmp_path, {}, {})
+    hub.failures[f"{folder}/release_manifest.json"] = RuntimeError("timed out")
+    with pytest.raises(handoff.CertifyError, match="could not download"):
         handoff.fetch_regional_microdata(dense, timings=tmp_path / "t.jsonl", api=hub)
 
 
