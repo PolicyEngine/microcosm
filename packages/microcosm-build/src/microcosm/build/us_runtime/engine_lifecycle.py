@@ -250,8 +250,34 @@ def _sever_existing_attribute(target: Any, name: str) -> None:
 _PINNED_RULES_MODULE = "policyengine_us.tools.pinned_tbs"
 
 
-def _drop_pinned_rule_copies(systems: list[Any]) -> None:
-    """Remove the pinned-rules cache entries pinned from ``systems``.
+#: How many ``parent_branch`` links :func:`_drop_pinned_rule_copies` follows
+#: from the simulation a pinned copy was made in. policyengine-us formulas
+#: branch at most a few levels deep; the bound only guards against a cycle.
+_MAXIMUM_BRANCH_DEPTH = 64
+
+
+def _made_in_released_simulation(clone: Any, simulations: list[Any]) -> bool:
+    """Whether ``clone`` was made in one of ``simulations`` or a branch of one.
+
+    Core's ``TaxBenefitSystem.clone`` copies the ``simulation`` attribute, so a
+    pinned copy names the simulation its lookup ran in. That may be a branch a
+    formula has already removed from ``branches`` (policyengine-us's marginal
+    tax rates make a branch per adult, compute household income in it and
+    delete it), which the release walk never reaches; its ``parent_branch``
+    still leads to the simulation it was made from.
+    """
+    current = getattr(clone, "simulation", None)
+    for _ in range(_MAXIMUM_BRANCH_DEPTH):
+        if current is None:
+            return False
+        if any(current is simulation for simulation in simulations):
+            return True
+        current = getattr(current, "parent_branch", None)
+    return False
+
+
+def _drop_pinned_rule_copies(systems: list[Any], simulations: list[Any]) -> None:
+    """Remove the pinned-rules cache entries made in released simulations.
 
     In policyengine-us 2.2.1, New York's pre-2024 child tax credit formulas
     (``ny_ctc_pre_2024_eligible`` and ``ny_ctc_pre_2024``, from 2018 except
@@ -267,17 +293,23 @@ def _drop_pinned_rule_copies(systems: list[Any]) -> None:
     the entry: about 1.3 GiB after a reform pass, 0.5 GiB after a baseline
     pass.
 
-    A lookup reuses an entry only for the same system object it was pinned
-    from, and each policyengine-us simulation gets a system object of its own,
-    so no later engine can reuse an entry pinned from a released simulation.
-    Removing those entries changes no scored value. (Were a system shared by a
-    simulation still running, its next lookup would clone again, as any miss
-    does.) Entries pinned from other systems stay. The module is not imported
-    here, and a cache or entry of any other shape is left alone.
+    ``systems`` and ``simulations`` are what the release walked. An entry is
+    removed when its first item is a weak reference to one of ``systems``, or
+    when its clone was made in one of ``simulations`` or in a branch of one
+    that a formula removed from ``branches``
+    (:func:`_made_in_released_simulation`). A lookup reuses an entry only for
+    the same system object it was pinned from, and each policyengine-us
+    simulation and branch gets a system object of its own, so no later engine
+    can reuse a removed entry and no scored value changes. (Were a system
+    shared by a simulation still running, its next lookup would clone again,
+    as any miss does.) Entries made elsewhere, dead entries, a missing cache,
+    a cache that is not a dict and entries without a weak reference first are
+    left alone. The module is not imported here.
 
-    policyengine-us 2.88.6 holds these entries weakly
-    (PolicyEngine/policyengine-us#10550); remove this when the US engine pin
-    reaches it.
+    policyengine-us 2.88.6 holds every part of an entry weakly
+    (PolicyEngine/policyengine-us#10550). Its entries are matched by their
+    first item the same way, and removing them frees nothing. Remove this
+    when the US engine pin reaches 2.88.6.
     """
     module = sys.modules.get(_PINNED_RULES_MODULE)
     cache = getattr(module, "_PINNED_TBS_CACHE", None)
@@ -290,11 +322,13 @@ def _drop_pinned_rule_copies(systems: list[Any]) -> None:
         if not isinstance(base_reference, weakref.ReferenceType):
             continue
         base = base_reference()
+        if base is None:
+            continue
+        clone = entry[2] if len(entry) > 2 else None
         if (
-            base is not None
-            and any(base is system for system in systems)
-            and cache.get(pin_name) is entry
-        ):
+            any(base is system for system in systems)
+            or _made_in_released_simulation(clone, simulations)
+        ) and cache.get(pin_name) is entry:
             del cache[pin_name]
 
 
@@ -315,7 +349,8 @@ def release_engine_simulation(simulation: Any) -> None:
       graph's lifetime.
 
     Then it removes the entries policyengine-us's pinned-rules cache holds for
-    those simulations' systems (:func:`_drop_pinned_rule_copies`).
+    copies made in those simulations, or in branches of them that a formula
+    already removed (:func:`_drop_pinned_rule_copies`).
 
     Safe to call on stubs and doubles: only attributes the object actually
     carries are touched. Idempotent.
@@ -323,11 +358,13 @@ def release_engine_simulation(simulation: Any) -> None:
     stack = [simulation]
     seen: set[int] = set()
     released_systems: list[Any] = []
+    released_simulations: list[Any] = []
     while stack:
         current = stack.pop()
         if current is None or id(current) in seen:
             continue
         seen.add(id(current))
+        released_simulations.append(current)
 
         branches = getattr(current, "branches", None)
         if isinstance(branches, dict):
@@ -363,4 +400,4 @@ def release_engine_simulation(simulation: Any) -> None:
         for attribute in _SEVERED_ATTRIBUTES:
             _sever_existing_attribute(current, attribute)
 
-    _drop_pinned_rule_copies(released_systems)
+    _drop_pinned_rule_copies(released_systems, released_simulations)
