@@ -21,6 +21,7 @@ from microcosm_emitter_interface import (
 )
 from microcosm_emitter_interface import client as interface_client
 from microcosm_emitter_interface import launcher as interface_launcher
+from microcosm_emitter_interface.commands import CommandFailure, EmitterVersion
 from microcosm_emitter_interface.launcher import StartupFailureReason
 from microcosm_emitter_interface.telemetry import OuterProgress
 
@@ -933,6 +934,140 @@ def test_a_required_build_s_error_for_each_way_its_version_check_fails(
     assert starts == []
     assert not started.exists()
     assert "continue" not in capfd.readouterr().err
+
+
+def _answer_version_with(monkeypatch, answer):
+    """Stand in for the interface's ``emitter_version``; return its requests.
+
+    The installed command is a stand-in whose own ``version`` exits 3, so an
+    adapter that ran the command and read its output itself would see that
+    instead of ``answer``.
+    """
+    requests = []
+
+    def emitter_version(**request):
+        requests.append(request)
+        return answer
+
+    monkeypatch.setattr(adapter, "emitter_version", emitter_version, raising=False)
+    return requests
+
+
+def test_the_version_check_asks_the_interface_for_the_installed_release(
+    monkeypatch, capsys, tmp_path
+):
+    """The interface's ``emitter_version`` runs ``version`` and parses it."""
+
+    client = FakeEmitterClient()
+    starts = _record_starts(monkeypatch, client)
+    started = _install_emitter_script(monkeypatch, tmp_path / "bin", "  exit 3")
+    command = tmp_path / "bin" / "microcosm-emitter"
+    requests = _answer_version_with(
+        monkeypatch,
+        EmitterVersion(
+            emitter_version="0.5.1", protocol_versions=(1,), collector_origin=None
+        ),
+    )
+
+    emitter = _start_build_emitter(monkeypatch, tmp_path)
+
+    assert requests == [
+        {"command": str(command), "timeout": adapter.STARTUP_TIMEOUT_SECONDS}
+    ]
+    assert starts == []
+    assert not started.exists()
+    assert isinstance(emitter.client, adapter.OutdatedEmitterClient)
+    assert emitter.client.reported == "reports version 0.5.1"
+    assert "The installed microcosm-emitter reports version 0.5.1;" in (
+        capsys.readouterr().err
+    )
+
+
+#: Each way the interface's ``emitter_version`` reports no answer: the reason
+#: a build that must send telemetry stops with, and text its error contains.
+INTERFACE_VERSION_FAILURES = {
+    "timed_out": (
+        CommandFailure("version", "timed_out"),
+        "version_timeout",
+        f"did not answer within {SHORT_STARTUP_TIMEOUT_SECONDS:g} s",
+    ),
+    "could_not_run": (
+        CommandFailure("version", "could_not_run", error_type="PermissionError"),
+        "version_failed",
+        "could not be run (PermissionError)",
+    ),
+    "command_not_found": (
+        CommandFailure("version", "command_not_found"),
+        "version_failed",
+        "could not be run (the command was not found)",
+    ),
+    "usage_error": (
+        CommandFailure("version", "usage_error", exit_code=2),
+        "version_failed",
+        "exited 2",
+    ),
+    "exited": (
+        CommandFailure("version", "exited", exit_code=-9),
+        "version_failed",
+        "exited -9",
+    ),
+    "unusable_output": (
+        CommandFailure(
+            "version",
+            "unusable_output",
+            exit_code=0,
+            output_problem="it printed no JSON object",
+        ),
+        "version_failed",
+        "printed no JSON object",
+    ),
+}
+
+
+@pytest.mark.parametrize("failure", list(INTERFACE_VERSION_FAILURES))
+def test_a_required_build_s_error_for_each_failure_the_interface_reports(
+    monkeypatch, capfd, tmp_path, failure
+):
+    answer, reason, explanation = INTERFACE_VERSION_FAILURES[failure]
+    starts = _record_starts(monkeypatch)
+    started = _install_emitter_script(monkeypatch, tmp_path / "bin", "  exit 3")
+    command = tmp_path / "bin" / "microcosm-emitter"
+    _answer_version_with(monkeypatch, answer)
+    monkeypatch.setenv(REQUIRED_VARIABLE, "1")
+
+    with pytest.raises(adapter.TelemetryRequiredError) as raised:
+        _start_with_a_short_limit(monkeypatch, tmp_path)
+
+    assert raised.value.reason == reason
+    message = str(raised.value)
+    assert explanation in message
+    assert f"`{command} version`" in message
+    assert starts == []
+    assert not started.exists()
+    assert "continue" not in capfd.readouterr().err
+
+
+def test_a_required_build_refuses_a_version_answer_without_protocol_versions(
+    monkeypatch, tmp_path
+):
+    starts = _record_starts(monkeypatch)
+    _install_emitter_script(monkeypatch, tmp_path / "bin", "  exit 3")
+    _answer_version_with(
+        monkeypatch,
+        EmitterVersion(
+            emitter_version=adapter.MINIMUM_EMITTER_VERSION,
+            protocol_versions=None,
+            collector_origin=None,
+        ),
+    )
+    monkeypatch.setenv(REQUIRED_VARIABLE, "1")
+
+    with pytest.raises(adapter.TelemetryRequiredError) as raised:
+        _start_with_a_short_limit(monkeypatch, tmp_path)
+
+    assert raised.value.reason == "version_failed"
+    assert "printed no list of protocol versions" in str(raised.value)
+    assert starts == []
 
 
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])
