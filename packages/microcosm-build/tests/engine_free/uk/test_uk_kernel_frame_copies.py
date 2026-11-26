@@ -16,6 +16,7 @@ import gc
 import hashlib
 import tracemalloc
 from collections.abc import Callable
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -622,3 +623,50 @@ def test_projection_to_kernel_frame_holds_one_copy_at_its_peak(builder):
     assert frame.table("person").shape == (200_000, 25)
     assert (held - baseline) / copied_bytes < 1.15
     assert (peak - baseline) / copied_bytes < 1.35
+
+
+def test_a_change_to_table_copies_moves_the_hashes_of_the_kernels_copying_with_it(
+    monkeypatch,
+):
+    """``source_hash`` does not follow imports, so the copy is bound explicitly.
+
+    The UK stage kernels copy their inputs through ``_minimal_frame``, and the
+    population and calibration kernels through ``context_frame``; both call
+    ``copy_table``. An edit to it must re-key those nodes, so a graph store
+    built before the edit cannot serve them. A kernel that builds no Frame
+    from its context keeps its hash.
+    """
+
+    from microcosm.build.uk_runtime import graph_calibration, graph_population
+    from microcosm.build.uk_runtime.graph import uk_registry, uk_spine_graph
+    from microcosm.frame import table_copies
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    stage = graph.node("frs_employment").kernel
+    hashes: dict[str, Callable[[], str]] = {
+        "stage": lambda: registry.implementation_hash(stage),
+        "population": lambda: (
+            graph_population.UKSampleNormalizationKernel().implementation_hash()
+        ),
+        "calibration": lambda: (
+            graph_calibration.UKSizeFilterKernel().implementation_hash()
+        ),
+    }
+    control = graph_population.UKGeographyIdentityKernel
+    before = {name: hash_of() for name, hash_of in hashes.items()}
+    control_before = control().implementation_hash()
+    helper_path = Path(table_copies.__file__).resolve()
+    original_read_bytes = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original_read_bytes(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+
+    for name, hash_of in hashes.items():
+        assert hash_of() != before[name], name
+    assert control().implementation_hash() == control_before
