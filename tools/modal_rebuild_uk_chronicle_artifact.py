@@ -14,6 +14,12 @@ The container clones Chronicle at the pinned commit, syncs its own
 files against the pin. Results go to the ``microcosm-uk-chronicle`` Modal
 volume under ``<commit>/<facts sha256>/``, with a receipt beside them.
 
+As in the US Modal image, the image first drops the compromised eMudhra
+certificate authorities (an upgraded CA store, a hash-pinned pip, uv 0.13.4
+and a certifi floor) before it downloads anything else, so neither the
+packages an upload runs with ``HF_TOKEN`` nor the upload's own connection to
+the Hub depends on them.
+
 Check the pin and print the plan (plain Python; contacts no Modal service
 and sends nothing)::
 
@@ -44,6 +50,7 @@ import hashlib
 import json
 import os
 import resource
+import shlex
 import shutil
 import subprocess
 import sys
@@ -59,8 +66,25 @@ VOLUME_MOUNT = "/artifacts"
 HF_REPO = "policyengine/microcosm-uk-build-inputs"
 CHRONICLE_URL = "https://github.com/PolicyEngine/chronicle.git"
 PYTHON_VERSION = "3.14"
-UV_VERSION = "0.11.7"
+# The compromised eMudhra (emSign) roots, whose intermediate keys were
+# disclosed on 2026-10-20, are dropped as in the US Modal image
+# (tools/modal_us_stage_plan.py, whose values the tests compare with these).
+# uv verifies HTTPS against a CA list compiled into it, and 0.13.4 is the
+# first release whose list drops them.
+UV_VERSION = "0.13.4"
+# Modal's cached debian_slim base carries pip 25.3, whose bundled certifi
+# still contains emSign ECC Root CA - G3, so the image replaces it with this
+# pip before downloading anything else. The wheel's sha256, as PyPI publishes
+# it, not the connection, makes that one download authentic.
+PIP_VERSION = "26.2.2"
+PIP_WHEEL_SHA256 = "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+PIP_BOOTSTRAP_REQUIREMENTS = "/tmp/pip-bootstrap.txt"
 HF_HUB_VERSION = "1.18.0"
+# The upload's Hub client checks the Hub's certificate against certifi's CA
+# list on the image's own Python, and 2026.10.19 is the first certifi release
+# without the eMudhra roots. Stated, since Modal reuses a cached layer while
+# its definition is unchanged.
+CERTIFI_MINIMUM_VERSION = "2026.10.19"
 FEED_PIN = Path(__file__).resolve().parents[1] / (
     "packages/microcosm-build/src/microcosm/build/uk/chronicle_feed.json"
 )
@@ -91,10 +115,38 @@ def _secrets() -> list[modal.Secret]:
     return [modal.Secret.from_dict({"HF_TOKEN": token})] if token else []
 
 
+def pip_bootstrap_command() -> str:
+    """The shell step that replaces the base's pip before any package download.
+
+    ``--require-hashes`` refuses any file whose sha256 is not
+    ``PIP_WHEEL_SHA256``, whatever index or certificate answers the request.
+    """
+
+    requirement = f"pip=={PIP_VERSION} --hash=sha256:{PIP_WHEEL_SHA256}"
+    path = shlex.quote(PIP_BOOTSTRAP_REQUIREMENTS)
+    return (
+        f"printf '%s\\n' {shlex.quote(requirement)} > {path}"
+        f" && python -m pip install --require-hashes --no-deps -r {path}"
+        f" && rm {path}"
+    )
+
+
 image = (
     modal.Image.debian_slim(python_version=PYTHON_VERSION)
-    .apt_install("git", "curl", "time")
-    .pip_install(f"uv=={UV_VERSION}", f"huggingface_hub=={HF_HUB_VERSION}")
+    # Naming ca-certificates upgrades the base's CA store, which git's clone
+    # of Chronicle and the standard library's ssl module verify against, to
+    # Debian's current release, which drops the eMudhra roots.
+    .apt_install("git", "curl", "time", "ca-certificates")
+    # Before the base's pip downloads anything else.
+    .run_commands(pip_bootstrap_command())
+    # The upload runs huggingface_hub on the image's own Python.
+    .pip_install(
+        f"uv=={UV_VERSION}",
+        f"huggingface_hub=={HF_HUB_VERSION}",
+        f"certifi>={CERTIFI_MINIMUM_VERSION}",
+    )
+    # The upgraded uv checks the Python it downloads against the sha256 it
+    # carries for that release.
     .run_commands(f"uv python install {PYTHON_VERSION}")
     .env(
         {
