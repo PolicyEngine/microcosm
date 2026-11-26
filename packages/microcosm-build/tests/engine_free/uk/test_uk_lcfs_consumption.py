@@ -589,12 +589,18 @@ def test_draw_keeps_every_basket_inside_the_donors_range() -> None:
     ids = np.arange(1, len(recipient) + 1)
     spend = list(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)
 
-    def draw(**kwargs) -> pd.DataFrame:
+    def draw(**kwargs):
         return impute_lcfs_consumption(
             donor, recipient, seed=0, n_estimators=8, record_ids=ids, **kwargs
-        ).draws
+        )
 
-    unbounded, kept = draw(support_exempt=set(spend)), draw()
+    unbounded, result = draw(support_exempt=set(spend)).draws, draw()
+    kept = result.draws
+    # The result names the households the range step touched, and no others.
+    touched = ~(kept[spend] == unbounded[spend]).all(axis=1).to_numpy()
+    assert result.redrawn.any()
+    assert np.array_equal(touched, result.redrawn | result.moved_budget)
+    assert result.mix_donors.shape == (len(recipient),)
     bounded = [c for c in spend if c not in UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT]
     lower, upper = donor[bounded].min(), donor[bounded].max()
 
@@ -708,6 +714,32 @@ def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> No
         assert row["total"]["shape"] == pytest.approx(1.0)
         assert row["total"]["reweighted_shape"] == pytest.approx(1.0)
 
+    # The effective number of donors behind the mixes: one donor for the whole
+    # bottom decile is withheld; elsewhere each household has its own.
+    assert "effective_mix_donors" not in same["deciles"][1]
+    assert "effective_mix_donors_by_region" not in same
+    mixed = decile_fit(
+        donor,
+        donor,
+        weights=weights,
+        donor=donor,
+        sources=None,
+        mix_donors=np.where(rank == 1, 0, np.arange(len(donor))),
+    )
+    assert mixed["deciles"][0]["effective_mix_donors"] == "<3"
+    second = weights[rank == 2]
+    assert mixed["deciles"][1]["effective_mix_donors"] == pytest.approx(
+        second.sum() ** 2 / np.square(second).sum()
+    )
+    regions = mixed["effective_mix_donors_by_region"]
+    assert set(regions) == set(donor["region"].astype(str))
+    for cells in regions.values():
+        assert [cell["decile"] for cell in cells] == list(range(1, 11))
+        for cell in cells:
+            assert ("effective_mix_donors" in cell) == (
+                cell["frame_support"] not in (0, "<3")
+            )
+
     thin = decile_fit(
         frame.iloc[:40],
         frame.iloc[:40],
@@ -718,6 +750,53 @@ def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> No
     for row in [*thin["deciles"], thin["all"]]:
         assert row.get("withheld") is True
         assert "total" not in row
+
+
+def test_budget_and_mix_receipt_reports_the_range_step() -> None:
+    """The range step's two paths, each with its support band (microcosm#1717).
+
+    Five households take a new donor and two another budget. The redrawn
+    share is floored to the hundredth and given at the design weights; the
+    two moved households' shares are withheld.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UKLCFSConsumptionImputationResult,
+        budget_and_mix_receipt,
+    )
+
+    redrawn = np.zeros(100, dtype=bool)
+    redrawn[:5] = True
+    moved = np.zeros(100, dtype=bool)
+    moved[50:52] = True
+    weights = np.ones(100)
+    weights[:5] = 3.0
+    imputation = UKLCFSConsumptionImputationResult(
+        pd.DataFrame(),
+        (),
+        mix_donors=np.arange(100),
+        redrawn=redrawn,
+        moved_budget=moved,
+    )
+    step = budget_and_mix_receipt(imputation, weights=weights, sources=None)[
+        "range_step"
+    ]
+    assert step["redrawn"]["support"] == "3-9"
+    assert step["redrawn"]["share"] == 0.05
+    assert step["redrawn"]["weighted_share"] == pytest.approx(15.0 / 110.0)
+    assert step["moved_budget"] == {
+        "support": "<3",
+        "share": "<3",
+        "weighted_share": "<3",
+    }
+    assert (
+        budget_and_mix_receipt(
+            UKLCFSConsumptionImputationResult(pd.DataFrame(), ()),
+            weights=weights,
+            sources=None,
+        )
+        is None
+    )
 
 
 def test_decile_fit_reweights_the_donor_to_the_frames_household_mix() -> None:
@@ -2164,7 +2243,13 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
         "bus_pricing",
         "energy_pricing",
         "energy_rake",
+        "budget_and_mix",
+        "decile_fit",
     } <= set(evidence)
+    # The draw's range step and the mixes behind each decile are on record
+    # (microcosm#1717).
+    assert set(evidence["budget_and_mix"]["range_step"]) == {"redrawn", "moved_budget"}
+    assert "effective_mix_donors_by_region" in evidence["decile_fit"]
     # The excise shares are scratch: neither they nor the spending they give
     # reach the frame (microcosm#1359), and the receipt sets the frame's part
     # of each total beside the donor's.

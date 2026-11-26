@@ -97,6 +97,7 @@ from microcosm.build.uk_runtime.qrf_gates import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
     distinct_count,
     extreme_count,
     floored_share,
@@ -910,6 +911,8 @@ UK_LCFS_CONSUMPTION_STAGE_NAME = "lcfs_consumption"
 #: (microcosm#1717), and the deciles whose pooled ratio sets each one's shape.
 UK_LCFS_DECILE_FIT_RECEIPT = "decile_fit"
 UK_LCFS_DECILE_FIT_REFERENCE_DECILES = (4, 5, 6, 7)
+#: The receipt of the draw's range step on each build (microcosm#1717).
+UK_LCFS_BUDGET_AND_MIX_RECEIPT = "budget_and_mix"
 #: The household mix the receipt reweights the donor to within each decile:
 #: adults 1, 2, 3 or more; children and cars 0, 1, 2 or more (each count's
 #: first and open-ended last band); tenure by its categories (``None``).
@@ -952,6 +955,7 @@ class UKLCFSConsumptionResult:
     gambling_participation: Mapping[str, Any] | None = None
     excise_quantities: Mapping[str, Any] | None = None
     car_attributes: Mapping[str, Any] | None = None
+    budget_and_mix: Mapping[str, Any] | None = None
     decile_fit: Mapping[str, Any] | None = None
     gate_outcomes: Mapping[str, str] | None = None
 
@@ -996,6 +1000,8 @@ class UKLCFSConsumptionResult:
             evidence[UK_LCFS_EXCISE_QUANTITIES_RECEIPT] = dict(self.excise_quantities)
         if self.car_attributes is not None:
             evidence[ASSIGN_CAR_ATTRIBUTES_KIND] = dict(self.car_attributes)
+        if self.budget_and_mix is not None:
+            evidence[UK_LCFS_BUDGET_AND_MIX_RECEIPT] = dict(self.budget_and_mix)
         if self.decile_fit is not None:
             evidence[UK_LCFS_DECILE_FIT_RECEIPT] = dict(self.decile_fit)
         if self.gate_outcomes:
@@ -1254,6 +1260,10 @@ class UKLCFSConsumptionStageTransform:
             weights=weights,
             donor=donor,
             sources=sources,
+            mix_donors=imputation.mix_donors,
+        )
+        range_receipt = budget_and_mix_receipt(
+            imputation, weights=weights, sources=sources
         )
         litres_audit = fuel_litres_audit(
             household_draws, weights=weights, stage=self.stage
@@ -1352,6 +1362,7 @@ class UKLCFSConsumptionStageTransform:
             gambling_participation=None if gambling is None else gambling.receipt,
             excise_quantities=excise_quantities,
             car_attributes=None if car_attributes is None else car_attributes.receipt,
+            budget_and_mix=range_receipt,
             decile_fit=decile_receipt,
             gate_outcomes={
                 **incidence.receipt.get(UK_GATE_OUTCOMES_EVIDENCE, {}),
@@ -1381,6 +1392,12 @@ class UKLCFSConsumptionStageTransform:
 class UKLCFSConsumptionImputationResult:
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
+    #: Each household's mix donor (its donor row), in recipient row order, and
+    #: the households the range step gave a new donor or moved to another
+    #: budget (microcosm#1717).
+    mix_donors: np.ndarray | None = None
+    redrawn: np.ndarray | None = None
+    moved_budget: np.ndarray | None = None
 
 
 class DiagnosticUnavailableError(ValueError):
@@ -1727,6 +1744,64 @@ def division_capture_or_reason(
         }
 
 
+def budget_and_mix_receipt(
+    imputation: UKLCFSConsumptionImputationResult,
+    *,
+    weights: np.ndarray,
+    sources: np.ndarray | None,
+) -> dict[str, Any] | None:
+    """The draw's range step on this build (microcosm#1717).
+
+    For the households the step gave a new donor, and for those it moved to
+    another budget (none of whose neighbours fitted): the support band, the
+    share of frame households floored to the hundredth, and the share at the
+    stage's design weights, each withheld where one or two source households
+    carry it. Aggregates only.
+    """
+
+    if imputation.redrawn is None or imputation.moved_budget is None:
+        return None
+    mass = np.asarray(weights, dtype=float)
+    ids = np.arange(len(mass)) if sources is None else np.asarray(sources)
+
+    def path(mask: np.ndarray) -> dict[str, Any]:
+        selected = np.asarray(mask, dtype=bool)
+        support = distinct_count(ids, selected, mass)
+        withheld = 0 < support < UK_DISCLOSURE_FLOOR
+        return {
+            "support": support_band(support),
+            "share": UK_WITHHELD if withheld else floored_share(float(selected.mean())),
+            "weighted_share": small_cell_share(
+                float(np.average(selected, weights=mass)), support
+            ),
+        }
+
+    return {
+        "range_step": {
+            "redrawn": path(imputation.redrawn),
+            "moved_budget": path(imputation.moved_budget),
+        }
+    }
+
+
+def effective_donor_count(donors: np.ndarray, weights: np.ndarray) -> float:
+    """The effective number of donors behind some draws (microcosm#1717).
+
+    The inverse Simpson index of the weight each donor carries: the number of
+    equally used donors that would spread the draws as evenly.
+    """
+
+    _, index = np.unique(np.asarray(donors), return_inverse=True)
+    carried = np.bincount(index, weights=np.asarray(weights, dtype=float))
+    total = float(carried.sum())
+    return total**2 / float(np.square(carried).sum()) if total > 0 else 0.0
+
+
+def _effective_mix_donors(donors: np.ndarray, weights: np.ndarray) -> float | str:
+    count = effective_donor_count(donors, weights)
+    return count if count >= UK_DISCLOSURE_FLOOR else UK_WITHHELD
+
+
 def decile_fit_mix(table: pd.DataFrame) -> dict[str, np.ndarray]:
     """Each household's mix category for the decile receipt (microcosm#1717).
 
@@ -1863,6 +1938,7 @@ def decile_fit(
     weights: np.ndarray,
     donor: pd.DataFrame,
     sources: np.ndarray | None,
+    mix_donors: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """The frame's spending beside the donor's, by income decile (microcosm#1717).
 
@@ -1885,10 +1961,17 @@ def decile_fit(
     The pooled figures sum each decile's reweighted donor; a decile too thin
     to compare keeps the donor's own weights there.
 
+    Given ``mix_donors``, each household's mix donor in frame row order, the
+    receipt also gives the effective number of donors behind the frame's
+    mixes (:func:`effective_donor_count`, at the design weights) in each
+    decile and in each region's deciles: the number of distinct mixes to
+    expect when cutting spending by such a group.
+
     A decile resting on fewer than three source households on either side is
     withheld, as are the reweighted figures where the reweighted donor rests
-    on fewer than three, and every decile gives its support bands. Aggregates
-    only: no household's value, weight, maximum or minimum.
+    on fewer than three and an effective number of donors under three, and
+    every cell gives its support bands. Aggregates only: no household's value,
+    weight, maximum or minimum.
     """
 
     frame_weights = np.asarray(weights, dtype=float)
@@ -2012,6 +2095,10 @@ def decile_fit(
         entry["reweighted_donor_support"] = support_band(reweighted_support)
         if met is not None:
             entry["reweighted_mix_met"] = met
+        if mix_donors is not None:
+            entry["effective_mix_donors"] = _effective_mix_donors(
+                mix_donors[frame_mask], frame_weights[frame_mask]
+            )
         frame = side(frame_values, frame_weights, frame_mask)
         donor_side = side(donor_values, donor_weights, donor_mask)
         matched = (
@@ -2054,6 +2141,25 @@ def decile_fit(
         np.ones(len(donor_weights), dtype=bool),
         None,
     )
+    by_region: dict[str, list[dict[str, Any]]] | None = None
+    if mix_donors is not None:
+        regions = recipient["region"].astype(str).to_numpy()
+        by_region = {}
+        for region in sorted(set(regions.tolist())):
+            cells = []
+            for decile in range(1, 11):
+                mask = (regions == region) & (frame_rank == decile)
+                support = distinct_count(frame_ids, mask, frame_weights)
+                region_cell: dict[str, Any] = {
+                    "decile": decile,
+                    "frame_support": support_band(support),
+                }
+                if support >= UK_DISCLOSURE_FLOOR:
+                    region_cell["effective_mix_donors"] = _effective_mix_donors(
+                        mix_donors[mask], frame_weights[mask]
+                    )
+                cells.append(region_cell)
+            by_region[region] = cells
     return {
         "ranking": "equivalised_hbai_household_net_income",
         "equivalisation": "modified_oecd_from_adult_and_child_counts",
@@ -2080,6 +2186,7 @@ def decile_fit(
         "columns": columns,
         "deciles": deciles,
         "all": everyone,
+        **({} if by_region is None else {"effective_mix_donors_by_region": by_region}),
     }
 
 
@@ -5926,6 +6033,16 @@ def impute_lcfs_consumption(
     excise shares (microcosm#1359). A donor with no spending gives no mix.
     ``support_exempt`` names the spend targets the support clip leaves
     unbounded (the declared ``support_clip`` exemptions).
+
+    A household with a negative income, a self-employment loss say, draws
+    like any other: both forests read the income predictors as values, so a
+    negative income sorts with the donors at the bottom of every split on
+    income, those with the lowest incomes the survey records. Matching each
+    survey's bottom tail to the other's by income rank is left for
+    microcosm#1717.
+
+    The result names each household's mix donor and the households the
+    range step redrew or moved to another budget, for the stage's receipts.
     """
 
     from microcosm.fit.donors import (
@@ -6008,6 +6125,7 @@ def impute_lcfs_consumption(
         position for position, column in enumerate(spend) if column not in exempt
     ]
     lower, upper = _donor_support_bounds(donor, [spend[p] for p in bounded])
+    first_chosen, first_budget = chosen, budget
     chosen, budget = _keep_baskets_in_support(
         mix_neighbourhoods,
         chosen,
@@ -6032,6 +6150,9 @@ def impute_lcfs_consumption(
             FitWeightRecord(f"{UK_LCFS_CONSUMPTION_FIT_NAME}:budget", EXPLICIT_KIND),
             FitWeightRecord(f"{UK_LCFS_CONSUMPTION_FIT_NAME}:mix", EXPLICIT_KIND),
         ),
+        mix_donors=np.asarray(chosen),
+        redrawn=np.asarray(chosen) != np.asarray(first_chosen),
+        moved_budget=np.asarray(budget) != np.asarray(first_budget),
     )
 
 
