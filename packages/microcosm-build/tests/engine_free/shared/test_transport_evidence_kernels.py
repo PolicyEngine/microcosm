@@ -153,6 +153,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1585 item 11: us_runtime.multispine_pool's shadow sites
         # import us_runtime.gate_shadow.
         "microcosm.build.us_runtime.gate_shadow",
+        # microcosm#1722: us_runtime.reform_coverage_smoke imports
+        # RECORDS_REQUESTS_ONLY from us_runtime.post_export_requests.
+        "microcosm.build.us_runtime.post_export_requests",
         # microcosm#1686: the five SIPP donor modules import the shared read
         # of the SIPP person file.
         "microcosm.build.us_runtime.sipp_december_person_rows",
