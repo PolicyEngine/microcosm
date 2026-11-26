@@ -11,7 +11,8 @@ December person records; annualized monthly income fields;
 and ``TVAL_BANK`` / ``TVAL_STMF`` / ``TVAL_BOND`` as the three policy leaves.
 
 The requested donor artifact is the 2023 SIPP public-use file, ``pu2023.csv``,
-at an immutable Hugging Face model-repository revision.  This is a deliberate
+recorded at a Hugging Face model-repository revision and downloaded from tag
+``1.115.5``; its SHA-256 and byte length pin the content.  This is a deliberate
 vintage/predictor hybrid: ``42ed5d45`` had already changed its default source
 to ``pu2024.csv`` (while retaining 2023 as its reference year), but issue #374
 specifies the pinned 2023 artifact that the earlier enhanced-CPS builds used.
@@ -42,6 +43,7 @@ from microcosm.build.us_runtime.sipp_december_person_rows import (
 )
 
 __all__ = [
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE",
@@ -68,7 +70,12 @@ _RETIRED_DATA_REPOSITORY = "".join(
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS[1:]
 )
 _SIPP_DONOR_REPOSITORY_ID = "".join(SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS)
+# SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION is the recorded coordinate these
+# bytes were pinned and measured at, kept as the record key.
+# SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION is where the same bytes are
+# served now.  Both name bytes identified by the SHA-256 and size below.
 SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION = "21280dca5995e978d706740a8a4b9b7860cfd7b6"
+SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION = "1.115.5"
 SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256 = (
     "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
 )
@@ -76,7 +83,7 @@ SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES = 3_726_010_471
 SIPP_2023_FINANCIAL_ASSET_DONOR_URL = (
     "https://huggingface.co/PolicyEngine/"
     f"{_RETIRED_DATA_REPOSITORY}/resolve/"
-    f"{SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION}/pu2023.csv"
+    f"{SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION}/pu2023.csv"
 )
 
 SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS: dict[str, str] = {
@@ -249,12 +256,13 @@ def fetch_sipp_2023_financial_asset_donor(
     expected_sha256: str | None = SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
     expected_size_bytes: int | None = SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
 ) -> Path:
-    """Resolve the immutable full SIPP donor through ``huggingface_hub``.
+    """Resolve the pinned full SIPP donor through ``huggingface_hub``.
 
     The known archived-repository checkout and legacy Microcosm SIPP cache are
     checked first to avoid a 3.73 GB transfer on PolicyEngine build machines.
-    Every default-path candidate, including the Hugging Face result, must match
-    the pinned byte length and SHA-256 before it is returned.
+    A Hugging Face cache entry at the recorded revision is then reused without
+    a network request.  Every candidate, including the Hugging Face result, must
+    match the pinned byte length and SHA-256 before it is returned.
     """
 
     candidates: list[Path] = []
@@ -280,17 +288,30 @@ def fetch_sipp_2023_financial_asset_donor(
         ):
             return candidate
 
-    from huggingface_hub import hf_hub_download
+    from huggingface_hub import hf_hub_download, try_to_load_from_cache
+
+    hub_cache_dir = str(Path(cache_dir).expanduser()) if cache_dir is not None else None
+    recorded_snapshot = try_to_load_from_cache(
+        repo_id=_SIPP_DONOR_REPOSITORY_ID,
+        filename=_DONOR_FILENAME,
+        cache_dir=hub_cache_dir,
+        revision=SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
+        repo_type=SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
+    )
+    if isinstance(recorded_snapshot, str) and _file_matches(
+        Path(recorded_snapshot),
+        expected_sha256=expected_sha256,
+        expected_size_bytes=expected_size_bytes,
+    ):
+        return Path(recorded_snapshot)
 
     downloaded = Path(
         hf_hub_download(
             repo_id=_SIPP_DONOR_REPOSITORY_ID,
             filename=_DONOR_FILENAME,
             repo_type=SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
-            revision=SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
-            cache_dir=str(Path(cache_dir).expanduser())
-            if cache_dir is not None
-            else None,
+            revision=SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION,
+            cache_dir=hub_cache_dir,
         )
     )
     if not _file_matches(
