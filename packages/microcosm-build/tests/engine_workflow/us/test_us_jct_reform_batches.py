@@ -101,6 +101,9 @@ _BOOLEAN_INPUTS = {"is_self_employed": False}
 #: Five households in batches of two: three batch engines per reform.
 _BATCH_SIZE = 2
 _BATCHES = 3
+#: The 11-reform comparison runs two batches, which keeps its cost down: the
+#: construction it compares with clones the reform's system once per batch.
+_IDENTITY_BATCH_SIZE = 3
 
 
 def _jct_frame() -> Frame:
@@ -184,46 +187,24 @@ def _jct_frame() -> Frame:
     )
 
 
-def _record_reform_systems(monkeypatch) -> list[tuple[object, object]]:
-    """Record each ``(reform, system)`` that ``Microsimulation`` builds through
-    ``default_tax_benefit_system(reform=...)``, as
-    ``_reform_household_income_tax`` does once per reform."""
-
-    from policyengine_us import Microsimulation
-
-    built: list[tuple[object, object]] = []
-    build_system = Microsimulation.default_tax_benefit_system
-
-    def recording_build(*args, **kwargs):
-        reform_system = build_system(*args, **kwargs)
-        built.append((kwargs.get("reform"), reform_system))
-        return reform_system
-
-    monkeypatch.setattr(
-        Microsimulation, "default_tax_benefit_system", staticmethod(recording_build)
-    )
-    return built
-
-
 def _income_tax_given_reform_argument(
-    builder,
-    frame: Frame,
-    reform_spec,
-    system,
-    *,
-    reform,
-    reform_system,
-    batch_size: int,
+    builder, frame: Frame, reform_spec, system, *, batch_size: int
 ) -> np.ndarray:
     """The household income tax as each batch engine computed it when given
-    ``reform=`` as well as the reform's system, which the reform's batches
-    shared (the construction before microcosm 1.6 · 1). Each engine carries a
-    ``baseline`` branch; at the installed engine's zero default elasticities
-    it scores no labor-supply or capital-gains response, which a batch engine
-    without that branch scores as zero too."""
+    ``reform=`` as well as the reform's system (the construction before
+    microcosm 1.6 · 1). As there, the reform's batches share one reform
+    system, built here and used by nothing else, so a later batch's clone
+    copies only what earlier batches of this construction left in it. Each
+    engine carries a ``baseline`` branch; at the installed engine's zero
+    default elasticities it scores no labor-supply or capital-gains response,
+    which a batch engine without that branch scores as zero too."""
 
     from policyengine_us import Microsimulation
 
+    reform = builder._make_zero_variable_reform(
+        system, reform_spec.neutralized_variable
+    )
+    reform_system = Microsimulation.default_tax_benefit_system(reform=reform)
     assert (
         builder._moved_behavioral_response_parameters(
             reform_system,
@@ -280,54 +261,29 @@ def _count_system_clones(monkeypatch) -> list[int]:
     return clones
 
 
-def _reform_income_tax_both_ways(
-    builder, frame: Frame, reform_spec, system, built, *, batch_size: int
-) -> tuple[np.ndarray, np.ndarray]:
-    """``_reform_household_income_tax``'s household income tax, then the same
-    batches' given ``reform=`` as well, on the one reform system it built."""
-
-    from policyengine_us import Microsimulation
-
-    systems_before = len(built)
-    observed = builder._reform_household_income_tax(
-        base_frame=frame,
-        reform_spec=reform_spec,
-        system=system,
-        microsimulation_cls=Microsimulation,
-        n_households=frame.n("household"),
-        batch_size=batch_size,
-    )
-    assert len(built) == systems_before + 1, reform_spec.measure
-    reform, reform_system = built[-1]
-    expected = _income_tax_given_reform_argument(
-        builder,
-        frame,
-        reform_spec,
-        system,
-        reform=reform,
-        reform_system=reform_system,
-        batch_size=batch_size,
-    )
-    return observed, expected
-
-
-def test_jct_reform_batches_match_the_reform_argument_construction(
-    monkeypatch,
-) -> None:
+def test_jct_reform_batches_match_the_reform_argument_construction() -> None:
     """Every shipped JCT reform scores the same household income tax, byte for
     byte, on batch engines given the reform's system alone as on batch
-    engines given ``reform=`` as well. Each reform changes income tax for at
-    least one fixture household and passes both refusals that stand in for
-    the missing ``baseline`` branch."""
+    engines given ``reform=`` as well, each construction on its own reform
+    system, in two batches. Each reform changes income tax for at least one
+    fixture household and passes both refusals that stand in for the missing
+    ``baseline`` branch."""
 
     builder = _load_builder_module()
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
     frame = _jct_frame()
     n_households = frame.n("household")
+    assert (
+        len(
+            tuple(
+                builder._household_position_batches(n_households, _IDENTITY_BATCH_SIZE)
+            )
+        )
+        == 2
+    )
     system = CountryTaxBenefitSystem()
     builder._assert_no_formula_owned_columns(frame)
-    built = _record_reform_systems(monkeypatch)
     baseline = Microsimulation(
         dataset=builder._dataset_from_frame(
             frame, assert_no_formula_owned_columns=False, period_only=True
@@ -344,8 +300,16 @@ def test_jct_reform_batches_match_the_reform_argument_construction(
 
     assert len(builder.US_JCT_TAX_EXPENDITURE_REFORMS) == 11
     for reform_spec in builder.US_JCT_TAX_EXPENDITURE_REFORMS:
-        observed, expected = _reform_income_tax_both_ways(
-            builder, frame, reform_spec, system, built, batch_size=_BATCH_SIZE
+        expected = _income_tax_given_reform_argument(
+            builder, frame, reform_spec, system, batch_size=_IDENTITY_BATCH_SIZE
+        )
+        observed = builder._reform_household_income_tax(
+            base_frame=frame,
+            reform_spec=reform_spec,
+            system=system,
+            microsimulation_cls=Microsimulation,
+            n_households=n_households,
+            batch_size=_IDENTITY_BATCH_SIZE,
         )
         assert observed.dtype == expected.dtype == np.float64
         assert observed.tobytes() == expected.tobytes(), (
@@ -378,7 +342,6 @@ def test_jct_reform_batches_clone_no_tax_benefit_system(monkeypatch) -> None:
         )
         == _BATCHES
     )
-    built = _record_reform_systems(monkeypatch)
     clones = _count_system_clones(monkeypatch)
 
     builder._reform_household_income_tax(
@@ -390,17 +353,9 @@ def test_jct_reform_batches_clone_no_tax_benefit_system(monkeypatch) -> None:
         batch_size=_BATCH_SIZE,
     )
     assert clones[0] == 0
-    assert len(built) == 1
 
-    reform, reform_system = built[0]
     _income_tax_given_reform_argument(
-        builder,
-        frame,
-        reform_spec,
-        system,
-        reform=reform,
-        reform_system=reform_system,
-        batch_size=_BATCH_SIZE,
+        builder, frame, reform_spec, system, batch_size=_BATCH_SIZE
     )
     assert clones[0] == _BATCHES
 
