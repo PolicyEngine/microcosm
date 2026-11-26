@@ -476,6 +476,7 @@ class _NationalKernel(KernelBase):
         import microcosm.calibrate.matrix as calibrate_matrix
         import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
         import microcosm.calibrate.target_sets as calibrate_target_sets
+        from microcosm.build import declared_registers
 
         from . import receipt_counts, target_sets, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
@@ -503,6 +504,9 @@ class _NationalKernel(KernelBase):
             # shared target sets, microcosm#1759).
             calibrate_target_sets,
             target_sets,
+            # The review windows and canonical dates that measure_simulation
+            # and support_floor check their signed entries with (microcosm#1759).
+            declared_registers,
             support_floor_rules,
             # The constraint matrices and their encoding, as the dense kernels
             # hash them (microcosm#1492). Not calibrate.solve: neither the

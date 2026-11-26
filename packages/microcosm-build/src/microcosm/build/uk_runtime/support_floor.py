@@ -42,6 +42,7 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
+from microcosm.build.declared_registers import ReviewWindow, canonical_date
 from microcosm.calibrate import TargetRegistry
 
 UK_SUPPORT_FLOOR_KEY = "support_floor"
@@ -154,7 +155,7 @@ class UKSupportFloor:
         }
 
     def assert_in_force(self, evaluated_on: date) -> None:
-        if not self.approved_on <= evaluated_on <= self.expires_on:
+        if not ReviewWindow(self.approved_on, self.expires_on).in_force(evaluated_on):
             raise ValueError(
                 "UK support floor is outside its reviewed window "
                 f"({self.approved_on.isoformat()}..{self.expires_on.isoformat()}, "
@@ -197,11 +198,8 @@ def uk_support_floor_from_payload(block: Mapping[str, Any]) -> UKSupportFloor:
             raise ValueError(f"UK support floor {field} is empty.")
     dates = {}
     for field in ("approved_on", "expires_on"):
-        try:
-            parsed = date.fromisoformat(str(block[field]))
-        except ValueError:
-            parsed = None
-        if parsed is None or parsed.isoformat() != block[field]:
+        parsed = canonical_date(block[field])
+        if parsed is None:
             raise ValueError(
                 f"UK support floor {field} must be canonical ISO (YYYY-MM-DD), "
                 f"got {block[field]!r}."

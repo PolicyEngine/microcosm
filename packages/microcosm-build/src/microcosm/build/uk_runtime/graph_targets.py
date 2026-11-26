@@ -18,7 +18,7 @@ import pandas as pd
 import microcosm.calibrate.artifacts as calibrate_artifacts
 import microcosm.calibrate.matrix as calibrate_matrix
 import microcosm.calibrate.target_sets as calibrate_target_sets
-from microcosm.build import cross_grain
+from microcosm.build import cross_grain, declared_registers
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
     PROBLEM_TYPE,
@@ -238,6 +238,9 @@ class _TargetKernel(KernelBase):
             # alone must re-key the measures and everything they feed.
             measure_simulation,
             support_floor,
+            # The review windows and canonical dates that measure_simulation
+            # and support_floor check their signed entries with (microcosm#1759).
+            declared_registers,
             # The selection, the constraint matrices and their encoding, as
             # the transport kernels hash them (microcosm#1492). The selection
             # and the level rule read uk/target_sets.json through the shared
