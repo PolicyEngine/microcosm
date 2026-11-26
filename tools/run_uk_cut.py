@@ -122,6 +122,10 @@ SPINE_INPUT_KEYS = frozenset(
 #: A dense spine's free-disk floor. The f100 spine's checkpoint store took
 #: about 15 GB at one clone, and the store grows with the clones (microcosm#931).
 DENSE_SPINE_MIN_FREE_GB = 400.0
+#: A dense spine's physical-memory floor. The 15-clone spine's measured peak
+#: was 68.4 GiB, in ``hmrc_spi_income_spine``, so a 64 GiB host stops there;
+#: the floor leaves room for the system (microcosm#931).
+DENSE_SPINE_MIN_MEMORY_GIB = 72.0
 
 
 #: The steps that sign gate reports (spine, national, certify) or verify them
@@ -1529,6 +1533,48 @@ def host_checks(
     return checks
 
 
+def physical_memory_gib() -> float | None:
+    """This host's physical memory in GiB, or None where the system does not say."""
+
+    try:
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        pages = os.sysconf("SC_PHYS_PAGES")
+    except (AttributeError, OSError, ValueError):  # no sysconf, or no such name
+        return None
+    if page_size <= 0 or pages <= 0:  # sysconf's -1: the value is indeterminate
+        return None
+    return page_size * pages / 2**30
+
+
+def memory_check(min_memory_gib: float, *, physical_gib: float | None = None) -> Check:
+    """This host's physical memory against a floor; the host is read only when
+    ``physical_gib`` is not given.
+
+    A memory that cannot be read blocks, unless the floor is zero or less,
+    which is no floor.
+    """
+
+    physical = physical_memory_gib() if physical_gib is None else physical_gib
+    if physical is None:
+        if min_memory_gib <= 0:
+            return Check("physical memory", True, "could not be read; no floor")
+        return Check(
+            "physical memory",
+            False,
+            f"could not be read; floor {min_memory_gib:g} GiB "
+            "(--min-memory-gib 0 builds without one)",
+        )
+    detail = f"{physical:.1f} GiB; floor {min_memory_gib:g} GiB"
+    if physical < min_memory_gib:
+        return Check(
+            "physical memory",
+            False,
+            detail + ": too little for the dense spine's peak; "
+            "--min-memory-gib lowers the floor",
+        )
+    return Check("physical memory", True, detail)
+
+
 def contract_pin_check(python: str) -> Check:
     tests = [
         "packages/microcosm-build/tests/engine_free/shared/test_gate_battery_contract_pins.py",
@@ -2289,6 +2335,15 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--min-memory-gib",
+        type=float,
+        default=DENSE_SPINE_MIN_MEMORY_GIB,
+        help=(
+            "the physical-memory floor in GiB, which only dense-spine checks "
+            f"(default {DENSE_SPINE_MIN_MEMORY_GIB:g}; 0 for none)"
+        ),
+    )
+    parser.add_argument(
         "--reservation-tool",
         type=Path,
         help=(
@@ -2425,9 +2480,11 @@ def preflight(args: argparse.Namespace, paths: CutPaths) -> list[Check]:
 def dense_spine_preflight(args: argparse.Namespace, paths: CutPaths) -> list[Check]:
     """What a dense spine needs: a clean, pushed checkout, the environment
     built from it, a key registered to sign (a release-candidate spine is
-    shippable only once signed), unexpired registers and the host. It reads
-    no reference and starts no emitter: its telemetry stays local and it
-    publishes nothing."""
+    shippable only once signed), unexpired registers, the host, and physical
+    memory at or above a floor (``DENSE_SPINE_MIN_MEMORY_GIB``, above the
+    spine's measured peak, unless ``--min-memory-gib`` sets another). It
+    reads no reference and starts no emitter: its telemetry stays local and
+    it publishes nothing."""
 
     checks = git_checks(allow_off_main=args.allow_off_main)
     checks += environment_checks()
@@ -2439,6 +2496,7 @@ def dense_spine_preflight(args: argparse.Namespace, paths: CutPaths) -> list[Che
         reservation_tool=args.reservation_tool,
         reservation_caller=args.reservation_caller,
     )
+    checks.append(memory_check(args.min_memory_gib))
     return checks
 
 
@@ -2536,6 +2594,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
         work = args.work_dir
+        if args.command == "dense-spine":
+            # A host under the memory floor stops before it fetches the spine's
+            # inputs; the preflight holds the floor again (microcosm#931).
+            print("host memory:")
+            if not _print_checks([memory_check(args.min_memory_gib)]):
+                print("Preflight failed; nothing was fetched or built.")
+                return 1
         if args.command in {"fetch", "all", "dense-spine"}:
             print("inputs:")
             only = set(args.only) if args.only else None

@@ -14,6 +14,7 @@ import zipfile
 from collections.abc import Mapping
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from hypothesis import HealthCheck, given, settings
@@ -1977,9 +1978,9 @@ def test_an_unfinished_dense_spine_is_kept_and_moved_aside_only_on_retry(tmp_pat
 
 
 def test_the_dense_spine_checks_what_it_needs_and_nothing_else(tmp_path, monkeypatch):
-    """Git, the environment, the key, the registers and a larger disk floor;
-    never the reference, the Hub's write access, the contract pins or the
-    target surfaces, which only a national cut needs."""
+    """Git, the environment, the key, the registers, a larger disk floor and
+    a memory floor; never the reference, the Hub's write access, the contract
+    pins or the target surfaces, which only a national cut needs."""
 
     def passing(name):
         return lambda *a, **k: [cut.Check(name, True, "ok")]
@@ -1999,6 +2000,8 @@ def test_the_dense_spine_checks_what_it_needs_and_nothing_else(tmp_path, monkeyp
         cut, "register_expiry_check", lambda today: cut.Check("registers", True, "")
     )
     monkeypatch.setattr(cut, "host_checks", host)
+    # Never this machine's memory: a CI runner holds far less than the floor.
+    monkeypatch.setattr(cut, "physical_memory_gib", lambda: 96.0)
     for name in (
         "hub_checks",
         "contract_pin_check",
@@ -2033,6 +2036,127 @@ def test_the_dense_spine_checks_what_it_needs_and_nothing_else(tmp_path, monkeyp
     )
 
 
+@pytest.mark.parametrize(
+    "physical, ok",
+    [
+        (64.0, False),
+        (cut.DENSE_SPINE_MIN_MEMORY_GIB - 0.1, False),
+        (cut.DENSE_SPINE_MIN_MEMORY_GIB, True),
+        (96.0, True),
+    ],
+)
+def test_the_memory_check_holds_the_host_to_its_floor(physical, ok):
+    floor = cut.DENSE_SPINE_MIN_MEMORY_GIB
+    check = cut.memory_check(floor, physical_gib=physical)
+    assert check.name == "physical memory"
+    assert check.ok is ok and check.blocking
+    assert check.detail.startswith(f"{physical:.1f} GiB; floor {floor:g} GiB")
+    assert ("--min-memory-gib" in check.detail) is not ok
+    # Only this host's figure and the floor.
+    assert re.findall(r"\d+(?:\.\d+)?", check.detail) == [
+        f"{physical:.1f}",
+        f"{floor:g}",
+    ]
+
+
+def test_a_memory_that_cannot_be_read_blocks_unless_there_is_no_floor(monkeypatch):
+    monkeypatch.setattr(cut, "physical_memory_gib", lambda: None)
+    unread = cut.memory_check(cut.DENSE_SPINE_MIN_MEMORY_GIB)
+    assert not unread.ok and unread.blocking
+    assert "could not be read" in unread.detail
+    assert "--min-memory-gib 0" in unread.detail
+    assert cut.memory_check(0).ok
+
+
+@pytest.mark.parametrize(
+    "values, expected",
+    [
+        ({"SC_PAGE_SIZE": 16384, "SC_PHYS_PAGES": 96 * 2**16}, 96.0),
+        ({"SC_PAGE_SIZE": 4096, "SC_PHYS_PAGES": -1}, None),
+        ({"SC_PAGE_SIZE": 4096}, None),
+        (None, None),
+    ],
+)
+def test_the_host_memory_is_read_from_sysconf_or_not_at_all(
+    monkeypatch, values, expected
+):
+    """Linux and macOS give both values. A system without sysconf, or without
+    the name, reads as None, and so does sysconf's indeterminate -1."""
+
+    def sysconf(name):
+        if name not in values:
+            raise ValueError(f"unrecognized configuration name {name!r}")
+        return values[name]
+
+    host = SimpleNamespace() if values is None else SimpleNamespace(sysconf=sysconf)
+    monkeypatch.setattr(cut, "os", host)
+    assert cut.physical_memory_gib() == expected
+
+
+def test_a_host_under_the_memory_floor_fetches_nothing(tmp_path, monkeypatch):
+    """dense-spine checks the memory floor before it fetches the spine's
+    inputs, so a host too small for the spine's peak downloads nothing; a
+    lower floor lets it on to the fetch (microcosm#931)."""
+
+    class _FetchedError(Exception):
+        pass
+
+    def fetch(*args, **kwargs):
+        raise _FetchedError
+
+    monkeypatch.setattr(cut, "physical_memory_gib", lambda: 64.0)
+    monkeypatch.setattr(cut, "fetch_inputs", fetch)
+    argv = ["dense-spine", "--label", "test", "--work-dir", str(tmp_path)]
+    with redirect_stdout(io.StringIO()) as out:
+        assert cut.main(argv) == 1
+    assert "FAIL physical memory: 64.0 GiB; floor 72 GiB" in out.getvalue()
+    assert "nothing was fetched or built" in out.getvalue()
+    assert "inputs:" not in out.getvalue()
+    with redirect_stdout(io.StringIO()), pytest.raises(_FetchedError):
+        cut.main([*argv, "--min-memory-gib", "60"])
+
+
+def test_a_host_under_the_memory_floor_builds_no_dense_spine(tmp_path, monkeypatch):
+    """The dense-spine preflight holds the host's physical memory to the
+    floor in one blocking check; ``--min-memory-gib`` sets another floor."""
+
+    for name in ("git_checks", "environment_checks", "host_checks"):
+        monkeypatch.setattr(cut, name, lambda *a, **k: [])
+    monkeypatch.setattr(
+        cut, "signing_key_check", lambda **k: cut.Check("key", True, "")
+    )
+    monkeypatch.setattr(
+        cut, "register_expiry_check", lambda today: cut.Check("registers", True, "")
+    )
+    monkeypatch.setattr(cut, "physical_memory_gib", lambda: 64.0)
+    argv = ["dense-spine", "--label", "test", "--work-dir", str(tmp_path)]
+    args = cut._parse(argv)
+    lowered = cut._parse([*argv, "--min-memory-gib", "60"])
+    assert args.min_memory_gib == cut.DENSE_SPINE_MIN_MEMORY_GIB
+    assert lowered.min_memory_gib == 60.0
+    fake = FakeDenseSpine()
+    runner, paths = _dense_runner(tmp_path, fake)
+
+    def memory(parsed):
+        (check,) = [
+            check
+            for check in cut.dense_spine_preflight(parsed, paths)
+            if check.name == "physical memory"
+        ]
+        return check
+
+    refused = memory(args)
+    assert refused.blocking and not refused.ok
+    with redirect_stdout(io.StringIO()) as out:
+        assert cut.dense_spine_command(args, paths, {}, runner=runner) == 1
+    assert fake.calls == 0
+    floor = f"floor {cut.DENSE_SPINE_MIN_MEMORY_GIB:g} GiB"
+    assert f"FAIL physical memory: 64.0 GiB; {floor}" in out.getvalue()
+    allowed = memory(lowered)
+    assert allowed.blocking and allowed.ok
+    assert allowed.detail == "64.0 GiB; floor 60 GiB"
+
+
 def test_the_dense_spine_command_fetches_only_the_spine_inputs(tmp_path, monkeypatch):
     seen = {}
 
@@ -2042,6 +2166,8 @@ def test_the_dense_spine_command_fetches_only_the_spine_inputs(tmp_path, monkeyp
 
     monkeypatch.setattr(cut, "fetch_inputs", fetch)
     monkeypatch.setattr(cut, "dense_spine_command", lambda args, paths, sources: 0)
+    # Never this machine's memory, which the command checks before the fetch.
+    monkeypatch.setattr(cut, "physical_memory_gib", lambda: 96.0)
     work = ["--label", "t", "--work-dir", str(tmp_path)]
     assert cut.main(["dense-spine", *work]) == 0
     assert seen["only"] == set(cut.SPINE_INPUT_KEYS)

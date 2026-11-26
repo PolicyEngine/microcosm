@@ -490,11 +490,14 @@ MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY="$(security find-generic-password -a "$US
 # a pushed commit not on main also takes --allow-off-main '<who agreed and why>'
 ```
 
-It fetches every input but the Chronicle artifact. Then it checks the
-checkout, the environment, the signing key, the registers' expiries and the
-host: 400 GB of free disk by default, which `--min-free-gb` changes. A
-release-candidate spine is shippable only once a registered key signs it,
-so the key must be registered **active** ([Signing keys](#signing-keys)). It
+It first refuses a host with less than 72 GiB of physical memory, before
+it fetches anything; `--min-memory-gib` lowers that floor. It fetches every
+input but the Chronicle artifact. Then it checks the checkout, the
+environment, the signing key, the registers' expiries and the host: 400 GB
+of free disk by default, which `--min-free-gb` changes, and the memory floor
+again. A release-candidate spine is shippable
+only once a registered key signs it, so the key must be registered
+**active** ([Signing keys](#signing-keys)). It
 needs no emitter, reference or publication access, and its telemetry stays
 local. It builds the spine as a release candidate at 15 clones, with
 `--stage-profile-dir`:
@@ -530,7 +533,9 @@ and its H5 is 6.9 GB. So build it on a machine with more than 64 GiB of RAM;
 96 GiB or more leaves room for the rest of the system. For scale, the
 one-clone full-sample spine took 46 minutes, 21 GB of peak memory and a 15
 GB checkpoint store (17 Nov). The command checks for 400 GB of free disk
-(`--min-free-gb` sets another floor). The profile records each build's own
+(`--min-free-gb` sets another floor). It refuses a host with less than 72
+GiB of physical memory, so a 64 GiB host stops before it fetches the inputs
+(`--min-memory-gib` lowers the floor). The profile records each build's own
 figures.
 
 ## Regions: the dense cut
