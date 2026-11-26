@@ -22,6 +22,7 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
+from microcosm.build.firms import INPUT_STATUSES
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_SIC2007_SECTION_DIVISIONS,
     uk_sic2007_sections,
@@ -116,7 +117,7 @@ UK_FIRM_MICROCOSM_ONLY_COLUMNS = UK_FIRM_MICROCOSM_COLUMNS
 #: - ``derived``: computed from other columns by a rule;
 #: - ``assumed``: carries a data assumption beyond the source;
 #: - ``not_set``: not exported; policyengine-uk's default applies.
-UK_FIRM_INPUT_STATUSES = ("set", "derived", "assumed", "not_set")
+UK_FIRM_INPUT_STATUSES = INPUT_STATUSES
 
 #: Every formula-less policyengine-uk firm input (branch firm-entity-engine at
 #: ``0d1c25010``, the committed snapshot) -> how this export fills it. The keys

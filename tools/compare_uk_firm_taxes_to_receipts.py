@@ -31,13 +31,30 @@ figure fetched". The comparison is a diagnostic, not a calibration target.
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from microcosm.build.firms.receipts import (
+    INPUT_NOT_POPULATED as INPUT_NOT_POPULATED,
+)
+from microcosm.build.firms.receipts import (
+    NO_MODEL_TOTAL as NO_MODEL_TOTAL,
+)
+from microcosm.build.firms.receipts import (
+    NO_OFFICIAL_FIGURE as NO_OFFICIAL_FIGURE,
+)
+from microcosm.build.firms.receipts import (
+    RECEIPT_SOURCE_COLUMNS,
+    ComparisonRow,
+    Receipt,
+    build_comparison_rows,
+    compare_total,
+    render_comparison_markdown,
+)
+from microcosm.build.firms.receipts import read_receipts as _read_receipts
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RECEIPTS = (
@@ -63,18 +80,8 @@ REQUIRED_COLUMNS = (
     "note",
 )
 #: Columns every row with an official figure must fill.
-SOURCE_COLUMNS = (
-    "measure",
-    "source_publisher",
-    "source_title",
-    "edition",
-    "url",
-    "accessed",
-)
+SOURCE_COLUMNS = RECEIPT_SOURCE_COLUMNS
 
-INPUT_NOT_POPULATED = "input not populated"
-NO_OFFICIAL_FIGURE = "no official figure fetched"
-NO_MODEL_TOTAL = "no model total supplied"
 
 VAT_IN_SAMPLE_CAVEAT = (
     "In-sample check: the firm generator is calibrated to HMRC VAT liability "
@@ -147,55 +154,10 @@ MODEL_CAVEATS: Mapping[str, str] = {
 PAYBILL_TAXES = frozenset({"firm_employer_ni", "apprenticeship_levy"})
 
 
-@dataclass(frozen=True)
-class Receipt:
-    tax: str
-    official_value_gbp: float | None
-    period: str
-    measure: str
-    source_publisher: str
-    source_title: str
-    edition: str
-    url: str
-    accessed: str
-    note: str
-
-
-@dataclass(frozen=True)
-class ComparisonRow:
-    tax: str
-    model: str
-    official: str
-    gap: str
-    ratio: str
-    reason: str
-
-
 def read_receipts(path: Path) -> dict[str, Receipt]:
     """Read the receipts CSV, refusing missing columns or unsourced figures."""
 
-    with path.open(newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        missing = [c for c in REQUIRED_COLUMNS if c not in (reader.fieldnames or ())]
-        if missing:
-            raise ValueError(f"{path}: missing columns {missing}")
-        receipts: dict[str, Receipt] = {}
-        for row in reader:
-            tax = row["tax"].strip()
-            if tax in receipts:
-                raise ValueError(f"{path}: duplicate tax {tax!r}")
-            raw = row["official_value_gbp"].strip()
-            value = float(raw) if raw else None
-            if value is not None:
-                unsourced = [c for c in SOURCE_COLUMNS if not row[c].strip()]
-                if unsourced:
-                    raise ValueError(f"{path}: {tax} has a figure but no {unsourced}")
-            receipts[tax] = Receipt(
-                tax=tax,
-                official_value_gbp=value,
-                **{c: row[c].strip() for c in REQUIRED_COLUMNS[2:]},
-            )
-    return receipts
+    return _read_receipts(path, name_column="tax", value_column="official_value_gbp")
 
 
 def financial_year(period: int) -> str:
@@ -211,6 +173,21 @@ def format_gbp(value: float) -> str:
     return f"{sign}£{abs(value) / 1e9:,.2f}bn"
 
 
+def _reasons(tax: str, receipt: Receipt | None) -> list[str]:
+    """Why the model total and the official figure may differ, in order."""
+
+    reasons = []
+    if receipt is not None and receipt.measure:
+        reasons.append(f"Official measure: {receipt.measure}.")
+    if tax in MODEL_CAVEATS:
+        reasons.append(MODEL_CAVEATS[tax])
+    if tax == "firm_vat" and VAT_IN_SAMPLE_CAVEAT not in " ".join(reasons):
+        reasons.insert(0, VAT_IN_SAMPLE_CAVEAT)
+    if tax in PAYBILL_TAXES and PAYBILL_ASSUMED_CAVEAT not in " ".join(reasons):
+        reasons.insert(0, PAYBILL_ASSUMED_CAVEAT)
+    return reasons
+
+
 def compare_tax(
     tax: str,
     *,
@@ -220,39 +197,14 @@ def compare_tax(
 ) -> ComparisonRow:
     """One table row. No gap or percentage unless both sides are real figures."""
 
-    official_value = receipt.official_value_gbp if receipt is not None else None
-    reasons = []
-    if receipt is not None and receipt.measure:
-        reasons.append(f"Official measure: {receipt.measure}.")
-    if tax in MODEL_CAVEATS:
-        reasons.append(MODEL_CAVEATS[tax])
-
-    official = (
-        format_gbp(official_value) if official_value is not None else NO_OFFICIAL_FIGURE
+    return compare_total(
+        tax,
+        model_total=model_total,
+        populated=populated,
+        official_value=None if receipt is None else receipt.official_value,
+        reasons=_reasons(tax, receipt),
+        format_value=format_gbp,
     )
-    if not populated:
-        model = INPUT_NOT_POPULATED
-        gap = ratio = INPUT_NOT_POPULATED
-    elif model_total is None:
-        model = NO_MODEL_TOTAL
-        gap = ratio = NO_MODEL_TOTAL
-    else:
-        model = format_gbp(model_total)
-        if official_value is None:
-            gap = ratio = NO_OFFICIAL_FIGURE
-        else:
-            difference = model_total - official_value
-            gap = format_gbp(difference)
-            if official_value:
-                gap += f" ({difference / official_value:+.1%})"
-                ratio = f"{model_total / official_value:.3f}"
-            else:
-                ratio = "official figure is zero"
-    if tax == "firm_vat" and VAT_IN_SAMPLE_CAVEAT not in " ".join(reasons):
-        reasons.insert(0, VAT_IN_SAMPLE_CAVEAT)
-    if tax in PAYBILL_TAXES and PAYBILL_ASSUMED_CAVEAT not in " ".join(reasons):
-        reasons.insert(0, PAYBILL_ASSUMED_CAVEAT)
-    return ComparisonRow(tax, model, official, gap, ratio, " ".join(reasons))
 
 
 def build_rows(
@@ -260,36 +212,13 @@ def build_rows(
 ) -> list[ComparisonRow]:
     """Rows in receipts order, then any model-only taxes."""
 
-    totals = taxes.get("totals", {})
-    populated = taxes.get("inputs_populated", {})
-    unflagged = sorted(
-        tax for tax in totals if not isinstance(populated.get(tax), bool)
+    return build_comparison_rows(
+        taxes.get("totals", {}),
+        taxes.get("inputs_populated", {}),
+        receipts,
+        reasons_for=_reasons,
+        format_value=format_gbp,
     )
-    if unflagged:
-        raise ValueError(
-            f"taxes {unflagged} have a total but no true/false inputs_populated "
-            "flag; without it an unset input would print as a -100% gap"
-        )
-    names = list(receipts) + sorted(set(totals) - set(receipts))
-    rows = []
-    for tax in names:
-        total = totals.get(tax)
-        rows.append(
-            compare_tax(
-                tax,
-                model_total=None if total is None else float(total),
-                # Every tax in totals has an explicit flag (checked above); a
-                # tax the producer left out entirely reads "no model total
-                # supplied".
-                populated=populated.get(tax, True),
-                receipt=receipts.get(tax),
-            )
-        )
-    return rows
-
-
-def _cell(text: str) -> str:
-    return text.replace("|", "\\|").replace("\n", " ")
 
 
 def render_markdown(
@@ -299,45 +228,13 @@ def render_markdown(
     period: str,
     note: str | None = None,
 ) -> str:
-    lines = [
-        f"# UK firm taxes against official receipts, {period}",
-        "",
-        "Gap is model less official (share of official); ratio is model / official.",
-    ]
-    if note:
-        lines += ["", f"Model run note: {note}"]
-    lines += [
-        "",
-        "| Tax | Model total | Official | Gap | Ratio | Reason / caveat |",
-        "| --- | --- | --- | --- | --- | --- |",
-    ]
-    for row in rows:
-        lines.append(
-            "| "
-            + " | ".join(
-                _cell(v)
-                for v in (
-                    row.tax,
-                    row.model,
-                    row.official,
-                    row.gap,
-                    row.ratio,
-                    row.reason,
-                )
-            )
-            + " |"
-        )
-    lines += ["", "## Sources", ""]
-    for receipt in receipts.values():
-        if receipt.official_value_gbp is None:
-            lines.append(f"- `{receipt.tax}`: {NO_OFFICIAL_FIGURE}. {receipt.note}")
-        else:
-            lines.append(
-                f"- `{receipt.tax}`: {receipt.source_publisher}, {receipt.source_title}; "
-                f"{receipt.edition}; {receipt.url} (accessed {receipt.accessed}). "
-                f"{receipt.note}"
-            )
-    return "\n".join(lines) + "\n"
+    return render_comparison_markdown(
+        rows,
+        receipts,
+        title=f"UK firm taxes against official receipts, {period}",
+        name_header="Tax",
+        note=note,
+    )
 
 
 def compare(taxes: Mapping[str, Any], receipts: Mapping[str, Receipt]) -> str:

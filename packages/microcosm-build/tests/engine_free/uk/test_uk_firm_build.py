@@ -28,6 +28,7 @@ from microcosm.build.uk_runtime.firm_build import (
 )
 from microcosm.build.uk_runtime.firm_generation import UKFirmGenerationConfig
 from microcosm.build.uk_runtime.firm_rules import (
+    UK_FIRM_RULE_PERIOD_NOTE,
     UKFirmRuleOutputs,
     rule_period_for_vintage,
 )
@@ -145,6 +146,9 @@ def test_receipt_records_the_run(builds) -> None:
     assert receipt["data_vintage"] == "2024-25"
     assert receipt["seed"] == SEED
     assert receipt["rule_period"] == rule_period_for_vintage("2024-25")
+    assert receipt["rule_period_note"] == UK_FIRM_RULE_PERIOD_NOTE
+    assert receipt["data_years"]["ons_frame_turnover"] == "2023-24"
+    assert receipt["data_years"]["hmrc_vat_statistics"] == "2024-25"
     assert receipt["config"]["n_iterations"] == ITERATIONS
     assert "firm_rules" not in receipt["config"]
     assert "vat_rule_evaluator" not in receipt["config"]

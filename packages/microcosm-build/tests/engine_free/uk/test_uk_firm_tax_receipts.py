@@ -41,8 +41,8 @@ def _load_tool():
 
 def _receipt(tool, tax: str, value: float | None):
     return tool.Receipt(
-        tax=tax,
-        official_value_gbp=value,
+        name=tax,
+        official_value=value,
         period="2024-25",
         measure="test measure",
         source_publisher="p",
@@ -177,7 +177,7 @@ def test_tax_missing_from_the_model_json_is_not_called_unpopulated() -> None:
     tool = _load_tool()
     receipts = tool.read_receipts(RECEIPTS)
     rows = {
-        row.tax: row
+        row.name: row
         for row in tool.build_rows({"period": 2024, "totals": {}}, receipts)
     }
     assert rows["bank_surcharge"].model == "no model total supplied"

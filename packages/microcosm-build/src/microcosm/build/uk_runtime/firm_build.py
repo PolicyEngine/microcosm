@@ -10,7 +10,9 @@
 
 It writes ``uk_firms.parquet`` and ``uk_firms.receipt.json`` to the output
 directory and nothing else: there is no publication, staging or upload path.
-The receipt holds the inputs' hashes keyed by role and file name, the
+The receipt holds the inputs' hashes keyed by role and file name, the rule
+period with a note on how it treats mid-year changes, the years the source
+data describe (``data_years``, which can lag the rule period), the
 configuration's JSON-safe fields, the output's hash and shape, the
 calibration's accuracy figures and the provenance the rules reported.
 It holds no timestamp, hostname or absolute path, so two builds from the same inputs write the same receipt.
@@ -36,8 +38,10 @@ from microcosm.build.uk_runtime.firm_generation import (
     read_uk_firm_source_data,
 )
 from microcosm.build.uk_runtime.firm_rules import (
+    UK_FIRM_RULE_PERIOD_NOTE,
     UKFirmRuleOutputs,
     UKFirmRules,
+    data_years_for_vintage,
     rule_period_for_vintage,
 )
 from microcosm.build.uk_runtime.firm_table import (
@@ -117,6 +121,8 @@ def build_uk_firm_dataset(
         "data_vintage": result.config.data_vintage,
         "seed": int(result.config.seed),
         "rule_period": rule_period_for_vintage(result.config.data_vintage),
+        "rule_period_note": UK_FIRM_RULE_PERIOD_NOTE,
+        "data_years": data_years_for_vintage(result.config.data_vintage),
         "config": _config_record(result.config),
         "inputs": {
             "processed": _csv_hashes(processed),

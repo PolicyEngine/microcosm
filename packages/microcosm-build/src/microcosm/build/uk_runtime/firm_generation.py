@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -49,6 +48,7 @@ import torch
 from scipy import sparse
 from torch import Tensor
 
+from microcosm.build.firms import draw_in_band
 from microcosm.build.uk_runtime.firm_rules import (
     LegacyVATEvaluatorRules,
     UKFirmRules,
@@ -1758,12 +1758,10 @@ def _draw_band_turnover(
     draw inside its source band.
     """
 
-    low = max(float(lower), MIN_DRAWN_TURNOVER_K)
-    high = float(upper)
     unit = torch.rand(count, device=device)
-    if log_uniform:
-        return torch.exp(math.log(low) + unit * (math.log(high) - math.log(low)))
-    return low + unit * (high - low)
+    return draw_in_band(
+        unit, lower, upper, log_uniform=log_uniform, floor=MIN_DRAWN_TURNOVER_K
+    )
 
 
 def _add_zero_turnover_firms(

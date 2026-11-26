@@ -7,11 +7,14 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.firm_rules import (
+    UK_FIRM_DATA_YEARS_BY_VINTAGE,
     UK_FIRM_RULE_PERIOD_BY_VINTAGE,
+    UK_FIRM_RULE_PERIOD_NOTE,
     UK_FIRM_VINTAGE_BY_RULE_PERIOD,
     LegacyVATEvaluatorRules,
     UKFirmRuleOutputs,
     align_rule_outputs,
+    data_years_for_vintage,
     rule_period_for_vintage,
 )
 from microcosm.build.uk_runtime.firm_table import (
@@ -96,7 +99,7 @@ def test_outputs_coerce_and_freeze() -> None:
     ("ids", "values", "match"),
     [
         ([1.0, 2.0], [1.0, 2.0], "integer"),
-        ([1, 2], [1.0], "liabilities"),
+        ([1, 2], [1.0], "shape"),
         ([1, 2], [1.0, np.nan], "finite"),
     ],
 )
@@ -125,7 +128,7 @@ def test_align_reorders_by_firm_id() -> None:
         ([1, 2], [1, 2, 3], "miss 1 firm ids"),
         ([1, 2, 3], [1, 2], "unrequested"),
         ([1, 1, 2], [1, 2], "outputs repeat"),
-        ([1, 2], [1, 1, 2], "Requested UK firm ids repeat"),
+        ([1, 2], [1, 1, 2], "requested firm ids repeat"),
     ],
 )
 def test_align_refuses_mismatched_ids(produced, requested, match) -> None:
@@ -184,3 +187,16 @@ def test_legacy_adapter_refuses_a_wrong_shape() -> None:
 
     with pytest.raises(ValueError, match="returned shape"):
         LegacyVATEvaluatorRules(_Short()).evaluate(_candidates(), period=2024)
+
+
+def test_data_years_are_recorded_apart_from_the_rule_period() -> None:
+    years = data_years_for_vintage("2024-25")
+    assert rule_period_for_vintage("2024-25") == 2024
+    assert years["ons_frame_turnover"] == "2023-24"
+    assert "note 4" in years["ons_frame_turnover_note"]
+    assert years["hmrc_vat_statistics"] == "2024-25"
+    assert data_years_for_vintage("2023-24") is None
+    assert set(UK_FIRM_DATA_YEARS_BY_VINTAGE) == set(UK_FIRM_RULE_PERIOD_BY_VINTAGE)
+    with pytest.raises(ValueError, match="2025-26"):
+        data_years_for_vintage("2025-26")
+    assert "1 January" in UK_FIRM_RULE_PERIOD_NOTE

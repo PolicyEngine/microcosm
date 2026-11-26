@@ -79,6 +79,7 @@ from typing import Any, Protocol
 import numpy as np
 import pandas as pd
 
+from microcosm.build.firms import weighted_totals
 from microcosm.build.uk_runtime.firm_rules import UKFirmRuleOutputs
 from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_CANDIDATE_RULES_COLUMNS,
@@ -502,14 +503,7 @@ def weighted_uk_firm_tax_totals(taxes: pd.DataFrame) -> dict[str, float]:
     (``POLICYENGINE_UK_FIRM_INFORMATIONAL_VARIABLES``) are not taxes to add.
     """
 
-    if "firm_weight" not in taxes.columns:
-        raise ValueError("UK firm taxes miss column firm_weight.")
-    weight = taxes["firm_weight"].to_numpy(np.float64)
-    return {
-        str(column): float(np.dot(taxes[column].to_numpy(np.float64), weight))
-        for column in taxes.columns
-        if column not in ("firm_id", "firm_weight")
-    }
+    return weighted_totals(taxes)
 
 
 __all__ = [

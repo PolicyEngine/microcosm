@@ -1,7 +1,8 @@
 """UK firm universe: stratified thinning, registration propensity, VAT scope.
 
-Pure-numpy ports of three pieces of the firm-microsim-paper generator
-(``firm_microsim`` at paper commit aa1ce07):
+The UK uses of three country-neutral mechanics in ``microcosm.build.firms``,
+which mirror the firm-microsim-paper generator (``firm_microsim`` at paper
+commit aa1ce07):
 
 * :func:`stratified_thin` mirrors ``generate.stratified_thin``;
 * :func:`registration_propensity` mirrors ``calibration.registration_propensity``;
@@ -28,6 +29,11 @@ by construction (the paper's treatment).
 VAT/PAYE enterprise frame and False for appended HMRC negative/zero-turnover
 traders.
 
+The VAT bands enter the shared functions through
+:data:`UK_VAT_REGISTRATION_SPEC`: ``Negative_or_Zero`` is excluded (appended
+traders live there, outside the frame), ``£1_to_Threshold`` is registrable and
+the six bands above the threshold are selected.
+
 The module does not depend on torch or on ``firm_generation``; callers convert
 tensors to numpy before calling it.
 """
@@ -36,9 +42,21 @@ from __future__ import annotations
 
 import numpy as np
 
+from microcosm.build.firms import (
+    RegistrationSpec,
+    assign_scope_and_registration,
+)
+from microcosm.build.firms import (
+    registration_propensity as _registration_propensity,
+)
+from microcosm.build.firms import (
+    stratified_thin as _stratified_thin,
+)
+
 __all__ = [
     "HMRC_BAND_NAMES",
     "N_HMRC_BANDS",
+    "UK_VAT_REGISTRATION_SPEC",
     "assign_vat_scope_and_registration",
     "registration_propensity",
     "stratified_thin",
@@ -57,9 +75,11 @@ HMRC_BAND_NAMES: tuple[str, ...] = (
 )
 N_HMRC_BANDS = len(HMRC_BAND_NAMES)
 
-#: Band index of ``£1_to_Threshold``: positive turnover at or below the VAT
-#: threshold, where every frame enterprise is registrable.
-_BELOW_THRESHOLD_BAND = 1
+#: The HMRC VAT bands' registration roles (``microcosm.build.firms.registration``).
+UK_VAT_REGISTRATION_SPEC = RegistrationSpec(
+    HMRC_BAND_NAMES,
+    ("excluded", "registrable", *("selected",) * (N_HMRC_BANDS - 2)),
+)
 
 
 def _as_1d(name: str, values: object, length: int | None = None) -> np.ndarray:
@@ -133,51 +153,17 @@ def stratified_thin(
         of kept row positions; ``base_weights`` is a float64 array of the same
         length giving each kept row's base weight.
     """
-    turnover = _as_1d("turnover_k", turnover_k).astype(np.float64)
-    n = len(turnover)
-    sic_codes = _as_1d("sic", sic, n)
-    bands = _band_indices(band_idx, n)
-    for name, fraction in (
-        ("window_fraction", window_fraction),
-        ("tail_fraction", tail_fraction),
-    ):
-        if not 0.0 <= float(fraction) <= 1.0:
-            raise ValueError(f"{name} must lie in [0, 1], got {fraction}")
-    if int(cell_floor) < 0:
-        raise ValueError(f"cell_floor must be non-negative, got {cell_floor}")
-    if n == 0:
-        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.float64)
-
-    in_window = (turnover >= window_lo_k) & (turnover <= window_hi_k)
-    fraction = np.where(in_window, float(window_fraction), float(tail_fraction))
-    rng = np.random.default_rng(int(seed) + 1)
-    u = rng.random(n)
-    keep = u < fraction
-
-    # Stratum id for each row: SIC x band x window side.
-    keys = np.stack(
-        [sic_codes.astype(np.int64), bands, in_window.astype(np.int64)], axis=1
+    bands = _band_indices(band_idx, len(np.asarray(turnover_k)))
+    return _stratified_thin(
+        turnover_k,
+        [sic, bands],
+        window_lo=window_lo_k,
+        window_hi=window_hi_k,
+        window_fraction=window_fraction,
+        tail_fraction=tail_fraction,
+        cell_floor=cell_floor,
+        rng_seed=int(seed) + 1,
     )
-    _, stratum = np.unique(keys, axis=0, return_inverse=True)
-    stratum = stratum.reshape(-1)
-    n_strata = int(stratum.max()) + 1
-    sizes = np.bincount(stratum, minlength=n_strata)
-    kept = np.bincount(stratum, weights=keep, minlength=n_strata).astype(np.int64)
-    deficit = np.clip(np.minimum(int(cell_floor), sizes) - kept, 0, None)
-
-    if deficit.any():
-        # Top up each deficient stratum with its lowest-u unkept rows.
-        candidates = np.flatnonzero(~keep & (deficit[stratum] > 0))
-        order = candidates[np.lexsort((u[candidates], stratum[candidates]))]
-        ordered_strata = stratum[order]
-        first = np.searchsorted(ordered_strata, ordered_strata, side="left")
-        rank = np.arange(len(order)) - first  # 0-based rank within stratum
-        keep[order[rank < deficit[ordered_strata]]] = True
-        kept = np.bincount(stratum, weights=keep, minlength=n_strata).astype(np.int64)
-
-    base = sizes / np.maximum(kept, 1)
-    keep_idx = np.flatnonzero(keep).astype(np.int64)
-    return keep_idx, base[stratum[keep_idx]].astype(np.float64)
 
 
 def registration_propensity(
@@ -210,43 +196,13 @@ def registration_propensity(
     Returns:
         Float64 array, shape ``(n,)``, of propensities in ``[0, 1]``.
     """
-    bands = _band_indices(band_idx)
-    n = len(bands)
-    frame = _as_1d("frame_mask", frame_mask, n).astype(bool)
-    weights = _as_1d("base_weights", base_weights, n).astype(np.float64)
-    counts = _hmrc_counts(hmrc_bands)
-
-    frame_mass = np.bincount(
-        bands[frame], weights=weights[frame], minlength=N_HMRC_BANDS
+    return _registration_propensity(
+        UK_VAT_REGISTRATION_SPEC,
+        _band_indices(band_idx),
+        frame_mask,
+        base_weights,
+        _hmrc_counts(hmrc_bands),
     )
-    per_band = np.zeros(N_HMRC_BANDS, dtype=np.float64)
-    positive = frame_mass > 0
-    per_band[positive] = np.minimum(1.0, counts[positive] / frame_mass[positive])
-    per_band[0] = 0.0
-
-    propensity = np.where(frame, per_band[bands], 1.0)
-    return propensity.astype(np.float64)
-
-
-def _select_to_weighted_target(
-    candidates: np.ndarray,
-    weights: np.ndarray,
-    target: float,
-    rng: np.random.Generator,
-) -> np.ndarray:
-    """Seeded random order of ``candidates`` until cumulative weight >= target.
-
-    Mirrors ``firm_microsim/generate.py::_select_to_weighted_target``: the
-    first row whose cumulative weight reaches the target is included, so the
-    selected weight overshoots the target by less than one row's weight. If
-    the candidates' total weight falls short, every candidate is selected.
-    """
-    if len(candidates) == 0 or target <= 0:
-        return candidates[:0]
-    order = candidates[rng.permutation(len(candidates))]
-    cumulative = np.cumsum(weights[order])
-    cutoff = min(int(np.searchsorted(cumulative, target, side="left")), len(order) - 1)
-    return order[: cutoff + 1]
 
 
 def assign_vat_scope_and_registration(
@@ -293,29 +249,11 @@ def assign_vat_scope_and_registration(
     Returns:
         ``(scope, registered)``: boolean arrays of shape ``(n,)``.
     """
-    bands = _band_indices(band_idx)
-    n = len(bands)
-    frame = _as_1d("frame_mask", frame_mask, n).astype(bool)
-    row_weights = _as_1d("weights", weights, n).astype(np.float64)
-    counts = _hmrc_counts(hmrc_bands)
-    rng = np.random.default_rng(int(seed))
-
-    scope = np.zeros(n, dtype=bool)
-    registered = np.zeros(n, dtype=bool)
-    scope[~frame] = True
-    registered[~frame] = True
-
-    below = frame & (bands == _BELOW_THRESHOLD_BAND)
-    scope[below] = True
-    chosen = _select_to_weighted_target(
-        np.flatnonzero(below), row_weights, counts[_BELOW_THRESHOLD_BAND], rng
+    return assign_scope_and_registration(
+        UK_VAT_REGISTRATION_SPEC,
+        _band_indices(band_idx),
+        frame_mask,
+        weights,
+        _hmrc_counts(hmrc_bands),
+        seed=seed,
     )
-    registered[chosen] = True
-
-    for band in range(_BELOW_THRESHOLD_BAND + 1, N_HMRC_BANDS):
-        candidates = np.flatnonzero(frame & (bands == band))
-        chosen = _select_to_weighted_target(candidates, row_weights, counts[band], rng)
-        scope[chosen] = True
-        registered[chosen] = True
-
-    return scope, registered
