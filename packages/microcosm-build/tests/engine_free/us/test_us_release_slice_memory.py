@@ -13,6 +13,7 @@ import pytest
 
 from microcosm.build.us_runtime.engine_lifecycle import (
     EngineVariableModuleScope,
+    release_engine_simulation,
     temporary_engine_variable_modules,
 )
 from test_support.microcosm_build.us_release_head_to_head_scorer import (
@@ -383,3 +384,140 @@ def test_an_earlier_scope_closing_keeps_a_later_open_scopes_reregistered_module(
         assert sys.modules[name] is stale
     finally:
         sys.modules.pop(name, None)
+
+
+# policyengine-us 2.2.1's cache of rules pinned to earlier federal law, kept
+# by New York's pre-2024 credit formulas (``policyengine_us.tools.pinned_tbs``).
+_PINNED_RULES_MODULE = "policyengine_us.tools.pinned_tbs"
+
+
+class _StandInSystem:
+    """A tax-benefit system stand-in that, like the engine's, takes weak references."""
+
+    simulation = None
+
+
+def _stand_in_simulation(system, **branches) -> SimpleNamespace:
+    return SimpleNamespace(
+        tax_benefit_system=system,
+        branches=dict(branches),
+        baseline=None,
+        parent_branch=None,
+        populations={},
+    )
+
+
+def _install_pinned_rules_cache(monkeypatch, cache) -> ModuleType:
+    module = ModuleType(_PINNED_RULES_MODULE)
+    module._PINNED_TBS_CACHE = cache
+    monkeypatch.setitem(sys.modules, _PINNED_RULES_MODULE, module)
+    return module
+
+
+def _pinned_entry(base: _StandInSystem) -> tuple:
+    """An entry as policyengine-us 2.2.1 stores it: weak base, weak tree, clone."""
+    clone = _StandInSystem()
+    clone.simulation = base.simulation
+    return (weakref.ref(base), weakref.ref(_StandInSystem()), clone)
+
+
+def test_release_drops_rules_pinned_from_the_released_simulation_and_its_branches(
+    monkeypatch,
+) -> None:
+    """A finished engine's pinned copy of the rules goes with it; others stay.
+
+    The clone is held strongly by the cache entry and keeps the engine it was
+    made in through its copied ``simulation`` attribute, so the entry has to
+    go for either to be freed. A live engine's entry stays, so its next lookup
+    still finds its copy.
+    """
+    own_system, branch_system, baseline_system, live_system = (
+        _StandInSystem() for _ in range(4)
+    )
+    branch = _stand_in_simulation(branch_system)
+    simulation = _stand_in_simulation(own_system, pre_tcja_ctc=branch)
+    simulation.baseline = _stand_in_simulation(baseline_system)
+    own_system.simulation = simulation
+    live_simulation = _stand_in_simulation(live_system)
+    live_system.simulation = live_simulation
+    own_entry = _pinned_entry(own_system)
+    cache = {
+        "ny_pre_tcja_ctc": own_entry,
+        "from_a_branch": _pinned_entry(branch_system),
+        "from_the_baseline_branch": _pinned_entry(baseline_system),
+        # policyengine-us 2.88.6 holds every part of an entry weakly.
+        "weak_only": (
+            weakref.ref(own_system),
+            weakref.ref(_StandInSystem()),
+            weakref.WeakValueDictionary(),
+            weakref.ref(own_entry[2]),
+        ),
+        "from_a_live_engine": _pinned_entry(live_system),
+    }
+    live_entry = cache["from_a_live_engine"]
+    clone_reference = weakref.ref(own_entry[2])
+    own_system_reference = weakref.ref(own_system)
+    _install_pinned_rules_cache(monkeypatch, cache)
+    del own_entry
+
+    release_engine_simulation(simulation)
+
+    assert cache == {"from_a_live_engine": live_entry}
+    del simulation, branch, own_system, branch_system, baseline_system
+    gc.collect()
+    assert clone_reference() is None
+    assert own_system_reference() is None
+
+
+def _caches_the_release_leaves_alone(case: str):
+    """A fresh cache of each shape the release must not change."""
+    dead_base = _StandInSystem()
+    dead_entry = _pinned_entry(dead_base)
+    del dead_base
+    return {
+        "no-cache-attribute": None,
+        "cache-not-a-dict": [("ny_pre_tcja_ctc",)],
+        "unrecognised-or-dead-entries": {
+            "not_a_tuple": ["entry"],
+            "empty": (),
+            "not_weak": ("base", "tree", "clone"),
+            "dead_base": dead_entry,
+        },
+    }[case]
+
+
+@pytest.mark.parametrize(
+    "case", ["no-cache-attribute", "cache-not-a-dict", "unrecognised-or-dead-entries"]
+)
+def test_release_leaves_pinned_rules_caches_it_does_not_recognise_alone(
+    monkeypatch, case
+) -> None:
+    """Other engine versions and stand-ins pass through unchanged."""
+    system = _StandInSystem()
+    simulation = _stand_in_simulation(system)
+    system.simulation = simulation
+    cache = _caches_the_release_leaves_alone(case)
+    module = _install_pinned_rules_cache(monkeypatch, cache)
+    if cache is None:
+        del module._PINNED_TBS_CACHE
+    before = None if cache is None else type(cache)(cache)
+
+    release_engine_simulation(simulation)
+
+    if cache is None:
+        assert not hasattr(module, "_PINNED_TBS_CACHE")
+    else:
+        assert cache == before
+
+
+def test_release_without_the_engines_pinned_rules_module(monkeypatch) -> None:
+    """An engine-free process, or an engine without the cache, needs nothing."""
+    monkeypatch.delitem(sys.modules, _PINNED_RULES_MODULE, raising=False)
+    system = _StandInSystem()
+    simulation = _stand_in_simulation(system)
+    system.simulation = simulation
+
+    release_engine_simulation(simulation)
+
+    assert system.simulation is None
+    assert _PINNED_RULES_MODULE not in sys.modules

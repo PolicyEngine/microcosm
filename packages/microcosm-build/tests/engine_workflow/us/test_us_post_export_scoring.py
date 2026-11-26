@@ -442,3 +442,58 @@ def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
     kept_before, kept_after, kept = score()
     assert len(kept_after - kept_before) >= 2 * 1_000
     assert released == kept
+
+
+@pytest.mark.slow
+def test_reform_pass_leaves_no_pinned_copy_of_the_rules_behind_and_scores_the_same(
+    builder, tmp_path, monkeypatch
+) -> None:
+    """policyengine-us 2.2.1's New York pre-2024 CTC formulas clone the whole
+    rules system into ``policyengine_us.tools.pinned_tbs._PINNED_TBS_CACHE``.
+    The clone's copied ``simulation`` attribute keeps the batch engine and the
+    reformed parameter tree alive after the reform is finished (about 1.3 GiB
+    on this fixture). Releasing the engine drops that entry, so no parameter
+    the SALT refund pass added stays alive, and the scored arrays are
+    byte-identical to scoring with the entry kept."""
+    from policyengine_core.parameters import Parameter
+
+    from microcosm.build.us_runtime import engine_lifecycle
+    from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
+
+    source = _write_engine_h5(builder, tmp_path / "export", _GUARD_HOUSEHOLDS)
+    probe = next(
+        probe
+        for probe in us_release_reform_coverage_probes()
+        if probe.id == "salt_refund_income_neutralization"
+    )
+    assert (probe.budget_measure, probe.period) == ("state_income_tax", 2024)
+
+    def live_parameter_ids() -> set[int]:
+        gc.collect()
+        return {id(item) for item in gc.get_objects() if isinstance(item, Parameter)}
+
+    def score():
+        scorer = builder._HouseholdBatchedPostExportScorer(
+            source, maximum_microsim_batch_size=None
+        )
+        consumer = scorer.open_consumer("fixture", ())
+        before = live_parameter_ids()
+        values = consumer.simulate(_build_reform(probe)).calculate(
+            probe.budget_measure, period=probe.period
+        )
+        scored = (np.asarray(values).tobytes(), values.weights.tobytes())
+        del values
+        scorer.finish_consumer(consumer)
+        scorer.close()
+        return len(live_parameter_ids() - before), scored
+
+    added, released = score()
+    assert added == 0
+
+    monkeypatch.setattr(
+        engine_lifecycle, "_drop_pinned_rule_copies", lambda systems: None
+    )
+    kept_added, kept = score()
+    # The clone's tree and the reformed system's tree: 102,530 each in 2.2.1.
+    assert kept_added >= 100_000
+    assert released == kept
