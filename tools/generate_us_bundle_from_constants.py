@@ -163,6 +163,8 @@ LEGACY_RESOURCE_PATHS = (
     "take_up_contract.json",
     "target_parity_feed_families.json",
     "target_parity_manifest.json",
+    # The declared target set of each US product (microcosm#1728).
+    "target_sets.json",
     "tax_expenditure_reforms.json",
 )
 
