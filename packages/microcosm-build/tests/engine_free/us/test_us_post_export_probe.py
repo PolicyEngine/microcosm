@@ -87,13 +87,16 @@ def test_probe_runs_every_stage_on_a_subsample(
         json.loads(line)
         for line in (tmp_path / "probe" / "passes.jsonl").read_text().splitlines()
     ]
-    # As in certification, every engine stage's baseline plan is registered:
-    # one merged pass, run when the smoke opens, serves them all, so
-    # demographics runs no pass of its own.
+    # As in certification, every engine stage's baseline plan is registered,
+    # with the two held-out reports' (which the probe does not report): one
+    # merged pass, run when the smoke opens, serves them all, so demographics
+    # runs no pass of its own.
     assert report["stages"]["open_scorer"]["registered_consumers"] == [
         "reform_coverage_smoke",
         "reform_validation",
         "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
     ]
     assert {row["stage"] for row in passes} == {
         "reform_coverage_smoke",
@@ -1407,8 +1410,94 @@ def test_a_stage_whose_dry_run_fails_fails_alone(
         receipt=receipt,
         stages=("reform_coverage_smoke", "demographics"),
     )
-    assert report["stages"]["open_scorer"]["registered_consumers"] == ["demographics"]
+    assert report["stages"]["open_scorer"]["registered_consumers"] == [
+        "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
+    ]
     smoke = report["stages"]["reform_coverage_smoke"]
     assert smoke["status"] == "error"
     assert smoke["error"] == "ValueError: fixture dry run refused"
     assert report["stages"]["demographics"]["status"] == "completed"
+
+
+def test_a_stage_the_stopped_pool_could_not_serve_is_the_probes_failure(
+    probe_tool, builder
+) -> None:
+    """Once a unit has failed on every attempt, later stages that need the
+    pool are not scored. That is not a release failure of theirs: the stage
+    records it as the probe's own, and only the stage that met the failed
+    unit records the release's."""
+    from types import SimpleNamespace
+
+    probe = SimpleNamespace(
+        builder=builder,
+        clock=probe_tool.StageClock(None),
+        report={"stages": {}},
+        verdicts=[],
+        _write_report=lambda: None,
+    )
+
+    def stopped():
+        raise builder.PostExportPoolStoppedError(
+            "Pooled post-export scoring stopped earlier; nothing more is served."
+        )
+
+    record = probe_tool.ExportProbe._stage(probe, "demographics", stopped, "raises")
+    assert record["status"] == "error"
+    (verdict,) = probe.verdicts
+    assert verdict["release_consequence"] == "probe integrity"
+    assert "could not run this step" in verdict["reason"]
+
+
+def test_the_row_map_counts_each_entitys_rows_once(probe_tool) -> None:
+    from collections.abc import Sequence
+    from types import SimpleNamespace
+
+    class CountedBatches(Sequence):
+        reads = 0
+
+        def __len__(self) -> int:
+            return 3
+
+        def __getitem__(self, position):
+            if not 0 <= position < 3:
+                raise IndexError(position)
+            CountedBatches.reads += 1
+            return SimpleNamespace(n=lambda entity: 2)
+
+    row_map = probe_tool.HouseholdRowMap(CountedBatches(), sampler=None)
+    assert [row_map.n_rows("person") for _ in range(4)] == [6, 6, 6, 6]
+    assert CountedBatches.reads == 3
+
+
+def test_engine_options_and_pool_settings_are_not_given_together(
+    probe_tool, builder, chain, tmp_path
+) -> None:
+    """With pooling the workers' engine is the pool settings'; an engine
+    given to the probe as well would be dropped without a word."""
+    from microcosm.build.worker_pool import WorkerPoolSettings
+
+    _, path, receipt, _ = chain
+    pooling = builder._PostExportPooling(
+        WorkerPoolSettings(workers=1), chosen_by="test"
+    )
+    with pytest.raises(ValueError, match="scorer_options"):
+        fixture_export_probe(
+            probe_tool,
+            builder,
+            path,
+            tmp_path / "probe",
+            receipt=receipt,
+            scorer_options={"microsimulation_cls": object},
+            post_export_pooling=pooling,
+        )
+    probe, _ = fixture_export_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        post_export_pooling=pooling,
+    )
+    assert probe.scorer_options == {}

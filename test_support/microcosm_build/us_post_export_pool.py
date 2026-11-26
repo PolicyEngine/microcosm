@@ -16,7 +16,12 @@ environment, which spawned workers inherit:
   it leaves a value for (the population-aggregate and baseline-branch
   refusals);
 - :data:`ENGINE_LOG`: a directory; each process appends one JSON line per
-  engine construction and per calculation to ``<pid>.jsonl`` there.
+  engine construction and per calculation to ``<pid>.jsonl`` there;
+- :data:`MEMORY_KEYS`: the most distinct keys one engine computes before it
+  raises ``MemoryError``, as an engine that ran out of memory would.
+
+Each fake reform carries the description it was built from, as the
+consumers' own builders mark the reforms they build.
 """
 
 from __future__ import annotations
@@ -28,7 +33,10 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from microcosm.build.us_runtime.post_export_requests import ParameterChangesReform
+from microcosm.build.us_runtime.post_export_requests import (
+    ParameterChangesReform,
+    described_reform,
+)
 from microcosm.build.us_runtime.reform_validation import ReformValidationSpec
 from microcosm.build.us_runtime.release_input_coverage import ReformCoverageProbe
 from test_support.microcosm_build.us_post_export_scoring import (
@@ -44,6 +52,7 @@ from test_support.microcosm_build.us_post_export_scoring import (
 FAIL_ON = "MICROCOSM_TEST_POST_EXPORT_FAIL_ON"
 COMPUTES = "MICROCOSM_TEST_POST_EXPORT_COMPUTES"
 ENGINE_LOG = "MICROCOSM_TEST_POST_EXPORT_ENGINE_LOG"
+MEMORY_KEYS = "MICROCOSM_TEST_POST_EXPORT_MEMORY_KEYS"
 
 #: Parameter paths a fake reform sets from a ``ParameterChangesReform``
 #: payload, so a reform can move a behavioral-response parameter.
@@ -64,7 +73,7 @@ def build_fake_reform(description):
     fixture builds it in the parent: labelled by the probe's or spec's id, or
     by the parameter changes' JSON."""
     if isinstance(description, ReformCoverageProbe | ReformValidationSpec):
-        return _FakeReform(description.id)
+        return described_reform(_FakeReform(description.id), description)
     if isinstance(description, ParameterChangesReform):
         changes = dict(description.parameter_changes)
         parameters = {
@@ -72,8 +81,11 @@ def build_fake_reform(description):
             for path, value in changes.items()
             if path.startswith(_RESPONSE_PARAMETERS)
         }
-        return _FakeReform(
-            json.dumps(changes, sort_keys=True, default=str), parameters=parameters
+        return described_reform(
+            _FakeReform(
+                json.dumps(changes, sort_keys=True, default=str), parameters=parameters
+            ),
+            description,
         )
     raise TypeError(f"no fake reform for {type(description).__name__}")
 
@@ -169,6 +181,10 @@ class FakeMicrosimulation:
                 "period": period,
             }
         )
+        self.asked = getattr(self, "asked", set()) | {(variable, period, map_to)}
+        limit = os.environ.get(MEMORY_KEYS)
+        if limit and len(self.asked) > int(limit):
+            raise MemoryError(f"fixture engine holds more than {limit} keys")
         computes = json.loads(os.environ.get(COMPUTES) or "{}")
         for computed in (variable, *computes.get(variable, ())):
             self.known.setdefault(computed, set()).add(period)

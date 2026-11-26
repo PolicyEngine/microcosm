@@ -133,7 +133,10 @@ def fixture_export_probe(
     serial scorer is given (the log then records nothing)."""
     log = _EngineLog()
     log.fail_on = fail_on
-    if scorer_options is None:
+    if scorer_options is None and options.get("post_export_pooling") is not None:
+        # The pool settings name the workers' engine.
+        scorer_options = {}
+    elif scorer_options is None:
         scorer_options = {
             "microsimulation_cls": float32_engine(log),
             "dataset_from_frame": lambda batch_frame: batch_frame,

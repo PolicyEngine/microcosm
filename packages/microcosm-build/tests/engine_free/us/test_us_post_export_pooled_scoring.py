@@ -46,6 +46,7 @@ from test_support.microcosm_build.us_post_export_pool import (
     COMPUTES,
     ENGINE_LOG,
     FAIL_ON,
+    MEMORY_KEYS,
     FakeMicrosimulation,
     build_fake_parameter_reform,
     build_fake_reform,
@@ -83,7 +84,7 @@ def pooled_reforms(monkeypatch, builder):
     monkeypatch.setattr(
         builder, "geography_coverage_payload", lambda path: {"h5": Path(path).name}
     )
-    for name in (FAIL_ON, COMPUTES, ENGINE_LOG):
+    for name in (FAIL_ON, COMPUTES, ENGINE_LOG, MEMORY_KEYS):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -807,3 +808,308 @@ def test_the_probe_command_scores_as_certification_does(builder) -> None:
     ]
     keywords = {keyword.arg: ast.unparse(keyword.value) for keyword in call.keywords}
     assert keywords["post_export_pooling"] == "post_export_pooling"
+
+
+# ---------------------------------------------------------------------------
+# Review round 1
+# ---------------------------------------------------------------------------
+
+
+def _reform_consumer(*opened):
+    """A consumer that reads the baseline, then opens each reform of the
+    dry run's order (``opened(total)`` picks the real run's order) and asks
+    each for income tax."""
+
+    (choose,) = opened
+
+    def consumer(simulate):
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+        total = simulate(None).calculate("age", 2024).sum()
+        totals = []
+        for description in choose(total):
+            reformed = simulate(
+                description if records_only else build_fake_reform(description)
+            )
+            totals.append(reformed.calculate("income_tax", 2024).sum())
+        return totals
+
+    return consumer
+
+
+def test_a_reform_other_than_the_recorded_one_is_refused(
+    builder,
+    pooled_reforms,
+    tmp_path,
+) -> None:
+    """The dry run opened A then B; the real run opens B then A with the
+    same keys. Served by position alone, B would get A's values."""
+
+    def opened(total):
+        return (
+            [FIXTURE_REFORM, OTHER_REFORM]
+            if total == 0
+            else [OTHER_REFORM, FIXTURE_REFORM]
+        )
+
+    consumer = _reform_consumer(opened)
+    plan = _fixture_plan(builder, consumer)
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        scoring = scorer.open_consumer("fixture", plan.baseline_plan("fixture"))
+        with pytest.raises(
+            RuntimeError, match="reformed simulation 0 with a reform other than"
+        ):
+            consumer(scoring.simulate)
+    finally:
+        scorer.close()
+
+
+def test_a_reform_without_its_description_or_beyond_the_recorded_ones_is_refused(
+    builder,
+    pooled_reforms,
+    tmp_path,
+) -> None:
+    def consumer(simulate):
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+        simulate(None).calculate("age", 2024)
+        if records_only:
+            simulate(FIXTURE_REFORM).calculate("income_tax", 2024)
+        return simulate
+
+    plan = _fixture_plan(builder, consumer)
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        scoring = scorer.open_consumer("fixture", plan.baseline_plan("fixture"))
+        with pytest.raises(RuntimeError, match="carries no description"):
+            scoring.simulate(object())
+        built = build_fake_reform(FIXTURE_REFORM)
+        with pytest.raises(RuntimeError, match="more reformed simulations"):
+            scoring.simulate(built)
+    finally:
+        scorer.close()
+
+
+def _baseline_consumer(*variables):
+    def consumer(simulate):
+        baseline = simulate(None)
+        return [baseline.calculate(variable, 2024).sum() for variable in variables]
+
+    return consumer
+
+
+def test_a_merged_pass_a_worker_cannot_finish_falls_back_as_the_serial_scorer_does(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """An engine runs out of memory on the merged pass's three keys but not
+    on either consumer's two. The serial scorer catches the MemoryError and
+    scores each consumer's own plan; so does the pool, once the merged unit
+    has failed on every attempt."""
+    monkeypatch.setenv(MEMORY_KEYS, "2")
+    consumers = {
+        "first": _baseline_consumer("age", "snap"),
+        "second": _baseline_consumer("age", "income_tax"),
+    }
+    plan = builder._post_export_scoring_plan(
+        n_households=N_HOUSEHOLDS,
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumers=consumers,
+    )
+
+    def run(scorer):
+        try:
+            outputs = {}
+            for name, consumer in consumers.items():
+                scoring = scorer.open_consumer(name, plan.baseline_plan(name))
+                outputs[name] = consumer(scoring.simulate)
+                scorer.finish_consumer(scoring)
+            block = scorer.manifest_record()
+        finally:
+            scorer.close()
+        block.pop("execution")
+        return outputs, block
+
+    serial = run(_serial_scorer(builder, plan, tmp_path / "serial"))
+    assert "merged baseline plan failed" in capsys.readouterr().out
+    pooled = run(_pooled_scorer(builder, plan, tmp_path / "pooled", 1))
+    assert "merged baseline plan failed" in capsys.readouterr().out
+    assert canonical_result_bytes(pooled) == canonical_result_bytes(serial)
+
+
+def test_a_stopped_pool_still_serves_what_it_already_scored(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A reform unit that fails on every attempt stops the pool. A consumer
+    served from the merged pass's values is still served; one that needs the
+    pool is refused with a WorkerPoolError, which the held-out reports pass
+    on instead of recording an unavailable measurement."""
+    monkeypatch.setenv(MEMORY_KEYS, "2")
+
+    def prefetching(simulate):
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+        simulate(None).calculate("age", 2024)
+        reformed = simulate(
+            FIXTURE_REFORM if records_only else build_fake_reform(FIXTURE_REFORM)
+        )
+        reformed.prefetch((("income_tax", 2024), ("snap", 2024), ("ssi", 2024)))
+        return reformed.calculate("income_tax", 2024).sum()
+
+    consumers = {
+        "first": prefetching,
+        "second": _baseline_consumer("age"),
+        "third": _fixture_consumer(
+            lambda total: [(OTHER_REFORM, [("income_tax", 2024)])]
+        ),
+    }
+    plan = builder._post_export_scoring_plan(
+        n_households=N_HOUSEHOLDS,
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumers=consumers,
+    )
+    serial = _serial_scorer(builder, plan, tmp_path / "serial")
+    try:
+        expected = consumers["second"](
+            serial.open_consumer("second", plan.baseline_plan("second")).simulate
+        )
+    finally:
+        serial.close()
+    scorer = _pooled_scorer(builder, plan, tmp_path / "pooled", 1)
+    try:
+        first = scorer.open_consumer("first", plan.baseline_plan("first"))
+        with pytest.raises(WorkerPoolUnitError, match="MemoryError"):
+            prefetching(first.simulate)
+        second = scorer.open_consumer("second", plan.baseline_plan("second"))
+        assert consumers["second"](second.simulate) == expected
+        scorer.finish_consumer(second)
+        third = scorer.open_consumer("third", plan.baseline_plan("third"))
+        with pytest.raises(builder.PostExportPoolStoppedError) as stopped:
+            consumers["third"](third.simulate)
+        assert isinstance(stopped.value, WorkerPoolError)
+    finally:
+        scorer.close()
+
+
+def test_asking_again_after_a_failed_pass_raises_what_the_serial_scorer_raises(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(COMPUTES, json.dumps({"income_tax": ["relative_income_change"]}))
+
+    def consumer(simulate):
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+        simulate(None).calculate("age", 2024)
+        reformed = simulate(
+            FIXTURE_REFORM if records_only else build_fake_reform(FIXTURE_REFORM)
+        )
+        errors = []
+        for _ in range(2):
+            try:
+                reformed.calculate("income_tax", 2024)
+            except RuntimeError as error:
+                errors.append(f"{type(error).__name__}: {error}")
+        return errors
+
+    plan = _fixture_plan(builder, consumer)
+    observed = {}
+    for mode in ("serial", "pooled"):
+        scorer = (
+            _serial_scorer(builder, plan, tmp_path / mode)
+            if mode == "serial"
+            else _pooled_scorer(builder, plan, tmp_path / mode, 1)
+        )
+        try:
+            scoring = scorer.open_consumer("fixture", plan.baseline_plan("fixture"))
+            errors = consumer(scoring.simulate)
+            observed[mode] = (errors, scoring.reform_systems, scoring.reform_passes)
+        finally:
+            scorer.close()
+    assert len(observed["serial"][0]) == 2
+    assert observed["pooled"] == observed["serial"]
+
+
+def test_the_execution_record_names_the_environment_workers_got(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from microcosm.build.us_runtime import take_up_contract
+
+    monkeypatch.setattr(
+        take_up_contract,
+        "us_engine_abi_lock_check_environment",
+        lambda: {"MICROCOSM_TEST_HANDED_DOWN": "handed down"},
+    )
+    plan = _fixture_plan(builder, _fixture_consumer(lambda total: []))
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        scorer.finish_consumer(
+            scorer.open_consumer("fixture", plan.baseline_plan("fixture"))
+        )
+        execution = scorer.execution_record()
+    finally:
+        scorer.close()
+    assert execution["worker_environment_variables"] == ["MICROCOSM_TEST_HANDED_DOWN"]
+
+
+def test_the_consumers_builders_mark_each_reform_with_its_description(
+    monkeypatch,
+) -> None:
+    """The smoke check's and reform validation's own builders mark every
+    reform they build with the description they built it from, which pooled
+    scoring compares with the reform its dry run recorded."""
+    from microcosm.build.us_runtime.post_export_requests import reform_description
+
+    class StubReform:
+        @classmethod
+        def from_dict(cls, changes, country_id):
+            return type("FromDict", (cls,), {"changes": dict(changes)})
+
+    core = types.ModuleType("policyengine_core")
+    reforms = types.ModuleType("policyengine_core.reforms")
+    reforms.Reform = StubReform
+    core.reforms = reforms
+    monkeypatch.setitem(sys.modules, "policyengine_core", core)
+    monkeypatch.setitem(sys.modules, "policyengine_core.reforms", reforms)
+    from microcosm.build.us_runtime.release_input_coverage import (
+        us_release_reform_coverage_probes,
+    )
+
+    probes = us_release_reform_coverage_probes()
+    neutralizing = next(probe for probe in probes if probe.neutralized_variable)
+    changing = next(
+        probe
+        for probe in probes
+        if not probe.neutralized_variable and not probe.list_edits
+    )
+    for probe in (neutralizing, changing):
+        assert reform_description(smoke_module._build_reform(probe)) == probe
+    specs = reform_validation_module.load_default_reform_specs(period=2024)
+    for spec in (
+        next(spec for spec in specs if spec.neutralized_variable),
+        next(spec for spec in specs if spec.parameter_changes),
+    ):
+        assert reform_description(spec.build_reform()) == spec
+    changes = {"gov.irs.fixture": {"2024-01-01": 1}}
+    assert reform_description(
+        reform_validation_module._build_parameter_reform(changes)
+    ) == ParameterChangesReform(changes)
+    # Two builds are two reforms, each with its own description.
+    assert smoke_module._build_reform(changing) is not smoke_module._build_reform(
+        changing
+    )
+
+
+def test_workers_check_they_run_the_parents_release_tool(builder) -> None:
+    import hashlib
+
+    tool = Path(builder.__file__)
+    assert builder._RELEASE_TOOL_SHA256 == hashlib.sha256(tool.read_bytes()).hexdigest()

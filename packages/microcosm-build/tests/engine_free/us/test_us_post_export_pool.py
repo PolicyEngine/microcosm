@@ -292,3 +292,27 @@ def test_the_plan_says_what_it_chose_and_why(pool_module) -> None:
     line = plan.describe()
     for text in ("4 pool workers", "formula", "23.00 GiB", "24.00 GiB", "5.25 GiB"):
         assert text in line, text
+
+
+def test_a_worker_refuses_a_release_tool_other_than_the_parents(
+    pool_module, tmp_path
+) -> None:
+    """A worker scores only with the code the scoring process runs: a tool
+    file that changed after the parent loaded it is refused at start."""
+    import hashlib
+
+    tool = tmp_path / "fixture_checked_tool.py"
+    tool.write_text("VALUE = 1\n")
+    digest = hashlib.sha256(tool.read_bytes()).hexdigest()
+    try:
+        with pytest.raises(RuntimeError, match="SHA-256"):
+            pool_module.release_tool("fixture_checked_tool", tool, sha256="0" * 64)
+        assert "fixture_checked_tool" not in sys.modules
+        loaded = pool_module.release_tool("fixture_checked_tool", tool, sha256=digest)
+        assert loaded.VALUE == 1
+        # Found loaded already, it is checked against its file too.
+        tool.write_text("VALUE = 2\n")
+        with pytest.raises(RuntimeError, match="SHA-256"):
+            pool_module.release_tool("fixture_checked_tool", tool, sha256=digest)
+    finally:
+        sys.modules.pop("fixture_checked_tool", None)
