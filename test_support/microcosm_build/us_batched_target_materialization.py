@@ -210,6 +210,8 @@ def _install_fake_engine(
             self.baseline = _FakeHolders() if reform is not None else None
             if self.baseline is not None:
                 self.baseline.clone_branches = clone_branches
+            # Recorded now: releasing an engine clears its ``baseline``.
+            ledger.constructions[-1]["baseline_branch"] = self.baseline is not None
             ledger.simulations.append(self)
 
         def _ids(self, entity: str) -> np.ndarray:

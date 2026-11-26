@@ -261,6 +261,25 @@ def _count_system_clones(monkeypatch) -> list[int]:
     return clones
 
 
+def _count_parameter_tree_copies(monkeypatch) -> list[int]:
+    """Count private copies of a shared parameter tree: policyengine-us 2.2.1's
+    ``SharedParameterPolicy.detach_parameters`` returning true. An engine that
+    shares its system's policy copies the tree when a reform reaches it."""
+
+    from policyengine_us.spm import SharedParameterPolicy
+
+    copies = [0]
+    real_detach = SharedParameterPolicy.detach_parameters
+
+    def counting_detach(self, *args, **kwargs):
+        copied = real_detach(self, *args, **kwargs)
+        copies[0] += bool(copied)
+        return copied
+
+    monkeypatch.setattr(SharedParameterPolicy, "detach_parameters", counting_detach)
+    return copies
+
+
 def test_jct_reform_batches_match_the_reform_argument_construction() -> None:
     """Every shipped JCT reform scores the same household income tax, byte for
     byte, on batch engines given the reform's system alone as on batch
@@ -324,9 +343,9 @@ def test_jct_reform_batches_match_the_reform_argument_construction() -> None:
 
 
 def test_jct_reform_batches_clone_no_tax_benefit_system(monkeypatch) -> None:
-    """One JCT reform in three batches clones no tax-benefit system. The
-    construction with ``reform=`` as well cloned the reform's system once per
-    batch engine, which the counter sees."""
+    """One JCT reform in three batches clones no tax-benefit system and copies
+    no parameter tree. The construction with ``reform=`` as well cloned the
+    reform's system once per batch engine, which the counter sees."""
 
     builder = _load_builder_module()
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
@@ -343,6 +362,7 @@ def test_jct_reform_batches_clone_no_tax_benefit_system(monkeypatch) -> None:
         == _BATCHES
     )
     clones = _count_system_clones(monkeypatch)
+    tree_copies = _count_parameter_tree_copies(monkeypatch)
 
     builder._reform_household_income_tax(
         base_frame=frame,
@@ -353,6 +373,7 @@ def test_jct_reform_batches_clone_no_tax_benefit_system(monkeypatch) -> None:
         batch_size=_BATCH_SIZE,
     )
     assert clones[0] == 0
+    assert tree_copies[0] == 0
 
     _income_tax_given_reform_argument(
         builder, frame, reform_spec, system, batch_size=_BATCH_SIZE

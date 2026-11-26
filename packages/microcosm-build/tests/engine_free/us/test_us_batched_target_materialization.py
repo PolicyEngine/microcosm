@@ -400,7 +400,15 @@ def test_batched_reform_simulation_refuses_population_aggregates(
         aggregate_reform_only=True,
         clone_branches=True,
     )
-    with pytest.raises(ValueError, match=r"computed medicaid_slcsp_state_denominator@"):
+    # The Medicaid denominator is also a baseline-branch reader; this matches
+    # the population-aggregate refusal's own message, which comes first.
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"is not batch-invariant: the engine for household batch \d+/\d+ "
+            r"computed medicaid_slcsp_state_denominator@"
+        ),
+    ):
         builder._materialize_target_frame(
             _nested_frame(), _TARGETS, maximum_microsim_batch_size=2
         )
@@ -432,7 +440,7 @@ def test_jct_reform_engines_get_the_family_system_alone(
     for entry in reform_constructions:
         assert entry["reform_argument"] is None
         assert entry["tax_benefit_system"] is family_system
-    assert all(simulation.baseline is None for simulation in ledger.simulations)
+    assert not any(entry["baseline_branch"] for entry in ledger.constructions)
     assert ledger.behavioral_response_checks == [
         (family_system, ledger.shared_baseline_system, builder.PERIOD)
     ]

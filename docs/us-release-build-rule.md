@@ -540,10 +540,11 @@ known violations at run time:
   zero default elasticities.
 
 Target compilation's JCT tax-expenditure reform batches
-(`_reform_household_income_tax`) build their engines the same way, from one
-reform system per reform, and refuse the same two things: a reform system that
-moves the behavioral-response parameters, before its first batch engine, and
-a batch engine that computed a baseline-branch reader, at every batch count.
+(`_reform_household_income_tax`) also give each batch engine the reform's
+system alone, built once per reform; unlike the scorer's, they pass no `spm=`
+selection. They refuse the same two things: a reform system that moves the
+behavioral-response parameters, before its first batch engine, and a batch
+engine that computed a baseline-branch reader, at every batch count.
 
 Tests pin the watched lists against the installed engine's formula sources,
 exercise each guard on a real engine, and compare the shipped baseline plans
