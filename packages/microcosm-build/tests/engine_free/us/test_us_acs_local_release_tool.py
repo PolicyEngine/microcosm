@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import functools
 import importlib.util
 import inspect
@@ -585,6 +586,46 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     ):
         assert fragment in anchor["reason"], fragment
     assert "acs_snap_receipt_anchor" in (by_id["acs_take_up_engine_defaults"]["reason"])
+    # microcosm#1720: the inputs staging writes on ACS rows are a reviewed
+    # method, recorded and not graded.
+    staged = by_id["acs_local_staged_inputs"]
+    assert staged["status"] == "reviewed_modeling_decision"
+    assert staged["calibration_blocker"] is False
+    assert set(module.ACS_LOCAL_STATUS_INPUTS_COLUMNS) <= set(staged["columns"])
+    assert {"is_self_employed", "health_insurance_premiums"} <= set(staged["columns"])
+    assert set(module.ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS) <= set(staged["columns"])
+    assert "would_file_taxes_voluntarily" in staged["columns"]
+    assert "takes_up_housing_assistance_if_eligible" in staged["columns"]
+    # The housing flag is an override of a draw, not a never-default column.
+    assert ("spm_unit", "takes_up_housing_assistance_if_eligible") not in (
+        module.NEVER_DEFAULT_FILLED
+    )
+    assert "acs_local_group_quarters_housing" in staged["treatment"]
+    # A6: the coverage flags are overrides of draws, not never-default columns.
+    assert set(module.ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS) <= set(staged["columns"])
+    for column in module.ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS:
+        assert ("person", column) not in module.NEVER_DEFAULT_FILLED
+    for fragment in ("HINS1 == 1", "NOW_GRP", "HIMRKS"):
+        assert fragment in staged["reason"], fragment
+    assert "acs_local_coverage_anchors" in staged["treatment"]
+    for fragment in (
+        "microcosm#1720",
+        "A_MARITL",
+        "surviving_spouse_eligible does not check",
+        "not as a head of household",
+        "MIL == 1",
+        "POCCU2 52",
+        "attribute_us_se_health_premiums",
+        "not ACS COW 6 or 7",
+        "microcosm#1689",
+        "LKWEEKS",
+        "RETCB_VAL",
+        "weeks 0 without UC",
+        "SIPP 2023",
+        "microcosm#975",
+    ):
+        assert fragment in staged["reason"], fragment
+    assert "NEVER_DEFAULT_FILLED" in staged["treatment"]
     # microcosm#1021: native ACS disability is a reviewed method; weeks worked
     # is staged only, and is_veteran is documented, not exported.
     work_disability = by_id["acs_work_disability_inputs"]
@@ -667,7 +708,47 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in ("PEDIS*", "SERIALNO:SPORDER", "acs_local_ssi_medicaid_take_up"):
         assert fragment in ssi["reason"]
     defaults = by_id["acs_take_up_engine_defaults"]["reason"]
-    assert "(ACA, Early Head Start and the rest)" in defaults
+    # microcosm#1720: ACA take-up left the engine defaults.
+    assert "(Early Head Start, CHIP and the rest)" in defaults
+    assert "(acs_local_aca_take_up, microcosm#1720)" in defaults
+    assert "ACA, Early Head Start" not in defaults
+    assert by_id["acs_take_up_engine_defaults"]["treatment"] == (
+        "Tracked via microcosm#1720."
+    )
+    aca = by_id["acs_local_aca_take_up"]
+    assert aca["status"] == "reviewed_modeling_decision"
+    assert aca["calibration_blocker"] is False
+    assert aca["columns"] == [
+        "takes_up_aca_if_eligible",
+        "selected_marketplace_plan_benchmark_ratio",
+    ]
+    for fragment in (
+        "aca_marketplace_inputs",
+        "floored at zero",
+        "closest to the residual average",
+        "microcosm#168",
+        "too few very large and very small credits",
+        "reported_has_subsidized_marketplace_health_coverage_at_interview",
+        "probability residual / anchored weight",
+        "acs_local_aca_subsidized_anchor_keep",
+        "microcosm.build.anchor_thinning",
+        "in expectation only",
+        "excess over each table is recorded",
+        "clipped to 0.5-1.5",
+        "no bronze count",
+        "HIMRKS",
+        "from ACS HINS1",
+        "acs_local_staged_inputs",
+    ):
+        assert fragment in aca["reason"], fragment
+    for fragment in (
+        "report-only",
+        "us_local_aca_take_up_materialize",
+        "keep probability and thinned rows",
+        "share of ACS takers",
+        "digest",
+    ):
+        assert fragment in aca["treatment"], fragment
     assert "EITC take-up is the take-up contract's seeded draw" in defaults
     assert "WIC take-up the national generator's draw" in defaults
     assert "Medicare take-up is native ACS HINS3" in defaults
@@ -738,7 +819,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         f"{len(register_entries)} entries",
         f"policyengine-us {_REVIEWED_ENGINE}",
         "spm_unit.spm_unit_energy_subsidy (liheap)",
-        "tax_unit.takes_up_aca_if_eligible (aca_ptc)",
+        "household.household_vehicles_owned (general_assistance)",
     ):
         assert fragment in register["reason"], fragment
     assert "acs_local_reviewed_fill_consumers" in register["treatment"]
@@ -2644,6 +2725,104 @@ def test_reviewed_null_fill_refuses_to_default_fill_ssi_medicaid_take_up(
     assert person[column].isna().sum() == 2
 
 
+_ACA = ("takes_up_aca_if_eligible", "selected_marketplace_plan_benchmark_ratio")
+
+
+def test_aca_inputs_are_never_default_filled() -> None:
+    """microcosm#1720: True is universal take-up, 1.0 the benchmark plan."""
+
+    module = _load_tool_module()
+    assert module.ACS_LOCAL_ACA_TAKE_UP_COLUMNS == _ACA
+    for column in _ACA:
+        reason = module._NEVER_DEFAULT_FILLED_REASONS[("tax_unit", column)]
+        assert ("tax_unit", column) in module.NEVER_DEFAULT_FILLED
+        assert "microcosm#1720" in reason
+        assert "ACA take-up stage first" in reason
+
+
+@pytest.mark.parametrize("column", _ACA)
+def test_reviewed_null_fill_refuses_to_default_fill_aca_inputs(
+    tmp_path, column
+) -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    tax_unit = frame.table("tax_unit")
+    tax_unit = tax_unit.assign(
+        **{column: [1.0] * (len(tax_unit) - 2) + [np.nan, np.nan]}
+    )
+    frame = Frame(
+        {
+            name: tax_unit if name == "tax_unit" else frame.table(name)
+            for name in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": "tax_unit", "column": column, "missing_rows": 2}
+                ]
+            }
+        )
+    )
+    with pytest.raises(
+        module.DeniedDefaultFillError, match=rf"tax_unit\.{column} \(2 null rows\)"
+    ):
+        module.fill_reviewed_nulls(frame, summary)
+    assert tax_unit[column].isna().sum() == 2
+
+
+def test_the_prepass_reads_pending_aca_cells_at_the_engine_default(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1720: the SSI and Medicaid pre-pass runs before the ACA
+    stage, so its ACS view still carries null ACA cells, which the
+    never-default rule would refuse. The pre-pass reads them at the engine
+    defaults, what the reviewed fill gave them before the stage existed."""
+
+    module = _load_tool_module()
+    fixtures = _aca_fixtures()
+    frame = fixtures._frame(n_donor=10, n_acs=20)
+    view = frame.select(np.ones(frame.n("person"), dtype=bool))
+    stored = view.table("tax_unit")[list(_ACA)].copy()
+    acs = stored[_ACA[0]].isna().to_numpy()
+    assert acs.any() and not acs.all()
+    system = SimpleNamespace(
+        variables={
+            _ACA[0]: SimpleNamespace(default_value=True, value_type=bool),
+            _ACA[1]: SimpleNamespace(default_value=1.0, value_type=float),
+        }
+    )
+    seen = []
+
+    def fill(view, summary_path, *, period, system):
+        seen.append(view.table("tax_unit")[list(_ACA)].copy())
+        return [], []
+
+    monkeypatch.setattr(module, "_formula_owned_columns", lambda view: set())
+    monkeypatch.setattr(module, "fill_reviewed_nulls", fill)
+
+    module._prepass_view_contract(
+        view, summary_path=tmp_path / "s.json", hh_chunk=10_000, system=system
+    )
+
+    (filled,) = seen
+    assert filled[_ACA[0]].dtype == bool
+    assert filled.loc[acs, _ACA[0]].all()
+    assert (filled.loc[acs, _ACA[1]] == 1.0).all()
+    # Stored donor cells are untouched.
+    assert (
+        filled.loc[~acs, _ACA[0]].tolist()
+        == stored.loc[~acs, _ACA[0]].astype(bool).tolist()
+    )
+    assert filled.loc[~acs, _ACA[1]].tolist() == stored.loc[~acs, _ACA[1]].tolist()
+
+
 @pytest.mark.parametrize(
     "edit",
     [
@@ -2692,6 +2871,178 @@ def test_ssi_medicaid_consumers_accept_a_current_checkpoint(tmp_path) -> None:
     assert path == tmp_path / module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME
 
 
+def _aca_fixtures():
+    """The ACA take-up stage's engine-free fixtures (#1720)."""
+
+    spec = importlib.util.spec_from_file_location(
+        "acs_local_aca_take_up_fixtures",
+        Path(__file__).with_name("test_us_acs_local_aca_take_up.py"),
+    )
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+def _aca_receipt(module, checkpoint_dir: Path, **overrides) -> dict:
+    """A current ACA materialize receipt whose recorded file exists (#1720)."""
+
+    path = checkpoint_dir / module.ACS_ACA_TAKE_UP_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"recorded ACA assignment")
+    receipt = {
+        "issue": "microcosm#1720",
+        "method": module.ACS_LOCAL_ACA_TAKE_UP_METHOD,
+        "seed": 0,
+        "assigned_sha256": "c" * 64,
+        "gate": {"passed": True, "failures": [], "report_only": True},
+        "assignment_file": {"name": path.name, "sha256": module._sha256(path)},
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        "absent",
+        "wrong_issue",
+        "wrong_method",
+        "untyped_seed",
+        "no_file_record",
+        "missing_file",
+        "changed_file",
+    ],
+)
+def test_aca_consumers_refuse_a_checkpoint_without_the_assignment(
+    tmp_path, edit
+) -> None:
+    """microcosm#1720: calibrate and the export need the recorded ACS ACA
+    assignment, the lane's convention for every drawn column."""
+
+    module = _load_tool_module()
+    receipt = _aca_receipt(module, tmp_path)
+    recorded = tmp_path / module.ACS_ACA_TAKE_UP_FILENAME
+    if edit == "wrong_issue":
+        receipt["issue"] = "microcosm#1022"
+    elif edit == "wrong_method":
+        receipt["method"] = "engine_default"
+    elif edit == "untyped_seed":
+        receipt["seed"] = "0"
+    elif edit == "no_file_record":
+        del receipt["assignment_file"]
+    elif edit == "missing_file":
+        recorded.unlink()
+    elif edit == "changed_file":
+        recorded.write_bytes(b"another assignment")
+    identity = {} if edit == "absent" else {"acs_local_aca_take_up": receipt}
+    with pytest.raises(SystemExit, match=r"microcosm#1720.*Re-run --stage materialize"):
+        module._recorded_aca_take_up(identity, tmp_path)
+
+
+def test_aca_consumers_accept_a_checkpoint_whose_report_only_grade_failed(
+    tmp_path,
+) -> None:
+    """The ACA grade is report-only: a failed verdict does not refuse."""
+
+    module = _load_tool_module()
+    receipt = _aca_receipt(
+        module,
+        tmp_path,
+        gate={"passed": False, "failures": ["invented miss"], "report_only": True},
+    )
+    recorded, path = module._recorded_aca_take_up(
+        {"acs_local_aca_take_up": receipt}, tmp_path
+    )
+    assert recorded == receipt
+    assert path == tmp_path / module.ACS_ACA_TAKE_UP_FILENAME
+
+
+def test_the_aca_stage_records_a_failed_grade_and_goes_on(monkeypatch) -> None:
+    """microcosm#1720: materialize never stops on the ACA grade."""
+
+    module = _load_tool_module()
+    receipt = {
+        "engine_prepass": {},
+        "take_up": {"column": "takes_up_aca_if_eligible", "filled_rows": 3},
+        "plan_ratio": {
+            "column": "selected_marketplace_plan_benchmark_ratio",
+            "filled_rows": 3,
+        },
+    }
+    receipt["take_up"]["weighted_take_up_share_of_eligible"] = 0.4
+    monkeypatch.setattr(
+        module,
+        "with_acs_local_aca_take_up",
+        lambda frame, **_k: (frame, copy.deepcopy(receipt)),
+    )
+    monkeypatch.setattr(
+        module,
+        "acs_local_aca_take_up_signal_gate",
+        lambda frame, *, receipt: GateResult(
+            name="acs_local_aca_take_up_signal",
+            passed=False,
+            failures=("state 06: invented miss.",),
+        ),
+    )
+    targets = {"target_tables": {}}
+    frame, recorded = module._with_local_aca_take_up(
+        "frame", seed=1, targets=targets, summary_path=Path("s"), hh_chunk=10
+    )
+    assert frame == "frame"
+    assert recorded["gate"] == {
+        "name": "acs_local_aca_take_up_signal",
+        "passed": False,
+        "failures": ["state 06: invented miss."],
+        "report_only": True,
+    }
+    assert recorded["engine_prepass"]["hh_chunk"] == 10
+
+    def broken(frame, *, receipt):
+        raise KeyError("tables")
+
+    monkeypatch.setattr(module, "acs_local_aca_take_up_signal_gate", broken)
+    _frame, recorded = module._with_local_aca_take_up(
+        "frame", seed=1, targets=targets, summary_path=Path("s"), hh_chunk=10
+    )
+    assert recorded["gate"]["passed"] is False
+    assert "the grade could not run" in recorded["gate"]["failures"][0]
+
+    def unreadable(frame, **_k):
+        raise ValueError("no SERIALNO")
+
+    monkeypatch.setattr(module, "with_acs_local_aca_take_up", unreadable)
+    with pytest.raises(SystemExit, match="microcosm#1720.*no SERIALNO"):
+        module._with_local_aca_take_up(
+            "frame", seed=1, targets=targets, summary_path=Path("s"), hh_chunk=10
+        )
+
+
+def test_the_recorded_aca_assignment_file_round_trips(tmp_path) -> None:
+    """The export rebuilds the stage's ACS inputs from the checkpoint file
+    and refuses a file that no longer matches the receipt's digest."""
+
+    module = _load_tool_module()
+    fixtures = _aca_fixtures()
+    frame = fixtures._frame(n_donor=60, n_acs=240)
+    assigned, receipt = fixtures._assign(frame)
+    path = tmp_path / module.ACS_ACA_TAKE_UP_FILENAME
+    receipt["assignment_file"] = {
+        "name": path.name,
+        "sha256": module._write_aca_take_up(assigned, path),
+    }
+    applied = module._with_recorded_aca_take_up(frame, receipt, path)
+    for column in module.ACS_LOCAL_ACA_TAKE_UP_COLUMNS:
+        assert (
+            applied.table("tax_unit")[column].tolist()
+            == assigned.table("tax_unit")[column].tolist()
+        )
+    with pytest.raises(SystemExit, match="microcosm#1720.*digest"):
+        module._with_recorded_aca_take_up(
+            frame, {**receipt, "assigned_sha256": "0" * 64}, path
+        )
+
+
 def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
     tmp_path, monkeypatch
 ) -> None:
@@ -2727,13 +3078,73 @@ def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
         module, "_load_staging_frame", lambda path: touched.append(path)
     )
 
-    def unavailable(feed):
+    # microcosm#1720: one compile serves the SSI/Medicaid and ACA counts.
+    compiles = []
+    monkeypatch.setattr(
+        module,
+        "_compiled_fiscal_registry",
+        lambda feed: compiles.append(feed) or (SimpleNamespace(specs=[]), []),
+    )
+
+    def unavailable(feed, *, compiled):
+        assert compiled[0].specs == []
         raise SystemExit(f"no SSA band counts in {Path(feed).name}")
 
     monkeypatch.setattr(module, "acs_local_ssi_medicaid_take_up_targets", unavailable)
     with pytest.raises(SystemExit, match="no SSA band counts in facts.jsonl"):
         module.do_materialize(args)
     assert touched == []
+    assert len(compiles) == 1
+
+
+def test_materialize_reads_the_aca_counts_from_the_same_compile(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1720: a feed without the ACA tables stops materialize
+    before the staging H5 is hashed, and the feed is compiled once."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_receipt_anchor_summary(),
+                "engine_versions": {
+                    "policyengine_us": module._installed_engine_version()
+                },
+            }
+        )
+    )
+    monkeypatch.setattr(
+        module,
+        "state_admin_surface",
+        lambda *a, **k: SimpleNamespace(registry=[], ri_substitutions=[]),
+    )
+    monkeypatch.setattr(module, "ladder_population", lambda *a, **k: {})
+    monkeypatch.setattr(module, "require_one_label_per_geography", lambda *a, **k: None)
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    compiled = (SimpleNamespace(specs=[]), [])
+    compiles = []
+    monkeypatch.setattr(
+        module,
+        "_compiled_fiscal_registry",
+        lambda feed: compiles.append(feed) or compiled,
+    )
+    monkeypatch.setattr(
+        module,
+        "acs_local_ssi_medicaid_take_up_targets",
+        lambda feed, *, compiled: {"compiled": compiled},
+    )
+    with pytest.raises(SystemExit, match="microcosm#1720.*cms_aca_aptc_recipients"):
+        module.do_materialize(args)
+    assert touched == []
+    assert len(compiles) == 1
 
 
 def test_calibrate_refuses_a_checkpoint_without_the_ssi_medicaid_assignment(
@@ -2755,6 +3166,37 @@ def test_calibrate_refuses_a_checkpoint_without_the_ssi_medicaid_assignment(
         lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
     )
     with pytest.raises(SystemExit, match=r"SSI/Medicaid take-up assignment"):
+        module.do_calibrate(args)
+
+
+def test_calibrate_refuses_a_checkpoint_without_the_aca_assignment(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1720: a checkpoint materialized before the ACA stage is
+    refused before the solve, as the export would refuse it."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_receipt_anchor_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {
+            "acs_local_take_up": _TAKE_UP_RECEIPT,
+            "acs_local_ssi_medicaid_take_up": _ssi_medicaid_receipt(
+                module, args.checkpoint_dir
+            ),
+        },
+    )
+    monkeypatch.setattr(module, "_require_reviewed_donor_lineage", lambda s: None)
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"no ACS local ACA take-up assignment"):
         module.do_calibrate(args)
 
 
@@ -3118,6 +3560,7 @@ def _record_current_materialization(module, args, identity: dict) -> dict:
     identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
         module, args.checkpoint_dir
     )
+    identity["acs_local_aca_take_up"] = _aca_receipt(module, args.checkpoint_dir)
     return identity
 
 
@@ -3874,6 +4317,114 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
     assert {(spec.family, spec.metadata.get("target_role")) for spec in added} == {
         ("irs_soi", "soi_fiscal_distribution")
     }
+
+
+def _aca_spec(name, role, state, value, *, level="state", groupby="state"):
+    return SimpleNamespace(
+        name=name,
+        value=value,
+        metadata={
+            "ledger_geography_level": level,
+            "ledger_layout_groupby_dimension": groupby,
+            "state_fips": state,
+            "target_role": role,
+        },
+    )
+
+
+def test_aca_take_up_targets_read_the_state_tables_of_the_compiled_registry(
+    monkeypatch,
+) -> None:
+    """microcosm#1720: the ACA tables come from the registry materialize
+    already compiled for SSI and Medicaid, read as the fiscal lane reads
+    them; district rows and other roles stay out."""
+
+    module = _load_tool_module()
+    monkeypatch.setattr(
+        module,
+        "_compiled_fiscal_registry",
+        lambda feed: pytest.fail("the ACA targets compiled the feed again"),
+    )
+    specs = [
+        _aca_spec("cms.aptc.ca", "aca_ptc_recipients", "6", 1_500_000.0),
+        _aca_spec("cms.aptc.de", "aca_ptc_recipients", "10", 30_000.0),
+        _aca_spec("soi.returns.ca", "aca_ptc_returns", "6", 600_000.0),
+        _aca_spec("soi.amount.ca", "aca_spending", "6", 4.0e9),
+        # The district file's state total and a district row stay out.
+        _aca_spec(
+            "soi.cd.ca_total",
+            "aca_ptc_returns",
+            "6",
+            590_000.0,
+            groupby="irs_soi.congressional_district",
+        ),
+        _aca_spec("soi.cd.ca01", "aca_ptc_returns", "6", 9_000.0, level="cd"),
+        _aca_spec("cms.enrollment.ca", "aca_enrollment", "6", 1_800_000.0),
+    ]
+    compiled = (SimpleNamespace(specs=specs), [])
+
+    targets = module.acs_local_aca_take_up_targets("facts.jsonl", compiled=compiled)
+
+    tables = targets["target_tables"]
+    assert sorted(tables) == [
+        "cms_aca_aptc_recipients_by_state",
+        "irs_soi_premium_tax_credit_amount_by_state",
+        "irs_soi_premium_tax_credit_returns_by_state",
+    ]
+    aptc = tables["cms_aca_aptc_recipients_by_state"]
+    assert aptc["state_fips"].tolist() == ["06", "10"]
+    assert aptc["target"].tolist() == [1_500_000.0, 30_000.0]
+    returns = tables["irs_soi_premium_tax_credit_returns_by_state"]
+    assert returns["source_record_id"].tolist() == ["soi.returns.ca"]
+
+    # Without the APTC-recipient table the stage has no rate to draw at.
+    with pytest.raises(SystemExit, match="microcosm#1720"):
+        module.acs_local_aca_take_up_targets(
+            "facts.jsonl", compiled=(SimpleNamespace(specs=specs[2:4]), [])
+        )
+
+
+def test_pinned_feed_aca_take_up_targets_bind_the_state_surface_ptc_rows() -> None:
+    """On the real feed: the ACA stage's SOI tables are exactly the 102
+    premium tax credit rows of R2's default ``state`` surface, the CMS table
+    covers 51 states, and no bronze table exists, so the stage stops after
+    the ratio's clip as the fiscal lane does (microcosm#1720).
+
+    Feed-gated like the surface contract test above: two registry compiles.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    module = _load_tool_module()
+    tables = module.acs_local_aca_take_up_targets(feed)["target_tables"]
+    assert sorted(tables) == [
+        "cms_aca_aptc_recipients_by_state",
+        "irs_soi_premium_tax_credit_amount_by_state",
+        "irs_soi_premium_tax_credit_returns_by_state",
+    ]
+    for table in tables.values():
+        assert len(table) == 51
+        assert table["state_fips"].is_unique
+    registry, _ = module.state_admin_specs(feed, ["snap", "medicaid", "soi"])
+    surface_ptc = {
+        spec.name
+        for spec in registry.specs
+        if spec.metadata.get("target_role") in {"aca_ptc_returns", "aca_spending"}
+    }
+    soi = {
+        name
+        for table in (
+            tables["irs_soi_premium_tax_credit_returns_by_state"],
+            tables["irs_soi_premium_tax_credit_amount_by_state"],
+        )
+        for name in table["source_record_id"]
+    }
+    assert len(surface_ptc) == 102
+    assert soi == surface_ptc
 
 
 def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
@@ -6631,7 +7182,7 @@ _REVIEWED_FILLS_RETIRED_SINCE_767312D60 = {
 
 
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
-    """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
+    """Release 767312d60 default-filled 79 columns; the stack now fills 37 of
     them (NEVER_DEFAULT_FILLED), and every other one has a register entry,
     except one the reviewed engine no longer defines, as does each reviewed
     fill added since."""
@@ -6652,10 +7203,16 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     assert len(released) == 79
     now_filled = released & set(module.NEVER_DEFAULT_FILLED)
     registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
-    # 20 are filled natively, 1 is retired and 58 are registered. The ACS
+    # 37 are filled natively, 1 is retired and 41 are registered. The ACS
     # vehicle count returned to a reviewed fill after the microcosm#1064 review
     # (VEH counts vehicles available, not owned): it left NEVER_DEFAULT_FILLED
-    # and gained an entry together, so this still holds.
+    # and gained an entry together, so this still holds. microcosm#1720:
+    # staging maps the ACS rows' marital, military and occupation status and
+    # attributes their self-employed health premiums, and draws their weeks
+    # unemployed and three retirement deferrals, and their tax units'
+    # voluntary filing; materialize draws the tax units' ACA take-up and
+    # plan ratio.
+    assert len(now_filled) == 37
     assert _REVIEWED_FILLS_RETIRED_SINCE_767312D60 <= released - now_filled
     assert (
         registered
@@ -6721,7 +7278,7 @@ def test_do_finalize_grades_the_registered_fills_of_both_engine_passes(
     module = _load_tool_module()
     args = _finalize_args(module, tmp_path)
     fills = [
-        _reviewed_fill("person", "weeks_unemployed"),
+        _reviewed_fill("person", "pre_subsidy_rent"),
         _reviewed_fill("household", "household_vehicles_value"),
     ]
     for name in module.REVIEWED_FILL_MANIFESTS:
@@ -6748,14 +7305,16 @@ def test_do_finalize_grades_the_registered_fills_of_both_engine_passes(
     assert detail["known_bias"]["household.household_vehicles_value"]["snap"] == (
         "mixed"
     )
-    # policyengine-us 2.145.3 reads the weeks: they set the months of UC receipt,
-    # which SNAP's ABAWD time limit and, from 2027, Medicaid's SNAP pass-through
-    # read (microcosm#1675).
-    assert detail["known_bias"]["person.weeks_unemployed"] == {
-        "aca_ptc": "mixed",
-        "medicaid": "understates",
-        "snap": "overstates",
-    }
+    # Group-quarters residents who pay for shelter lose SNAP's shelter
+    # deduction at 0 rent (microcosm#1071 review); weeks unemployed, the
+    # earlier example here, left the register when staging began to draw them
+    # (microcosm#1720).
+    known = detail["known_bias"]["person.pre_subsidy_rent"]
+    assert (known["snap"], known["medicaid"], known["aca_ptc"]) == (
+        "understates",
+        "understates",
+        "mixed",
+    )
     entries = load_reviewed_fill_consumer_register()["entries"]
     assert len(detail["unused_entries"]) == len(entries) - 2
     summary = json.loads(args.out_summary.read_text())
@@ -6867,9 +7426,10 @@ def test_package_regrades_the_packaged_fill_manifests(tmp_path, monkeypatch):
 def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch):
     module = _load_tool_module()
     args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
-    # microcosm#1675: EITC take-up is drawn on ACS rows and never default-filled;
-    # ACA take-up still ships at the default with its reviewed known bias.
-    fills = [_reviewed_fill("tax_unit", "takes_up_aca_if_eligible", "True")]
+    # microcosm#1675/#1720: EITC and ACA take-up are drawn on ACS rows and
+    # never default-filled; the owned vehicle count still ships at the
+    # default with its reviewed known bias.
+    fills = [_reviewed_fill("household", "household_vehicles_owned", "0")]
     (args.checkpoint_dir / "consumer_reviewed_null_fills.json").write_text(
         json.dumps({"columns_filled": 1, "fills": fills})
     )
@@ -6889,7 +7449,9 @@ def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch
     assert record["sha256"] == reviewed_fill_register_sha256(document)
     assert record["entries"] == len(document["entries"])
     assert record["reviewed_against"] == {"policyengine_us": _REVIEWED_ENGINE}
-    assert record["known_bias"]["tax_unit.takes_up_aca_if_eligible"] == ["aca_ptc"]
+    assert record["known_bias"]["household.household_vehicles_owned"] == [
+        "general_assistance"
+    ]
     gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
         "acs_local_reviewed_fill_consumers"
     ]
@@ -6898,7 +7460,7 @@ def test_package_ships_the_register_and_records_its_digest(tmp_path, monkeypatch
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"]
     assert gate["detail"]["register_sha256"] == record["sha256"]
     assert gate["detail"]["known_bias"] == {
-        "tax_unit.takes_up_aca_if_eligible": {"aca_ptc": "overstates"}
+        "household.household_vehicles_owned": {"general_assistance": "overstates"}
     }
 
 
@@ -7125,6 +7687,7 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
         module, args.checkpoint_dir
     )
+    identity["acs_local_aca_take_up"] = _aca_receipt(module, args.checkpoint_dir)
     # A checkpoint materialized before #1019 is refused before any solve.
     monkeypatch.setattr(
         module, "_verify_run_identity", lambda args: {"staging_sha256": "s"}
@@ -7260,6 +7823,7 @@ def _calibrate_through_the_write(module, tmp_path: Path, monkeypatch, reads: lis
         lambda f, seed: (f, {"assigned_sha256": _TAKE_UP_RECEIPT["assigned_sha256"]}),
     )
     monkeypatch.setattr(module, "_with_recorded_ssi_medicaid_take_up", lambda f, *a: f)
+    monkeypatch.setattr(module, "_with_recorded_aca_take_up", lambda f, *a: f)
     monkeypatch.setattr(module, "project_input_only", lambda f, **k: (f, {}))
     monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *a, **k: ([], None))
 
@@ -7299,6 +7863,7 @@ def _calibrate_through_the_write(module, tmp_path: Path, monkeypatch, reads: lis
     identity["acs_local_ssi_medicaid_take_up"] = _ssi_medicaid_receipt(
         module, args.checkpoint_dir
     )
+    identity["acs_local_aca_take_up"] = _aca_receipt(module, args.checkpoint_dir)
     return args, events
 
 
@@ -8006,11 +8571,17 @@ def _write_calibrated(
         lambda *a, **k: ({"assigned_sha256": "", "assignment_file": ""}, None),
     )
     monkeypatch.setattr(
+        module,
+        "_recorded_aca_take_up",
+        lambda *a, **k: ({"assigned_sha256": "", "assignment_file": ""}, None),
+    )
+    monkeypatch.setattr(
         module, "_resample_like_materialize", lambda frame, identity: frame
     )
     monkeypatch.setattr(
         module, "_with_recorded_ssi_medicaid_take_up", lambda frame, *a: frame
     )
+    monkeypatch.setattr(module, "_with_recorded_aca_take_up", lambda frame, *a: frame)
     monkeypatch.setattr(
         module,
         "_with_live_stored_inputs",

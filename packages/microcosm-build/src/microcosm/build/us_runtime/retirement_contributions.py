@@ -53,6 +53,7 @@ __all__ = [
     "US_RETIREMENT_CONTRIBUTION_STAGE_NAME",
     "derive_us_retirement_contributions_from_manifest",
     "impute_us_retirement_contributions_to_puf_support_from_manifest",
+    "postprocess_us_retirement_contribution_predictions",
     "us_retirement_contributions_signal_gate",
     "us_retirement_contributions_stage_spec",
     "us_retirement_contributions_summary",
@@ -400,24 +401,69 @@ def impute_us_retirement_contributions_to_puf_support_from_manifest(
         list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS),
         weights=weights.to_numpy(dtype=np.float64),
     )
-    predictions = fitted.predict(test).clip(lower=0.0)
-    no_wages = test["employment_income"].to_numpy(dtype=np.float64) == 0
-    no_self_employment = test["self_employment_income"].to_numpy(dtype=np.float64) == 0
-    predictions.loc[
-        no_wages,
-        [
-            "traditional_401k_contributions_desired",
-            "roth_401k_contributions_desired",
-        ],
-    ] = 0.0
-    predictions.loc[
-        no_self_employment,
-        "self_employed_pension_contributions_desired",
-    ] = 0.0
+    predictions = postprocess_us_retirement_contribution_predictions(
+        fitted.predict(test),
+        employment_income=test["employment_income"].to_numpy(dtype=np.float64),
+        self_employment_income=test["self_employment_income"].to_numpy(
+            dtype=np.float64
+        ),
+    )
 
     result = frame.copy(deep=True)
     for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS:
         result.loc[puf_mask, column] = predictions[column].to_numpy(dtype=np.float64)
+    return result
+
+
+#: The archived split's earnings gates: employer-plan deferrals need wages,
+#: and the self-employed pension needs self-employment income.
+_WAGE_GATED_CONTRIBUTIONS: tuple[str, ...] = (
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
+)
+_SELF_EMPLOYMENT_GATED_CONTRIBUTIONS: tuple[str, ...] = (
+    "self_employed_pension_contributions_desired",
+)
+
+
+def postprocess_us_retirement_contribution_predictions(
+    predictions: pd.DataFrame,
+    *,
+    employment_income: np.ndarray,
+    self_employment_income: np.ndarray | None = None,
+) -> pd.DataFrame:
+    """The archived post-processing of QRF contributions.
+
+    Every prediction is clipped at 0; the 401(k) deferrals are 0 where
+    ``employment_income`` is 0, and the self-employed pension where
+    ``self_employment_income`` is 0. Only the columns ``predictions`` carries
+    are touched. One rule for every spine: the PUF support half calls it on
+    all five leaves, and the ACS local lane on the three it draws
+    (microcosm#1720).
+
+    Raises:
+        ValueError: If the self-employed pension is predicted without
+            ``self_employment_income``.
+    """
+
+    result = predictions.clip(lower=0.0)
+    no_wages = np.asarray(employment_income, dtype=np.float64) == 0
+    wage_gated = [column for column in _WAGE_GATED_CONTRIBUTIONS if column in result]
+    if wage_gated:
+        result.loc[no_wages, wage_gated] = 0.0
+    self_employment_gated = [
+        column for column in _SELF_EMPLOYMENT_GATED_CONTRIBUTIONS if column in result
+    ]
+    if self_employment_gated:
+        if self_employment_income is None:
+            raise ValueError(
+                "The self-employed pension's earnings gate needs "
+                "self_employment_income."
+            )
+        no_self_employment = (
+            np.asarray(self_employment_income, dtype=np.float64) == 0
+        )
+        result.loc[no_self_employment, self_employment_gated] = 0.0
     return result
 
 

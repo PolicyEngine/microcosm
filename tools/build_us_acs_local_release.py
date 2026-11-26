@@ -137,6 +137,19 @@ from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.program_telemetry import program_telemetry
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
+from microcosm.build.us_runtime.acs_local_aca_take_up import (
+    ACS_LOCAL_ACA_TAKE_UP_COLUMNS,
+    ACS_LOCAL_ACA_TAKE_UP_GATE_NAME,
+    ACS_LOCAL_ACA_TAKE_UP_ISSUE,
+    ACS_LOCAL_ACA_TAKE_UP_METHOD,
+    acs_local_aca_take_up_assignment,
+    acs_local_aca_take_up_signal_gate,
+    with_acs_local_aca_take_up,
+    with_recorded_acs_local_aca_take_up,
+)
+from microcosm.build.us_runtime.acs_local_coverage_anchors import (
+    ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS,
+)
 from microcosm.build.us_runtime.acs_local_esi_premiums import (
     acs_local_esi_premium_anchor_gate,
     acs_local_esi_premium_gate_payload,
@@ -172,6 +185,10 @@ from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
     load_reviewed_fill_consumer_register,
     reviewed_fill_register_summary,
 )
+from microcosm.build.us_runtime.acs_local_se_health_premiums import (
+    ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
+    ACS_LOCAL_SE_HEALTH_PREMIUMS_ISSUE,
+)
 from microcosm.build.us_runtime.acs_local_ssi_disability import (
     ACS_LOCAL_SSI_DISABILITY_COLUMN,
     ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
@@ -189,6 +206,10 @@ from microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up import (
     with_acs_local_ssi_medicaid_take_up,
     with_recorded_acs_local_ssi_medicaid_take_up,
 )
+from microcosm.build.us_runtime.acs_local_status_inputs import (
+    ACS_LOCAL_STATUS_INPUTS_COLUMNS,
+    ACS_LOCAL_STATUS_INPUTS_ISSUE,
+)
 from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_EITC_TAKE_UP_ISSUE,
     ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
@@ -203,6 +224,14 @@ from microcosm.build.us_runtime.acs_local_take_up import (
 from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
     US_VEHICLES_OWNED_COLUMN,
     US_VEHICLES_VALUE_COLUMN,
+)
+from microcosm.build.us_runtime.acs_local_voluntary_filing import (
+    ACS_LOCAL_VOLUNTARY_FILING_COLUMN,
+    ACS_LOCAL_VOLUNTARY_FILING_ISSUE,
+)
+from microcosm.build.us_runtime.acs_local_weeks_deferrals import (
+    ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+    ACS_LOCAL_WEEKS_DEFERRALS_ISSUE,
 )
 from microcosm.build.us_runtime.acs_local_wic_take_up import (
     ACS_LOCAL_WIC_TAKE_UP_ISSUE,
@@ -806,19 +835,25 @@ def state_admin_surface(
     )
 
 
-def acs_local_ssi_medicaid_take_up_targets(feed: str | Path) -> dict[str, object]:
+def acs_local_ssi_medicaid_take_up_targets(
+    feed: str | Path, *, compiled: tuple | None = None
+) -> dict[str, object]:
     """The counts the ACS SSI/Medicaid take-up stage scales (microcosm#1022).
 
     Compiled from the same feed and path as :func:`state_admin_specs` (a
     second compile, run before the staging frame is loaded) and read exactly
     as the fiscal lane's take-up stages read them: the SSA age-band SSI
     recipient counts, and the post-substitution CMS state Medicaid enrollment
-    table with its reviewed substitution records.
+    table with its reviewed substitution records. ``compiled`` is that
+    compile, :func:`_compiled_fiscal_registry` of ``feed``, when the caller
+    already holds it.
     """
 
     import build_us_fiscal_refresh_release as release_tool
 
-    registry, substitutions = _compiled_fiscal_registry(feed)
+    registry, substitutions = (
+        _compiled_fiscal_registry(feed) if compiled is None else compiled
+    )
     try:
         ssi = release_tool._ssi_take_up_band_targets_from_registry(registry.specs)
         medicaid = release_tool._medicaid_source_target_table(registry.specs)
@@ -832,6 +867,38 @@ def acs_local_ssi_medicaid_take_up_targets(feed: str | Path) -> dict[str, object
         "medicaid_state_targets": medicaid,
         "medicaid_substitutions": [dict(record) for record in substitutions],
     }
+
+
+def acs_local_aca_take_up_targets(
+    feed: str | Path, *, compiled: tuple | None = None
+) -> dict[str, object]:
+    """The state tables the ACS ACA take-up stage scales (microcosm#1720).
+
+    Read from the registry :func:`acs_local_ssi_medicaid_take_up_targets`
+    compiles (``compiled``; materialize passes it, so the feed is not
+    compiled a third time) exactly as the fiscal lane's ACA stage reads them
+    (``_aca_source_target_tables``): each state table by ``target_role``,
+    CMS APTC recipients, the IRS SOI premium tax credit returns and amounts,
+    and the CMS bronze consumers where the feed carries them. The SOI tables
+    are the Historic Table 2 state rows R2's ``state`` surface holds. Like
+    the fiscal lane, the stage needs the APTC-recipient table: its rate and
+    first calibration read it.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+
+    registry, _substitutions = (
+        _compiled_fiscal_registry(feed) if compiled is None else compiled
+    )
+    tables = release_tool._aca_source_target_tables(tuple(registry.specs))
+    if release_tool.US_ACA_APTC_TARGET_TABLE not in tables:
+        raise SystemExit(
+            "The ledger feed cannot supply the ACS local ACA take-up counts "
+            f"({ACS_LOCAL_ACA_TAKE_UP_ISSUE}): no "
+            f"{release_tool.US_ACA_APTC_TARGET_TABLE} table. The fiscal lane's "
+            "ACA stage needs it too."
+        )
+    return {"target_tables": tables}
 
 
 # ---------------------------------------------------------------------------
@@ -959,6 +1026,25 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS, ("SSI", "Medicaid"), strict=True
         )
     },
+    # microcosm#1720: the ACA take-up default, True, is universal take-up of
+    # the premium tax credit, and the plan-ratio default, 1.0, puts every
+    # taker on the benchmark plan; materialize assigns both on ACS tax units
+    # after an engine pre-pass and the consumer export applies the recorded
+    # assignment.
+    **{
+        ("tax_unit", column): (
+            f"the engine default is {meaning} ({ACS_LOCAL_ACA_TAKE_UP_ISSUE}); "
+            "run the ACS local ACA take-up stage first"
+        )
+        for column, meaning in zip(
+            ACS_LOCAL_ACA_TAKE_UP_COLUMNS,
+            (
+                "universal premium tax credit take-up",
+                "the benchmark plan for every taker",
+            ),
+            strict=True,
+        )
+    },
     # microcosm#1154: the WIC take-up default, True, is universal take-up;
     # staging draws the ACS rows' decisions with the national generator and
     # the donor release carries its own.
@@ -967,12 +1053,63 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
         f"({ACS_LOCAL_WIC_TAKE_UP_ISSUE}); re-run staging with the current "
         "builder"
     ),
+    # microcosm#1720: staging maps the ACS rows' marital, military and
+    # occupation status from MAR, MIL and OCCP, and the donor release carries
+    # its own; the default False would ignore the measured item.
+    **{
+        ("person", column): (
+            "the engine default False ignores the ACS rows' measured MAR, MIL "
+            f"or OCCP item ({ACS_LOCAL_STATUS_INPUTS_ISSUE}); re-run staging "
+            "with the current builder"
+        )
+        for column in ACS_LOCAL_STATUS_INPUTS_COLUMNS
+    },
+    # microcosm#1720: staging runs the donor's self-employed premium
+    # attribution on the ACS rows; the defaults (False, 0) deny every ACS
+    # person the self-employed health insurance deduction.
+    **{
+        ("person", column): (
+            "the engine default denies every ACS person the self-employed "
+            f"health insurance deduction ({ACS_LOCAL_SE_HEALTH_PREMIUMS_ISSUE}); "
+            "re-run staging with the current builder"
+        )
+        for column in ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS
+    },
+    # microcosm#1720: staging draws weeks unemployed and three retirement
+    # deferrals on the ACS rows from the donor's ASEC observations.
+    **{
+        ("person", column): (
+            f"the engine default 0 drops {reason} for every ACS person "
+            f"({ACS_LOCAL_WEEKS_DEFERRALS_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column, reason in zip(
+            ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+            (
+                "the months of UC receipt (SNAP's work-registration exemption)",
+                "traditional 401(k) deferrals, so AGI includes deferred wages",
+                "Roth 401(k) deferrals and their saver's credit",
+                "Roth IRA contributions and their saver's credit",
+            ),
+            strict=True,
+        )
+    },
+    # microcosm#1720: staging runs the donor's SIPP voluntary-filing model on
+    # the ACS tax units.
+    ("tax_unit", ACS_LOCAL_VOLUNTARY_FILING_COLUMN): (
+        "the engine default False makes no ACS tax unit a voluntary filer, so "
+        "Medicaid's non-filer rules apply to more of them "
+        f"({ACS_LOCAL_VOLUNTARY_FILING_ISSUE}); re-run staging with the current "
+        "builder"
+    ),
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
 
 #: The checkpoint file holding the ACS rows' SSI and Medicaid take-up that
 #: materialize assigned (microcosm#1022); the consumer export applies it.
 ACS_SSI_MEDICAID_TAKE_UP_FILENAME = "acs_local_ssi_medicaid_take_up.npz"
+#: Likewise the ACS tax units' ACA take-up and plan ratio (microcosm#1720).
+ACS_ACA_TAKE_UP_FILENAME = "acs_local_aca_take_up.npz"
 
 
 def _formula_owned_columns(base_frame) -> set[str]:
@@ -2175,16 +2312,7 @@ def _acs_engine_values(
     }
     helper = helpers[variable]
     started = time.time()
-    formula_owned = _formula_owned_columns(view)
-    for entity in view.entities:
-        table = view.table(entity)
-        held = sorted(set(table.columns) & formula_owned)
-        if held:
-            table.drop(columns=held, inplace=True)
-    fill_reviewed_nulls(view, summary_path, period=PERIOD)
-    if view.n("household") > hh_chunk:
-        release_tool._assert_group_entities_nest_in_households(view)
-        release_tool._assert_medicaid_claiming_tax_units_local(view)
+    _prepass_view_contract(view, summary_path=summary_path, hh_chunk=hh_chunk)
     values = helper(view, maximum_microsim_batch_size=hh_chunk)
     gc.collect()
     log(
@@ -2192,6 +2320,105 @@ def _acs_engine_values(
         f"({time.time() - started:.1f}s, peak RSS {rss():.2f}GB)"
     )
     return values
+
+
+#: Never-default columns that a later materialize stage assigns on ACS rows:
+#: the ACA take-up stage runs after the SSI and Medicaid pre-pass, so that
+#: pass's ACS view still carries them null (microcosm#1720).
+_PREPASS_PENDING_COLUMNS: tuple[tuple[str, str], ...] = tuple(
+    ("tax_unit", column) for column in ACS_LOCAL_ACA_TAKE_UP_COLUMNS
+)
+
+
+def _with_prepass_pending_defaults(view, system) -> dict[str, int]:
+    """Read a pending column's null cells at the engine default, in place.
+
+    Only a pre-pass view gets this: the cells read what the reviewed fill
+    gave them before their stage existed (for ACA take-up, ``True`` and a
+    ratio of ``1.0``), and the stage fills them before materialize's engine
+    pass, whose fill refuses a null there. Returns the cells read so, by
+    column.
+    """
+
+    read: dict[str, int] = {}
+    for entity, column in _PREPASS_PENDING_COLUMNS:
+        table = view.table(entity)
+        if column not in table.columns:
+            continue
+        missing = table[column].isna()
+        if not missing.any():
+            continue
+        value, _kind = _resolve_engine_default(system, column)
+        filled = table[column].astype(object).where(~missing, value)
+        value_type = getattr(system.variables[column], "value_type", None)
+        if value_type is bool:
+            filled = filled.astype(bool)
+        elif value_type is float:
+            filled = filled.astype(np.float64)
+        table[column] = filled
+        read[f"{entity}.{column}"] = int(missing.sum())
+    return read
+
+
+def _prepass_view_contract(
+    view, *, summary_path: Path, hh_chunk: int, system=None
+) -> None:
+    """Materialize's engine-pass contract on a pre-pass view, in place.
+
+    The classifier of :func:`project_input_only`, without its copy, then the
+    reviewed-null fill. The view is the stage's own copy of its households,
+    so both steps edit it in place: a pre-pass never holds a second copy of
+    the rows. A column a later materialize stage assigns reads its engine
+    default where it is still null (:func:`_with_prepass_pending_defaults`).
+    ``system`` defaults to the policyengine-us tax-benefit system.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+
+    formula_owned = _formula_owned_columns(view)
+    for entity in view.entities:
+        table = view.table(entity)
+        held = sorted(set(table.columns) & formula_owned)
+        if held:
+            table.drop(columns=held, inplace=True)
+    if system is None:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        system = CountryTaxBenefitSystem()
+    pending = _with_prepass_pending_defaults(view, system)
+    if pending:
+        log(f"pre-pass reads pending cells at the engine default: {pending}")
+    fill_reviewed_nulls(view, summary_path, period=PERIOD, system=system)
+    if view.n("household") > hh_chunk:
+        release_tool._assert_group_entities_nest_in_households(view)
+        release_tool._assert_medicaid_claiming_tax_units_local(view)
+
+
+def _acs_engine_aca_tax_units(
+    view, target_tables, *, summary_path: Path, hh_chunk: int
+) -> pd.DataFrame:
+    """The fiscal lane's ACA tax-unit table over a pre-pass view (#1720).
+
+    The ACA stage calls this on the donor households, then on the ACS
+    households, as :func:`_acs_engine_values` serves the SSI and Medicaid
+    stage: the same in-place contract, then the fiscal lane's own batched
+    ``_aca_source_tax_unit_table`` in chunks of ``hh_chunk`` households, one
+    chunk's simulation at a time.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+
+    started = time.time()
+    _prepass_view_contract(view, summary_path=summary_path, hh_chunk=hh_chunk)
+    table = release_tool._aca_source_tax_unit_table(
+        view, target_tables, maximum_microsim_batch_size=hh_chunk
+    )
+    gc.collect()
+    log(
+        f"Engine pre-pass ACA tax units: {len(table):,} tax units "
+        f"({time.time() - started:.1f}s, peak RSS {rss():.2f}GB)"
+    )
+    return table
 
 
 def _with_local_ssi_medicaid_take_up(
@@ -2340,6 +2567,163 @@ def _with_recorded_ssi_medicaid_take_up(frame, receipt: dict, path: Path):
         ) from exc
 
 
+def _with_local_aca_take_up(
+    frame, *, seed: int, targets: dict, summary_path: Path, hh_chunk: int
+):
+    """Assign ACS-row ACA take-up and the plan ratio, and grade them (#1720).
+
+    Runs after the SSI and Medicaid assignment and before materialize's
+    engine pass, so the state SOI premium tax credit rows select takers
+    among eligible ACS units instead of shrinking their weights. Each ACS
+    target is what the donor rows leave of the fiscal lane's state counts on
+    the pooled weights, measured with one more household-batched engine pass
+    over the donor households, then one over the ACS households.
+
+    The grade is report-only: it goes into the receipt and the diagnostic
+    shadow entry, a failure is logged, and the stage goes on. Only an input
+    the stage cannot run on stops it.
+    """
+
+    started = time.time()
+    try:
+        frame, receipt = with_acs_local_aca_take_up(
+            frame,
+            seed=seed,
+            target_tables=targets["target_tables"],
+            aca_tax_units=lambda view, tables: _acs_engine_aca_tax_units(
+                view, tables, summary_path=summary_path, hh_chunk=hh_chunk
+            ),
+            period=PERIOD,
+        )
+    except ValueError as exc:
+        raise SystemExit(
+            f"ACS local ACA take-up stage failed ({ACS_LOCAL_ACA_TAKE_UP_ISSUE}): {exc}"
+        ) from exc
+    receipt["engine_prepass"].update(
+        stage_wall_s=round(time.time() - started, 1),
+        hh_chunk=hh_chunk,
+        peak_rss_gb=round(rss(), 2),
+    )
+    try:
+        # Report-only: the entry's criticality is diagnostic.
+        gate = shadow_gate(
+            "us_local_aca_take_up_materialize",
+            lambda: acs_local_aca_take_up_signal_gate(frame, receipt=receipt),
+            lambda: EvidenceContext(frame=frame, artifacts={"aca_receipt": receipt}),
+        )
+        grade = {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+        }
+    except Exception as error:  # noqa: BLE001 - the grade never stops the stage
+        grade = {
+            "name": ACS_LOCAL_ACA_TAKE_UP_GATE_NAME,
+            "passed": False,
+            "failures": [f"the grade could not run: {error!r}"],
+        }
+    receipt["gate"] = {**grade, "report_only": True}
+    if not grade["passed"]:
+        log(
+            "WARNING ACS local ACA take-up grade (report-only, "
+            f"{ACS_LOCAL_ACA_TAKE_UP_ISSUE}): " + "; ".join(grade["failures"])
+        )
+    for key in ("take_up", "plan_ratio"):
+        entry = receipt[key]
+        log(f"ACS take-up {entry['column']}: filled {entry['filled_rows']:,} rows")
+    log(
+        "ACS ACA take-up: weighted share of eligible units "
+        f"{receipt['take_up']['weighted_take_up_share_of_eligible']}"
+    )
+    anchor = receipt.get("anchor") or {}
+    thinning = anchor.get("thinning") or {}
+    log(
+        f"ACS ACA anchors: {anchor.get('anchored_tax_units')} kept, "
+        f"{thinning.get('thinned_tax_units')} thinned in "
+        f"{len(thinning.get('thinned_states') or [])} state(s); anchor share "
+        f"of takers {receipt['take_up'].get('anchor_share_of_takers')}"
+    )
+    return frame, receipt
+
+
+def _write_aca_take_up(frame, path: Path) -> str:
+    """Record the ACS tax units' ACA inputs; return the file sha256."""
+
+    assignment = acs_local_aca_take_up_assignment(frame)
+    tax_unit_ids = assignment["tax_unit_id"].to_numpy()
+    if tax_unit_ids.dtype == object:
+        tax_unit_ids = tax_unit_ids.astype(str)
+    take_up, ratio = ACS_LOCAL_ACA_TAKE_UP_COLUMNS
+    with Path(path).open("wb") as handle:
+        np.savez(
+            handle,
+            tax_unit_id=tax_unit_ids,
+            **{
+                take_up: assignment[take_up].to_numpy(dtype=bool),
+                ratio: assignment[ratio].to_numpy(dtype=np.float64),
+            },
+        )
+    return _sha256(path)
+
+
+def _recorded_aca_take_up(identity: dict, checkpoint_dir: Path):
+    """The ACS ACA take-up materialize assigned, or refuse.
+
+    Returns the run-identity receipt and the recorded assignment file. A
+    checkpoint without the receipt, or whose file is missing or changed, was
+    materialized with every eligible ACS tax unit taking up the premium tax
+    credit at the benchmark plan (the engine defaults), or cannot prove
+    what it calibrated against. The receipt's grade is report-only, so its
+    verdict is not required here.
+    """
+
+    receipt = identity.get("acs_local_aca_take_up")
+    recorded = receipt.get("assignment_file") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_ACA_TAKE_UP_ISSUE
+        or receipt.get("method") != ACS_LOCAL_ACA_TAKE_UP_METHOD
+        or type(receipt.get("seed")) is not int
+        or not isinstance(receipt.get("assigned_sha256"), str)
+        or not isinstance(recorded, dict)
+        or recorded.get("name") != ACS_ACA_TAKE_UP_FILENAME
+        or not isinstance(recorded.get("sha256"), str)
+    ):
+        raise SystemExit(
+            "run_identity.json records no ACS local ACA take-up assignment "
+            f"({ACS_LOCAL_ACA_TAKE_UP_ISSUE}): the checkpoint was materialized "
+            "with every eligible ACS tax unit taking up the premium tax credit "
+            "at the benchmark plan (the engine defaults). Re-run --stage "
+            "materialize."
+        )
+    path = Path(checkpoint_dir) / ACS_ACA_TAKE_UP_FILENAME
+    if not path.is_file() or _sha256(path) != recorded["sha256"]:
+        raise SystemExit(
+            f"The recorded ACS ACA take-up assignment {path} is missing or "
+            f"changed since materialize ({ACS_LOCAL_ACA_TAKE_UP_ISSUE}). Re-run "
+            "--stage materialize."
+        )
+    return receipt, path
+
+
+def _with_recorded_aca_take_up(frame, receipt: dict, path: Path):
+    """Apply the recorded ACS ACA take-up and plan ratio; refuse a mismatch."""
+
+    columns = ("tax_unit_id", *ACS_LOCAL_ACA_TAKE_UP_COLUMNS)
+    try:
+        with np.load(path, allow_pickle=False) as recorded:
+            table = pd.DataFrame({column: recorded[column] for column in columns})
+        return with_recorded_acs_local_aca_take_up(
+            frame, table, assigned_sha256=receipt["assigned_sha256"]
+        )
+    except (KeyError, OSError, ValueError) as exc:
+        raise SystemExit(
+            "The consumer export cannot reproduce the ACS ACA take-up "
+            f"materialize calibrated against ({ACS_LOCAL_ACA_TAKE_UP_ISSUE}): "
+            f"{exc} Re-run --stage materialize against this staging file."
+        ) from exc
+
+
 def _cd_holdout_fraction(args) -> float:
     """The CD holdout fraction this run draws (0 when there is no CD surface)."""
 
@@ -2448,9 +2832,15 @@ def do_materialize(args) -> None:
     # decides, so it can run while the new donor's evidence is reviewed;
     # calibrate fixes the commit package accepts, so the entry must be in
     # the checkout before calibrate starts, and finalize checks it again.
-    # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
-    # and compile path, before the staging frame is loaded.
-    ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
+    # microcosm#1022/#1720: the SSI, Medicaid and ACA take-up counts, from
+    # the same feed and compile path, before the staging frame is loaded.
+    # One compile serves both stages.
+    compiled = _compiled_fiscal_registry(args.feed)
+    ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(
+        args.feed, compiled=compiled
+    )
+    aca_targets = acs_local_aca_take_up_targets(args.feed, compiled=compiled)
+    del compiled
     log("hashing staging inputs for the run identity …")
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
@@ -2495,6 +2885,24 @@ def do_materialize(args) -> None:
         "name": ACS_SSI_MEDICAID_TAKE_UP_FILENAME,
         "sha256": _write_ssi_medicaid_take_up(
             frame, args.checkpoint_dir / ACS_SSI_MEDICAID_TAKE_UP_FILENAME
+        ),
+    }
+    gc.collect()
+    # microcosm#1720: assign the ACS tax units' ACA take-up and plan ratio.
+    # Medicaid eligibility bars the credit and reads SSI receipt, so this
+    # follows the SSI assignment. Recorded for calibrate and the export.
+    frame, aca = _with_local_aca_take_up(
+        frame,
+        seed=args.seed,
+        targets=aca_targets,
+        summary_path=summary_path,
+        hh_chunk=args.hh_chunk,
+    )
+    del aca_targets
+    aca["assignment_file"] = {
+        "name": ACS_ACA_TAKE_UP_FILENAME,
+        "sha256": _write_aca_take_up(
+            frame, args.checkpoint_dir / ACS_ACA_TAKE_UP_FILENAME
         ),
     }
     gc.collect()
@@ -2637,6 +3045,7 @@ def do_materialize(args) -> None:
                 "sampling": sampling,
                 "acs_local_take_up": take_up,
                 "acs_local_ssi_medicaid_take_up": ssi_medicaid,
+                "acs_local_aca_take_up": aca,
             },
             indent=2,
         )
@@ -3194,6 +3603,8 @@ def do_calibrate(args) -> None:
     # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
     # take-up the export must apply.
     _recorded_ssi_medicaid_take_up(identity, args.checkpoint_dir)
+    # microcosm#1720: likewise the recorded ACS ACA take-up and plan ratio.
+    _recorded_aca_take_up(identity, args.checkpoint_dir)
     _apply_county_solver_profile(args, identity=identity)
     frame, design_weights, registry, roles, matrix = load_checkpoint_surface(
         args.checkpoint_dir, identity
@@ -3584,6 +3995,7 @@ def _write_calibrated_artifact(
     ssi_medicaid, ssi_medicaid_path = _recorded_ssi_medicaid_take_up(
         identity, args.checkpoint_dir
     )
+    aca, aca_path = _recorded_aca_take_up(identity, args.checkpoint_dir)
     frame = _load_staging_frame(args.staging_h5)
     _shadow_local_refusal(
         "us_local_hours_calibrate",
@@ -3607,6 +4019,8 @@ def _write_calibrated_artifact(
     # microcosm#1022: apply the ACS SSI/Medicaid take-up materialize recorded
     # on the same rung; it must reproduce the recorded digest.
     frame = _with_recorded_ssi_medicaid_take_up(frame, ssi_medicaid, ssi_medicaid_path)
+    # microcosm#1720: and the ACS ACA take-up and plan ratio, likewise.
+    frame = _with_recorded_aca_take_up(frame, aca, aca_path)
     # microcosm#922: re-apply the county support moves materialize recorded,
     # so the published file carries the county codes calibration saw.
     frame = county_surface.apply_recorded_support(frame, identity, args.checkpoint_dir)
@@ -3690,6 +4104,10 @@ def _write_calibrated_artifact(
                 "acs_local_ssi_medicaid_take_up": {
                     "assigned_sha256": ssi_medicaid["assigned_sha256"],
                     "assignment_file": ssi_medicaid["assignment_file"],
+                },
+                "acs_local_aca_take_up": {
+                    "assigned_sha256": aca["assigned_sha256"],
+                    "assignment_file": aca["assignment_file"],
                 },
                 "live_stored_inputs": live_inputs.provenance,
                 # The code that wrote these bytes, as read when the stage
@@ -4448,23 +4866,25 @@ def finalize_reviewed_limitations(
                 "FS anchor, acs_snap_receipt_anchor), Medicare take-up is "
                 "native ACS HINS3 and Head Start take-up a keyed draw at the "
                 "donor spine's share among ages 3-5 "
-                "(acs_engine_free_default_fills), and SSI and Medicaid "
-                "take-up are assigned after an engine pre-pass "
-                "(acs_local_ssi_medicaid_take_up). EITC take-up is the take-up "
-                "contract's seeded draw by number of qualifying children "
-                "(microcosm#1675), and WIC take-up the national generator's "
-                "draw, made in staging (microcosm#1154). The other "
-                "runtime-owned takes_up_* flags (ACA, Early Head Start and the "
-                "rest) are neither transferred nor seeded on ACS rows, so they "
-                "ship at the engine default, universal take-up; the reviewed-fill "
-                "consumer register records their known biases "
-                "(acs_reviewed_default_fill_consumers). The QA "
+                "(acs_engine_free_default_fills), SSI and Medicaid take-up "
+                "are assigned after an engine pre-pass "
+                "(acs_local_ssi_medicaid_take_up), and ACA take-up with the "
+                "Marketplace plan ratio after one more "
+                f"(acs_local_aca_take_up, {ACS_LOCAL_ACA_TAKE_UP_ISSUE}). EITC "
+                "take-up is the take-up contract's seeded draw by number of "
+                "qualifying children (microcosm#1675), and WIC take-up the "
+                "national generator's draw, made in staging (microcosm#1154). "
+                "The other runtime-owned takes_up_* flags (Early Head Start, "
+                "CHIP and the rest) are neither transferred nor seeded on ACS "
+                "rows, so they ship at the engine default, universal take-up; "
+                "the reviewed-fill consumer register records their known "
+                "biases (acs_reviewed_default_fill_consumers). The QA "
                 "probe's SNAP take-up table is a December-eligible snapshot "
                 "(unit- and person-weighted), informational and never "
                 "graded; it is not the FNS fiscal-year participation rate, "
                 "which is among eligible people over a federal fiscal year."
             ),
-            "treatment": "Tracked via microcosm#1022.",
+            "treatment": f"Tracked via {ACS_LOCAL_ACA_TAKE_UP_ISSUE}.",
             "calibration_blocker": False,
         },
         {
@@ -4487,8 +4907,9 @@ def finalize_reviewed_limitations(
                 "receives_housing_assistance copies the transferred "
                 "takes_up_housing_assistance_if_eligible (equal on the donor by "
                 "construction) and is False in TYPEHUGQ 2/3 group quarters, "
-                "whose transferred take-up flag is the open transfer-side fix "
-                "microcosm#975. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
+                "where staging also sets the transferred take-up flag False "
+                "(microcosm#975; reviewed limitation acs_local_staged_inputs). "
+                "takes_up_medicare_if_eligible is ACS HINS3 == 1 "
                 "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
                 "blank or invalid HINS3 reads as not covered. "
                 "takes_up_head_start_if_eligible is True for a person aged 3-5 "
@@ -4822,6 +5243,70 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_local_aca_take_up",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_ACA_TAKE_UP_COLUMNS),
+            "reason": (
+                "ACS tax units get takes_up_aca_if_eligible and "
+                "selected_marketplace_plan_benchmark_ratio from the fiscal "
+                "lane's own aca_marketplace_inputs manifest stage at "
+                f"materialize ({ACS_LOCAL_ACA_TAKE_UP_ISSUE}), after one more "
+                "household-batched engine pre-pass over the donor households "
+                "and then the ACS households, with the ACS rows' SSI take-up "
+                "assigned: Medicaid eligibility bars the credit and reads SSI "
+                "receipt. Each state target is the residual of the stage's "
+                "count (CMS APTC recipients; the IRS SOI premium tax credit "
+                "returns and amounts of Historic Table 2) after the donor "
+                "rows' contribution on the pooled weights, floored at zero. "
+                "Where both SOI tables exist the stage's joint step decides: "
+                "it fills each state's residual return count with the units "
+                "whose credit per return is closest to the residual average, "
+                "the draw only breaking ties, so the CMS people the takers "
+                "carry are reported, not met (microcosm#168). Beyond the kept "
+                "anchors, this selection puts the ACS takers' credits near "
+                "each state's average credit per return, with too few very "
+                "large and very small credits, so distributional reads of the "
+                "credit on ACS rows are biased; the donor's stage selects the "
+                "same way. The anchor is "
+                "the manifest stage's own column, "
+                "reported_has_subsidized_marketplace_health_coverage_at_interview, "
+                "which staging writes on ACS persons from the PUMS subsidy "
+                "item HIMRKS; it reads False where absent, the fiscal lane's "
+                "rule. Where a state's anchors weigh more than its residual "
+                "return count, each stays anchored with probability residual "
+                "/ anchored weight on its own keyed draw "
+                "(acs_local_aca_subsidized_anchor_keep), the Medicaid stage's "
+                "HINS4 rule in the shared microcosm.build.anchor_thinning; a "
+                "unit not kept is an ordinary non-anchor. The draw meets the "
+                "residual in expectation only, and the kept anchors' excess "
+                "over each table is recorded. "
+                "The plan ratio is (premium + credit) / SLCSP for takers, "
+                "clipped to 0.5-1.5, and 1.0 otherwise; the feed carries no "
+                "bronze count, so the ratio is not calibrated, as on the "
+                "donor. Draws are keyed on acs_2024_1yr:SERIALNO and the "
+                "unit's lowest SPORDER, with the build seed. The eligible pool "
+                "reads the employer coverage staging writes from ACS HINS1 "
+                "and the direct-purchase flags it bounds with HINS2 (reviewed "
+                "limitation acs_local_staged_inputs), and the targets bind "
+                "the pre-calibration frame."
+            ),
+            "treatment": (
+                "Graded by acs_local_aca_take_up_signal at materialize, "
+                "report-only: the grade and its diagnostic shadow entry "
+                "(us_local_aca_take_up_materialize) are recorded and "
+                "materialize never stops on them. The receipt records each "
+                "table's state residuals, ACS capacity and delivery, every "
+                "shortfall and donor excess, each state's anchored weight, "
+                "keep probability and thinned rows, the share of ACS takers "
+                "that are anchors, and the people per return of each set of "
+                "rows. A thinned state is reported, not graded against the "
+                "tolerance. The consumer export applies the recorded "
+                "assignment and must reproduce its digest."
+            ),
+            "calibration_blocker": False,
+        },
+        {
             "id": "acs_snap_receipt_anchor",
             "status": "reviewed_modeling_decision",
             "affected_spines": ["acs_2024_1yr"],
@@ -4886,6 +5371,111 @@ def finalize_reviewed_limitations(
                 "ACS rows hold. The "
                 "weighted FS == 1 share of ACS housing units is reported "
                 "against the 2023 ACS figure (12.2%), not graded."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_local_staged_inputs",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [
+                *ACS_LOCAL_STATUS_INPUTS_COLUMNS,
+                *ACS_LOCAL_SE_HEALTH_PREMIUM_COLUMNS,
+                *ACS_LOCAL_WEEKS_DEFERRALS_COLUMNS,
+                ACS_LOCAL_VOLUNTARY_FILING_COLUMN,
+                "takes_up_housing_assistance_if_eligible",
+                *ACS_LOCAL_COVERAGE_ANCHOR_COLUMNS,
+            ],
+            "reason": (
+                "Staging writes these inputs on ACS rows from ACS items or the "
+                "donor's own rules instead of leaving the engine default "
+                f"({ACS_LOCAL_STATUS_INPUTS_ISSUE}). is_separated and "
+                "is_surviving_spouse follow the donor's relationship_inputs "
+                "rule on the ACS rows' A_MARITL (ACS MAR 4, separated, and MAR "
+                "2, widowed; as on the donor, widowed is wider than the "
+                "surviving-spouse tax status). policyengine-us's "
+                "surviving_spouse_eligible does not check that the spouse died "
+                "in one of the two prior tax years (IRC section 2(a)), so on "
+                "both spines every widowed, unmarried tax unit head with a "
+                "child dependent files as a surviving spouse, with the joint "
+                "brackets and standard deduction, not as a head of household. "
+                "is_military is ACS MIL == 1, now "
+                "on active duty, and MIL's blank under 17 reads False; the "
+                "donor reads a military occupation (POCCU2 52), which on ACS "
+                "rows would also mark a veteran whose last job was military. "
+                "has_never_worked, is_computer_scientist, is_farmer_fisher and "
+                "is_executive_administrative_professional follow the donor's "
+                "org_wages rule on the native detailed_occupation_recode. "
+                "is_self_employed and health_insurance_premiums come from the "
+                "donor's own attribution (attribute_us_se_health_premiums), run "
+                "on the ACS rows after the shared transfer: the flag marks "
+                "positive Schedule C income (SEMP plus the transferred SSTB "
+                "leaf), not ACS COW 6 or 7, and the premium is the transferred "
+                "non-Part-B premium of a flagged person under 65 with no Social "
+                "Security disability and no employer coverage. The ACS rows' "
+                "MAGI is then final before materialize assigns Medicaid take-up; "
+                "the national build applies the attribution in another order "
+                "(microcosm#1689). weeks_unemployed and the traditional and "
+                "Roth 401(k) and Roth IRA deferrals come from a separate local "
+                "QRF pass on the donor's ASEC observation role (measured "
+                "LKWEEKS, and RETCB_VAL split by the archived shares), run after "
+                "the shared transfer so the weeks read its "
+                "unemployment_compensation, with the donor's own "
+                "post-processing: weeks 0 without UC, 401(k) deferrals 0 "
+                "without wages. The shared plan keeps the traditional IRA and "
+                "self-employed pension leaves. The deferrals lower the ACS rows' "
+                "AGI. would_file_taxes_voluntarily (tax unit) comes from the "
+                "donor release's own SIPP model (voluntary_filing: the weighted "
+                "QRF on the pinned full SIPP 2023 file's December filing "
+                "answers), run on the ACS tax units with tax-unit wages, the "
+                "head's age and sex, JOINT filing status and the household's "
+                "persons under 18 as predictors; it reads the file staging "
+                "already verifies for the SSI disability model. Last, staging "
+                "sets the transferred takes_up_housing_assistance_if_eligible "
+                "False on every group-quarters SPM unit (TYPEHUGQ 2/3), which "
+                "has no housing unit (microcosm#975): a lane-own step after "
+                "the shared transfer, whose plan is unchanged, rather than the "
+                "structural policy inside the shared transfer that "
+                "microcosm#975 proposed. has_esi is ACS HINS1 == 1 (employer "
+                "or union coverage, current or former, own or a family "
+                "member's, at interview; the donor reads ASEC NOW_GRP), written "
+                "over the shared transfer's draw after every transfer, so no "
+                "other draw moves, and before the self-employed premium "
+                "attribution reads it. HINS2 (any direct purchase) sets both "
+                "direct-purchase flags False where it is 2; where it is 1 the "
+                "draws stand unless both are False, and then one keyed draw "
+                "picks the type at the donor ASEC role's shares among direct "
+                "purchasers by age band, except that HIMRKS (Subsidized "
+                "Marketplace Coverage) code 1, direct purchase with a premium "
+                "subsidy, sets the Marketplace flag True (ruled 25 Nov 2026). "
+                "Staging also writes the ACA stage's anchor column, "
+                "reported_has_subsidized_marketplace_health_coverage_at_"
+                "interview, on ACS rows: True where HINS2 is 1 and HIMRKS is 1 "
+                "(ruled 25 Nov 2026), Census-allocated values included. The "
+                "donor reads no such item, so donor rows carry the column "
+                "missing; the ACA stage reads it on ACS rows only."
+            ),
+            "treatment": (
+                "Written at staging only in missing ACS cells, except the "
+                "group-quarters housing take-up flag and the three coverage "
+                "flags, which override the shared transfer's draws; donor rows "
+                "keep the donor release's values. The staging summary's "
+                "receipts record each rule, its "
+                "source columns and the filled and true rows "
+                "(acs_local_status_inputs: also the agreement of is_military "
+                "with POCCU2 52 and ESR 4 or 5; acs_local_se_health_premiums: "
+                "also the premiums the Medicare proxy and employer coverage "
+                "withheld, and the agreement of the flag with COW 6 or 7; "
+                "acs_local_weeks_deferrals: the donor's ASEC coverage and the "
+                "post-processing counts; acs_local_voluntary_filing: the SIPP "
+                "identity and the ACS and donor true shares; "
+                "acs_local_group_quarters_housing: the units turned False by "
+                "TYPEHUGQ; acs_local_coverage_anchors: the agreement of each "
+                "native value with the draw it replaces and the donor's type "
+                "shares). Recorded, not graded. A null in any column that "
+                "replaced an engine default stops materialize "
+                "(NEVER_DEFAULT_FILLED), so a staging run from before them is "
+                "refused there."
             ),
             "calibration_blocker": False,
         },

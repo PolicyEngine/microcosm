@@ -106,7 +106,12 @@ _PERSON_REQUIRED = (
 # all other income (OIP), the local income pass's child-support predictor
 # (microcosm#1022, acs_local_income), and the public assistance income the
 # local lane's receipt-anchor receipt records (microcosm#1022,
-# acs_local_receipt_anchors). The employment status (ESR) the immigration
+# acs_local_receipt_anchors), and the employer-coverage and direct-purchase
+# items (HINS1, HINS2) the local lane writes has_esi and the two
+# direct-purchase flags from, with the subsidized Marketplace coverage recode
+# (HIMRKS) and its allocation flag (FHIMRKSP) that split direct purchase
+# (microcosm#1720, acs_local_coverage_anchors).
+# The employment status (ESR) the immigration
 # stage reads and the weeks worked (WKWN) the local lane maps natively are
 # required above, for the work-experience inputs. Older or minimal source
 # fixtures remain loadable; an absent column stays absent and a Census blank
@@ -124,6 +129,10 @@ _PERSON_OPTIONAL: tuple[str, ...] = (
     "CIT",
     "YOEP",
     "POBP",
+    "HINS1",
+    "HINS2",
+    "HIMRKS",
+    "FHIMRKSP",
     "HINS3",
     "HINS4",
     "HINS5",
@@ -135,12 +144,18 @@ _PERSON_OPTIONAL: tuple[str, ...] = (
     "OIP",
     "PAP",
 )
-# ACS source columns whose Census name is already a different CPS ASEC field in
-# the pooled person table. ACS ``MIL`` is military service (veteran status);
-# CPS ``MIL`` is military health coverage, which the ASEC immigration stage
-# reads. Loading the ACS field under its own name would put two meanings in
-# one pooled column, so it is renamed at the read boundary.
-ACS_SOURCE_COLUMN_RENAMES: dict[str, str] = {"MIL": "ACS_MIL"}
+# ACS source columns renamed at the read boundary. ACS ``MIL`` is military
+# service (veteran status); CPS ``MIL`` is military health coverage, which the
+# ASEC immigration stage reads. Loading the ACS field under its own name would
+# put two meanings in one pooled column. ACS ``HIMRKS`` (Subsidized
+# Marketplace Coverage) and its allocation flag ``FHIMRKSP`` have no CPS
+# namesake, but they stay on the staged ACS person rows as raw source items
+# for later stages (microcosm#1720), so they carry the same ``ACS_`` prefix.
+ACS_SOURCE_COLUMN_RENAMES: dict[str, str] = {
+    "MIL": "ACS_MIL",
+    "HIMRKS": "ACS_HIMRKS",
+    "FHIMRKSP": "ACS_FHIMRKSP",
+}
 
 # Temporary aliases consumed only by microunit's dependent gross-income test.
 # ACS combined sources stay combined: INTP is placed on one gross-income

@@ -27,9 +27,15 @@ from microcosm.build.us_runtime.acs_inputs import (
     with_acs_spm_independence_role,
     without_acs_group_quarters_children,
 )
+from microcosm.build.us_runtime.acs_local_coverage_anchors import (
+    with_acs_local_coverage_anchors,
+)
 from microcosm.build.us_runtime.acs_local_esi_premiums import (
     acs_local_esi_premium_transfer_target_families,
     with_acs_local_esi_premium_anchor,
+)
+from microcosm.build.us_runtime.acs_local_group_quarters_housing import (
+    with_acs_local_group_quarters_housing,
 )
 from microcosm.build.us_runtime.acs_local_hours import (
     acs_local_hours_transfer_target_families,
@@ -48,6 +54,15 @@ from microcosm.build.us_runtime.acs_local_income import (
 from microcosm.build.us_runtime.acs_local_receipt_anchors import (
     require_acs_receipt_anchor_sources,
     with_acs_local_snap_receipt_anchor,
+)
+from microcosm.build.us_runtime.acs_local_se_health_premiums import (
+    with_acs_local_se_health_premiums,
+)
+from microcosm.build.us_runtime.acs_local_status_inputs import (
+    map_acs_local_status_inputs,
+)
+from microcosm.build.us_runtime.acs_local_weeks_deferrals import (
+    with_acs_local_weeks_deferrals,
 )
 from microcosm.build.us_runtime.acs_local_wic_take_up import (
     require_complete_us_wic_take_up,
@@ -129,7 +144,12 @@ def build_optional_acs_multispine(
     esi_premium_donor_factory: Callable[[Frame], tuple[Frame, dict[str, object]]]
     | None = None,
     work_disability_inputs: bool = False,
+    status_inputs: bool = False,
     income_transfer: bool = False,
+    se_health_premiums: bool = False,
+    weeks_deferrals: bool = False,
+    group_quarters_housing: bool = False,
+    coverage_anchors: bool = False,
     native_receipt_anchors: bool = False,
     wic_take_up: bool = False,
     semp_covers_partnership_income: bool = False,
@@ -162,6 +182,12 @@ def build_optional_acs_multispine(
     native ``is_disabled``/``is_blind``/``weeks_worked`` on every ACS row
     before any transfer, so the null-only transfer leaves them alone; its
     receipt is ``provenance["acs_local_work_disability"]``.
+    ``status_inputs`` (the ACS local lane, microcosm#1720) writes
+    ``is_separated``/``is_surviving_spouse`` from ``A_MARITL`` and the four
+    ``POCCU2`` occupation flags from ``detailed_occupation_recode`` under the
+    donor's own rules, and ``is_military`` from ACS ``MIL`` == 1, on every ACS
+    row before any transfer; no transfer plan names them. Its receipt is
+    ``provenance["acs_local_status_inputs"]``.
     ``income_transfer`` (the ACS local lane, microcosm#1022) runs a separate
     ASEC-channel QRF pass for the SNAP-relevant income leaves the shared plan
     does not carry, with its own local-only plan and two opt-in predictor
@@ -169,6 +195,32 @@ def build_optional_acs_multispine(
     ACS-aligned ``RETP`` analog for disability and account distributions);
     the shared transfer and its execution contract are unchanged. Its receipt
     is ``provenance["acs_local_income_transfer"]``.
+    ``weeks_deferrals`` (the ACS local lane, microcosm#1720) runs a separate
+    ASEC-channel QRF pass for ``weeks_unemployed`` and three retirement
+    deferrals right after the shared transfer, whose
+    ``unemployment_compensation`` the weeks family reads through a predictor
+    extension of that call alone; every earlier fit has drawn by then, so
+    their draws are unchanged. Its receipt is
+    ``provenance["acs_local_weeks_deferrals"]``.
+    ``coverage_anchors`` (the ACS local lane, microcosm#1720) writes ACS
+    ``HINS1`` over the transferred ``has_esi`` and applies ``HINS2`` to the
+    two transferred direct-purchase flags, after every transfer (so the
+    shared plan's chain and every other draw are unchanged) and before the
+    self-employed premium attribution, which reads ``has_esi``. Its receipt
+    is ``provenance["acs_local_coverage_anchors"]``.
+    ``se_health_premiums`` (the ACS local lane, microcosm#1720) runs the
+    donor's self-employed premium attribution
+    (:func:`~.other_health_insurance.attribute_us_se_health_premiums`) on the
+    ACS rows after the shared transfer, whose post-transfer structure has
+    settled the self-employment components it reads, and before pooling; it
+    fills only missing ``is_self_employed`` and ``health_insurance_premiums``
+    cells. Its receipt is ``provenance["acs_local_se_health_premiums"]``.
+    ``group_quarters_housing`` (the ACS local lane, microcosm#975 and
+    microcosm#1720) sets the transferred
+    ``takes_up_housing_assistance_if_eligible`` False on every ACS SPM unit
+    in group quarters (``TYPEHUGQ`` 2/3) after the shared transfer, whose
+    plan is unchanged, and before pooling. Its receipt is
+    ``provenance["acs_local_group_quarters_housing"]``.
     ``native_receipt_anchors`` (the ACS local lane, microcosm#1022) replaces
     the transferred ``receives_snap`` with native household ``FS`` on every
     ACS SPM unit after the shared transfer, whose plan is unchanged, and
@@ -284,6 +336,21 @@ def build_optional_acs_multispine(
         mapped_frame = local.frame
         work_disability = local.receipt
         del local
+    status_inputs_receipt = None
+    if status_inputs:
+        # Local lane only (microcosm#1720): ACS MAR, MIL and OCCP under the
+        # donor's rules. No transfer plan names these columns, so they land
+        # before the transfers like the other native mappings.
+        status = map_acs_local_status_inputs(mapped_frame)
+        overlap = sorted(set(native_provenance) & set(status.native_inputs))
+        if overlap:
+            raise ValueError(
+                f"ACS local status inputs would overwrite native {overlap}."
+            )
+        native_provenance.update(_json_ready_mapping(status.native_inputs))
+        mapped_frame = status.frame
+        status_inputs_receipt = _json_ready_mapping(status.receipt)
+        del status
     modeled_hours = None
     if hours_under15_policy is not None:
         mapped_frame, modeled_hours = complete_acs_local_under15_hours(
@@ -436,17 +503,41 @@ def build_optional_acs_multispine(
     )
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
+    weeks_deferrals_frame = None
+    weeks_deferrals_fit_records = ()
+    weeks_deferrals_imputed_inputs = ()
+    weeks_deferrals_receipt = None
+    if weeks_deferrals:
+        # Local lane only (microcosm#1720): after the shared transfer, so the
+        # weeks family reads its unemployment_compensation, and after every
+        # other fit, whose draws therefore cannot move. ASEC observations,
+        # a plan disjoint from every other transfer, null cells only.
+        late = with_acs_local_weeks_deferrals(
+            transferred.frame,
+            base,
+            seed=seed,
+            n_estimators=n_estimators,
+            max_targets_per_fit=max_targets_per_fit,
+            donor_spine=donor_spine,
+        )
+        weeks_deferrals_frame = late.frame
+        weeks_deferrals_fit_records = late.fit_records
+        weeks_deferrals_imputed_inputs = late.imputed_inputs
+        weeks_deferrals_receipt = late.receipt
+        del late
     fit_records = (
         hours_fit_records
         + income_fit_records
         + esi_fit_records
         + tuple(transferred.fit_records)
+        + weeks_deferrals_fit_records
     )
     imputed_provenance = _json_ready_sequence(
         hours_imputed_inputs
         + income_imputed_inputs
         + esi_imputed_inputs
         + tuple(transferred.imputed_inputs)
+        + weeks_deferrals_imputed_inputs
     )
     deferred_inputs = tuple(transferred.deferred_inputs)
     if block_location:
@@ -466,8 +557,35 @@ def build_optional_acs_multispine(
     deferred_provenance = _json_ready_sequence(deferred_inputs)
     resolved_donor_channel = transferred.resolved_donor_channel
     fit_provenance = _json_ready_sequence(fit_records)
-    transferred_frame = transferred.frame
-    del transferred
+    transferred_frame = (
+        transferred.frame if weeks_deferrals_frame is None else weeks_deferrals_frame
+    )
+    del transferred, weeks_deferrals_frame
+    coverage_receipt = None
+    if coverage_anchors:
+        # Local lane only (microcosm#1720): native HINS1/HINS2 over the
+        # shared transfer's coverage draws. After every transfer, so no other
+        # draw moves; before the premium attribution, which reads has_esi.
+        transferred_frame, coverage_receipt = with_acs_local_coverage_anchors(
+            transferred_frame, base, seed=seed
+        )
+    se_health_receipt = None
+    if se_health_premiums:
+        # Local lane only (microcosm#1720): the donor's rule, unchanged, after
+        # the post-transfer structure has kept the drawn self-employment
+        # components at zero where SEMP stands; before pooling, so donor rows
+        # keep their own attribution.
+        transferred_frame, se_health_receipt = with_acs_local_se_health_premiums(
+            transferred_frame
+        )
+    group_quarters_housing_receipt = None
+    if group_quarters_housing:
+        # Local lane only (microcosm#975): group quarters have no housing
+        # unit. The shared plan still draws the flag; this lane-own step
+        # overrides it there, before pooling, so donor rows are never seen.
+        transferred_frame, group_quarters_housing_receipt = (
+            with_acs_local_group_quarters_housing(transferred_frame)
+        )
     receipt_anchors = None
     if native_receipt_anchors:
         # Local lane only (microcosm#1022): after the shared transfer, so the
@@ -546,6 +664,27 @@ def build_optional_acs_multispine(
     }
     if wic_take_up_receipt is not None:
         provenance["wic_take_up"] = _json_ready(wic_take_up_receipt)
+    if status_inputs_receipt is not None:
+        provenance["acs_local_status_inputs"] = status_inputs_receipt
+    if coverage_receipt is not None:
+        provenance["acs_local_coverage_anchors"] = _json_ready_mapping(
+            coverage_receipt
+        )
+    if se_health_receipt is not None:
+        provenance["acs_local_se_health_premiums"] = _json_ready_mapping(
+            se_health_receipt
+        )
+    if group_quarters_housing_receipt is not None:
+        provenance["acs_local_group_quarters_housing"] = _json_ready_mapping(
+            group_quarters_housing_receipt
+        )
+    if weeks_deferrals_receipt is not None:
+        provenance["fit_configuration"]["weeks_deferrals_donor_channel"] = (
+            weeks_deferrals_receipt["resolved_donor_channel"]
+        )
+        provenance["acs_local_weeks_deferrals"] = _json_ready_mapping(
+            weeks_deferrals_receipt
+        )
     if hours_donor is not None or hours_donor_factory is not None:
         provenance["fit_configuration"]["hours_donor_channel"] = hours_donor_channel
         provenance["local_hours_source"] = hours_source

@@ -304,13 +304,26 @@ def test_no_county_materialization_matches_pre_county_surface(
     # microcosm#1022: the ACS SSI/Medicaid take-up stage compiles SSA and CMS
     # counts from the ledger feed and runs an engine pre-pass this fixture
     # cannot support; this test checks county hooks only.
-    monkeypatch.setattr(module, "acs_local_ssi_medicaid_take_up_targets", lambda *_: {})
+    monkeypatch.setattr(
+        module, "_compiled_fiscal_registry", lambda *_: (SimpleNamespace(specs=[]), [])
+    )
+    monkeypatch.setattr(
+        module, "acs_local_ssi_medicaid_take_up_targets", lambda *_, **_k: {}
+    )
     monkeypatch.setattr(
         module,
         "_with_local_ssi_medicaid_take_up",
         lambda frame, *, seed, **_k: (frame, {"seed": seed, "assigned_sha256": "stub"}),
     )
     monkeypatch.setattr(module, "_write_ssi_medicaid_take_up", lambda *_: "stub")
+    # microcosm#1720: likewise the ACA take-up stage.
+    monkeypatch.setattr(module, "acs_local_aca_take_up_targets", lambda *_, **_k: {})
+    monkeypatch.setattr(
+        module,
+        "_with_local_aca_take_up",
+        lambda frame, *, seed, **_k: (frame, {"seed": seed, "assigned_sha256": "stub"}),
+    )
+    monkeypatch.setattr(module, "_write_aca_take_up", lambda *_: "stub")
     monkeypatch.setattr(module, "log", lambda *_: None)
 
     def materialize(_frame, specs, **_kwargs):

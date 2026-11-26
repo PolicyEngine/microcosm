@@ -1,0 +1,7 @@
+The ACS local lane's staging runs the donor release's SIPP voluntary-filing model on ACS tax units, so they carry `would_file_taxes_voluntarily` instead of the engine default, `False`, under which no ACS unit was a voluntary filer and Medicaid's non-filer rules applied to more of them (microcosm#1720; `acs_local_voluntary_filing`).
+
+- The model is the donor's own (`voluntary_filing`): the weighted QRF on the pinned full SIPP 2023 file's December filing answers, its five predictors and forest size, and the build seed. It runs through a new table-level entry point, `impute_us_voluntary_filing_from_tables`, which `impute_us_voluntary_filing` now calls too; donor values are unchanged.
+- The predictors come from a view of the ACS tax units: tax-unit wages (native WAGP; the blank under 15 reads as no wages), the head's age and sex, `JOINT` filing status and the household's persons under 18.
+- Staging reads the SIPP file it already resolves for the SSI disability model, so nothing is downloaded twice; the loader checks the file's length and sha-256 again.
+- The stage runs on the pooled frame after the SSI disability stage and before the input-null audit, and fills only missing ACS cells. Its receipt (`acs_local_voluntary_filing` in the staging summary) records the SIPP identity, the fill counts and the ACS and donor weighted true shares; it grades nothing.
+- The column leaves the reviewed-fill register, with its EITC and PTC notes, and joins the release tool's `NEVER_DEFAULT_FILLED`.

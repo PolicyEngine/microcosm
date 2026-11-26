@@ -1380,6 +1380,21 @@ def _us_local_specs() -> tuple[USGateSpec, ...]:
                 **_pins("medicaid_take_up", "US_MEDICAID_ENROLLMENT_TOLERANCE"),
             },
         ),
+        # microcosm#1720: report-only, so the entry is diagnostic and the
+        # tool never stops on its verdict.
+        USGateSpec(
+            check="aca_take_up_signal",
+            legacy_name="acs_local_aca_take_up_signal",
+            gate="tool:acs_local_aca_take_up_signal_gate",
+            positional=(FRAME,),
+            arguments={"receipt": "aca_receipt"},
+            pinned=_pins(
+                "acs_local_aca_take_up",
+                "_RESIDUAL_RELATIVE_TOLERANCE",
+                "_SATURATED_RELATIVE_TOLERANCE",
+                "ACS_LOCAL_ACA_RETURNS_RELATIVE_TOLERANCE",
+            ),
+        ),
         # The calibrated artifact's gates at finalize, and package's re-checks.
         USGateSpec(
             check="local_hours_signal",

@@ -93,9 +93,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.anchor_thinning import thin_anchors_to_residuals
 from microcosm.build.gates import GateResult
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
@@ -357,12 +357,6 @@ def _group_sums(
     return {str(group): float(value) for group, value in sums.items()}
 
 
-def _keyed_uniform(key: str, *, seed: int, stream: str) -> float:
-    """A seeded blake2b uniform on ``stream`` for one ACS draw key."""
-
-    return float(stable_identity_uniforms((key,), seed=seed, salt=stream)[0])
-
-
 def _donor_contribution(
     frame: Frame,
     donor: np.ndarray,
@@ -547,8 +541,9 @@ def _medicaid_assignment(
     enrollment, floored at zero. A missing cell with ``HINS4 == 1`` anchors,
     but where the state's anchored eligible weight exceeds that residual each
     such record stays anchored with probability (residual - stored anchored
-    weight) / HINS4 anchored eligible weight, on its own keyed draw. The
-    ``medicaid_take_up`` manifest stage then runs on the ACS rows whose cell
+    weight) / HINS4 anchored eligible weight, on its own keyed draw (the
+    shared rule, :func:`~microcosm.build.anchor_thinning.thin_anchors_to_residuals`).
+    The ``medicaid_take_up`` manifest stage then runs on the ACS rows whose cell
     is missing or stored ``True`` (a stored ``False`` stays out of the
     stage), with the kept HINS4 records and stored ``True`` cells as the
     preserved anchor.
@@ -569,26 +564,19 @@ def _medicaid_assignment(
     stored_true = present & flags
     hins4 = missing & anchor
     staged = missing | flags
-    stored_weight = _group_sums(state, weights, eligible & stored_true)
-    hins4_weight = _group_sums(state, weights, eligible & hins4)
-    keep: dict[str, float] = {}
-    for code, target in zip(codes, residual, strict=True):
-        stored = stored_weight.get(code, 0.0)
-        anchored = hins4_weight.get(code, 0.0)
-        keep[code] = (
-            1.0
-            if anchored <= 0.0 or stored + anchored <= target
-            else float(np.clip((target - stored) / anchored, 0.0, 1.0))
-        )
-    probability = pd.Series(state).map(keep).fillna(1.0).to_numpy(dtype=np.float64)
-    keep_draws = np.zeros(len(keys), dtype=np.float64)
-    thinning = hins4 & (probability < 1.0)
-    if thinning.any():
-        keep_draws[thinning] = [
-            _keyed_uniform(str(key), seed=int(seed), stream=_HINS4_KEEP_STREAM)
-            for key in keys[thinning]
-        ]
-    kept = hins4 & (keep_draws < probability)
+    thinning = thin_anchors_to_residuals(
+        groups=state,
+        weights=weights,
+        counted=eligible,
+        fixed=stored_true,
+        anchors=hins4,
+        residuals=dict(zip(codes, residual, strict=True)),
+        keys=keys,
+        seed=int(seed),
+        stream=_HINS4_KEEP_STREAM,
+    )
+    stored_weight, hins4_weight = thinning.fixed_mass, thinning.anchor_mass
+    keep, kept = thinning.keep_probability, thinning.kept
     fixed_true = stored_true | kept
     table = pd.DataFrame(
         {

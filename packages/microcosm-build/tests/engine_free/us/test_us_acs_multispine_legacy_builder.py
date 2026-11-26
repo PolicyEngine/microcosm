@@ -288,6 +288,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # What build_optional_acs_multispine records for the native FS receipt
     # anchor (microcosm#1022).
     anchor_receipt = {"issue": "microcosm#1022", "snap": {"units_anchored": 1}}
+    # What build_optional_acs_multispine records for the ACS rows' native
+    # marital, military and occupation status (microcosm#1720).
+    status_receipt = {"issue": "microcosm#1720", "acs_persons": 1}
+    se_health_receipt = {"issue": "microcosm#1720", "self_employed_rows": 0}
+    weeks_deferrals_receipt = {"issue": "microcosm#1720", "acs_persons": 1}
+    group_quarters_receipt = {"issue": "microcosm#975", "group_quarters_spm_units": 1}
+    coverage_receipt = {"issue": "microcosm#1720", "acs_persons": 1}
     # What the ACS local SSI disability-criteria stage returns
     # (microcosm#1022): the null audit, hours gate and export must see it.
     ssi_filled = Frame(
@@ -302,6 +309,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     sipp_path = tmp_path / "pu2023.csv"
     sipp_training = pd.DataFrame({"age": [40.0]})
     sipp_identity = {"path": str(sipp_path), "sha256": "5" * 64}
+    # microcosm#1720: the voluntary-filing model reads the same file.
+    filing_training = pd.DataFrame({"employment_income": [1.0]})
+    filing_identity = {"path": str(sipp_path), "sha256": "5" * 64}
+    filing_receipt = {"issue": "microcosm#1720", "filled_units": 1}
     base_h5 = tmp_path / "dense.h5"
     base_h5.write_bytes(b"dense-base")
     manifest_path = tmp_path / "acs_sources.json"
@@ -412,6 +423,11 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                 "acs_local_work_disability": work_disability_receipt,
                 "acs_local_income_transfer": income_receipt,
                 "acs_local_receipt_anchors": anchor_receipt,
+                "acs_local_status_inputs": status_receipt,
+                "acs_local_se_health_premiums": se_health_receipt,
+                "acs_local_weeks_deferrals": weeks_deferrals_receipt,
+                "acs_local_group_quarters_housing": group_quarters_receipt,
+                "acs_local_coverage_anchors": coverage_receipt,
                 "spm_independence_role": _spm_role_receipt(persons=1),
             },
         )
@@ -465,6 +481,19 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         captured["ssi_seed"] = seed
         order.append("ssi_disability")
         return ssi_filled, ssi_receipt
+
+    def fake_filing_load(path):
+        captured["filing_load"] = path
+        order.append("filing_load")
+        return filing_training, filing_identity
+
+    def fake_filing_stage(frame, *, sipp_donor, donor_identity, seed):
+        assert frame is ssi_filled
+        assert sipp_donor is filing_training
+        assert donor_identity is filing_identity
+        captured["filing_seed"] = seed
+        order.append("voluntary_filing")
+        return ssi_filled, filing_receipt
 
     def fake_ssi_gate(frame, *, receipt):
         assert frame is ssi_filled
@@ -618,6 +647,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         builder, "with_acs_local_ssi_disability_criteria", fake_ssi_stage
     )
     monkeypatch.setattr(builder, "acs_local_ssi_disability_signal_gate", fake_ssi_gate)
+    monkeypatch.setattr(
+        builder, "load_acs_local_voluntary_filing_donor", fake_filing_load
+    )
+    monkeypatch.setattr(builder, "with_acs_local_voluntary_filing", fake_filing_stage)
 
     # microcosm#454: the ESI employer premium's donor qualifier and gates.
     def qualify_esi_premium_donor(frame):
@@ -758,7 +791,12 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "target_families": transfer_plan,
         "hours_under15_policy": None,
         "work_disability_inputs": True,
+        "status_inputs": True,
         "income_transfer": True,
+        "se_health_premiums": True,
+        "weeks_deferrals": True,
+        "group_quarters_housing": True,
+        "coverage_anchors": True,
         "native_receipt_anchors": True,
         "wic_take_up": True,
         "semp_covers_partnership_income": True,
@@ -783,6 +821,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert order == [
         "esi_premium_donor",
         "sipp_load",
+        "filing_load",
         "acs_fetch",
         "receipt_anchor_gate",
         "immigration",
@@ -790,6 +829,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "income_gate",
         "ssi_disability",
         "ssi_disability_gate",
+        "voluntary_filing",
         "null_audit",
         "esi_premium_gates",
         "write",
@@ -835,6 +875,10 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert captured["sipp_load"] == (sipp_path, 2024)
     assert captured["ssi_seed"] == 11
     assert summary["acs_local_ssi_disability"] == ssi_receipt
+    # microcosm#1720: one SIPP path for both models; the build seed draws.
+    assert captured["filing_load"] == Path(str(sipp_path))
+    assert captured["filing_seed"] == 11
+    assert summary["acs_local_voluntary_filing"] == filing_receipt
     assert summary["acs_local_ssi_disability_gate"] == {
         "name": "acs_local_ssi_disability_signal",
         "passed": True,
@@ -842,6 +886,11 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "details": {"per_spine": {}},
     }
     assert summary["acs_local_receipt_anchors"] == anchor_receipt
+    assert summary["acs_local_status_inputs"] == status_receipt
+    assert summary["acs_local_se_health_premiums"] == se_health_receipt
+    assert summary["acs_local_weeks_deferrals"] == weeks_deferrals_receipt
+    assert summary["acs_local_group_quarters_housing"] == group_quarters_receipt
+    assert summary["acs_local_coverage_anchors"] == coverage_receipt
     assert summary["acs_local_receipt_anchors_gate"] == {
         "name": "acs_local_receipt_anchor_signal",
         "passed": True,

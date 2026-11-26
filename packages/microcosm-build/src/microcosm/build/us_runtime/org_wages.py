@@ -80,6 +80,7 @@ __all__ = [
     "require_us_occupation_and_work_experience_inputs",
     "us_org_wages_signal_gate",
     "us_org_wages_stage_spec",
+    "us_flsa_occupation_flags",
     "us_org_wages_summary",
     "with_us_org_wages_inputs",
 ]
@@ -653,12 +654,31 @@ def derive_us_org_occupation_inputs(person: pd.DataFrame) -> pd.DataFrame:
     result["detailed_industry_recode"] = detailed_industry.astype(np.int16)
     result["major_industry_recode"] = major_industry.astype(np.int16)
     result["worked_last_year"] = worked
+    flags = us_flsa_occupation_flags(occupation)
+    for variable in flags.columns:
+        result[variable] = flags[variable]
+    return result
+
+
+def us_flsa_occupation_flags(occupation: pd.Series) -> pd.DataFrame:
+    """The FLSA occupation flags from ``POCCU2`` codes alone.
+
+    One rule for every spine: :func:`derive_us_org_occupation_inputs` calls it
+    on ASEC ``POCCU2``, and the ACS local lane on the ACS rows' native
+    ``detailed_occupation_recode`` (``OCCP`` through ``ACS_OCCP_TO_POCCU2``,
+    microcosm#1720). A missing code reads as 0, as the donor reads it.
+    Returns the columns of :data:`FLSA_OVERTIME_OCCUPATION_CODES`, then
+    ``is_executive_administrative_professional``, on ``occupation``'s index.
+    """
+
+    codes = pd.to_numeric(occupation, errors="coerce").fillna(0).astype(int)
+    flags = pd.DataFrame(index=occupation.index)
     for variable, code in FLSA_OVERTIME_OCCUPATION_CODES.items():
-        result[variable] = occupation.eq(code)
-    result["is_executive_administrative_professional"] = occupation.isin(
+        flags[variable] = codes.eq(code)
+    flags["is_executive_administrative_professional"] = codes.isin(
         FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES
     )
-    return result
+    return flags
 
 
 def _person_state_fips(frame: Frame) -> np.ndarray:

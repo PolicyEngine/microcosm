@@ -120,6 +120,13 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # re-application and per-origin gate (#1022); exact boundary
         # functions are pinned below.
         "acs_local_ssi_medicaid_take_up.py",
+        # Legacy local-lane ACS-row ACA take-up and plan-ratio assignment,
+        # recorded re-application and report-only gate (#1720); exact
+        # boundary functions are pinned below.
+        "acs_local_aca_take_up.py",
+        # Local-lane ACS-unit voluntary-filing fill (#1720); the exact
+        # boundary function is pinned below.
+        "acs_local_voluntary_filing.py",
         # Legacy local-lane per-origin native SNAP receipt-anchor gate
         # (#1022); the exact boundary function is pinned below.
         "acs_local_receipt_anchors.py",
@@ -278,9 +285,39 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane SSI/Medicaid take-up assignment and release gate
         # (#1022); outside the registry.
         "acs_local_ssi_medicaid_take_up.py",
+        # Legacy local-lane ACA take-up and plan-ratio assignment and its
+        # report-only gate (#1720); outside the registry.
+        "acs_local_aca_take_up.py",
         # Legacy local-lane native FS receipt anchor and release gate (#1022);
         # outside the registry.
         "acs_local_receipt_anchors.py",
+        # Local-lane marital, military and occupation status of ACS rows
+        # (#1720), mapped on the ACS-only frame before any transfer under the
+        # donor's rules; tag-free, it runs before origin tags exist. Outside
+        # the registry.
+        "acs_local_status_inputs.py",
+        # Local-lane self-employed health premium inputs of ACS rows (#1720):
+        # the donor's attribution on the ACS-only frame after the shared
+        # transfer and before pooling; tag-free. Outside the registry.
+        "acs_local_se_health_premiums.py",
+        # Local-lane weeks unemployed and retirement deferrals of ACS rows
+        # (#1720): a one-pass transfer plan on the donor's ASEC role after the
+        # shared transfer, on the ACS-only frame before pooling; tag-free (it
+        # selects the donor role through resolve_acs_donor_channel). Outside
+        # the registry.
+        "acs_local_weeks_deferrals.py",
+        # Local-lane voluntary-filing fill of ACS tax units with the donor's
+        # SIPP model (#1720); outside the registry.
+        "acs_local_voluntary_filing.py",
+        # Local-lane housing take-up of ACS group-quarters SPM units (#975),
+        # on the ACS-only frame after the shared transfer and before pooling;
+        # tag-free. Outside the registry.
+        "acs_local_group_quarters_housing.py",
+        # Local-lane employer and direct-purchase coverage of ACS rows from
+        # HINS1/HINS2 (#1720), on the ACS-only frame after every transfer and
+        # before pooling; tag-free (the donor role through
+        # resolve_acs_donor_channel). Outside the registry.
+        "acs_local_coverage_anchors.py",
         # Legacy local-lane Head Start take-up fill, ACS VEH availability
         # receipt and grade helpers (#1022); tag-free, the take-up stage
         # passes the spine masks. Outside the registry.
@@ -3739,6 +3776,40 @@ def test_acs_local_ssi_disability_provenance_is_limited_to_reviewed_boundaries()
     assert not _source_spine_accesses(ast.unparse(remaining))
 
 
+def test_acs_local_voluntary_filing_provenance_is_limited_to_reviewed_boundaries() -> (
+    None
+):
+    """Pin the ACS-unit voluntary-filing fill (#1720).
+
+    The predictor view, the SIPP loader and the receipt helpers read no origin
+    tag; only the stage, which selects the ACS rows, does.
+    """
+
+    source = (_US_RUNTIME / "acs_local_voluntary_filing.py").read_text()
+    boundaries = ("with_acs_local_voluntary_filing",)
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
 def test_acs_local_ssi_medicaid_take_up_provenance_is_limited_to_reviewed_boundaries() -> (
     None
 ):
@@ -3757,6 +3828,40 @@ def test_acs_local_ssi_medicaid_take_up_provenance_is_limited_to_reviewed_bounda
         "with_acs_local_ssi_medicaid_take_up",
         "with_recorded_acs_local_ssi_medicaid_take_up",
     )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
+def test_acs_local_aca_take_up_provenance_is_limited_to_reviewed_boundaries() -> None:
+    """Pin the ACS-row ACA take-up boundaries (#1720).
+
+    The residual accounting, draw keys, stage tables, receipt grading and
+    digest read no origin tag. Only ``_acs_masks``, which the stage, the
+    recorded re-application, the assignment export and the gate call to pick
+    the ACS persons and tax units, and the gate's own spine check do.
+    """
+
+    source = (_US_RUNTIME / "acs_local_aca_take_up.py").read_text()
+    boundaries = ("_acs_masks", "acs_local_aca_take_up_signal_gate")
     assert (
         tuple(
             sorted(

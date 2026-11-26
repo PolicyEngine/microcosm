@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.anchor_thinning as anchor_thinning
 import microcosm.build.us_runtime.acs_local_ssi_disability as acs_local_ssi_disability
-import microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up as acs_local_ssi_medicaid_take_up
 import microcosm.build.us_runtime.acs_local_vehicles_head_start as acs_local_vehicles_head_start
 import microcosm.build.us_runtime.immigration as immigration
 import microcosm.build.us_runtime.medicaid_take_up as medicaid_take_up
@@ -130,6 +130,15 @@ _DRAWS = {
         "acs_local_head_start_take_up",
         _KEYS,
     ),
+    # The shared keep draw of the ACS local lane's anchor thinning, on the
+    # Medicaid HINS4 stream that the lane's one-key helper used (#1720).
+    "anchor_thinning": (
+        lambda seed: anchor_thinning.anchor_keep_uniforms(
+            _KEYS, seed=seed, stream="acs_local_medicaid_hins4_anchor_keep"
+        ),
+        "acs_local_medicaid_hins4_anchor_keep",
+        _KEYS,
+    ),
 }
 
 
@@ -144,20 +153,11 @@ def test_module_draws_are_the_copied_loop(seed, module) -> None:
 
 @pytest.mark.parametrize("seed", SEEDS)
 def test_one_key_draws_stay_python_floats(seed) -> None:
-    for actual, salt in (
-        (
-            ssi_take_up._stable_source_draw("asec:1", seed=seed),
-            "takes_up_ssi_if_eligible",
-        ),
-        (
-            acs_local_ssi_medicaid_take_up._keyed_uniform(
-                "asec:1", seed=seed, stream="acs_local_medicaid_hins4_anchor_keep"
-            ),
-            "acs_local_medicaid_hins4_anchor_keep",
-        ),
-    ):
-        assert type(actual) is float
-        assert _bits([actual]) == _bits(_main_loop(["asec:1"], seed=seed, salt=salt))
+    actual = ssi_take_up._stable_source_draw("asec:1", seed=seed)
+    assert type(actual) is float
+    assert _bits([actual]) == _bits(
+        _main_loop(["asec:1"], seed=seed, salt="takes_up_ssi_if_eligible")
+    )
 
 
 @pytest.mark.parametrize("seed", SEEDS)

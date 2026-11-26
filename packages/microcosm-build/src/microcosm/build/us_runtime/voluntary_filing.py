@@ -53,6 +53,7 @@ __all__ = [
     "SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES",
     "SIPP_2023_VOLUNTARY_FILING_DONOR_URL",
     "SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS",
+    "SIPP_VOLUNTARY_FILING_N_ESTIMATORS",
     "SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS",
     "US_VOLUNTARY_FILING_NONCONSTANT_TAX_UNIT_COLUMNS",
     "US_VOLUNTARY_FILING_OUTPUT_COLUMNS",
@@ -62,6 +63,7 @@ __all__ = [
     "VOLUNTARY_FILING_SIPP_DICTIONARY_URL",
     "fetch_sipp_2023_voluntary_filing_donor",
     "impute_us_voluntary_filing",
+    "impute_us_voluntary_filing_from_tables",
     "load_sipp_2023_voluntary_filing_donor",
     "us_voluntary_filing_signal_gate",
     "us_voluntary_filing_stage_spec",
@@ -132,6 +134,8 @@ _DONOR_FILENAME = "pu2023.csv"
 _DONOR_WEIGHT_COLUMN = "tax_unit_weight"
 _DONOR_SOURCE_KEY_COLUMN = "source_tax_unit_key"
 _DEFAULT_N_ESTIMATORS = 100
+#: The donor stage's forest size, which the ACS local lane reuses.
+SIPP_VOLUNTARY_FILING_N_ESTIMATORS = _DEFAULT_N_ESTIMATORS
 _TAX_UNIT_SOURCE_ID_COLUMN = "tax_unit_source_id"
 _TRUE_SHARE_BAND = (0.45, 0.95)
 _EXPECTED_READ_PARAMETERS: dict[str, object] = {
@@ -577,8 +581,16 @@ def _strict_recipient_numeric(
 def _recipient_tax_unit_predictor_table(frame: Frame) -> pd.DataFrame:
     """Build the approved five predictors in receiver tax-unit order."""
 
-    person = frame.table("person")
-    tax_unit = frame.table("tax_unit")
+    return _recipient_tax_unit_predictor_table_from_tables(
+        frame.table("person"), frame.table("tax_unit")
+    )
+
+
+def _recipient_tax_unit_predictor_table_from_tables(
+    person: pd.DataFrame, tax_unit: pd.DataFrame
+) -> pd.DataFrame:
+    """The five predictors from a person and a tax-unit table."""
+
     required = {
         "person_id",
         "person_tax_unit_id",
@@ -721,6 +733,15 @@ def _source_receiver_rows(
     frame: Frame,
     receiver: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.Series]:
+    """Select one canonical predictor row per source unit and fan-out keys."""
+
+    return _source_receiver_rows_from_table(frame.table("tax_unit"), receiver)
+
+
+def _source_receiver_rows_from_table(
+    tax_unit: pd.DataFrame,
+    receiver: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.Series]:
     """Select one canonical predictor row per source unit and fan-out keys.
 
     The canonical row is the lowest surviving support-copy rank: the native
@@ -730,7 +751,6 @@ def _source_receiver_rows(
     one-row-per-source path for tables without support metadata.
     """
 
-    tax_unit = frame.table("tax_unit")
     require_assembled_support_provenance(tax_unit, entity="tax_unit")
     if _TAX_UNIT_SOURCE_ID_COLUMN in tax_unit:
         source_ids = tax_unit[_TAX_UNIT_SOURCE_ID_COLUMN]
@@ -805,6 +825,31 @@ def impute_us_voluntary_filing(
 ) -> pd.Series:
     """Fit the weighted SIPP QRF and draw once per source tax unit."""
 
+    return impute_us_voluntary_filing_from_tables(
+        frame.table("person"),
+        frame.table("tax_unit"),
+        donor,
+        seed=seed,
+        n_estimators=n_estimators,
+    )
+
+
+def impute_us_voluntary_filing_from_tables(
+    person: pd.DataFrame,
+    tax_unit: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    seed: int,
+    n_estimators: int = _DEFAULT_N_ESTIMATORS,
+) -> pd.Series:
+    """:func:`impute_us_voluntary_filing` on a person and a tax-unit table.
+
+    One model for every spine: the donor stage reads its frame's two tables
+    through it, and the ACS local lane passes a view of its ACS tax units
+    (microcosm#1720). Returns one boolean per row of ``tax_unit``, on its
+    index.
+    """
+
     required = {
         *SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS,
         _OUTPUT,
@@ -869,8 +914,10 @@ def impute_us_voluntary_filing(
     training = training.iloc[order].reset_index(drop=True)
     weights = weights[order]
 
-    receiver = _recipient_tax_unit_predictor_table(frame)
-    source_receiver, fanout_keys = _source_receiver_rows(frame, receiver)
+    receiver = _recipient_tax_unit_predictor_table_from_tables(person, tax_unit)
+    source_receiver, fanout_keys = _source_receiver_rows_from_table(
+        tax_unit, receiver
+    )
     global QRF
     if QRF is None:
         from importlib import import_module
@@ -900,7 +947,7 @@ def impute_us_voluntary_filing(
         raise ValueError("SIPP voluntary-filing source-unit fan-out is incomplete.")
     return pd.Series(
         fanout.to_numpy(dtype=bool),
-        index=frame.table("tax_unit").index,
+        index=tax_unit.index,
         name=_OUTPUT,
     )
 

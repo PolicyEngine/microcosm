@@ -17,10 +17,12 @@ This check runs in seconds after the staging (R1), before R2:
 - A null in a ``NEVER_DEFAULT_FILLED`` column is refused, as materialize
   refuses it, unless it is on the ACS spine alone and in a column that one of
   R2's own stages fills on the ACS rows first (``stage_filled_never_default``:
-  the take-up stage's SPM-unit take-up flags and engine-free fills, and the
-  SSI and Medicaid take-up flags). R2 expects staging to fill every other
-  never-default column (immigration, disability, income transfers, SSI
-  disability criteria); its reason for those says to re-run staging.
+  the take-up stage's SPM-unit take-up flags and engine-free fills, the SSI
+  and Medicaid take-up flags, and the tax units' ACA take-up and plan ratio).
+  R2 expects staging to fill every other never-default column (immigration,
+  disability, income transfers, SSI disability criteria, and the
+  microcosm#1720 inputs staging maps or draws on ACS rows); its reason for
+  those says to re-run staging.
 - A null in an ESI premium output is refused, as materialize refuses it.
 - A staging summary whose ``engine_versions`` names another policyengine-us
   than the installed one, or none, is refused, as materialize refuses it
@@ -85,10 +87,13 @@ def stage_filled_never_default(release: Any) -> frozenset[tuple[str, str]]:
 
     Materialize's ACS take-up stage fills the SPM-unit take-up flags, EITC
     take-up and the engine-free fills; its SSI/Medicaid take-up stage fills
-    those two flags.
+    those two flags, and its ACA take-up stage the tax units' ACA take-up
+    and plan ratio (microcosm#1720).
     R2's reasons for every other never-default column (immigration,
-    disability, income transfers, SSI disability criteria) say to re-run
-    staging, and a null there stops materialize on any spine.
+    disability, income transfers, SSI disability criteria, the
+    microcosm#1720 staged inputs) say to re-run staging, and a null there
+    stops materialize on any spine. Staged columns therefore never join this
+    list.
     """
 
     filled = frozenset(
@@ -100,6 +105,7 @@ def stage_filled_never_default(release: Any) -> frozenset[tuple[str, str]]:
                 ("person", column)
                 for column in release.ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS
             ),
+            *(("tax_unit", column) for column in release.ACS_LOCAL_ACA_TAKE_UP_COLUMNS),
         }
     )
     unknown = sorted(filled - set(release.NEVER_DEFAULT_FILLED))
