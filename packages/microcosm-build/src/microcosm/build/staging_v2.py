@@ -1054,7 +1054,7 @@ class StagingRunBundleWriterV2:
         """Hand a closed run's final state over again.
 
         For a run whose closing was interrupted after its state changed but
-        before the emitter accepted it: the run keeps the state it closed
+        before its hand-over finished: the run keeps the state it closed
         with, and its documents are written and handed over once more.
         """
         if self.status == "running":

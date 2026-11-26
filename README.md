@@ -167,8 +167,9 @@ whose details name the check `staging_final_commit` (best-effort: no
 emitter, a missing token, a failed commit or a failed read-back never fails
 the build), so every candidate shows up on the staging dashboard before it is
 published. A SIGTERM during the build closes the staging run as failed and
-the build exits 143; one that arrives during that final check only ends the
-check. A build whose release checks fail once its record is written (exit 3)
+the build exits 143; one that arrives while a failing build closes its run, or
+during that final check, only ends that step, and the build keeps its own exit
+status. A build whose release checks fail once its record is written (exit 3)
 closes its run as `blocked`. Disable these files with `--no-staging`, or point
 them elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An
 *empty* `POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and

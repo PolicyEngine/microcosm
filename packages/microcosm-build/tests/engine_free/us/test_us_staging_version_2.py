@@ -676,18 +676,8 @@ def test_an_interrupt_while_the_run_closes_still_hands_its_final_state_over(
     not reached the emitter, so the build's failure path hands it over and
     checks it by receipt, as microcosm#1749 does for any interrupted run."""
     from microcosm.build.termination import BuildTerminatedError
-    from test_support.microcosm_build.emitter import FakeEmitterClient
 
-    class InterruptedHandOver(FakeEmitterClient):
-        interrupt_next = False
-
-        def stage_run_files(self, request):
-            if self.interrupt_next:
-                self.interrupt_next = False
-                raise BuildTerminatedError()
-            return super().stage_run_files(request)
-
-    client = InterruptedHandOver()
+    client = _InterruptedHandOver.client()
     progress, emitter = _remote_build_progress(builder, tmp_path, client=client)
     progress.stage("manifests", message="Writing the manifests.")
     client.interrupt_next = True

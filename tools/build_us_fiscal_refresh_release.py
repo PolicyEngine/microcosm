@@ -13226,15 +13226,27 @@ class _BuildProgress:
                 try:
                     self._close_staging_run(bundle, error)
                 except KeyboardInterrupt as interrupt:
-                    # A SIGTERM or Ctrl-C ends the close only: the close-out
-                    # goes on, so the build keeps its own outcome, the run's
-                    # state as it stands is handed over once more and its
-                    # final commit is checked by receipt.
+                    # A SIGTERM or Ctrl-C ends the close only, as one during
+                    # the final commit check does (microcosm#1749): the
+                    # close-out goes on, so the build keeps its own outcome
+                    # and exit status, the run's state as it stands is handed
+                    # over once more and its final commit is checked by
+                    # receipt.
+                    print(
+                        "warning: closing the staging run was interrupted; its "
+                        "state is handed over once more and the build keeps "
+                        "its own outcome.",
+                        file=sys.stderr,
+                    )
                     ended_by = interrupt
                     try:
                         self._close_staging_run(bundle, error)
                     except KeyboardInterrupt:
-                        pass
+                        print(
+                            "warning: the staging run's second hand-over was "
+                            "interrupted too.",
+                            file=sys.stderr,
+                        )
                 confirm_and_report_final_commit(bundle, self.emitter, error=ended_by)
         finally:
             _fail_emitter(self.emitter, error)
@@ -15131,7 +15143,8 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     Certification opens its own staging run where the build staged
     (:func:`_certify_progress`) and marks it failed if it does not finish.
     A SIGTERM is recorded as a termination, as in :func:`main`, and the
-    command then exits 143.
+    command then exits 143, unless it arrives while a failing certification
+    closes its staging run, as in :func:`main`.
     """
 
     with raise_on_sigterm():
@@ -15532,7 +15545,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     closes the ordinary exception and termination half of the gap. A SIGTERM
     raises ``BuildTerminatedError`` (``microcosm.build.termination``), which
     closes the staging run as failed and records a termination with the
-    emitter, and the program then exits 143.
+    emitter, and the program then exits 143. One that arrives once the build
+    is already closing its staging run after a failure, or during the final
+    commit check, ends only that step (``_BuildProgress.fail``), and the
+    program keeps the failure's exit status.
 
     A build returns ``None``. ``--dry-run-gates-report`` leaves through
     ``SystemExit`` with the report's exit code: 1 on any certain failure, 2 on
