@@ -42,20 +42,32 @@ def test_release_frees_rules_pinned_in_a_branch_the_formula_deleted(
     from policyengine_us import Simulation
     from policyengine_us.tools import pinned_tbs
 
-    branch_lookups: list[str] = []
+    # Pin name -> where the newest pinned system was made: the branch name
+    # and whether that branch is a child of another simulation. The cache
+    # keeps only the newest per pin name. Weak, so recording keeps nothing.
+    newest: dict[str, tuple[weakref.ref, str, bool]] = {}
     original_lookup = pinned_tbs._get_pinned_tbs
 
-    def counted_lookup(base_tbs, pin_name, pin_function):
-        simulation = getattr(base_tbs, "simulation", None)
-        if getattr(simulation, "parent_branch", None) is not None:
-            branch_lookups.append(getattr(simulation, "branch_name", ""))
-        return original_lookup(base_tbs, pin_name, pin_function)
+    def recorded_lookup(base_tbs, pin_name, pin_function):
+        pinned = original_lookup(base_tbs, pin_name, pin_function)
+        previous = newest.get(pin_name)
+        if previous is None or previous[0]() is not pinned:
+            made_in = getattr(base_tbs, "simulation", None)
+            newest[pin_name] = (
+                weakref.ref(pinned),
+                str(getattr(made_in, "branch_name", "")),
+                getattr(made_in, "parent_branch", None) is not None,
+            )
+        return pinned
 
-    monkeypatch.setattr(pinned_tbs, "_get_pinned_tbs", counted_lookup)
+    monkeypatch.setattr(pinned_tbs, "_get_pinned_tbs", recorded_lookup)
     simulation = Simulation(situation=_new_york_household())
     simulation.calculate("marginal_tax_rate", 2024)
-    assert any(name.startswith("mtr_for_adult_") for name in branch_lookups)
-    assert not any(name.startswith("mtr_for_adult_") for name in simulation.branches)
+    _, branch_name, made_in_a_branch = newest["ny_pre_tcja_ctc"]
+    # The precondition: the newest pinned system was made in a marginal tax
+    # rate branch the formula has already deleted.
+    assert made_in_a_branch and branch_name.startswith("mtr_for_adult_")
+    assert branch_name not in simulation.branches
     released = weakref.ref(simulation)
 
     release_engine_simulation(simulation)

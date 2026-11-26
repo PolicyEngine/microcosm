@@ -503,11 +503,18 @@ def test_release_drops_rules_pinned_in_branches_a_formula_already_removed(
     looping_simulation = _stand_in_simulation(looping_system)
     looping_simulation.parent_branch = looping_simulation
     looping_system.simulation = looping_simulation
+    finished_base = deleted_branch_of(simulation)
     cache = {
         "deleted_branch": _pinned_entry(deleted_branch_of(simulation)),
         "deleted_branch_of_a_branch": _pinned_entry(deleted_branch_of(kept_branch)),
+        # A base already collected: the clone still names where it was made.
+        "dead_base_made_here": _pinned_entry(finished_base),
         "unrelated_with_a_parent_loop": _pinned_entry(looping_system),
     }
+    finished_base.simulation.tax_benefit_system = None
+    del finished_base
+    gc.collect()
+    assert cache["dead_base_made_here"][0]() is None
     unrelated_entry = cache["unrelated_with_a_parent_loop"]
     _install_pinned_rules_cache(monkeypatch, cache)
 
@@ -516,11 +523,27 @@ def test_release_drops_rules_pinned_in_branches_a_formula_already_removed(
     assert cache == {"unrelated_with_a_parent_loop": unrelated_entry}
 
 
-def _caches_the_release_leaves_alone(case: str):
-    """A fresh cache of each shape the release must not change."""
+class _ClonePropertyRaises:
+    """A clone whose ``simulation`` attribute raises when read."""
+
+    @property
+    def simulation(self):
+        raise RuntimeError("an engine attribute that raises")
+
+
+def _caches_the_release_leaves_alone(case: str, live_simulation):
+    """A fresh cache of each shape the release must not change.
+
+    ``live_simulation`` is an engine that is not being released.
+    """
     dead_base = _StandInSystem()
+    dead_base.simulation = live_simulation
     dead_entry = _pinned_entry(dead_base)
     del dead_base
+    live_base = _StandInSystem()
+    collected_clone = _StandInSystem()
+    dead_proxy = weakref.proxy(collected_clone)
+    del collected_clone
     return {
         "no-cache-attribute": None,
         "cache-not-a-dict": [("ny_pre_tcja_ctc",)],
@@ -528,13 +551,29 @@ def _caches_the_release_leaves_alone(case: str):
             "not_a_tuple": ["entry"],
             "empty": (),
             "not_weak": ("base", "tree", "clone"),
-            "dead_base": dead_entry,
+            "dead_base_made_elsewhere": dead_entry,
+        },
+        "clones-that-raise": {
+            "dead_proxy": (weakref.ref(live_base), None, dead_proxy),
+            "raising_attribute": (
+                weakref.ref(live_base),
+                None,
+                _ClonePropertyRaises(),
+            ),
+            # Not an entry the release recognises; it keeps the base alive.
+            "holds_the_live_base": live_base,
         },
     }[case]
 
 
 @pytest.mark.parametrize(
-    "case", ["no-cache-attribute", "cache-not-a-dict", "unrecognised-or-dead-entries"]
+    "case",
+    [
+        "no-cache-attribute",
+        "cache-not-a-dict",
+        "unrecognised-or-dead-entries",
+        "clones-that-raise",
+    ],
 )
 def test_release_leaves_pinned_rules_caches_it_does_not_recognise_alone(
     monkeypatch, case
@@ -543,7 +582,10 @@ def test_release_leaves_pinned_rules_caches_it_does_not_recognise_alone(
     system = _StandInSystem()
     simulation = _stand_in_simulation(system)
     system.simulation = simulation
-    cache = _caches_the_release_leaves_alone(case)
+    live_system = _StandInSystem()
+    live_simulation = _stand_in_simulation(live_system)
+    live_system.simulation = live_simulation
+    cache = _caches_the_release_leaves_alone(case, live_simulation)
     module = _install_pinned_rules_cache(monkeypatch, cache)
     if cache is None:
         del module._PINNED_TBS_CACHE

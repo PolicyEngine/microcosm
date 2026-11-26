@@ -454,21 +454,25 @@ def test_reform_pass_leaves_no_pinned_copy_of_the_rules_behind(
     ``_PINNED_TBS_CACHE``, and the clone's copied ``simulation`` attribute
     keeps the batch engine and the reformed parameter tree alive after the
     reform is finished (214,858 parameters on this fixture, about 1.3 GiB).
-    Releasing each batch engine removes that entry, so no parameter the SALT
-    refund pass added is still alive once its reform is finished. The lookups
-    are counted, so the test fails if the pass stops reaching them."""
+    Releasing each batch engine removes that entry, so no parameter the
+    reform pass added is still alive once its reform is finished.
+
+    The reform is the shipped SALT refund probe's (``salt_refund_income``
+    neutralized), scored on ``state_income_tax`` for 2024 as the probe was
+    on policyengine-us 2.2.1, built here so a manifest change to the probe
+    does not move the test off the lookup. The lookups are counted, so the
+    test fails if the pass stops reaching them. On policyengine-us 2.88.6 or
+    later the cache holds nothing strongly, so this holds there without the
+    removal too."""
     from policyengine_core.parameters import Parameter
+    from policyengine_core.reforms import Reform
     from policyengine_us.tools import pinned_tbs
 
-    from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
+    class NeutralizeSaltRefundIncome(Reform):
+        def apply(self):
+            self.neutralize_variable("salt_refund_income")
 
     source = _write_engine_h5(builder, tmp_path / "export", _GUARD_HOUSEHOLDS)
-    probe = next(
-        probe
-        for probe in us_release_reform_coverage_probes()
-        if probe.id == "salt_refund_income_neutralization"
-    )
-    assert (probe.budget_measure, probe.period) == ("state_income_tax", 2024)
     lookups: list[str] = []
     original_lookup = pinned_tbs._get_pinned_tbs
 
@@ -487,8 +491,8 @@ def test_reform_pass_leaves_no_pinned_copy_of_the_rules_behind(
     )
     consumer = scorer.open_consumer("fixture", ())
     before = live_parameter_ids()
-    consumer.simulate(_build_reform(probe)).calculate(
-        probe.budget_measure, period=probe.period
+    consumer.simulate(NeutralizeSaltRefundIncome).calculate(
+        "state_income_tax", period=2024
     )
     scorer.finish_consumer(consumer)
     scorer.close()
