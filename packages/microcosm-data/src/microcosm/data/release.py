@@ -1,8 +1,9 @@
 """Publish a release and move its approved repository pointer.
 
-**No UK or US release publishes here.** The UK national and dense releases,
-each UK local-area release that the dataset registry names, and the US
-releases (:data:`~microcosm.data.contract.US_RELEASES`) publish each build into its
+**No UK, US or BE release publishes here.** The UK national and dense
+releases, each UK local-area release that the dataset registry names, the US
+releases (:data:`~microcosm.data.contract.US_RELEASES`) and BE's releases
+(:data:`~microcosm.data.contract.BE_RELEASES`) publish each build into its
 own folder, ``releases/<release>/<build>/``, through the emitter's
 ``publish_release`` call (``microcosm-publish-release-build``, in
 ``microcosm-build``), and the repository's ``releases.json`` records which
@@ -70,6 +71,7 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.data.contract import (
+    BE_RELEASES,
     BUILD_MANIFEST_FILE_ROLE,
     CHECKSUMS_FILE,
     CHECKSUMS_FILE_ROLE,
@@ -329,13 +331,15 @@ BUILD_FOLDER_PUBLICATION_COMMAND = "microcosm-publish-release-build"
 #: Where a release that does not publish into build folders goes. Once its
 #: repository records its builds in ``releases.json``, every US build
 #: publishes into one of the US releases (``microcosm.data.contract.
-#: US_RELEASES``), and the other UK releases take no new builds; the UK
-#: switch moved the June 2023 build into a build folder of release
+#: US_RELEASES``), every BE build into one of BE's (``microcosm.data.
+#: contract.BE_RELEASES``), and the other UK releases take no new builds;
+#: the UK switch moved the June 2023 build into a build folder of release
 #: ``populace-uk-2023``.
 TAGGED_RELEASE_ADVICE = (
     "US builds publish into microcosm-us-2024-national, -local, "
-    "-receipt-donor, -evidence, -annual or -local-annual, in a directory "
-    "named after the release; "
+    "-receipt-donor, -evidence, -annual or -local-annual, and BE builds into "
+    f"{' or '.join(sorted(BE_RELEASES))}, in a directory named after the "
+    "release; "
     "the June 2023 UK release and populace-uk-<year>-<tier>-k<N> releases "
     "take no new builds once the UK repository records its builds in "
     "releases.json."

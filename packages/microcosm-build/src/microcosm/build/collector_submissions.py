@@ -25,6 +25,7 @@ from typing import Any, Final, Protocol
 from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
 __all__ = [
+    "BE_COLLECTOR_COUNTRY_CODE",
     "COLLECTOR_RECEIPT_POLL_SECONDS",
     "COLLECTOR_SUBMISSION_WAIT_SECONDS",
     "UK_COLLECTOR_COUNTRY_CODE",
@@ -41,6 +42,10 @@ __all__ = [
 UK_COLLECTOR_COUNTRY_CODE: Final = "UK"
 #: The country code a US build's collector provenance names.
 US_COLLECTOR_COUNTRY_CODE: Final = "US"
+#: The country code a BE build's collector provenance names: the collector's
+#: calibration tree handler knows the country as ``BE`` and finds its
+#: release repository under it.
+BE_COLLECTOR_COUNTRY_CODE: Final = "BE"
 #: How long a build or command waits, once a described bundle or release
 #: change has landed on Hugging Face, for the collector to accept its
 #: submissions. A bundle's or publication's collector row may have retried

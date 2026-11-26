@@ -94,5 +94,6 @@ def test_childcare_activation_preserves_existing_calibration_gates() -> None:
     assert by_id["uk_calibration_reference_coverage"]["criticality"] == (
         "release_blocking"
     )
-    # María's ruling (2026-09-20, microcosm#965): the doctrine rule is family_equal.
-    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "family_equal"
+    # María's rulings (2026-09-20, microcosm#965; 2026-11-25, microcosm#1710): the
+    # doctrine rule is loss_family_equal, family_equal over loss families.
+    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "loss_family_equal"

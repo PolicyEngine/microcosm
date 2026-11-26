@@ -474,6 +474,7 @@ class _NationalKernel(KernelBase):
     def implementation_hash(self) -> str:
         import microcosm.calibrate.artifacts as calibrate_artifacts
         import microcosm.calibrate.matrix as calibrate_matrix
+        import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
 
         from . import receipt_counts, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
@@ -492,6 +493,10 @@ class _NationalKernel(KernelBase):
             measure_simulation,
             national_calibration,
             national_doctrine,
+            # national_doctrine computes the problem's loss weights with the
+            # shared rules (microcosm#1729): an edit to a shared rule must
+            # re-key the national problem.
+            calibrate_target_loss_rules,
             support_floor_rules,
             # The constraint matrices and their encoding, as the dense kernels
             # hash them (microcosm#1492). Not calibrate.solve: neither the
@@ -722,8 +727,8 @@ def encode_uk_national_problem(
     columns with ``resolver_factory=None``), materialise the register on
     the adapter, compile the constraint matrix row for row, restore the
     pristine tables, and encode the problem with the national doctrine's
-    ``family_equal`` loss weights, mass reason and bounds in its bindings,
-    which the shared dense solve node reads.
+    loss weights (its ``target_weight_rule``), mass reason and bounds in its
+    bindings, which the shared dense solve node reads.
 
     ``support_floor`` (the register's signed floor and its evaluation date,
     microcosm#1095 U3) drops the in-scope rows the frame supports with too
@@ -798,7 +803,15 @@ def encode_uk_national_problem(
         floor_receipt = applied.receipt
     families = [spec.family for spec in registry.specs]
     rule = str(doctrine["target_weight_rule"])
-    target_loss_weights = uk_national_target_loss_weights(families, rule=rule)
+    # loss_family_equal places a split family's rows by contract target
+    # (microcosm#1710); the register family stays every row's family below.
+    target_loss_weights = uk_national_target_loss_weights(
+        families,
+        rule=rule,
+        contract_target_ids=[
+            (spec.metadata or {}).get("contract_target_id") for spec in registry.specs
+        ],
+    )
     mass_reason = national_calibration_mass_reason(families)
     ids = frame.table("household")["household_id"].tolist()
     levels = national_target_geography_levels(registry)

@@ -8,7 +8,8 @@ the age distribution) against a fake engine on a small nested frame and pin
 the plan's contract: output identical to the unbatched path, batches that
 partition the pool, one live engine at a time, the SPM selection on every
 construction, one reform system per reform (handed to each batch engine
-without ``reform=``), one baseline pass per plan, ascending periods per engine,
+without ``reform=``), one baseline pass per plan (one merged pass for
+registered plans), ascending periods per engine,
 engine-free recording, the ``_main`` and writer wiring, the scored-sha
 binding, the nesting, order and weight premises, the additivity guards
 (population aggregates, baseline-branch readers, behavioral-response
@@ -36,7 +37,7 @@ import sys
 import warnings
 import zlib
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -347,7 +348,20 @@ class _EngineLog:
         self.stored_inputs: dict[str, tuple[int, ...]] = {}
 
 
-def _fake_engine(log: _EngineLog):
+def _rule_module_name(system) -> str:
+    """The name policyengine-core gives a system's variable module."""
+    return f"{id(system)}_-1_income_tax"
+
+
+def _fake_engine(log: _EngineLog, *, variables_dir: Path | None = None):
+    """A fake engine; with ``variables_dir``, each rules build registers a module.
+
+    policyengine-core registers every variable module of every system it builds
+    in ``sys.modules`` under ``<system id>_<path hash>_<file stem>`` and never
+    removes it. A fake system built with ``variables_dir`` registers one such
+    module, whose file is under ``variables_dir``.
+    """
+
     class FakeSystem:
         def __init__(self, reform=None) -> None:
             self.reform = reform
@@ -355,6 +369,10 @@ def _fake_engine(log: _EngineLog):
                 {} if reform is None else reform.parameters
             )
             log.systems.append(self)
+            if variables_dir is not None:
+                module = ModuleType(_rule_module_name(self))
+                module.__file__ = str(variables_dir / "income_tax.py")
+                sys.modules[module.__name__] = module
 
     class FakeHolder:
         def __init__(self, periods) -> None:
@@ -422,6 +440,29 @@ def _fake_engine(log: _EngineLog):
 
 
 @pytest.fixture
+def stand_in_rule_modules(monkeypatch, tmp_path):
+    """A stand-in installed policyengine-us whose variables live in a fixture dir.
+
+    The module-removal helper finds the installed engine's variables directory
+    through ``sys.modules["policyengine_us"]``. Returns that directory, to pass
+    as ``_scorer(..., variables_dir=...)``.
+    """
+    variables_dir = tmp_path / "stand-in-variables"
+    engine = ModuleType("policyengine_us")
+    engine.CountryTaxBenefitSystem = SimpleNamespace(variables_dir=variables_dir)
+    engine.Microsimulation = SimpleNamespace(
+        default_tax_benefit_system_instance=SimpleNamespace()
+    )
+    monkeypatch.setitem(sys.modules, "policyengine_us", engine)
+    registered_before = set(sys.modules)
+    yield variables_dir
+    for name in set(sys.modules) - registered_before:
+        module = sys.modules.get(name)
+        if str(getattr(module, "__file__", "")).startswith(str(variables_dir)):
+            del sys.modules[name]
+
+
+@pytest.fixture
 def fake_reforms(monkeypatch, builder):
     """Engine-free reform objects for the shipped probes and specs.
 
@@ -477,7 +518,23 @@ def _written_h5(tmp_path: Path) -> Path:
     return path
 
 
-def _scorer(builder, frame, log, batch_size, tmp_path, *, loads=None):
+def _scorer(
+    builder,
+    frame,
+    log,
+    batch_size,
+    tmp_path,
+    *,
+    loads=None,
+    baseline_plans=None,
+    variables_dir=None,
+):
+    """A scorer over ``frame`` on the fake engine.
+
+    ``baseline_plans`` registers consumers' plans for one shared baseline
+    pass, as ``_open_post_export_scorer`` does with the recorded plan.
+    ``variables_dir`` makes each fake rules build register a module there.
+    """
     path = _written_h5(tmp_path)
 
     def load_frame(load_path, *, expected_sha256):
@@ -485,12 +542,93 @@ def _scorer(builder, frame, log, batch_size, tmp_path, *, loads=None):
             loads.append((Path(load_path), expected_sha256))
         return frame
 
+    registered = {} if baseline_plans is None else {"baseline_plans": baseline_plans}
     return builder._HouseholdBatchedPostExportScorer(
         path,
         maximum_microsim_batch_size=batch_size,
-        microsimulation_cls=_fake_engine(log),
+        microsimulation_cls=_fake_engine(log, variables_dir=variables_dir),
         dataset_from_frame=lambda batch_frame: batch_frame,
         load_frame=load_frame,
+        **registered,
+    )
+
+
+def _full_in_sample_fit(period: int):
+    """A calibration fit covering every in-sample JCT reform, as a release
+    fit does, so reform validation simulates only the out-of-sample specs."""
+    fitted = [
+        spec
+        for spec in reform_validation_module.load_default_reform_specs(period=period)
+        if spec.in_sample
+    ]
+    return SimpleNamespace(
+        diagnostics=[
+            SimpleNamespace(
+                final_estimate=-1_000.0 * (index + 1), target=-900.0 * (index + 1)
+            )
+            for index, _ in enumerate(fitted)
+        ],
+        problem=SimpleNamespace(
+            targets=[SimpleNamespace(name=spec.id) for spec in fitted]
+        ),
+    )
+
+
+def _run_planned_consumers(scorer, plan, consumers):
+    """Open, run and finish each planned consumer in run order, as ``_main``
+    does, with the plan's baseline keys and reform pass count. Returns each
+    consumer's output and served baseline values."""
+    outputs, served = {}, {}
+    for name, consumer in consumers.items():
+        scoring = scorer.open_consumer(
+            name,
+            plan.baseline_plan(name),
+            planned_reform_passes=plan.planned_reform_passes(name),
+        )
+        outputs[name] = consumer(scoring.simulate)
+        served[name] = dict(scoring._baseline)
+        scorer.finish_consumer(scoring)
+    return outputs, served
+
+
+def _comparable_output(output):
+    """A consumer's output in a form ``==`` compares exactly."""
+    if hasattr(output, "passed") and hasattr(output, "details"):
+        return (output.passed, tuple(output.failures), output.details)
+    if isinstance(output, tuple):
+        return tuple(np.asarray(item).tolist() for item in output)
+    return output
+
+
+def _record_pass_labels(scorer) -> list[str]:
+    """Record the label of every batch-outer pass ``scorer`` runs, so a test
+    can tell the merged baseline pass from a fallback to separate passes."""
+    labels: list[str] = []
+    score = scorer._score
+
+    def recording_score(keys, **options):
+        labels.append(options["label"])
+        return score(keys, **options)
+
+    scorer._score = recording_score
+    return labels
+
+
+def _same_bytes(observed, expected) -> bool:
+    """Values and weights of two scored results are byte-identical."""
+    values, reference = np.asarray(observed.values), np.asarray(expected.values)
+    if values.dtype != reference.dtype or values.shape != reference.shape:
+        return False
+    if values.dtype == object:
+        same_values = values.tolist() == reference.tolist()
+    else:
+        same_values = values.tobytes() == reference.tobytes()
+    weights = np.asarray(observed.weights)
+    reference_weights = np.asarray(expected.weights)
+    return (
+        same_values
+        and weights.dtype == reference_weights.dtype
+        and weights.tobytes() == reference_weights.tobytes()
     )
 
 
@@ -778,11 +916,14 @@ _MEDICAID_HOUSEHOLDS = (
 )
 
 
-def _write_engine_h5(builder, directory: Path, households) -> Path:
+def _write_engine_h5(
+    builder, directory: Path, households, *, person_inputs=None
+) -> Path:
     """Write ``households`` as a release H5 through the engine's own writer.
 
     One tax unit, SPM unit and family per household; household ``i`` weighs
-    ``1,000 * i``.
+    ``1,000 * i``. ``person_inputs`` maps an extra person input column to its
+    values, one per person in household order.
     """
     from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
@@ -805,6 +946,8 @@ def _write_engine_h5(builder, directory: Path, households) -> Path:
                 }
             )
     person = pd.DataFrame(rows)
+    for column, values in (person_inputs or {}).items():
+        person[column] = np.asarray(values, dtype=np.float64)
     household_ids = np.arange(1, len(households) + 1, dtype=np.int64)
     frame = Frame(
         {

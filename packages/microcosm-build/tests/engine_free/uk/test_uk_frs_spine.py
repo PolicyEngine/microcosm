@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     FRS_UC_CARER_ELEMENT_COLUMN,
     FRS_UC_CLAIM_MONTHS_COLUMN,
     FRS_UC_CLAIM_MONTHS_NOT_LINKED,
+    FRS_UC_HOUSING_ELEMENT_COLUMN,
     FRS_UC_LCW_STATUS_COLUMN,
     OWNER_MANAGER_COLUMNS,
     REGION_MAP,
@@ -84,6 +85,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     frs_lcwra_proxy,
     frs_uc_carer_element,
     frs_uc_claim_months,
+    frs_uc_housing_element_status,
     frs_uc_lcw_status,
     parse_frs_uc_claim_start,
     scottish_water_and_sewerage_weekly,
@@ -3744,8 +3746,6 @@ def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
             str(tmp_path / "put2223uk.tab"),
             "--hmrc-ods",
             str(tmp_path / "hmrc.ods"),
-            "--staging-upload-interval-seconds",
-            "0",
         ]
     )
     state = SimpleNamespace(build_id="uk-spine-attempt-fixture")
@@ -3753,7 +3753,7 @@ def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
     bundle = spine_build._create_staging_run_bundle(args, state=state)
 
     assert bundle.emitter_client is emitter.client
-    bundle.stage("input_verification", force_upload=True)
+    # The run's start reached the emitter when the bundle opened.
     request = emitter.client.run_file_requests[-1]
     assert (request.repository, request.run_id, request.prefix) == (
         "policyengine/populace-uk-staging",
@@ -5393,6 +5393,102 @@ class TestUCCarerElementCarrier:
         assert {value for key, value in status.items() if key != 1001} == {"NOT_LINKED"}
 
 
+class TestUCHousingElementCarrier:
+    """DWP's housing costs element on a linked claim's statement (B1 of microcosm#1710)."""
+
+    @staticmethod
+    def _benefits(rows) -> pd.DataFrame:
+        return pd.DataFrame(
+            rows,
+            columns=["benunit_id", "person_id", "benefit", "uchousel", "ucstart_raw"],
+        )
+
+    def test_the_uc_rows_person_carries_whether_the_statement_holds_it(self) -> None:
+        benefits = self._benefits(
+            [
+                (101, 1001, 95, 85.5, "07/15/2024"),  # an element in the statement
+                (201, 2002, 95, 0.0, "01/15/2022"),  # none, on the partner's row
+                (301, 3001, 95, np.nan, ""),  # no linked record
+                (401, 4001, 96, 10.0, "07/15/2024"),  # PIP daily living, not UC
+                (501, 5001, 95, 50.0, ""),  # an amount on a claim with no start
+                (601, 6001, 95, np.nan, "07/15/2024"),  # a linked claim, no amount
+            ]
+        )
+        person = pd.DataFrame(
+            {"person_id": [1001, 1002, 2001, 2002, 3001, 4001, 5001, 6001]}
+        )
+
+        assert frs_uc_housing_element_status(benefits, person).tolist() == [
+            "PAID",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NONE",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NOT_LINKED",
+            "NOT_LINKED",
+        ]
+
+    def test_the_carrier_refuses_what_it_cannot_read(self) -> None:
+        person = pd.DataFrame({"person_id": [1001, 1002]})
+        with pytest.raises(KeyError, match="uchousel"):
+            frs_uc_housing_element_status(
+                pd.DataFrame(
+                    {
+                        "benunit_id": [101],
+                        "person_id": [1001],
+                        "benefit": [95],
+                        "ucstart_raw": ["07/15/2024"],
+                    }
+                ),
+                person,
+            )
+        with pytest.raises(KeyError, match="benefits.ucstart"):
+            frs_uc_housing_element_status(
+                pd.DataFrame(
+                    {
+                        "benunit_id": [101],
+                        "person_id": [1001],
+                        "benefit": [95],
+                        "uchousel": [1.0],
+                    }
+                ),
+                person,
+            )
+        linked = "07/15/2024"
+        with pytest.raises(ValueError, match="negative UCHOUSEL"):
+            frs_uc_housing_element_status(
+                self._benefits([(101, 1001, 95, -1.0, linked)]), person
+            )
+        with pytest.raises(ValueError, match="two FRS UC rows"):
+            frs_uc_housing_element_status(
+                self._benefits(
+                    [(101, 1001, 95, 1.0, linked), (101, 1002, 95, 1.0, linked)]
+                ),
+                person,
+            )
+        with pytest.raises(ValueError, match="does not hold"):
+            frs_uc_housing_element_status(
+                self._benefits([(101, 9999, 95, 1.0, linked)]), person
+            )
+
+    def test_the_spine_stores_the_carrier_from_the_raw_tab(
+        self, tmp_path: Path
+    ) -> None:
+        tables = _fixture_tables()
+        tables["benefits"].append({**_uc_row(1, "07/15/2024", 2), "UCHOUSEL": 75.0})
+        tables["benefits"].append({**_uc_row(2, "07/15/2024"), "UCHOUSEL": 0.0})
+        stage = _write_fixture(tmp_path, tables)
+        person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+        status = person.set_index("person_id")[FRS_UC_HOUSING_ELEMENT_COLUMN].to_dict()
+        assert status[1001] == "PAID"
+        assert status[2001] == "NONE"
+        assert {value for key, value in status.items() if key not in (1001, 2001)} == {
+            "NOT_LINKED"
+        }
+
+
 class TestDWPCarerCareHours:
     """B3 (microcosm#1095; María's ruling of 2026-11-11): DWP's UC carer element
     on a linked claim puts a carer at the 35-hour line where the survey has none."""
@@ -5912,3 +6008,99 @@ def test_a_child_tab_without_chearns_is_refused(tmp_path: Path) -> None:
     stage = _write_fixture(tmp_path, tables)
     with pytest.raises(KeyError, match="CHEARNS"):
         UKFRSSpineStageTransform(tmp_path, stage=stage)(uk_frs_spine_seed_frame())
+
+
+def test_a_failed_spine_run_confirms_its_final_commit_before_its_outcome(tmp_path):
+    """The emitter drops events after a run's outcome, so the check goes first."""
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    client = FakeEmitterClient()
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(
+            run_id="uk-spine-final",
+            country_code="GB",
+            pipeline="uk_national_spine",
+            candidate_id="uk-spine-final",
+            producer_id="producer-a",
+        ),
+        client=client,
+    )
+    bundle = StagingRunBundleWriterV2(
+        run_id="uk-spine-final",
+        country_code="GB",
+        operation_id="uk_frs_spine",
+        pipeline_id="uk_national_spine",
+        pipeline_version="2026.10",
+        candidate_id="uk-spine-final",
+        local_dir=tmp_path / "staging",
+        run_kind="smoke",
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        emitter_client=client,
+    )
+
+    spine_build._close_failed_telemetry(bundle, emitter, RuntimeError("spine failed"))
+
+    assert client.read_back_waits == [120.0]
+    final_commit = [
+        (event["event_type"], event["stage_id"], event["status"])
+        for event in emitter.events
+        if event["details"].get("check") == "staging_final_commit"
+    ]
+    assert final_commit == [("progress", None, "completed")]
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["failed"]
+
+
+def test_an_interrupt_during_a_spine_refusal_checks_by_receipt_only(tmp_path):
+    """A SIGTERM that lands while a refusal unwinds closes the run blocked,
+    and its check must fit the grace before SIGKILL."""
+    from microcosm.build.gate_battery import GateBatteryBlockedError
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from microcosm.build.termination import BuildTerminatedError
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    client = FakeEmitterClient()
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(
+            run_id="uk-spine-refused",
+            country_code="GB",
+            pipeline="uk_national_spine",
+            candidate_id="uk-spine-refused",
+            producer_id="producer-a",
+        ),
+        client=client,
+    )
+    bundle = StagingRunBundleWriterV2(
+        run_id="uk-spine-refused",
+        country_code="GB",
+        operation_id="uk_frs_spine",
+        pipeline_id="uk_national_spine",
+        pipeline_version="2026.10",
+        candidate_id="uk-spine-refused",
+        local_dir=tmp_path / "staging",
+        run_kind="smoke",
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        emitter_client=client,
+    )
+    terminated = BuildTerminatedError()
+    terminated.__context__ = GateBatteryBlockedError(
+        "spine",
+        ["[uk_spine_check] missed"],
+        tmp_path / "missing-report.json",
+        blocking_gate_ids=["uk_spine_check"],
+    )
+
+    spine_build._close_failed_telemetry(bundle, emitter, terminated)
+
+    assert "read_back_run_files" not in client.calls
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["blocked"]

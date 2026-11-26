@@ -21,6 +21,13 @@ from microcosm.data.registry import REGISTRY, DatasetSpec
 UK_NATIONAL_BUILD = "uk-frs-calibration-attempt-20260920T120000Z-deadbeef"
 UK_DENSE_BUILD = "uk-local-candidate-f100-s42-20260920T120000Z-deadbeef"
 UK_LOCAL_BUILD = "uk-local-candidate-k55000-20260920T120000Z-deadbeef"
+#: BE's releases in the build-folder layout, one per population year, as
+#: tracker task 5b · 1 agreed them; ``microcosm.data.contract.BE_RELEASES``
+#: holds the same two names.
+BE_RELEASE_IDS = ("microcosm-be-2025-national", "microcosm-be-2026-national")
+#: A BE build every BE fixture names by default, in the form of BE's
+#: builds: the builder, the year, the Chronicle commit and the build time.
+BE_BUILD = "microcosm-be-2025-chronicle-0000000-20261201T000000Z"
 
 #: The fields that named the build before the build-folder layout.
 _RETIRED_BUILD_FIELDS = ("build_id", "attempt_id", "cut_tag")

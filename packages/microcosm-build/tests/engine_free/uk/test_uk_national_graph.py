@@ -285,7 +285,7 @@ def test_national_graph_composes_the_bound_checkpoint_line():
         "spine_provenance",
     ]
     problem = national.graph.node(NATIONAL_PROBLEM_NODE)
-    assert problem.params["target_weight_rule"] == "family_equal"
+    assert problem.params["target_weight_rule"] == "loss_family_equal"
     assert problem.params["target_loss_cap"] == 10.0
     assert problem.params["max_weight_ratio"] == 10.0
     assert {source.name for source in national.graph.sources} == {
@@ -368,9 +368,15 @@ def test_national_problem_binds_the_seam_doctrine(tmp_path, monkeypatch):
     assert bindings["mass_reason"] == national_calibration_mass_reason(families)
     assert (
         bindings["target_loss_weights"]
-        == uk_national_target_loss_weights(families, rule="family_equal").tolist()
+        == uk_national_target_loss_weights(
+            families,
+            rule="loss_family_equal",
+            contract_target_ids=[
+                spec.metadata.get("contract_target_id") for spec in registry.specs
+            ],
+        ).tolist()
     )
-    assert bindings["target_weight_rule"] == "family_equal"
+    assert bindings["target_weight_rule"] == "loss_family_equal"
     assert bindings["target_loss_cap"] == 10.0
     assert bindings["max_weight_ratio"] == 10.0
     assert bindings["mass_rule"] == "free"
@@ -438,7 +444,11 @@ def test_national_solve_is_the_seam_solve(tmp_path, monkeypatch):
         l0_lambda=doctrine.l0_lambda,
         target_loss_cap=doctrine.target_loss_cap,
         target_loss_weights=uk_national_target_loss_weights(
-            families, rule=doctrine.target_weight_rule
+            families,
+            rule=doctrine.target_weight_rule,
+            contract_target_ids=[
+                spec.metadata.get("contract_target_id") for spec in registry.specs
+            ],
         ),
     )
     assert np.array_equal(weights.values, result.weights)
@@ -520,7 +530,10 @@ def test_national_gates_evaluate_the_seam_scope_and_record_the_evidence(
     assert calibration["weights"]["calibration_mass_change"]["entity"] == "household"
     assert calibration["solve"]["n_targets"] == 1
     assert calibration["solve"]["n_households"] == 4
-    assert calibration["parameters"]["doctrine"]["target_weight_rule"] == "family_equal"
+    assert (
+        calibration["parameters"]["doctrine"]["target_weight_rule"]
+        == "loss_family_equal"
+    )
     assert calibration["parameters"]["doctrine"]["epochs"] == 5
     assert calibration["target_materialization"]["prepared_count"] == 1
     assert "measure_resolution" not in calibration

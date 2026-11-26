@@ -1281,8 +1281,15 @@ def _append_path_argument(command: list[str], flag: str, value: Path | None) -> 
 
 
 def _staged_subprocess_environment() -> dict[str, str]:
+    from microcosm.build.us_runtime.take_up_contract import (
+        us_engine_abi_lock_check_environment,
+    )
+
     environment = os.environ.copy()
     environment.setdefault("PYTHONHASHSEED", "0")
+    # Each child compares the policyengine-us lock file and engine version with
+    # this process's check instead of deriving the lock again.
+    environment.update(us_engine_abi_lock_check_environment())
     # The child starts no emitter: this process records its telemetry.
     return child_stage_environment(environment)
 

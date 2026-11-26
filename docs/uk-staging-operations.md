@@ -64,9 +64,14 @@ configuration. `microcosm.build.staging_storage` owns the hand-over of run
 files to the build's emitter and its repeated-failure policy, used by both
 version 1 and version 2, and the read access that fetches a staged dataset;
 `microcosm.build.staging_dataset` hands the staged dataset to the emitter.
-The emitter commits every pending run file of a repository in one commit per
-upload interval, with the build's own credential, and reads a run back on
-request.
+A writer hands a run's files to the emitter at three points only: when the
+run starts, when a result file (an artifact) is added and when the run ends.
+Each hand-over is forced, so the emitter commits it at its next cycle, in one
+commit per repository carrying every pending file, with the build's own
+credential; it skips files whose bytes it has already committed. Stage events
+and calibration progress in between stay local until the next hand-over, and
+the build's hosted telemetry is the live record of a running build. The
+emitter also reads a run back on request.
 `microcosm.build.staging_cli` adds and validates common command-line options
 from a supplied repository configuration. The UK repository identifier and
 environment-variable name live in `microcosm.build.uk_runtime.staging`; the
@@ -137,11 +142,32 @@ is a stub over the same driver) support these staging modes:
   contract version 2) written into build evidence.
 
 Common options are `--staging-dir`, `--staging-repo-id`,
-`--staging-run-id`, `--staging-candidate-id`,
-`--staging-upload-interval-seconds`, and `--staging-read-back`. An empty
-repository identifier is invalid in remote mode. Authenticated read-back is
-valid only in remote mode: the emitter commits the run's pending files and
-compares the Hub's copy of each with the bytes it committed. Once read-back
+`--staging-run-id`, `--staging-candidate-id` and `--staging-read-back`. An
+empty repository identifier is invalid in remote mode.
+
+Once a remote run has completed, failed or been refused by its release checks,
+the build confirms its final commit before it reports the run's outcome to its
+hosted telemetry: the emitter commits the run's pending files, waiting up to
+120 seconds, then compares the Hub's copy of each with the bytes it committed
+(one more request of up to 60 seconds). After an interrupt (a SIGTERM or
+Ctrl-C) the build reads the emitter's receipts instead until no file is
+pending, waiting up to 30 seconds (each receipt query is a request of up to 5
+seconds more), so the close-out ends inside the 60 seconds a supervisor allows
+between SIGTERM and SIGKILL; the emitter finishes its commits after the build
+has exited. The check stops at once when the emitter does not answer
+(`reason` `unavailable`). The build reports the result as one
+`progress` event outside any stage, `completed` or `failed`, whose details
+hold `check` (`staging_final_commit`), `method` (`read_back` or `receipt`),
+`confirmed`, `reason` and `files_compared`; being outside any stage, it does
+not change the stage a failure is recorded in. A check that fails, or that an
+interrupt ends (`reason` `interrupted`), prints a warning and changes neither
+the build's outcome nor the run's delivery summary. A run whose final state
+the emitter did not accept is not checked (`reason` `not_handed_over`), and a
+missing credential (`CREDENTIAL_MISSING`) ends the check at once.
+
+`--staging-read-back`, valid only in remote mode, makes that check strict:
+the authenticated read-back is recorded in the delivery summary (`read_back`
+`passed` or `failed`), and a failed one fails the build. Once read-back
 has passed or failed, its verdict owns the delivery's `last_error_code`: the
 refresh hand-over that follows a passed read-back is best effort, and if the
 emitter does not accept it the run keeps its verified delivery (the miss shows
@@ -228,7 +254,7 @@ in a key are left out), except the Orrery inputs: `graph.schema.json`,
 `graph.execution.json` and each `upstream-<sha256>.json` are `orrery_schema`,
 `execution_overlay` and `orrery_upstream`, the interface's roles, so the
 emitter submits them to the collector (see
-[UK graph publication](orrery-publication.md)). The manifest,
+[UK graph inputs](orrery-publication.md)). The manifest,
 `staged_manifest.json` and `sha256sums.txt` are `build_manifest`,
 `staged_manifest` and `checksums`. The
 emitter writes the bundle in one commit with the build's own credential, and
@@ -251,7 +277,7 @@ With that, the emitter submits the bundle's calibration diagnostics (with the
 build manifest as `build_manifest`) to the collector once the Hugging Face
 commit lands, as a `calibration-diagnostics` submission whose folder is
 `staged/<run_id>`, and its Orrery inputs as an `orrery-inputs` submission
-([UK graph publication](orrery-publication.md)), with the build's Hugging
+([UK graph inputs](orrery-publication.md)), with the build's Hugging
 Face credential. Every emitter a
 build or the re-stage command starts has its collector submissions switched
 on (`telemetry_emitter.COLLECTOR_SUBMISSIONS`, through the setting emitter

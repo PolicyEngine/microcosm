@@ -36,6 +36,7 @@ def test_watched_formula_lists_match_the_installed_engine(builder) -> None:
     for response, subtree in builder.POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS.items():
         assert f"parameters(period).{subtree}" in sources[response], response
 
+
 @pytest.mark.slow
 def test_batched_scoring_matches_whole_pool_policyengine_us(builder, tmp_path) -> None:
     """(l) On a small written H5 with Maryland households, three probes and
@@ -181,6 +182,7 @@ def test_batched_scoring_matches_whole_pool_policyengine_us(builder, tmp_path) -
     )
     scorer.close()
 
+
 @pytest.mark.slow
 def test_additivity_guards_fire_on_the_installed_engine(builder, tmp_path) -> None:
     """The three additivity guards refuse on policyengine-us itself.
@@ -265,11 +267,13 @@ def test_additivity_guards_fire_on_the_installed_engine(builder, tmp_path) -> No
     assert (record["reform_systems"], record["reform_passes"]) == (2, 1)
     scorer.close()
 
+
 @pytest.mark.slow
 def test_shipped_baseline_plans_match_whole_file_policyengine_us(
     builder, tmp_path
 ) -> None:
-    """The smoke, validation and demographics baseline values match in 3 batches.
+    """The smoke, validation and demographics baseline values, served from
+    one merged pass in 3 batches, match a whole-file engine.
 
     The complete reform sweep runs separately through
     ``tools/sweep_us_post_export_scoring.py`` in bounded worker processes.
@@ -284,10 +288,157 @@ def test_shipped_baseline_plans_match_whole_file_policyengine_us(
         "demographics": 1,
     }
     scorer = builder._HouseholdBatchedPostExportScorer(
-        path, maximum_microsim_batch_size=3
+        path, maximum_microsim_batch_size=3, baseline_plans=plans
     )
     assert scorer.n_batches == 3
+    passes = _record_pass_labels(scorer)
     try:
         sweep._score_baselines(builder, scorer, path, plans)
+        # One merged pass, not a fallback to one pass per plan.
+        assert passes == ["merged baseline plan"]
     finally:
         scorer.close()
+
+
+@pytest.mark.slow
+def test_merged_baseline_and_shared_pre_obbba_pass_are_byte_identical(
+    builder, tmp_path
+) -> None:
+    """On policyengine-us, in 3 household batches: the one merged baseline
+    pass serves every planned consumer the same bytes (values, weights and
+    dtypes) as that consumer's own pass, and the pre-OBBBA state scored once
+    for both OBBBA groups gives each group's total the bytes of a pass of its
+    own (microcosm#1595). One person holds a taxable estate, so the estate
+    tax, which the shared pass computes after the income tax, is nonzero."""
+    people = sum(len(members) for _, _, members in _GUARD_HOUSEHOLDS)
+    path = _write_engine_h5(
+        builder,
+        tmp_path,
+        _GUARD_HOUSEHOLDS,
+        person_inputs={"taxable_estate_value": [30_000_000.0] + [0.0] * (people - 1)},
+    )
+    fit = _full_in_sample_fit(builder.PERIOD)
+    plan = builder._record_post_export_scoring_plan(
+        _plan_args(),
+        n_households=len(_GUARD_HOUSEHOLDS),
+        result=fit,
+        release_id="fixture-release",
+    )
+    assert plan.error is None and len(plan.baseline_plans) == 5
+    separate = builder._HouseholdBatchedPostExportScorer(
+        path, maximum_microsim_batch_size=3
+    )
+    merged = builder._HouseholdBatchedPostExportScorer(
+        path, maximum_microsim_batch_size=3, baseline_plans=plan.baseline_plans
+    )
+    assert merged.n_batches == separate.n_batches == 3
+    merged_passes = _record_pass_labels(merged)
+    try:
+        for name in plan.baseline_plans:
+            expected = separate.open_consumer(name, plan.baseline_plan(name))
+            observed = merged.open_consumer(name, plan.baseline_plan(name))
+            for key in plan.baseline_plan(name):
+                assert _same_bytes(observed._baseline[key], expected._baseline[key]), (
+                    name,
+                    key,
+                )
+            del expected, observed
+        # One merged pass, not a fallback to one pass per consumer.
+        assert merged_passes == ["merged baseline plan"]
+        assert not merged._merged_baseline
+
+        specs = reform_validation_module.load_default_reform_specs(
+            period=builder.PERIOD
+        )
+        obbba = [
+            spec for spec in specs if reform_validation_module._is_obbba_spec(spec)
+        ]
+        reform = reform_validation_module._build_parameter_reform(
+            reform_validation_module._merged_parameter_changes(obbba)
+        )
+        requests = tuple(
+            dict.fromkeys((spec.budget_measure, spec.period) for spec in obbba)
+        )
+        assert len(requests) == 2
+        consumer = separate.open_consumer("pre-OBBBA state", ())
+        shared = consumer.simulate(reform)
+        shared.prefetch(requests)
+        # Read the shared pass's values first: opening the next reform
+        # finishes this one, which then refuses further keys.
+        shared_values = {request: shared.calculate(*request) for request in requests}
+        for request in requests:
+            alone = consumer.simulate(reform).calculate(*request)
+            assert _same_bytes(shared_values[request], alone), request
+            assert alone.sum() != 0.0, request
+        assert consumer.record()["reform_passes"] == 1 + len(requests)
+    finally:
+        separate.close()
+        merged.close()
+
+
+@pytest.mark.slow
+def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
+    builder, tmp_path, monkeypatch
+) -> None:
+    """Each reform's rules build adds about 6,000 variable modules to
+    ``sys.modules`` that policyengine-core never removes (about 0.04 GiB a
+    reform pass on this fixture). The scorer removes them once the consumer
+    opens the next reform or finishes, and the scored arrays are byte-identical
+    to scoring without the removal."""
+    import policyengine_us
+
+    from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
+
+    source = _write_engine_h5(builder, tmp_path / "export", _GUARD_HOUSEHOLDS)
+    probes = {probe.id: probe for probe in us_release_reform_coverage_probes()}
+    chosen = [
+        probes["keogh_distribution_neutralization"],
+        probes["collectibles_gain_neutralization"],
+    ]
+    variables_dir = str(
+        Path(policyengine_us.CountryTaxBenefitSystem.variables_dir).absolute()
+    )
+
+    def rule_modules() -> set[str]:
+        return {
+            name
+            for name, module in tuple(sys.modules.items())
+            if re.fullmatch(r"\d+_-?\d+_\w+", name)
+            and str(getattr(module, "__file__", "")).startswith(variables_dir)
+        }
+
+    def score():
+        scorer = builder._HouseholdBatchedPostExportScorer(
+            source, maximum_microsim_batch_size=None
+        )
+        consumer = scorer.open_consumer("fixture", ())
+        before = rule_modules()
+        scored = []
+        for probe in chosen:
+            values = consumer.simulate(_build_reform(probe)).calculate(
+                probe.budget_measure, period=probe.period
+            )
+            scored.append((np.asarray(values).tobytes(), values.weights.tobytes()))
+        scorer.finish_consumer(consumer)
+        scorer.close()
+        return before, rule_modules(), scored
+
+    before, after, released = score()
+    assert after == before
+
+    class KeepEveryModule:
+        """A scope that removes nothing: post-export scoring before the fix."""
+
+        def __init__(self, variables_dir=None) -> None:
+            pass
+
+        def open(self):
+            return self
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(builder, "EngineVariableModuleScope", KeepEveryModule)
+    kept_before, kept_after, kept = score()
+    assert len(kept_after - kept_before) >= 2 * 1_000
+    assert released == kept

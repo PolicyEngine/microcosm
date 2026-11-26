@@ -42,6 +42,7 @@ __all__ = [
     "load_take_up_contract",
     "seeded_take_up_programs",
     "take_up_contract_identity",
+    "us_engine_abi_lock_check_environment",
 ]
 
 #: Engine-derived fields on each program entry that a test asserts against the
@@ -229,6 +230,24 @@ def load_take_up_contract() -> TakeUpContract:
     if projection is None:
         raise ValueError("US CountrySpec declares no take-up compatibility view.")
     return _parse_take_up_contract(projection)
+
+
+def us_engine_abi_lock_check_environment() -> dict[str, str]:
+    """Environment entries that let a child reuse this process's US lock check.
+
+    Loading the take-up contract checks ``engine_abi.lock.json`` once per
+    process. A process passes these entries to the base step processes and QRF
+    workers it starts; each compares the lock file's SHA-256, the installed
+    policyengine-us version and the take-up and sources domains with this
+    process's check instead of deriving the lock again, and refuses to run when
+    any of them differs. Empty where no attested check ran (policyengine-us is
+    not installed); a child then checks the lock file itself.
+    """
+
+    from microcosm.build.country_spec import country_engine_abi_lock_check_environment
+
+    load_take_up_contract()
+    return country_engine_abi_lock_check_environment("us")
 
 
 def take_up_contract_identity(

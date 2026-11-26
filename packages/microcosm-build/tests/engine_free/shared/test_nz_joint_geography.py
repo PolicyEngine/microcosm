@@ -554,6 +554,60 @@ def test_committed_support_executes_atomic_assignment_derivation_and_gate() -> N
         geography.validate_geography(corrupted, specification, supports)
 
 
+def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
+    """Run the shared assignment, derivation and validation on the committed
+    declarations that nz.geo.assign, nz.geo.derive and nz.geo.gate read, with
+    synthetic population counts, and check their outputs against the columns
+    the graph declares for those nodes.
+
+    Each layer's source, vintage and relation must equal the support column it
+    reads, or the shared binder refuses before any household is placed.
+    """
+    definition = _read(_SPEC / "transport_atomic_geography_support.json")
+    specification = _read(_SPEC / "geography_assignment.json")
+    (system,) = specification["systems"]
+    graph = {
+        node["id"]: node for node in _read(_SPEC / "transport_graph.json")["nodes"]
+    }
+
+    def declared(node_id: str) -> set[tuple[str, str, str]]:
+        return {
+            (output["entity"], output["column"], output["dtype"])
+            for output in graph[node_id]["outputs"]
+        }
+
+    references = _references()
+    support = geography.decode_atomic_support(
+        support_from_surface(
+            _surface(references, [1000] * len(references)),
+            definition,
+            system=system["id"],
+        )
+    )
+    supports = {system["id"]: support}
+    households = pd.DataFrame({"household_id": np.arange(len(support.arrays["area"]))})
+    placed = geography.assign_atomic(households, specification, supports)
+    assert {("household", c, "string") for c in placed} == declared("nz.geo.assign")
+    assigned = pd.concat([households, placed], axis=1)
+    derived = geography.derive_geography(assigned, specification, supports)
+    assert {("household", c, "string") for c in derived} == declared("nz.geo.derive")
+    completed = pd.concat([assigned, derived], axis=1)
+    assert (
+        geography.validate_geography(completed, specification, supports)["outcome"]
+        == "pass"
+    )
+    for position, layer in enumerate(system["layers"]):
+        for key in ("source", "vintage", "relation"):
+            changed = copy.deepcopy(specification)
+            changed["systems"][0]["layers"][position][key] = (
+                min(geography.RELATIONS - {layer[key]})
+                if key == "relation"
+                else layer[key] + " (changed)"
+            )
+            with pytest.raises(ValueError, match="layer source, relation or vintage"):
+                geography.assign_atomic(households, changed, supports)
+
+
 @pytest.fixture(scope="module")
 def staged_joint() -> tuple[dict, dict, list[dict], dict, dict]:
     source_name = os.environ.get("NZ_AS_AREA_SOURCES")

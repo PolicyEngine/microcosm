@@ -147,6 +147,11 @@ def _apply_pending_roster_transformations(
     # right before the Universal Credit redraw reads entitlement.
     assert "uc_limited_capability" not in roster
     roster.insert(roster.index("uc_capital_coherence") + 1, "uc_limited_capability")
+    # B1 of microcosm#1710 re-mint pending: the UC housing costs element claim
+    # flag, right after the limited capability flags and before the redraw
+    # reads entitlement.
+    assert "uc_housing_costs_claim" not in roster
+    roster.insert(roster.index("uc_limited_capability") + 1, "uc_housing_costs_claim")
     # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
     # post-SPI incomes, right after the Pension Credit redraw.
     assert "child_benefit_take_up" not in roster

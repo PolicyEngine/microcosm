@@ -781,10 +781,13 @@ _ORACLE_FUNCTION_SHA256 = (
 )
 #: The live helpers the oracle imports. These digests equal the helpers'
 #: sources at bda72cb02 (checked with ``git show bda72cb02:.../solve.py`` when
-#: the pin was written), so the oracle runs the pre-change closure exactly.
+#: the pin was written), except that ``_apply_constraint`` and
+#: ``_relative_error_loss`` now begin with ``import torch``, so that importing
+#: ``solve`` does not import torch. Their computations are unchanged, so the
+#: oracle runs the pre-change closure exactly.
 _HELPER_SOURCE_SHA256 = {
     "_apply_constraint": (
-        "86281bdf18bdc17acafbbe79e15fb6b4c4102840a1315c3b6bbf52b170d8749c"
+        "83c043a3e29353196cc38dbbac34b6f0a3158559e3a3fc4b298ea204917b1bf9"
     ),
     "_prepare_warm_start_weights": (
         "2e50a07a704ad2ab9d6529a965b7554f7aaba3972ec046a14e5a519e4f0904ed"
@@ -793,7 +796,7 @@ _HELPER_SOURCE_SHA256 = {
         "f220ae141fc9144a4a1eec2c894f49065e88bbc1fd18be837ddec2d96cdd52f0"
     ),
     "_relative_error_loss": (
-        "e7bba6d694211827780e2d5a0c60436decbaa1dc9310a7caa62945ac4d50843d"
+        "c1467e48d95dcda283f50e171ec31dda5658facc9a0ec23ad7f430e035615529"
     ),
 }
 
