@@ -378,6 +378,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Reviewed held-out population-structure diagnostic over the written
         # H5; no population treatment.
         "population_structure_holdout.py",
+        # The units, results and worker entry points of the release's pooled
+        # post-export scoring; reads no frame and treats no population.
+        "post_export_pool.py",
         # Picklable descriptions of the release's post-export scoring requests
         # and the reforms they carry; reads no frame and treats no population.
         "post_export_requests.py",

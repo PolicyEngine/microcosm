@@ -87,11 +87,21 @@ def test_probe_runs_every_stage_on_a_subsample(
         json.loads(line)
         for line in (tmp_path / "probe" / "passes.jsonl").read_text().splitlines()
     ]
-    assert {row["stage"] for row in passes} == {
+    # As in certification, every engine stage's baseline plan is registered:
+    # one merged pass, run when the smoke opens, serves them all, so
+    # demographics runs no pass of its own.
+    assert report["stages"]["open_scorer"]["registered_consumers"] == [
         "reform_coverage_smoke",
         "reform_validation",
         "demographics",
+    ]
+    assert {row["stage"] for row in passes} == {
+        "reform_coverage_smoke",
+        "reform_validation",
     }
+    assert [(row["stage"], row["label"]) for row in passes if not row["reform"]] == [
+        ("reform_coverage_smoke", "merged baseline plan")
+    ]
     assert all(row["batches"] >= probe_tool.MINIMUM_BATCHES for row in passes)
 
     smoke = {
@@ -1237,3 +1247,168 @@ def test_the_timed_scorer_passes_every_scoring_argument_on(
     assert received == [{"label": "fixture reform", "outer": counter}]
     row = json.loads(passes.read_text())
     assert (row["label"], row["reform"], row["batches"]) == ("fixture reform", True, 3)
+
+
+def test_a_pooled_probe_writes_the_serial_probes_files_and_times_its_workers(
+    probe_tool, builder, chain, tmp_path, monkeypatch
+) -> None:
+    """Scored in the shared worker pool, the probe writes the serial probe's
+    stage files byte for byte and reaches the same verdicts; ``passes.jsonl``
+    then holds each pass a worker ran, with its time and memory, each stage
+    records the workers' CPU time, and the report holds the pool's record."""
+    import os
+
+    import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
+    import microcosm.build.us_runtime.reform_validation as reform_validation_module
+    from microcosm.build.worker_pool import WorkerPoolSettings
+    from test_support.microcosm_build.us_post_export_pool import (
+        Float32FakeMicrosimulation,
+        build_fake_parameter_reform,
+        build_fake_reform,
+        identity_dataset,
+    )
+
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    monkeypatch.setattr(smoke_module, "_build_reform", build_fake_reform)
+    monkeypatch.setattr(
+        reform_validation_module.ReformValidationSpec, "build_reform", build_fake_reform
+    )
+    monkeypatch.setattr(
+        reform_validation_module, "_build_parameter_reform", build_fake_parameter_reform
+    )
+    engine = {
+        "microsimulation_cls": Float32FakeMicrosimulation,
+        "dataset_from_frame": identity_dataset,
+    }
+    stages = ("reform_coverage_smoke", "reform_validation", "demographics")
+    serial, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "serial",
+        receipt=receipt,
+        stages=stages,
+        scorer_options=engine,
+    )
+    pooled, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "pooled",
+        receipt=receipt,
+        stages=stages,
+        scorer_options={},
+        post_export_pooling=builder._PostExportPooling(
+            WorkerPoolSettings(workers=2),
+            chosen_by="test",
+            reform_builder=build_fake_reform,
+            **engine,
+        ),
+    )
+    for report in (serial, pooled):
+        errors = {
+            name: record.get("traceback")
+            for name, record in report["stages"].items()
+            if record["status"] != "completed"
+        }
+        assert not errors, errors
+    for filename in (
+        "reform_coverage_smoke.json",
+        "reform_validation.json",
+        "demographics.json",
+    ):
+        assert (tmp_path / "pooled" / filename).read_bytes() == (
+            tmp_path / "serial" / filename
+        ).read_bytes(), filename
+    assert (
+        pooled["stages"]["reform_coverage_smoke"]["probes"]
+        == serial["stages"]["reform_coverage_smoke"]["probes"]
+    )
+    assert [row["verdict"] for row in pooled["verdicts"]] == [
+        row["verdict"] for row in serial["verdicts"]
+    ]
+    serial_block = dict(serial["post_export_scoring"])
+    pooled_block = dict(pooled["post_export_scoring"])
+    assert serial_block.pop("execution") == {"mode": "serial"}
+    execution = pooled_block.pop("execution")
+    assert pooled_block == serial_block
+    assert execution["mode"] == "pooled"
+    assert execution["report"]["failed_attempts"] == []
+    assert execution["report"]["peak_worker_memory_bytes"] is None or (
+        execution["report"]["peak_worker_memory_bytes"] > 0
+    )
+
+    def passes(directory):
+        return [
+            json.loads(line)
+            for line in (directory / "passes.jsonl").read_text().splitlines()
+        ]
+
+    serial_passes, pooled_passes = (
+        passes(tmp_path / "serial"),
+        passes(tmp_path / "pooled"),
+    )
+    assert {(row["stage"], row["label"]) for row in pooled_passes} == {
+        (row["stage"], row["label"]) for row in serial_passes
+    }
+    assert all(row["process"] == "pool worker" for row in pooled_passes)
+    assert os.getpid() not in {row["worker_pid"] for row in pooled_passes}
+    assert all(
+        row["cpu_seconds"] >= 0 and row["worker_peak_rss_gib"] > 0
+        for row in pooled_passes
+    )
+    smoke_timing = pooled["stages"]["reform_coverage_smoke"]["timing"]
+    assert smoke_timing["worker_passes"] == sum(
+        row["stage"] == "reform_coverage_smoke" for row in pooled_passes
+    )
+    assert smoke_timing["worker_cpu_seconds"] > 0
+    assert serial["stages"]["reform_coverage_smoke"]["timing"]["worker_passes"] == 0
+    assert pooled["stages"]["open_scorer"]["mode"] == "pooled"
+
+
+def test_the_row_map_reads_no_batch_until_it_maps_an_entity(probe_tool) -> None:
+    """The scorer's batches are files read one at a time; the row map holds
+    the sequence, not every batch at once, so the smoke stage's peak is the
+    one-batch-at-a-time peak certification has."""
+    from collections.abc import Sequence
+
+    class UnreadBatches(Sequence):
+        def __len__(self) -> int:
+            return 3
+
+        def __getitem__(self, position):
+            raise AssertionError(f"batch {position} was read")
+
+    probe_tool.HouseholdRowMap(UnreadBatches(), sampler=None)
+
+
+def test_a_stage_whose_dry_run_fails_fails_alone(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """The probe records every stage's plan before it opens the scorer; a
+    stage whose dry run raises is left out of it and fails with that error,
+    and the other stages still score."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+
+    def broken_consumer(self):
+        def consumer(simulate):
+            raise ValueError("fixture dry run refused")
+
+        return consumer
+
+    monkeypatch.setattr(probe_tool.ExportProbe, "_smoke_consumer", broken_consumer)
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        stages=("reform_coverage_smoke", "demographics"),
+    )
+    assert report["stages"]["open_scorer"]["registered_consumers"] == ["demographics"]
+    smoke = report["stages"]["reform_coverage_smoke"]
+    assert smoke["status"] == "error"
+    assert smoke["error"] == "ValueError: fixture dry run refused"
+    assert report["stages"]["demographics"]["status"] == "completed"
