@@ -1,0 +1,170 @@
+"""The release tool's repeated December SSI and Medicaid passes on a small frame.
+
+``tools/build_us_fiscal_refresh_release.py`` computes December
+``uncapped_ssi`` (``_ssi_person_uncapped_amount``) and ``is_medicaid_eligible``
+(``_medicaid_person_eligibility``) for every person before calibration and
+again on the calibrated export frame. These tests run those two functions, in
+household batches, on seven households, and compare the arrays byte for byte:
+
+* after writing every column the stages between the passes write, in two
+  different value sets;
+* after calibrated weights, and after an L0 selection that drops households
+  (compared by person ID).
+
+``engine_contract/us/test_us_post_calibration_take_up_inputs.py`` checks the
+same columns against the engine's static dependency graphs.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+from test_support.microcosm_build.us_batched_target_materialization import (
+    _load_builder_module,
+)
+from test_support.microcosm_build.us_post_calibration_take_up_inputs import (
+    DISABLED_WORKER_PERSON_ID,
+    SELF_EMPLOYED_PERSON_ID,
+    by_person_id,
+    stages_between_medicaid_passes,
+    stages_between_ssi_passes,
+    take_up_pass_frame,
+    with_person_columns,
+    with_stage_outputs,
+)
+
+#: Three household batches over the seven households.
+_BATCH_SIZE = 3
+
+
+@pytest.fixture(scope="module")
+def builder():
+    return _load_builder_module()
+
+
+@pytest.fixture(scope="module")
+def system():
+    from policyengine_us import CountryTaxBenefitSystem
+
+    return CountryTaxBenefitSystem()
+
+
+def _december_uncapped_ssi(builder, frame, batch_size=_BATCH_SIZE) -> np.ndarray:
+    return builder._ssi_person_uncapped_amount(
+        frame, maximum_microsim_batch_size=batch_size
+    )
+
+
+def _medicaid_eligibility(builder, frame, batch_size=_BATCH_SIZE) -> np.ndarray:
+    return builder._medicaid_person_eligibility(
+        frame, maximum_microsim_batch_size=batch_size
+    )
+
+
+def _changed_person_ids(frame, before, after) -> list[int]:
+    changed = by_person_id(frame, after) != by_person_id(frame, before)
+    return changed.index[changed.to_numpy()].tolist()
+
+
+def test_columns_written_between_the_ssi_passes_leave_december_ssi_unchanged(
+    builder, system
+) -> None:
+    frame = take_up_pass_frame()
+    stages = stages_between_ssi_passes(builder)
+    before = _december_uncapped_ssi(builder, frame)
+    # The aged single person, the aged couple and the disabled worker.
+    assert np.count_nonzero(before > 0) >= 3
+
+    for variant in (0, 1):
+        staged = with_stage_outputs(frame, stages, variant=variant, system=system)
+        after = _december_uncapped_ssi(builder, staged)
+        assert after.dtype == before.dtype
+        assert after.tobytes() == before.tobytes(), variant
+
+    # An input of the graph does change the array, so the comparison can fail.
+    more_earnings = with_person_columns(
+        frame, DISABLED_WORKER_PERSON_ID, employment_income_before_lsr=9_000.0
+    )
+    assert _changed_person_ids(
+        frame, before, _december_uncapped_ssi(builder, more_earnings)
+    ) == [DISABLED_WORKER_PERSON_ID]
+
+
+def test_snap_take_up_leaves_medicaid_eligibility_unchanged_in_2024(
+    builder, system
+) -> None:
+    frame = take_up_pass_frame()
+    medicaid_take_up, snap_state_take_up, _ = stages_between_medicaid_passes()
+    before = _medicaid_eligibility(builder, frame)
+    assert before.any() and not before.all()
+
+    for variant in (0, 1):
+        staged = with_stage_outputs(
+            frame,
+            (medicaid_take_up, snap_state_take_up),
+            variant=variant,
+            system=system,
+        )
+        after = _medicaid_eligibility(builder, staged)
+        assert after.dtype == before.dtype
+        assert after.tobytes() == before.tobytes(), variant
+
+
+def test_premium_attribution_changes_medicaid_eligibility(builder) -> None:
+    """The other-health stage sets ``is_self_employed`` from self-employment
+    income and attributes reported premiums to ``health_insurance_premiums``.
+    The self-employed health insurance deduction then lowers this adult's
+    income below California's Medicaid limit, so the eligibility computed
+    after the stage differs from the one computed before it."""
+
+    frame = take_up_pass_frame()
+    before = _medicaid_eligibility(builder, frame)
+    attributed = with_person_columns(
+        frame,
+        SELF_EMPLOYED_PERSON_ID,
+        health_insurance_premiums=5_000.0,
+        is_self_employed=True,
+    )
+    after = _medicaid_eligibility(builder, attributed)
+
+    assert _changed_person_ids(frame, before, after) == [SELF_EMPLOYED_PERSON_ID]
+    assert not by_person_id(frame, before)[SELF_EMPLOYED_PERSON_ID]
+    assert by_person_id(frame, after)[SELF_EMPLOYED_PERSON_ID]
+
+
+def test_calibrated_weights_and_household_selection_keep_both_arrays(
+    builder,
+) -> None:
+    """Both export-frame constructions give each remaining person the value
+    the pre-calibration pass gave them, at any batch composition."""
+
+    frame = take_up_pass_frame()
+    ssi_before = by_person_id(frame, _december_uncapped_ssi(builder, frame))
+    medicaid_before = by_person_id(frame, _medicaid_eligibility(builder, frame))
+    reweighted = builder._with_calibrated_weights(
+        frame, np.asarray([5.5, 0.25, 9.0, 1.75, 3.0, 12.0, 0.5])
+    )
+    # L0 selection keeps households 1, 3, 4, 6 and 7.
+    selected = builder._with_l0_refit_weights(
+        frame,
+        SimpleNamespace(
+            weight_entity="household",
+            selected_entity_ids=np.asarray([1, 3, 4, 6, 7]),
+            weights=np.asarray([2.5, 8.0, 0.75, 4.0, 1.5]),
+        ),
+    )
+    assert selected.n("household") == 5
+
+    for export_frame, batch_size in ((reweighted, 2), (selected, 1)):
+        person_ids = export_frame.table("person")["person_id"].to_numpy()
+        for compute, before in (
+            (_december_uncapped_ssi, ssi_before),
+            (_medicaid_eligibility, medicaid_before),
+        ):
+            after = compute(builder, export_frame, batch_size)
+            expected = before.reindex(person_ids).to_numpy()
+            assert after.dtype == expected.dtype
+            assert after.tobytes() == expected.tobytes(), (compute, batch_size)
