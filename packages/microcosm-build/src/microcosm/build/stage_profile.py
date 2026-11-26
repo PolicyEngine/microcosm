@@ -1,4 +1,33 @@
-"""Cut-point-independent RSS and wall-time profiling for build stages."""
+"""Resident-memory (RSS) and wall-time profiling for build stages.
+
+Each profiled stage gets one record in ``stage_profile.json``. Its
+``peak_rss_bytes`` is measured in one of two ways, and ``peak_rss_source``
+says which:
+
+- Where ``/proc/self/statm`` is readable (Linux), a background thread reads
+  current RSS from it every ``sample_interval_seconds`` and keeps the largest
+  value, together with the entry and exit readings (``"sampled_current_rss"``).
+- Elsewhere (macOS, or a container that hides ``/proc``), reading current RSS
+  means starting a ``ps`` process, so no background thread runs. The peak is
+  the process's lifetime peak RSS, ``getrusage(RUSAGE_SELF).ru_maxrss``, read
+  when the stage starts and when it ends:
+
+  - ``"process_peak_rss_reached_during_stage"``: the lifetime peak rose during
+    the stage, so the value read at the end is the stage's own peak.
+  - ``"process_peak_rss_reached_before_stage"``: the lifetime peak did not rise
+    during the stage. The value is the process's peak from before the stage
+    (startup and imports, an earlier profiled stage in the same process, or
+    memory a new process is charged for at start), and the stage's own peak
+    is at most this.
+  - ``"entry_and_exit_rss"``: ``getrusage`` gave no usable value;
+    ``sampling_error`` says why, and the peak is the larger of the entry and
+    exit readings.
+
+In every case ``peak_rss_bytes`` is at least ``entry_rss_bytes`` and
+``exit_rss_bytes``. Records written before ``peak_rss_source`` existed lack the
+field; they were all sampled the first way, with ``ps`` standing in for
+``/proc`` where it was unreadable.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +43,7 @@ import threading
 import time
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +51,11 @@ STAGE_PROFILE_FILENAME = "stage_profile.json"
 STAGE_PROFILE_SCHEMA_VERSION = 1
 DEFAULT_SAMPLE_INTERVAL_SECONDS = 0.25
 _PS_TIMEOUT_SECONDS = 5.0
+
+PEAK_RSS_SAMPLED_CURRENT_RSS = "sampled_current_rss"
+PEAK_RSS_PROCESS_PEAK_REACHED_DURING_STAGE = "process_peak_rss_reached_during_stage"
+PEAK_RSS_PROCESS_PEAK_REACHED_BEFORE_STAGE = "process_peak_rss_reached_before_stage"
+PEAK_RSS_ENTRY_AND_EXIT_RSS = "entry_and_exit_rss"
 
 
 def current_rss_bytes() -> int:
@@ -97,6 +132,22 @@ def _read_resource_peak_rss_bytes() -> int:
 _current_rss_bytes = current_rss_bytes
 
 
+def _procfs_reports_current_rss() -> bool:
+    """Return whether current RSS can be read without starting a process."""
+
+    return _read_procfs_current_rss_bytes() is not None
+
+
+@dataclass(frozen=True)
+class _PeakRss:
+    """One stage's peak RSS and how it was measured."""
+
+    peak_rss_bytes: int
+    sample_count: int
+    sampling_error: dict[str, str] | None
+    source: str
+
+
 class _RssSampler:
     """Own one stage's background RSS sampling thread."""
 
@@ -130,15 +181,16 @@ class _RssSampler:
         self._stop_event.set()
         self._thread.join()
 
-    def result(self, *, exit_rss_bytes: int) -> tuple[int, int, dict[str, str] | None]:
+    def result(self, *, exit_rss_bytes: int) -> _PeakRss:
         """Return final sampler state including the synchronous exit sample."""
 
         with self._state_lock:
             self._peak_rss_bytes = max(self._peak_rss_bytes, exit_rss_bytes)
-            return (
-                self._peak_rss_bytes,
-                self._sample_count,
-                self._sampling_error,
+            return _PeakRss(
+                peak_rss_bytes=self._peak_rss_bytes,
+                sample_count=self._sample_count,
+                sampling_error=self._sampling_error,
+                source=PEAK_RSS_SAMPLED_CURRENT_RSS,
             )
 
     def _sample_until_stopped(self) -> None:
@@ -154,6 +206,60 @@ class _RssSampler:
                 self._sample_count += 1
 
 
+class _ProcessPeakRssReader:
+    """Read the process's lifetime peak RSS when one stage starts and ends.
+
+    Used where reading current RSS means starting a ``ps`` process. It starts
+    no thread and no process.
+    """
+
+    def __init__(self, *, entry_rss_bytes: int) -> None:
+        self._entry_rss_bytes = entry_rss_bytes
+        self._peak_at_start: int | None = None
+        self._peak_at_end: int | None = None
+        self._sampling_error: dict[str, str] | None = None
+
+    def start(self) -> None:
+        """Read the lifetime peak as the stage starts."""
+
+        self._peak_at_start = self._read()
+
+    def stop(self) -> None:
+        """Read the lifetime peak as the stage ends."""
+
+        if self._sampling_error is None:
+            self._peak_at_end = self._read()
+
+    def result(self, *, exit_rss_bytes: int) -> _PeakRss:
+        """Return the stage's peak, never below the entry or exit reading."""
+
+        entry_and_exit_peak = max(self._entry_rss_bytes, exit_rss_bytes)
+        if self._peak_at_start is None or self._peak_at_end is None:
+            return _PeakRss(
+                peak_rss_bytes=entry_and_exit_peak,
+                sample_count=0,
+                sampling_error=self._sampling_error,
+                source=PEAK_RSS_ENTRY_AND_EXIT_RSS,
+            )
+        return _PeakRss(
+            peak_rss_bytes=max(self._peak_at_end, entry_and_exit_peak),
+            sample_count=0,
+            sampling_error=None,
+            source=(
+                PEAK_RSS_PROCESS_PEAK_REACHED_DURING_STAGE
+                if self._peak_at_end > self._peak_at_start
+                else PEAK_RSS_PROCESS_PEAK_REACHED_BEFORE_STAGE
+            ),
+        )
+
+    def _read(self) -> int | None:
+        try:
+            return _read_resource_peak_rss_bytes()
+        except Exception as error:  # noqa: BLE001
+            self._sampling_error = _exception_payload(error)
+            return None
+
+
 @contextmanager
 def profile_stage(
     stage_name: str,
@@ -164,14 +270,16 @@ def profile_stage(
     """Profile one build stage and atomically merge its result into JSON.
 
     The stage body is never swallowed: on failure, the exception is recorded,
-    the sampler is stopped and joined, and the original exception is re-raised.
-    Separate processes coordinate updates with a file lock so a later stage does
-    not discard records written by an earlier invocation.
+    any sampler thread is stopped and joined, and the original exception is
+    re-raised. Separate processes coordinate updates with a file lock so a
+    later stage does not discard records written by an earlier invocation.
+    The module docstring describes how the peak is measured.
 
     Args:
         stage_name: Stable stage identifier, such as ``"a"``.
         checkpoint_dir: Directory that owns ``stage_profile.json``.
         sample_interval_seconds: Delay between background current-RSS samples.
+            Used only where ``/proc`` reports current RSS.
 
     Yields:
         Control to the profiled stage body.
@@ -179,14 +287,19 @@ def profile_stage(
 
     _validate_inputs(stage_name, sample_interval_seconds)
     checkpoint_path = Path(checkpoint_dir)
+    samples_current_rss = _procfs_reports_current_rss()
     entry_rss_bytes = _current_rss_bytes()
     started_at = time.perf_counter()
-    sampler = _RssSampler(
-        stage_name=stage_name,
-        entry_rss_bytes=entry_rss_bytes,
-        sample_interval_seconds=sample_interval_seconds,
-    )
-    sampler.start()
+    peak_reader: _RssSampler | _ProcessPeakRssReader
+    if samples_current_rss:
+        peak_reader = _RssSampler(
+            stage_name=stage_name,
+            entry_rss_bytes=entry_rss_bytes,
+            sample_interval_seconds=sample_interval_seconds,
+        )
+    else:
+        peak_reader = _ProcessPeakRssReader(entry_rss_bytes=entry_rss_bytes)
+    peak_reader.start()
     stage_error: BaseException | None = None
     try:
         yield
@@ -194,12 +307,10 @@ def profile_stage(
         stage_error = error
         raise
     finally:
-        sampler.stop()
+        peak_reader.stop()
         try:
             exit_rss_bytes = _current_rss_bytes()
-            peak_rss_bytes, sample_count, sampling_error = sampler.result(
-                exit_rss_bytes=exit_rss_bytes
-            )
+            peak = peak_reader.result(exit_rss_bytes=exit_rss_bytes)
             wall_seconds = time.perf_counter() - started_at
             record = {
                 "entry_rss_bytes": entry_rss_bytes,
@@ -207,9 +318,10 @@ def profile_stage(
                     _exception_payload(stage_error) if stage_error is not None else None
                 ),
                 "exit_rss_bytes": exit_rss_bytes,
-                "peak_rss_bytes": peak_rss_bytes,
-                "rss_sample_count": sample_count,
-                "sampling_error": sampling_error,
+                "peak_rss_bytes": peak.peak_rss_bytes,
+                "peak_rss_source": peak.source,
+                "rss_sample_count": peak.sample_count,
+                "sampling_error": peak.sampling_error,
                 "stage": stage_name,
                 "status": "failed" if stage_error is not None else "succeeded",
                 "wall_seconds": wall_seconds,
@@ -318,6 +430,10 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 __all__ = [
     "DEFAULT_SAMPLE_INTERVAL_SECONDS",
+    "PEAK_RSS_ENTRY_AND_EXIT_RSS",
+    "PEAK_RSS_PROCESS_PEAK_REACHED_BEFORE_STAGE",
+    "PEAK_RSS_PROCESS_PEAK_REACHED_DURING_STAGE",
+    "PEAK_RSS_SAMPLED_CURRENT_RSS",
     "STAGE_PROFILE_FILENAME",
     "STAGE_PROFILE_SCHEMA_VERSION",
     "current_rss_bytes",
