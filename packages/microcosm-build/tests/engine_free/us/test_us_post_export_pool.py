@@ -310,8 +310,16 @@ def test_a_worker_refuses_a_release_tool_other_than_the_parents(
         assert "fixture_checked_tool" not in sys.modules
         loaded = pool_module.release_tool("fixture_checked_tool", tool, sha256=digest)
         assert loaded.VALUE == 1
-        # Found loaded already, it is checked against its file too.
+        # Found loaded already, it is the bytes it ran that count: those are
+        # the code the worker would score with, whatever the file holds now.
         tool.write_text("VALUE = 2\n")
+        assert (
+            pool_module.release_tool("fixture_checked_tool", tool, sha256=digest)
+            is loaded
+        )
+        # A tool imported without a record of its bytes (certification's
+        # import by name) is checked against its file.
+        del loaded.__loaded_sha256__
         with pytest.raises(RuntimeError, match="SHA-256"):
             pool_module.release_tool("fixture_checked_tool", tool, sha256=digest)
     finally:

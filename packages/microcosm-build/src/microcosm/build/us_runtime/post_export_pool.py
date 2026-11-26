@@ -41,10 +41,12 @@ Anthony on 27 November 2026, until task 2.6 · 2's planner replaces it).
 from __future__ import annotations
 
 import builtins
+import hashlib
 import importlib.util
 import os
 import sys
 import traceback
+import zlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -342,7 +344,31 @@ class PostExportUnitResult:
 # ---------------------------------------------------------------------------
 
 
-def release_tool(module_name: str, path: str | Path):
+def _source_sha256(module) -> str | None:
+    """The SHA-256 of the bytes ``module`` ran, or of its file now."""
+    recorded = getattr(module, "__loaded_sha256__", None)
+    if recorded is not None:
+        return str(recorded)
+    try:
+        return hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _refuse_other_bytes(module, path: Path, sha256: str | None) -> None:
+    if sha256 is None:
+        return
+    observed = _source_sha256(module)
+    if observed != sha256:
+        raise RuntimeError(
+            f"The release tool at {path} has SHA-256 {observed}; the scoring "
+            f"process runs {sha256}. A worker scores only with the code the "
+            "scoring process runs, so a tool file changed while scoring ran is "
+            "refused."
+        )
+
+
+def release_tool(module_name: str, path: str | Path, *, sha256: str | None = None):
     """The release tool in this process: loaded already, or from ``path``.
 
     A worker spawned from a release run has run the parent's main script again
@@ -351,6 +377,11 @@ def release_tool(module_name: str, path: str | Path):
     loaded already; it is loaded from ``path`` only when it is not (the
     parent loaded it by path, as the tests and the export probe do). Either
     way the tool's module body runs once per worker.
+
+    With ``sha256``, the parent's digest of the tool's bytes, a tool whose
+    bytes differ is refused: the bytes this function executes, or the file of
+    a tool found loaded already. (The microcosm packages the tool imports are
+    not checked.)
     """
     path = Path(path).resolve()
     for candidate in (
@@ -360,28 +391,35 @@ def release_tool(module_name: str, path: str | Path):
     ):
         file = getattr(candidate, "__file__", None)
         if file is not None and Path(file).resolve() == path:
+            _refuse_other_bytes(candidate, path, sha256)
             return candidate
     name = module_name
     if name in {"__main__", "__mp_main__"} or name in sys.modules:
-        name = f"_post_export_release_tool_{abs(hash(str(path)))}"
+        name = f"_post_export_release_tool_{zlib.crc32(str(path).encode()):08x}"
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load the release tool from {path}")
     module = importlib.util.module_from_spec(spec)
+    # Execute the bytes that are checked, not a second read of the file.
+    source = path.read_bytes()
+    module.__loaded_sha256__ = hashlib.sha256(source).hexdigest()
+    _refuse_other_bytes(module, path, sha256)
     # Registered before it runs, as ``dataclasses`` resolves annotations
     # through ``sys.modules``.
     sys.modules[name] = module
     try:
-        spec.loader.exec_module(module)
+        exec(compile(source, str(path), "exec", dont_inherit=True), module.__dict__)
     except BaseException:
         sys.modules.pop(name, None)
         raise
     return module
 
 
-def start_post_export_worker(module_name: str, path: str, *arguments: Any):
+def start_post_export_worker(
+    module_name: str, path: str, sha256: str | None, *arguments: Any
+):
     """The pool's initializer: the release tool's worker over its batch files."""
-    return release_tool(module_name, path)._PostExportWorker(*arguments)
+    return release_tool(module_name, path, sha256=sha256)._PostExportWorker(*arguments)
 
 
 def score_post_export_unit(worker, unit: PostExportUnit) -> PostExportUnitResult:

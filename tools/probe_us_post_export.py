@@ -104,7 +104,13 @@ with the worker's process ID, its wall and CPU time, and the worker's memory
 footprint and peak resident memory; each stage records the CPU time of the
 worker passes whose results reached it (``worker_cpu_seconds``), and the
 report's ``post_export_scoring.execution`` holds the pool's settings and
-report (worker starts, failed attempts, peak worker memory).
+report (worker starts, failed attempts, peak worker memory). A line is written
+when the pass's results reach this process, so a pass whose results never do
+(the stage stopped, or the scorer closed first) has none, and the remaining
+passes of a stage that stopped early are written, and counted, under the stage
+that passes over them. Once a unit has failed on every attempt the pool stops:
+that stage records the failure, and a later stage that needs the pool records
+that it could not run as the probe's own failure, not the release's.
 
 Usage::
 
@@ -1007,6 +1013,7 @@ class HouseholdRowMap:
         self._batches = batch_frames
         self._sampler = sampler
         self._cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        self._row_counts: dict[str, int] = {}
 
     def _build(self, entity: str) -> tuple[np.ndarray, np.ndarray]:
         if entity not in self._cache:
@@ -1038,7 +1045,12 @@ class HouseholdRowMap:
         return self._build(entity)[1]
 
     def n_rows(self, entity: str) -> int:
-        return int(sum(batch.n(entity) for batch in self._batches))
+        # Each batch is read from its file, so count once per entity.
+        if entity not in self._row_counts:
+            self._row_counts[entity] = int(
+                sum(batch.n(entity) for batch in self._batches)
+            )
+        return self._row_counts[entity]
 
 
 def row_weight_scale(engine_weights, household_weights) -> float | None:
@@ -1571,6 +1583,8 @@ class StageClock:
         self.current = "setup"
         self._worker_cpu = 0.0
         self._worker_passes = 0
+        #: The exception the last stage raised, if it raised.
+        self.last_error: Exception | None = None
 
     def add_worker_pass(self, cpu_seconds: float) -> None:
         self._worker_cpu += float(cpu_seconds)
@@ -1580,6 +1594,7 @@ class StageClock:
         self.current = name
         self._worker_cpu = 0.0
         self._worker_passes = 0
+        self.last_error = None
         before = self.sampler.reset() if self.sampler else 0
         wall = time.perf_counter()
         cpu = time.process_time()
@@ -1587,6 +1602,7 @@ class StageClock:
         try:
             record = {"status": "completed", **dict(fn() or {})}
         except Exception as error:  # every stage failure is a finding
+            self.last_error = error
             record = {
                 "status": "error",
                 "error": f"{type(error).__name__}: {error}",
@@ -1926,7 +1942,14 @@ class ExportProbe:
         self.scorer_options = dict(scorer_options or {})
         # The release tool's ``_PostExportPooling``: with it the engine stages
         # are scored in the shared worker pool, as certification scores them;
-        # without it every pass runs in this process.
+        # without it every pass runs in this process. The pool settings name
+        # the workers' engine, so one given to the scorer as well is refused.
+        if post_export_pooling is not None and self.scorer_options:
+            raise ValueError(
+                "post_export_pooling names the workers' engine; scorer_options "
+                f"({', '.join(sorted(self.scorer_options))}) would be dropped. "
+                "Give the engine in the pool settings instead."
+            )
         self.post_export_pooling = post_export_pooling
         self.load_frame = load_frame
         self.measure_entity = measure_entity
@@ -2029,6 +2052,11 @@ class ExportProbe:
 
     def _stage(self, name: str, fn: Callable[[], Mapping[str, Any]], consequence):
         record = self.clock.run(name, fn)
+        stopped = getattr(self.builder, "PostExportPoolStoppedError", None)
+        if stopped is not None and isinstance(self.clock.last_error, stopped):
+            # The pool stopped in an earlier stage, whose record names why;
+            # this stage was not scored, which is not a release failure.
+            consequence = "probe integrity"
         self.report["stages"][name] = record
         if record["status"] == "error":
             self.verdicts.append(
@@ -2499,14 +2527,30 @@ class ExportProbe:
     # ---- the household-batched scorer ----------------------------------------
 
     def _engine_consumers(self) -> dict[str, Callable[[], Any]]:
-        """The engine stages to run, in ``_main``'s order: for each, a function
-        that returns its consumer (a function of the ``simulate`` seam)."""
+        """The consumers whose plans the scorer registers, in ``_main``'s
+        order: for each, a function that returns its consumer (a function of
+        the ``simulate`` seam).
+
+        The engine stages to run, and the two held-out reports, which
+        certification always registers: the probe does not report them, but
+        their keys are in certification's merged baseline pass, so the
+        probe's merged pass is that pass (its keys, its time and memory, and
+        its failure and fallback when a held-out report's key fails).
+        """
+        builder = self.builder
         makers: dict[str, Callable[[], Any]] = {
             "reform_coverage_smoke": self._smoke_consumer,
             "reform_validation": lambda: self._validation_consumer()[0],
-            "demographics": lambda: self.builder._demographics_consumer,
+            "demographics": lambda: builder._demographics_consumer,
         }
-        return {name: make for name, make in makers.items() if name in self.stages}
+        consumers = {name: make for name, make in makers.items() if name in self.stages}
+        consumers["ssi_social_security_holdout"] = lambda: (
+            builder._ssi_social_security_holdout_consumer
+        )
+        consumers["medicare_irmaa_holdout"] = lambda: (
+            builder._medicare_irmaa_holdout_consumer
+        )
+        return consumers
 
     def _record_stage_requests(self) -> dict[str, Any]:
         """Each engine stage's recorded requests, from its own dry run.

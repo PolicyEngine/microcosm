@@ -533,7 +533,10 @@ one Microsimulation over the whole file.
     stages run: a worker builds the reform's rules once per unit, as the
     serial scorer builds them once per reformed simulation. If the shared pass
     fails, the second run also holds each stage's own baseline pass before
-    that stage's reform units.
+    that stage's reform units. That includes a range of the shared pass that
+    failed on every attempt (its worker ran out of memory, went over its cap
+    or died), as the serial scorer falls back when its shared pass raises
+    `MemoryError`.
   - A worker reads each batch from the scorer's batch file, refusing one that
     changed, and scores it with the serial scorer's own code
     (`_score_post_export_batches`): one engine per batch, keys in ascending
@@ -545,15 +548,21 @@ one Microsimulation over the whole file.
     scorer would have raised, as an error with the worker's exception's class
     name and message, so a held-out report that records the error records the
     same text. A changed batch file raises `PostExportBatchFileError`, and a
-    pool that cannot score (a unit that failed on every attempt, a worker that
-    could not start) raises `WorkerPoolError`; both stop certification, the
-    held-out reports included.
+    pool that cannot score (a unit after the shared pass that failed on every
+    attempt, a worker that could not start) raises `WorkerPoolError`; both
+    stop certification, the held-out reports included. After that the pool
+    serves nothing more that needs its workers
+    (`PostExportPoolStoppedError`, a `WorkerPoolError`), but a stage served
+    from the shared pass's values is still served.
   - Each stage then runs as in the serial path and builds its own reforms (the
     smoke records each list edit's resolved lists from its own). Its baseline
     is served its recorded plan, and each reformed simulation its recorded
-    passes in order. A stage that asks for anything else is refused, so a
-    stage whose requests depended on the values it got back cannot be served
-    values scored for a different request. Each key's per-batch values are
+    passes in order. Each stage's own builders mark every reform they build
+    with the description they built it from, and each reformed simulation
+    must be opened with the reform the dry run recorded at that place. A
+    stage that asks for anything else is refused, so a stage whose requests
+    depended on the values it got back cannot be served values scored for a
+    different request or another reform. Each key's per-batch values are
     joined in batch order, so every output, both manifests' consumer records
     and the smoke's scoring record are byte-identical to the serial scorer's.
   - Workers inherit the certifying process's environment, thread variables
@@ -563,7 +572,9 @@ one Microsimulation over the whole file.
     tool skips the lock-file check. A worker spawned from certification runs
     certification's script again as `__mp_main__`, which imports the release
     tool; that is the import the worker needs, so it runs once per worker
-    start.
+    start. A worker refuses to start with a release tool whose bytes differ
+    from the certifying process's, so a tool file changed during a run cannot
+    mix two versions' results (the microcosm packages are not checked).
   - The manifests' `post_export_scoring` block records how scoring ran under
     `execution`: `{"mode": "serial"}`, or the pool's settings, how the worker
     count was chosen, the plan's memory and core readings, unit counts and the
@@ -650,8 +661,8 @@ after a probe, spec or engine-lock change before starting a release.
 R4's existing full-export rehearsal times the smoke and validation
 baseline plans plus three selected reform passes; it does not cover every
 reform and does not replace this sweep. `tools/probe_us_post_export.py`
-registers every stage's baseline plan, as certification does, so its baseline
-is one shared pass.
+registers every stage's baseline plan and the two held-out reports', as
+certification does, so its baseline is certification's shared pass.
 
 `calibration_diagnostics.json` records the plan under `build.post_export_scoring`
 (method, batch size, batch count, each stage's baseline keys and periods), and

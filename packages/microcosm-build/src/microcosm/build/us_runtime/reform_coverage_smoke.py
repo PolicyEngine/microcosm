@@ -28,7 +28,10 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from microcosm.build.gates import GateResult
-from microcosm.build.us_runtime.post_export_requests import RECORDS_REQUESTS_ONLY
+from microcosm.build.us_runtime.post_export_requests import (
+    RECORDS_REQUESTS_ONLY,
+    described_reform,
+)
 from microcosm.build.us_runtime.release_input_coverage import (
     ListParameterEdit,
     ReformCoverageProbe,
@@ -63,10 +66,17 @@ def _build_reform(probe: ReformCoverageProbe) -> Any:
     (:func:`check_resolved_list_edit_target`), so the resolved list can only
     replace the baseline it was derived from.
 
+    The reform carries the probe as its description
+    (:func:`~microcosm.build.us_runtime.post_export_requests.described_reform`).
+
     Raises:
         ValueError: Naming the probe, if a list edit does not fit the installed
             baseline.
     """
+    return described_reform(_build_undescribed_reform(probe), probe)
+
+
+def _build_undescribed_reform(probe: ReformCoverageProbe) -> Any:
     from policyengine_core.reforms import Reform
 
     if probe.neutralized_variable:

@@ -71,9 +71,20 @@ DEFAULT_BUDGET_MEASURE = "income_tax"
 
 
 def _build_parameter_reform(parameter_changes: dict[str, Any]) -> Any:
+    """The ``Reform.from_dict`` reform, carrying its parameter changes as its
+    description (``post_export_requests.described_reform``)."""
     from policyengine_core.reforms import Reform
 
-    return Reform.from_dict(parameter_changes, country_id="us")
+    # Imported here: post_export_requests imports ReformValidationSpec.
+    from microcosm.build.us_runtime.post_export_requests import (
+        ParameterChangesReform,
+        described_reform,
+    )
+
+    reform = Reform.from_dict(parameter_changes, country_id="us")
+    if not parameter_changes:
+        return reform
+    return described_reform(reform, ParameterChangesReform(parameter_changes))
 
 
 @dataclass(frozen=True)
@@ -138,8 +149,14 @@ class ReformValidationSpec:
         """Construct the policyengine reform object for this spec.
 
         Imports are lazy so the module (and its unit tests) load without
-        policyengine-us installed.
+        policyengine-us installed. The reform carries this spec as its
+        description (``post_export_requests.described_reform``).
         """
+        from microcosm.build.us_runtime.post_export_requests import described_reform
+
+        return described_reform(self._build_undescribed_reform(), self)
+
+    def _build_undescribed_reform(self) -> Any:
         if self.neutralized_variable:
             from policyengine_core.reforms import Reform
 

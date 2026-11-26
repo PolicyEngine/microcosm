@@ -35,6 +35,12 @@ tool again as its ``__mp_main__`` module (which a process started with
 
 Neither type can be hashed, because a reform description holds dictionaries;
 key a request's results by its ``(consumer, position)``.
+
+Each consumer's own builder also marks every reform it builds with the
+description it built it from (:func:`described_reform`), so pooled scoring,
+which serves a consumer the results of its recorded requests, can check that
+each reformed simulation the consumer opens is the one its dry run recorded
+at that place (:func:`reform_description`).
 """
 
 from __future__ import annotations
@@ -50,11 +56,14 @@ from microcosm.build.us_runtime.release_input_coverage import ReformCoverageProb
 
 __all__ = [
     "RECORDS_REQUESTS_ONLY",
+    "REFORM_DESCRIPTION",
     "ParameterChangesReform",
     "PostExportReform",
     "PostExportRequest",
     "build_post_export_reform",
     "check_post_export_reform",
+    "described_reform",
+    "reform_description",
 ]
 
 #: Set to ``True`` on a ``simulate`` that only records the requests it is
@@ -63,6 +72,25 @@ __all__ = [
 #: module docstring) in place of the built reform, so recording builds no
 #: reform, resolves no list edit and needs no engine.
 RECORDS_REQUESTS_ONLY = "records_requests_only"
+
+#: The attribute a consumer's builder sets on each reform it builds: the
+#: description it built the reform from.
+REFORM_DESCRIPTION = "microcosm_post_export_reform_description"
+
+
+def described_reform(reform: Any, description: object) -> Any:
+    """Mark ``reform`` as built from ``description`` and return it.
+
+    The builders return a new reform class on every call (``Reform.from_dict``
+    and the classes they define), so the mark is that build's alone.
+    """
+    setattr(reform, REFORM_DESCRIPTION, description)
+    return reform
+
+
+def reform_description(reform: Any) -> object | None:
+    """The description ``reform`` was built from, or ``None`` if unmarked."""
+    return getattr(reform, REFORM_DESCRIPTION, None)
 
 
 @dataclass(frozen=True)
