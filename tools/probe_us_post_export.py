@@ -31,7 +31,12 @@ consumers, writers and file names:
    ``--target-surface`` says otherwise).
 
 The engine stages run in ``_main``'s order (smoke, validation, demographics on
-one scorer, then source coverage). The frame-based stages (1-3) run first,
+one scorer, then source coverage). As in certification, the scorer registers
+every engine stage's recorded baseline plan, so one shared baseline pass, run
+when the first stage opens, serves them all; with the release tool's
+``_PostExportPooling`` (``ExportProbe(post_export_pooling=...)``) the stages'
+recorded requests are scored in the shared worker pool, as certification
+scores them. The frame-based stages (1-3) run first,
 while the loaded frame is held, instead of after the scorer as in ``_main``:
 they read only the frame, so the order changes no verdict. Unlike the
 release, a stage that raises is recorded with its traceback and the next
@@ -92,7 +97,13 @@ take-up diagnostics and geography record counts, read column by column.
 
 Every stage records wall time, CPU time and peak resident memory (sampled
 every 0.5 s with psutil, else the process peak); every batch-outer scoring
-pass is one line of ``passes.jsonl``.
+pass is one line of ``passes.jsonl``. With pooled scoring, a line is one pass
+a pool worker ran (a range of the shared baseline pass, or one reform pass),
+with the worker's process ID, its wall and CPU time, and the worker's memory
+footprint and peak resident memory; each stage records the CPU time of the
+worker passes whose results reached it (``worker_cpu_seconds``), and the
+report's ``post_export_scoring.execution`` holds the pool's settings and
+report (worker starts, failed attempts, peak worker memory).
 
 Usage::
 
@@ -989,7 +1000,10 @@ class HouseholdRowMap:
     """
 
     def __init__(self, batch_frames: Sequence[Any], *, sampler) -> None:
-        self._batches = tuple(batch_frames)
+        # The sequence itself, not a tuple of its items: the scorer's batches
+        # are files, read one at a time as they are indexed, so the map holds
+        # one batch frame at a time, as certification's scorer does.
+        self._batches = batch_frames
         self._sampler = sampler
         self._cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
@@ -1543,14 +1557,28 @@ def _gib(value: float) -> float:
 
 
 class StageClock:
-    """Runs each stage, recording wall/CPU/peak RSS and any exception."""
+    """Runs each stage, recording wall/CPU/peak RSS and any exception.
+
+    With pooled scoring, the CPU time of the passes pool workers ran, whose
+    results reached this process during a stage, is that stage's
+    ``worker_cpu_seconds`` (:meth:`add_worker_pass`); ``cpu_seconds`` is this
+    process's alone.
+    """
 
     def __init__(self, sampler: RssSampler | None) -> None:
         self.sampler = sampler
         self.current = "setup"
+        self._worker_cpu = 0.0
+        self._worker_passes = 0
+
+    def add_worker_pass(self, cpu_seconds: float) -> None:
+        self._worker_cpu += float(cpu_seconds)
+        self._worker_passes += 1
 
     def run(self, name: str, fn: Callable[[], Mapping[str, Any]]) -> dict[str, Any]:
         self.current = name
+        self._worker_cpu = 0.0
+        self._worker_passes = 0
         before = self.sampler.reset() if self.sampler else 0
         wall = time.perf_counter()
         cpu = time.process_time()
@@ -1568,6 +1596,8 @@ class StageClock:
             "cpu_seconds": round(time.process_time() - cpu, 3),
             "rss_before_gib": _gib(before),
             "peak_rss_gib": _gib(self.sampler.peak()) if self.sampler else None,
+            "worker_passes": self._worker_passes,
+            "worker_cpu_seconds": round(self._worker_cpu, 3),
         }
         print(
             f"[probe] {name}: {record['status']} in "
@@ -1820,6 +1850,7 @@ class ExportProbe:
         builder=None,
         sampler=None,
         scorer_options: Mapping[str, Any] | None = None,
+        post_export_pooling=None,
         load_frame: Callable[..., Any] | None = None,
         measure_entity: Callable[[str], str | None] | None = None,
         sample_rss: bool = True,
@@ -1892,6 +1923,10 @@ class ExportProbe:
             probes = us_release_reform_coverage_probes()
         self.probes = tuple(probes)
         self.scorer_options = dict(scorer_options or {})
+        # The release tool's ``_PostExportPooling``: with it the engine stages
+        # are scored in the shared worker pool, as certification scores them;
+        # without it every pass runs in this process.
+        self.post_export_pooling = post_export_pooling
         self.load_frame = load_frame
         self.measure_entity = measure_entity
         self.chunk_bytes = int(chunk_bytes or self.sampler.DEFAULT_CHUNK_BYTES)
@@ -1900,6 +1935,9 @@ class ExportProbe:
         self.passes_path = self.out_dir / PASSES_FILENAME
         self.frame = None
         self.scorer = None
+        self.scoring_plan = None
+        self.stage_request_errors: dict[str, Exception] = {}
+        self.n_households: int | None = None
         self.sha256: str | None = None
         self.design: SampleDesign | None = None
         self.design_problems: list[str] = []
@@ -2174,6 +2212,7 @@ class ExportProbe:
             )
         self._verify_source()
         n = int(frame.n("household"))
+        self.n_households = n
         self.batch_size = choose_batch_size(n, self.batch_size_requested)
         for probe in self.probes:
             self.carriers_by_probe[str(probe.id)] = probe_carrier_households(
@@ -2458,14 +2497,75 @@ class ExportProbe:
 
     # ---- the household-batched scorer ----------------------------------------
 
+    def _engine_consumers(self) -> dict[str, Callable[[], Any]]:
+        """The engine stages to run, in ``_main``'s order: for each, a function
+        that returns its consumer (a function of the ``simulate`` seam)."""
+        makers: dict[str, Callable[[], Any]] = {
+            "reform_coverage_smoke": self._smoke_consumer,
+            "reform_validation": lambda: self._validation_consumer()[0],
+            "demographics": lambda: self.builder._demographics_consumer,
+        }
+        return {name: make for name, make in makers.items() if name in self.stages}
+
+    def _record_stage_requests(self) -> dict[str, Any]:
+        """Each engine stage's recorded requests, from its own dry run.
+
+        A stage whose consumer cannot be made, or whose dry run raises, is
+        left out of the plan, and its own stage raises that error, so the
+        other stages still run (the release would refuse the plan before its
+        export instead).
+        """
+        requests: dict[str, Any] = {}
+        self.stage_request_errors = {}
+        for name, make in self._engine_consumers().items():
+            try:
+                requests[name] = self.builder._record_post_export_consumer_requests(
+                    name, make()
+                )
+            except Exception as error:
+                self.stage_request_errors[name] = error
+        return requests
+
     def _open_scorer(self) -> dict[str, Any]:
-        scorer_cls = _timed_scorer_class(self.builder, self.passes_path, self.clock)
-        scorer = scorer_cls(
-            self.export_path,
-            maximum_microsim_batch_size=self.batch_size,
-            load_frame=self.load_frame,
-            **self.scorer_options,
+        """Record the engine stages' plan and open the scorer it registers.
+
+        As in certification, every stage's baseline plan is registered, so
+        one merged baseline pass serves them all; with ``post_export_pooling``
+        the recorded requests are scored in the shared worker pool, and each
+        pass a worker ran is one line of ``passes.jsonl``.
+        """
+        builder = self.builder
+        requests = self._record_stage_requests()
+        plan = builder._PostExportScoringPlan(
+            n_households=int(self.n_households or 0),
+            maximum_batch_size=self.batch_size,
+            baseline_plans={
+                name: recorded.baseline_plan for name, recorded in requests.items()
+            },
+            reform_passes={
+                name: len(recorded.reform_passes) for name, recorded in requests.items()
+            },
+            consumer_requests=requests,
         )
+        self.scoring_plan = plan
+        if self.post_export_pooling is not None:
+            scorer = builder._PooledPostExportScorer(
+                self.export_path,
+                maximum_microsim_batch_size=self.batch_size,
+                consumer_requests=plan.consumer_requests,
+                pooling=self.post_export_pooling,
+                load_frame=self.load_frame,
+            )
+            scorer.pass_timing_listener = self._record_worker_pass
+        else:
+            scorer_cls = _timed_scorer_class(builder, self.passes_path, self.clock)
+            scorer = scorer_cls(
+                self.export_path,
+                maximum_microsim_batch_size=self.batch_size,
+                load_frame=self.load_frame,
+                baseline_plans=plan.baseline_plans,
+                **self.scorer_options,
+            )
         if scorer.dataset_sha256 != self.sha256:
             scorer.close()
             raise ValueError("The scorer loaded different bytes than the probe.")
@@ -2477,11 +2577,50 @@ class ExportProbe:
             )
         self.scorer = scorer
         return {
+            "mode": "serial" if self.post_export_pooling is None else "pooled",
             "n_households": scorer.n_households,
             "n_batches": scorer.n_batches,
             "max_batch_households": scorer.max_batch_households,
             "maximum_batch_size": scorer.maximum_batch_size,
+            "registered_consumers": list(plan.baseline_plans),
         }
+
+    def _record_worker_pass(self, row: Mapping[str, Any]) -> None:
+        """One line of ``passes.jsonl`` per pass a pool worker ran, written as
+        its results reach this process, under the stage running then."""
+        self.clock.add_worker_pass(row["cpu_seconds"])
+        footprint = row.get("footprint_bytes")
+        line = {
+            "stage": self.clock.current,
+            "label": row["label"],
+            "keys": row["keys"],
+            "reform": row["reform"],
+            "batches": row["batches"],
+            "batch_start": row["batch_start"],
+            "process": "pool worker",
+            "worker_pid": row["worker_pid"],
+            "failed": row["failed"],
+            "wall_seconds": row["wall_seconds"],
+            "cpu_seconds": row["cpu_seconds"],
+            "worker_footprint_gib": None if footprint is None else _gib(footprint),
+            "worker_peak_rss_gib": _gib(row["peak_rss_bytes"]),
+        }
+        with self.passes_path.open("a") as handle:
+            handle.write(json.dumps(line) + "\n")
+
+    def _scoring(self, name: str):
+        """Open ``name`` on the scorer with its registered plan."""
+        error = self.stage_request_errors.get(name)
+        if error is not None:
+            # The stage fails with its own dry run's error, as it would if it
+            # had recorded its plan itself.
+            raise error
+        plan = self.scoring_plan
+        return self.scorer.open_consumer(
+            name,
+            plan.baseline_plan(name),
+            planned_reform_passes=plan.planned_reform_passes(name),
+        )
 
     def _resolve_entity(self, variable: str) -> str | None:
         if self.measure_entity is not None:
@@ -2498,23 +2637,25 @@ class ExportProbe:
 
     # ---- 2. reform-coverage smoke ----------------------------------------------
 
-    def _smoke(self) -> dict[str, Any]:
+    def _smoke_consumer(self) -> Callable[[Callable[[Any], Any]], Any]:
         builder = self.builder
         probes = self.probes
-
-        if self.custom_probes:
-
-            def gate_for(simulate):
-                return builder.us_reform_coverage_smoke_gate(
-                    simulate=simulate, probes=probes, period=builder.PERIOD
-                )
-
-        else:
+        if not self.custom_probes:
             # The release's own consumer: the shipped probes, in its order.
-            gate_for = builder._reform_coverage_smoke_consumer
+            return builder._reform_coverage_smoke_consumer
 
-        plan = builder._record_post_export_baseline_plan(gate_for)
-        scoring = self.scorer.open_consumer("reform_coverage_smoke", plan)
+        def gate_for(simulate):
+            return builder.us_reform_coverage_smoke_gate(
+                simulate=simulate, probes=probes, period=builder.PERIOD
+            )
+
+        return gate_for
+
+    def _smoke(self) -> dict[str, Any]:
+        probes = self.probes
+        gate_for = self._smoke_consumer()
+        scoring = self._scoring("reform_coverage_smoke")
+        plan = self.scoring_plan.baseline_plan("reform_coverage_smoke")
         recorder = SimulateRecorder(scoring.simulate)
         gate = gate_for(recorder)
         scoring_record = self.scorer.finish_consumer(scoring)
@@ -2755,7 +2896,8 @@ class ExportProbe:
 
     # ---- 3. reform validation -----------------------------------------------
 
-    def _validation(self) -> dict[str, Any]:
+    def _validation_consumer(self):
+        """Reform validation's consumer and how its in-sample rows are scored."""
         builder = self.builder
         if self.calibration_diagnostics is None:
             result = SimpleNamespace(
@@ -2776,8 +2918,13 @@ class ExportProbe:
         payload_for = builder._reform_validation_consumer(
             result=result, release_id=self._release_id()
         )
-        plan = builder._record_post_export_baseline_plan(payload_for)
-        scoring = self.scorer.open_consumer("reform_validation", plan)
+        return payload_for, in_sample
+
+    def _validation(self) -> dict[str, Any]:
+        builder = self.builder
+        payload_for, in_sample = self._validation_consumer()
+        scoring = self._scoring("reform_validation")
+        plan = self.scoring_plan.baseline_plan("reform_validation")
         payload = payload_for(scoring.simulate)
         scoring_record = self.scorer.finish_consumer(scoring)
         builder.write_reform_validation(
@@ -2818,8 +2965,7 @@ class ExportProbe:
 
     def _demographics(self) -> dict[str, Any]:
         builder = self.builder
-        plan = builder._record_post_export_baseline_plan(builder._demographics_consumer)
-        scoring = self.scorer.open_consumer("demographics", plan)
+        scoring = self._scoring("demographics")
         ages, weights = builder._demographics_consumer(scoring.simulate)
         self.scorer.finish_consumer(scoring)
         payload = builder.demographics_payload(

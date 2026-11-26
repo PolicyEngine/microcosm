@@ -366,9 +366,20 @@ from microcosm.build.us_runtime.population_structure_holdout import (
     population_structure_holdout_unavailable,
     write_population_structure_holdout,
 )
+from microcosm.build.us_runtime.post_export_pool import (
+    PostExportPass,
+    PostExportPassTiming,
+    PostExportPassValues,
+    PostExportUnit,
+    PostExportUnitFailure,
+    PostExportUnitResult,
+    score_post_export_unit,
+    start_post_export_worker,
+)
 from microcosm.build.us_runtime.post_export_requests import (
     RECORDS_REQUESTS_ONLY,
     PostExportRequest,
+    build_post_export_reform,
     check_post_export_reform,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
@@ -447,6 +458,13 @@ from microcosm.build.us_runtime.warm_start_selection import (
     load_selection_source_from_h5,
     load_selection_source_from_manifest,
     select_frozen_support,
+)
+from microcosm.build.worker_pool import (
+    WorkerPool,
+    WorkerPoolError,
+    WorkerPoolReport,
+    WorkerPoolSettings,
+    process_memory_bytes,
 )
 from microcosm.calibrate import (
     CalibrationResult,
@@ -5112,11 +5130,14 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 # so a measure that reaches such a formula fails the stage instead of scoring
 # a batch-local aggregate.
 
-#: Recorded in ``post_export_scoring`` blocks; bump with any change to how the
-#: written H5 is scored that can change a scored value. Regrouping keys into
-#: fewer passes while every value stays byte-identical (the merged baseline
-#: pass and the shared pre-OBBBA pass, microcosm#1595) keeps it.
-POST_EXPORT_SCORING_METHOD = "household_batched_written_h5"
+#: Recorded in ``post_export_scoring`` blocks. Version 2 covers the merged
+#: baseline pass and the shared pre-OBBBA pass (microcosm#1595) and scoring in
+#: the shared worker pool with each consumer run again over the results
+#: (``_PooledPostExportScorer``), which leave every scored value byte-identical
+#: to version 1's; decision 1.1 · 1 raises the label once for all of them.
+#: Raise it again with any change to how the written H5 is scored that can
+#: change a scored value.
+POST_EXPORT_SCORING_METHOD = "household_batched_written_h5_v2"
 
 #: One scored request: (variable, period, map_to).
 PostExportKey = tuple[str, int, str | None]
@@ -5289,10 +5310,11 @@ class _RecordingPostExportSimulation:
     also shared, so a reformed simulation's recorder refuses every key once a
     later one is opened, as the scorer refuses a finished
     ``_BatchedPostExportReform``. ``reform_passes``, also shared, gets one
-    entry per batched reform pass: when the consumer runs for real, each
-    ``calculate`` or ``prefetch`` that asks a reformed simulation for a key it
-    was not asked before is one pass of ``_BatchedPostExportReform``, which
-    computes the new keys in ascending period order.
+    ``(simulation, keys)`` entry per batched reform pass: when the consumer
+    runs for real, each ``calculate`` or ``prefetch`` that asks a reformed
+    simulation for a key it was not asked before is one pass of
+    ``_BatchedPostExportReform``, which computes the new keys in ascending
+    period order.
     """
 
     def __init__(
@@ -5300,7 +5322,7 @@ class _RecordingPostExportSimulation:
         asked: dict[tuple[int | None, PostExportKey], None],
         simulation: int | None,
         reforms: Sequence[object],
-        reform_passes: list[int],
+        reform_passes: list[tuple[int, tuple[PostExportKey, ...]]],
     ) -> None:
         self._asked = asked
         self._simulation = simulation
@@ -5332,7 +5354,7 @@ class _RecordingPostExportSimulation:
         )
         self._asked.update(dict.fromkeys((self._simulation, key) for key in new_keys))
         if new_keys and self._simulation is not None:
-            self._reform_passes.append(self._simulation)
+            self._reform_passes.append((self._simulation, new_keys))
 
 
 def _dry_run_post_export_requests(
@@ -5369,14 +5391,18 @@ def _dry_run_post_export_requests(
 
 def _dry_run_post_export(
     consumer: Callable[[Callable[[Any], Any]], object],
-) -> tuple[tuple[tuple[int | None, object, PostExportKey], ...], int]:
-    """``_dry_run_post_export_requests``'s requests and the number of batched
-    reform passes the scorer runs for them: one per ``calculate`` or
-    ``prefetch`` that asks a reformed simulation for a key not asked of it
-    before, so a ``prefetch`` of several keys is one pass."""
+) -> tuple[
+    tuple[tuple[int | None, object, PostExportKey], ...],
+    tuple[tuple[int, tuple[PostExportKey, ...]], ...],
+]:
+    """``_dry_run_post_export_requests``'s requests and the batched reform
+    passes the scorer runs for them, as ``(simulation, keys)`` in run order:
+    one per ``calculate`` or ``prefetch`` that asks a reformed simulation for
+    a key not asked of it before, so a ``prefetch`` of several keys is one
+    pass, whose keys are in ascending period order."""
     asked: dict[tuple[int | None, PostExportKey], None] = {}
     reforms: list[object] = []
-    reform_passes: list[int] = []
+    reform_passes: list[tuple[int, tuple[PostExportKey, ...]]] = []
 
     def simulate(reform):
         if reform is None:
@@ -5400,7 +5426,7 @@ def _dry_run_post_export(
             if simulation is not None
         ),
     )
-    return requests, len(reform_passes)
+    return requests, tuple(reform_passes)
 
 
 def _record_post_export_request_descriptors(
@@ -5448,7 +5474,7 @@ def _record_post_export_requests(
     """
     requests, reform_passes = _dry_run_post_export(consumer)
     baseline = tuple(key for simulation, _, key in requests if simulation is None)
-    return baseline, reform_passes
+    return baseline, len(reform_passes)
 
 
 def _record_post_export_baseline_plan(
@@ -5456,6 +5482,85 @@ def _record_post_export_baseline_plan(
 ) -> tuple[PostExportKey, ...]:
     """Learn a consumer's baseline keys (``_record_post_export_requests``)."""
     return _record_post_export_requests(consumer)[0]
+
+
+class _PostExportConsumerRequests:
+    """Every request one consumer's engine-free dry run made, and its passes.
+
+    ``descriptors`` are the consumer's requests as picklable
+    ``PostExportRequest`` descriptors, in the order the serial scorer runs
+    them; ``baseline_plan`` their baseline keys; ``reform_passes`` the
+    batched reform passes the serial scorer runs for the rest, as
+    ``(reformed simulation, keys)`` in run order. Pooled scoring sends these
+    passes to workers and serves the consumer, when it runs again, exactly
+    these requests (``_PooledPostExportScorer``). (A plain class, for the
+    reason :class:`_PostExportScoringPlan` gives.)
+    """
+
+    def __init__(
+        self,
+        name: str,
+        descriptors: Sequence[PostExportRequest],
+        reform_passes: Sequence[tuple[int, tuple[PostExportKey, ...]]],
+    ) -> None:
+        self.name = str(name)
+        self.descriptors = tuple(descriptors)
+        self.baseline_plan = tuple(
+            request.key for request in self.descriptors if request.reform is None
+        )
+        self.reform_passes = tuple(
+            (int(simulation), tuple(keys)) for simulation, keys in reform_passes
+        )
+        self.reforms: dict[int, object] = {}
+        asked: dict[int, list[PostExportKey]] = {}
+        for request in self.descriptors:
+            if request.reform is not None:
+                self.reforms.setdefault(request.reformed_simulation, request.reform)
+                asked.setdefault(request.reformed_simulation, []).append(request.key)
+        passed: dict[int, list[PostExportKey]] = {}
+        for simulation, keys in self.reform_passes:
+            passed.setdefault(simulation, []).extend(keys)
+        if {simulation: tuple(keys) for simulation, keys in passed.items()} != {
+            simulation: tuple(keys) for simulation, keys in asked.items()
+        }:
+            raise ValueError(
+                f"{self.name}: the dry run's reform passes do not hold exactly "
+                "its reform requests, in their order."
+            )
+        self.simulations = tuple(dict.fromkeys(sim for sim, _ in self.reform_passes))
+        if list(self.simulations) != sorted(self.simulations):
+            raise ValueError(
+                f"{self.name}: a reformed simulation's passes must all come "
+                "before the next simulation's."
+            )
+
+    def passes_of(self, simulation: int) -> tuple[tuple[PostExportKey, ...], ...]:
+        """The keys of each reform pass of one reformed simulation, in order."""
+        return tuple(
+            keys for number, keys in self.reform_passes if number == simulation
+        )
+
+
+def _record_post_export_consumer_requests(
+    name: str, consumer: Callable[[Callable[[Any], Any]], object]
+) -> _PostExportConsumerRequests:
+    """Every request and reform pass of ``consumer``, from one engine-free dry run."""
+    requests, reform_passes = _dry_run_post_export(consumer)
+    descriptors = tuple(
+        PostExportRequest(
+            consumer=name,
+            position=position,
+            variable=variable,
+            period=period,
+            map_to=map_to,
+            reform=reform,
+            reformed_simulation=simulation,
+        )
+        for position, (simulation, reform, (variable, period, map_to)) in enumerate(
+            requests
+        )
+    )
+    return _PostExportConsumerRequests(name, descriptors, reform_passes)
 
 
 class _AscendingPeriodEngine:
@@ -5622,14 +5727,19 @@ class _PostExportScoringPlan:
         maximum_batch_size: int | None,
         baseline_plans: Mapping[str, tuple[PostExportKey, ...]],
         reform_passes: Mapping[str, int] | None = None,
+        consumer_requests: Mapping[str, _PostExportConsumerRequests] | None = None,
         error: str | None = None,
     ) -> None:
+        """``consumer_requests`` holds every request of each consumer's dry
+        run, which pooled scoring sends to workers; the record of the plan
+        leaves it out, as it does the reform pass counts."""
         self.n_households = int(n_households)
         self.maximum_batch_size = maximum_batch_size
         self.baseline_plans = {
             consumer: tuple(plan) for consumer, plan in baseline_plans.items()
         }
         self.reform_passes = dict(reform_passes or {})
+        self.consumer_requests = dict(consumer_requests or {})
         self.error = error
 
     @property
@@ -5692,14 +5802,19 @@ def _post_export_scoring_plan(
     consumers: Mapping[str, Callable[[Callable[[Any], Any]], object]],
 ) -> _PostExportScoringPlan:
     requests = {
-        name: _record_post_export_requests(consumer)
+        name: _record_post_export_consumer_requests(name, consumer)
         for name, consumer in consumers.items()
     }
     return _PostExportScoringPlan(
         n_households=int(n_households),
         maximum_batch_size=maximum_microsim_batch_size,
-        baseline_plans={name: plan for name, (plan, _) in requests.items()},
-        reform_passes={name: passes for name, (_, passes) in requests.items()},
+        baseline_plans={
+            name: recorded.baseline_plan for name, recorded in requests.items()
+        },
+        reform_passes={
+            name: len(recorded.reform_passes) for name, recorded in requests.items()
+        },
+        consumer_requests=requests,
     )
 
 
@@ -5885,6 +6000,23 @@ class _PostExportBatchFiles(Sequence):
             del payload
         self._files = tuple(files)
 
+    @property
+    def files(self) -> tuple[tuple[str, str], ...]:
+        """Each batch's file and the SHA-256 written for it, in batch order."""
+        return tuple((str(path), sha256) for path, sha256 in self._files)
+
+    @classmethod
+    def written(cls, files: Sequence[tuple[str, str]]) -> _PostExportBatchFiles:
+        """Batches another process wrote, from its :attr:`files`.
+
+        A pool worker reads its batches this way: each file is still refused
+        unless its bytes hash to the digest the scorer recorded.
+        """
+        batches = cls.__new__(cls)
+        batches._files = tuple((Path(path), str(sha256)) for path, sha256 in files)
+        batches.directory = batches._files[0][0].parent if batches._files else Path(".")
+        return batches
+
     def __len__(self) -> int:
         return len(self._files)
 
@@ -5992,16 +6124,7 @@ class _HouseholdBatchedPostExportScorer:
             microsimulation_cls = Microsimulation
         self._microsimulation_cls = microsimulation_cls
         if dataset_from_frame is None:
-
-            def dataset_from_frame(batch_frame: Frame):
-                # Consumer plans read years after PERIOD (reform validation
-                # reaches past 2025), so the scorer keeps the engine's
-                # projection: it does not ask for PERIOD alone.
-                return _dataset_from_frame(
-                    batch_frame,
-                    assert_no_formula_owned_columns=False,
-                )
-
+            dataset_from_frame = _post_export_dataset
         self._dataset_from_frame = dataset_from_frame
         # Each finished consumer's scoring record, for the manifests' block.
         # Records, not consumers: a finished consumer's arrays must be freed.
@@ -6082,7 +6205,13 @@ class _HouseholdBatchedPostExportScorer:
                 }
                 for name, record in self.consumer_records.items()
             },
+            "execution": self.execution_record(),
         }
+
+    def execution_record(self) -> dict[str, object]:
+        """How this scorer ran: run metadata, outside every output comparison
+        (decision 1.1 · 1). This scorer runs every pass in its own process."""
+        return {"mode": "serial"}
 
     def close(self) -> None:
         self._finish_open_reform()
@@ -6177,52 +6306,23 @@ class _HouseholdBatchedPostExportScorer:
         return served, True
 
     def _construct(self, batch_frame: Frame, *, reform_system):
-        dataset = self._dataset_from_frame(batch_frame)
-        if reform_system is None:
-            return self._microsimulation_cls(
-                dataset=dataset, spm=dict(US_RELEASE_SPM_SELECTION)
-            )
-        # The reform's system alone, not ``reform=`` as well. Given both,
-        # policyengine-us 2.2.1 clones the supplied system on every
-        # construction (``SPMSimulationMixin._prepare_spm_system`` ->
-        # ``clone_spm_system``: the whole parameter tree rebuilt and every
-        # variable deep-copied, so each batch starts on cold caches), core
-        # applies the reform again to the clone, and core adds a ``baseline``
-        # branch whose holders copy every input array. Given the system alone
-        # it shares the system's policy (``share_spm_policy``).
-        # ``POST_EXPORT_BASELINE_BRANCH_READERS`` and
-        # ``POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS`` list formulas that
-        # read the baseline branch, and the scorer guards those uses.
-        return self._microsimulation_cls(
-            tax_benefit_system=reform_system,
-            dataset=dataset,
-            spm=dict(US_RELEASE_SPM_SELECTION),
+        return _construct_post_export_engine(
+            self._microsimulation_cls,
+            self._dataset_from_frame(batch_frame),
+            reform_system=reform_system,
         )
 
     def _assert_reform_keeps_baseline_responses(
         self, reform_system, key: PostExportKey, *, label: str
     ) -> None:
-        """Refuse a reform that moves a behavioral-response parameter.
-
-        A batch reform engine has no ``baseline`` branch, so policyengine-us
-        scores its labor-supply and capital-gains responses as 0. A whole-file
-        reform engine has one and scores them from these parameters, as 0 at
-        the engine's zero default elasticities. The guard requires these
-        parameters to stay at baseline before building a batch reform engine.
-        """
-        moved = _moved_behavioral_response_parameters(
+        """Refuse a reform that moves a behavioral-response parameter
+        (``_refuse_moved_behavioral_responses``)."""
+        _refuse_moved_behavioral_responses(
             reform_system,
             self._microsimulation_cls.default_tax_benefit_system_instance,
-            key[1],
+            key,
+            label=label,
         )
-        if moved:
-            raise RuntimeError(
-                f"Post-export scoring ({label}) refuses a reform that sets "
-                f"behavioral-response parameters off baseline at {key[1]}: "
-                f"{', '.join(moved)}. Batch reform engines carry no baseline "
-                "branch, so policyengine-us would score these responses as zero "
-                "(microcosm#956)."
-            )
 
     def _score(
         self,
@@ -6239,9 +6339,6 @@ class _HouseholdBatchedPostExportScorer:
         """
         batches = self._batches()
         batched = len(batches) > 1
-        watched = _post_export_watched_variables(
-            batched=batched, reform=reform_system is not None
-        )
         if batched:
             print(
                 f"Scoring post-export {label} ({len(keys)} key(s)) in "
@@ -6249,53 +6346,159 @@ class _HouseholdBatchedPostExportScorer:
                 "households.",
                 flush=True,
             )
-        parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
-            key: [] for key in keys
-        }
         sweep = _WorkCounter(
             stage_id="post_export_scoring",
             unit="scoring_batch",
             total=len(batches),
             outer=outer,
         )
-        for batch in range(1, len(batches) + 1):
-            # Read by position: ``enumerate`` keeps its last item, so the
-            # previous batch's frame would stay alive while the next is read.
-            batch_frame = batches[batch - 1]
-            with _automatic_gc_suspended():
-                simulation = self._construct(batch_frame, reform_system=reform_system)
-                # The engine holds its own copy of the batch; the frame read
-                # from the batch's file is freed before the next one is read.
-                del batch_frame
-                try:
-                    known_at_load = _engine_known_periods(simulation, watched)
-                    engine = _AscendingPeriodEngine(simulation, label=label)
-                    for key in keys:
-                        parts[key].append(
-                            _post_export_values_and_weights(engine.calculate(key), key)
-                        )
-                    # Before the release below drops the engine's holders.
-                    _assert_post_export_scoring_is_batch_invariant(
-                        simulation,
-                        watched,
-                        known_at_load,
-                        label=label,
-                        batched=batched,
-                        reform=reform_system is not None,
-                    )
-                finally:
-                    # microcosm#456: free this batch engine's array mass by
-                    # refcount before the next batch builds its own, also
-                    # when a key raises.
-                    release_engine_simulation(simulation)
-                del simulation, engine
-            _collect_batch_garbage()
-            sweep.advance(pass_name=label, batch=batch, batches=len(batches))
-        _collect_family_garbage()
+        parts = _score_post_export_batches(
+            batches,
+            range(len(batches)),
+            keys,
+            label=label,
+            construct=self._construct,
+            reform_system=reform_system,
+            batched=batched,
+            advance=lambda position: sweep.advance(
+                pass_name=label, batch=position + 1, batches=len(batches)
+            ),
+        )
         return {
             key: _concatenate_post_export_parts(key_parts)
             for key, key_parts in parts.items()
         }
+
+
+def _construct_post_export_engine(microsimulation_cls, dataset, *, reform_system):
+    """One batch engine, for the serial scorer and pool workers alike.
+
+    A reform engine gets the reform's system alone, not ``reform=`` as well.
+    Given both, policyengine-us 2.2.1 clones the supplied system on every
+    construction (``SPMSimulationMixin._prepare_spm_system`` ->
+    ``clone_spm_system``: the whole parameter tree rebuilt and every variable
+    deep-copied, so each batch starts on cold caches), core applies the reform
+    again to the clone, and core adds a ``baseline`` branch whose holders copy
+    every input array. Given the system alone it shares the system's policy
+    (``share_spm_policy``). ``POST_EXPORT_BASELINE_BRANCH_READERS`` and
+    ``POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS`` list formulas that read the
+    baseline branch, and the scorer guards those uses.
+    """
+    if reform_system is None:
+        return microsimulation_cls(dataset=dataset, spm=dict(US_RELEASE_SPM_SELECTION))
+    return microsimulation_cls(
+        tax_benefit_system=reform_system,
+        dataset=dataset,
+        spm=dict(US_RELEASE_SPM_SELECTION),
+    )
+
+
+def _post_export_reform_pass_label(consumer: str, keys: Sequence[PostExportKey]) -> str:
+    """A reform pass's name in errors and progress, serial or pooled."""
+    return f"{consumer} reform " + ", ".join(
+        f"{variable}@{period}" for variable, period, _ in keys
+    )
+
+
+def _score_post_export_batches(
+    batches: Sequence[Frame],
+    positions: Iterable[int],
+    keys: Sequence[PostExportKey],
+    *,
+    label: str,
+    construct: Callable[..., Any],
+    reform_system,
+    batched: bool,
+    advance: Callable[[int], None] | None = None,
+) -> dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]]:
+    """Score ``keys`` on one engine per batch at ``positions``, in that order.
+
+    The serial scorer's pass (``_HouseholdBatchedPostExportScorer._score``)
+    and a pool worker's (``_PostExportWorker``) both run this, so a key's
+    values for a batch come from the same engine construction and the same
+    calls in either. Each engine computes the keys in their order (ascending
+    periods), refuses the formulas batching would score wrongly, and is
+    released before the next batch is read. ``batched`` says whether the H5
+    has more than one batch, whichever of its batches are scored here.
+    Returns each key's ``(values, weights)`` per batch, in batch order;
+    ``advance(position)`` runs after each batch.
+    """
+    watched = _post_export_watched_variables(
+        batched=batched, reform=reform_system is not None
+    )
+    parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
+        key: [] for key in keys
+    }
+    for position in positions:
+        # Read by position: ``enumerate`` keeps its last item, so the
+        # previous batch's frame would stay alive while the next is read.
+        batch_frame = batches[position]
+        with _automatic_gc_suspended():
+            simulation = construct(batch_frame, reform_system=reform_system)
+            # The engine holds its own copy of the batch; the frame read from
+            # the batch's file is freed before the next one is read.
+            del batch_frame
+            try:
+                known_at_load = _engine_known_periods(simulation, watched)
+                engine = _AscendingPeriodEngine(simulation, label=label)
+                for key in keys:
+                    parts[key].append(
+                        _post_export_values_and_weights(engine.calculate(key), key)
+                    )
+                # Before the release below drops the engine's holders.
+                _assert_post_export_scoring_is_batch_invariant(
+                    simulation,
+                    watched,
+                    known_at_load,
+                    label=label,
+                    batched=batched,
+                    reform=reform_system is not None,
+                )
+            finally:
+                # microcosm#456: free this batch engine's array mass by
+                # refcount before the next batch builds its own, also when a
+                # key raises.
+                release_engine_simulation(simulation)
+            del simulation, engine
+        _collect_batch_garbage()
+        if advance is not None:
+            advance(position)
+    _collect_family_garbage()
+    return parts
+
+
+def _refuse_moved_behavioral_responses(
+    reform_system, baseline_system, key: PostExportKey, *, label: str
+) -> None:
+    """Refuse a reform that moves a behavioral-response parameter.
+
+    A batch reform engine has no ``baseline`` branch, so policyengine-us
+    scores its labor-supply and capital-gains responses as 0. A whole-file
+    reform engine has one and scores them from these parameters, as 0 at the
+    engine's zero default elasticities. The guard requires these parameters
+    to stay at baseline before building a batch reform engine.
+    """
+    moved = _moved_behavioral_response_parameters(
+        reform_system, baseline_system, key[1]
+    )
+    if moved:
+        raise RuntimeError(
+            f"Post-export scoring ({label}) refuses a reform that sets "
+            f"behavioral-response parameters off baseline at {key[1]}: "
+            f"{', '.join(moved)}. Batch reform engines carry no baseline "
+            "branch, so policyengine-us would score these responses as zero "
+            "(microcosm#956)."
+        )
+
+
+def _post_export_dataset(batch_frame: Frame):
+    """The dataset a batch engine scores (``_HouseholdBatchedPostExportScorer``).
+
+    Consumer plans read years after PERIOD (reform validation reaches past
+    2025), so the scorer keeps the engine's projection: it does not ask for
+    PERIOD alone.
+    """
+    return _dataset_from_frame(batch_frame, assert_no_formula_owned_columns=False)
 
 
 def _open_post_export_scorer(
@@ -6303,11 +6506,15 @@ def _open_post_export_scorer(
     dataset_path: Path,
     *,
     batch_parent: Path | None = None,
+    pooling: _PostExportPooling | None = None,
 ) -> _HouseholdBatchedPostExportScorer | None:
     """Open the scorer the plan recorded before export, or None if no stage runs.
 
-    The scorer keeps its household batch files in a new directory of its own
-    inside ``batch_parent`` (the system's temporary directory without one).
+    With ``pooling`` the scorer scores the plan's recorded requests in the
+    shared worker pool (``_PooledPostExportScorer``); without it, every pass
+    runs in this process. The scorer keeps its household batch files in a new
+    directory of its own inside ``batch_parent`` (the system's temporary
+    directory without one).
     """
     if plan.error is not None:
         raise RuntimeError(
@@ -6315,6 +6522,23 @@ def _open_post_export_scorer(
         )
     if not plan.baseline_plans:
         return None
+    if pooling is not None:
+        missing = sorted(set(plan.baseline_plans) - set(plan.consumer_requests))
+        if missing:
+            raise RuntimeError(
+                "Pooled post-export scoring needs every consumer's recorded "
+                f"requests; the plan holds none for {', '.join(missing)}."
+            )
+        return _PooledPostExportScorer(
+            dataset_path,
+            maximum_microsim_batch_size=plan.maximum_batch_size,
+            batch_parent=batch_parent,
+            expected_n_households=plan.n_households,
+            consumer_requests={
+                name: plan.consumer_requests[name] for name in plan.baseline_plans
+            },
+            pooling=pooling,
+        )
     return _HouseholdBatchedPostExportScorer(
         dataset_path,
         maximum_microsim_batch_size=plan.maximum_batch_size,
@@ -6406,9 +6630,7 @@ class _PostExportConsumer:
         self, reform_system, keys: tuple[PostExportKey, ...]
     ) -> dict[PostExportKey, _PostExportValues]:
         """One batched reform pass over ``keys`` (ascending period order)."""
-        label = f"{self.name} reform " + ", ".join(
-            f"{variable}@{period}" for variable, period, _ in keys
-        )
+        label = _post_export_reform_pass_label(self.name, keys)
         checked_periods: set[int] = set()
         for key in keys:
             if key[1] not in checked_periods:
@@ -6416,16 +6638,18 @@ class _PostExportConsumer:
                 self._scorer._assert_reform_keeps_baseline_responses(
                     reform_system, key, label=label
                 )
-        self.reform_passes += 1
-        planned = self.planned_reform_passes
-        outer = (
-            OuterProgress(self.reform_passes, planned, "reform_pass")
-            if planned is not None and self.reform_passes <= planned
-            else None
-        )
+        outer = self._count_reform_pass()
         return self._scorer._score(
             keys, label=label, reform_system=reform_system, outer=outer
         )
+
+    def _count_reform_pass(self) -> OuterProgress | None:
+        """Count one reform pass; return its place among the planned passes."""
+        self.reform_passes += 1
+        planned = self.planned_reform_passes
+        if planned is not None and self.reform_passes <= planned:
+            return OuterProgress(self.reform_passes, planned, "reform_pass")
+        return None
 
 
 class _PlannedPostExportBaseline:
@@ -6524,6 +6748,866 @@ class _BatchedPostExportReform:
         rule_modules, self._rule_modules = self._rule_modules, None
         if rule_modules is not None:
             rule_modules.close()
+
+
+# ---------------------------------------------------------------------------
+# Pooled post-export scoring (tracker task 1.4 · 7)
+# ---------------------------------------------------------------------------
+#
+# The serial scorer runs every pass in its own process, one after another.
+# The pooled scorer (``_PooledPostExportScorer``) runs the same passes in the
+# shared worker pool (``microcosm.build.worker_pool``) and serves each
+# consumer from their results:
+#
+# * The plan's engine-free dry run recorded every request of every consumer
+#   and the reform passes the serial scorer runs for them
+#   (``_PostExportConsumerRequests``).
+# * The pool runs twice. First the merged baseline plan, split into ranges of
+#   batches, one unit per range. Then one unit per reformed simulation, with
+#   every recorded pass of it over every batch, in the order the consumers
+#   run: a worker builds the reform's rules once for the unit, as the serial
+#   scorer builds them once per reformed simulation. If the merged baseline
+#   pass failed, the second run also holds each consumer's own baseline plan
+#   before its reform units, as the serial scorer then scores it.
+# * A worker reads each batch from the scorer's batch file (refusing one
+#   whose bytes changed), builds one engine per batch and scores the pass's
+#   keys on it exactly as the serial scorer does
+#   (``_score_post_export_batches``): ascending periods, the
+#   population-aggregate refusal of a pass over a multi-batch H5, the
+#   baseline-branch refusal and the behavioral-response check of a reform
+#   pass. A failure is returned with the unit, not raised.
+# * The consumers then run in this process, as in the serial path, and build
+#   their own reforms (the smoke check records each list edit's resolved
+#   lists from its own). Each baseline is served the consumer's recorded
+#   plan and refuses any other key. Each reformed simulation is served its
+#   recorded passes in order and refuses any other request, so a consumer
+#   whose requests depend on the values it gets back cannot be scored with
+#   values computed for another request. Each key's parts are joined in
+#   batch order (``_concatenate_post_export_parts``), so every value, total
+#   and output is byte-identical to the serial scorer's. A pass that failed
+#   in a worker raises an error with the worker's exception's class name and
+#   message when the consumer asks for it, where the serial scorer would
+#   have raised.
+
+
+def _peak_rss_bytes() -> int:
+    import resource
+
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # ru_maxrss is bytes on macOS and kilobytes on Linux.
+    return int(peak if sys.platform == "darwin" else peak * 1024)
+
+
+def _post_export_unit_failure(
+    stage: str, error: BaseException
+) -> PostExportUnitFailure:
+    return PostExportUnitFailure.from_exception(
+        stage, error, batch_file_error=isinstance(error, PostExportBatchFileError)
+    )
+
+
+class _PostExportWorkerTracebackError(Exception):
+    """The traceback of an exception a pool worker returned."""
+
+    def __str__(self) -> str:
+        return f"in a pool worker:\n{self.args[0]}"
+
+
+def _raise_post_export_worker_failure(failure: PostExportUnitFailure):
+    """Raise what a worker's pass raised, chained to the worker's traceback.
+
+    A changed or unreadable batch file raises this tool's own
+    :class:`PostExportBatchFileError`, which the held-out reports re-raise.
+    """
+    if failure.batch_file_error:
+        error: BaseException = PostExportBatchFileError(failure.message)
+    else:
+        error = failure.exception()
+    raise error from _PostExportWorkerTracebackError(failure.traceback)
+
+
+class _PostExportWorker:
+    """A pool worker's side of pooled post-export scoring.
+
+    The pool's initializer (``start_post_export_worker``) builds one in each
+    worker from the batch files the parent's scorer wrote; each unit is then
+    one :meth:`score`. ``microsimulation_cls``, ``dataset_from_frame`` and
+    ``reform_builder`` are policyengine-us's ``Microsimulation``,
+    :func:`_post_export_dataset` and ``build_post_export_reform`` unless the
+    parent passed others (tests do).
+    """
+
+    def __init__(
+        self,
+        batch_files: Sequence[tuple[str, str]],
+        n_batches: int,
+        microsimulation_cls=None,
+        dataset_from_frame=None,
+        reform_builder=None,
+    ) -> None:
+        self._batches = _PostExportBatchFiles.written(batch_files)
+        if len(self._batches) != int(n_batches):
+            raise ValueError(
+                f"A post-export worker got {len(self._batches)} batch files for "
+                f"an H5 of {n_batches} batches."
+            )
+        if microsimulation_cls is None:
+            from policyengine_us import Microsimulation
+
+            microsimulation_cls = Microsimulation
+        self._microsimulation_cls = microsimulation_cls
+        self._dataset_from_frame = dataset_from_frame or _post_export_dataset
+        self._build_reform = reform_builder or build_post_export_reform
+
+    def _construct(self, batch_frame: Frame, *, reform_system):
+        return _construct_post_export_engine(
+            self._microsimulation_cls,
+            self._dataset_from_frame(batch_frame),
+            reform_system=reform_system,
+        )
+
+    def score(self, unit: PostExportUnit) -> PostExportUnitResult:
+        """Run each pass of ``unit``; return its values or its failure.
+
+        A reform unit's rules are built once, before its first pass (whose
+        timing includes them), and the modules their build added are removed
+        when the unit ends. A failure to build them is every pass's failure.
+        """
+        if unit.n_batches != len(self._batches):
+            raise ValueError(
+                f"{unit.describe()} names an H5 of {unit.n_batches} batches; "
+                f"this worker has {len(self._batches)}."
+            )
+        outcomes: list[PostExportPassValues | PostExportUnitFailure] = []
+        timings: list[PostExportPassTiming] = []
+        wall, cpu = time.perf_counter(), time.process_time()
+        system = None
+        rules_failure: PostExportUnitFailure | None = None
+        rule_modules: EngineVariableModuleScope | None = None
+        try:
+            if unit.reform is not None:
+                rule_modules = EngineVariableModuleScope().open()
+                try:
+                    system = self._microsimulation_cls.default_tax_benefit_system(
+                        reform=self._build_reform(unit.reform)
+                    )
+                except MemoryError:
+                    raise
+                except Exception as error:
+                    rules_failure = _post_export_unit_failure("rules", error)
+            for scoring_pass in unit.passes:
+                outcomes.append(
+                    rules_failure
+                    if rules_failure is not None
+                    else self._score_pass(unit, scoring_pass, system)
+                )
+                timings.append(
+                    PostExportPassTiming(
+                        wall_seconds=time.perf_counter() - wall,
+                        cpu_seconds=time.process_time() - cpu,
+                        footprint_bytes=process_memory_bytes(os.getpid()),
+                        peak_rss_bytes=_peak_rss_bytes(),
+                    )
+                )
+                wall, cpu = time.perf_counter(), time.process_time()
+        finally:
+            system = None
+            if rule_modules is not None:
+                rule_modules.close()
+        return PostExportUnitResult(
+            outcomes=tuple(outcomes), timings=tuple(timings), worker_pid=os.getpid()
+        )
+
+    def _score_pass(
+        self, unit: PostExportUnit, scoring_pass: PostExportPass, system
+    ) -> PostExportPassValues | PostExportUnitFailure:
+        label = scoring_pass.label
+        if system is not None:
+            # The serial reform pass checks each of its periods once, in key
+            # order, before it builds a batch engine.
+            try:
+                checked: set[int] = set()
+                for key in scoring_pass.keys:
+                    if key[1] not in checked:
+                        checked.add(key[1])
+                        _refuse_moved_behavioral_responses(
+                            system,
+                            self._microsimulation_cls.default_tax_benefit_system_instance,
+                            key,
+                            label=label,
+                        )
+            except MemoryError:
+                raise
+            except Exception as error:
+                return _post_export_unit_failure("responses", error)
+        try:
+            parts = _score_post_export_batches(
+                self._batches,
+                range(unit.batch_start, unit.batch_stop),
+                scoring_pass.keys,
+                label=label,
+                construct=self._construct,
+                reform_system=system,
+                batched=unit.n_batches > 1,
+            )
+        except MemoryError:
+            raise
+        except Exception as error:
+            return _post_export_unit_failure("scoring", error)
+        return PostExportPassValues(
+            parts=tuple(tuple(parts[key]) for key in scoring_pass.keys)
+        )
+
+
+def _describe_post_export_unit(index: int, unit: PostExportUnit) -> str:
+    return unit.describe()
+
+
+class _PostExportPooling:
+    """How pooled post-export scoring runs.
+
+    ``settings`` are the shared pool's: the most workers, the per-worker
+    memory cap, the replacement interval, the attempts per unit and the
+    environment each worker gets. The scorer starts no more workers than a
+    pool run has units, and adds this process's policyengine-us lock-check
+    record to each worker's environment (``_post_export_worker_settings``).
+    ``chosen_by`` says how the worker count was chosen; the manifests record
+    it with the settings as run metadata.
+
+    ``microsimulation_cls``, ``dataset_from_frame`` and ``reform_builder``
+    replace, in every worker and for the scorer's own checks, the engine, the
+    batch dataset and the reform builder; each must be importable by name in a
+    spawned worker. ``None`` keeps policyengine-us's ``Microsimulation``,
+    :func:`_post_export_dataset` and ``build_post_export_reform``. (A plain
+    class, for the reason :class:`_PostExportScoringPlan` gives.)
+    """
+
+    def __init__(
+        self,
+        settings: WorkerPoolSettings,
+        *,
+        chosen_by: str,
+        microsimulation_cls=None,
+        dataset_from_frame=None,
+        reform_builder=None,
+    ) -> None:
+        if not isinstance(settings, WorkerPoolSettings):
+            raise TypeError("Pooled post-export scoring needs WorkerPoolSettings.")
+        if not isinstance(chosen_by, str) or not chosen_by:
+            raise ValueError("Say how the post-export worker count was chosen.")
+        self.settings = settings
+        self.chosen_by = chosen_by
+        self.microsimulation_cls = microsimulation_cls
+        self.dataset_from_frame = dataset_from_frame
+        self.reform_builder = reform_builder
+
+
+def _post_export_worker_settings(
+    pooling: _PostExportPooling, *, workers: int
+) -> WorkerPoolSettings:
+    """The pool's settings: at most ``workers`` workers, each handed this
+    process's policyengine-us lock-check record.
+
+    A worker imports the release tool, whose spec bundle checks the
+    policyengine-us lock file (two tax-benefit systems built and the engine's
+    source indexed) unless its parent hands it the record of a check the
+    parent passed (``us_engine_abi_lock_check_environment``). Without one
+    (no attested check ran here), each worker checks the lock file itself.
+    """
+    from microcosm.build.us_runtime.take_up_contract import (
+        us_engine_abi_lock_check_environment,
+    )
+
+    settings = pooling.settings
+    environment = {
+        **(settings.worker_environment or {}),
+        **us_engine_abi_lock_check_environment(),
+    }
+    return dataclasses.replace(
+        settings,
+        workers=max(1, min(settings.workers, int(workers))),
+        worker_environment=environment or None,
+    )
+
+
+def _post_export_batch_ranges(n_batches: int, ranges: int) -> tuple[range, ...]:
+    """``n_batches`` split into at most ``ranges`` contiguous, near-equal ranges."""
+    count = max(1, min(int(ranges), int(n_batches)))
+    bounds = [index * n_batches // count for index in range(count + 1)]
+    return tuple(
+        range(start, stop)
+        for start, stop in zip(bounds, bounds[1:], strict=False)
+        if start < stop
+    )
+
+
+class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
+    """Scores the recorded requests in the shared worker pool and serves each
+    consumer, when it runs again in this process, from the results (see the
+    block comment above).
+
+    ``consumer_requests`` are the plan's records of each consumer's dry run
+    (``_PostExportScoringPlan.consumer_requests``), in the order the
+    consumers run; every one is registered, so the merged baseline pass holds
+    every plan. Only those consumers may be opened, each once, in that order
+    (one that stops early is passed over when the next opens). The pool
+    starts when the first consumer opens and stops when the scorer closes.
+    ``pass_timing_listener``, if set, is called with one row per pass a worker
+    ran, as its results arrive (the export probe writes them out).
+    """
+
+    def __init__(
+        self,
+        dataset_path: Path,
+        *,
+        maximum_microsim_batch_size: int | None,
+        consumer_requests: Mapping[str, _PostExportConsumerRequests],
+        pooling: _PostExportPooling,
+        expected_n_households: int | None = None,
+        batch_parent: Path | None = None,
+        load_frame=None,
+    ) -> None:
+        requests = dict(consumer_requests)
+        for name, recorded in requests.items():
+            if not isinstance(recorded, _PostExportConsumerRequests):
+                raise TypeError(
+                    f"{name}: pooled post-export scoring needs the consumer's "
+                    "recorded requests (_PostExportConsumerRequests)."
+                )
+        super().__init__(
+            dataset_path,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+            expected_n_households=expected_n_households,
+            batch_parent=batch_parent,
+            microsimulation_cls=pooling.microsimulation_cls,
+            dataset_from_frame=pooling.dataset_from_frame,
+            load_frame=load_frame,
+            baseline_plans={
+                name: recorded.baseline_plan for name, recorded in requests.items()
+            },
+        )
+        self._requests = requests
+        self._pooling = pooling
+        self.pass_timing_listener: Callable[[dict[str, object]], None] | None = None
+        self._pool: WorkerPool | None = None
+        self._started = False
+        self._workers = 0
+        self._units = {"baseline": 0, "reform": 0}
+        self._stream: Iterator[PostExportUnitResult] | None = None
+        self._stream_units: tuple[PostExportUnit, ...] = ()
+        self._next_unit = 0
+        # Why the pool stopped serving, once it has.
+        self._stopped: BaseException | None = None
+        self._opened: list[str] = []
+        self._simulations_opened: dict[str, int] = {}
+        self._passes_asked: dict[tuple[str, int], int] = {}
+        self._rules_counted: set[tuple[str, int]] = set()
+        # The reform unit whose passes are being served: (consumer,
+        # simulation, unit, result).
+        self._serving: tuple[str, int, PostExportUnit, PostExportUnitResult] | None = (
+            None
+        )
+
+    # ---- the pool ----------------------------------------------------------
+
+    def _baseline_units(
+        self, consumer: str | None, label: str, keys: Sequence[PostExportKey]
+    ) -> tuple[PostExportUnit, ...]:
+        scoring_pass = PostExportPass(label=label, keys=tuple(keys))
+        return tuple(
+            PostExportUnit(
+                consumer=consumer,
+                reformed_simulation=None,
+                reform=None,
+                passes=(scoring_pass,),
+                batch_start=batches.start,
+                batch_stop=batches.stop,
+                n_batches=self.n_batches,
+            )
+            for batches in _post_export_batch_ranges(
+                self.n_batches, self._pooling.settings.workers
+            )
+        )
+
+    def _reform_units(self, consumer: str) -> tuple[PostExportUnit, ...]:
+        recorded = self._requests[consumer]
+        return tuple(
+            PostExportUnit(
+                consumer=consumer,
+                reformed_simulation=simulation,
+                reform=recorded.reforms[simulation],
+                passes=tuple(
+                    PostExportPass(
+                        label=_post_export_reform_pass_label(consumer, keys), keys=keys
+                    )
+                    for keys in recorded.passes_of(simulation)
+                ),
+                batch_start=0,
+                batch_stop=self.n_batches,
+                n_batches=self.n_batches,
+            )
+            for simulation in recorded.simulations
+        )
+
+    def _start(self) -> None:
+        """Run the merged baseline pass, then start the reform units.
+
+        A start that failed is not tried again: every later request names the
+        failure.
+        """
+        if self._stopped is not None:
+            raise RuntimeError(
+                "Pooled post-export scoring stopped earlier; nothing more is served."
+            ) from self._stopped
+        if self._started:
+            return
+        self._batches()
+        self._started = True
+        try:
+            self._start_pool()
+        except BaseException as error:
+            self._stopped = error
+            raise
+
+    def _start_pool(self) -> None:
+        merged = _ascending_period_plan(
+            key for plan in self._unserved_baseline_plans.values() for key in plan
+        )
+        baseline_units = (
+            self._baseline_units(None, "merged baseline plan", merged) if merged else ()
+        )
+        reform_units = tuple(
+            unit for name in self._requests for unit in self._reform_units(name)
+        )
+        self._units = {"baseline": len(baseline_units), "reform": len(reform_units)}
+        if not baseline_units and not reform_units:
+            return
+        self._workers = max(
+            1,
+            min(
+                self._pooling.settings.workers,
+                max(len(baseline_units), len(reform_units)),
+            ),
+        )
+        pooling = self._pooling
+        self._pool = WorkerPool(
+            _post_export_worker_settings(pooling, workers=self._workers),
+            unit_function=score_post_export_unit,
+            initializer=start_post_export_worker,
+            initargs=(
+                __name__,
+                str(Path(__file__).resolve()),
+                self._batches().files,
+                self.n_batches,
+                pooling.microsimulation_cls,
+                pooling.dataset_from_frame,
+                pooling.reform_builder,
+            ),
+            describe_unit=_describe_post_export_unit,
+        )
+        if baseline_units:
+            self._run_merged_baseline(baseline_units, merged)
+        if self._merged_baseline_failed:
+            layout = []
+            for name, recorded in self._requests.items():
+                if recorded.baseline_plan:
+                    layout.extend(
+                        self._baseline_units(
+                            name, f"{name} baseline plan", recorded.baseline_plan
+                        )
+                    )
+                layout.extend(self._reform_units(name))
+            stream_units = tuple(layout)
+        else:
+            stream_units = reform_units
+        if stream_units:
+            self._stream_units = stream_units
+            self._stream = self._pool.map(stream_units)
+
+    def _run_merged_baseline(
+        self, units: Sequence[PostExportUnit], keys: Sequence[PostExportKey]
+    ) -> None:
+        label = units[0].passes[0].label
+        print(
+            f"Scoring post-export {label} ({len(keys)} key(s)) in "
+            f"{self.n_batches} batches of up to {self.max_batch_households:,} "
+            f"households, in {len(units)} pool unit(s) on up to {self._workers} "
+            "worker(s).",
+            flush=True,
+        )
+        sweep = _WorkCounter(
+            stage_id="post_export_scoring", unit="scoring_batch", total=self.n_batches
+        )
+        parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
+            key: [] for key in keys
+        }
+        failure: PostExportUnitFailure | None = None
+        results = self._pool.map(units)
+        try:
+            for unit, result in zip(units, results, strict=True):
+                self._report_timing(unit, result)
+                outcome = result.outcomes[0]
+                if isinstance(outcome, PostExportUnitFailure):
+                    if outcome.batch_file_error:
+                        # The scored file's integrity: no consumer's own
+                        # pass could read the batch either.
+                        _raise_post_export_worker_failure(outcome)
+                    failure = failure or outcome
+                    continue
+                if failure is None:
+                    for key, key_parts in zip(keys, outcome.parts, strict=True):
+                        parts[key].extend(key_parts)
+                sweep.advance(
+                    unit.batch_stop - unit.batch_start,
+                    pass_name=label,
+                    batch=unit.batch_stop,
+                    batches=self.n_batches,
+                )
+        finally:
+            results.close()
+        if failure is not None:
+            # As the serial scorer: every consumer then scores its own plan.
+            self._merged_baseline_failed = True
+            del parts
+            print(
+                f"Post-export merged baseline plan failed ({failure.error_name}: "
+                f"{failure.message}); each consumer scores its own baseline plan "
+                "instead.",
+                flush=True,
+            )
+            _collect_family_garbage()
+            return
+        self._merged_baseline = {
+            key: _concatenate_post_export_parts(parts.pop(key)) for key in keys
+        }
+
+    def _report_timing(
+        self, unit: PostExportUnit, result: PostExportUnitResult
+    ) -> None:
+        listener = self.pass_timing_listener
+        if listener is None:
+            return
+        for scoring_pass, timing, outcome in zip(
+            unit.passes, result.timings, result.outcomes, strict=True
+        ):
+            listener(
+                {
+                    "label": scoring_pass.label,
+                    "keys": len(scoring_pass.keys),
+                    "reform": unit.reform is not None,
+                    "batches": unit.batch_stop - unit.batch_start,
+                    "batch_start": unit.batch_start,
+                    "worker_pid": result.worker_pid,
+                    "failed": isinstance(outcome, PostExportUnitFailure),
+                    "wall_seconds": round(timing.wall_seconds, 3),
+                    "cpu_seconds": round(timing.cpu_seconds, 3),
+                    "footprint_bytes": timing.footprint_bytes,
+                    "peak_rss_bytes": timing.peak_rss_bytes,
+                }
+            )
+
+    def _take(self, consumer: str, simulation: int | None):
+        """The next run of stream units for ``(consumer, simulation)``.
+
+        Units of a consumer opened before this one, which stopped before
+        asking for them, are passed over. Any other unit in the way means the
+        consumer asked out of its recorded order, which is refused.
+        """
+        if self._stopped is not None:
+            raise RuntimeError(
+                "Pooled post-export scoring stopped earlier; nothing more is served."
+            ) from self._stopped
+        taken: list[tuple[PostExportUnit, PostExportUnitResult]] = []
+        while self._next_unit < len(self._stream_units):
+            unit = self._stream_units[self._next_unit]
+            ours = unit.consumer == consumer and unit.reformed_simulation == simulation
+            if not ours and (taken or unit.consumer == consumer):
+                break
+            if not ours and unit.consumer not in self._opened:
+                break
+            self._next_unit += 1
+            try:
+                result = next(self._stream)
+            except BaseException as error:
+                # The pool stopped (a unit failed on every attempt, a worker
+                # could not start, the scorer closed): nothing after it can
+                # be served.
+                self._stopped = error
+                raise
+            self._report_timing(unit, result)
+            if ours:
+                taken.append((unit, result))
+        if not taken:
+            asked = (
+                "baseline plan"
+                if simulation is None
+                else (f"reformed simulation {simulation}")
+            )
+            raise RuntimeError(
+                f"{consumer} asked for its {asked} out of the order its "
+                "engine-free dry run recorded; pooled post-export scoring "
+                "serves each consumer its recorded requests in that order."
+            )
+        return taken
+
+    # ---- consumers ---------------------------------------------------------
+
+    def open_consumer(
+        self,
+        name: str,
+        baseline_plan: Sequence[PostExportKey],
+        planned_reform_passes: int | None = None,
+    ) -> _PostExportConsumer:
+        if name not in self._requests:
+            raise ValueError(
+                f"{name} has no recorded requests; pooled post-export scoring "
+                "serves only the consumers whose dry run the plan recorded."
+            )
+        if name in self._opened:
+            raise ValueError(
+                f"{name} was opened on this scorer already; pooled post-export "
+                "scoring serves each recorded consumer once."
+            )
+        self._batches()
+        self._opened.append(name)
+        self._start()
+        return super().open_consumer(
+            name, baseline_plan, planned_reform_passes=planned_reform_passes
+        )
+
+    def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
+        if scoring._scorer is self and scoring.name not in self.consumer_records:
+            recorded = self._requests[scoring.name]
+            unasked = [
+                simulation
+                for simulation in recorded.simulations
+                if self._passes_asked.get((scoring.name, simulation), 0)
+                != len(recorded.passes_of(simulation))
+            ]
+            if unasked:
+                raise RuntimeError(
+                    f"{scoring.name} finished without asking reformed "
+                    f"simulation(s) {unasked} for every pass its engine-free dry "
+                    "run recorded; pooled post-export scoring serves each "
+                    "consumer its recorded requests only, so a consumer must ask "
+                    "for the same keys whatever values it gets back."
+                )
+        return super().finish_consumer(scoring)
+
+    def _baseline_for(
+        self, name: str, baseline_plan: tuple[PostExportKey, ...]
+    ) -> tuple[dict[PostExportKey, _PostExportValues], bool]:
+        if (
+            not baseline_plan
+            or self._registered_baseline_plans.get(name) != baseline_plan
+        ):
+            # Nothing to score, or a plan other than the registered one, which
+            # the serial scorer's check refuses.
+            return super()._baseline_for(name, baseline_plan)
+        if not self._merged_baseline_failed:
+            if (
+                self._merged_baseline is None
+                or name not in self._unserved_baseline_plans
+            ):
+                raise RuntimeError(
+                    f"{name}: the pool's merged baseline pass holds no values "
+                    "for it; pooled post-export scoring scores nothing in this "
+                    "process."
+                )
+            # The merged pass's values, served as the serial scorer serves them.
+            return super()._baseline_for(name, baseline_plan)
+        # The merged pass failed: the consumer's own pass, from the stream.
+        parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
+            key: [] for key in baseline_plan
+        }
+        failure: PostExportUnitFailure | None = None
+        for _, result in self._take(name, None):
+            outcome = result.outcomes[0]
+            if isinstance(outcome, PostExportUnitFailure):
+                failure = failure or outcome
+            elif failure is None:
+                for key, key_parts in zip(baseline_plan, outcome.parts, strict=True):
+                    parts[key].extend(key_parts)
+        if failure is not None:
+            del parts
+            _raise_post_export_worker_failure(failure)
+        return {
+            key: _concatenate_post_export_parts(parts.pop(key)) for key in baseline_plan
+        }, False
+
+    def _open_reform_for(self, consumer: _PostExportConsumer, reform):
+        self._finish_open_reform()
+        simulation = self._simulations_opened.get(consumer.name, 0)
+        self._simulations_opened[consumer.name] = simulation + 1
+        self._open_reform = _PooledPostExportReform(consumer, simulation)
+        return self._open_reform
+
+    def _reform_pass(
+        self,
+        consumer: _PostExportConsumer,
+        simulation: int,
+        keys: tuple[PostExportKey, ...],
+    ) -> dict[PostExportKey, _PostExportValues]:
+        """Serve one reform pass of a consumer's reformed simulation.
+
+        It must be the next pass the dry run recorded for that simulation.
+        The consumer's counts move as the serial scorer's do: a reform system
+        once its rules are built, then a reform pass once its
+        behavioral-response check passes.
+        """
+        name = consumer.name
+        recorded = self._requests[name].passes_of(simulation)
+        asked = self._passes_asked.get((name, simulation), 0)
+        if asked >= len(recorded) or recorded[asked] != tuple(keys):
+            requested = ", ".join(
+                f"{variable}@{period}" for variable, period, _ in keys
+            )
+            raise RuntimeError(
+                f"{name} asked reformed simulation {simulation} for {requested}, "
+                "which is not the next reform pass its engine-free dry run "
+                "recorded. Pooled post-export scoring scores only the recorded "
+                "requests, so a consumer must ask for the same keys whatever "
+                "values it gets back."
+            )
+        if asked == 0:
+            [(unit, result)] = self._take(name, simulation)
+            self._serving = (name, simulation, unit, result)
+        serving = self._serving
+        if serving is None or serving[:2] != (name, simulation):
+            raise RuntimeError(
+                f"{name}: reformed simulation {simulation}'s results are no "
+                "longer held."
+            )
+        unit, result = serving[2], serving[3]
+        self._passes_asked[(name, simulation)] = asked + 1
+        if asked + 1 == len(recorded):
+            self._serving = None
+        outcome = result.outcomes[asked]
+        failed = isinstance(outcome, PostExportUnitFailure)
+        if failed and outcome.stage == "rules":
+            _raise_post_export_worker_failure(outcome)
+        if (name, simulation) not in self._rules_counted:
+            self._rules_counted.add((name, simulation))
+            consumer.reform_systems += 1
+        if failed and outcome.stage == "responses":
+            _raise_post_export_worker_failure(outcome)
+        outer = consumer._count_reform_pass()
+        if failed:
+            _raise_post_export_worker_failure(outcome)
+        label = unit.passes[asked].label
+        values = {
+            key: _concatenate_post_export_parts(key_parts)
+            for key, key_parts in zip(keys, outcome.parts, strict=True)
+        }
+        _WorkCounter(
+            stage_id="post_export_scoring",
+            unit="scoring_batch",
+            total=self.n_batches,
+            outer=outer,
+        ).advance(
+            self.n_batches,
+            pass_name=label,
+            batch=self.n_batches,
+            batches=self.n_batches,
+        )
+        return values
+
+    # ---- records and closing -----------------------------------------------
+
+    def execution_record(self) -> dict[str, object]:
+        """How this scorer ran: run metadata, outside every output comparison."""
+        settings = self._pooling.settings
+        record: dict[str, object] = {
+            "mode": "pooled",
+            "chosen_by": self._pooling.chosen_by,
+            "requested_workers": settings.workers,
+            "workers": self._workers,
+            "memory_cap_bytes": settings.memory_cap_bytes,
+            "max_units_per_worker": settings.max_units_per_worker,
+            "max_attempts": settings.max_attempts,
+            "max_units_ahead": settings.max_units_ahead,
+            "worker_environment_variables": sorted(settings.worker_environment or ()),
+            "units": dict(self._units),
+            "report": None,
+        }
+        if self._pool is not None:
+            record["report"] = _worker_pool_report_record(self._pool.report())
+        return record
+
+    def close(self) -> None:
+        stream, self._stream = self._stream, None
+        self._serving = None
+        try:
+            if stream is not None:
+                # An unfinished run closes the pool, stopping its workers.
+                stream.close()
+            if self._pool is not None:
+                self._pool.close()
+        finally:
+            super().close()
+
+
+def _worker_pool_report_record(report: WorkerPoolReport) -> dict[str, object]:
+    return {
+        "worker_starts": report.worker_starts,
+        "units_completed": report.units_completed,
+        "max_live_workers": report.max_live_workers,
+        "peak_worker_memory_bytes": report.peak_worker_memory_bytes,
+        "workers_stopped_over_cap": report.workers_stopped_over_cap,
+        "failed_attempts": [
+            {
+                "unit": attempt.label,
+                "attempt": attempt.attempt,
+                "cause": attempt.cause,
+            }
+            for attempt in report.failed_attempts
+        ],
+    }
+
+
+class _PooledPostExportReform:
+    """A reformed simulation a consumer sees in pooled scoring: each pass it
+    asks for is served from the pool's results (``_PooledPostExportScorer``),
+    and must be the pass the dry run recorded. As in the serial scorer, a
+    finished reform refuses further keys."""
+
+    def __init__(self, consumer: _PostExportConsumer, simulation: int) -> None:
+        self._consumer = consumer
+        self._simulation = simulation
+        self._results: dict[PostExportKey, _PostExportValues] = {}
+        self._finished = False
+
+    def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
+        key = _post_export_key(variable, period, map_to)
+        self._score_new((key,))
+        return self._results[key]
+
+    def prefetch(self, requests) -> None:
+        """Serve every requested key not yet served as one recorded pass."""
+        self._score_new(tuple(_post_export_key(*request) for request in requests))
+
+    def _score_new(self, keys: Sequence[PostExportKey]) -> None:
+        if self._finished:
+            asked = keys[0] if len(keys) == 1 else tuple(keys)
+            raise RuntimeError(
+                f"{self._consumer.name} asked a finished reform for {asked}. A "
+                "post-export consumer scores each reform completely before it "
+                "opens the next one, which finishes and releases the earlier."
+            )
+        new_keys = _ascending_period_plan(
+            key for key in keys if key not in self._results
+        )
+        if not new_keys:
+            return
+        self._results.update(
+            self._consumer._scorer._reform_pass(
+                self._consumer, self._simulation, new_keys
+            )
+        )
+
+    def finish(self) -> None:
+        self._finished = True
+        self._results = {}
 
 
 def _reform_household_income_tax(
@@ -11859,8 +12943,9 @@ def _write_ssi_social_security_holdout(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
         payload["release_id"] = release_id
-    except PostExportBatchFileError:
-        # The scored file's integrity, not a measurement: it stops certification.
+    except (PostExportBatchFileError, WorkerPoolError):
+        # The scored file's integrity, or the worker pool's failure to score
+        # it, not a measurement: it stops certification.
         raise
     except Exception as error:
         # Reporting is observational, including an unavailable measurement.
@@ -11893,8 +12978,9 @@ def _write_medicare_irmaa_holdout(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
         payload["release_id"] = release_id
-    except PostExportBatchFileError:
-        # The scored file's integrity, not a measurement: it stops certification.
+    except (PostExportBatchFileError, WorkerPoolError):
+        # The scored file's integrity, or the worker pool's failure to score
+        # it, not a measurement: it stops certification.
         raise
     except Exception as error:
         # Reporting is observational, including an unavailable measurement.
@@ -19818,6 +20904,7 @@ def _certify_us_build(
     *,
     certification: _Certification,
     telemetry: _BuildProgress | None = None,
+    post_export_pooling: _PostExportPooling | None = None,
 ) -> None:
     """Run a finished build's post-export checks and write its manifests.
 
@@ -19833,7 +20920,9 @@ def _certify_us_build(
     packages) is the build's, from the record. A build has no tier:
     ``certification`` is the tier certification chose, the release directory
     it placed the build's files in and the ID it publishes the build under,
-    and both manifests record it beside the build's provenance.
+    and both manifests record it beside the build's provenance. With
+    ``post_export_pooling`` the post-export stages are scored in the shared
+    worker pool (``_PooledPostExportScorer``); without it, in this process.
     """
 
     certify_started = time.perf_counter()
@@ -19902,11 +20991,14 @@ def _certify_us_build(
     # household-batched scorer instead of one whole-pool Microsimulation each.
     # It loads the written H5 once, binds its sha256 (the manifest must pin
     # the same bytes), and serves the baseline plans recorded above from one
-    # merged baseline pass (microcosm#1595).
+    # merged baseline pass (microcosm#1595). With pooling, the plan's
+    # recorded requests are scored in the shared worker pool and each stage
+    # is served from the results, byte-identically.
     post_export_scorer = _open_post_export_scorer(
         post_export_scoring_plan,
         dataset_path,
         batch_parent=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY,
+        pooling=post_export_pooling,
     )
     # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
