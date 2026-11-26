@@ -7,9 +7,10 @@ import os
 from pathlib import Path
 
 _TORCH_BACKEND_AUTOLOAD_ENVIRONMENT = "TORCH_DEVICE_BACKEND_AUTOLOAD"
-# The authenticated launcher sets this before interpreter startup because
-# parent-package imports can load Torch before this module. Keep the bootstrap
-# override as defense in depth for subsequent imports.
+# The authenticated launcher sets this before interpreter startup. Loading this
+# module's parent packages no longer imports torch, but anything that imports it
+# later in this process must see device-backend autoloading off, so keep the
+# bootstrap override as defense in depth.
 os.environ[_TORCH_BACKEND_AUTOLOAD_ENVIRONMENT] = "0"
 
 from microcosm.build.us_runtime.puf_qrf_chain import (  # noqa: E402

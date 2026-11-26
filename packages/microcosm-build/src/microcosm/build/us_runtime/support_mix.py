@@ -331,7 +331,8 @@ def arm_initial_weights(
 
 def kish_ess(weights: np.ndarray) -> float:
     """Kish effective sample size ``(sum w)^2 / sum w^2`` over rows."""
-    # Imported here: microcosm.calibrate.solve imports torch.
+    # Imported here, so importing this module does not load the calibration
+    # solver.
     from microcosm.calibrate.solve import effective_sample_size
 
     return effective_sample_size(weights)
