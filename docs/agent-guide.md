@@ -768,3 +768,20 @@ with the same pool inputs as the dense candidate. The flag changes exported
 support, not clone K. Sizes remain candidate-only until their matched comparison
 and promotion scorecard are adjudicated; see
 [the size plan](uk-dataset-size-plan-355.md).
+
+
+### Source-parent recertification work
+
+Read [US recertification](us-compatibility-recertification.md#reviewed-source-parent-replay-schema-2)
+before changing the source-parent lane. Keep original receipts and manifests
+intact; strict original-runtime replay includes full `direct_url` equality.
+Current checks can still refuse unchanged historical inputs. Keep passed-bit,
+user-worker, source-download, origin-portability and schema-v1 relabeling
+shortcuts out of this lane. Put metadata mocks in test-local seams; label dummy
+artifacts and record their actual hashes. Positive metadata tests cover code
+contracts without attesting native replay or numerical compatibility. Keep
+generic namespace and JSON cases in `engine_free/shared`, and US
+profile/worker/entrypoint cases in `engine_free/us`. Preserve registered
+categories, existing H5 fixtures and CI resource limits. Execute the relevant
+checks and obtain independent review before adoption; syntax checks alone cover
+neither. Preserve publication, withdrawal and default-pointer guards.

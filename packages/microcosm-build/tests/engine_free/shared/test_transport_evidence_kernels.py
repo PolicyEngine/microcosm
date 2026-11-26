@@ -181,6 +181,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.data.releases_record",
         "microcosm.data.slack",
         "microcosm.data.source_enrichment",
+        # microcosm#1620: compatibility recertification and source enrichment
+        # import the reviewed source-parent replay contract.
+        "microcosm.data.source_parent_replay",
         "microcosm.data.stored_inputs",
         "microcosm.data.us_critical_targets",
         # microcosm#1683: microcosm.frame.bundle imports the shared-column
