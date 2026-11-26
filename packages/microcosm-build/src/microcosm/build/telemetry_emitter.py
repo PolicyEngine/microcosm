@@ -133,14 +133,15 @@ def _packaged_minimum_emitter_version() -> str:
 
 #: The oldest emitter release a build starts: 0.17.0 since 2026-11-19, the
 #: newest release then. It is the first that hands a release's
-#: ``parent_build_manifest.json`` and ``reform_validation.json`` to the
-#: collector with its ``calibration-diagnostics`` submission. The changelog of
-#: microcosm-emitter says what each earlier release added. A refused emitter
-#: costs a build its hosted telemetry and its staging hand-overs, including
-#: the Orrery inputs in its staged bundle, fails a UK build given
-#: ``--staging-read-back``, and refuses a UK build that asks for remote
-#: staging of its dataset bundle (``OUTDATED_EMITTER_WARNING``), so a later
-#: rise weighs that against how many machines would have to upgrade.
+#: ``parent_build_manifest.json`` and ``reform_validation.json``, which some
+#: US releases and every BE build have, to the collector with its
+#: ``calibration-diagnostics`` submission. The changelog of microcosm-emitter
+#: says what each earlier release added. A refused emitter costs a build its
+#: hosted telemetry and its staging hand-overs, including the Orrery inputs
+#: in its staged bundle, fails a UK build given ``--staging-read-back``, and
+#: refuses a UK build that asks for remote staging of its dataset bundle
+#: (``OUTDATED_EMITTER_WARNING``), so a later rise weighs that against how
+#: many machines would have to upgrade.
 MINIMUM_EMITTER_VERSION = _packaged_minimum_emitter_version()
 UPGRADE_EMITTER_COMMAND = (
     f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"

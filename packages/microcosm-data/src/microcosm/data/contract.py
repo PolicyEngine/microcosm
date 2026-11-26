@@ -76,6 +76,8 @@ from microcosm.diagnostics import (
 )
 
 __all__ = [
+    "BE_RELEASES",
+    "BE_REQUIRED_RELEASE_FILES",
     "BUILD_MANIFEST_FILE_ROLE",
     "CALIBRATION_DIAGNOSTICS_FILE_ROLE",
     "CALIBRATION_WEIGHTS_FILE_ROLE",
@@ -116,6 +118,7 @@ __all__ = [
     "US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION",
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
+    "is_be_release",
     "is_us_release",
     "line_for_release_id",
     "publishes_to_build_folder",
@@ -306,14 +309,54 @@ def is_us_release(release_id: str) -> bool:
     return release_id in US_RELEASES or release_id.startswith(_US_BUILD_ID_PREFIX)
 
 
+#: BE's releases in the build-folder layout (tracker 5b · 1): one national
+#: release for each population year, in BE's private repository. As with the
+#: UK national and dense releases, the contract names them exactly and ties
+#: them to no role in ``releases.json``: a build's ``dataset_role`` gives it
+#: (:data:`RELEASE_ROLES`). A build keeps the ID BE's builder gives it
+#: (``microcosm-be-<year>-chronicle-<commit>-<time>``); the two builds
+#: published before the move keep theirs as build names.
+BE_RELEASES: frozenset[str] = frozenset(
+    {"microcosm-be-2025-national", "microcosm-be-2026-national"}
+)
+#: The files BE's release contract adds to the base set
+#: (``microcosm/build/be/release_contract.json`` in the build shard, which
+#: this shard cannot import), each by the artifact key a BE build declares it
+#: under. In a build folder the key is the file's role, and the emitter hands
+#: the demographics and the reform validation to the collector by role.
+_BE_ADDED_RELEASE_ARTIFACTS = {
+    "source_coverage": "source_coverage.json",
+    "demographics": "demographics.json",
+    "reform_validation": "reform_validation.json",
+}
+_BE_ADDED_RELEASE_FILES = tuple(_BE_ADDED_RELEASE_ARTIFACTS.values())
+#: The files a build of a BE release in the national-default role carries:
+#: the base set and :data:`_BE_ADDED_RELEASE_FILES`. A build-shard test holds
+#: this list equal to the release contract's. As with a UK release's files,
+#: the name of the release decides them; a build in the local-area role is
+#: held to the local-area list instead, as a UK one is.
+BE_REQUIRED_RELEASE_FILES = (*REQUIRED_RELEASE_FILES, *_BE_ADDED_RELEASE_FILES)
+
+
+def is_be_release(release_id: str) -> bool:
+    """Whether ``release_id`` is one of :data:`BE_RELEASES`, matched exactly.
+
+    BE's builds published before the move were their own releases in a
+    ``releases/<build>/`` folder each, so their IDs share the
+    ``microcosm-be-`` prefix and are not BE releases.
+    """
+    return release_id in BE_RELEASES
+
+
 def publishes_to_build_folder(release_id: str) -> bool:
     """Whether builds of ``release_id`` publish into their own build folders.
 
     This is the one place that says which releases use the build-folder
     layout: the UK national and dense releases, each UK local-area release
-    that the dataset registry names, and the US releases
-    (:data:`US_RELEASES`). A US build's own release in the tagged layout
-    (``populace-us-…``) keeps tags, for the builds that have only their tag.
+    that the dataset registry names, the US releases (:data:`US_RELEASES`)
+    and BE's releases (:data:`BE_RELEASES`). A US build's own release in the
+    tagged layout (``populace-us-…``) keeps tags, for the builds that have
+    only their tag.
 
     A UK local-area release is ``microcosm-uk-2024-25-local-k<N>``, and it
     publishes once a UK entry of :data:`microcosm.data.registry.REGISTRY`
@@ -326,6 +369,7 @@ def publishes_to_build_folder(release_id: str) -> bool:
             and _uk_registry_entry_names(release_id)
         )
         or release_id in US_RELEASES
+        or is_be_release(release_id)
     )
 
 
@@ -1409,6 +1453,8 @@ def required_release_files(release_id: str) -> tuple[str, ...]:
         # release without one is refused at the required-files layer, not
         # just when part artifacts happen to be present.
         return (*REQUIRED_RELEASE_FILES, _UK_RELEASE_CERTIFICATION_FILE)
+    if is_be_release(release_id):
+        return BE_REQUIRED_RELEASE_FILES
     return REQUIRED_RELEASE_FILES
 
 
@@ -1666,7 +1712,10 @@ def _check_build_folder_release_details(
 
     With ``compatible_packages`` the compatibility lists must also include
     the built-with versions, as the national contract has always required.
-    The local-area contract never checked them, and still does not.
+    The local-area contract never checked them, and still does not. A build
+    of a BE release, in either role, runs on no PolicyEngine package and
+    records its engines in its build manifest instead (:func:`_check_be_engines`),
+    so its PolicyEngine records are checked only when it carries them.
     """
     built_at = manifest.get("built_at")
     if not isinstance(built_at, str) or not built_at:
@@ -1676,28 +1725,36 @@ def _check_build_folder_release_details(
     built_with_core_package = manifest.get("built_with_core_package")
     built_with_model_package = manifest.get("built_with_model_package")
     model_package = _expected_model_package(release_id)
-    _check_release_manifest_package(
-        built_with_core_package,
-        field="built_with_core_package",
-        expected_name="policyengine-core",
-        failures=failures,
-    )
-    _check_release_manifest_package(
-        built_with_model_package,
-        field="built_with_model_package",
-        expected_name=model_package,
-        failures=failures,
-    )
+    policyengine_records_optional = is_be_release(release_id)
+
+    def record_is_checked(field: str) -> bool:
+        return not policyengine_records_optional or field in manifest
+
+    if record_is_checked("built_with_core_package"):
+        _check_release_manifest_package(
+            built_with_core_package,
+            field="built_with_core_package",
+            expected_name="policyengine-core",
+            failures=failures,
+        )
+    if record_is_checked("built_with_model_package"):
+        _check_release_manifest_package(
+            built_with_model_package,
+            field="built_with_model_package",
+            expected_name=model_package,
+            failures=failures,
+        )
     if not compatible_packages:
         return
-    _check_compatible_package_entries(
-        manifest.get("compatible_core_packages"),
-        field="compatible_core_packages",
-        expected_name="policyengine-core",
-        built_with_package=built_with_core_package,
-        built_with_field="built_with_core_package",
-        failures=failures,
-    )
+    if record_is_checked("compatible_core_packages"):
+        _check_compatible_package_entries(
+            manifest.get("compatible_core_packages"),
+            field="compatible_core_packages",
+            expected_name="policyengine-core",
+            built_with_package=built_with_core_package,
+            built_with_field="built_with_core_package",
+            failures=failures,
+        )
     _check_compatible_package_entries(
         manifest.get("compatible_model_packages"),
         field="compatible_model_packages",
@@ -1805,7 +1862,13 @@ def _check_build_manifest(
             "(Python and package versions used for target materialization)."
         )
     else:
-        required_packages = ["python", "policyengine-core"]
+        # A BE build runs on the Axiom rules engine and EUROMOD, not on
+        # PolicyEngine packages, so it records its engines instead
+        # (_check_be_engines); a policyengine-core version it does record is
+        # checked as any other build's is.
+        required_packages = ["python"]
+        if not is_be_release(release_id) or "policyengine-core" in runtime:
+            required_packages.append("policyengine-core")
         model_package = _expected_model_package(release_id)
         if model_package is not None:
             required_packages.append(model_package)
@@ -1816,6 +1879,8 @@ def _check_build_manifest(
                     f"build_manifest.json 'runtime.{package}' must be a resolved "
                     "version, not missing or unknown."
                 )
+    if is_be_release(release_id):
+        _check_be_engines(manifest, failures)
     dataset = manifest.get("dataset")
     if not isinstance(dataset, Mapping):
         failures.append("build_manifest.json is missing the 'dataset' object.")
@@ -2043,6 +2108,8 @@ def _check_release_manifest(
             _check_us_release_dataset_file(
                 artifacts, release_id, failures, manifest=manifest
             )
+        if is_be_release(release_id):
+            _check_be_release_artifacts(manifest, failures)
     else:
         _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
@@ -2124,6 +2191,89 @@ def _check_us_release_artifacts(
         failures.append(
             "release_manifest.json artifacts must include "
             f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE!r} for US releases."
+        )
+
+
+def _check_be_engines(manifest: Mapping, failures: list[str]) -> None:
+    """A BE build's manifest records each engine the build ran on.
+
+    BE's builds run on the Axiom rules engine and EUROMOD, not on PolicyEngine
+    packages, so where a UK or US build records its PolicyEngine package
+    versions, a BE build records ``engines``, as BE's builds published before
+    the move do: each engine by name, with the version of each package
+    installed for it (``packages``), the model it ran (``model``), or both;
+    each one it records is well formed. A version is any non-empty string,
+    so a package recorded as not installed in a stage (as BE's 2025 build
+    records ``torch``) passes.
+    """
+    engines = manifest.get("engines")
+    if not isinstance(engines, Mapping) or not engines:
+        failures.append(
+            "build_manifest.json 'engines' must be a non-empty object naming each "
+            "engine a BE build ran on."
+        )
+        return
+    for name, engine in engines.items():
+        record: Mapping = engine if isinstance(engine, Mapping) else {}
+        packages = record.get("packages")
+        model = record.get("model")
+        packages_well_formed = (
+            isinstance(packages, Mapping)
+            and bool(packages)
+            and all(
+                isinstance(package, str)
+                and package
+                and isinstance(version, str)
+                and version
+                for package, version in packages.items()
+            )
+        )
+        model_well_formed = isinstance(model, str) and bool(model)
+        records_either = "packages" in record or "model" in record
+        if (
+            not records_either
+            or ("packages" in record and not packages_well_formed)
+            or ("model" in record and not model_well_formed)
+        ):
+            failures.append(
+                f"build_manifest.json 'engines.{name}' must record its "
+                "'packages' (each package's name and version), its 'model', or "
+                "both, each well formed."
+            )
+
+
+def _check_be_release_artifacts(manifest: Mapping, failures: list[str]) -> None:
+    """A BE build declares each file its release contract adds to the base set,
+    under the key :data:`_BE_ADDED_RELEASE_ARTIFACTS` gives it.
+
+    The publisher hands the emitter only the two manifests and the declared
+    artifacts, so a file the contract requires that is present but not
+    declared would not be published; and an artifact's key is its role in a
+    build folder, by which the emitter hands the demographics and the reform
+    validation to the collector. The calibration diagnostics are checked
+    the same way already (:func:`_check_calibration_diagnostics_declaration`).
+    """
+    artifacts = manifest.get("artifacts")
+    declared = artifacts if isinstance(artifacts, Mapping) else {}
+    for key, filename in _BE_ADDED_RELEASE_ARTIFACTS.items():
+        if _artifact_by_path(manifest, filename) is None:
+            failures.append(
+                f"release_manifest.json artifacts must include {filename!r} for "
+                "BE releases."
+            )
+            continue
+        entry = declared.get(key)
+        if isinstance(entry, Mapping) and entry.get("path") == filename:
+            continue
+        other_keys = sorted(
+            str(other)
+            for other, other_entry in declared.items()
+            if isinstance(other_entry, Mapping) and other_entry.get("path") == filename
+        )
+        failures.append(
+            f"release_manifest.json declares {filename!r} under the key "
+            f"{', '.join(repr(other) for other in other_keys)}; a BE build "
+            f"declares it under {key!r}, the role its build folder gives it."
         )
 
 
@@ -5303,6 +5453,11 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
         build_manifest = _load_json(build_manifest_path, failures)
+        if build_manifest is not None and is_be_release(release_id):
+            # A BE build in the local-area role records its engines as one in
+            # the national-default role does (_check_build_manifest), since
+            # it need not record PolicyEngine packages in either.
+            _check_be_engines(build_manifest, failures)
         if build_manifest is not None and publishes_to_build_folder(release_id):
             _check_build_folder_identity(
                 build_manifest,
