@@ -28,6 +28,11 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
 )
+from microcosm.build.transport.compose import (
+    _resource_param,
+    load_transport_spec,
+    transport_resource,
+)
 from microcosm.build.transport.geography_kernels import support_from_surface
 from microcosm.build.transport.target_kernels import (
     TargetSurface,
@@ -41,6 +46,7 @@ from microcosm.calibrate.hierarchy import (
     HierarchyGeography,
     HierarchyNode,
 )
+from microcosm.graph import ROWS_ALL
 from test_support.paths import paths_for
 from tools import build_nz_joint_geography as builder
 
@@ -603,8 +609,10 @@ def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
     Each layer's source, vintage and relation must equal the support column it
     reads, or the shared binder refuses before any household is placed.
     """
+    transport = load_transport_spec(_SPEC)
     graph = {
-        node["id"]: node for node in _read(_SPEC / "transport_graph.json")["nodes"]
+        node["id"]: node
+        for node in transport_resource(transport, "transport_graph")["nodes"]
     }
     assign = graph["nz.geo.assign"]
     for node_id in ("nz.geo.derive", "nz.geo.gate"):
@@ -616,8 +624,15 @@ def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
         "geography.support_from_facts@1",
         "support",
     )
-    definition = _read(_SPEC / f"{producer['params']['definition']['resource']}.json")
-    specification = _read(_SPEC / f"{assign['params']['definition']['resource']}.json")
+
+    def selected(selection: dict) -> dict:
+        # Resolve a node's resource selection as the composer does: the
+        # resource by its name or stem, then its path and encoding.
+        assert selection.get("encoding") == "json"
+        return json.loads(_resource_param(transport, selection))
+
+    definition = selected(producer["params"]["definition"])
+    specification = selected(assign["params"]["definition"])
     (system,) = specification["systems"]
     # The kernels refuse unless the support aliases are the assignment's system
     # ids, and the binder refuses unless the support's own system is too.
@@ -649,9 +664,13 @@ def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
     assert set(derived) == set(_TRANSPORT_LAYER_COLUMNS)
 
     def read_columns(node_id: str) -> set[str]:
-        (table,) = graph[node_id]["inputs"]
-        assert table["entity"] == "household"
-        return set(table["columns"])
+        # The executor gives a kernel one table per entity, holding the union
+        # of the node's slices of that entity under their one row mask. These
+        # nodes must see every household, so each slice reads all rows.
+        slices = graph[node_id]["inputs"]
+        assert {table["entity"] for table in slices} == {"household"}
+        assert {table.get("rows", ROWS_ALL) for table in slices} == {ROWS_ALL}
+        return {column for table in slices for column in table["columns"]}
 
     # Pin each node's declared household inputs. Derive declares the three
     # assignment outputs and reads two of them, the area and the system. The
