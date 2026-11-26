@@ -9303,6 +9303,28 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_ssi_person_uncapped_amount",
         fake_ssi_uncapped_amount,
     )
+
+    # The post-calibration passes reuse the pre-calibration pass records. The
+    # stand-ins record which variable each record and reuse is for; the reuse
+    # returns one value per fake person.
+    def fake_household_pass_record(frame, values, *, variable):
+        captured.setdefault("household_pass_records", []).append(variable)
+        return SimpleNamespace(variable=variable)
+
+    def fake_reuse_household_pass(
+        record, frame, *, recompute, maximum_microsim_batch_size, description
+    ):
+        assert callable(recompute)
+        captured.setdefault("household_pass_reuses", []).append(
+            (record.variable, maximum_microsim_batch_size)
+        )
+        dtype = bool if record.variable == "is_medicaid_eligible" else np.float64
+        values = np.zeros(4, dtype=dtype)
+        captured.setdefault("household_pass_values", {})[record.variable] = values
+        return SimpleNamespace(values=values)
+
+    monkeypatch.setattr(builder, "_household_pass_record", fake_household_pass_record)
+    monkeypatch.setattr(builder, "_reuse_household_pass", fake_reuse_household_pass)
     monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_with_ssi_take_up)
     monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_take_up_gate)
     # The digest reads the persisted flag column, which the stub above never
@@ -9456,8 +9478,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         seed,
         substitutions=(),
         maximum_microsim_batch_size=None,
+        eligibility_recorder=None,
     ):
         captured["health_stage_events"].append("medicaid")
+        if eligibility_recorder is not None:
+            eligibility_recorder(frame, np.zeros(4, dtype=bool))
         return frame, {}
 
     def fake_medicaid_gate(diagnostics):
@@ -9757,6 +9782,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         reporter_source_ids,
     ):
         captured["final_ssi_diagnostics_called"] = True
+        captured["ssi_final_uncapped"] = uncapped_ssi
         captured["final_ssi_diagnostics_targets"] = dict(targets)
         captured["final_ssi_diagnostics_assignment_priors"] = dict(assignment_priors)
         captured["final_ssi_diagnostics_prior_basis"] = prior_basis
@@ -9770,8 +9796,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         seed,
         substitutions,
         maximum_microsim_batch_size=None,
+        eligibility=None,
     ):
         captured["final_medicaid_diagnostics_called"] = True
+        captured["final_medicaid_eligibility"] = eligibility
         return {}
 
     monkeypatch.setattr(builder, "_with_l0_refit_weights", fake_l0_refit_weights)
@@ -10532,6 +10560,31 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         assert "final_medicaid_diagnostics_called" not in captured
     else:
         assert captured["final_medicaid_diagnostics_called"] is True
+    # Both pre-calibration passes leave a record, and the post-calibration
+    # values come from reusing them; a quarantined Medicaid evaluation
+    # reuses nothing.
+    assert captured["household_pass_records"] == [
+        "uncapped_ssi",
+        "is_medicaid_eligible",
+    ]
+    batch_size = builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    assert captured["household_pass_reuses"] == [
+        ("uncapped_ssi", batch_size),
+        *(
+            ()
+            if terminal_mode == "integrity"
+            else (("is_medicaid_eligible", batch_size),)
+        ),
+    ]
+    assert (
+        captured["ssi_final_uncapped"]
+        is captured["household_pass_values"]["uncapped_ssi"]
+    )
+    if terminal_mode != "integrity":
+        assert (
+            captured["final_medicaid_eligibility"]
+            is captured["household_pass_values"]["is_medicaid_eligible"]
+        )
     assert captured["voluntary_filing_stage_called"] is True
     assert captured["voluntary_filing_seed"] == 0
     assert captured["voluntary_filing_gate_called"] is True
