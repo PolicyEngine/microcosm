@@ -70,6 +70,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.build.uk_runtime.national_reconciliation",
     "microcosm.build.uk_runtime.off_surface_cells",
     "microcosm.build.uk_runtime.scotland_brma_la_overlap",
+    "microcosm.build.uk_runtime.target_sets",
     "microcosm.build.uk_runtime.tenure_constants",
     "microcosm.build.uk_runtime.uc_relationships",
     "microcosm.build.uk_runtime.uc_source_periods",
@@ -79,6 +80,7 @@ UK_TARGET_COMPILE_MODULE_NAMES: tuple[str, ...] = (
     "microcosm.calibrate.hierarchy",
     "microcosm.calibrate.registry",
     "microcosm.calibrate.target",
+    "microcosm.calibrate.target_sets",
 )
 
 EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(

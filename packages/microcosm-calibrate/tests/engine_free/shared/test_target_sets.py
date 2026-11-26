@@ -580,3 +580,42 @@ def test_select_by_levels_needs_a_level_mode() -> None:
             registry,
             load_target_set_declarations(missing).declaration("full", "levels"),
         )
+
+
+def test_a_selection_that_tests_no_level_reads_no_level() -> None:
+    """A closed rule refuses an unplaced target only where a clause tests levels."""
+
+    declarations = _level_declarations()
+    declarations["products"]["lines"] = {
+        "tool": "t",
+        "option": "line",
+        "default_mode": "national",
+        "modes": {
+            "national": {
+                "description": "Every target but the local-only ones.",
+                "compiled": [
+                    {
+                        "id": "on_line",
+                        "families": "*",
+                        "levels": "*",
+                        "exclude": ["off_line"],
+                        "rationale": "r",
+                    }
+                ],
+            }
+        },
+    }
+    loaded = load_target_set_declarations(declarations)
+    specs = (
+        _spec("placed", "tax", level="la"),
+        _spec("unplaced", "tax"),
+        _spec("local_only", "tax", level="nation"),
+    )
+    selection = select_target_set(
+        loaded.declaration("lines", "national"),
+        specs,
+        predicates={"off_line": lambda spec: spec.name == "local_only"},
+    )
+    assert [spec.name for spec in selection.specs] == ["placed", "unplaced"]
+    with pytest.raises(ValueError, match="'unplaced' has unsupported geography level"):
+        select_target_set(loaded.declaration("full", "levels"), specs)

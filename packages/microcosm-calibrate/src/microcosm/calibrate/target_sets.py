@@ -605,7 +605,10 @@ def select_target_set(
 
     Each compiled clause (only those in ``clause_ids``, when given) keeps the
     specs it accepts, in compile order; a clause with a rule passes them to
-    the rule. The selection is the clauses' outputs in declaration order.
+    the rule. The selection is the clauses' outputs in declaration order. A
+    spec's level is read only when an active clause tests levels, so a
+    closed level rule refuses only the specs that a selection places by
+    level.
 
     Raises:
         KeyError: If ``clause_ids`` names a clause the declaration lacks.
@@ -637,7 +640,12 @@ def select_target_set(
                 f"{clause.clause_id!r} names rule {clause.rule!r}, which the "
                 "caller did not pass."
             )
-    levels = [declaration.level_of(spec) for spec in specs]
+    # A level is read only when a clause tests levels, so a closed level rule
+    # does not refuse a target that no active clause places by level.
+    if any(clause.levels is not None for clause in clauses):
+        levels = [declaration.level_of(spec) for spec in specs]
+    else:
+        levels = [UNSPECIFIED_LEVEL] * len(specs)
     kept: list[Any] = []
     counts: dict[str, int] = {}
     receipts: dict[str, Any] = {}

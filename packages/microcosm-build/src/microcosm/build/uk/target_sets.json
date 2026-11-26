@@ -1,7 +1,7 @@
 {
  "version": 1,
  "country": "uk",
- "description": "The targets each UK build calibrates to (microcosm#1759): the level rule that places every compiled UK target at one geography level, and the full build's selection of its solve surface by level. microcosm.calibrate.target_sets reads this file; microcosm.build.uk_runtime.target_sets names its products. The US declares its target sets the same way, in us/target_sets.json (microcosm#1728).",
+ "description": "The targets each UK build calibrates to (microcosm#1759): the level rule that places every compiled UK target at one geography level, the full build's selection of its solve surface by level, and the two calibration lines. microcosm.calibrate.target_sets reads this file; microcosm.build.uk_runtime.target_sets names its products. The US declares its target sets the same way, in us/target_sets.json (microcosm#1728).",
  "level_rule": {
   "keys": [
    "geography_level",
@@ -65,6 +65,41 @@
         "brma"
        ],
        "rationale": "The Broad Rental Market Area cells. Kept when the build requests this level; a build requests every level unless --target-geographies names a subset. With no area BRMAs (--brma-localisation none) the node drops these rows before it selects, because they would bind on the spine's regional BRMA draw (microcosm#1305)."
+      }
+     ]
+    }
+   }
+  },
+  "calibration_line": {
+   "tool": "packages/microcosm-build/src/microcosm/build/uk_runtime/full_targets.py",
+   "option": "line (uk_runtime.ledger_targets.uk_registry_on_calibration_line)",
+   "default_mode": "local",
+   "modes": {
+    "national": {
+     "description": "The national line's solve surface (load_uk_national_target_inputs and the release-cut certifier): the compiled national registry less the references whose contract target binds on the local line only. They leave right after the compile, before reconciliation, the measure exclusions and the frozen-register check (microcosm#1301).",
+     "compiled": [
+      {
+       "id": "on_line",
+       "families": "*",
+       "levels": "*",
+       "exclude": [
+        "off_calibration_line"
+       ],
+       "rationale": "A contract target binds on every line unless its calibration_lines field in uk/uk_population_targets.json narrows it; the field and its reason stay with the target, and uk_runtime.ledger_targets passes this clause the targets it leaves out. The high-value homes region rows bind on the local line only (microcosm#1240, microcosm#1301): on the national line they would move the national registry and solve while the Land Registry knots' tails place more homes in the top bands than the derived stock (microcosm#1112)."
+      }
+     ]
+    },
+    "local": {
+     "description": "The local line's national rows (load_uk_full_target_inputs; the full dense build binds them beside the local surface): the compiled national registry less the references whose contract target binds on the national line only, dropped at the same point.",
+     "compiled": [
+      {
+       "id": "on_line",
+       "families": "*",
+       "levels": "*",
+       "exclude": [
+        "off_calibration_line"
+       ],
+       "rationale": "A contract target binds on every line unless its calibration_lines field in uk/uk_population_targets.json narrows it; the field and its reason stay with the target, and uk_runtime.ledger_targets passes this clause the targets it leaves out. The CenTax childcare-parent bands bind on the national line only (microcosm#1399)."
       }
      ]
     }

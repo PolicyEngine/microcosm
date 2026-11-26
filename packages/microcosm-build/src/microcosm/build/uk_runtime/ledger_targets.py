@@ -74,6 +74,11 @@ from microcosm.build.uk_runtime.scotland_brma_la_overlap import (
     load_uk_scotland_brma_la_overlap,
     scotland_brma_council_overlaps,
 )
+from microcosm.build.uk_runtime.target_sets import (
+    OFF_CALIBRATION_LINE,
+    uk_calibration_line_selection,
+    uk_calibration_lines,
+)
 from microcosm.build.uk_runtime.tenure_drift import tenure_drift_appliers
 from microcosm.build.uk_runtime.uc_source_periods import (
     validate_uc_source_month_coverage,
@@ -87,6 +92,7 @@ from microcosm.calibrate.geography_constants import (
     UK_REGION_TIER,
     UK_REGION_TIER_ENUM,
 )
+from microcosm.calibrate.target_sets import select_target_set
 from microcosm.frame import Frame
 
 
@@ -2067,8 +2073,9 @@ def _uk_contract_targets(
 #: The lines a UK contract target can bind on (microcosm#1301): the national
 #: line (``load_uk_national_target_inputs``, the release-cut certifier) and the
 #: local line (the full dense build, whose solve binds the national rows beside
-#: the local surface).
-UK_CALIBRATION_LINES: tuple[str, ...] = ("national", "local")
+#: the local surface). They are the modes of the ``calibration_line`` product
+#: in ``uk/target_sets.json`` (microcosm#1759).
+UK_CALIBRATION_LINES: tuple[str, ...] = uk_calibration_lines()
 
 
 def uk_contract_target_calibration_lines(target: Mapping[str, Any]) -> frozenset[str]:
@@ -2119,6 +2126,11 @@ def uk_registry_on_calibration_line(
     frozen-register check. A line no declaration narrows keeps its registry
     (the same object, so the same version). The receipt names the line, the
     all-lines registry version and count, and the dropped contract targets.
+
+    The line is a mode of the declared ``calibration_line`` product
+    (``uk/target_sets.json``); its one clause keeps every reference but the
+    ones :data:`OFF_CALIBRATION_LINE` names, which this function binds to the
+    contract targets that leave ``line`` out (microcosm#1759).
     """
 
     if line not in UK_CALIBRATION_LINES:
@@ -2131,28 +2143,31 @@ def uk_registry_on_calibration_line(
         for target_id, target in _uk_contract_targets(national_only=False).items()
         if line not in uk_contract_target_calibration_lines(target)
     )
-    kept: list[TargetSpec] = []
-    dropped: list[TargetSpec] = []
-    dropped_target_ids: set[str] = set()
-    for spec in registry.specs:
-        target_id = str(
+
+    def contract_target_id(spec: TargetSpec) -> str:
+        return str(
             spec.metadata.get("contract_target_id") or spec.name.split("@", 1)[0]
         )
-        if target_id in off_line:
-            dropped.append(spec)
-            dropped_target_ids.add(target_id)
-        else:
-            kept.append(spec)
+
+    kept = select_target_set(
+        uk_calibration_line_selection(line),
+        registry.specs,
+        predicates={
+            OFF_CALIBRATION_LINE: lambda spec: contract_target_id(spec) in off_line
+        },
+    ).specs
+    on_line = {id(spec) for spec in kept}
+    dropped = [spec for spec in registry.specs if id(spec) not in on_line]
     receipt: dict[str, Any] = {
         "line": line,
         "all_lines_registry_version": registry.version,
         "all_lines_reference_count": len(registry.specs),
         "dropped_reference_count": len(dropped),
-        "dropped_target_ids": sorted(dropped_target_ids),
+        "dropped_target_ids": sorted({contract_target_id(spec) for spec in dropped}),
     }
     if not dropped:
         return registry, receipt
-    return TargetRegistry(kept, country=registry.country), receipt
+    return TargetRegistry(list(kept), country=registry.country), receipt
 
 
 def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
