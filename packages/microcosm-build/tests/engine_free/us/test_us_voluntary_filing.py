@@ -1,6 +1,9 @@
 """Tests split from packages/microcosm-build/tests/test_us_voluntary_filing.py."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.us_runtime.voluntary_filing import (
+    SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION,
+)
 from test_support.microcosm_build.us_voluntary_filing import *
 
 
@@ -13,7 +16,8 @@ def test_archived_and_pinned_source_coordinates_are_exact() -> None:
         "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
     )
     assert SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES == 3_726_010_471
-    assert SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION in (
+    assert SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION == "1.115.5"
+    assert f"/resolve/{SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION}/" in (
         SIPP_2023_VOLUNTARY_FILING_DONOR_URL
     )
     assert VOLUNTARY_FILING_ARCHIVED_DERIVATION_URL.endswith(
@@ -229,7 +233,13 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(
     payload = b"small synthetic pinned filing donor"
     digest = hashlib.sha256(payload).hexdigest()
     response = _ChunkedResponse(payload)
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *_args: response)
+    opened: list[object] = []
+
+    def fake_urlopen(url, *_args, **_kwargs):
+        opened.append(url)
+        return response
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
     path = fetch_sipp_2023_voluntary_filing_donor(
         tmp_path,
@@ -241,6 +251,7 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(
     assert len(response.read_sizes) > 2
     assert all(size == 4 for size in response.read_sizes)
     assert not (tmp_path / "pu2023.csv.part").exists()
+    assert opened == [SIPP_2023_VOLUNTARY_FILING_DONOR_URL]
 
     monkeypatch.setattr(
         urllib.request,
