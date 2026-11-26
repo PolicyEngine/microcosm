@@ -666,3 +666,42 @@ def test_a_failure_after_the_run_closed_leaves_it_as_it_was(
     assert _read(_run_dir(tmp_path), "progress.json")["status"] == "completed"
     assert emitter.client.read_back_waits == [120.0]
     assert "could not" not in capsys.readouterr().err
+
+
+def test_an_interrupt_while_the_run_closes_still_hands_its_final_state_over(
+    builder, tmp_path
+) -> None:
+    """A SIGTERM during the final hand-over of a completed run (review round 1
+    of microcosm#1771): the run has stopped running, but its final state has
+    not reached the emitter, so the build's failure path hands it over and
+    checks it by receipt, as microcosm#1749 does for any interrupted run."""
+    from microcosm.build.termination import BuildTerminatedError
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    class InterruptedHandOver(FakeEmitterClient):
+        interrupt_next = False
+
+        def stage_run_files(self, request):
+            if self.interrupt_next:
+                self.interrupt_next = False
+                raise BuildTerminatedError()
+            return super().stage_run_files(request)
+
+    client = InterruptedHandOver()
+    progress, emitter = _remote_build_progress(builder, tmp_path, client=client)
+    progress.stage("manifests", message="Writing the manifests.")
+    client.interrupt_next = True
+    with pytest.raises(BuildTerminatedError):
+        progress.complete()
+
+    progress.fail(BuildTerminatedError())
+
+    remote = client.hub_json(US_STAGING, f"runs/{BUILD}/progress.json")
+    assert remote["status"] != "running"
+    checks = [
+        event["details"]
+        for event in emitter.events
+        if event["details"].get("check") == "staging_final_commit"
+    ]
+    assert [check["method"] for check in checks] == ["receipt"]
+    assert "read_back_run_files" not in client.calls
