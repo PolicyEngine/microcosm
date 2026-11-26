@@ -6,7 +6,9 @@ that misses clones the simulation's whole rules system into the module-level
 ``_PINNED_TBS_CACHE``, and the clone's copied ``simulation`` attribute keeps
 the engine it was made in alive (``release_engine_simulation`` removes the
 entry). The marginal tax rate formula makes that lookup inside a branch it
-deletes again, so the release never walks the branch it was made in.
+deletes again, so the release never walks the branch it was made in. On
+policyengine-us 2.88.6 or later the cache holds nothing strongly, so this
+holds there without the removal too.
 """
 
 from __future__ import annotations

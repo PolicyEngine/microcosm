@@ -479,9 +479,10 @@ def test_release_drops_rules_pinned_in_branches_a_formula_already_removed(
 ) -> None:
     """A copy made in a branch that is no longer in ``branches`` goes too.
 
-    policyengine-us's marginal tax rates make a branch per adult, compute
-    household income in it (reaching New York's pinned lookup) and delete the
-    branch, so the release never walks that branch's system. The copy's
+    policyengine-us's marginal tax rate formula makes a branch for each of
+    its first ``marginal_tax_rate_adults`` adults (``mtr_for_adult_1``, ...),
+    computes household income in it (reaching New York's pinned lookup) and
+    deletes the branch, so the release never walks that branch's system. The copy's
     ``simulation`` names the deleted branch, whose ``parent_branch`` leads to
     the released simulation, directly or through a walked branch.
     """
@@ -521,6 +522,21 @@ def test_release_drops_rules_pinned_in_branches_a_formula_already_removed(
     release_engine_simulation(simulation)
 
     assert cache == {"unrelated_with_a_parent_loop": unrelated_entry}
+
+
+def test_release_drops_rules_pinned_in_a_simulation_without_a_system(
+    monkeypatch,
+) -> None:
+    """The match by where a copy was made does not need a walked system."""
+    simulation = _stand_in_simulation(None)
+    base = _StandInSystem()
+    base.simulation = simulation
+    cache = {"made_here": _pinned_entry(base)}
+    _install_pinned_rules_cache(monkeypatch, cache)
+
+    release_engine_simulation(simulation)
+
+    assert cache == {}
 
 
 class _ClonePropertyRaises:
