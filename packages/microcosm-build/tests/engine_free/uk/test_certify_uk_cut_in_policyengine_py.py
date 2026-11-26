@@ -532,19 +532,25 @@ def test_the_audit_support_check_reads_the_base(monkeypatch, tmp_path):
 class FakeHub:
     """The Hub calls the tool makes, answered from ``files``.
 
-    ``files`` maps ``(repo_id, path, revision)`` to bytes, and
-    ``last_commits`` maps a path to its last commit on ``main``.
+    ``files`` maps ``(repo_id, path, revision)`` to bytes, ``last_commits``
+    maps a path to its last commit on ``main``, and ``history`` lists the
+    commits in ``main``'s history. ``failures`` maps a file name, or
+    ``"paths-info"``, to the exception the Hub raises for it.
     """
 
-    def __init__(self, root, files, last_commits=None):
+    def __init__(self, root, files, last_commits=None, history=()):
         self.root, self.files = root, files
         self.last_commits = last_commits or {}
+        self.history = list(history)
+        self.failures = {}
         self.downloads, self.listings = [], []
 
     def hf_hub_download(self, repo_id, filename, *, repo_type=None, revision=None,
                         **options):  # fmt: skip
         assert repo_type == "dataset"
         self.downloads.append((repo_id, filename, revision, options))
+        if filename in self.failures:
+            raise self.failures[filename]
         key = (repo_id, filename, revision)
         if key not in self.files:
             raise FileNotFoundError(f"{repo_id} has no {filename} at {revision}")
@@ -555,11 +561,17 @@ class FakeHub:
     def get_paths_info(self, repo_id, paths, *, expand=False, revision=None,
                        repo_type=None):  # fmt: skip
         self.listings.append((repo_id, list(paths), expand, revision, repo_type))
+        if "paths-info" in self.failures:
+            raise self.failures["paths-info"]
         return [
             SimpleNamespace(path=path, last_commit=SimpleNamespace(oid=commit))
             for path, commit in self.last_commits.items()
             if path in paths
         ]
+
+    def list_repo_commits(self, repo_id, *, repo_type=None, revision=None):
+        assert (repo_id, repo_type, revision) == (REPO, "dataset", "main")
+        return [SimpleNamespace(commit_id=commit) for commit in self.history]
 
 
 REPO = "policyengine/populace-uk-private"
@@ -609,7 +621,9 @@ def _folder_manifest(release, build, **changes):
     return json.dumps({**manifest, **changes}).encode()
 
 
-def _national_hub(tmp_path, *, withdrawn=(), manifest=None, at=NATIONAL_COMMIT):
+def _national_hub(
+    tmp_path, *, withdrawn=(), manifest=None, at=NATIONAL_COMMIT, history=None
+):
     folder = _folder(handoff.NATIONAL_RELEASE, NATIONAL)
     files = {
         (REPO, "releases.json", "main"): _releases_record(withdrawn),
@@ -617,7 +631,10 @@ def _national_hub(tmp_path, *, withdrawn=(), manifest=None, at=NATIONAL_COMMIT):
         or _folder_manifest(handoff.NATIONAL_RELEASE, NATIONAL),
     }
     return FakeHub(
-        tmp_path, files, {f"{folder}/release_manifest.json": NATIONAL_COMMIT}
+        tmp_path,
+        files,
+        {f"{folder}/release_manifest.json": NATIONAL_COMMIT},
+        history=[NATIONAL_COMMIT, at] if history is None else history,
     )
 
 
@@ -651,6 +668,64 @@ def test_an_operators_commit_replaces_the_publishing_commit(tmp_path):
     )
     assert build.commit == other
     assert hub.listings == []
+
+
+def test_an_operators_commit_must_be_in_mains_history(tmp_path):
+    """A commit on another ref, such as a Hub pull request's, may hold an
+    edited copy of the folder that main never held."""
+
+    other = "5" * 40
+    hub = _national_hub(tmp_path, at=other, history=[NATIONAL_COMMIT])
+    with pytest.raises(handoff.CertifyError, match="is not in main's history"):
+        handoff.read_published_build(
+            handoff.NATIONAL_RELEASE, NATIONAL, commit=other, api=hub
+        )
+    assert [download[1] for download in hub.downloads] == ["releases.json"]
+
+
+@pytest.mark.parametrize(
+    ("failing", "message"),
+    [
+        ("releases.json", "could not read releases.json"),
+        ("paths-info", "could not ask the Hub which commit published"),
+    ],
+)
+def test_a_hub_failure_is_a_refusal(tmp_path, failing, message):
+    hub = _national_hub(tmp_path)
+    hub.failures[failing] = RuntimeError("503 Service Unavailable")
+    with pytest.raises(handoff.CertifyError, match=message) as refusal:
+        handoff.read_published_build(handoff.NATIONAL_RELEASE, NATIONAL, api=hub)
+    assert "503 Service Unavailable" in str(refusal.value)
+
+
+def _bundle_at(worktree, revision, regional_uri):
+    path = worktree / "src/policyengine/data/bundle/manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "data_package": {"release_manifest_revision": revision},
+        "regional_source_manifest_uri": regional_uri,
+    }
+    path.write_text(json.dumps({"data_releases": {"uk": record}}))
+    return "src/policyengine/data/bundle/manifest.json"
+
+
+def test_a_resumed_worktree_must_certify_the_same_commits(tmp_path):
+    """A resume at another commit would keep the first attempt's constants
+    while certify-data writes the new commit into the bundle."""
+
+    national = _build(handoff.NATIONAL_RELEASE, NATIONAL, NATIONAL_COMMIT)
+    dense = _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    relative = _bundle_at(tmp_path, NATIONAL_COMMIT, dense.manifest_uri)
+    handoff.check_resumed_pins(tmp_path, [relative], national, dense)
+    handoff.check_resumed_pins(tmp_path, [relative], national, None)
+    # A worktree whose bundle is not yet modified holds nothing to compare.
+    moved = _replace(national, commit="5" * 40)
+    handoff.check_resumed_pins(tmp_path, [], moved, dense)
+    with pytest.raises(handoff.CertifyError, match="national build at"):
+        handoff.check_resumed_pins(tmp_path, [relative], moved, dense)
+    other = _replace(dense, commit="6" * 40)
+    with pytest.raises(handoff.CertifyError, match="local-area build"):
+        handoff.check_resumed_pins(tmp_path, [relative], national, other)
 
 
 @pytest.mark.parametrize(
@@ -692,7 +767,7 @@ def test_a_build_with_no_folder_on_main_is_refused(tmp_path):
     hub.last_commits = {}
     with pytest.raises(handoff.CertifyError, match="has no releases/"):
         handoff.read_published_build(handoff.NATIONAL_RELEASE, NATIONAL, api=hub)
-    hub = _national_hub(tmp_path, at="6" * 40)
+    hub = _national_hub(tmp_path, at="6" * 40, history=["7" * 40])
     with pytest.raises(handoff.CertifyError, match="could not read"):
         handoff.read_published_build(
             handoff.NATIONAL_RELEASE, NATIONAL, commit="7" * 40, api=hub

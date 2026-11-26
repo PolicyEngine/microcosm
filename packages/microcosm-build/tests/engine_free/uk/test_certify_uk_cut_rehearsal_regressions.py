@@ -464,6 +464,7 @@ class RunnerTests(unittest.TestCase):
         resume=False,
         evidence=None,
         old_record=None,
+        replayed=(),
     ):
         if receipt is None and uc_code == 0:
             receipt = {
@@ -581,7 +582,9 @@ class RunnerTests(unittest.TestCase):
                 "check_test_temp_directory",
                 return_value=root / "isolated-test-temp",
             ),
-            patch.object(runner, "validate_resume_worktree", return_value=[]),
+            patch.object(
+                runner, "validate_resume_worktree", return_value=list(replayed)
+            ),
             patch.object(
                 runner,
                 "certification_changes",
@@ -658,35 +661,60 @@ class RunnerTests(unittest.TestCase):
         self.assertIn(f"`{NATIONAL_COMMIT}`", body)
 
     def test_old_builds_sharing_a_commit_leave_their_constants_to_a_person(self):
-        """policyengine.py's rewrite moves every quoted copy of the old national
-        commit, the old local-area build's included, so the body asks for a
-        check by hand."""
+        """The constants are rewritten as quoted literals, so when the old
+        local-area commit is also the old or the new national commit, its
+        commit is left unrewritten and the body asks for a check by hand."""
 
-        shared = "5" * 40
-        old_record = {
-            "data_package": {"release_manifest_revision": shared},
-            "regional_source_manifest_uri": runner.manifest_uri(
-                runner.DENSE_RELEASE, "uk-local-candidate-old", shared
-            ),
-        }
-        with patch.object(runner, "rewrite_regional_constants", return_value=[]):
-            result, _, root = self.run_mock_pipeline(
-                evidence=EVIDENCE, old_record=old_record
-            )
-        self.assertEqual(result, 0)
-        body = (root / "certification.pr-body.md").read_text()
-        self.assertIn(f"shared commit `{shared}`", body)
-        with patch.object(runner, "rewrite_regional_constants", return_value=[]):
-            _, _, root = self.run_mock_pipeline(
-                evidence=EVIDENCE,
-                old_record={
-                    **old_record,
-                    "data_package": {"release_manifest_revision": "6" * 40},
-                },
-            )
-        self.assertNotIn(
-            "shared commit", (root / "certification.pr-body.md").read_text()
+        old_build = "uk-local-candidate-old"
+        cases = (
+            # (old national commit, old local-area commit, shared?)
+            ("5" * 40, "5" * 40, True),
+            ("6" * 40, NATIONAL_COMMIT, True),
+            ("6" * 40, "5" * 40, False),
         )
+        for old_national, old_regional, shared in cases:
+            with self.subTest(old_national=old_national, old_regional=old_regional):
+                old_record = {
+                    "data_package": {"release_manifest_revision": old_national},
+                    "regional_source_manifest_uri": runner.manifest_uri(
+                        runner.DENSE_RELEASE, old_build, old_regional
+                    ),
+                }
+                with patch.object(
+                    runner, "rewrite_regional_constants", return_value=[]
+                ) as rewrite:
+                    result, _, root = self.run_mock_pipeline(
+                        evidence=EVIDENCE, old_record=old_record
+                    )
+                self.assertEqual(result, 0)
+                _, old_pin, new_pin = rewrite.call_args.args
+                self.assertEqual(
+                    old_pin,
+                    runner.BuildPin(runner.DENSE_RELEASE, old_build, old_regional),
+                )
+                self.assertEqual(
+                    new_pin,
+                    runner.BuildPin(
+                        runner.DENSE_RELEASE,
+                        DENSE_BUILD,
+                        old_regional if shared else DENSE_COMMIT,
+                    ),
+                )
+                body = (root / "certification.pr-body.md").read_text()
+                self.assertEqual(f"shared commit `{old_regional}`" in body, shared)
+
+    def test_a_resume_at_another_commit_refuses_before_any_command(self):
+        """The resumed bundle names the first attempt's national commit, so a
+        resume that resolves another one is refused before anything runs."""
+
+        details = []
+        with self.assertRaisesRegex(runner.CertifyError, "national build at"):
+            self.run_mock_pipeline(
+                resume=True,
+                replayed=["src/policyengine/data/bundle/manifest.json"],
+                call_details=details,
+            )
+        self.assertEqual(details, [])
 
     def test_package_steps_get_no_hugging_face_token(self):
         details = []
