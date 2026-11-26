@@ -12,6 +12,10 @@ reachable long after the builder drops its last name for it:
 - ``self.calc = self.calculate`` stores a bound method on the instance — a
   guaranteed self-cycle on every simulation.
 
+policyengine-us 2.2.1 adds one more holder: the module-level cache of rules
+pinned to earlier federal law that New York's credit formulas fill, whose
+entries keep the engine they were made in (see :func:`_drop_pinned_rule_copies`).
+
 Cyclic graphs are invisible to the builder's cheap per-batch ``gc.collect(0)``
 once anything promotes them past generation 0, and CPython throttles full
 collections against the build's multi-GB long-lived heap — the measured result
@@ -241,6 +245,59 @@ def _sever_existing_attribute(target: Any, name: str) -> None:
         pass
 
 
+#: The policyengine-us module whose ``_PINNED_TBS_CACHE`` holds the systems
+#: that New York's credit formulas pin to earlier federal rules.
+_PINNED_RULES_MODULE = "policyengine_us.tools.pinned_tbs"
+
+
+def _drop_pinned_rule_copies(systems: list[Any]) -> None:
+    """Remove the pinned-rules cache entries pinned from ``systems``.
+
+    In policyengine-us 2.2.1, New York's pre-2024 child tax credit formulas
+    (``ny_ctc_pre_2024_eligible`` and ``ny_ctc_pre_2024``, from 2018 except
+    2025-2027) and its 2021 EITC (``ny_eitc``) recompute federal credits under
+    earlier rules through ``policyengine_us.tools.pinned_tbs``. A lookup that
+    misses clones the simulation's whole tax-benefit system and stores
+    ``(weak reference to that system, weak reference to its parameter tree,
+    clone)`` under the pin's name in the module-level ``_PINNED_TBS_CACHE``.
+    The clone is held strongly, and core's ``TaxBenefitSystem.clone`` copies
+    the ``simulation`` attribute into it. So the entry keeps the finished
+    engine alive and, through the engine's system, that system's parameter
+    tree, variables and rule modules, until another engine's lookup replaces
+    the entry: about 1.3 GiB after a reform pass, 0.5 GiB after a baseline
+    pass.
+
+    A lookup reuses an entry only for the same system object it was pinned
+    from, and each policyengine-us simulation gets a system object of its own,
+    so no later engine can reuse an entry pinned from a released simulation.
+    Removing those entries changes no scored value. (Were a system shared by a
+    simulation still running, its next lookup would clone again, as any miss
+    does.) Entries pinned from other systems stay. The module is not imported
+    here, and a cache or entry of any other shape is left alone.
+
+    policyengine-us 2.88.6 holds these entries weakly
+    (PolicyEngine/policyengine-us#10550); remove this when the US engine pin
+    reaches it.
+    """
+    module = sys.modules.get(_PINNED_RULES_MODULE)
+    cache = getattr(module, "_PINNED_TBS_CACHE", None)
+    if not systems or not isinstance(cache, dict):
+        return
+    for pin_name, entry in tuple(cache.items()):
+        if not isinstance(entry, tuple) or not entry:
+            continue
+        base_reference = entry[0]
+        if not isinstance(base_reference, weakref.ReferenceType):
+            continue
+        base = base_reference()
+        if (
+            base is not None
+            and any(base is system for system in systems)
+            and cache.get(pin_name) is entry
+        ):
+            del cache[pin_name]
+
+
 def release_engine_simulation(simulation: Any) -> None:
     """Release a finished engine simulation's retained state.
 
@@ -257,11 +314,15 @@ def release_engine_simulation(simulation: Any) -> None:
     - drops dataset/tracer/bound-method attributes that only extend the
       graph's lifetime.
 
+    Then it removes the entries policyengine-us's pinned-rules cache holds for
+    those simulations' systems (:func:`_drop_pinned_rule_copies`).
+
     Safe to call on stubs and doubles: only attributes the object actually
     carries are touched. Idempotent.
     """
     stack = [simulation]
     seen: set[int] = set()
+    released_systems: list[Any] = []
     while stack:
         current = stack.pop()
         if current is None or id(current) in seen:
@@ -288,6 +349,8 @@ def release_engine_simulation(simulation: Any) -> None:
             populations.clear()
 
         tax_benefit_system = getattr(current, "tax_benefit_system", None)
+        if tax_benefit_system is not None:
+            released_systems.append(tax_benefit_system)
         if (
             tax_benefit_system is not None
             and getattr(tax_benefit_system, "simulation", None) is current
@@ -299,3 +362,5 @@ def release_engine_simulation(simulation: Any) -> None:
 
         for attribute in _SEVERED_ATTRIBUTES:
             _sever_existing_attribute(current, attribute)
+
+    _drop_pinned_rule_copies(released_systems)
