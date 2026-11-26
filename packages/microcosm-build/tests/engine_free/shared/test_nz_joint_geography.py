@@ -32,16 +32,22 @@ from microcosm.build.ledger_targets import (
 from microcosm.build.transport.compose import (
     TransportGraphConfig,
     _artifact_outputs,
+    _declared_rows,
     _node,
     load_transport_spec,
     transport_resource,
 )
 from microcosm.build.transport.geography_kernels import support_from_surface
+from microcosm.build.transport.person_location_kernels import (
+    register_person_location_kernels,
+)
+from microcosm.build.transport.registry import register_transport_population_kernels
 from microcosm.build.transport.target_kernels import (
     TargetSurface,
     decode_target_surface,
     encode_target_surface,
 )
+from microcosm.build.transport.unit_declarations import create_unit_declaration
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.hierarchy import (
     CalibrationHierarchy,
@@ -49,8 +55,24 @@ from microcosm.calibrate.hierarchy import (
     HierarchyGeography,
     HierarchyNode,
 )
-from microcosm.graph import ROWS_ALL, KernelContext, KernelRegistry, Owned, Ownership
-from microcosm.graph.kernel import ArtifactValue, NumericScope
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.graph import (
+    ArtifactOutput,
+    Capabilities,
+    ContentStore,
+    Determinism,
+    Graph,
+    KernelBase,
+    KernelRegistry,
+    KernelResult,
+    Node,
+    Owned,
+    SourceRef,
+    StructuralDelta,
+    compile_graph,
+    run_graph,
+)
+from microcosm.graph.availability import execution_state
 from test_support.paths import paths_for
 from tools import build_nz_joint_geography as builder
 
@@ -65,17 +87,20 @@ _STRADDLING = {
     "041": {"08", "09"},
     "068": {"13", "14"},
 }
-# Each household column nz.geo.derive writes, and the transport support column
-# it must carry. The test states this map itself: derivation and validation both
-# follow the assignment's layers, and the binder checks only that a layer's
-# labels match the column it reads, so all three accept a layer that reads the
-# wrong support column with matching labels.
+# Each household column the derivation node writes, and the transport support
+# column it must carry. The test states this map itself: derivation and
+# validation both follow the assignment's layers, and the binder checks only
+# that a layer's labels match the column it reads, so all three accept a layer
+# that reads the wrong support column with matching labels.
 _TRANSPORT_LAYER_COLUMNS = {
     "ta_code": "ta_code",
     "household_region_code": "region_code",
     "as_area": "as_area",
     "as_area_alt": "as_area_alt",
 }
+# Each person column the person-location nodes write, and the support column it
+# must carry for the area of the person's household, stated the same way.
+_PERSON_LOCATION_COLUMNS = {"region_code": "region_code"}
 
 
 def _read(path: Path) -> dict:
@@ -593,102 +618,148 @@ def _assert_layers_carry_their_support_columns(
         )
 
 
-def _artifact(payload: bytes, kind) -> ArtifactValue:
-    digest = hashlib.sha256(payload).hexdigest()
-    return ArtifactValue(
-        payload=payload,
-        type=kind,
-        key=digest,
-        producer_key=digest,
-        numerics=NumericScope(),
-    )
-
-
-_KERNELS = KernelRegistry()
-register_atomic_geography_kernels(_KERNELS)
-
-
-def _run_composed(node, frame: pd.DataFrame, support: bytes):
-    """Run a composed geography node with the graph executor's projection,
-    kernel resolution and checks on what the kernel returns.
-
-    The executor resolves the node's declared kernel through its registry and
-    refuses a kernel whose structural capability differs from the node's. It
-    gives the kernel one table per entity the node reads or owns: the entity's
-    id column and the union of the node's slices of that entity, under their
-    one row mask, so a column the node does not declare is not there. These
-    nodes must see every household, so every slice reads all rows. Each
-    artifact input receives the support payload. The executor then requires
-    the result's columns to be exactly the node's owned cells, and every
-    declared artifact output to be returned. These kernels write every
-    household, so each owned output must be produced on all rows; the columns
-    are new, so none may be a rewrite. The synthetic frame holds only the ids
-    and the geography columns, so a node may read only those.
-    """
-    entities = {table.entity for table in node.inputs}
-    entities |= {owned.entity for owned in node.outputs}
-    assert entities == {"household"}
-    assert {table.rows for table in node.inputs} <= {ROWS_ALL}
-    columns = dict.fromkeys(column for table in node.inputs for column in table.columns)
-    context = KernelContext(
-        node=node,
-        tables={"household": frame.loc[:, ["household_id", *columns]]},
-        weights={},
-        strata=pd.Series([], dtype=object),
-        params=node.params,
-        rng=np.random.default_rng(0),
-        artifacts={
-            edge.name: _artifact(support, edge.type) for edge in node.artifact_inputs
-        },
-    )
-    kernel = _KERNELS.get(node.kernel)
-    assert kernel.capabilities.structural is node.structural
-    result = kernel.run(context)
-    assert set(result.columns) == {
-        (owned.entity, owned.column) for owned in node.outputs
+_STAND_IN_SOURCE = "nz_geography_stand_in"
+_CREATE_INVENTORY = (
+    _PATHS.tests / "fixtures/nz/create_inventory_populace_us_48b9d479.json"
+)
+# One value for each column dtype the graph compiler accepts. Bool columns
+# alternate instead, so a row mask on one leaves rows out.
+_STAND_IN_BOOLS = frozenset({"bool", "boolean"})
+_STAND_IN_VALUES = {
+    "int32": 0,
+    "int64": 0,
+    "Int64": 0,
+    "float32": 0.0,
+    "float64": 0.0,
+    "string": "stand-in",
+}
+# The geography kernels the test runs on the assignment's population.
+_GEOGRAPHY_KERNELS = frozenset(
+    {
+        "geography.assign_atomic@1",
+        "geography.derive@1",
+        "geography.person_location@1",
+        "geography.gate@1",
     }
-    assert {output.name for output in node.artifact_outputs} <= set(result.artifacts)
-    for owned in node.outputs:
-        assert (owned.column, owned.rows, owned.ownership, owned.rewrite) == (
-            owned.column,
-            ROWS_ALL,
-            Ownership.PRODUCED,
-            False,
+)
+
+
+class _StandInPopulation(KernelBase):
+    """Stands in for nz.create, the CREATE under the geography nodes'
+    population, under the id the graph gives it."""
+
+    ref = "test.nz_geography_stand_in_population@1"
+    capabilities = Capabilities(
+        determinism=Determinism.DETERMINISTIC, structural=StructuralDelta.CREATE
+    )
+
+    def __init__(self, frame: Frame) -> None:
+        self.frame = frame
+
+    def run(self, context):
+        return KernelResult(frame=self.frame)
+
+
+class _StandInSurface(KernelBase):
+    """Stands in for nz.facts.precal: its target surface, with synthetic counts."""
+
+    ref = "test.nz_geography_stand_in_surface@1"
+    capabilities = Capabilities(determinism=Determinism.DETERMINISTIC)
+
+    def __init__(self, name: str, payload: bytes) -> None:
+        self.name, self.payload = name, payload
+
+    def run(self, context):
+        return KernelResult(artifacts={self.name: self.payload})
+
+
+def _stand_in_frame(
+    schema: EntitySchema, columns: dict[tuple[str, str], str], households: int
+) -> Frame:
+    """One person in each household and in each group of their own.
+
+    The memberships are the only structure: id-like columns such as
+    ``family_household_id`` hold stand-in values like any other. Each of
+    ``columns`` (entity and column, to dtype) holds one stand-in value
+    of its dtype, or alternating values if it is bool. The test pins the
+    premise that keeps these values out of every draw: the assignment keys
+    households by ``household_id`` alone and reads no selector, constraint,
+    weight or observed-area column.
+    """
+    ids = np.arange(households, dtype=np.int64)
+    tables = {
+        schema.person_entity: pd.DataFrame(
+            {
+                schema.person_id_column: ids,
+                **{
+                    schema.membership_column(group): ids
+                    for group in schema.group_entities
+                },
+            }
+        ),
+        **{
+            group: pd.DataFrame({schema.id_column(group): ids})
+            for group in schema.group_entities
+        },
+    }
+    for (entity, column), dtype in sorted(columns.items()):
+        assert column not in tables[entity], (entity, column)
+        values = (
+            ids % 2 == 0
+            if dtype in _STAND_IN_BOOLS
+            else [_STAND_IN_VALUES[dtype]] * households
         )
-    return result
+        tables[entity][column] = pd.array(values, dtype=dtype)
+    return Frame(
+        tables,
+        schema,
+        {"household": Weights(np.ones(households), WeightKind.DESIGN)},
+        pd.Series(["stand-in"] * households, name="stratum"),
+    )
 
 
-def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
-    """Run nz.geo.assign, nz.geo.derive and nz.geo.gate as the pipeline would,
-    with synthetic population counts: each node composed from the committed
-    declarations as compose_transport_graph composes it, and each node's own
-    declared kernel run with the executor's projection, kernel resolution and
-    output checks.
+def test_committed_transport_assignment_runs_on_its_committed_support(
+    tmp_path: Path,
+) -> None:
+    """Run the committed geography nodes through the graph executor on a
+    stand-in population with synthetic counts.
+
+    The nodes are composed from the committed declarations as
+    compose_transport_graph composes them: every node on the assignment's
+    population (the geography endpoint's, when the graph declares more than one
+    assignment) that runs the assignment, derivation, person-location or gate
+    kernel, the support node the assignment reads, and the versions under that
+    population down to its CREATE (nz.open, a FILTER on nz.create). Two
+    stand-ins take the ids those nodes name: the CREATE, which gives CREATE's
+    real columns and dtypes with stand-in values (see ``_stand_in_frame``), and
+    nz.facts.precal, whose target surface holds the support references in
+    nz.facts.precal's ``references`` parameter, with synthetic counts. The
+    executor projects each node's tables, runs its kernel and checks its result
+    as it does in the pipeline.
 
     The graph supplies the support definition, the support's system and the
-    alias the three kernels key the support by. An assignment whose system
-    differs from that alias fails here, as the kernels refuse it. So does a
-    node that omits a column its kernel reads, an input slice or row mask the
-    composer's node construction refuses, a definition or stream the kernels
-    refuse, or an owned output the executor would refuse. Each node runs the
-    kernel it declares, so a node that declares another node's kernel fails as
-    that kernel does.
+    alias the kernels key the support by. An assignment whose system differs
+    from that alias fails here, as the kernels refuse it.
 
     Each derived layer must carry the support column that
-    ``_TRANSPORT_LAYER_COLUMNS`` names for it, on the drawn areas and on every
-    committed area. Derivation and validation recompute the assignment's own
-    layers, and the binder checks only that a layer's labels match the column
-    it reads, so this independent map is what checks every row of a layer that
-    reads the wrong column with matching labels.
+    ``_TRANSPORT_LAYER_COLUMNS`` names for it, on every household and on every
+    committed area, and each person the column ``_PERSON_LOCATION_COLUMNS``
+    names, for their household's area. Derivation and validation recompute the
+    assignment's own layers, and the binder checks only that a layer's labels
+    match the column it reads, so these maps are what check every row of a
+    layer that reads the wrong column with matching labels.
 
     Each layer's source, vintage and relation must equal the support column it
     reads, or the shared binder refuses before any household is placed.
     """
     transport = load_transport_spec(_SPEC)
-    declared = transport_resource(transport, "transport_graph")["nodes"]
-    # Compose the geography nodes as compose_transport_graph does: parameters
-    # resolved, input slices and artifact edges checked and typed. None of them
-    # is CREATE or selects a rules binding, so the config's values go unused.
+    declared_graph = transport_resource(transport, "transport_graph")
+    declared = declared_graph["nodes"]
+    by_id = {row["id"]: row for row in declared}
+    # Compose as compose_transport_graph does: parameters resolved, input
+    # slices and artifact edges checked and typed. No composed node here is
+    # CREATE or selects a rules binding, so the config's values go unused;
+    # nz.create is composed below only for the unit declaration it reads.
     types = {
         (row["id"], output.name): output.type
         for row in declared
@@ -697,18 +768,46 @@ def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
     config = TransportGraphConfig(
         engine_refs={}, create_outputs=(Owned("household", "household_id", "int64"),)
     )
+    # The assignment is found by kernel. When the graph declares more than one,
+    # the geography endpoint names the population whose assignment runs here.
+    # The other nodes on that population are found by kernel too, and the
+    # support node by the assignment's edge.
+    assign_rows = [
+        row for row in declared if row.get("kernel") == "geography.assign_atomic@1"
+    ]
+    if len(assign_rows) > 1:
+        endpoint = by_id[declared_graph["endpoints"]["geography"]]
+        assign_rows = [
+            row
+            for row in assign_rows
+            if row.get("population") == endpoint.get("population")
+        ]
+    (assign_row,) = assign_rows
+    assign = _node(transport, assign_row, config, types)
+    (edge,) = assign.artifact_inputs
     nodes = {
         row["id"]: _node(transport, row, config, types)
         for row in declared
-        if row["id"].startswith("nz.geo.")
+        if row["id"] == edge.producer
+        or (
+            row.get("kernel") in _GEOGRAPHY_KERNELS
+            and row.get("population") == assign.population
+        )
     }
-    assign, derive, gate = (
-        nodes[f"nz.geo.{step}"] for step in ("assign", "derive", "gate")
-    )
-    for node in (derive, gate):
+    assert nodes[assign.id] == assign
+    by_kernel = defaultdict(list)
+    for node in nodes.values():
+        by_kernel[node.kernel].append(node)
+    (derive,) = by_kernel["geography.derive@1"]
+    persons = by_kernel["geography.person_location@1"]
+    gates = by_kernel["geography.gate@1"]
+    assert gates
+    # The test requires one definition, stream and support for assign, derive
+    # and each gate, so the layers it checks are the assignment's. Each kernel
+    # itself checks only its own definition, stream and support alias.
+    for node in (derive, *gates):
         assert node.params == assign.params
         assert node.artifact_inputs == assign.artifact_inputs
-    (edge,) = assign.artifact_inputs
     alias, producer = edge.name, nodes[edge.producer]
     assert (producer.kernel, edge.artifact) == (
         "geography.support_from_facts@1",
@@ -720,46 +819,203 @@ def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
     # The kernels refuse unless the support aliases are the assignment's system
     # ids, and the binder refuses unless the support's own system is too.
     assert (system["id"], producer.params["system"]) == (alias, alias)
-    # The synthetic households carry only their ids, so pin the premise that
-    # the system reads no selector, constraint or observed-area column.
+    # The stand-in population holds one value per dtype, so pin the premise
+    # that keeps those values out of the draw: households are keyed by
+    # household_id, and the system reads no selector, constraint, weight or
+    # observed-area column.
+    assert specification["identity"] == ["household_id"]
     assert (system["selector"], system["constraints"], system["observed_area"]) == (
         {},
         [],
         None,
     )
-
-    references = _references()
-    payload = support_from_surface(
-        _surface(references, [1000] * len(references)),
-        definition,
-        system=producer.params["system"],
-    )
-    support = geography.decode_atomic_support(payload)
-    supports = {alias: support}
+    assert not any("weight_by" in stage for stage in system["stages"])
+    # The layers derive writes are the layers the map covers.
+    assert {owned.column for owned in derive.outputs} == set(_TRANSPORT_LAYER_COLUMNS)
     rows = {row["codes"]["area"]: row["codes"] for row in definition["rows"]}
-    outputs = specification["outputs"]
-    count = len(support.arrays["area"])
-    households = pd.DataFrame(
-        {
-            "household_id": np.arange(count, dtype=np.int64),
-            "source_household_id": np.arange(count, dtype=np.int64),
-        }
+
+    (surface_edge,) = producer.artifact_inputs
+    # The support references in nz.facts.precal's references param.
+    surface_producer = _node(transport, by_id[surface_edge.producer], config, types)
+    references = [
+        row
+        for row in json.loads(surface_producer.params["references"])[
+            "target_references"
+        ]
+        if row["metadata"].get("precal_use") == "atomic_geography_support"
+    ]
+    # Each support row agrees with its builders, so a row whose codes disagree
+    # with each other or with its target fails here.
+    # tools/build_nz_joint_geography.py names each area by its TA, region and
+    # AS area and takes the row's target and population code from the TA's
+    # support reference; tools/build_nz_transport_graph.py adds the TA's modal
+    # area from as_area_crosswalk.json as as_area_alt.
+    targets = {
+        reference["ledger_selector"]["geography_id"]: reference["name"]
+        for reference in references
+    }
+    modal = {
+        row["ta_code"]: str(row["modal_area"])
+        for row in _read(_SPEC / "as_area_crosswalk.json")["rows"]
+    }
+    for row in definition["rows"]:
+        codes = row["codes"]
+        assert codes["area"] == "|".join(
+            (codes["ta_code"], codes["region_code"], codes["as_area"])
+        ), codes["area"]
+        assert codes["population_code"] == f"nz-ta-{codes['ta_code']}", codes["area"]
+        assert row["target"] == targets.get(codes["population_code"]), codes["area"]
+        assert codes["as_area_alt"] == modal.get(codes["ta_code"]), codes["area"]
+
+    synthetic = _surface(references, [1000] * len(references))
+    surface = encode_target_surface(
+        synthetic.registry,
+        [LedgerTargetReference(**row) for row in references],
+        references_sha256=synthetic.references_sha256,
+        facts=synthetic.facts,
     )
+    # The versions under the assignment's population, down to its CREATE.
+    versions = [assign.population]
+    while by_id[versions[-1]].get("structural") != "create":
+        versions.append(by_id[versions[-1]]["base"])
+    *filtered, create_id = versions
+    filters = {
+        version: _node(transport, by_id[version], config, types) for version in filtered
+    }
+    # NZ's own entity schema, from the unit declaration its CREATE node reads.
+    create = by_id[create_id]
+    unit_rule = json.loads(_node(transport, create, config, types).params["unit_rule"])
+    schema, _ = create_unit_declaration(create["kernel"], unit_rule).entity_schema()
+    # The person locations the person-location nodes write are the ones the
+    # map covers.
+    assert {
+        (owned.entity, owned.column) for node in persons for owned in node.outputs
+    } == {(schema.person_entity, column) for column in _PERSON_LOCATION_COLUMNS}
+    # The stand-in CREATE gives CREATE's real columns at their dtypes, the
+    # inventory the pinned donor gave. The test requires that no geography
+    # node writes one of them. The stand-in also gives the columns other nodes
+    # on these versions write that a geography node reads; a read that nothing
+    # there produces stays absent, so compilation refuses it as it would in
+    # the pipeline.
+    columns = {
+        (column["entity"], column["column"]): column["dtype"]
+        for column in json.loads(_CREATE_INVENTORY.read_bytes())["columns"]
+    }
+    composed = (*filters.values(), *nodes.values())
+    written = {
+        (owned.entity, owned.column) for node in composed for owned in node.outputs
+    }
+    assert written.isdisjoint(columns), sorted(written & columns.keys())
+    # The test also requires that no other node the composer instantiates (the
+    # transport graph's nodes, and every row the entitlement graph instantiates:
+    # its own nodes and the scenario and variant rows) writes a column these
+    # nodes write, so every writer of these columns is a node it runs. The rows
+    # come from the composer's own list, which its structural-column check reads.
+    for row in _declared_rows(transport):
+        if row["id"] not in nodes:
+            clash = written & {
+                (output["entity"], output["column"])
+                for output in row.get("outputs", ())
+            }
+            assert not clash, (row["id"], sorted(clash))
+    read = {
+        (table.entity, column)
+        for node in composed
+        for table in node.inputs
+        for column in table.columns
+    }
+    for row in declared:
+        if row["id"] not in nodes and row.get("population") in versions:
+            for output in row.get("outputs", ()):
+                key = (output["entity"], output["column"])
+                if key in read - written:
+                    columns.setdefault(key, output["dtype"])
+    population = _StandInPopulation(_stand_in_frame(schema, columns, len(rows)))
+    precal = _StandInSurface(surface_edge.artifact, surface)
+    stand_ins = (
+        Node(
+            create_id,
+            population.ref,
+            sources=(_STAND_IN_SOURCE,),
+            structural=StructuralDelta.CREATE,
+            outputs=tuple(
+                Owned(entity, column, dtype)
+                for (entity, column), dtype in sorted(columns.items())
+            ),
+        ),
+        Node(
+            surface_edge.producer,
+            precal.ref,
+            population=surface_producer.population,
+            artifact_outputs=(
+                ArtifactOutput(surface_edge.artifact, surface_edge.type),
+            ),
+        ),
+    )
+    # Each declared source a composed node names reads the stand-in file. No
+    # kernel here reads a source, and the support kernel refuses one; a source
+    # the graph does not declare stays absent, so compilation refuses it.
+    sources = (
+        _STAND_IN_SOURCE,
+        *sorted(
+            {name for node in composed for name in node.sources}
+            & {source["name"] for source in declared_graph["sources"]}
+        ),
+    )
+    graph = compile_graph(
+        Graph(
+            "nz-geography",
+            tuple(SourceRef(name, "raw-bytes-v1") for name in sources),
+            (*stand_ins, *composed),
+        )
+    )
+    kernels = KernelRegistry()
+    kernels.register(population)
+    kernels.register(precal)
+    register_transport_population_kernels(kernels)
+    register_atomic_geography_kernels(kernels)
+    register_person_location_kernels(kernels)
+    source = tmp_path / "stand-in.bin"
+    source.write_bytes(b"stand-in population for the NZ geography nodes")
+    store = ContentStore(tmp_path / "store")
+    run = run_graph(
+        graph,
+        sources=dict.fromkeys(sources, source),
+        store=store,
+        kernels=kernels,
+    )
+    for node in composed:
+        state = execution_state(run.nodes[node.id].receipt)
+        assert state not in {"unreached", "gate_exception"}, (node.id, state)
+    assert run.known_failures == ()
+    for gate in gates:
+        assert run.nodes[gate.id].receipt["outcome"] == "pass", gate.id
 
-    def written(result) -> dict[str, np.ndarray]:
-        return {
-            column: series.to_numpy() for (_, column), series in result.columns.items()
-        }
-
-    # The kernels refuse a definition or stream that differs from the
-    # assignment's own, and the assign and derive kernels refuse outputs other
-    # than their node's declared ones. The gate refuses by raising.
-    assigned = households.assign(**written(_run_composed(assign, households, payload)))
-    derived = written(_run_composed(derive, assigned, payload))
-    assert set(derived) == set(_TRANSPORT_LAYER_COLUMNS)
-    completed = assigned.assign(**derived)
-    _run_composed(gate, completed, payload)
+    payload = store.load_bytes(run.nodes[producer.id].opaque_artifacts[edge.artifact])
+    supports = {alias: geography.decode_atomic_support(payload)}
+    outputs = specification["outputs"]
+    completed = run.population(assign.population).table("household")
+    # Every household carries every layer, and each layer the support column
+    # the map names.
     _assert_layers_carry_their_support_columns(completed, outputs["area"], rows)
+    # Every person carries the support column the person map names, for the
+    # area of their household.
+    people = run.population(assign.population).table(schema.person_entity)
+    area_of = dict(
+        zip(
+            completed[schema.id_column("household")],
+            completed[outputs["area"]],
+            strict=True,
+        )
+    )
+    for column, support_column in _PERSON_LOCATION_COLUMNS.items():
+        expected = [
+            rows[area_of[household]][support_column]
+            for household in people[schema.membership_column("household")]
+        ]
+        assert people[column].tolist() == expected, (
+            f"person {column} differs from support column {support_column}"
+        )
     # Derive every committed area too, so the check also covers areas the draw
     # never reaches.
     areas = sorted(rows)
@@ -773,10 +1029,10 @@ def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
         [every, geography.derive_geography(every, specification, supports)], axis=1
     )
     _assert_layers_carry_their_support_columns(looked_up, outputs["area"], rows)
-    # Pin one committed value. A swap of as_area and as_area_alt inside the
-    # support rows moves ``rows`` with the support, so the checks above pass;
-    # this literal sees such a swap when it reaches 011|03|2.
+    # Pin one committed value as well; the checks above imply it only while
+    # the support still holds area 011|03|2.
     assert looked_up.loc[areas.index("011|03|2"), "as_area"] == "2"
+    households = completed.loc[:, list(specification["identity"])]
     for position, layer in enumerate(system["layers"]):
         for key in ("source", "vintage", "relation"):
             changed = copy.deepcopy(specification)
