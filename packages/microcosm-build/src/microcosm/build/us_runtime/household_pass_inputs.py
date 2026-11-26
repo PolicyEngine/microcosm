@@ -7,8 +7,8 @@ included, because a stored column replaces a formula. The list starts from
 the static dependency graph
 (``PolicyEngineUSVariableMetadataIndex.variable_dependency_closure``: every
 variable its formulas read through ``entity(...)``, ``add`` and similar
-calls, on any branch and in any period). That graph does not follow three
-kinds of read, so the list adds, until nothing new appears:
+calls, on any branch and in any period). That graph does not follow some
+reads, so the list adds, until nothing new appears:
 
 * every string in a listed variable's class source that names an engine
   variable, which covers ``simulation.get_branch(...).calculate("...")``,

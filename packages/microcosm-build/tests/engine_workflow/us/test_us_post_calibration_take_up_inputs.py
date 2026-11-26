@@ -212,8 +212,9 @@ def test_reused_medicaid_eligibility_reruns_the_households_whose_inputs_changed(
     builder, system
 ) -> None:
     """SNAP take-up flags that differ from the engine default and the
-    other-health stage's premium attribution change the inputs of four
-    households; the other three keep their first-pass values."""
+    other-health stage's premium attribution change the inputs of three
+    households, which are rerun; the other four keep their first-pass
+    values."""
 
     frame = take_up_pass_frame()
     record = builder._household_pass_record(

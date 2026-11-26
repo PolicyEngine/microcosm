@@ -729,6 +729,11 @@ def _collect_batch_garbage() -> None:
     gc.collect(0)
 
 
+#: While set, ``_collect_family_garbage`` leaves the full collection to
+#: whoever set it (``_one_family_garbage_collection``).
+_FAMILY_GARBAGE_DEFERRED = False
+
+
 def _collect_family_garbage() -> None:
     """Full collection at target-family boundaries (microcosm#456).
 
@@ -741,7 +746,28 @@ def _collect_family_garbage() -> None:
     cheap next to the family's engine work.
     """
 
+    if _FAMILY_GARBAGE_DEFERRED:
+        return
     gc.collect()
+
+
+@contextmanager
+def _one_family_garbage_collection():
+    """Run the passes inside as one family: one full collection at the end.
+
+    A reuse calls a pass function once per batch of rerun households, and
+    each call ends with a full collection; a full pass has one.
+    """
+
+    global _FAMILY_GARBAGE_DEFERRED
+    already_deferred = _FAMILY_GARBAGE_DEFERRED
+    _FAMILY_GARBAGE_DEFERRED = True
+    try:
+        yield
+    finally:
+        _FAMILY_GARBAGE_DEFERRED = already_deferred
+        if not already_deferred:
+            gc.collect()
 
 
 @contextmanager
@@ -4704,7 +4730,9 @@ def _household_pass_record(
 
     The record holds the values, the person IDs and a digest of each
     household's rows over every column the installed policyengine-us can
-    read for ``variable`` (its static dependency graph); it holds no frame.
+    read for ``variable`` (``us_household_pass_inputs``: its static
+    dependency graph plus the reads that graph does not follow); it holds no
+    frame.
     """
 
     from policyengine_us.system import system
@@ -4725,6 +4753,7 @@ def _reuse_household_pass(
     maximum_microsim_batch_size: int | None,
     description: str,
     telemetry: _BuildProgress | None = None,
+    telemetry_stage: str = "take_up_final_diagnostics",
 ) -> HouseholdPassReuse:
     """The pass's values on ``frame``, running policyengine-us only where needed.
 
@@ -4734,22 +4763,43 @@ def _reuse_household_pass(
     one batch at most; if that check disagrees with the record, ``recompute``
     runs on the whole frame (see
     :func:`microcosm.build.household_pass_reuse.reuse_household_pass`). The
-    counts are printed and, with ``telemetry``, sent with the running
-    ``take_up_final_diagnostics`` stage; no release file records them.
+    passes inside share one full garbage collection, as a full pass has.
+    With ``telemetry``, ``telemetry_stage`` is reported running before the
+    reuse and again with the counts after it; the counts are also printed.
+    No release file records them.
     """
+
+    def report(message: str, **details: object) -> None:
+        if telemetry is None:
+            return
+        # Reporting only: a telemetry failure must not stop the build here
+        # or mask an earlier failure (microcosm#547).
+        try:
+            telemetry.stage(telemetry_stage, message=message, **details)
+        except Exception as error:
+            print(
+                f"WARNING: the {description} reuse report did not reach "
+                f"telemetry: {error}",
+                flush=True,
+            )
 
     batch_households = (
         maximum_microsim_batch_size
         if maximum_microsim_batch_size is not None and maximum_microsim_batch_size > 0
         else DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
     )
-    reuse = reuse_household_pass(
-        record,
-        frame,
-        recompute=recompute,
-        checked_household_count=batch_households,
-        batch_household_count=batch_households,
+    report(
+        f"Reusing pre-calibration {description} for households whose inputs "
+        "are unchanged."
     )
+    with _one_family_garbage_collection():
+        reuse = reuse_household_pass(
+            record,
+            frame,
+            recompute=recompute,
+            checked_household_count=batch_households,
+            batch_household_count=batch_households,
+        )
     total = reuse.reused_households + reuse.recomputed_households
     if reuse.check_failed:
         message = (
@@ -4768,27 +4818,16 @@ def _reuse_household_pass(
             "unchanged households as a check."
         )
     print(message, flush=True)
-    if telemetry is not None:
-        # Reporting only: a telemetry failure must not stop the build here
-        # or mask an earlier failure (microcosm#547).
-        try:
-            telemetry.stage(
-                "take_up_final_diagnostics",
-                message=message,
-                household_pass_reuse={
-                    "variable": record.inputs.variable,
-                    "reused_households": reuse.reused_households,
-                    "recomputed_households": reuse.recomputed_households,
-                    "checked_households": reuse.checked_households,
-                    "check_failed": reuse.check_failed,
-                },
-            )
-        except Exception as error:
-            print(
-                f"WARNING: the {description} reuse counts did not reach "
-                f"telemetry: {error}",
-                flush=True,
-            )
+    report(
+        message,
+        household_pass_reuse={
+            "variable": record.inputs.variable,
+            "reused_households": reuse.reused_households,
+            "recomputed_households": reuse.recomputed_households,
+            "checked_households": reuse.checked_households,
+            "check_failed": reuse.check_failed,
+        },
+    )
     return reuse
 
 
@@ -17769,8 +17808,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
     )
     # The post-calibration measurement reuses these values for every
     # household whose December SSI inputs are unchanged on the export frame.
-    ssi_pass_record = _household_pass_record(
-        base_frame, ssi_uncapped_amount, variable="uncapped_ssi"
+    # A dry run stops before calibration and needs no record.
+    ssi_pass_record = (
+        _household_pass_record(base_frame, ssi_uncapped_amount, variable="uncapped_ssi")
+        if dry_run is None
+        else None
     )
     base_frame, ssi_take_up_stage_diagnostics = with_us_ssi_take_up(
         base_frame,
@@ -18093,15 +18135,19 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         seed=args.seed,
         substitutions=medicaid_enrollment_substitutions,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-        eligibility_recorder=lambda frame, eligibility, records=medicaid_pass_records: (
-            records.append(
-                _household_pass_record(
-                    frame, eligibility, variable="is_medicaid_eligible"
+        eligibility_recorder=(
+            None
+            if dry_run is not None
+            else lambda frame, eligibility, records=medicaid_pass_records: (
+                records.append(
+                    _household_pass_record(
+                        frame, eligibility, variable="is_medicaid_eligible"
+                    )
                 )
             )
         ),
     )
-    (medicaid_pass_record,) = medicaid_pass_records
+    medicaid_pass_record = medicaid_pass_records[0] if medicaid_pass_records else None
     del medicaid_pass_records
     medicaid_take_up_gate = shadow_gate(
         "us_national_medicaid_take_up",
@@ -18978,6 +19024,9 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
                         description="Medicaid eligibility",
                         telemetry=telemetry,
+                        # A failed SSI delivery check closes the running
+                        # stage; the Medicaid measurement opens its own.
+                        telemetry_stage="medicaid_final_diagnostics",
                     ).values,
                 )
             ),

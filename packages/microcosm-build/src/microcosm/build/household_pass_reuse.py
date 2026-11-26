@@ -265,31 +265,34 @@ def household_input_digests(
             household_ids[positions]
         )
         structural["structure:place"] = place.astype(np.int64)
-        for lane_index, lane in enumerate(_LANES):
-            # Unsigned sums wrap around, which is what a digest wants.
-            row_sums = np.zeros(len(table), dtype=np.uint64)
-            with np.errstate(over="ignore"):
-                for label, values in structural.items():
-                    row_sums += _mixed(
+        # Unsigned sums wrap around, which is what a digest wants.
+        row_sums = np.zeros((len(_LANES), len(table)), dtype=np.uint64)
+        with np.errstate(over="ignore"):
+            for label, values in structural.items():
+                for lane_index, lane in enumerate(_LANES):
+                    row_sums[lane_index] += _mixed(
                         _value_bits(values, lane) ^ _salt(lane, f"{entity}:{label}")
                     )
-                for column in columns_by_entity.get(entity, ()):
-                    if column.name not in table:
-                        continue
-                    values = _canonical(table[column.name])
-                    if column.absent_reads_default:
-                        rows = np.flatnonzero(
-                            _differs_from_default(values, column.default)
-                        )
-                    else:
-                        rows = np.arange(len(values))
-                    if not len(rows):
-                        continue
-                    row_sums[rows] += _mixed(
-                        _value_bits(values[rows], lane)
+            for column in columns_by_entity.get(entity, ()):
+                if column.name not in table:
+                    continue
+                values = _canonical(table[column.name])
+                if column.absent_reads_default:
+                    rows = np.flatnonzero(_differs_from_default(values, column.default))
+                    values = values[rows]
+                else:
+                    rows = slice(None)
+                if not len(values):
+                    continue
+                for lane_index, lane in enumerate(_LANES):
+                    row_sums[lane_index, rows] += _mixed(
+                        _value_bits(values, lane)
                         ^ _salt(lane, f"{entity}:input:{column.name}")
                     )
-                row_digests = _mixed(row_sums ^ _salt(lane, f"{entity}:row"))
+            for lane_index, lane in enumerate(_LANES):
+                row_digests = _mixed(
+                    row_sums[lane_index] ^ _salt(lane, f"{entity}:row")
+                )
                 lane_digests = np.zeros(len(household_ids), dtype=np.uint64)
                 np.add.at(lane_digests, positions, row_digests)
                 digests[:, lane_index] += lane_digests
