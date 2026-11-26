@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from microcosm.frame import Frame, Weights
+from microcosm.frame import Frame, Weights, table_copies
 from microcosm.frame.table_copies import copy_series, copy_table
 from microcosm.graph import (
     ArtifactInput,
@@ -209,6 +209,8 @@ class _PopulationKernel(KernelBase):
             national_sampling,
             rowwise_dataset,
             graph_evidence,
+            # context_frame copies the kernel's inputs with copy_table.
+            table_copies,
         )
 
 
