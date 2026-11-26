@@ -656,7 +656,7 @@ def test_a_result_file_too_large_for_the_emitter_stays_out_of_the_hand_over(
     assert emitter.hub_json(US_STAGING, "runs/run-l/progress.json")["status"] == (
         "passed"
     )
-    assert "too large" in capsys.readouterr().err
+    assert "larger than the emitter's limit for one file" in capsys.readouterr().err
 
 
 class _MeasuringEmitter(FakeEmitterClient):
