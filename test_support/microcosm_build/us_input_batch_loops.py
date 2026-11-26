@@ -50,6 +50,80 @@ def real_engine_frame() -> Frame:
     return _real_engine_frame()
 
 
+def input_loop_identity_frame() -> Frame:
+    """Five households over three states whose rows are out of household order.
+
+    Group ids run against household order (household 1 holds the highest tax
+    unit, SPM unit, family and marital unit ids, so the sorted group tables
+    list it last), and the person rows are reversed. A loop that placed a
+    batch's results at a running row offset, instead of by id, writes other
+    bytes than main's. Household 5 is a New York parent with two children, so
+    the CHIP premium is nonzero; three people report non-Medicare premiums;
+    household weights differ.
+    """
+
+    household = np.asarray([1, 1, 2, 3, 3, 3, 4, 5, 5, 5], dtype="int64")
+    reverse_household = 6 - household
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, 11, dtype="int64"),
+            "person_household_id": household,
+            "person_tax_unit_id": reverse_household * 10
+            + np.asarray([0, 1, 0, 0, 1, 2, 0, 0, 0, 0]),
+            "person_spm_unit_id": reverse_household * 100
+            + np.asarray([0, 0, 0, 0, 0, 1, 0, 0, 0, 0]),
+            "person_family_id": reverse_household * 1_000
+            + np.asarray([0, 0, 0, 0, 0, 1, 0, 0, 0, 0]),
+            "person_marital_unit_id": reverse_household * 10_000
+            + np.asarray([0, 1, 0, 0, 1, 2, 0, 0, 1, 2]),
+            "age": np.asarray(
+                [34.0, 71.0, 45.0, 29.0, 67.0, 19.0, 52.0, 35.0, 6.0, 10.0]
+            ),
+            "employment_income_before_lsr": np.asarray(
+                [48_000.0, 0.0, 180_000.0, 9_000.0, 0.0, 14_000.0, 72_000.0, 62_000.0]
+                + [0.0, 0.0]
+            ),
+            "health_insurance_premiums_without_medicare_part_b": np.asarray(
+                [1_200.0, 0.0, 0.0, 2_400.0, 0.0, 0.0, 0.0, 3_600.0, 0.0, 0.0]
+            ),
+        }
+    )
+    tables = {"person": person.iloc[::-1].reset_index(drop=True)}
+    for entity in ("tax_unit", "spm_unit", "family", "marital_unit"):
+        ids = np.unique(person[f"person_{entity}_id"].to_numpy())
+        tables[entity] = pd.DataFrame({f"{entity}_id": ids})
+    tables["household"] = pd.DataFrame(
+        {
+            "household_id": np.arange(1, 6, dtype="int64"),
+            "state_fips": np.asarray([6, 36, 24, 6, 36], dtype="int64"),
+        }
+    )
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.asarray([3.0, 1.0, 5.0, 2.0, 4.0]), WeightKind.DESIGN
+            )
+        },
+    )
+
+
+def aca_target_tables(builder) -> dict[str, pd.DataFrame]:
+    """CMS APTC recipients in two of the frame's states, plus the bronze
+    consumer table, whose presence switches the source table to person-count
+    weights, so the take-up rates and weights carry values."""
+
+    return {
+        builder.US_ACA_APTC_TARGET_TABLE: pd.DataFrame(
+            {"state_fips": ["06", "36"], "target": [2.0, 1.5]}
+        ),
+        "cms_aca_bronze_aptc_consumers_by_state": pd.DataFrame(
+            {"state_fips": ["06"], "target": [1.0]}
+        ),
+    }
+
+
 def _rebuilt_frame(frame: Frame, tables: dict[str, pd.DataFrame]) -> Frame:
     return Frame(
         tables,
@@ -99,7 +173,10 @@ def _microsimulation_class():
 
 def _run_aca(builder, frame: Frame, **options):
     return builder._aca_source_tax_unit_table_batched(
-        frame, {}, microsimulation_cls=_microsimulation_class(), **options
+        frame,
+        aca_target_tables(builder),
+        microsimulation_cls=_microsimulation_class(),
+        **options,
     )
 
 
@@ -107,7 +184,7 @@ def _run_main_aca(builder, frame: Frame, *, maximum_microsim_batch_size):
     return main_baseline.main_aca_source_tax_unit_table_batched(
         builder,
         frame,
-        {},
+        aca_target_tables(builder),
         microsimulation_cls=_microsimulation_class(),
         maximum_microsim_batch_size=maximum_microsim_batch_size,
     )
@@ -139,9 +216,10 @@ class InputLoop:
     pass_label: str
     run: Callable
     run_main: Callable
-    #: Whether an output carries a nonzero engine value, so a byte comparison
-    #: of it compares engine results and not only zero fills.
-    reaches_engine_values: Callable[[object], bool]
+    #: The output's arrays that :func:`input_loop_identity_frame` must make
+    #: carry engine values (not only zero fills), so a byte comparison compares
+    #: engine results; each must hold two different values.
+    engine_value_arrays: Callable[[object], dict[str, np.ndarray]]
 
 
 INPUT_LOOPS = (
@@ -151,9 +229,18 @@ INPUT_LOOPS = (
         pass_label="The ACA source-input pass",
         run=_run_aca,
         run_main=_run_main_aca,
-        reaches_engine_values=lambda output: bool(
-            output["assigned_aca_ptc"].to_numpy().any()
-        ),
+        engine_value_arrays=lambda output: {
+            column: output[column].to_numpy()
+            for column in (
+                "tax_unit_weight",
+                "is_aca_ptc_eligible",
+                "health_insurance_premiums_without_medicare_part_b",
+                "assigned_aca_ptc",
+                "weighted_assigned_aca_ptc",
+                "slcsp",
+                "aca_take_up_rate",
+            )
+        },
     ),
     InputLoop(
         name="medicaid_eligibility",
@@ -165,7 +252,7 @@ INPUT_LOOPS = (
         run_main=lambda builder, frame, **options: (
             main_baseline.main_medicaid_person_eligibility(builder, frame, **options)
         ),
-        reaches_engine_values=lambda output: bool(np.asarray(output).any()),
+        engine_value_arrays=lambda output: {"is_medicaid_eligible": output},
     ),
     InputLoop(
         name="december_ssi_amounts",
@@ -177,7 +264,7 @@ INPUT_LOOPS = (
         run_main=lambda builder, frame, **options: (
             main_baseline.main_ssi_person_uncapped_amount(builder, frame, **options)
         ),
-        reaches_engine_values=lambda output: bool((np.asarray(output) > 0).any()),
+        engine_value_arrays=lambda output: {"uncapped_ssi": output},
     ),
     InputLoop(
         name="snap_eligibility",
@@ -189,7 +276,7 @@ INPUT_LOOPS = (
         run_main=lambda builder, frame, **options: (
             main_baseline.main_snap_spm_unit_eligibility(builder, frame, **options)
         ),
-        reaches_engine_values=lambda output: bool(np.asarray(output).any()),
+        engine_value_arrays=lambda output: {"is_snap_eligible": output},
     ),
     InputLoop(
         name="other_health_insurance_premiums",
@@ -197,9 +284,12 @@ INPUT_LOOPS = (
         pass_label="The other-health-insurance premium pass",
         run=_run_other_health,
         run_main=_run_main_other_health,
-        reaches_engine_values=lambda output: bool(
-            np.asarray(output["marketplace_net_premium"]).any()
-        ),
+        # medicaid_premium is zero for everyone in policyengine-us 2.2.1's
+        # current-year schedules; the CHIP and marketplace premiums differ.
+        engine_value_arrays=lambda output: {
+            variable: output[variable]
+            for variable in ("chip_premium", "marketplace_net_premium")
+        },
     ),
 )
 
@@ -270,6 +360,11 @@ class BatchEngineRecorder:
 
 
 def _assert_same_array_bytes(actual, expected, *, label: str) -> None:
+    assert type(actual) is type(expected), (label, type(actual), type(expected))
+    if isinstance(expected, pd.Series):
+        # to_numpy() drops a pandas extension dtype (str, category, Int64).
+        assert actual.dtype == expected.dtype, (label, actual.dtype, expected.dtype)
+        pd.testing.assert_index_equal(actual.index, expected.index, exact=True)
     actual = np.asarray(actual)
     expected = np.asarray(expected)
     assert actual.dtype == expected.dtype, (label, actual.dtype, expected.dtype)
@@ -285,21 +380,20 @@ def _assert_same_array_bytes(actual, expected, *, label: str) -> None:
 
 
 def assert_same_bytes(actual, expected, *, label: str) -> None:
-    """Every array, column, dtype, index and column order is identical."""
+    """The same container types, and every array, column, pandas and NumPy
+    dtype, index and column order identical."""
 
+    assert type(actual) is type(expected), (label, type(actual), type(expected))
     if isinstance(expected, pd.DataFrame):
-        assert isinstance(actual, pd.DataFrame), label
         assert list(actual.columns) == list(expected.columns), label
+        pd.testing.assert_series_equal(actual.dtypes, expected.dtypes, obj=label)
         pd.testing.assert_index_equal(actual.index, expected.index, exact=True)
         for column in expected.columns:
             _assert_same_array_bytes(
-                actual[column].to_numpy(),
-                expected[column].to_numpy(),
-                label=f"{label}: {column}",
+                actual[column], expected[column], label=f"{label}: {column}"
             )
         return
     if isinstance(expected, dict):
-        assert isinstance(actual, dict), label
         assert list(actual) == list(expected), label
         for key, values in expected.items():
             _assert_same_array_bytes(actual[key], values, label=f"{label}: {key}")
@@ -314,7 +408,9 @@ __all__ = [
     "BatchEngineRecorder",
     "InputLoop",
     "assert_same_bytes",
+    "aca_target_tables",
     "engine_released",
+    "input_loop_identity_frame",
     "load_builder_module",
     "medicaid_claim_outside_household_frame",
     "real_engine_frame",

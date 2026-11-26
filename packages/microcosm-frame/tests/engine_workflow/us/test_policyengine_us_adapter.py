@@ -205,8 +205,13 @@ class TestMaterialize:
     def test_a_caller_owned_engine_gives_materializes_arrays(
         self, adapter, us_bundle
     ) -> None:
-        """A caller that must check or release the engine builds it itself;
-        the engine holds the period alone and gives materialize's bytes."""
+        """A caller that must check or release the engine builds it itself.
+
+        ``materialize`` is these two calls, so the byte comparison checks the
+        split's contract, not main's code; the comparison with main's
+        ``materialize`` is microcosm-build's other-health byte-identity test.
+        The engine holds the period alone.
+        """
 
         variables = ["employment_income", "household_net_income", "aca_ptc"]
         expected = adapter.materialize(us_bundle, variables, period=2024)

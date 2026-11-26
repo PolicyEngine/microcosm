@@ -230,6 +230,35 @@ def test_modeled_premiums_batch_by_household_and_realign_tax_units(
     assert gate.passed, gate.failures
 
 
+def test_premium_batches_collect_garbage_like_the_release_tools_loops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Automatic collection is off inside each batch, a youngest-generation
+    collection follows each batch, and one full collection ends the pass."""
+
+    import gc
+
+    automatic_collection_in_batches: list[bool] = []
+    collections: list[tuple] = []
+
+    class RecordingEngine(_ZeroPremiumEngine):
+        def premiums(self, batch: Frame) -> dict[str, np.ndarray]:
+            automatic_collection_in_batches.append(gc.isenabled())
+            return super().premiums(batch)
+
+    monkeypatch.setattr(module, "PolicyEngineUSEngine", RecordingEngine)
+    monkeypatch.setattr(gc, "collect", lambda *args: collections.append(args) or 0)
+    assert gc.isenabled()
+
+    module._materialize_modeled_premiums(
+        _frame(), time_period=2024, maximum_microsim_batch_size=3
+    )
+
+    assert automatic_collection_in_batches == [False] * 4
+    assert collections == [(0,)] * 4 + [()]
+    assert gc.isenabled()
+
+
 def test_joint_qrf_replaces_only_puf_and_does_not_invent_clipping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

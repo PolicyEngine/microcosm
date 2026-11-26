@@ -11,6 +11,7 @@ next one is built, also when a batch fails.
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from test_support.microcosm_build.us_input_batch_loops import (
@@ -20,6 +21,7 @@ from test_support.microcosm_build.us_input_batch_loops import (
     BatchEngineRecorder,
     assert_same_bytes,
     engine_released,
+    input_loop_identity_frame,
     load_builder_module,
     medicaid_claim_outside_household_frame,
     real_engine_frame,
@@ -45,18 +47,19 @@ def _options(batch_size, refuse_population_aggregates):
 def test_input_loop_writes_mains_bytes_and_releases_each_batch_engine(
     builder, loop, monkeypatch
 ) -> None:
-    """One batch and two batches of two households: the same arrays, dtypes
-    and column order as main's loop, and each engine released before the
-    next is built."""
+    """One batch, and batches of two households over rows out of household
+    order: the same arrays, dtypes and column order as main's loop, and each
+    engine released before the next is built."""
 
-    frame = real_engine_frame()
-    for batch_size, expected_engines in ((None, 1), (2, 2)):
+    frame = input_loop_identity_frame()
+    for batch_size, expected_engines in ((None, 1), (2, 3)):
         expected = loop.run_main(builder, frame, maximum_microsim_batch_size=batch_size)
         recorder = BatchEngineRecorder(monkeypatch, period=builder.PERIOD)
         actual = loop.run(builder, frame, maximum_microsim_batch_size=batch_size)
         monkeypatch.undo()
 
-        assert loop.reaches_engine_values(expected), loop.name
+        for name, values in loop.engine_value_arrays(expected).items():
+            assert len(set(np.asarray(values).tolist())) > 1, (loop.name, name)
         assert_same_bytes(
             actual, expected, label=f"{loop.name}, batch size {batch_size}"
         )
