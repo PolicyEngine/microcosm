@@ -245,6 +245,12 @@ Every stage runs through the supervisor's admission check and limits:
 | certify | 110 | `RELEASE_RAM_GIB` (example: 50) | 45 | `CERTIFY_WALL_SECONDS` (default: 345600) | 2000000 |
 | publisher preflight | 24 | 16 | 22 | 7200 | 14400 |
 
+The certify stage scores the post-export stages in a pool of worker
+processes sized from the machine; `MICROCOSM_POST_EXPORT_WORKERS` in
+`route_a.env` (a number of workers, or `serial`) overrides it, and the driver
+exports it. On a machine under about 10.7 GiB, certification refuses to start
+without it. The stage's 110 GiB RSS cap counts the workers too.
+
 The driver waits up to `RESOURCE_WAIT_HOURS` (example: 12) for admission and
 retries a supervisor admission race every five minutes. Every config includes
 a 20 GiB disk floor that must persist for 180 seconds before `DISK_FLOOR` kills
