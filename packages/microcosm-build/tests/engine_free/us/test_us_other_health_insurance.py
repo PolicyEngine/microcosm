@@ -259,6 +259,48 @@ def test_premium_batches_collect_garbage_like_the_release_tools_loops(
     assert gc.isenabled()
 
 
+@pytest.mark.parametrize("refuse_population_aggregates", [None, True])
+def test_stage_passes_the_refusal_switch_to_its_premium_batches(
+    monkeypatch: pytest.MonkeyPatch, refuse_population_aggregates
+) -> None:
+    """One batch holds the whole pool, so by default its engine may hold a
+    population aggregate; a caller that switches the refusal on through the
+    stage gets it refused."""
+
+    class AggregateEngine(_ZeroPremiumEngine):
+        def build_microsimulation(self, frame: Frame, period: int):
+            simulation = super().build_microsimulation(frame, period)
+            simulation.get_holder = lambda variable: SimpleNamespace(
+                get_known_periods=lambda: (
+                    ["2024"] if variable == "medicaid_slcsp_state_denominator" else []
+                )
+            )
+            return simulation
+
+    monkeypatch.setattr(module, "PolicyEngineUSEngine", AggregateEngine)
+
+    def run_stage():
+        return with_us_other_health_insurance_inputs(
+            _frame(),
+            seed=0,
+            time_period=2024,
+            refuse_population_aggregates=refuse_population_aggregates,
+        )
+
+    if refuse_population_aggregates:
+        with pytest.raises(
+            ValueError,
+            match=(
+                "^The other-health-insurance premium pass is not batch-invariant: "
+                "the engine for household batch 1/1 computed "
+                "medicaid_slcsp_state_denominator@2024"
+            ),
+        ):
+            run_stage()
+    else:
+        run_stage()
+
+
 def test_joint_qrf_replaces_only_puf_and_does_not_invent_clipping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
