@@ -179,7 +179,11 @@ storage](#target-matrix-storage) replaces this.
 the TY2022 SOI congressional-district file (`22incd.csv`, record-set spec
 `irs_soi.congressional_district_2022.all_returns.v1`), reconciled so that
 every state concept has one vintage. The rule is
-`us_acs_local_cd_surface.state_cd_soi_surface`.
+`us_acs_local_cd_surface.state_cd_soi_surface`. Since microcosm#1760 that
+function calls `us_runtime.target_nesting.district_soi_surface`: the shared
+cross-grain operator divides each state row among its district rows, with the
+choices below declared in `us/cross_grain_declarations.json`. The surface has
+the bytes it had. See [US target nesting](us-target-nesting.md).
 
 ### One vintage per state concept
 

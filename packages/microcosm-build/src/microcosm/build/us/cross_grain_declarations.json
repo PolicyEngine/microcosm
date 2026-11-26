@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "US cross-grain nesting declarations (microcosm#1760). Each mechanism makes the rows of a lower geography level from a control at a higher level, on the shared operator microcosm.build.cross_grain, with the helpers of microcosm.build.cross_grain_controls. This file holds the US choices: the order of the levels, which levels hold controls, the allocator of each mechanism, the rule for its control, its bounds, the source of its member lists, and its reviewed registers with their reasons. Tools and tests read it through microcosm.build.us_runtime.cross_grain_declarations; the adapter is microcosm.build.us_runtime.target_nesting. Stage A changes no target value. docs/us-target-nesting.md describes each mechanism.",
+  "description": "US cross-grain nesting declarations (microcosm#1760). Each mechanism makes the rows of a lower geography level from a control at a higher level, on the shared operator microcosm.build.cross_grain, with the helpers of microcosm.build.cross_grain_controls. This file holds the US choices: the order of the levels, which levels hold controls, the allocator of each mechanism, the rule for its control, its bounds, the source of its member lists, and its reviewed registers with their reasons. Tools and tests read it through microcosm.build.us_runtime.cross_grain_declarations; the adapter is microcosm.build.us_runtime.target_nesting. Stage A changes no target value and decides no nesting rule: each mechanism is declared as the code ran it before the move. docs/us-target-nesting.md describes each mechanism.",
   "grain_precedence": [
     "country",
     "state",
@@ -194,5 +194,325 @@
       },
       "receipt": "county_surface.json: acs_households"
     }
+  },
+  "inventory": {
+    "description": "What the code does today, as data. It decides no rule: the decisions of microcosm#1760 (which level holds the level value of a family, two sources at two levels, the direction of the county households rows, the parent row in the loss, the factor bound, children that are not complete) are open, and Stage B applies them. How each US family that two geography levels measure gets its lower level from its higher one, or why it does not. An entry names a family, its lower levels and the higher level, and one route: 'mechanism' (the shared cross-grain operator makes the rows; mechanisms above), 'compile_rule' (a pass of the compile makes them and stays where it is in Stage A, with the reason), 'same_source' (both levels are sums of one source's cells), 'no_higher_control' (no row at a higher level measures the quantity), 'not_reconciled' (two levels measure it and no rule ties them yet, with the reason and the issue) or 'not_in_the_fit' (the rows are not compiled). 'compiled' says whether the compiled registry of the pinned feed holds the rows; 'marker' names the metadata that the rule writes on them. The coverage test reads this section; it refuses nothing in a build.",
+    "routes": [
+      "mechanism",
+      "compile_rule",
+      "same_source",
+      "no_higher_control",
+      "not_reconciled",
+      "not_in_the_fit"
+    ],
+    "entries": [
+      {
+        "id": "soi_capital_gains_shares_of_national_control",
+        "issue_row": 1,
+        "family": "irs_soi",
+        "levels": [
+          "state",
+          "congressional_district"
+        ],
+        "higher_level": "country",
+        "route": "compile_rule",
+        "compiled": true,
+        "code": "microcosm.build.us_runtime.fiscal_targets._rebase_stale_soi_capital_gains_distributions",
+        "marker": {
+          "metadata_key": "soi_control_concept"
+        },
+        "level_holder": "country: the Table 1.4 national control at or after the row's period",
+        "reason": "Each Historic Table 2 or district-file capital-gains row ships as its share of its own family's national total, scaled to the control: one factor for each family, quantity and period. A row with no control is dropped. It stays in the compile because it is another operation than the operator's: every row takes one factor, control / published national total, the rows are not scaled to sum to the control, and the control and the total are read from the facts, not from rows of the registry. The operator divides a control that is a row of its surface.",
+        "issues": [
+          "microcosm#1035",
+          "microcosm#1038"
+        ]
+      },
+      {
+        "id": "soi_taxable_interest_national_factor",
+        "issue_row": 2,
+        "family": "irs_soi",
+        "levels": [
+          "state",
+          "congressional_district"
+        ],
+        "higher_level": "country",
+        "route": "compile_rule",
+        "compiled": true,
+        "code": "microcosm.build.us_runtime.fiscal_targets._rebase_stale_soi_taxable_interest_distributions",
+        "marker": {
+          "metadata_key": "uprating_index",
+          "value_prefix": "total_taxable_interest_"
+        },
+        "level_holder": "country: the latest Pub 1304 national value",
+        "reason": "Every stale Historic Table 2 taxable-interest row is multiplied by one national factor onto the latest national value; the TY2022 shares across states stay. It stays in the compile for the reason of row 1: one factor from the facts, no scaling of rows to a control row.",
+        "issues": [
+          "microcosm#489"
+        ]
+      },
+      {
+        "id": "soi_state_agi_bands_share_of_state_total",
+        "issue_row": 3,
+        "family": "irs_soi",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "state",
+        "route": "compile_rule",
+        "compiled": true,
+        "code": "microcosm.build.us_runtime.fiscal_targets._rebase_soi_state_agi_bands",
+        "marker": {
+          "metadata_key": "state_agi_band_share"
+        },
+        "level_holder": "state: the all-returns row that binds",
+        "reason": "A partition inside one area, not a relation between levels: each flagged AGI band becomes control x band / published partition. The partition is the sum of the state's published bands over the whole AGI line, read from the facts, and only the bands from the $100k floor up bind. It stays in the compile because the operator's partitions need every member on the surface.",
+        "issues": [
+          "microcosm#940"
+        ]
+      },
+      {
+        "id": "soi_district_file_children_scale_to_state_parent",
+        "issue_row": 4,
+        "family": "irs_soi",
+        "levels": [
+          "congressional_district"
+        ],
+        "higher_level": "state",
+        "route": "compile_rule",
+        "compiled": true,
+        "code": "microcosm.build.ledger_targets.reconcile_ledger_target_hierarchy, declared in us/fiscal_target_references.json (congressional_district_children_scale_to_state_parent)",
+        "marker": {
+          "metadata_key": "hierarchy_reconciliation_rule",
+          "value": "congressional_district_children_scale_to_state_parent"
+        },
+        "level_holder": "state: the district file's own state row",
+        "reason": "A second shared rule for the same job, with its rule as data: the district rows of the district file are scaled to sum to that file's own state row, and a missing district fails the compile. It stays where it is in Stage A because it sums with the builtin sum, formats its factor with 15 significant digits and writes its own hierarchy_* keys, and the bytes of the full and state_cd surfaces depend on all three. Folding it into the operator is a Stage B step or a consolidation issue.",
+        "issues": [
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "soi_district_shares_of_historic_table_2_state",
+        "issue_row": 5,
+        "family": "irs_soi",
+        "levels": [
+          "congressional_district"
+        ],
+        "higher_level": "state",
+        "route": "mechanism",
+        "mechanism": "state_congressional_district_soi",
+        "compiled": true,
+        "surfaces": [
+          "state_cd"
+        ],
+        "level_holder": "state: the Historic Table 2 state row, or the district file's state row lifted by a sibling ratio",
+        "issues": [
+          "microcosm#1760",
+          "microcosm#1731"
+        ]
+      },
+      {
+        "id": "soi_county_shares_of_state",
+        "issue_row": 6,
+        "family": "irs_soi",
+        "levels": [
+          "county"
+        ],
+        "higher_level": "state",
+        "route": "mechanism",
+        "mechanism": "state_county_soi",
+        "compiled": false,
+        "surfaces": [
+          "state_county"
+        ],
+        "level_holder": "state: the broad state row that exists",
+        "issues": [
+          "microcosm#922",
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "acs_households_state_is_the_county_sum",
+        "issue_row": 7,
+        "family": "acs_households",
+        "levels": [
+          "county"
+        ],
+        "higher_level": "state",
+        "route": "mechanism",
+        "mechanism": "county_state_acs_households",
+        "compiled": false,
+        "surfaces": [
+          "state_county"
+        ],
+        "level_holder": "county: the state target is the sum of the county estimates",
+        "issues": [
+          "microcosm#922",
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "ladder_county_population_scaled_to_state",
+        "issue_row": 8,
+        "family": "census_population",
+        "levels": [
+          "county"
+        ],
+        "higher_level": "state",
+        "route": "mechanism",
+        "mechanism": "state_county_population",
+        "compiled": false,
+        "surfaces": [
+          "state_county"
+        ],
+        "level_holder": "state: the total of the 2020 PUMA ladder",
+        "issues": [
+          "microcosm#922",
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "ladder_state_and_district_population_from_one_ladder",
+        "family": "census_population_ladder",
+        "levels": [
+          "congressional_district"
+        ],
+        "higher_level": "state",
+        "route": "same_source",
+        "compiled": false,
+        "reason": "The state and district population totals of the local build are sums of the cells of one 2020 PUMA ladder. No rule runs.",
+        "issues": [
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "soi_state_rows_under_two_national_rows",
+        "family": "irs_soi",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "country",
+        "route": "not_reconciled",
+        "compiled": true,
+        "reason": "Several SOI families bind a Historic Table 2 US row beside a newer Table 1.x row, and no rule ties their state rows to either. Rows 1 and 2 are the treatment that the issue asks for the others. It waits for Stage A.",
+        "issues": [
+          "microcosm#1243"
+        ]
+      },
+      {
+        "id": "state_age_rows_and_state_totals",
+        "family": "census_population",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "country",
+        "route": "not_reconciled",
+        "compiled": true,
+        "reason": "The national build fits Census age bands for each state. The local build fits state totals from the 2020 ladder and no age row. No rule ties the age rows of a state to its total, or to the national age rows.",
+        "issues": [
+          "microcosm#1528",
+          "microcosm#1526",
+          "microcosm#1531"
+        ]
+      },
+      {
+        "id": "usda_snap_state_rows_and_national_row",
+        "family": "usda_snap",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "country",
+        "route": "not_reconciled",
+        "compiled": true,
+        "reason": "Not checked yet: whether the state rows of SNAP sum to the national row of the family. No rule ties them.",
+        "issues": [
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "cms_medicaid_state_rows_and_national_row",
+        "family": "cms_medicaid",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "country",
+        "route": "not_reconciled",
+        "compiled": true,
+        "reason": "Not checked yet: whether the state rows of Medicaid and CHIP sum to the national row of the family. No rule ties them.",
+        "issues": [
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "ssa_state_rows_and_national_row",
+        "family": "ssa",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "country",
+        "route": "not_reconciled",
+        "compiled": true,
+        "reason": "Not checked yet: whether the state rows of SSI sum to the national row of the family. No rule ties them.",
+        "issues": [
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "hhs_acf_tanf_state_rows_and_national_row",
+        "family": "hhs_acf_tanf",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "country",
+        "route": "not_reconciled",
+        "compiled": true,
+        "reason": "Not checked yet: whether the state rows of TANF sum to the national row of the family. No rule ties them.",
+        "issues": [
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "cms_aca_state_rows_have_no_national_row",
+        "family": "cms_aca",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "country",
+        "route": "no_higher_control",
+        "compiled": true,
+        "reason": "The compiled registry holds the ACA marketplace rows at state level only: no national row of the family binds.",
+        "issues": [
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "state_income_tax_state_rows_have_no_national_row",
+        "family": "state_income_tax",
+        "levels": [
+          "state"
+        ],
+        "higher_level": "country",
+        "route": "no_higher_control",
+        "compiled": true,
+        "reason": "The compiled registry holds the state income tax rows at state level only: no national row of the family binds.",
+        "issues": [
+          "microcosm#1760"
+        ]
+      },
+      {
+        "id": "acs_district_age_and_households",
+        "family": "census_acs",
+        "levels": [
+          "congressional_district"
+        ],
+        "higher_level": "state",
+        "route": "not_in_the_fit",
+        "compiled": false,
+        "reason": "District age and household rows from ACS are not in the fit. Their state parent would come from another source: the districts from a survey, the states from the Census estimates.",
+        "issues": [
+          "microcosm#1731"
+        ]
+      }
+    ]
   }
 }

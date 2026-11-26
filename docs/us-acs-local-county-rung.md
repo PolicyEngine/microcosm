@@ -9,6 +9,13 @@ shares and ACS county households, scores four held-out ACS county families,
 gives every county a reliability grade, and moves a few same-PUMA households
 into any county the staging frame leaves empty.
 
+Since microcosm#1760 the three share mechanisms of the rung (county
+population, county SOI shares, county households) run on the shared
+cross-grain operator, through `us_runtime.target_nesting`, with their choices
+declared in `us/cross_grain_declarations.json`. The tool functions keep their
+names, and every row, metadata key and receipt is as it was. See
+[US target nesting](us-target-nesting.md).
+
 ## Plan and invariants
 
 - Population measures are household size times county membership. County
