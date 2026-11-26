@@ -1,6 +1,6 @@
 """Universal Credit limited capability from DWP's admin-linked status (Y1 of the November event-data plan, microcosm#1095).
 
-policyengine-uk 2.179.2 decides a person's limited capability for work and
+policyengine-uk 2.180.0 decides a person's limited capability for work and
 work-related activity (``uc_limited_capability_for_WRA``) from a proxy:
 ``is_disabled_for_benefits``, which the spine sets from any reported
 disability benefit or ESA, unless the person's own ESA award lacks the support
@@ -10,8 +10,9 @@ and BENEFITS.UCLCW holds the claim's status: ``frs_spine`` carries it as
 ``frs_uc_lcw_status`` on the UC row's person.
 
 On María's NS6 ruling of 9 November 2026, which revisits her ruling of 29
-October to keep the proxy, this stage stores both flags for every person, just
-before ``uc_take_up`` reads entitlement through the engine. Everyone takes the
+October to keep the proxy, this stage stores both flags for every person
+before ``uc_take_up`` reads entitlement through the engine (only the housing
+costs element claim, microcosm#1710, runs between them). Everyone takes the
 engine's own proxy, from the locked engine, so nothing mirrors its formula
 here. Linked FRS claims then take DWP's status:
 

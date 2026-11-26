@@ -17,7 +17,6 @@ from microcosm_emitter_interface import (
     EmitterClient,
     EmitterStartupError,
     HuggingFaceSettings,
-    OrrerySettings,
     TelemetrySettings,
 )
 from microcosm_emitter_interface import client as interface_client
@@ -52,7 +51,7 @@ def _record_starts(monkeypatch, client=None):
     return starts
 
 
-def test_starts_one_emitter_with_telemetry_graph_and_hugging_face_modules(
+def test_starts_one_emitter_with_telemetry_and_hugging_face_modules_only(
     monkeypatch, tmp_path
 ):
     client = FakeEmitterClient()
@@ -81,8 +80,9 @@ def test_starts_one_emitter_with_telemetry_graph_and_hugging_face_modules(
     assert telemetry.identity == {"commit": "synthetic"}
     assert telemetry.heartbeat_seconds == 123
     assert telemetry.development_collector_url is None
-    assert isinstance(options["orrery"], OrrerySettings)
-    assert options["orrery"].development_collector_url is None
+    # The collector builds the Orrery graph files from the staged bundle's
+    # inputs, so a build starts no graph publication module.
+    assert "orrery" not in options
     hugging_face = options["hugging_face"]
     assert isinstance(hugging_face, HuggingFaceSettings)
     # The hand-over tables stay in their own SQLite file beside the spool,
@@ -117,7 +117,7 @@ def test_a_development_collector_receives_every_modules_requests(monkeypatch, tm
 
     (options,) = starts
     assert options["telemetry"].development_collector_url == collector
-    assert options["orrery"].development_collector_url == collector
+    assert "orrery" not in options
     assert options["hugging_face"] == HuggingFaceSettings(
         collector_submissions=True, development_collector_url=collector
     )
@@ -262,17 +262,6 @@ def test_a_missing_emitter_command_leaves_the_build_running(
     assert not emitter.available
     assert "command_not_found" in capsys.readouterr().err
     emitter.transition_stage("solve")
-    assert emitter.publication_inventory(tmp_path, {}) is None
-    assert emitter.publish_graph(
-        tmp_path,
-        {"version": 1, "publication_id": "independent", "files": []},
-        wait_seconds=0,
-    ) == {
-        "version": 1,
-        "publication_id": "independent",
-        "status": "failed",
-        "error_code": "local_service_unavailable",
-    }
     emitter.complete()
     emitter.close()
     assert list(tmp_path.iterdir()) == []
@@ -393,9 +382,8 @@ def test_an_emitter_older_than_the_minimum_is_never_started_and_the_build_contin
     # The warning says what the build loses without the emitter, including
     # the one option that then fails the build.
     assert (
-        "The build continues without hosted telemetry or staging hand-overs "
-        "and queues no Orrery graph publication; a UK build given "
-        "--staging-read-back will fail at the read-back." in warning
+        "The build continues without hosted telemetry or staging hand-overs; "
+        "a UK build given --staging-read-back will fail at the read-back." in warning
     )
     assert "uv tool install --upgrade 'microcosm-emitter>=0.17.0'" in warning
     # It also says that a remote stage of the dataset bundle is refused, so
@@ -442,29 +430,6 @@ def test_an_emitter_from_the_minimum_on_starts(
     assert "microcosm-emitter" not in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("operation", ["inventory", "publish"])
-def test_a_short_lived_graph_emitter_older_than_the_minimum_is_never_started(
-    monkeypatch, capsys, tmp_path, operation
-):
-    client = FakeEmitterClient(modules={"orrery"})
-    starts = _record_starts(monkeypatch, client)
-    _, started = _install_emitter_command(
-        monkeypatch, tmp_path / "bin", _version_answer("0.9.0")
-    )
-    inventory = {"version": 1, "publication_id": "independent", "files": []}
-
-    if operation == "inventory":
-        assert adapter.publication_inventory(tmp_path, {}) is None
-    else:
-        receipt = adapter.publish_graph(tmp_path, inventory, wait_seconds=0)
-        assert receipt["status"] == "failed"
-
-    assert starts == []
-    assert not started.exists()
-    assert client.calls == []
-    assert "this build needs 0.17.0 or later" in capsys.readouterr().err
-
-
 @pytest.mark.parametrize("failure", ["default_spool_path", "runtime_identity"])
 def test_metadata_or_cache_failure_never_starts_an_emitter(
     monkeypatch, capsys, failure
@@ -492,7 +457,7 @@ def test_metadata_or_cache_failure_never_starts_an_emitter(
 
 
 @pytest.mark.parametrize("outcome", ["blocked", "failed", "completed"])
-def test_graph_publication_precedes_emitter_shutdown_after_an_outcome(
+def test_graph_evidence_hand_over_precedes_emitter_shutdown_after_an_outcome(
     tmp_path, outcome
 ):
     client = FakeEmitterClient()
@@ -513,23 +478,13 @@ def test_graph_publication_precedes_emitter_shutdown_after_an_outcome(
     else:
         emitter.complete()
 
-    # Recording the outcome leaves the emitter running for later hand-overs.
+    # Recording the outcome leaves the emitter running for later hand-overs,
+    # such as a failed build's graph evidence bundle.
     assert "close" not in client.calls
     assert emitter.available
-    (tmp_path / "graph.orrery.json").write_text("{}")
-    inventory = emitter.publication_inventory(tmp_path, {"graph.orrery.json": "graph"})
-    assert inventory is not None
-    assert inventory["files"][0]["name"] == "graph.orrery.json"
-    assert emitter.publish_graph(tmp_path, inventory, wait_seconds=0)["status"] == (
-        "pending"
-    )
     emitter.close()
     emitter.close()
-    assert client.calls[-3:] == [
-        "orrery_inventory",
-        "hand_over_orrery_inputs",
-        "close",
-    ]
+    assert client.calls[-1] == "close"
     assert client.calls.count("close") == 1
     assert not emitter.available
 
@@ -557,46 +512,12 @@ def test_an_unavailable_emitter_answers_without_raising(tmp_path):
     emitter = adapter.LocalTelemetryEmitter(
         run=adapter.TelemetryRun("run-one", "uk", "full"), client=None
     )
-    value = {"version": 1, "publication_id": "independent", "files": []}
 
     assert not emitter.available
     emitter.stage("one")
-    assert emitter.publication_inventory(tmp_path, {}) is None
-    assert emitter.publish_graph(tmp_path, value, wait_seconds=0) == {
-        "version": 1,
-        "publication_id": "independent",
-        "status": "failed",
-        "error_code": "local_service_unavailable",
-    }
     emitter.block(phase="preflight", blocking_gate_ids=[], blocking_failure_count=1)
     emitter.close()
     assert list(tmp_path.iterdir()) == []
-
-
-@pytest.mark.parametrize("operation", ["inventory", "publish"])
-def test_graph_requests_without_a_build_emitter_use_a_short_lived_one(
-    monkeypatch, tmp_path, operation
-):
-    client = FakeEmitterClient(modules={"orrery"})
-    starts = _record_starts(monkeypatch, client)
-    (tmp_path / "graph.orrery.json").write_text("{}")
-    roles = {"graph.orrery.json": "graph"}
-
-    if operation == "inventory":
-        inventory = adapter.publication_inventory(tmp_path, roles)
-        assert inventory is not None
-        assert inventory["files"][0]["role"] == "graph"
-    else:
-        inventory = {"version": 1, "publication_id": "independent", "files": []}
-        receipt = adapter.publish_graph(tmp_path, inventory, wait_seconds=0)
-        assert receipt["status"] == "pending"
-
-    assert len(starts) == 1
-    assert set(starts[0]) >= {"orrery"}
-    assert starts[0].get("telemetry") is None
-    assert starts[0].get("hugging_face") is None
-    assert isinstance(starts[0]["orrery"], OrrerySettings)
-    assert client.calls[-1] == "close"
 
 
 def test_default_test_emitter_records_requests_in_memory(fake_telemetry_emitters):
@@ -633,7 +554,8 @@ def test_fixture_intercepts_preimported_build_entrypoint(
 def test_fixture_forbids_starting_the_installed_emitter(tmp_path):
     with pytest.raises(pytest.fail.Exception, match="real emitter"):
         EmitterClient.start(
-            orrery=OrrerySettings(), spool_path=tmp_path / "events.sqlite3"
+            hugging_face=adapter.hugging_face_settings(),
+            spool_path=tmp_path / "events.sqlite3",
         )
 
 
@@ -800,7 +722,7 @@ def _arrange_unusable_emitter(monkeypatch, tmp_path, kind):
             startup_error=EmitterStartupError("unsupported_protocol_version")
         )
     else:
-        client = FakeEmitterClient(modules={"orrery", "huggingface"})
+        client = FakeEmitterClient(modules={"huggingface"})
     return client, _record_starts(monkeypatch, client)
 
 
@@ -1097,23 +1019,6 @@ def test_an_unrecognised_telemetry_requirement_stops_the_build(
         _start_build_emitter(monkeypatch, tmp_path)
 
     assert starts == []
-
-
-@pytest.mark.parametrize("operation", ["inventory", "publish"])
-def test_required_telemetry_leaves_short_lived_graph_emitters_optional(
-    monkeypatch, tmp_path, operation
-):
-    # The setting concerns the build's own emitter, which records its
-    # telemetry run; an Orrery-only emitter without one still answers.
-    monkeypatch.setattr(interface_client, "start_emitter", INTERFACE_START_EMITTER)
-    monkeypatch.setenv(REQUIRED_VARIABLE, "1")
-    inventory = {"version": 1, "publication_id": "independent", "files": []}
-
-    if operation == "inventory":
-        assert adapter.publication_inventory(tmp_path, {}) is None
-    else:
-        receipt = adapter.publish_graph(tmp_path, inventory, wait_seconds=0)
-        assert receipt["status"] == "failed"
 
 
 def test_the_shell_s_telemetry_settings_never_reach_a_test():

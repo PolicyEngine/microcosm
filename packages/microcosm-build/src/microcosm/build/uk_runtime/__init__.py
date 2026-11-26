@@ -380,6 +380,7 @@ from microcosm.build.uk_runtime.national_calibration import (
 from microcosm.build.uk_runtime.national_doctrine import (
     UK_NATIONAL_L0_LAMBDA,
     UK_NATIONAL_LEARNING_RATE,
+    UK_NATIONAL_LOSS_FAMILIES,
     UK_NATIONAL_MASS_RULE,
     UK_NATIONAL_MAX_WEIGHT_RATIO,
     UK_NATIONAL_SEED,
@@ -389,6 +390,7 @@ from microcosm.build.uk_runtime.national_doctrine import (
     UK_NATIONAL_TARGET_WEIGHT_RULE,
     UKNationalSolveDoctrine,
     uk_doctrine_with_overrides,
+    uk_national_loss_families,
     uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -774,6 +776,7 @@ __all__ = [
     "UKStagingProvenance",
     "UK_NATIONAL_L0_LAMBDA",
     "UK_NATIONAL_LEARNING_RATE",
+    "UK_NATIONAL_LOSS_FAMILIES",
     "UK_NATIONAL_MASS_RULE",
     "UK_NATIONAL_MAX_WEIGHT_RATIO",
     "UK_NATIONAL_SCHEMA",
@@ -783,6 +786,7 @@ __all__ = [
     "UK_NATIONAL_TARGET_LOSS_CAP",
     "UK_NATIONAL_TARGET_WEIGHT_RULE",
     "uk_doctrine_with_overrides",
+    "uk_national_loss_families",
     "uk_national_target_loss_weights",
     "UKNationalStage",
     "UKRowwiseDatasetResult",

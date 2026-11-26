@@ -16,10 +16,10 @@ therefore create a false partial measure.
 
 The final archived implementation moved to a mutable Census SIPP 2024 URL.
 For a hermetic build, this port uses the archived pipeline's full SIPP 2023
-artifact at an immutable Hugging Face revision and verifies both byte length
-and SHA-256.  The 65.6 MB ``pu2023_slim.csv`` used by the tip stage cannot be
-reused: it omits the vehicle targets, allocation flags, asset-income fields,
-and home value required here.
+artifact, downloaded from Hugging Face tag ``1.115.5``, and verifies both byte
+length and SHA-256.  The 65.6 MB ``pu2023_slim.csv`` used by the tip stage
+cannot be reused: it omits the vehicle targets, allocation flags, asset-income
+fields, and home value required here.
 """
 
 from __future__ import annotations
@@ -35,6 +35,9 @@ from sklearn.ensemble import RandomForestClassifier
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    SippDecemberPersonRows,
+)
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -43,6 +46,7 @@ __all__ = [
     "ARCHIVED_SIPP_VEHICLE_RECEIVER_URL",
     "ARCHIVED_SIPP_VEHICLE_SOURCE_URL",
     "ARCHIVED_SIPP_VEHICLE_TRANSFORM_URL",
+    "SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_VEHICLE_DONOR_REVISION",
     "SIPP_2023_VEHICLE_DONOR_SHA256",
     "SIPP_2023_VEHICLE_DONOR_SIZE_BYTES",
@@ -51,9 +55,9 @@ __all__ = [
     "SIPP_VEHICLE_SOURCE_COLUMNS",
     "US_SIPP_VEHICLE_NONCONSTANT_HOUSEHOLD_COLUMNS",
     "US_SIPP_VEHICLE_OUTPUT_COLUMNS",
+    "build_sipp_2023_vehicle_donor",
     "fetch_sipp_2023_vehicle_donor",
     "impute_us_sipp_vehicles",
-    "load_sipp_2023_vehicle_donor",
     "us_sipp_vehicles_signal_gate",
     "us_sipp_vehicles_stage_spec",
     "us_sipp_vehicles_summary",
@@ -81,7 +85,12 @@ ARCHIVED_SIPP_VEHICLE_RECEIVER_URL = (
     f"{_RETIRED_PACKAGE_PATH}/utils/asset_imputation.py#L503-L603"
 )
 
+# SIPP_2023_VEHICLE_DONOR_REVISION is the recorded coordinate these bytes were
+# pinned and measured at, kept as the record key.
+# SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION is where the same bytes are served
+# now.  Both name bytes identified by the SHA-256 and size below.
 SIPP_2023_VEHICLE_DONOR_REVISION = "21280dca5995e978d706740a8a4b9b7860cfd7b6"
+SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION = "1.115.5"
 SIPP_2023_VEHICLE_DONOR_SHA256 = (
     "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
 )
@@ -89,7 +98,7 @@ SIPP_2023_VEHICLE_DONOR_SIZE_BYTES = 3_726_010_471
 SIPP_2023_VEHICLE_DONOR_URL = (
     "https://huggingface.co/policyengine/"
     f"{_RETIRED_DATA_REPOSITORY}/resolve/"
-    f"{SIPP_2023_VEHICLE_DONOR_REVISION}/pu2023.csv"
+    f"{SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION}/pu2023.csv"
 )
 
 SIPP_VEHICLE_SOURCE_COLUMNS: tuple[str, ...] = (
@@ -365,52 +374,15 @@ def _cap_vehicle_training_sample(donor: pd.DataFrame) -> pd.DataFrame:
     return donor.iloc[positions].copy().reset_index(drop=True)
 
 
-def load_sipp_2023_vehicle_donor(
-    path: str | Path,
-    *,
-    expected_sha256: str | None = None,
-    expected_size_bytes: int | None = SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
-    chunksize: int = 100_000,
+def build_sipp_2023_vehicle_donor(
+    person_rows: SippDecemberPersonRows,
 ) -> pd.DataFrame:
-    """Load and transform the pinned person-month file to household donors."""
+    """Transform the person-month file's December rows to household donors."""
 
-    path = Path(path)
-    if expected_size_bytes is not None and path.stat().st_size != expected_size_bytes:
-        raise ValueError(
-            "SIPP 2023 vehicle donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {path.stat().st_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(path)
-        if actual_sha256 != expected_sha256:
-            raise ValueError(
-                "SIPP 2023 vehicle donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
-            )
-    if chunksize < 1:
-        raise ValueError("chunksize must be a positive integer")
-
-    header = pd.read_csv(path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_VEHICLE_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP 2023 vehicle donor missing column(s): {missing}.")
-
-    december_parts: list[pd.DataFrame] = []
-    reader = pd.read_csv(
-        path,
-        delimiter="|",
-        usecols=list(SIPP_VEHICLE_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        low_memory=True,
+    person = person_rows.source_table(
+        SIPP_VEHICLE_SOURCE_COLUMNS,
+        read_in_parser_blocks=True,
     )
-    for chunk in reader:
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            december_parts.append(december)
-    if not december_parts:
-        raise ValueError("SIPP 2023 vehicle donor has no December person records.")
-    person = pd.concat(december_parts, ignore_index=True)
 
     for column in SIPP_VEHICLE_SOURCE_COLUMNS:
         if column != "SSUID":

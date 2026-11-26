@@ -46,15 +46,18 @@ until you restart the kernel, load it by path with
 
 ## Build progress and staging run files
 
-UK build completion automatically exports Orrery execution graphs for viewing
-offline and uploads none. Its staged dataset bundle hands the graph's inputs
-to the emitter for the collector, which builds the Orrery graph files; see
-[graph publication](docs/orrery-publication.md) and
+UK builds write their graph's Orrery inputs (the compiler schema, the
+execution overlay and the upstream files they link) and upload no graph.
+Microcosm makes no Orrery document: the staged dataset bundle hands the
+inputs to the emitter for the collector, which builds the Orrery graph files,
+and staff view them through the run viewer. A build staged only locally has
+no Orrery document until its inputs are submitted; see
+[UK graph inputs](docs/orrery-publication.md) and
 [its status](docs/orrery-publication.md#status).
 
 Supported US and UK build commands start the local emitter as the build's
-child process, with its telemetry, graph-publication and Hugging Face
-hand-over modules. Microcosm depends only on `microcosm-emitter-interface`,
+child process, with its telemetry and Hugging Face hand-over modules.
+Microcosm depends only on `microcosm-emitter-interface`,
 the typed calls a build makes; the emitter itself is installed on its own,
 outside the workspace environment, so an emitter release needs no Microcosm
 change:
@@ -70,7 +73,7 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging, and measures no Orrery publication inventory; a UK build given
+no remote staging; a UK build given
 `--staging-read-back` fails at the read-back, and a UK build asked to stage
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
@@ -104,13 +107,13 @@ another Google Cloud project; from 0.10.0 on, releases send to the
 collector's hostname, which stays the same. 0.13.0, 0.14.0, 0.15.0, 0.16.0
 and 0.17.0 were each the newest release when practically no machine ran the
 emitter yet, so requiring them cost nothing (see
-[graph publication](docs/orrery-publication.md#emitter-dependency)). The
+[UK graph inputs](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
 upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.17.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
-metadata, graph files, staging run files and staged dataset bundles; the
+metadata, the graph's Orrery inputs, staging run files and staged dataset bundles; the
 emitter owns authentication, durable queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events
@@ -535,17 +538,21 @@ side of this holds from the US repository's switch commit: Microcosm's US
 change (microcosm#1570) merges straight after that commit.
 
 **Each build is published into its own folder.** The UK national and dense
-releases, each UK local-area release that the registry names, and the US
-releases below
+releases, each UK local-area release that the registry names, the US
+releases below and BE's two releases, `microcosm-be-2025-national` and
+`microcosm-be-2026-national`
 (`microcosm.data.contract.publishes_to_build_folder`) hand each build to the
 separately installed emitter, whose release writer puts it in
 `releases/<release>/<build>/` and records it in the repository's
 `releases.json`, the only record of each release's builds and which one is
 current, in one commit. A UK build is the calibration attempt id; a US build
-keeps its `populace-us-2024-…` build ID. Both manifests name the release and
+keeps its `populace-us-2024-…` build ID; a BE build keeps the ID BE's builder
+gives it (`microcosm-be-<year>-chronicle-<commit>-<time>`). Both manifests name the release and
 the build as strings; the release manifest records `built_at`,
-`built_with_model_package` and `built_with_core_package` at its top level and
-each file's `role`, and pins no revision. Nothing is tagged and no pointer
+`built_with_model_package` and `built_with_core_package` at its top level
+(a BE build, which runs on the Axiom rules engine and EUROMOD, records its
+engines in its build manifest instead) and each file's `role`, and pins no
+revision. Nothing is tagged and no pointer
 file is written:
 
 ```bash
@@ -555,8 +562,9 @@ uv run microcosm-publish-release-build releases/<release> \
   --repo-id <repository> --promote
 ```
 
-`<repository>` is `policyengine/populace-uk-private` or
-`policyengine/populace-us`. The first command publishes a build, and makes it
+`<repository>` is `policyengine/populace-uk-private`,
+`policyengine/populace-us`, or BE's private release repository, which BE's
+`release_contract.json` names. The first command publishes a build, and makes it
 current with `--make-current`; the second makes a published build current. A
 build counts as current only when the emitter's receipt is `published` and
 names it as `current`. The emitter changes no current build while any
@@ -714,15 +722,17 @@ on `main`. Each step only reads the repository and prints, as JSON, what it
 would do, unless given `--write`:
 
 ```bash
-# 1. Copy each tagged build into its folder, one commit per build; run it
-#    again later to copy builds published since. Hugging Face copies the
-#    large (LFS) files on its own servers.
+# 1. Copy each tagged build, and each untagged folder --include-untagged
+#    names, into its folder, one commit per build; run it again later to
+#    copy builds published since. Hugging Face copies the large (LFS) files
+#    on its own servers.
 uv run python -m microcosm.build.build_folder_switch copy <owner/repository> \
-  [--include <tag>=<release>] [--exclude <tag>] [--write]
+  [--include <tag>=<release>] [--exclude <tag>] \
+  [--include-untagged <folder>=<release>] [--write]
 # 2. In one commit, write releases.json and delete every latest*.json file.
 uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
   [--include <tag>=<release>] [--exclude <tag>] \
-  [--retire-pointer <latest file>] [--current <release>=<build>] \
+  [--include-untagged <folder>=<release>] [--retire-pointer <latest file>] [--current <release>=<build>] \
   [--default <release>] [--finished-branch <release-staging/ branch>] [--write]
 # 3. Later, in one commit, delete the old layout's files from main.
 uv run python -m microcosm.build.build_folder_switch delete-old-layout \
@@ -730,7 +740,8 @@ uv run python -m microcosm.build.build_folder_switch delete-old-layout \
 ```
 
 Run the switch step only while nobody publishes to the repository, and give
-it the same `--include` and `--exclude` options as the copy step.
+it the same `--include`, `--exclude` and `--include-untagged` options as the
+copy step.
 
 The copy step moves every tag of a release that publishes into build folders
 whose manifest names that tag, and each release-per-build tag that
@@ -740,8 +751,28 @@ or role the emitter interface refuses; it reports both without `--write`. It
 also copies the files a build's checksum ledger records but its manifest
 doesn't declare (each US ACS local-area build has six), checked against the
 ledger, and a manifest that declares its own `build_manifest.json` (the US
-SPM builds') declares the rewritten one. The
-switch refuses unless every such build's folder holds exactly its copied
+SPM builds') declares the rewritten one.
+
+A build with no tag, as BE's builds are stored, is an untagged folder
+`releases/<folder>/` on `main` holding its files directly, and moves only
+when `--include-untagged <folder>=<release>` names it; its build is then
+`<folder>`. The copy step copies every file the folder holds from the commit
+that last changed it, and rewrites the two manifests as for a tagged build.
+The release manifest's `artifacts` then lists exactly the files the folder
+holds besides the manifests, and keeps the map it had, which may declare
+files of the builder's output directory that the folder doesn't hold,
+unchanged as `unpublished_artifacts`. Its `migrated_from` names the old
+folder, that commit and the old manifest's SHA-256, and the build's
+`published_at` is that commit's date. The copy step refuses a folder that is
+also a tag, a release named like a folder `--include-untagged` moves, a
+folder holding a checksum ledger, a subfolder or nothing but its manifests,
+two files whose names give one artifact name, a folder from which a file was
+deleted after the commit that last changed the files it holds, and a
+manifest with no `build` object, whose `build.build_id` is not the folder's
+name or that names a tag (`build.cut_tag`). A `latest.json` with no `revision` names such a folder by its
+`release_id`, and its build becomes current.
+
+The switch refuses unless every such build's folder holds exactly its copied
 files, every pointer file's build moves or `--retire-pointer` deletes that
 pointer file, no other build folder is on `main`, the repository's tags did
 not change while it read them, no `release-staging/` branch shows a tagged
@@ -753,13 +784,15 @@ branch for a build that is already tagged, but one older than 2026-09-23
 (`7053b9173`) did when retrying such a build, which looks the same while it
 runs (the US leftover branch is one), so name a branch only while nobody
 publishes. Each build keeps the date of its
-tagged commit as `published_at`, and each pointer file's build becomes its
+tagged commit as `published_at` (an untagged build, the date of the commit
+that last changed its old folder), and each pointer file's build becomes its
 release's current build.
 
 After the switch, `main` still holds the tagged layout's files: those each
 tagged build overwrote directly in `releases/<release>/`, each
 release-per-build tag's `releases/<tag>/` folder (every US build, the June
-2023 UK build and builds the switch did not move), and the dataset files
+2023 UK build and builds the switch did not move), each untagged folder
+`releases/<folder>/` (BE's builds), and the dataset files
 (`.h5`, `.hdf5`, `.npz`) at the repository's root. The `delete-old-layout`
 step deletes all of them in one commit, so build folders and `releases.json`
 are the only layout. It keeps `releases.json`, every build folder it lists,
@@ -771,7 +804,7 @@ emitter interface's repository check on what remains, and takes none of the
 other steps' options. Every tagged build stays readable at its tag, which is
 where Microcosm's tag references read it, and every deleted file stays in
 `main`'s history at the head the report names; the report lists any deleted
-release-per-build folder that no tag names (`untagged_folders`). Anything
+release-per-build or untagged folder that no tag names (`untagged_folders`). Anything
 that reads those paths from `main` stops finding them, so run it only once
 nothing does (the example notebook reads the US dataset through
 `releases.json`).

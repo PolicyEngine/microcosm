@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from microcosm.build.us_runtime.engine_lifecycle import (
+    EngineVariableModuleScope,
     temporary_engine_variable_modules,
 )
 from test_support.microcosm_build.us_release_head_to_head_scorer import (
@@ -214,3 +215,171 @@ def test_temporary_variable_modules_clean_up_first_lazy_engine_import(
         assert all(reference() is None for reference in transient_refs)
     finally:
         sys.modules.pop(transient_name, None)
+
+
+def test_an_explicit_scope_spans_calls_and_closes_once(tmp_path) -> None:
+    """The explicit scope removes what was registered between open and close."""
+    variables_dir = tmp_path / "variables"
+    name = "7470001_-123_income_tax"
+    try:
+        scope = EngineVariableModuleScope(variables_dir).open()
+        retained = _register_variable_module(name, variables_dir)
+        assert sys.modules[name].IncomeTax().formula() == 42.0
+        scope.close()
+        gc.collect()
+        assert name not in sys.modules
+        assert all(reference() is None for reference in retained)
+        scope.close()  # Closing again does nothing.
+    finally:
+        sys.modules.pop(name, None)
+
+
+def test_an_unclosed_scope_removes_nothing_when_it_is_collected(tmp_path) -> None:
+    """A scope left open and dropped never removes a later scope's modules.
+
+    A suspended ``temporary_engine_variable_modules`` generator would run its
+    cleanup whenever the garbage collector closed it, removing modules that a
+    later scope registered and still uses.
+    """
+    variables_dir = tmp_path / "variables"
+    abandoned_name = "7480001_-123_income_tax"
+    later_name = "7480002_-123_income_tax"
+    try:
+        abandoned = EngineVariableModuleScope(variables_dir).open()
+        _register_variable_module(abandoned_name, variables_dir)
+        del abandoned
+        later = EngineVariableModuleScope(variables_dir).open()
+        _register_variable_module(later_name, variables_dir)
+        gc.collect()
+        assert later_name in sys.modules
+        assert abandoned_name in sys.modules
+        later.close()
+        assert later_name not in sys.modules
+    finally:
+        sys.modules.pop(abandoned_name, None)
+        sys.modules.pop(later_name, None)
+
+
+def test_closing_an_earlier_scope_keeps_a_later_open_scopes_modules(tmp_path) -> None:
+    """Scopes may close out of order without removing a module still in use."""
+    variables_dir = tmp_path / "variables"
+    earlier_name = "7500001_-123_income_tax"
+    later_name = "7500002_-123_income_tax"
+    try:
+        earlier = EngineVariableModuleScope(variables_dir).open()
+        _register_variable_module(earlier_name, variables_dir)
+        later = EngineVariableModuleScope(variables_dir).open()
+        _register_variable_module(later_name, variables_dir)
+
+        earlier.close()
+        assert earlier_name not in sys.modules
+        assert later_name in sys.modules
+
+        later.close()
+        assert later_name not in sys.modules
+    finally:
+        sys.modules.pop(earlier_name, None)
+        sys.modules.pop(later_name, None)
+
+
+def test_a_scope_collected_while_another_holds_the_lock_does_not_hang(
+    monkeypatch, tmp_path
+) -> None:
+    """A suspended ``with`` scope in a reference cycle can be freed by a garbage
+    collection that runs while another scope, in the same thread, holds the
+    scopes' lock; its cleanup must not wait for that lock for ever."""
+    import threading
+
+    import microcosm.build.us_runtime.engine_lifecycle as lifecycle
+
+    variables_dir = tmp_path / "variables"
+
+    class Holder:
+        pass
+
+    holder = Holder()
+    context = temporary_engine_variable_modules(variables_dir)
+    context.__enter__()
+    holder.context = context
+    holder.itself = holder
+    del holder, context
+
+    real_registrations = lifecycle._registrations
+
+    def collecting_registrations(directory):
+        gc.collect()  # Frees the suspended scope while ``open`` holds the lock.
+        return real_registrations(directory)
+
+    monkeypatch.setattr(lifecycle, "_registrations", collecting_registrations)
+    finished = threading.Event()
+
+    def open_and_close() -> None:
+        EngineVariableModuleScope(variables_dir).open().close()
+        finished.set()
+
+    thread = threading.Thread(target=open_and_close, daemon=True)
+    thread.start()
+    thread.join(10)
+    assert finished.is_set()
+
+
+def test_a_scope_closing_never_puts_back_a_module_another_scope_removed(
+    monkeypatch, tmp_path
+) -> None:
+    """A garbage collection during one scope's close can free a suspended scope
+    whose cleanup removes a module; the first scope must not then put it back."""
+    import microcosm.build.us_runtime.engine_lifecycle as lifecycle
+
+    variables_dir = tmp_path / "variables"
+    name = "7520001_-123_income_tax"
+
+    class Holder:
+        pass
+
+    try:
+        holder = Holder()
+        context = temporary_engine_variable_modules(variables_dir)
+        context.__enter__()
+        holder.context = context
+        holder.itself = holder
+        _register_variable_module(name, variables_dir)
+        explicit = EngineVariableModuleScope(variables_dir).open()
+        del holder, context
+
+        real_registrations = lifecycle._registrations
+
+        def registrations_then_collect(directory):
+            found = real_registrations(directory)
+            gc.collect()  # Frees the suspended scope, which removes the module.
+            return found
+
+        monkeypatch.setattr(lifecycle, "_registrations", registrations_then_collect)
+        explicit.close()
+        assert name not in sys.modules
+    finally:
+        sys.modules.pop(name, None)
+
+
+def test_an_earlier_scope_closing_keeps_a_later_open_scopes_reregistered_module(
+    tmp_path,
+) -> None:
+    """Core names modules after id(system), so a new system can take a dead one's
+    name. An earlier scope's snapshot of the old module must not replace the
+    module a later, still-open scope registered under that name."""
+    variables_dir = tmp_path / "variables"
+    name = "7530001_-123_income_tax"
+    try:
+        stale = _variable_module(name, variables_dir)
+        sys.modules[name] = stale
+        earlier = EngineVariableModuleScope(variables_dir).open()
+        later = EngineVariableModuleScope(variables_dir).open()
+        current = _variable_module(name, variables_dir)
+        sys.modules[name] = current
+
+        earlier.close()
+        assert sys.modules[name] is current
+
+        later.close()
+        assert sys.modules[name] is stale
+    finally:
+        sys.modules.pop(name, None)

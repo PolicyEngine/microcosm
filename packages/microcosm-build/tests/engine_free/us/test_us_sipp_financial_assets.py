@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    read_sipp_december_person_rows,
+)
 from microcosm.build.us_runtime.sipp_financial_assets import (
+    SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION,
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS,
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
     SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
@@ -18,9 +25,9 @@ from microcosm.build.us_runtime.sipp_financial_assets import (
     SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS,
     SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS,
     _target_balanced_cap,
+    build_sipp_2023_financial_asset_donor,
     fetch_sipp_2023_financial_asset_donor,
     impute_us_sipp_financial_assets,
-    load_sipp_2023_financial_asset_donor,
 )
 
 
@@ -144,6 +151,7 @@ def test_pinned_sipp_source_and_final_archived_predictor_contract() -> None:
     assert SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION == (
         "21280dca5995e978d706740a8a4b9b7860cfd7b6"
     )
+    assert SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION == "1.115.5"
     assert SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256 == (
         "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
     )
@@ -153,7 +161,7 @@ def test_pinned_sipp_source_and_final_archived_predictor_contract() -> None:
     )
     assert SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE == "model"
     assert SIPP_2023_FINANCIAL_ASSET_DONOR_URL.endswith(
-        f"/{SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION}/pu2023.csv"
+        f"/resolve/{SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION}/pu2023.csv"
     )
     assert SIPP_FINANCIAL_ASSET_MODEL_PREDICTORS == (
         "employment_income",
@@ -177,13 +185,16 @@ def test_pinned_sipp_source_and_final_archived_predictor_contract() -> None:
     }
 
 
-def test_loader_filters_december_and_matches_archived_transforms(tmp_path) -> None:
+def test_donor_keeps_december_rows_and_matches_archived_transforms(tmp_path) -> None:
     raw = _raw_sipp()
     path = tmp_path / "pu2023.csv"
     raw.to_csv(path, sep="|", index=False)
-    donor = load_sipp_2023_financial_asset_donor(
-        path,
-        chunksize=3,
+    donor = build_sipp_2023_financial_asset_donor(
+        read_sipp_december_person_rows(
+            path,
+            columns=SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+            chunksize=3,
+        ),
         max_train_samples=None,
     )
 
@@ -246,8 +257,127 @@ def test_fetch_declares_pinned_hugging_face_contract(monkeypatch, tmp_path) -> N
         SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS
     )
     assert calls["repo_type"] == SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE
-    assert calls["revision"] == SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION
+    assert calls["revision"] == SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION
     assert calls["filename"] == "pu2023.csv"
+
+
+def _plant_recorded_snapshot(cache_dir, payload: bytes):
+    repository_id = "".join(SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS)
+    snapshot = (
+        cache_dir / f"{SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE}s--"
+        f"{repository_id.replace('/', '--')}"
+        / "snapshots"
+        / SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION
+        / "pu2023.csv"
+    )
+    snapshot.parent.mkdir(parents=True)
+    snapshot.write_bytes(payload)
+    return snapshot
+
+
+def test_fetch_reuses_recorded_revision_snapshot_without_download(
+    monkeypatch, tmp_path
+) -> None:
+    import huggingface_hub
+
+    payload = b"recorded-snapshot-fixture"
+    cache_dir = tmp_path / "cache"
+    snapshot = _plant_recorded_snapshot(cache_dir, payload)
+
+    def unexpected_download(**_kwargs):
+        raise AssertionError("a verified recorded snapshot must not be downloaded")
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", unexpected_download)
+    resolved = fetch_sipp_2023_financial_asset_donor(
+        cache_dir=cache_dir,
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
+        expected_size_bytes=len(payload),
+    )
+
+    assert resolved == snapshot
+
+
+def test_fetch_downloads_when_recorded_snapshot_fails_verification(
+    monkeypatch, tmp_path
+) -> None:
+    import huggingface_hub
+
+    payload = b"remote-fixture"
+    cache_dir = tmp_path / "cache"
+    _plant_recorded_snapshot(cache_dir, b"stale-fixture!")
+    downloaded = tmp_path / "downloaded-pu2023.csv"
+    downloaded.write_bytes(payload)
+    calls: dict[str, object] = {}
+
+    def fake_hf_hub_download(**kwargs):
+        calls.update(kwargs)
+        return str(downloaded)
+
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", fake_hf_hub_download)
+    resolved = fetch_sipp_2023_financial_asset_donor(
+        cache_dir=cache_dir,
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
+        expected_size_bytes=len(payload),
+    )
+
+    assert resolved == downloaded
+    assert calls["revision"] == SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION
+
+
+def test_fetch_default_paths_reuse_recorded_snapshot_without_download(
+    monkeypatch, tmp_path
+) -> None:
+    import huggingface_hub
+    from huggingface_hub import constants
+
+    payload = b"default-cache-fixture"
+    home = tmp_path / "home"
+    hub_cache = tmp_path / "hub"
+    snapshot = _plant_recorded_snapshot(hub_cache, payload)
+
+    def unexpected_download(**_kwargs):
+        raise AssertionError("a verified recorded snapshot must not be downloaded")
+
+    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(hub_cache))
+    monkeypatch.setattr(huggingface_hub, "hf_hub_download", unexpected_download)
+    resolved = fetch_sipp_2023_financial_asset_donor(
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
+        expected_size_bytes=len(payload),
+    )
+
+    assert resolved == snapshot
+
+
+def test_fetch_downloads_when_hub_cache_records_the_file_as_missing(
+    monkeypatch, tmp_path
+) -> None:
+    import huggingface_hub
+
+    payload = b"remote-fixture"
+    cache_dir = tmp_path / "cache"
+    snapshot = _plant_recorded_snapshot(cache_dir, payload)
+    missing_marker = (
+        snapshot.parents[2]
+        / ".no_exist"
+        / SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION
+        / "pu2023.csv"
+    )
+    missing_marker.parent.mkdir(parents=True)
+    missing_marker.touch()
+    downloaded = tmp_path / "downloaded-pu2023.csv"
+    downloaded.write_bytes(payload)
+
+    monkeypatch.setattr(
+        huggingface_hub, "hf_hub_download", lambda **_kwargs: str(downloaded)
+    )
+    resolved = fetch_sipp_2023_financial_asset_donor(
+        cache_dir=cache_dir,
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
+        expected_size_bytes=len(payload),
+    )
+
+    assert resolved == downloaded
 
 
 def test_target_balanced_cap_pins_archived_sampling_seed() -> None:

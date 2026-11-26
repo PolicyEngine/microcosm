@@ -741,6 +741,10 @@ UK_RELEASE_EXPORT_DROPPED_COLUMNS: Mapping[str, tuple[str, ...]] = {
         # (frs_spine.FRS_UC_LCW_STATUS_COLUMN) the uc_limited_capability stage
         # reads (microcosm#1095, Y1); it is no engine input.
         "frs_uc_lcw_status",
+        # The admin UC housing element carrier
+        # (frs_spine.FRS_UC_HOUSING_ELEMENT_COLUMN) the uc_housing_costs_claim
+        # stage reads (B1 of microcosm#1710); it is no engine input.
+        "frs_uc_housing_element_status",
         # The limiting condition carrier (frs_spine.FRS_CONDITION_LIMITS_COLUMN)
         # the uc_limited_capability stage's imputation cells read
         # (PolicyEngine/microcosm#1663); it is no engine input.

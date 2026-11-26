@@ -149,8 +149,9 @@ the local release manifest names.
 The validator reads the release's name from the directory. For a release that
 publishes each build into its own folder, the directory carries the release's
 name, such as `microcosm-us-2024-national`. `publishes_to_build_folder` lists
-those releases: the UK national, dense and local-area releases and the six US
-releases in `US_RELEASES`. For a build in the tagged layout the directory
+those releases: the UK national, dense and local-area releases, the six US
+releases in `US_RELEASES` and BE's two releases in `BE_RELEASES`. For a build
+in the tagged layout the directory
 carries the build id, such as `populace-us-2024-<sha>-<date>`. Before it
 dispatches, the validator refuses two kinds of misplaced build.
 `_refuse_misplaced_annual_years` refuses a build-folder build that declares
@@ -190,8 +191,11 @@ type but a source enrichment. The validator then dispatches in three steps:
 3. **The release name.** Everything else keys on the directory name:
    - `required_release_files(release_id)` adds `us_source_coverage.json` for a
      US release, `terminal_gates.json` for a UK exact-k id
-     (`populace-uk-<year>-<tier>-k<N>`), and `release_certification.json` for
-     the literal `microcosm-uk-2024-25-national`. `is_us_release` decides the
+     (`populace-uk-<year>-<tier>-k<N>`), `release_certification.json` for
+     the literal `microcosm-uk-2024-25-national`, and the three files BE's
+     release contract adds (`source_coverage.json`, `demographics.json` and
+     `reform_validation.json`, which `BE_REQUIRED_RELEASE_FILES` lists) for
+     the two `BE_RELEASES` names (microcosm#1741). `is_us_release` decides the
      first: it accepts the six `US_RELEASES` names and any `populace-us-`
      build id. For any other name `required_release_files` returns the three
      base files: `build_manifest.json`, `release_manifest.json` and
@@ -248,6 +252,22 @@ carry:
     `release_artifact_role` fixes the role: `dataset` for the microdata,
     `calibration_weights` for the weights, and otherwise the artifact's key.
 
+  A build of a BE release (`BE_RELEASES`) runs on the Axiom rules engine and
+  EUROMOD, not on PolicyEngine packages (microcosm#1741). Its build manifest
+  need not record `runtime.policyengine-core`; it records instead, in
+  `engines`, each engine it ran on with the version of each package installed
+  for it (`packages`), the model it ran (`model`), or both, as BE's builds
+  published before the move do (`_check_be_engines`), in the local-area role
+  as in the national-default one. Its release manifest need not carry
+  `built_with_core_package`, `built_with_model_package` or
+  `compatible_core_packages`. A PolicyEngine record it does carry is checked
+  as above wherever the build's role checks it: the local-area contract checks
+  no `runtime` record for any build. It declares each file BE's release
+  contract adds as an artifact under its own key (`source_coverage`,
+  `demographics`, `reform_validation`), since a build folder's key is the
+  file's role and the emitter hands the demographics and the reform
+  validation to the collector by role (`_check_be_release_artifacts`).
+
   A new US build in a build folder declares exactly one microdata file, its
   release's (`US_RELEASE_DATASET_FILES`; `microcosm_us_2024.h5` for a national
   build); the validator holds no tagged `populace-us-` build to that name. An
@@ -267,7 +287,17 @@ because `releases.json` and the folder locate a build's files. Both layouts
 carry `schema_version` 1, and `publishes_to_build_folder` tells them apart. A
 build that the switch tool (`microcosm.build.build_folder_switch`) moved from
 its tag also carries `migrated_from`, which names the tag, its commit and the
-SHA-256 of the manifest the tool rewrote.
+SHA-256 of the manifest the tool rewrote. A build it moved from an untagged
+folder on `main` (`--include-untagged`, for BE's builds) carries instead the
+old folder, the commit that last changed it and that SHA-256. Its `artifacts`
+lists the files its folder holds, each with its `path`, `repo_id`, `role` and
+`sha256` but no `kind`, and `unpublished_artifacts` keeps, unchanged, the map
+the old manifest had, which declares files of the builder's output directory
+that were never published. Such a folder holds no dataset, so the release
+validator's build-folder checks (a `kind` on every artifact, a default dataset
+artifact) don't hold for it: it meets the emitter interface's checks and the
+collector's daily check that every listed file is in the folder and every
+file is listed, and nothing loads it as a dataset.
 
 Several writers produce the build-folder manifests on main. The UK national and
 dense assemblers build both dictionaries themselves and run
@@ -319,14 +349,16 @@ Every country-specific check hangs off the release name. Two consequences
 follow, and `test_release_contract_keying.py` executes the id keying behind
 both:
 
-- **A new country fails open.** An NZ, BE or AM release, or a US release of
+- **A new country fails open.** An NZ or AM release, a BE name outside
+  `BE_RELEASES` such as `microcosm-be-2024-national`, or a US release of
   another vintage such as `microcosm-us-2025-national`, gets only the three
   base files and no model-package expectation: no certification, no source
   coverage, no `compatible_model_packages` check. It validates against the
   weakest contract by default.
 - **No other country can publish into a build folder.**
   `publishes_to_build_folder` names only the UK national, dense and local-area
-  releases and the six US releases. `microcosm-publish-release-build` refuses
+  releases, the six US releases and BE's two releases (microcosm#1741).
+  `microcosm-publish-release-build` refuses
   any other name, for publication and promotion alike: its `main` checks
   `publishes_to_build_folder` before anything else, and `build_folder_identity`
   refuses the same names inside `publish_release_build` and
@@ -672,8 +704,9 @@ unchanged.
   installs the `microcosm-emitter` command on its own (for example with
   `uv tool install microcosm-emitter`). The adapter,
   `microcosm.build.telemetry_emitter`, starts it as the build's child process
-  with three modules: telemetry, Orrery graph publication, and the Hugging Face
-  hand-over, which commits staging run files and staged dataset bundles. The
+  with two modules: telemetry, and the Hugging Face hand-over, which commits
+  staging run files and staged dataset bundles (until microcosm#1745 it also
+  started an Orrery graph publication module). The
   adapter supplies build identity and never starts an emitter older than
   `MINIMUM_EMITTER_VERSION`. `_packaged_minimum_emitter_version` reads that
   floor from the package's `minimum_emitter_version.json` (0.14.0 on
@@ -860,8 +893,19 @@ repository that has no `releases.json`.
   `microcosm-uk-2024-25-national`, the dense release
   `microcosm-uk-2024-25-dense`, each local-area release
   `microcosm-uk-2024-25-local-k<N>` that a UK registry entry names as its
-  `release`, and the six US releases in `US_RELEASES`. The function reads
-  the registry on each call. `validate_release_dir` and
+  `release`, the six US releases in `US_RELEASES`, and BE's two releases in
+  `BE_RELEASES`, `microcosm-be-2025-national` and `microcosm-be-2026-national`,
+  one for each population year (microcosm#1741). As for the UK releases, no
+  BE release is tied to a role in `releases.json`: a build takes the role its
+  `dataset_role` gives it, and the collector provenance names a BE build with
+  the country code `BE` and `licensed_data` true, as it names a UK build with
+  `UK`. BE's inputs carry no restricting licence, so for BE the flag is a
+  privacy setting: it keeps the collector's Orrery graph files of BE builds
+  private while BE's repository stays private. Under the collector's rules a
+  build's calibration tree may be public either way. A BE build declares each
+  file its release contract adds as an artifact, as a US build declares its
+  source coverage (`_check_be_release_artifacts`). The function reads the
+  registry on each call. `validate_release_dir` and
   `validate_evidence_release_dir` refuse every layout of a local-area name
   that no entry names, and neither publisher takes one (microcosm#1586).
   `microcosm-us-2024-national` holds every national build:
@@ -1063,10 +1107,22 @@ work.
     a UK local-area name that the registry does not name, into a repository
     without `releases.json`. M3's refusal of unknown countries closes the gap,
     under M3's owners.
-  - *The NZ, AM and BE declarations.* Each country's `release_contract.json`
+  - *The NZ and AM declarations.* Each country's `release_contract.json`
     (under `packages/microcosm-build/src/microcosm/build/`) names
     `latest.json` in its boundary. Each country's owner changes its file
-    before that country's first publication.
+    before that country's first publication. BE's names `releases.json` and
+    the `releases/<release>/<build>/` folders instead since microcosm#1741,
+    and its required files are the ones `BE_REQUIRED_RELEASE_FILES` lists,
+    which a build-shard test holds equal.
+  - *BE's registry entry and staging* (microcosm#1741). BE's releases joined
+    `publishes_to_build_folder` without a registry entry: there is no
+    policyengine-be package, so an entry would name the Axiom adapter's
+    dataset class, the two builds moved from BE's old folders hold no
+    dataset file, and the loader's compatibility check reads
+    `compatible_core_packages`, which a BE build need not carry. BE's release contract names a staging repository, but no
+    BE builder in this repository stages and the collector registers no BE
+    staging repository; a BE build whose manifest records no staging is not
+    refused for it.
   - *The first build of a new UK `k`* (2026-11-13). `validate_release_dir`
     refuses every layout of a local-area release until a registry entry names
     it, and `build_folder_identity` and `microcosm-publish-release-build`

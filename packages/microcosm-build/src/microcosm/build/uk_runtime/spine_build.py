@@ -221,6 +221,9 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
 from microcosm.build.uk_runtime.uc_deduction_attributes import (
     UKUCDeductionAttributesStageTransform,
 )
+from microcosm.build.uk_runtime.uc_housing_costs_claim import (
+    UKUCHousingCostsClaimStageTransform,
+)
 from microcosm.build.uk_runtime.uc_limited_capability import (
     UKUCLimitedCapabilityStageTransform,
 )
@@ -1924,6 +1927,11 @@ def prepare_uk_spine_execution(
     if "uc_limited_capability" in stage_names:
         implementations["uc_limited_capability"] = UKUCLimitedCapabilityStageTransform(
             stage=stages_by_name["uc_limited_capability"],
+            engine=engine,
+        )
+    if "uc_housing_costs_claim" in stage_names:
+        implementations["uc_housing_costs_claim"] = UKUCHousingCostsClaimStageTransform(
+            stage=stages_by_name["uc_housing_costs_claim"],
             engine=engine,
         )
     if "uc_take_up" in stage_names:

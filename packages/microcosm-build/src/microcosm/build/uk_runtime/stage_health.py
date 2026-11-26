@@ -1062,6 +1062,10 @@ def _child_benefit_take_up_gate(
     falls short of it) is reported, not held. The opted-out share of claiming
     families is held to the published share, or may fall short of it only
     where the receipt shows the charged families exhausted (microcosm#1063).
+    The SPI copies' redrawn reports (microcosm#1508) must leave FRS rows
+    unchanged, rest every cell on the declared number of FRS source
+    households, and give the copy families a weighted reporting share within
+    the tolerance of their cells' FRS rates.
     """
 
     check = "child_benefit_take_up"
@@ -1079,11 +1083,24 @@ def _child_benefit_take_up_gate(
         label=f"{stage}.maximum_opt_out_share_deviation",
     )
     minimum_families = int(parameters["minimum_eligible_family_units"])
+    copy_tolerance = _finite_number(
+        parameters["maximum_copy_report_rate_deviation"],
+        label=f"{stage}.maximum_copy_report_rate_deviation",
+    )
     failures: list[str] = []
     claims = _mapping(evidence.get("claims"), label=f"{stage}.claims")
     opt_outs = _mapping(evidence.get("opt_outs"), label=f"{stage}.opt_outs")
     families = int(claims.get("eligible_family_units", 0))
     details: dict[str, object] = {"eligible_family_units": families}
+    copy_reports = evidence.get("copy_reports")
+    if not isinstance(copy_reports, Mapping):
+        failures.append(f"{stage}: the receipt carries no SPI copy reports.")
+    else:
+        failures.extend(
+            _child_benefit_copy_report_failures(
+                stage, copy_reports, tolerance=copy_tolerance, details=details
+            )
+        )
     target = claims.get("target_rate")
     realized = claims.get("realized_rate")
     if families < minimum_families or target is None or realized is None:
@@ -1161,6 +1178,49 @@ def _child_benefit_take_up_gate(
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _child_benefit_copy_report_failures(
+    stage: str,
+    receipt: Mapping[str, object],
+    *,
+    tolerance: float,
+    details: dict[str, object],
+) -> list[str]:
+    failures: list[str] = []
+    if receipt.get("frs_rows_unchanged") is not True:
+        failures.append(f"{stage}: the copy report redraw did not keep FRS rows.")
+    minimum = int(receipt.get("minimum_source_households", 0))
+    cells = receipt.get("cells")
+    if minimum < 1 or not isinstance(cells, list) or not cells:
+        failures.append(f"{stage}: the copy report receipt carries no cells.")
+        cells = []
+    short = 0
+    for row in cells:
+        row = _mapping(row, label=f"{stage}.copy_reports.cells[]")
+        support = row.get("frs_source_households")
+        if not isinstance(support, int) or support < minimum:
+            short += 1
+    if short:
+        failures.append(
+            f"{stage}: {short} copy report cell(s) rest on fewer than {minimum} FRS "
+            "source households."
+        )
+    expected = receipt.get("copy_rate_expected")
+    realized = receipt.get("copy_rate_after")
+    summary: dict[str, object] = {"cells": len(cells), "short_cells": short}
+    if expected is not None or realized is not None:
+        expected = _finite_number(expected, label=f"{stage}.copy_rate_expected")
+        realized = _finite_number(realized, label=f"{stage}.copy_rate_after")
+        summary.update({"expected": expected, "realized": realized})
+        if abs(realized - expected) > tolerance:
+            failures.append(
+                f"{stage}: {realized:.4f} of SPI copy families report Child Benefit "
+                f"against {expected:.4f} at their cells' FRS rates (tolerance "
+                f"{tolerance})."
+            )
+    details["copy_reports"] = summary
+    return failures
 
 
 def _take_up_signal_gate(

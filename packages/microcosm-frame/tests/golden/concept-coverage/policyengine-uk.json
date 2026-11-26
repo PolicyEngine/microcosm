@@ -221,6 +221,10 @@
    },
    {
     "entity": "benunit",
+    "name": "would_claim_uc_housing_costs_element"
+   },
+   {
+    "entity": "benunit",
     "name": "would_claim_universal_childcare"
    }
   ],
@@ -237,7 +241,7 @@
    }
   ]
  },
- "covered_count": 41,
+ "covered_count": 42,
  "covered_inputs": [
   {
    "entity": "person",
@@ -401,12 +405,16 @@
   },
   {
    "entity": "benunit",
+   "name": "would_claim_uc_housing_costs_element"
+  },
+  {
+   "entity": "benunit",
    "name": "would_claim_universal_childcare"
   }
  ],
  "engine": "policyengine-uk",
- "engine_version": "2.179.2",
- "input_count": 403,
+ "engine_version": "2.180.0",
+ "input_count": 404,
  "schema_sha256": "5a55669d0447a686692911a6327ae298f19741dde29559f2654a75807878a141",
  "structural_inputs": [
   {

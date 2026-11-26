@@ -27,13 +27,16 @@ from __future__ import annotations
 
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    SippDecemberPersonRows,
+)
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     require_assembled_support_provenance,
@@ -64,9 +67,9 @@ __all__ = [
     "US_SIPP_HEAD_START_OUTPUT_COLUMNS",
     "US_SIPP_HEAD_START_REQUIRED_SOURCE_COLUMNS",
     "US_SIPP_HEAD_START_STAGE_NAME",
+    "build_sipp_2023_head_start_donor",
     "fetch_sipp_2023_head_start_donor",
     "impute_us_sipp_head_start",
-    "load_sipp_2023_head_start_donor",
     "us_sipp_head_start_signal_gate",
     "us_sipp_head_start_stage_spec",
     "us_sipp_head_start_summary",
@@ -224,20 +227,6 @@ def us_sipp_head_start_stage_spec() -> SourceStageSpec:
     return spec
 
 
-def _sha256_stream(stream: BinaryIO, *, chunk_size: int = 8 * 1024 * 1024) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    for chunk in iter(lambda: stream.read(chunk_size), b""):
-        digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _sha256_file(path: Path) -> str:
-    with path.open("rb") as stream:
-        return _sha256_stream(stream)
-
-
 def fetch_sipp_2023_head_start_donor(
     cache_dir: str | Path | None = None,
     *,
@@ -308,54 +297,15 @@ def _assert_pinned_audit(audit: dict[str, int | float]) -> None:
             )
 
 
-def load_sipp_2023_head_start_donor(
-    path: str | Path,
-    *,
-    expected_sha256: str | None = SIPP_2023_HEAD_START_DONOR_SHA256,
-    expected_size_bytes: int | None = SIPP_2023_HEAD_START_DONOR_SIZE_BYTES,
-    chunksize: int = 100_000,
+def build_sipp_2023_head_start_donor(
+    person_rows: SippDecemberPersonRows,
 ) -> pd.DataFrame:
-    """Load strict December age-3--5 labels from the pinned full SIPP file."""
+    """Build strict December age-3--5 labels from the full SIPP file's rows."""
 
-    source_path = Path(path).expanduser()
-    if not source_path.is_file():
-        raise FileNotFoundError(source_path)
-    if chunksize < 1:
-        raise ValueError("chunksize must be positive")
-    if (
-        expected_size_bytes is not None
-        and source_path.stat().st_size != expected_size_bytes
-    ):
-        raise ValueError(
-            "SIPP Head Start donor byte length does not match the pinned artifact."
-        )
-    if expected_sha256 is not None:
-        digest = _sha256_file(source_path)
-        if digest != expected_sha256:
-            raise ValueError(
-                "SIPP Head Start donor SHA-256 does not match the pinned artifact."
-            )
-
-    header = pd.read_csv(source_path, sep="|", nrows=0)
-    missing = sorted(set(SIPP_HEAD_START_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP Head Start donor missing source column(s): {missing}.")
-
-    december_parts: list[pd.DataFrame] = []
-    raw_rows = 0
-    for chunk in pd.read_csv(
-        source_path,
-        sep="|",
-        usecols=list(SIPP_HEAD_START_SOURCE_COLUMNS),
-        chunksize=chunksize,
-        low_memory=False,
-    ):
-        raw_rows += len(chunk)
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december_parts.append(chunk.loc[month.eq(12)].copy())
-    december = pd.concat(december_parts, ignore_index=True)
-    if december.empty:
-        raise ValueError("SIPP Head Start donor contains no December rows.")
+    december = person_rows.source_table(
+        SIPP_HEAD_START_SOURCE_COLUMNS,
+        include_chunks_without_december_rows=True,
+    )
     if december[["SSUID", "PNUM"]].isna().any(axis=None):
         raise ValueError("SIPP Head Start December identity contains missing values.")
     if december.duplicated(["SSUID", "PNUM"]).any():
@@ -447,7 +397,7 @@ def load_sipp_2023_head_start_donor(
     positive_weight = float(donor.loc[donor[_OUTPUT], _DONOR_WEIGHT_COLUMN].sum())
     weight_sum = float(donor[_DONOR_WEIGHT_COLUMN].sum())
     audit: dict[str, int | float] = {
-        "raw_rows": raw_rows,
+        "raw_rows": person_rows.file_row_count,
         "december_rows": len(december),
         "age_domain_rows": int(np.count_nonzero(in_age_domain)),
         "training_rows": len(donor),
@@ -461,8 +411,8 @@ def load_sipp_2023_head_start_donor(
         "weighted_true_share": positive_weight / weight_sum,
     }
     pinned_transform = bool(
-        expected_sha256 == SIPP_2023_HEAD_START_DONOR_SHA256
-        and expected_size_bytes == SIPP_2023_HEAD_START_DONOR_SIZE_BYTES
+        person_rows.verified_sha256 == SIPP_2023_HEAD_START_DONOR_SHA256
+        and person_rows.verified_size_bytes == SIPP_2023_HEAD_START_DONOR_SIZE_BYTES
     )
     if pinned_transform:
         _assert_pinned_audit(audit)

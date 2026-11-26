@@ -364,7 +364,7 @@ def _summaries(
     Evidence capture inside a build is diagnostic: a provider that raises after
     a successful solve must not abort the build, so its error is kept beside
     the artifact binding and the summary status becomes ``provider_failed``.
-    The explicit export command runs providers strictly.
+    Callers outside a build, such as tests, run providers strictly.
     """
     summaries = []
     for node_id, receipt in run.manifest.nodes.items():
@@ -812,8 +812,8 @@ def save_graph_schema(
 
     Upstream checkpoint references that name local files are copied into the
     directory as ``upstream-<sha256>.json`` (after re-checking their digest)
-    and relinked relatively, so the schema and any later Orrery export can be
-    published or moved together with the recorded bytes.
+    and relinked relatively, so the schema can be handed to the collector or
+    moved together with the recorded bytes.
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)

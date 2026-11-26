@@ -819,8 +819,10 @@ def test_packaged_exclusions_load():
     # PIP cases at 16 to 19 and 20 to 24 and holds their sum, 16 to 24, out.
     # PolicyEngine/microcosm#1663 holds RTI's pay of employees aged 18 to 24 and
     # England's PIP cases aged 16 to 24 at each component's enhanced rate as
-    # checks (María's go of 2026-11-18).
-    assert len(names) == len(set(names)) == 144
+    # checks (María's go of 2026-11-18). PolicyEngine/microcosm#1710's B3 holds
+    # HMRC's one-child Child Benefit families in payment on its measured
+    # distortion (María's go of 2026-11-24).
+    assert len(names) == len(set(names)) == 145
     (gas,) = [
         entry
         for entry in exclusions

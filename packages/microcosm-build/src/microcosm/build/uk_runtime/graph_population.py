@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame import Frame, Weights
+from microcosm.frame.table_copies import copy_series, copy_table
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -120,25 +121,29 @@ _PRIVATE_RENT_COLUMNS = (
 
 
 def context_frame(context: KernelContext) -> Frame:
-    """Rebuild only declared slices, with the shared immutable weight context."""
+    """Rebuild only declared slices, with the shared immutable weight context.
 
-    return Frame(
+    Each table is copied once, in the block layout ``copy(deep=True)`` gives,
+    and ``Frame.adopt`` stores the copies without copying them again.
+    """
+
+    return Frame.adopt(
         {
-            entity: context.tables[entity]
-            .loc[
-                :,
-                list(
-                    context.frame_column_order.get(
-                        entity, tuple(context.tables[entity].columns)
-                    )
-                ),
-            ]
-            .copy(deep=True)
+            entity: copy_table(
+                context.tables[entity].loc[
+                    :,
+                    list(
+                        context.frame_column_order.get(
+                            entity, tuple(context.tables[entity].columns)
+                        )
+                    ),
+                ]
+            )
             for entity in UK_NATIONAL_SCHEMA.entities
         },
         UK_NATIONAL_SCHEMA,
         {"household": context.weights["household"]},
-        context.strata.copy(deep=True),
+        copy_series(context.strata),
         mass_log=getattr(context, "frame_mass_log", ()),
         metadata=getattr(context, "frame_metadata", {})
         or {"time_period": str(context.params["time_period"])},

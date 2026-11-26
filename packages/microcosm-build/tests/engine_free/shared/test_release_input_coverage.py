@@ -8,6 +8,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import microcosm.build.us_runtime.release_input_coverage as coverage_module
+from microcosm.build.us_runtime.post_export_requests import RECORDS_REQUESTS_ONLY
 from microcosm.build.us_runtime.release_input_coverage import (
     US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION,
     ListParameterEdit,
@@ -394,7 +395,7 @@ class TestReformCoverageSmokeGate:
             return _Sim(4.16e10 if reform is not None else 4.0e10)
 
         if flag:
-            setattr(simulate, smoke_module.RECORDS_REQUESTS_ONLY, True)
+            setattr(simulate, RECORDS_REQUESTS_ONLY, True)
         probes = [_probe(), _list_edit_probe()]
         result = us_reform_coverage_smoke_gate(
             simulate=simulate, probes=probes, period=2024

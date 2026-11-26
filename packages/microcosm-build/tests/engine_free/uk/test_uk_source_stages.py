@@ -98,6 +98,12 @@ UC_COHERENCE_STAGE_NAMES = [
 UC_LIMITED_CAPABILITY_STAGE_NAMES = [
     "uc_limited_capability",
 ]
+# B1 of microcosm#1710: the UC housing costs element claim flag, from DWP's
+# award statement on linked FRS claims and a draw elsewhere, before the
+# redraw reads entitlement.
+UC_HOUSING_COSTS_CLAIM_STAGE_NAMES = [
+    "uc_housing_costs_claim",
+]
 UC_TAKE_UP_STAGE_NAMES = [
     "uc_take_up",
 ]
@@ -164,6 +170,7 @@ UK_SOURCE_STAGE_NAMES = [
     *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
     *UC_LIMITED_CAPABILITY_STAGE_NAMES,
+    *UC_HOUSING_COSTS_CLAIM_STAGE_NAMES,
     *UC_TAKE_UP_STAGE_NAMES,
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
@@ -238,6 +245,7 @@ class TestUKSourceStagesManifest:
             *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
             *UC_LIMITED_CAPABILITY_STAGE_NAMES,
+            *UC_HOUSING_COSTS_CLAIM_STAGE_NAMES,
             *UC_TAKE_UP_STAGE_NAMES,
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
@@ -332,6 +340,7 @@ class TestUKSourceStagesManifest:
                     "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
                     "uc_limited_capability": _identity,
+                    "uc_housing_costs_claim": _identity,
                     "uc_take_up": _identity,
                     "uc_legacy_closure_take_up": _identity,
                     "pension_credit_take_up": _identity,

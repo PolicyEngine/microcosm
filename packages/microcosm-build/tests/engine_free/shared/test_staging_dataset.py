@@ -287,9 +287,8 @@ def test_sidecars_list_every_file_and_verify_themselves(tmp_path):
             "orrery_upstream",
         ),
         # Only an upstream file named by a full SHA-256 is an Orrery input;
-        # the projection and the native evidence keep their key's role.
+        # the native evidence keeps its key's role.
         ("orrery/upstream-0123456789abcdef.json", "orrery_upstream_json"),
-        ("orrery/graph.orrery.json", "orrery_graph_orrery_json"),
         ("orrery/execution.evidence.json", "orrery_execution_evidence_json"),
         (
             "orrery/evidence-0e07dea6cca04063a47a8166793d9a0c-6f8356b6990586505573"

@@ -90,8 +90,12 @@ def test_uk_national_posture_is_the_seam_doctrine_with_no_overrides() -> None:
     assert posture.doctrine is UK_NATIONAL_SOLVE_DOCTRINE
     assert posture.clone_count is None
     assert (posture.epochs, posture.learning_rate, posture.seed) == (1500, 0.02, 0)
-    assert posture.target_weight_rule == "family_equal"
-    assert posture.allowed_target_weight_rules == ("family_equal", "uniform")
+    assert posture.target_weight_rule == "loss_family_equal"
+    assert posture.allowed_target_weight_rules == (
+        "loss_family_equal",
+        "family_equal",
+        "uniform",
+    )
     assert posture.expected_constituency_vintage is None
     assert posture.gate_scope == tuple(UK_CALIBRATION_GATE_SCOPE)
     assert (posture.gate_posture, posture.gate_policy_suffix) == (
@@ -124,13 +128,13 @@ def test_uk_national_posture_is_the_seam_doctrine_with_no_overrides() -> None:
     assert receipt == {}
     _, receipt = uk_doctrine_with_overrides(target_weight_rule="uniform")
     assert receipt == {
-        "target_weight_rule": {"default": "family_equal", "effective": "uniform"}
+        "target_weight_rule": {"default": "loss_family_equal", "effective": "uniform"}
     }
     assert posture.doctrine_bounds() == {
         "target_loss_cap": 10.0,
         "max_weight_ratio": 10.0,
         "scale_rule": "default_target_loss_scales",
-        "target_weight_rule": "family_equal",
+        "target_weight_rule": "loss_family_equal",
         "solve_epochs": 1500,
         "clone_count": None,
         "learning_rate": 0.02,

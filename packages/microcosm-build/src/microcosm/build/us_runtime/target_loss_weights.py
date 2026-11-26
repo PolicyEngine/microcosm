@@ -66,11 +66,41 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.calibrate.target_loss_rules import (
+    TargetLossRows,
+    TargetWeightRule,
+    apply_family_multipliers,
+    budget_group_weights,
+    budget_groups,
+    target_loss_weights_for_rule,
+    value_basis_weights,
+)
+
 #: The loss formula's identifier, recorded in release diagnostics.
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
     "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
 )
 US_FISCAL_TARGET_VALUE_WEIGHT_POWER = 0.5
+#: The US releases' declaration of the formula above: the shared rule
+#: (:mod:`microcosm.calibrate.target_loss_rules`) and its parameters. The row
+#: mapping says what each row is; the arithmetic is the shared rule's
+#: (microcosm#1729).
+US_FISCAL_TARGET_WEIGHT_RULE = TargetWeightRule(
+    "sqrt_value_concept_budget",
+    {"value_power": US_FISCAL_TARGET_VALUE_WEIGHT_POWER},
+)
+#: The weight rules the ACS local-area release may run under, by name. The
+#: first is its default and the only one any build has used. The second is
+#: the shared level and family rule, which gives each geography level one
+#: equal share of the loss; it changes the weights, so a build must ask for it
+#: by name.
+US_ACS_LOCAL_TARGET_WEIGHT_RULE = "concept_budget"
+US_ACS_LOCAL_TARGET_WEIGHT_RULES: Mapping[str, TargetWeightRule] = {
+    US_ACS_LOCAL_TARGET_WEIGHT_RULE: US_FISCAL_TARGET_WEIGHT_RULE,
+    "level_family_equal_sqrt_count": TargetWeightRule(
+        "level_family_equal", {"count_power": 0.5}
+    ),
+}
 #: Metadata that identifies a target's place, record or reconciliation rather
 #: than its concept. The concept-budget key of a congressional-district target
 #: ignores it, so that the districts of one concept in one state share one
@@ -130,14 +160,21 @@ def target_loss_weights_from_rows(
     concept_budget_keys: Sequence[Hashable],
     families: Sequence[str | None],
     family_multipliers: Mapping[str, float] | None = None,
+    *,
+    rule: TargetWeightRule = US_FISCAL_TARGET_WEIGHT_RULE,
+    levels: Sequence[str] | None = None,
 ) -> np.ndarray:
     """Steps 2-6 of the formula, over row-aligned per-target inputs.
 
+    The arithmetic is the shared rule ``rule`` names, by default
+    :data:`US_FISCAL_TARGET_WEIGHT_RULE`. ``levels`` is each row's geography
+    level, which only a rule that balances across levels reads.
+
     Returns float64 weights, row-aligned with the inputs. With at least one
-    row they are positive and of mean 1, given positive finite multipliers
-    whose products stay within float64 range (the CLI parser admits only
-    positive finite ones; this function, like the national helper it came
-    from, does not check them).
+    row they are positive, and of mean 1 under the default rule, given
+    positive finite multipliers whose products stay within float64 range (the
+    CLI parser admits only positive finite ones; this function, like the
+    national helper it came from, does not check them).
     """
 
     n_rows = len(values)
@@ -147,49 +184,30 @@ def target_loss_weights_from_rows(
             f"{n_rows} values, {len(bases)} bases, "
             f"{len(concept_budget_keys)} concept keys, {len(families)} families."
         )
-    basis_array = np.asarray(list(bases), dtype=object)
-    weights = _concept_budget_weights(
-        _value_basis_weights(values, basis_array), concept_budget_keys
+    rows = TargetLossRows(
+        values=values,
+        levels=levels,
+        families=families,
+        bases=bases,
+        groups=concept_budget_keys,
     )
-    unique_bases = sorted(set(basis_array.tolist()))
-    if not unique_bases:
+    weights = target_loss_weights_for_rule(rows, rule.with_family_multipliers(None))
+    if not family_multipliers or not n_rows:
         return weights
-    basis_total = len(weights) / len(unique_bases)
-    for basis in unique_bases:
-        mask = basis_array == basis
-        current_total = weights[mask].sum()
-        if current_total > 0:
-            weights[mask] *= basis_total / current_total
-    weights = weights / weights.mean()
-    if not family_multipliers:
-        return weights
-    family_array = np.asarray(list(families), dtype=object)
-    for family, multiplier in sorted(family_multipliers.items()):
-        mask = family_array == family
-        if not mask.any():
+    present = set(families)
+    for family in sorted(family_multipliers):
+        if family not in present:
             raise ValueError(
                 f"--target-family-loss-multiplier family {family!r} matches "
                 "no compiled target."
             )
-        weights[mask] *= multiplier
-    return weights / weights.mean()
+    return apply_family_multipliers(weights, families, family_multipliers)
 
 
 def _value_basis_weights(values: Sequence[float], bases: np.ndarray) -> np.ndarray:
     """Step 2: ``max(|value|, 1) ** 0.5`` over its basis mean."""
 
-    weights = np.ones(len(bases), dtype=np.float64)
-    magnitudes = np.asarray(
-        [max(abs(float(value)), 1.0) for value in values],
-        dtype=np.float64,
-    )
-    raw_weights = magnitudes**US_FISCAL_TARGET_VALUE_WEIGHT_POWER
-    for basis in sorted(set(bases.tolist())):
-        mask = bases == basis
-        mean_value = raw_weights[mask].mean()
-        if mean_value > 0:
-            weights[mask] = raw_weights[mask] / mean_value
-    return weights
+    return value_basis_weights(values, bases, power=US_FISCAL_TARGET_VALUE_WEIGHT_POWER)
 
 
 def _concept_budget_weights(
@@ -197,13 +215,7 @@ def _concept_budget_weights(
 ) -> np.ndarray:
     """Step 3: each group sums to its largest member's weight."""
 
-    for indices in concept_budget_groups(concept_budget_keys):
-        group_weights = weights[indices]
-        group_total = float(group_weights.sum())
-        group_budget = float(group_weights.max(initial=0.0))
-        if group_total > 0 and group_budget > 0:
-            weights[indices] *= group_budget / group_total
-    return weights
+    return budget_group_weights(weights, concept_budget_keys)
 
 
 def concept_budget_groups(
@@ -211,10 +223,7 @@ def concept_budget_groups(
 ) -> list[list[int]]:
     """Row indices sharing each concept-budget key, in first-row order."""
 
-    group_indices: dict[Hashable, list[int]] = {}
-    for index, key in enumerate(concept_budget_keys):
-        group_indices.setdefault(key, []).append(index)
-    return list(group_indices.values())
+    return budget_groups(concept_budget_keys)
 
 
 # ---------------------------------------------------------------------------
@@ -608,8 +617,15 @@ def target_loss_weights(
     family_multipliers: Mapping[str, float] | None = None,
     *,
     row_mapping: TargetLossRowMapping = US_FISCAL_TARGET_LOSS_ROW_MAPPING,
+    rule: TargetWeightRule = US_FISCAL_TARGET_WEIGHT_RULE,
 ) -> np.ndarray:
-    """The formula's weights for ``specs``, row-aligned, under one mapping."""
+    """The weights ``rule`` gives ``specs``, row-aligned, under one mapping.
+
+    The mapping says what each row is (its basis and its concept budget
+    group); its level is :func:`target_geography_level`. ``rule`` is the
+    shared rule that turns those into weights, by default the formula of the
+    module docstring.
+    """
 
     specs = tuple(specs)
     bases = [row_mapping.value_basis(spec) for spec in specs]
@@ -622,6 +638,8 @@ def target_loss_weights(
         keys,
         [spec.family for spec in specs],
         family_multipliers,
+        rule=rule,
+        levels=[target_geography_level(spec) for spec in specs],
     )
 
 
@@ -653,9 +671,23 @@ def fiscal_target_concept_budget_weights(registry) -> np.ndarray:
     )
 
 
+def acs_local_target_weight_rule(name: str) -> TargetWeightRule:
+    """The ACS local release's declared weight rule of that name."""
+
+    try:
+        return US_ACS_LOCAL_TARGET_WEIGHT_RULES[name]
+    except KeyError:
+        raise ValueError(
+            "the ACS local target weight rule must be one of "
+            f"{sorted(US_ACS_LOCAL_TARGET_WEIGHT_RULES)}, got {name!r}."
+        ) from None
+
+
 def us_acs_local_target_loss_weights(
     specs: Iterable[Any],
     family_multipliers: Mapping[str, float] | None = None,
+    *,
+    rule: str = US_ACS_LOCAL_TARGET_WEIGHT_RULE,
 ) -> np.ndarray:
     """The ACS local release's weights for its training target specs."""
 
@@ -669,6 +701,7 @@ def us_acs_local_target_loss_weights(
         specs,
         family_multipliers,
         row_mapping=US_ACS_LOCAL_TARGET_LOSS_ROW_MAPPING,
+        rule=acs_local_target_weight_rule(rule),
     )
 
 

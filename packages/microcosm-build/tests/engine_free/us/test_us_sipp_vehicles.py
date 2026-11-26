@@ -12,6 +12,9 @@ import pandas as pd
 import pytest
 from sklearn.ensemble import RandomForestClassifier
 
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    read_sipp_december_person_rows,
+)
 from microcosm.build.us_runtime.sipp_vehicles import (
     _OWNED_OBSERVED_COLUMN,
     _VALUE_OBSERVED_COLUMN,
@@ -19,6 +22,7 @@ from microcosm.build.us_runtime.sipp_vehicles import (
     ARCHIVED_SIPP_VEHICLE_RECEIVER_URL,
     ARCHIVED_SIPP_VEHICLE_SOURCE_URL,
     ARCHIVED_SIPP_VEHICLE_TRANSFORM_URL,
+    SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION,
     SIPP_2023_VEHICLE_DONOR_REVISION,
     SIPP_2023_VEHICLE_DONOR_SHA256,
     SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
@@ -30,9 +34,9 @@ from microcosm.build.us_runtime.sipp_vehicles import (
     _append_owned_dummies,
     _predictor_encoding,
     _recipient_household_predictor_table,
+    build_sipp_2023_vehicle_donor,
     fetch_sipp_2023_vehicle_donor,
     impute_us_sipp_vehicles,
-    load_sipp_2023_vehicle_donor,
     us_sipp_vehicles_signal_gate,
     us_sipp_vehicles_stage_spec,
     us_sipp_vehicles_summary,
@@ -41,6 +45,16 @@ from microcosm.build.us_runtime.sipp_vehicles import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 TIME_PERIOD = 2026
+
+
+def _vehicle_donor_from_file(path: Path, **read_options) -> pd.DataFrame:
+    return build_sipp_2023_vehicle_donor(
+        read_sipp_december_person_rows(
+            path,
+            columns=SIPP_VEHICLE_SOURCE_COLUMNS,
+            **read_options,
+        )
+    )
 
 
 def _source_row(
@@ -292,7 +306,10 @@ def test_immutable_artifact_and_archive_coordinates_are_exact() -> None:
         "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
     )
     assert SIPP_2023_VEHICLE_DONOR_SIZE_BYTES == 3_726_010_471
-    assert SIPP_2023_VEHICLE_DONOR_REVISION in SIPP_2023_VEHICLE_DONOR_URL
+    assert SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION == "1.115.5"
+    assert f"/resolve/{SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION}/" in (
+        SIPP_2023_VEHICLE_DONOR_URL
+    )
     assert SIPP_2023_VEHICLE_DONOR_URL.endswith("/pu2023.csv")
     assert "/resolve/" in SIPP_2023_VEHICLE_DONOR_URL
     for url in (
@@ -353,9 +370,9 @@ def test_exact_source_columns_predictors_outputs_and_stage_spec() -> None:
     assert set(US_SIPP_VEHICLE_OUTPUT_COLUMNS) <= set(spec.outputs)
 
 
-def test_loader_applies_exact_december_household_transform_and_masks(tmp_path) -> None:
-    donor = load_sipp_2023_vehicle_donor(
-        _write_sipp_source(tmp_path), expected_size_bytes=None, chunksize=2
+def test_donor_applies_exact_december_household_transform_and_masks(tmp_path) -> None:
+    donor = _vehicle_donor_from_file(
+        _write_sipp_source(tmp_path), chunksize=2
     ).set_index("household_id")
 
     assert donor.index.tolist() == [10, 20, 30, 40]
@@ -386,13 +403,12 @@ def test_loader_applies_exact_december_household_transform_and_masks(tmp_path) -
     assert donor.loc[10, "household_employment_income"] < 100_000
 
 
-def test_loader_rejects_missing_columns_and_bad_hash(tmp_path) -> None:
+def test_read_rejects_missing_columns_and_bad_hash(tmp_path) -> None:
     path = _write_sipp_source(tmp_path)
     with pytest.raises(ValueError, match="sha-256 verification"):
-        load_sipp_2023_vehicle_donor(
+        _vehicle_donor_from_file(
             path,
             expected_sha256="0" * 64,
-            expected_size_bytes=None,
         )
 
     missing_path = tmp_path / "missing.csv"
@@ -400,7 +416,7 @@ def test_loader_rejects_missing_columns_and_bad_hash(tmp_path) -> None:
         missing_path, sep="|", index=False
     )
     with pytest.raises(ValueError, match="missing column"):
-        load_sipp_2023_vehicle_donor(missing_path, expected_size_bytes=None)
+        _vehicle_donor_from_file(missing_path)
 
 
 def test_cached_full_donor_matches_pinned_household_support() -> None:
@@ -415,7 +431,7 @@ def test_cached_full_donor_matches_pinned_household_support() -> None:
     if not snapshot.is_file():
         pytest.skip("the 3.73 GB pinned SIPP donor is not mounted")
 
-    donor = load_sipp_2023_vehicle_donor(
+    donor = _vehicle_donor_from_file(
         snapshot,
         expected_sha256=SIPP_2023_VEHICLE_DONOR_SHA256,
         expected_size_bytes=SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
@@ -467,7 +483,13 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(
     payload = b"small synthetic pinned donor payload"
     digest = hashlib.sha256(payload).hexdigest()
     response = _ChunkedResponse(payload)
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *_args, **_kwargs: response)
+    opened: list[object] = []
+
+    def fake_urlopen(url, *_args, **_kwargs):
+        opened.append(url)
+        return response
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
     path = fetch_sipp_2023_vehicle_donor(
         tmp_path,
@@ -479,6 +501,7 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(
     assert len(response.read_sizes) > 2
     assert all(size == 5 for size in response.read_sizes)
     assert not (tmp_path / "pu2023.csv.part").exists()
+    assert opened == [SIPP_2023_VEHICLE_DONOR_URL]
 
     def unexpected_download(*_args, **_kwargs):
         raise AssertionError("valid cached donor should not be downloaded again")

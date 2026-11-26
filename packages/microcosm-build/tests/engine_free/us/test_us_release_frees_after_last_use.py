@@ -18,17 +18,19 @@ from microcosm.calibrate import DroppedConstraintMatrix
 from test_support.microcosm_build.us_gate_shadow import arm_us_tool_gate_shadows
 from test_support.microcosm_build.us_post_export_scoring import *
 
-#: The nine donor-table loaders ``_main`` calls, one per imputation stage.
-_DONOR_LOADERS = (
+#: The calls that make ``_main``'s nine donor tables, one per imputation stage:
+#: four read a file each, and five build a table from the shared SIPP December
+#: rows, which ``_main`` deletes after the last of those stages.
+_DONOR_TABLE_CALLS = (
+    "build_sipp_2023_financial_asset_donor",
+    "build_sipp_2023_head_start_donor",
+    "build_sipp_2023_ssi_disability_donor",
+    "build_sipp_2023_vehicle_donor",
+    "build_sipp_2023_voluntary_filing_donor",
     "load_org_2024_donor",
     "load_scf_2022_auto_loan_donor",
     "load_scf_2022_financial_asset_donor",
-    "load_sipp_2023_financial_asset_donor",
-    "load_sipp_2023_head_start_donor",
-    "load_sipp_2023_ssi_disability_donor",
     "load_sipp_2023_tip_donor",
-    "load_sipp_2023_vehicle_donor",
-    "load_sipp_2023_voluntary_filing_donor",
 )
 
 
@@ -558,24 +560,28 @@ def test_main_passes_each_donor_table_straight_into_its_stage(builder) -> None:
         for parent in ast.walk(main)
         for child in ast.iter_child_nodes(parent)
     }
-    loader_calls = [
+    donor_table_calls = [
         node
         for node in ast.walk(main)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and re.fullmatch(r"load_\w+_donor", node.func.id)
+        and re.fullmatch(r"(?:build|load)_\w+_donor", node.func.id)
     ]
-    assert sorted(call.func.id for call in loader_calls) == sorted(_DONOR_LOADERS)
-    for call in loader_calls:
+    assert sorted(call.func.id for call in donor_table_calls) == sorted(
+        _DONOR_TABLE_CALLS
+    )
+    for call in donor_table_calls:
         keyword = parents[call]
         assert isinstance(keyword, ast.keyword), ast.unparse(call)
         stage = parents[keyword]
         assert isinstance(stage, ast.Call)
         assert isinstance(stage.func, ast.Name)
         assert stage.func.id.startswith("with_us_"), ast.unparse(stage.func)
-    # A cached loader would keep its table for the process, whatever _main does.
-    for loader in _DONOR_LOADERS:
-        assert not hasattr(getattr(builder, loader), "cache_info"), loader
+    # A cached call would keep its table for the process, whatever _main does.
+    for donor_table_call in _DONOR_TABLE_CALLS:
+        assert not hasattr(getattr(builder, donor_table_call), "cache_info"), (
+            donor_table_call
+        )
 
 
 def test_main_frees_base_frame_after_the_export_input_mass_check(builder) -> None:

@@ -2589,6 +2589,7 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
         "minimum_age_child_rows": 200,
         "maximum_opt_out_share_deviation": 0.01,
         "minimum_eligible_family_units": 1,
+        "maximum_copy_report_rate_deviation": 0.05,
     }
 
     def age(value, published, realized, *, rows=1_000, clipped=False):
@@ -2600,9 +2601,41 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
             "clipped": clipped,
         }
 
-    def gate(*, realized=0.868, ages=None, share=0.0905, exhausted=False, units=100):
+    def copies(**changes):
+        receipt = {
+            "minimum_source_households": 30,
+            "cells": [
+                {
+                    "children": ["1"],
+                    "income_bands": ["taper"],
+                    "frs_source_households": 40,
+                },
+                {
+                    "children": ["2", "3+"],
+                    "income_bands": ["taper"],
+                    "frs_source_households": 31,
+                },
+            ],
+            "copy_rate_expected": 0.67,
+            "copy_rate_after": 0.69,
+            "frs_rows_unchanged": True,
+        }
+        receipt.update(changes)
+        return receipt
+
+    def gate(
+        *,
+        realized=0.868,
+        ages=None,
+        share=0.0905,
+        exhausted=False,
+        units=100,
+        copy_reports=None,
+        omit_copies=False,
+    ):
         evidence = {
             "stage": "child_benefit_take_up",
+            "copy_reports": copies() if copy_reports is None else copy_reports,
             "claims": {
                 "eligible_family_units": units,
                 "target_rate": 0.871,
@@ -2617,6 +2650,8 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
                 "pool_exhausted": exhausted,
             },
         }
+        if omit_copies:
+            del evidence["copy_reports"]
         return uk_stage_health_gate(
             evidence=evidence,
             stage="child_benefit_take_up",
@@ -2643,6 +2678,30 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
     assert not gate(share=0.12, exhausted=True).passed
     assert not gate(units=0).passed
     assert not gate(ages=[]).passed
+    # The SPI copies' reports (microcosm#1508): FRS rows kept, every cell on
+    # the declared support, and the copies' share near their cells' rates.
+    assert result.details["copy_reports"] == {
+        "cells": 2,
+        "short_cells": 0,
+        "expected": 0.67,
+        "realized": 0.69,
+    }
+    assert "did not keep FRS rows" in " ".join(
+        gate(copy_reports=copies(frs_rows_unchanged=False)).failures
+    )
+    short = copies()
+    short["cells"][1]["frs_source_households"] = None
+    assert "1 copy report cell(s)" in " ".join(gate(copy_reports=short).failures)
+    assert "SPI copy families report" in " ".join(
+        gate(copy_reports=copies(copy_rate_after=0.75)).failures
+    )
+    assert not gate(copy_reports=copies(cells=[])).passed
+    assert not gate(copy_reports={}).passed
+    # A frame without copies has no share to hold.
+    assert _passed(
+        gate(copy_reports=copies(copy_rate_expected=None, copy_rate_after=None))
+    )
+    assert "no SPI copy reports" in " ".join(gate(omit_copies=True).failures)
 
 
 _PROPERTY_COMPONENTS_PARAMETERS = {

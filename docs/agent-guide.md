@@ -14,12 +14,16 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ## Commands
 
-UK build completion exports and stages Orrery graph evidence. No build uploads
-its graph: the staged bundle submits the graph's inputs to the collector
-through the separately installed `microcosm-emitter`, which the build starts
-through `microcosm-emitter-interface`; see [UK graph publication](orrery-publication.md). Staging run files and staged
-dataset bundles go through the same emitter. No new producer secret is required. Keep graph export/publication tests independent
-of the hosted runs app and collector; use synthetic files and fake HTTP.
+UK builds write and stage their graph's Orrery inputs (the compiler schema,
+the execution overlay and linked upstream files); Microcosm makes no Orrery
+document and no build uploads its graph. The staged bundle submits the inputs
+to the collector, which builds the Orrery graph files, through the separately
+installed `microcosm-emitter`, which the build starts through
+`microcosm-emitter-interface`; see [UK graph inputs](orrery-publication.md).
+Staging run files and staged dataset bundles go through the same emitter. No
+new producer secret is required. Keep graph-input and staging tests
+independent of the run viewer and the collector; use synthetic files and
+fake HTTP.
 
 ```bash
 uv sync --all-packages   # set up the whole workspace
@@ -101,8 +105,8 @@ or country mapping.
 
 Each ordinary behavioral job has a Python 3.13/3.14 matrix and reports the 25
 slowest tests. The engine-free job installs no country extra, always runs every
-engine-free test, installs its locked JavaScript test dependencies, and
-distributes files across two pytest workers with `--dist loadfile`.
+engine-free test, and distributes files across two pytest workers with
+`--dist loadfile`.
 Changed-file selection only controls the more resource-intensive country jobs.
 A documentation-only pull request selects neither country; a US-only or UK-only
 pull request selects that country; shared, mixed, unknown, or empty changed-path
@@ -142,16 +146,13 @@ aggregate-result jobs. Add a test category to `TEST_GROUPS` before its
 executor; do not create a separate selection system, test workflow, or
 single-purpose behavioral test job.
 
-The Orrery parser compatibility assertion lives in
-`packages/microcosm-graph/tests/engine_free/shared/test_graph_orrery.py`. The
-engine-free runner installs the supported public Orrery range and locked Node
-dependency set under `tools/orrery-contract/`; the pytest test generates a
-document through Microcosm's public Python API and requires Orrery's public
-parser to accept it. The recorded-evidence assertion in `test_graph_evidence.py`
-uses the same pinned parser for groups, statuses, activities and artifacts, and
-the one in `test_graph_reconstruction.py` uses it for the reconstruction marker
-of a declaration-only document.
-These CI tests perform no browser rendering.
+Microcosm makes no Orrery document, so no test runs Orrery's parser and the
+engine-free job installs no JavaScript dependencies; the collector validates
+the documents it projects.
+`packages/microcosm-graph/tests/engine_free/shared/test_graph_no_orrery_projection.py`
+checks that the graph package keeps no projection module or export, and
+`packages/microcosm-build/tests/engine_free/uk/test_uk_orrery_inputs.py`
+checks the files a UK build registers and hands to the collector.
 
 Workspace tests use an in-memory emitter client by default
 (`test_support/microcosm_build/emitter.py`), and the shared fixture refuses to
@@ -369,9 +370,11 @@ certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
 deliberate human step. The UK national and dense releases, each UK local-area
-release that the dataset registry names, and the US releases
+release that the dataset registry names, the US releases
 (`microcosm-us-2024-national`, the US default, `-local`,
-`-receipt-donor`, `-evidence`, `-annual` and `-local-annual`) publish each build into its own folder
+`-receipt-donor`, `-evidence`, `-annual` and `-local-annual`) and BE's
+releases (`microcosm-be-2025-national` and `microcosm-be-2026-national`)
+publish each build into its own folder
 through the emitter (`microcosm-publish-release-build`, from
 `microcosm.build.release_publication`), which records it in the repository's
 `releases.json`; making a published build current is a separate deliberate
