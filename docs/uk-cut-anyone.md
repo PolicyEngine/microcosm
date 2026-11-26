@@ -388,11 +388,28 @@ anyone verify; that is tracked in microcosm#1406.
 
 ```bash
 uv run --no-sync python tools/certify_uk_cut_in_policyengine_py.py \
-  --national-tag microcosm-uk-2024-25-national-<ts>-<id> \
-  (--dense-tag <tag> | --keep-regional-release | --area-coded-national-uri <uri> | --drop-regional-release) \
+  --national-build uk-frs-calibration-attempt-<ts>-<id> \
+  (--dense-build <local-area build> | --keep-regional-release | --area-coded-national-uri <uri> | --drop-regional-release) \
   --pepy-repo <your clone of PolicyEngine/policyengine.py> \
+  [--national-data-commit <commit>] [--dense-data-commit <commit>] \
   [--max-load1 <load>] [--min-free-gb <GB>] [--push --open-pr]
 ```
+
+Builds are named as `releases.json` names them, the national build in
+`microcosm-uk-2024-25-national` and the local-area build in
+`microcosm-uk-2024-25-dense`. `policyengine/populace-uk-private` publishes
+each build into its own folder, `releases/<release>/<build>/`, with no tag,
+and policyengine.py refuses a tagged manifest from a repository with
+`releases.json` (policyengine.py#683), so the script takes no tag. A build
+need not be current: a certificate pins one build.
+
+Each build is certified from its folder at the commit that published it,
+which the script asks the Hub for: the last commit of the build's
+`release_manifest.json` on `main`, since a build folder never changes. To pin
+another commit that holds the folder, such as the `commit` that
+`microcosm-publish-release-build` printed, pass `--national-data-commit` or
+`--dense-data-commit` (a full 40-character commit). `--keep-regional-release`
+reads the local-area build at the folder and commit the current bundle pins.
 
 Each heavy step first checks the host. The disk floor defaults to 55 GB
 (`--min-free-gb`). There is no load limit unless you set one with
@@ -415,26 +432,35 @@ git identity that commits. An agent session adds its own credit:
 commit trailer, and `--pr-body-footer "🤖 Generated with [Claude Code](https://claude.com/claude-code)"`
 for the body.
 
-The script does the mechanical part of what policyengine.py#685 did by hand,
-on a new branch from policyengine.py's main.
+The script does the mechanical part of what policyengine.py#685 and #766 did
+by hand, on a new branch from policyengine.py's main.
 
 **Before writing anything:**
 
-- It refuses if another writer is already certifying the cut: an open pull
-  request that names the tag, or any open pull request or branch whose name
+- It refuses if another writer is already certifying the build: an open pull
+  request that names the build, or any open pull request or branch whose name
   contains `certify-uk-<id>`, including suffixed ones such as
   `certify-uk-a133f37a-national`. If it cannot read either listing, it
   refuses rather than passing.
-- It reads both manifests at their tags.
-- It refuses a regional cut built on another policyengine-uk, naming the
-  routes.
+- It refuses a build that `releases.json` at `main`, downloaded afresh, does
+  not list or has withdrawn, as `certify-data` would.
+- It reads each build's manifest from its folder at its commit, and refuses
+  one that names another release or build.
+- It refuses a regional build made with another policyengine-uk, naming the
+  routes, and a kept regional release in `populace-uk-private` that is not a
+  build in its own folder.
 
 **Then:**
 
-1. `certify-data` at the cut's own model and core.
+1. `certify-data` at the national build's own model and core, with each
+   build's folder manifest at its commit
+   (`hf://dataset/policyengine/populace-uk-private@<commit>/releases/<release>/<build>/release_manifest.json`).
 2. `uv lock` and `release_lock.py`.
 3. `generate --include-tros`.
-4. policyengine.py's own certified-constant rewrite, plus the local-area tag.
+4. policyengine.py's own certified-constant rewrite, plus the local-area
+   build's name and commit. If the previous local-area build shared a commit
+   with a national build, its commit constants are left for a person, and the
+   pull request body says so.
 5. The household snapshots.
 6. `check --published-spm --include-tros --strict-tros`.
 7. The UC floor.
@@ -492,8 +518,9 @@ rehearsal probe agrees.
   through any of these inputs would be wrong.
 - `tools/certify_uk_cut_in_policyengine_py.py` measures this whenever a
   mismatch is accepted, with policyengine.py's own audit:
-  - it downloads every regional microdata H5 at its manifest pin and checks
-    its sha256;
+  - it downloads every regional microdata H5 from the build's folder at the
+    build's commit (a file in another repository at its own revision), and
+    checks its sha256;
   - in the certification worktree it installs the target policyengine-uk
     and core, and runs `scripts/audit_regional_input_surface.py`, which reads
     only column names and measures them against the regional cut's build

@@ -1,16 +1,18 @@
-"""Certify a published Microcosm UK cut into policyengine.py, on a fresh branch.
+"""Certify a published Microcosm UK build into policyengine.py, on a fresh branch.
 
-policyengine.py serves the UK cut its bundle manifest certifies; moving that
-pin is a policyengine.py pull request and release. This script does the
-mechanical part of that pull request the way policyengine.py#685 did it by
-hand (``docs/engineering/skills/data-certification.md`` there), in a new
+policyengine.py serves the UK build its bundle manifest certifies; moving
+that pin is a policyengine.py pull request and release. This script does the
+mechanical part of that pull request the way policyengine.py#685 and #766 did
+it by hand (``docs/engineering/skills/data-certification.md`` there), in a new
 worktree branched from policyengine.py's ``origin/main``:
 
-1. refuse if someone is already certifying this cut (one writer per cut);
-2. read the national (and regional) release manifests at their tags and
-   check, before anything is written, that the regional route can certify;
-3. ``scripts/bundle.py certify-data`` with the national tag and the chosen
-   regional route, at the cut's own policyengine-uk and core;
+1. refuse if someone is already certifying this build (one writer per build);
+2. read the national (and local-area) build from its own folder,
+   ``releases/<release>/<build>/``, and check, before anything is written,
+   that the regional route can certify;
+3. ``scripts/bundle.py certify-data`` with the national build's folder
+   manifest and the chosen regional route, at the build's own policyengine-uk
+   and core;
 4. ``uv lock`` and ``scripts/release_lock.py``;
 5. ``bundle.py generate --include-tros``, the certified-constant rewrite of
    policyengine.py's own qualification library, the household snapshots,
@@ -23,9 +25,18 @@ worktree branched from policyengine.py's ``origin/main``:
 It pushes and opens a draft pull request only with ``--push`` and
 ``--open-pr``. It never merges and never releases.
 
+A build is named by its name in ``releases.json`` (``--national-build``,
+``--dense-build``), which must list it at ``main`` and not have withdrawn it,
+as policyengine.py's certification requires (policyengine.py#683). The
+repository publishes no tags, and policyengine.py refuses a tagged manifest
+from a repository with ``releases.json``. Each build is pinned at the commit
+that published its folder: the last commit of its ``release_manifest.json`` on
+``main``, since a build folder never changes. ``--national-data-commit`` and
+``--dense-data-commit`` pin another commit that holds the folder instead.
+
 Regional routes (pick one):
 
-``--dense-tag TAG``           a Microcosm local-area cut (ship together)
+``--dense-build BUILD``       a Microcosm local-area build (ship together)
 ``--keep-regional-release``   the bundle's current regional release
 ``--area-coded-national-uri`` an enhanced-FRS release that claims the version
 ``--drop-regional-release``   no area routing (sim-api's UK default then
@@ -35,10 +46,11 @@ A regional release built on another policyengine-uk is refused by
 certification unless policyengine.py accepts a recorded mismatch:
 ``--accept-regional-model-mismatch REASON`` with ``--audited-by WHO`` and at
 least one ``--regional-limitation TEXT``. The regional microdata is downloaded
-at its manifest pin, policyengine.py's own ``scripts/audit_regional_input_surface.py``
-(policyengine.py#699) audits its stored columns against the build and target
-models, and ``certify-data`` takes that evidence; any dropped column refuses
-(see ``docs/uk-cut-anyone.md``).
+from its build's folder at the build's commit, policyengine.py's own
+``scripts/audit_regional_input_surface.py`` (policyengine.py#699) audits its
+stored columns against the build and target models, and ``certify-data``
+takes that evidence; any dropped column refuses (see
+``docs/uk-cut-anyone.md``).
 
 Needs ``HF_TOKEN`` (read ``policyengine/populace-uk-private``), PyPI, and
 ``gh`` for the writer check and the pull request.
@@ -58,22 +70,32 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
+from microcosm.data.build_folder_manifests import require_offered_build
 from microcosm.data.gate_signing_keys import UK_GATE_SIGNING_KEY_ENV
+from microcosm.data.releases_record import build_folder
 
 PEPY_REPO = "PolicyEngine/policyengine.py"
-CUT_REPO = "policyengine/populace-uk-private"
+BUILD_REPO = "policyengine/populace-uk-private"
 NATIONAL_RELEASE = "microcosm-uk-2024-25-national"
 DENSE_RELEASE = "microcosm-uk-2024-25-dense"
 PEPY_PYTHON = "3.13"  # certify-uk-release.yaml's interpreter
-TAG_PATTERN = re.compile(
-    r"^microcosm-uk-2024-25-(national|dense)-\d{8}T\d{6}Z-[0-9a-f]{8}$"
+RELEASE_MANIFEST = "release_manifest.json"
+#: A release or build name the emitter accepts for a folder, the rule
+#: ``microcosm.data.releases_record`` and policyengine.py repeat.
+BUILD_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+#: A full Hub commit ID. A branch moves, and a short ID can be ambiguous.
+COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+#: A build's folder manifest in the build repository, as certify-data takes it.
+FOLDER_MANIFEST_URI = re.compile(
+    rf"^hf://dataset/{re.escape(BUILD_REPO)}@(?P<commit>[^/@]+)"
+    rf"/releases/(?P<release>[^/]+)/(?P<build>[^/]+)/{re.escape(RELEASE_MANIFEST)}$"
 )
 CONSTANT_PATTERN = r'(?P<pre>["@/-]){old}(?P<post>["/])'
 CONSTANT_FILES = (
@@ -87,49 +109,146 @@ class CertifyError(RuntimeError):
     """A refusal the operator must act on."""
 
 
-def manifest_uri(tag: str, release: str) -> str:
-    return f"hf://dataset/{CUT_REPO}@{tag}/releases/{release}/release_manifest.json"
+def manifest_uri(release: str, build: str, commit: str) -> str:
+    """The build's folder manifest at ``commit``, as policyengine.py certifies it."""
+
+    folder = build_folder(release, build)
+    return f"hf://dataset/{BUILD_REPO}@{commit}/{folder}/{RELEASE_MANIFEST}"
 
 
-def check_tag(tag: str, kind: str) -> str:
-    match = TAG_PATTERN.match(tag)
-    if not match or match.group(1) != kind:
-        raise CertifyError(
-            f"{tag!r} is not a {kind} cut tag; certify cut tags only, never @main."
-        )
-    return tag
+class BuildPin(NamedTuple):
+    """A build in its own folder, and the commit it is read at."""
+
+    release: str
+    build: str
+    commit: str
+
+
+def folder_reference(uri: str | None) -> BuildPin | None:
+    """The build a folder manifest URI in the build repository names, or
+    ``None`` for any other URI (a tagged manifest, another repository)."""
+
+    match = FOLDER_MANIFEST_URI.match(uri or "")
+    if match is None:
+        return None
+    return BuildPin(match["release"], match["build"], match["commit"])
 
 
 @dataclass(frozen=True)
-class CutVersions:
-    tag: str
+class PublishedBuild:
+    """A build read from its own folder, and what it was built with."""
+
+    release: str
+    build: str
+    commit: str
     model: str
     core: str
     claims: tuple[str, ...]
 
+    @property
+    def folder(self) -> str:
+        return build_folder(self.release, self.build)
 
-def read_cut(tag: str, release: str) -> CutVersions:
+    @property
+    def pin(self) -> BuildPin:
+        return BuildPin(self.release, self.build, self.commit)
+
+    @property
+    def manifest_uri(self) -> str:
+        return manifest_uri(self.release, self.build, self.commit)
+
+
+def hub_token() -> str | None:
+    return os.environ.get("HUGGING_FACE_TOKEN") or os.environ.get("HF_TOKEN")
+
+
+def hub_api() -> Any:
+    """A Hub client that reads with this process's token."""
+
     # Set before importing the hub: its HTTP timeout constants are import-time.
     os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "120")
     os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "60")
-    from huggingface_hub import hf_hub_download
+    from huggingface_hub import HfApi
 
-    path = hf_hub_download(
-        CUT_REPO,
-        f"releases/{release}/release_manifest.json",
-        repo_type="dataset",
-        revision=tag,
-        token=os.environ.get("HUGGING_FACE_TOKEN") or os.environ.get("HF_TOKEN"),
-        etag_timeout=60,
+    return HfApi(token=hub_token())
+
+
+def publishing_commit(api: Any, release: str, build: str) -> str:
+    """The commit that published the build's folder.
+
+    A build folder never changes after it is published, so the last commit
+    of its manifest on ``main`` is the one that published it.
+    """
+
+    path = f"{build_folder(release, build)}/{RELEASE_MANIFEST}"
+    infos = api.get_paths_info(
+        BUILD_REPO, [path], expand=True, revision="main", repo_type="dataset"
     )
-    manifest = json.loads(Path(path).read_text())
-    build = manifest.get("build") or {}
-    if build.get("cut_tag") != tag:
-        raise CertifyError(f"{tag}: the manifest names cut {build.get('cut_tag')!r}.")
-    return CutVersions(
-        tag=tag,
-        model=build["built_with_model_package"]["version"],
-        core=build["built_with_core_package"]["version"],
+    for info in infos:
+        commit = getattr(getattr(info, "last_commit", None), "oid", None)
+        if getattr(info, "path", None) == path and COMMIT_PATTERN.match(
+            str(commit or "")
+        ):
+            return str(commit)
+    raise CertifyError(
+        f"{BUILD_REPO} has no {path} on main, so build {build!r} of {release!r} "
+        "has no folder to certify from."
+    )
+
+
+def read_published_build(
+    release: str, build: str, *, commit: str | None = None, api: Any = None
+) -> PublishedBuild:
+    """Build ``build`` of ``release``, read from its own folder.
+
+    ``releases.json`` at ``main``, downloaded afresh, must list the build and
+    not have withdrawn it. The build is pinned at ``commit``, or else at the
+    commit that published its folder, and its manifest there must name the
+    release and the build and record the packages it was built with.
+    """
+
+    api = hub_api() if api is None else api
+    try:
+        require_offered_build(
+            api,
+            repo_id=BUILD_REPO,
+            release=release,
+            build=build,
+            label="build",
+            fresh=True,
+        )
+    except ValueError as error:
+        raise CertifyError(str(error)) from error
+    commit = commit or publishing_commit(api, release, build)
+    path = f"{build_folder(release, build)}/{RELEASE_MANIFEST}"
+    try:
+        local = api.hf_hub_download(
+            repo_id=BUILD_REPO,
+            filename=path,
+            repo_type="dataset",
+            revision=commit,
+            etag_timeout=60,
+        )
+        manifest = json.loads(Path(local).read_text())
+    except Exception as error:
+        raise CertifyError(f"could not read {path} at {commit}: {error}") from error
+    named = (manifest.get("release"), manifest.get("build"))
+    if named != (release, build):
+        raise CertifyError(
+            f"{path} at {commit} names release {named[0]!r} and build {named[1]!r}."
+        )
+    versions = {}
+    for field in ("built_with_model_package", "built_with_core_package"):
+        version = (manifest.get(field) or {}).get("version")
+        if not isinstance(version, str) or not version:
+            raise CertifyError(f"{path} at {commit} records no {field} version.")
+        versions[field] = version
+    return PublishedBuild(
+        release=release,
+        build=build,
+        commit=commit,
+        model=versions["built_with_model_package"],
+        core=versions["built_with_core_package"],
         claims=tuple(
             claim["specifier"]
             for claim in manifest.get("compatible_model_packages", ())
@@ -138,18 +257,25 @@ def read_cut(tag: str, release: str) -> CutVersions:
     )
 
 
-def covers(cut: CutVersions, version: str) -> bool:
+def covers(build: PublishedBuild, version: str) -> bool:
     """policyengine.py's rule: built with the version, or an exact claim of it."""
 
-    return cut.model == version or f"=={version}" in cut.claims
+    return build.model == version or f"=={version}" in build.claims
 
 
-def regional_flags(args: argparse.Namespace, bundle_record: dict) -> list[str]:
-    if args.dense_tag:
-        return [
-            "--regional-manifest-uri",
-            manifest_uri(check_tag(args.dense_tag, "dense"), DENSE_RELEASE),
-        ]
+def regional_flags(
+    args: argparse.Namespace, bundle_record: dict, dense: PublishedBuild | None
+) -> list[str]:
+    """certify-data's regional flags for the route the operator chose.
+
+    ``dense`` is the local-area build ``--dense-build`` names, as
+    :func:`read_published_build` read it; the other routes ignore it.
+    """
+
+    if args.dense_build:
+        if dense is None:
+            raise CertifyError(f"local-area build {args.dense_build!r} was not read.")
+        return ["--regional-manifest-uri", dense.manifest_uri]
     if args.keep_regional_release:
         uri = bundle_record.get("regional_source_manifest_uri")
         if not uri:
@@ -165,14 +291,25 @@ def regional_flags(args: argparse.Namespace, bundle_record: dict) -> list[str]:
     return ["--drop-regional-release"]
 
 
-def regional_tag(flags: list[str]) -> str | None:
-    if "--regional-manifest-uri" not in flags:
-        return None
-    uri = flags[flags.index("--regional-manifest-uri") + 1]
-    match = re.search(r"@([^/]+)/", uri)
-    return (
-        match.group(1) if match and match.group(1).startswith(DENSE_RELEASE) else None
-    )
+def kept_regional_pin(bundle_record: dict) -> BuildPin | None:
+    """The local-area build ``--keep-regional-release`` keeps, or ``None``
+    when the bundle routes regions to another repository's release.
+
+    policyengine.py refuses a tagged manifest from the build repository, which
+    has ``releases.json``, so keeping one is refused here first.
+    """
+
+    uri = bundle_record.get("regional_source_manifest_uri")
+    if not uri:
+        raise CertifyError("the bundle routes no regional release to keep.")
+    pin = folder_reference(uri)
+    if pin is None and f"/{BUILD_REPO}@" in uri:
+        raise CertifyError(
+            f"the bundle's regional release {uri} is not a build in its own "
+            f"folder, and policyengine.py certifies only those from {BUILD_REPO}; "
+            "name a local-area build with --dense-build."
+        )
+    return pin
 
 
 #: Free disk each heavy step needs by default: the certified environment,
@@ -223,7 +360,7 @@ def check_test_temp_directory(directory: Path | None = None) -> Path:
     return directory
 
 
-def certification_path(relative: str, national_tag: str) -> bool:
+def certification_path(relative: str, national_build: str) -> bool:
     """Files generated by this handoff, excluding local data and operator files."""
     snapshots = {
         "uk_couple_two_kids",
@@ -241,7 +378,7 @@ def certification_path(relative: str, national_tag: str) -> bool:
         "pyproject.toml",
         "uv.lock",
         *CONSTANT_FILES,
-        f"changelog.d/certify-uk-{national_tag}.changed.md",
+        f"changelog.d/certify-uk-{national_build}.changed.md",
         "src/policyengine/data/bundle/manifest.json",
         "src/policyengine/data/bundle/uk.trace.tro.jsonld",
         "src/policyengine/data/bundle/us.trace.tro.jsonld",
@@ -252,13 +389,15 @@ def certification_path(relative: str, national_tag: str) -> bool:
     }
 
 
-def certification_changes(worktree: Path, national_tag: str) -> list[str]:
+def certification_changes(worktree: Path, national_build: str) -> list[str]:
     """Preserve operator files and refuse unrelated tracked/index changes."""
     tracked = subprocess.check_output(
         ["git", "diff", "--name-only", "-z", "HEAD"], cwd=worktree, text=True
     ).split("\0")
     unexpected = [
-        path for path in tracked if path and not certification_path(path, national_tag)
+        path
+        for path in tracked
+        if path and not certification_path(path, national_build)
     ]
     if unexpected:
         raise CertifyError(
@@ -270,7 +409,7 @@ def certification_changes(worktree: Path, national_tag: str) -> list[str]:
         cwd=worktree,
         text=True,
     ).split("\0")
-    changelog = f"changelog.d/certify-uk-{national_tag}.changed.md"
+    changelog = f"changelog.d/certify-uk-{national_build}.changed.md"
     return sorted(
         {path for path in tracked if path}
         | {path for path in untracked if path == changelog}
@@ -278,7 +417,7 @@ def certification_changes(worktree: Path, national_tag: str) -> list[str]:
 
 
 def validate_resume_worktree(
-    repo: Path, worktree: Path, branch: str, base_commit: str, national_tag: str
+    repo: Path, worktree: Path, branch: str, base_commit: str, national_build: str
 ) -> list[str]:
     """Adopt only an unfinished, registered handoff at the exact resolved base."""
     if not worktree.is_dir():
@@ -340,15 +479,20 @@ def validate_resume_worktree(
         raise CertifyError(
             "resume worktree has unresolved merges; no files were changed."
         )
-    paths = certification_changes(worktree, national_tag)
+    paths = certification_changes(worktree, national_build)
     manifest_path = "src/policyengine/data/bundle/manifest.json"
     if manifest_path in paths:
         record = json.loads((worktree / manifest_path).read_text())["data_releases"][
             "uk"
         ]
-        revision = (record.get("data_package") or {}).get("release_manifest_revision")
-        if revision != national_tag:
-            raise CertifyError("resume worktree's modified manifest names another cut.")
+        certified = (record.get("data_package") or {}).get("release_manifest_path")
+        expected = (
+            f"{build_folder(NATIONAL_RELEASE, national_build)}/{RELEASE_MANIFEST}"
+        )
+        if certified != expected:
+            raise CertifyError(
+                "resume worktree's modified manifest certifies another build."
+            )
     return paths
 
 
@@ -530,17 +674,17 @@ class Shell:
         return result
 
 
-def writer_check(national_tag: str, pepy_repo: Path) -> list[str]:
-    """Open pull requests or branches already certifying this cut.
+def writer_check(national_build: str, pepy_repo: Path) -> list[str]:
+    """Open pull requests or branches already certifying this build.
 
-    A writer is an open pull request that names the tag, or any open pull
+    A writer is an open pull request that names the build, or any open pull
     request or remote branch whose name contains ``certify-uk-<id>``: this
     handoff's own branch, a suffixed one such as
     ``certify-uk-a133f37a-national``, or one under a namespace. A listing
     that cannot be read refuses rather than passing.
     """
 
-    marker = f"certify-uk-{national_tag.rsplit('-', 1)[-1]}"
+    marker = f"certify-uk-{national_build.rsplit('-', 1)[-1]}"
     found = []
     result = subprocess.run(
         [
@@ -559,7 +703,7 @@ def writer_check(national_tag: str, pepy_repo: Path) -> list[str]:
         )
     for pr in json.loads(result.stdout or "[]"):
         text = f"{pr.get('title') or ''}\n{pr.get('body') or ''}"
-        if national_tag in text or marker in (pr.get("headRefName") or ""):
+        if national_build in text or marker in (pr.get("headRefName") or ""):
             found.append(f"#{pr['number']} {pr['title']} ({pr['headRefName']})")
     remote = subprocess.run(
         ["git", "ls-remote", "--heads", "origin"],
@@ -582,18 +726,28 @@ def writer_check(national_tag: str, pepy_repo: Path) -> list[str]:
 
 
 def rewrite_regional_constants(
-    root: Path, old: str | None, new: str | None
+    root: Path, old: BuildPin | None, new: BuildPin | None
 ) -> list[str]:
-    """Replace the old local-area cut tag in the certified-constant files."""
+    """Replace the old local-area build's name and commit with the new one's
+    in the certified-constant files, where each is a quoted literal."""
 
-    if not old or not new or old == new:
+    if old is None or new is None:
         return []
-    pattern = re.compile(CONSTANT_PATTERN.format(old=re.escape(old)))
+    replacements = [
+        (before, after)
+        for before, after in ((old.build, new.build), (old.commit, new.commit))
+        if before != after
+    ]
     changed = []
-    for relative in CONSTANT_FILES:
+    for relative in CONSTANT_FILES if replacements else ():
         path = root / relative
-        text = path.read_text()
-        updated = pattern.sub(lambda m: m.group("pre") + new + m.group("post"), text)
+        text = updated = path.read_text()
+        for before, after in replacements:
+            pattern = re.compile(CONSTANT_PATTERN.format(old=re.escape(before)))
+            updated = pattern.sub(
+                lambda m, after=after: m.group("pre") + after + m.group("post"),
+                updated,
+            )
         if updated != text:
             path.write_text(updated)
             changed.append(relative)
@@ -634,27 +788,61 @@ def regional_audit_support(repo: Path, base_commit: str) -> str | None:
     return None
 
 
-def fetch_regional_microdata(
-    tag: str, release: str, *, timings: Path
-) -> dict[str, Path]:
-    """Every microdata H5 of a regional cut, by manifest name, checked by sha256.
+def artifact_pin(
+    build: PublishedBuild, name: str, artifact: Mapping[str, Any]
+) -> tuple[str, str, str]:
+    """Where one of a build's artifacts is read, as policyengine.py pins it:
+    the repository, the path and the revision.
 
-    These are the files policyengine.py's audit reads; it re-checks each
-    digest against the manifest itself.
+    A file in the build repository is a bare file name, alone or after the
+    build's folder, read in the folder at the build's commit. A file in
+    another repository keeps its own path and must name its own revision.
     """
 
-    from huggingface_hub import hf_hub_download
+    repo = artifact.get("repo_id") or BUILD_REPO
+    path = str(artifact.get("path") or "")
+    if repo != BUILD_REPO:
+        revision = artifact.get("revision")
+        if not isinstance(revision, str) or not revision:
+            raise CertifyError(
+                f"{build.build}: {name} is in {repo} and names no revision."
+            )
+        return repo, path, revision
+    file_name = path.removeprefix(f"{build.folder}/")
+    if (
+        not file_name
+        or file_name in {".", ".."}
+        or "/" in file_name
+        or "\\" in file_name
+    ):
+        raise CertifyError(
+            f"{build.build}: {name} ({path}) is not a file directly inside "
+            f"{build.folder}/."
+        )
+    return repo, f"{build.folder}/{file_name}", build.commit
 
-    token = os.environ.get("HUGGING_FACE_TOKEN") or os.environ.get("HF_TOKEN")
+
+def fetch_regional_microdata(
+    build: PublishedBuild, *, timings: Path, api: Any = None
+) -> dict[str, Path]:
+    """Every microdata H5 of a local-area build, by manifest name, checked by
+    sha256.
+
+    The manifest is read from the build's folder at its commit, and each file
+    where policyengine.py pins it (:func:`artifact_pin`). These are the files
+    policyengine.py's audit reads; it re-checks each digest against the
+    manifest itself.
+    """
+
+    api = hub_api() if api is None else api
     with timed_step("regional-microdata", timings) as record:
         manifest = json.loads(
             Path(
-                hf_hub_download(
-                    CUT_REPO,
-                    f"releases/{release}/release_manifest.json",
+                api.hf_hub_download(
+                    repo_id=BUILD_REPO,
+                    filename=f"{build.folder}/{RELEASE_MANIFEST}",
                     repo_type="dataset",
-                    revision=tag,
-                    token=token,
+                    revision=build.commit,
                 )
             ).read_text()
         )
@@ -665,30 +853,31 @@ def fetch_regional_microdata(
             and str(artifact.get("path", "")).lower().endswith(".h5")
         }
         if not microdata:
-            raise CertifyError(f"{tag}: the manifest lists no microdata H5.")
-        paths: dict[str, Path] = {}
+            raise CertifyError(f"{build.build}: the manifest lists no microdata H5.")
+        pins = {}
         for name, artifact in sorted(microdata.items()):
-            if not artifact.get("sha256") or not artifact.get("revision"):
-                raise CertifyError(
-                    f"{tag}: {name} is not pinned by revision and sha256."
-                )
+            if not artifact.get("sha256"):
+                raise CertifyError(f"{build.build}: {name} has no sha256.")
+            pins[name] = artifact_pin(build, name, artifact)
+        paths: dict[str, Path] = {}
+        for name, (repo, file_path, revision) in pins.items():
             path = Path(
-                hf_hub_download(
-                    artifact.get("repo_id") or CUT_REPO,
-                    artifact["path"],
+                api.hf_hub_download(
+                    repo_id=repo,
+                    filename=file_path,
                     repo_type="dataset",
-                    revision=artifact["revision"],
-                    token=token,
+                    revision=revision,
                 )
             )
             digest = hashlib.sha256()
             with path.open("rb") as handle:
                 for chunk in iter(lambda: handle.read(1 << 22), b""):
                     digest.update(chunk)
-            if digest.hexdigest() != artifact["sha256"]:
+            expected = microdata[name]["sha256"]
+            if digest.hexdigest() != expected:
                 raise CertifyError(
-                    f"{artifact['path']} at {artifact['revision']} hashes to "
-                    f"{digest.hexdigest()}, not the manifest's {artifact['sha256']}."
+                    f"{file_path} at {revision} hashes to {digest.hexdigest()}, "
+                    f"not the manifest's {expected}."
                 )
             paths[name] = path
         record.update(artifacts=sorted(paths))
@@ -812,8 +1001,9 @@ def uc_floor_summary(receipt: object) -> tuple[bool, str]:
 
 def pr_body(context: dict[str, Any]) -> str:
     lines = [
-        f"Certifies Microcosm UK national cut `{context['national_tag']}` "
-        f"(policyengine-uk {context['model']}, core {context['core']}).",
+        f"Certifies Microcosm UK national build `{context['national_build']}` "
+        f"(policyengine-uk {context['model']}, core {context['core']}), from its "
+        f"folder at commit `{context['national_commit']}`.",
         "",
         "**Mechanical handoff; wrapper qualification pending** unless reviewed "
         "receipts cover this exact candidate pair, commit and bundle. Microcosm's "
@@ -849,9 +1039,20 @@ def pr_body(context: dict[str, Any]) -> str:
     ]
     if context.get("uc_floor_passed") is False:
         lines.append(
-            "- [ ] **UC floor acceptance.** This cut has a measured floor failure "
+            "- [ ] **UC floor acceptance.** This build has a measured floor failure "
             "and needs explicit acceptance in its pull request "
             "(data-certification.md, recorded exceptions). Accepted by: ___"
+        )
+    if context.get("shared_old_commit"):
+        regional = context.get("regional_commit")
+        lines.append(
+            "- [ ] **Local-area revision constants.** The previous local-area "
+            f"build shared commit `{context['shared_old_commit']}` with a national "
+            "build, so rewriting quoted literals cannot tell the two builds' "
+            "constants apart, and its commit was not rewritten. Check that each "
+            "national revision constant names "
+            f"`{context['national_commit']}` and each local-area one names "
+            + (f"`{regional}`." if regional else "the local-area build's commit.")
         )
     if context.get("dropped_overlays"):
         lines.append(
@@ -891,10 +1092,10 @@ def pr_body(context: dict[str, Any]) -> str:
 CO_AUTHOR_PATTERN = re.compile(r"^[^<>\n]+ <[^<>\s@]+@[^<>\s]+>$")
 
 
-def commit_message(national_tag: str, *, co_authors: Sequence[str] = ()) -> str:
+def commit_message(national_build: str, *, co_authors: Sequence[str] = ()) -> str:
     """The certification commit's message, crediting only the named co-authors."""
 
-    message = f"Certify Microcosm UK cut {national_tag}"
+    message = f"Certify Microcosm UK build {national_build}"
     if co_authors:
         trailers = "\n".join(f"Co-Authored-By: {author}" for author in co_authors)
         message += f"\n\n{trailers}"
@@ -911,9 +1112,24 @@ def readable(text: str | None) -> bool:
 
 def parse(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--national-tag", required=True)
+    parser.add_argument(
+        "--national-build",
+        required=True,
+        metavar="BUILD",
+        help=f"the national build's name in releases.json ({NATIONAL_RELEASE})",
+    )
+    parser.add_argument(
+        "--national-data-commit",
+        metavar="COMMIT",
+        help="pin the national build at this commit instead of the one that "
+        "published its folder",
+    )
     route = parser.add_mutually_exclusive_group(required=True)
-    route.add_argument("--dense-tag")
+    route.add_argument(
+        "--dense-build",
+        metavar="BUILD",
+        help=f"route regions to this local-area build of {DENSE_RELEASE}",
+    )
     route.add_argument("--keep-regional-release", action="store_true")
     route.add_argument("--area-coded-national-uri")
     route.add_argument("--drop-regional-release", action="store_true")
@@ -921,7 +1137,7 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
         "--accept-regional-model-mismatch",
         metavar="REASON",
         help=(
-            "route regions to a regional cut built on another policyengine-uk, "
+            "route regions to a regional build made with another policyengine-uk, "
             "recording who accepted it and why; certifies only with "
             "policyengine.py's audited input-surface evidence (#699)"
         ),
@@ -941,8 +1157,14 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
         metavar="TEXT",
         help="with an accepted mismatch: a limitation to record (repeatable)",
     )
-    parser.add_argument("--model-version", help="default: the cut's build-time model")
-    parser.add_argument("--core-version", help="default: the cut's build-time core")
+    parser.add_argument(
+        "--dense-data-commit",
+        metavar="COMMIT",
+        help="with --dense-build: pin the local-area build at this commit instead "
+        "of the one that published its folder",
+    )
+    parser.add_argument("--model-version", help="default: the build's own model")
+    parser.add_argument("--core-version", help="default: the build's own core")
     parser.add_argument(
         "--pepy-repo",
         type=Path,
@@ -1019,7 +1241,20 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
         )
     if not 1 <= args.test_workers <= 4:
         parser.error("--test-workers must be between 1 and 4.")
-    check_tag(args.national_tag, "national")
+    for flag, name in (
+        ("--national-build", args.national_build),
+        ("--dense-build", args.dense_build),
+    ):
+        if name is not None and not BUILD_NAME_PATTERN.match(name):
+            parser.error(f"{flag} {name!r} is not a build name.")
+    for flag, commit in (
+        ("--national-data-commit", args.national_data_commit),
+        ("--dense-data-commit", args.dense_data_commit),
+    ):
+        if commit is not None and not COMMIT_PATTERN.match(commit):
+            parser.error(f"{flag} must be a full 40-character commit, not {commit!r}.")
+    if args.dense_data_commit is not None and args.dense_build is None:
+        parser.error("--dense-data-commit goes with --dense-build.")
     return args
 
 
@@ -1041,7 +1276,7 @@ def certify(args: argparse.Namespace) -> int:
         "max_load1": args.max_load1,
         "min_free_bytes": int(args.min_free_gb * 1e9),
     }
-    suffix = args.national_tag.rsplit("-", 1)[-1]
+    suffix = args.national_build.rsplit("-", 1)[-1]
     branch = f"certify-uk-{suffix}"
     worktree = args.worktree or repo.parent / "_worktrees" / f"pepy-{branch}"
     log = worktree.parent / f"{worktree.name}.certify.log"
@@ -1076,7 +1311,7 @@ def certify(args: argparse.Namespace) -> int:
     if args.resume_worktree:
         with timed_step("resume-worktree-validation", timings):
             replay_paths = validate_resume_worktree(
-                repo, worktree, branch, base_commit, args.national_tag
+                repo, worktree, branch, base_commit, args.national_build
             )
     elif worktree.exists():
         raise CertifyError(
@@ -1088,22 +1323,25 @@ def certify(args: argparse.Namespace) -> int:
         print(f"writer check skipped: {args.skip_writer_check}")
     else:
         with timed_step("writer-check", timings):
-            others = writer_check(args.national_tag, repo)
+            others = writer_check(args.national_build, repo)
         if others:
             raise CertifyError(
-                "this cut is already being certified: "
+                "this build is already being certified: "
                 + "; ".join(others)
                 + ". Coordinate with its owner instead of opening a second PR."
             )
 
     with timed_step("national-manifest", timings):
-        national = read_cut(args.national_tag, NATIONAL_RELEASE)
+        national = read_published_build(
+            NATIONAL_RELEASE, args.national_build, commit=args.national_data_commit
+        )
     model = args.model_version or national.model
     core = args.core_version or national.core
     if not covers(national, model):
         raise CertifyError(
-            f"the national cut was built with policyengine-uk {national.model} and "
-            f"claims {list(national.claims)}; it cannot be certified for {model}."
+            f"the national build was built with policyengine-uk {national.model} "
+            f"and claims {list(national.claims)}; it cannot be certified for "
+            f"{model}."
         )
     with timed_step("old-bundle", timings):
         old_bundle = json.loads(
@@ -1118,23 +1356,32 @@ def certify(args: argparse.Namespace) -> int:
             )
         )
     record = old_bundle["data_releases"]["uk"]
-    flags = regional_flags(args, record)
-    new_regional = regional_tag(flags)
-    regional_summary = shlex.join(flags)
     dense, mismatch, regional_artifacts = None, False, {}
-    if new_regional is not None:
+    kept = kept_regional_pin(record) if args.keep_regional_release else None
+    if args.dense_build or kept is not None:
         with timed_step("regional-manifest", timings):
-            dense = read_cut(new_regional, DENSE_RELEASE)
+            if args.dense_build:
+                dense = read_published_build(
+                    DENSE_RELEASE, args.dense_build, commit=args.dense_data_commit
+                )
+            else:
+                dense = read_published_build(
+                    kept.release, kept.build, commit=kept.commit
+                )
+    flags = regional_flags(args, record, dense)
+    regional_summary = shlex.join(flags)
+    if dense is not None:
         if not covers(dense, model):
             if not args.accept_regional_model_mismatch:
                 raise CertifyError(
-                    f"the regional cut {new_regional} was built with policyengine-uk "
-                    f"{dense.model} and claims {list(dense.claims)}, so certification "
-                    f"for {model} will refuse it. Routes: a dense cut on {model} "
-                    "(--dense-tag), --drop-regional-release, an enhanced-FRS release "
-                    "that claims the version (--area-coded-national-uri), or an "
-                    "accepted, recorded mismatch (--accept-regional-model-mismatch) "
-                    "with policyengine.py's audited evidence."
+                    f"the regional build {dense.build} was built with "
+                    f"policyengine-uk {dense.model} and claims {list(dense.claims)}, "
+                    f"so certification for {model} will refuse it. Routes: a "
+                    f"local-area build on {model} (--dense-build), "
+                    "--drop-regional-release, an enhanced-FRS release that claims "
+                    "the version (--area-coded-national-uri), or an accepted, "
+                    "recorded mismatch (--accept-regional-model-mismatch) with "
+                    "policyengine.py's audited evidence."
                 )
             problem = regional_audit_support(repo, base_commit)
             if problem is not None:
@@ -1146,17 +1393,30 @@ def certify(args: argparse.Namespace) -> int:
             mismatch = True
             regional_summary += f" (regional built on {dense.model}; mismatch accepted)"
             if not args.dry_run:
-                regional_artifacts = fetch_regional_microdata(
-                    new_regional, DENSE_RELEASE, timings=timings
-                )
-    old_regional = regional_tag(
-        ["--regional-manifest-uri", record.get("regional_source_manifest_uri") or ""]
+                regional_artifacts = fetch_regional_microdata(dense, timings=timings)
+    old_regional = folder_reference(record.get("regional_source_manifest_uri"))
+    old_national_commit = (record.get("data_package") or {}).get(
+        "release_manifest_revision"
+    )
+    # The constants are rewritten as quoted literals: policyengine.py's rewrite
+    # moves the old national commit, then the regional rewrite moves the old
+    # local-area commit. When the old local-area commit is also the old or the
+    # new national commit, and the new builds' commits differ, neither rewrite
+    # can tell the two builds' constants apart.
+    shared_old_commit = (
+        old_regional.commit
+        if old_regional is not None
+        and dense is not None
+        and old_regional.commit in {old_national_commit, national.commit}
+        and dense.commit != national.commit
+        else None
     )
 
     plan = {
         "base_ref": base_ref,
         "base_commit": base_commit,
-        "national_tag": args.national_tag,
+        "national_build": national.build,
+        "national_manifest_uri": national.manifest_uri,
         "model": model,
         "core": core,
         "regional": regional_summary,
@@ -1233,7 +1493,7 @@ def certify(args: argparse.Namespace) -> int:
         [
             python, "scripts/bundle.py", "certify-data", "--country", "uk",
             "--data-producer", "populace",
-            "--manifest-uri", manifest_uri(args.national_tag, NATIONAL_RELEASE),
+            "--manifest-uri", national.manifest_uri,
             *flags,
             "--model-version", model, "--core-version", core,
         ], step="certify-data",
@@ -1269,6 +1529,10 @@ def certify(args: argparse.Namespace) -> int:
     )  # fmt: skip
     constants = json.loads(rewrite.stdout.strip().splitlines()[-1] or "[]")
     with timed_step("regional-constant-rewrite", timings):
+        new_regional = None if dense is None else dense.pin
+        if new_regional is not None and shared_old_commit is not None:
+            # Its commit constants are left for a person (see the body).
+            new_regional = new_regional._replace(commit=shared_old_commit)
         constants += rewrite_regional_constants(worktree, old_regional, new_regional)
     run(
         pytest_command(python, ["tests/test_household_calculator_snapshot.py", "-q"]),
@@ -1333,7 +1597,10 @@ def certify(args: argparse.Namespace) -> int:
         if tests_returncode and not tests_failed:
             tests_failed = [f"pytest exited {tests_returncode}: {tests_summary}"]
     context = {
-        "national_tag": args.national_tag,
+        "national_build": national.build,
+        "national_commit": national.commit,
+        "regional_commit": None if dense is None else dense.commit,
+        "shared_old_commit": shared_old_commit,
         "model": model,
         "core": core,
         "regional_summary": f"`{regional_summary}`",
@@ -1353,12 +1620,12 @@ def certify(args: argparse.Namespace) -> int:
     body = worktree.parent / f"{worktree.name}.pr-body.md"
     body.write_text(pr_body(context))
     with timed_step("generated-file-validation", timings):
-        staged_paths = certification_changes(worktree, args.national_tag)
+        staged_paths = certification_changes(worktree, national.build)
     if staged_paths:
         run(["git", "add", "--", *staged_paths], step="stage-certification")
     run(
         ["git", "commit", "-q", "-m",
-         commit_message(args.national_tag, co_authors=args.co_author)]
+         commit_message(national.build, co_authors=args.co_author)]
     )  # fmt: skip
     print(f"\ncommitted on {branch} in {worktree}; PR body draft: {body}")
     if args.push:
@@ -1367,7 +1634,7 @@ def certify(args: argparse.Namespace) -> int:
         run(
             ["gh", "pr", "create", "--draft", "--repo", PEPY_REPO, "--base", args.pr_base,
              "--head", branch, "--title",
-             f"Certify Microcosm UK cut {args.national_tag}", "--body-file", str(body)]
+             f"Certify Microcosm UK build {national.build}", "--body-file", str(body)]
         )  # fmt: skip
     return 0 if not tests_returncode else 1
 

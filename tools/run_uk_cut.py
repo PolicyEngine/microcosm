@@ -2220,8 +2220,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             "Next (each a separate, deliberate call):\n"
             f"  promote: {promote_command(paths, tag)}\n"
-            "  certify in policyengine.py: tools/certify_uk_cut_in_policyengine_py.py "
-            f"--national-tag {tag} ..."
+            "  certify in policyengine.py once it is published: "
+            "tools/certify_uk_cut_in_policyengine_py.py --national-build <the "
+            "build's name in releases.json> ..."
         )
         return 0
     except CutError as error:

@@ -160,7 +160,7 @@ def test_only_a_folder_manifest_in_the_build_repository_names_a_build():
     )
     for other in (
         tagged,
-        uri.replace("populace-uk-private", "policyengine-uk-data-private"),
+        uri.replace("populace-uk-private", "another-repository"),
         uri.replace("release_manifest.json", "build_manifest.json"),
         "hf://model/x@1/r",
         "",
@@ -440,7 +440,9 @@ def test_a_named_build_and_its_commit_reach_certify_data(monkeypatch, tmp_path, 
     assert plan["branch"] == "certify-uk-a858c100"
 
 
-def test_a_kept_tagged_regional_release_refuses_before_any_read(monkeypatch, tmp_path):
+def test_a_kept_tagged_regional_release_is_refused_before_it_is_read(
+    monkeypatch, tmp_path
+):
     """policyengine.py refuses a tagged manifest from a repository with
     releases.json, so keeping one could never certify."""
 
