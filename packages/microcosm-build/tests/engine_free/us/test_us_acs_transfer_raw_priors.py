@@ -80,7 +80,12 @@ production's declared ACS plan draws them. These tests pin that:
   last loaded from its checkpoint, draws the last on every loaded raw draw
   (among them the pension, the passive subset, the components and the year,
   on rows where the export changes them) and reproduces the cold run's
-  outputs;
+  outputs. So does a retry of each from a mixed bank that lacks the first
+  target's checkpoint and every one after the passive subset (after the
+  year in the tax-unit family). It rebuilds the first target, loads the
+  passive subset (the year) after that miss, and draws every later target
+  (two in declared batch 5) on the loaded raw draw, on rows where the
+  export changes it;
 - the ACS local lane's run of the declared batch that holds
   ``partnership_income`` draws every later target on the raw partnership
   draws, in memory and banked, while the export zeroes some of them in each
@@ -1075,21 +1080,24 @@ def _resume_whole_batch(
     loaded: str,
     root: Path,
     monkeypatch: pytest.MonkeyPatch,
+    rebuilt: Sequence[str] | None = None,
 ) -> list[ChainStep]:
-    """Resume ``batch`` from a copy of its cold bank that ends at ``loaded``.
+    """Resume ``batch`` from a copy of its cold bank that lacks ``rebuilt``.
 
-    The copy keeps the checkpoints of ``loaded`` and the targets before it, so
-    the retry loads those and rebuilds every later target. Each rebuilt target
-    must be drawn on the checkpoints' raw draws, and the outputs must equal
-    the cold run's (``_assert_resume_reuses_raw_draws``). Returns the retry's
-    ``fit_draw_next`` calls.
+    The copy drops the checkpoints of ``rebuilt`` (by default every target
+    after ``loaded``) and keeps the rest, so the retry loads those and
+    rebuilds ``rebuilt``. Each rebuilt target must be drawn on the
+    checkpoints' raw draws, ``loaded`` must reach a rebuilt one, and the
+    outputs must equal the cold run's (``_assert_resume_reuses_raw_draws``).
+    Returns the retry's ``fit_draw_next`` calls.
     """
 
     entity, family, targets = batch
     patterns, cold_result, cold_bank = cold
     order = _bank_order(cold_bank)
-    rebuilt = order[order.index(loaded) + 1 :]
-    assert rebuilt, order
+    if rebuilt is None:
+        rebuilt = order[order.index(loaded) + 1 :]
+    assert rebuilt and loaded not in rebuilt, (order, rebuilt)
     shutil.copytree(cold_bank.root, root)
     copied = _bank_store(root)
     for index, target in enumerate(order):
@@ -1209,6 +1217,10 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
     # Per loaded target, the rows where a last-target retry fed it to the
     # rebuilt fit with a value other than the one the cold run exported.
     loaded_unlike_export: Counter[str] = Counter()
+    # Per batch, the target a mixed retry loaded between rebuilt ones, how
+    # many rebuilt targets it fed, and on how many rows it fed them a value
+    # other than the one the cold run exported.
+    mixed_reach: dict[str, tuple[str, int, int]] = {}
     for number, (entity, batch, targets, shared) in enumerate(sorted(runtime_batches)):
         recipient, donor = acs_raw_prior_fixture()
         observed: pd.Series | None = None
@@ -1311,6 +1323,41 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
                 unlike = int((step.priors[prior].to_numpy() != export).sum())
                 loaded_unlike_export[prior] += unlike
 
+        # A retry from a mixed bank: the copy lacks the first target's
+        # checkpoint and every one after the passive subset (after the
+        # second-to-last target where the batch draws none), as when an
+        # earlier checkpoint is torn or corrupt and the run stopped after
+        # writing the passive subset's. The retry rebuilds the first target,
+        # then loads the passive subset after that miss and feeds it to every
+        # target it rebuilds later: two of them in declared batch 5.
+        cut = order.index(_PASSIVE) if _PASSIVE in order else len(order) - 2
+        assert 0 < cut < len(order) - 1, order
+        between = order[cut]
+        steps = _resume_whole_batch(
+            (entity, batch, targets),
+            frames,
+            cold,
+            loaded=between,
+            rebuilt=(order[0], *order[cut + 1 :]),
+            root=tmp_path / f"mixed_{number}",
+            monkeypatch=monkeypatch,
+        )
+        fed = [step for step in steps if between in step.priors]
+        unlike = sum(
+            int(
+                (
+                    step.priors[between].to_numpy()
+                    != exported.loc[step.index, between].to_numpy(dtype=np.float64)
+                ).sum()
+            )
+            for step in fed
+        )
+        mixed_reach[f"{entity} batch {batch!r}"] = (
+            between,
+            len({step.target for step in fed}),
+            unlike,
+        )
+
     # Post-PUF batch 3 draws the pension ahead of later targets, so the
     # observed case ran, in memory, banked and resumed from the bank.
     assert observed_runs, (
@@ -1333,6 +1380,23 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
         f"no last-target retry fed {sorted(changed_on_export - reached)} to a "
         "fresh fit with a value the export changes; rows per loaded target: "
         f"{loaded_unlike_export}"
+    )
+    # Each mixed retry fed the target it loaded between rebuilt ones (the
+    # passive subset, or the tax-unit family's year) to the later rebuilt
+    # fits, on some rows, with a raw draw the export changes there, and in
+    # some retry the loaded passive subset reached two or more rebuilt
+    # targets. So a retry that handed on that loaded target as the export
+    # changes it, after a miss or after a fresh fit, would fail the resume
+    # check above.
+    assert all(rows for _loaded, _fits, rows in mixed_reach.values()), (
+        "a mixed retry never fed its loaded target to a rebuilt fit with a "
+        f"value the export changes; per batch (loaded, fits, rows): {mixed_reach}"
+    )
+    assert any(
+        loaded == _PASSIVE and fits >= 2 for loaded, fits, _rows in mixed_reach.values()
+    ), (
+        "no mixed retry fed the loaded passive subset to two or more rebuilt "
+        f"targets; per batch (loaded, fits, rows): {mixed_reach}"
     )
 
     # The declared ACS plan chains each fixture family whole in one batch.
