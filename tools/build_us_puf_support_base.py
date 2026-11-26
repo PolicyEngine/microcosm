@@ -998,10 +998,11 @@ def _run_staged_all(
     pipeline_steps = _pipeline_steps_for(args)
     run_config = _stage_run_config(args)
     runtime = _open_stage_runtime(args, run_config)
-    # Each step process takes the input and builder source digests from this
-    # run config, which the resume check just compared with the locked one,
-    # and the ASEC digests from the pin check, instead of hashing the files
-    # again; household_location_assignment hashes the ASEC files itself.
+    # Each step process takes the PUF and ladder digests from this run
+    # config, which the resume check just compared with the locked one, and
+    # the ASEC digests from the pin check, instead of hashing those files
+    # again; household_location_assignment hashes the ASEC files itself, and
+    # every step hashes the builder's source files itself.
     digests_environment = _parent_digests_environment(
         run_config, verified_asec_sha256 or {}
     )
