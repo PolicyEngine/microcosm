@@ -462,7 +462,9 @@ one Microsimulation over the whole file.
   smoke, reform validation, demographics and the two held-out reports) ran a
   pass of its own: five passes over 177 batches on a national export. If the
   shared pass raises, every stage runs its own pass as before, so a key that
-  only one held-out report asks for still fails that report alone. Each
+  only one held-out report asks for still fails that report alone. A refused
+  batch file is the exception: the shared pass raises it, and certification
+  stops there, since every stage's own pass would read the same files. Each
   stage's recorded `baseline_passes` stays 1: the one pass its baseline came
   from, shared unless the shared pass failed. Only the build log tells the two
   apart: it prints `Post-export merged baseline plan failed` on a fallback,

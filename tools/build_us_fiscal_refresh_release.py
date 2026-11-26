@@ -6129,7 +6129,9 @@ class _HouseholdBatchedPostExportScorer:
         opened again, scores its own plan in a pass of its own. If the merged
         pass raises, every consumer scores its own plan, so a key that only
         one consumer planned fails that consumer alone, with the error it
-        raised before the merge (the holdout reports catch it).
+        raised before the merge (the holdout reports catch it). A refused
+        batch file (``PostExportBatchFileError``) is raised instead: every
+        consumer's pass would read the same batch files.
         """
         registered = self._registered_baseline_plans.get(name)
         if registered is not None and registered != baseline_plan:
@@ -6149,6 +6151,10 @@ class _HouseholdBatchedPostExportScorer:
             )
             try:
                 self._merged_baseline = self._score(union, label="merged baseline plan")
+            except PostExportBatchFileError:
+                # The scored file's integrity, not a key one consumer planned:
+                # it stops certification here, before any consumer's own pass.
+                raise
             except Exception as error:
                 self._merged_baseline_failed = True
                 try:
