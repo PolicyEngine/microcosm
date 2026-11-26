@@ -20,6 +20,9 @@ from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_suppor
 from microcosm.build.us_runtime.release_input_coverage import (
     us_release_reform_coverage_probes,
 )
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    read_sipp_december_person_rows,
+)
 from microcosm.build.us_runtime.voluntary_filing import (
     SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
@@ -33,9 +36,9 @@ from microcosm.build.us_runtime.voluntary_filing import (
     VOLUNTARY_FILING_ARCHIVED_DERIVATION_URL,
     VOLUNTARY_FILING_ARCHIVED_PARAMETERS_URL,
     VOLUNTARY_FILING_SIPP_DICTIONARY_URL,
+    build_sipp_2023_voluntary_filing_donor,
     fetch_sipp_2023_voluntary_filing_donor,
     impute_us_voluntary_filing,
-    load_sipp_2023_voluntary_filing_donor,
     us_voluntary_filing_signal_gate,
     us_voluntary_filing_stage_spec,
     us_voluntary_filing_summary,
@@ -44,6 +47,16 @@ from microcosm.build.us_runtime.voluntary_filing import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_VOLUNTARY_FILING_OUTPUT_COLUMNS[0]
+
+
+def _voluntary_filing_donor_from_file(path: Path, **read_options) -> pd.DataFrame:
+    return build_sipp_2023_voluntary_filing_donor(
+        read_sipp_december_person_rows(
+            path,
+            columns=SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
+            **read_options,
+        )
+    )
 
 
 def _load_tail_fixtures():

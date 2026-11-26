@@ -1689,10 +1689,12 @@ existing network use; the tool runs with `HF_HUB_OFFLINE=1`, without
 credential-name environment values, and consumes the staged files.
 
 The runner owns `--base-h5`, `--donor-release-manifest`, `--source-manifest`,
-`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary`, `--sipp-donor` and
+`--inputs-dir`, `--puma-ladder`, `--out-h5`, `--summary`, `--sipp-donor`,
 the household-location flags (`--location-rule`, `--location-seed`,
-`--location-clones`, `--block-ladder`). It never passes the last five, so a
-staging run keeps the `legacy` location rule. Plans may set
+`--location-clones`, `--block-ladder`) and `--allow-default-donor-column`.
+It never passes the last six, so a staging run keeps the `legacy` location
+rule and the whole dense-donor coverage gate (an allowance is a reviewed local
+decision for one patched donor, microcosm#922). Plans may set
 only the builder's tuning flags: `--acs-share`, `--n-estimators`,
 `--max-targets-per-fit`, `--seed`, `--geography-seed`, `--chunksize`,
 `--donor-channel`, `--hours-under15-policy`, `--max-households` and

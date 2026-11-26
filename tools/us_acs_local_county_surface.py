@@ -33,6 +33,12 @@ RELIABILITY_FILENAME = "county_reliability.json"
 RELIABILITY_CSV_FILENAME = "county_reliability.csv"
 SUPPORT_FILENAME = "county_support.json"
 SURFACE_FILENAME = "county_surface.json"
+#: Where --county-drop-empty-soi-rows records each dropped SOI row: the
+#: county_surface.json receipt, the run identity, and the reliability report's
+#: top level, county cells and CSV column (microcosm#922).
+ZERO_MEASURE_SOI_ROWS_DROPPED = "zero_measure_soi_rows_dropped"
+#: The fields of a dropped row that the run identity keeps.
+_DROPPED_ROW_IDENTITY_FIELDS = ("target", "county_fips", "cell_members", "concept")
 #: Materialize-time validation inputs (microcosm#922): the public county
 #: design and the household measures it is scored on. Neither is a target:
 #: they never enter the registry, roles, matrix or loss.
@@ -1921,7 +1927,7 @@ def reliability_report(
 
 
 #: Columns of the flat per-county reliability CSV, in order.
-def reliability_csv_columns():
+def reliability_csv_columns(*, zero_measure_soi_rows=False):
     columns = [
         "county_fips",
         "state_fips",
@@ -1947,6 +1953,10 @@ def reliability_csv_columns():
         "median_household_income_public",
         "median_household_income_estimate",
     ]
+    # Only a --county-drop-empty-soi-rows run has this column, so every other
+    # run's CSV keeps its bytes.
+    if zero_measure_soi_rows:
+        columns.append(ZERO_MEASURE_SOI_ROWS_DROPPED)
     return columns
 
 
@@ -1956,9 +1966,12 @@ def reliability_csv(report):
     import io
 
     provisional = bool(report.get("grade_rule", {}).get("provisional", True))
+    dropped = ZERO_MEASURE_SOI_ROWS_DROPPED in report
     stream = io.StringIO()
     writer = csv.DictWriter(
-        stream, fieldnames=reliability_csv_columns(), lineterminator="\n"
+        stream,
+        fieldnames=reliability_csv_columns(zero_measure_soi_rows=dropped),
+        lineterminator="\n",
     )
     writer.writeheader()
 
@@ -2003,6 +2016,10 @@ def reliability_csv(report):
             entry = families.get(name) or {}
             row[f"{name}_abs_rel_error"] = entry.get("abs_rel_error")
             row[f"{name}_pro_rata_abs_rel_error"] = entry.get("pro_rata_abs_rel_error")
+        if dropped:
+            row[ZERO_MEASURE_SOI_ROWS_DROPPED] = ";".join(
+                cell.get(ZERO_MEASURE_SOI_ROWS_DROPPED) or []
+            )
         writer.writerow({key: cell_value(value) for key, value in row.items()})
     return stream.getvalue()
 
@@ -2367,6 +2384,45 @@ def apply_recorded_support(frame, identity, checkpoint_dir):
     return with_household_table(frame, households)
 
 
+def zero_measure_soi_rows(specs, households, empty, *, county_column=COUNTY_COLUMN):
+    """The empty county SOI rows whose county cell has households.
+
+    The state SOI rows store no zero, so a county whose households all have a
+    zero measure (every household's AGI exactly 0, say) gets an empty row
+    although it has households. Each record names the row, its county cell,
+    concept and target, and the cell's household count.
+    """
+    codes = county_codes(households, county_column=county_column)
+    counts = defaultdict(int)
+    for code in codes.tolist():
+        counts[int(code)] += 1
+    empty = set(empty)
+    rows = []
+    for spec in specs:
+        if spec.name not in empty:
+            continue
+        members = cell_members(spec.metadata)
+        in_cell = sum(counts.get(member, 0) for member in members)
+        if in_cell == 0:
+            continue
+        rows.append(
+            {
+                "target": spec.name,
+                "county_fips": str(spec.metadata["county_fips"]),
+                "cell_members": [f"{member:05d}" for member in members],
+                "concept": spec.metadata.get("source_measure_id"),
+                "parent": spec.metadata.get("state_county_parent_target_name"),
+                "target_value": float(spec.value),
+                "households": int(in_cell),
+                "reason": (
+                    "every household in the county cell has a zero measure, "
+                    "and the state row stores no zero"
+                ),
+            }
+        )
+    return rows
+
+
 def require_support(dropped, *, capped_smoke=False):
     if dropped and not capped_smoke:
         raise SystemExit(
@@ -2401,6 +2457,25 @@ def add_arguments(parser):
             "ladder population is positive but which has no household "
             f"(default {DEFAULT_COUNTY_MIN_SUPPORT}; 0 disables the step). "
             "Every move is recorded in county_support.json."
+        ),
+    )
+    parser.add_argument(
+        "--county-drop-empty-soi-rows",
+        action="store_true",
+        help=(
+            "Drop, with a receipt in county_surface.json, the run identity and "
+            "the county reliability report (its cells and CSV), "
+            "a county IRS SOI row that is empty although the county has "
+            "households: every household's measure is 0 (for example AGI), "
+            "and the state row stores no zero. Without the flag such a row "
+            "refuses the run after the engine pass. A county with no household "
+            "is refused either way. Off by default; passing it is a reviewed "
+            "decision (microcosm#922). Temporary for the County Files proof "
+            "of concept (microcosm#1647); removal tracked in microcosm#1661. "
+            "Do not use for the final County Files build: there a county "
+            "whose row would be empty needs a "
+            "real fix (more household support or a declared cell with its "
+            "own ruling), not a dropped target."
         ),
     )
 
@@ -2700,18 +2775,25 @@ def attach_surface(surface, materialized, frame, populations, args):
         for index, spec in enumerate(specs)
         if spec.value != 0 and rows.indptr[index] == rows.indptr[index + 1]
     ]
-    (args.checkpoint_dir / SURFACE_FILENAME).write_text(
-        json.dumps(
-            {
-                **county.receipt,
-                "acs_households": acs.receipt,
-                "unsupported_targets": empty,
-            },
-            indent=2,
+    receipt = {
+        **county.receipt,
+        "acs_households": acs.receipt,
+        "unsupported_targets": empty,
+    }
+    refused = empty
+    if getattr(args, "county_drop_empty_soi_rows", False):
+        # Only SOI rows of counties that have households; an ACS households
+        # row or a county without households is still refused.
+        dropped = zero_measure_soi_rows(
+            county.specs, households, empty, county_column=column
         )
-    )
+        receipt[ZERO_MEASURE_SOI_ROWS_DROPPED] = dropped
+        args.zero_measure_soi_rows_dropped = dropped
+        names = {row["target"] for row in dropped}
+        refused = [name for name in empty if name not in names]
+    (args.checkpoint_dir / SURFACE_FILENAME).write_text(json.dumps(receipt, indent=2))
     require_support(
-        empty,
+        refused,
         capped_smoke=bool(args.allow_partial_geography and args.sample_fraction < 1),
     )
     county_specs = [*county.specs, *acs.specs]
@@ -2769,6 +2851,15 @@ def run_metadata(args, county_holdout):
         "county_holdout": county_holdout,
         "county_targets_dropped": getattr(args, "county_targets_dropped", []),
     }
+    # Recorded only when set, so every other run identity keeps its bytes.
+    if getattr(args, "county_drop_empty_soi_rows", False):
+        metadata["county_drop_empty_soi_rows"] = True
+        # Each dropped row's county cell, for the reliability report: the
+        # calibrate stage grades those counties without the row.
+        metadata[ZERO_MEASURE_SOI_ROWS_DROPPED] = [
+            {field: row[field] for field in _DROPPED_ROW_IDENTITY_FIELDS}
+            for row in getattr(args, "zero_measure_soi_rows_dropped", [])
+        ]
     # Only a run that read county facts (or ran the county support step)
     # records them, so a no-county run identity keeps its pre-county bytes.
     for key, attribute in (
@@ -2945,7 +3036,40 @@ def _bound_report(summary, identity):
     report["unsupported_targets"] = identity.get("county_targets_dropped", [])
     if identity.get("county_support"):
         report["minimum_support"] = identity["county_support"]
+    if identity.get("county_drop_empty_soi_rows"):
+        _mark_dropped_soi_rows(report, identity)
     return report
+
+
+def _mark_dropped_soi_rows(report, identity):
+    """Name each SOI row --county-drop-empty-soi-rows dropped in its cells.
+
+    Calibration grades such a county without the row, so its cell and the CSV
+    say which rows it lacks; a combined cell's row marks every member county.
+    Every cell gets the list, empty when no row of its own was dropped.
+    """
+    rows = identity.get(ZERO_MEASURE_SOI_ROWS_DROPPED)
+    if rows is None:
+        if identity.get("county_targets_dropped"):
+            raise SystemExit(
+                "The run identity records --county-drop-empty-soi-rows and "
+                "dropped county targets, but not the dropped rows' county "
+                "cells (materialized by older code); re-run --stage "
+                "materialize with this code."
+            )
+        rows = []
+    cells = report["counties"]
+    for cell in cells.values():
+        cell[ZERO_MEASURE_SOI_ROWS_DROPPED] = []
+    for row in rows:
+        for member in row["cell_members"]:
+            if member not in cells:
+                raise SystemExit(
+                    f"Dropped SOI row {row['target']} covers county {member}, "
+                    "which the county reliability report does not grade."
+                )
+            cells[member][ZERO_MEASURE_SOI_ROWS_DROPPED].append(row["target"])
+    report[ZERO_MEASURE_SOI_ROWS_DROPPED] = json.loads(json.dumps(rows))
 
 
 def feed_path(feed):
@@ -3027,6 +3151,8 @@ def refresh_recipe(command, materialize_rss):
     # or the run predates it), so its replay must turn the step off too.
     support = materialize_rss.get("county_support") or {}
     command += f" --county-min-support {int(support.get('households_per_county', 0))}"
+    if materialize_rss.get("county_drop_empty_soi_rows"):
+        command += " --county-drop-empty-soi-rows"
     return command
 
 
@@ -3101,9 +3227,19 @@ def loss_row_mapping(specs):
     )
 
 
-def target_loss_weights(specs, multipliers):
+def target_loss_weights(specs, multipliers, *, rule=None):
+    """The loss weights of ``specs`` under a declared ACS local weight rule.
+
+    ``rule`` names one of ``US_ACS_LOCAL_TARGET_WEIGHT_RULES``; ``None`` is
+    the release's default, the formula every build has used.
+    """
     from microcosm.build.us_runtime import target_loss_weights as weighting
 
     return weighting.target_loss_weights(
-        specs, multipliers, row_mapping=loss_row_mapping(specs)
+        specs,
+        multipliers,
+        row_mapping=loss_row_mapping(specs),
+        rule=weighting.acs_local_target_weight_rule(
+            weighting.US_ACS_LOCAL_TARGET_WEIGHT_RULE if rule is None else rule
+        ),
     )

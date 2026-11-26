@@ -34,30 +34,30 @@
         {
           "input": "ta_code",
           "output": "ta_code",
-          "vintage": "ta2026_regc2025_au2017",
-          "relation": "exact",
-          "source": "atomic_geography_support.json"
+          "vintage": "ta_2026",
+          "relation": "official_tabulation",
+          "source": "Stats NZ Meshblock Higher Geographies 2026"
         },
         {
           "input": "region_code",
           "output": "household_region_code",
-          "vintage": "ta2026_regc2025_au2017",
-          "relation": "exact",
-          "source": "atomic_geography_support.json"
+          "vintage": "regc_2025",
+          "relation": "official_tabulation",
+          "source": "Stats NZ Meshblock Higher Geographies 2026"
         },
         {
           "input": "as_area",
           "output": "as_area",
-          "vintage": "ta2026_regc2025_au2017",
-          "relation": "exact",
-          "source": "atomic_geography_support.json"
+          "vintage": "au_2017",
+          "relation": "best_fit",
+          "source": "G8-m SA1 interior-point/centroid AU2017 bridge"
         },
         {
           "input": "as_area_alt",
           "output": "as_area_alt",
-          "vintage": "ta2026_regc2025_au2017",
-          "relation": "exact",
-          "source": "atomic_geography_support.json"
+          "vintage": "ta_2025",
+          "relation": "best_fit",
+          "source": "as_area_crosswalk.json modal_area"
         }
       ]
     }

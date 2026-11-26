@@ -201,6 +201,9 @@ _GRAPH_OUTPUT_DTYPES: frozenset[str] = frozenset(_GRAPH_DTYPE_BY_ENGINE)
 #: The tri-state judgment codes the dense surface emits.
 _JUDGMENT_CODES = np.asarray((-1, 0, 1), dtype=np.int64)
 
+#: float64 holds every integer from ``-2**53`` to ``2**53`` exactly.
+_FLOAT64_EXACT_INTEGER_BOUND = 2**53
+
 #: Versioned schema of :func:`axiom_engine_ref` documents.
 _ENGINE_REF_SCHEMA = "microcosm.frame.axiom-engine-ref/1"
 
@@ -2267,14 +2270,25 @@ def _validated_nesting(
 def _graph_output(name: str, engine_dtype: str, values: np.ndarray) -> np.ndarray:
     """Cast one dense output array to its graph-ownable dtype without loss.
 
-    Bool stays bool; integers and judgment codes become int64; decimals
-    become float64. Judgment codes must be ``-1``, ``0`` or ``1``. The input
-    must already hold the engine's numpy kind for that dtype: nothing is
-    parsed, rounded, or truncated.
+    Bool stays bool; integers and judgment codes become int64; decimals become
+    float64. Judgment codes must be ``-1``, ``0`` or ``1``. The input must
+    already hold the engine's numpy kind for that dtype, with one exception: a
+    decimal output may arrive as a signed or unsigned integer array, and it
+    becomes float64 when every value lies in the accepted interval, ``-2**53``
+    to ``2**53``, where float64 holds every integer exactly. A value outside
+    that interval is refused even when float64 holds it, as it holds
+    ``2**53 + 2``. As of axiom-rules-engine 753ce7d9, the per-period dense
+    surface returns int64 for a rule declared decimal when the rule's value
+    stays integer-typed inside the engine, for example an ``if`` tree whose
+    branches read parameters written as whole numbers. Bool never stands for a
+    decimal. Nothing is parsed or truncated, and widening an integer rounds
+    nothing.
 
     Raises:
         ValueError: If ``engine_dtype`` has no graph type, the array's numpy
-            dtype does not match it, or a value would not survive the cast.
+            dtype does not match it, an integer value lies outside the range
+            its graph type holds (for a decimal, the accepted interval), or a
+            judgment code is invalid.
     """
     if engine_dtype not in _GRAPH_DTYPE_BY_ENGINE:
         raise ValueError(
@@ -2285,6 +2299,20 @@ def _graph_output(name: str, engine_dtype: str, values: np.ndarray) -> np.ndarra
     if engine_dtype == "bool" and kind == "b":
         return values.astype(np.bool_)
     if engine_dtype == "decimal" and kind == "f":
+        return values.astype(np.float64)
+    if engine_dtype == "decimal" and kind in ("i", "u"):
+        # Check max and min as Python ints: np.abs overflows on the int64
+        # minimum, and a Python int compares without numpy promotion. An
+        # unsigned array needs only its max checked.
+        bound = _FLOAT64_EXACT_INTEGER_BOUND
+        if values.size and (
+            int(values.max()) > bound or (kind == "i" and int(values.min()) < -bound)
+        ):
+            raise ValueError(
+                f"Decimal output {name!r} arrived as numpy dtype {values.dtype} "
+                "with a value outside -2**53 to 2**53, the range where float64 "
+                "holds every integer exactly."
+            )
         return values.astype(np.float64)
     if engine_dtype in ("integer", "judgment") and kind in ("i", "u"):
         if kind == "u" and values.size and values.max() > np.iinfo(np.int64).max:

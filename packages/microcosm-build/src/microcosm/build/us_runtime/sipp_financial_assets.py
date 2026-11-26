@@ -11,7 +11,8 @@ December person records; annualized monthly income fields;
 and ``TVAL_BANK`` / ``TVAL_STMF`` / ``TVAL_BOND`` as the three policy leaves.
 
 The requested donor artifact is the 2023 SIPP public-use file, ``pu2023.csv``,
-at an immutable Hugging Face model-repository revision.  This is a deliberate
+recorded at a Hugging Face model-repository revision and downloaded from tag
+``1.115.5``; its SHA-256 and byte length pin the content.  This is a deliberate
 vintage/predictor hybrid: ``42ed5d45`` had already changed its default source
 to ``pu2024.csv`` (while retaining 2023 as its reference year), but issue #374
 specifies the pinned 2023 artifact that the earlier enhanced-CPS builds used.
@@ -37,7 +38,12 @@ from typing import BinaryIO
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    SippDecemberPersonRows,
+)
+
 __all__ = [
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE",
@@ -49,9 +55,9 @@ __all__ = [
     "SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS",
     "SIPP_FINANCIAL_ASSET_TARGET_ALLOCATION_COLUMNS",
     "SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS",
+    "build_sipp_2023_financial_asset_donor",
     "fetch_sipp_2023_financial_asset_donor",
     "impute_us_sipp_financial_assets",
-    "load_sipp_2023_financial_asset_donor",
 ]
 
 SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS = (
@@ -64,7 +70,12 @@ _RETIRED_DATA_REPOSITORY = "".join(
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS[1:]
 )
 _SIPP_DONOR_REPOSITORY_ID = "".join(SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS)
+# SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION is the recorded coordinate these
+# bytes were pinned and measured at, kept as the record key.
+# SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION is where the same bytes are
+# served now.  Both name bytes identified by the SHA-256 and size below.
 SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION = "21280dca5995e978d706740a8a4b9b7860cfd7b6"
+SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION = "1.115.5"
 SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256 = (
     "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
 )
@@ -72,7 +83,7 @@ SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES = 3_726_010_471
 SIPP_2023_FINANCIAL_ASSET_DONOR_URL = (
     "https://huggingface.co/PolicyEngine/"
     f"{_RETIRED_DATA_REPOSITORY}/resolve/"
-    f"{SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION}/pu2023.csv"
+    f"{SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION}/pu2023.csv"
 )
 
 SIPP_FINANCIAL_ASSET_TARGET_SOURCE_COLUMNS: dict[str, str] = {
@@ -245,12 +256,13 @@ def fetch_sipp_2023_financial_asset_donor(
     expected_sha256: str | None = SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256,
     expected_size_bytes: int | None = SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES,
 ) -> Path:
-    """Resolve the immutable full SIPP donor through ``huggingface_hub``.
+    """Resolve the pinned full SIPP donor through ``huggingface_hub``.
 
     The known archived-repository checkout and legacy Microcosm SIPP cache are
     checked first to avoid a 3.73 GB transfer on PolicyEngine build machines.
-    Every default-path candidate, including the Hugging Face result, must match
-    the pinned byte length and SHA-256 before it is returned.
+    A Hugging Face cache entry at the recorded revision is then reused without
+    a network request.  Every candidate, including the Hugging Face result, must
+    match the pinned byte length and SHA-256 before it is returned.
     """
 
     candidates: list[Path] = []
@@ -276,17 +288,30 @@ def fetch_sipp_2023_financial_asset_donor(
         ):
             return candidate
 
-    from huggingface_hub import hf_hub_download
+    from huggingface_hub import hf_hub_download, try_to_load_from_cache
+
+    hub_cache_dir = str(Path(cache_dir).expanduser()) if cache_dir is not None else None
+    recorded_snapshot = try_to_load_from_cache(
+        repo_id=_SIPP_DONOR_REPOSITORY_ID,
+        filename=_DONOR_FILENAME,
+        cache_dir=hub_cache_dir,
+        revision=SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
+        repo_type=SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
+    )
+    if isinstance(recorded_snapshot, str) and _file_matches(
+        Path(recorded_snapshot),
+        expected_sha256=expected_sha256,
+        expected_size_bytes=expected_size_bytes,
+    ):
+        return Path(recorded_snapshot)
 
     downloaded = Path(
         hf_hub_download(
             repo_id=_SIPP_DONOR_REPOSITORY_ID,
             filename=_DONOR_FILENAME,
             repo_type=SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
-            revision=SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
-            cache_dir=str(Path(cache_dir).expanduser())
-            if cache_dir is not None
-            else None,
+            revision=SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION,
+            cache_dir=hub_cache_dir,
         )
     )
     if not _file_matches(
@@ -384,56 +409,17 @@ def _target_balanced_cap(
     return donor.iloc[np.asarray(selected, dtype=int)].copy().reset_index(drop=True)
 
 
-def load_sipp_2023_financial_asset_donor(
-    path: str | Path,
+def build_sipp_2023_financial_asset_donor(
+    person_rows: SippDecemberPersonRows,
     *,
-    expected_sha256: str | None = None,
-    expected_size_bytes: int | None = None,
-    chunksize: int = 100_000,
     max_train_samples: int | None = _MAX_TRAIN_SAMPLES,
 ) -> pd.DataFrame:
-    """Load the exact December SIPP asset-QRF donor surface from ``pu2023``."""
+    """Build the exact December SIPP asset-QRF donor surface from ``pu2023``."""
 
-    source_path = Path(path)
-    if (
-        expected_size_bytes is not None
-        and source_path.stat().st_size != expected_size_bytes
-    ):
-        raise ValueError(
-            "SIPP 2023 financial-asset donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {source_path.stat().st_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(source_path)
-        if actual_sha256 != expected_sha256:
-            raise ValueError(
-                "SIPP 2023 financial-asset donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
-            )
-    if chunksize < 1:
-        raise ValueError("chunksize must be a positive integer")
-
-    header = pd.read_csv(source_path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(f"SIPP financial-asset donor missing column(s): {missing}.")
-
-    parts: list[pd.DataFrame] = []
-    for chunk in pd.read_csv(
-        source_path,
-        delimiter="|",
-        usecols=list(SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        dtype={"SSUID": "string"},
-        low_memory=False,
-    ):
-        month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            parts.append(december)
-    if not parts:
-        raise ValueError("SIPP financial-asset donor has no December rows.")
-    raw = pd.concat(parts, ignore_index=True)
+    raw = person_rows.source_table(
+        SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS,
+        ssuid_as_text=True,
+    )
 
     for column in SIPP_FINANCIAL_ASSET_SOURCE_COLUMNS:
         if column == "SSUID":
