@@ -76,6 +76,7 @@ __all__ = [
     "ResolvedCountrySpec",
     "country_resource",
     "country_stage_plan",
+    "country_engine_abi_lock_check_environment",
     "load_country_take_up_contract_projection",
     "load_country_spec",
     "load_gates_manifest",
@@ -2055,6 +2056,24 @@ def _select_take_up_compatibility_payload(
             "the authoritative take_up bundle projection."
         )
     return projection
+
+
+def country_engine_abi_lock_check_environment(country: str) -> dict[str, str]:
+    """Hand this process's check of a country's lock file to a child process.
+
+    The result holds the record of the check of the packaged
+    ``engine_abi.lock.json`` (the package directory that
+    :func:`load_country_take_up_contract_projection` reads) that this process
+    passed, or is empty when no attested check passed here; see
+    :func:`microcosm.build.spec_engine.engine_abi.engine_abi_lock_check_environment`.
+    """
+
+    from microcosm.build.spec_engine.engine_abi import (
+        engine_abi_lock_check_environment,
+    )
+
+    root = Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+    return engine_abi_lock_check_environment(root)
 
 
 def load_country_take_up_contract_projection(

@@ -279,9 +279,19 @@ def run_primary_puf_qrf_chain(
                 "Primary QRF checkpoints have a non-contiguous prefix: "
                 f"target {first_gap} is missing but later target(s) {later} exist."
             )
-    child_environment = None
-    if environment is not None:
-        child_environment = {**os.environ, **dict(environment)}
+    from microcosm.build.us_runtime.take_up_contract import (
+        us_engine_abi_lock_check_environment,
+    )
+
+    # Each worker compares the policyengine-us lock file and engine version
+    # with this process's check instead of deriving the lock again. An
+    # inherited record was issued by this process's parent, which a worker
+    # would ignore.
+    child_environment = {
+        **os.environ,
+        **({} if environment is None else dict(environment)),
+        **us_engine_abi_lock_check_environment(),
+    }
     for target_index, _target in enumerate(target_order):
         target_path = _target_path(root, manifest, target_index)
         if target_path.exists():

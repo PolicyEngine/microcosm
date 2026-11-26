@@ -223,6 +223,10 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     # policyengine-uk's stored input (2.179.0, pe-uk#2877), which the
     # uc_new_claimant_draw stage orders by claim recency.
     "benunit.uc_new_claimant_health_element_draw",
+    # B1 of microcosm#1710: whether a Universal Credit award includes the
+    # housing costs element, policyengine-uk's input (2.180.0, pe-uk#2951),
+    # which the uc_housing_costs_claim stage sets from DWP's award statement.
+    "benunit.would_claim_uc_housing_costs_element",
     # microcosm#1095 (PolicyEngine/microcosm#1687): the UK totals of the
     # components of policyengine-uk's two share keys (2.178.0,
     # pe-uk#2901), which the release boundary writes at the file's weights

@@ -205,7 +205,7 @@ def publication_refusal(
             "itself under staging.build), so the build never appeared on the "
             "staging dashboard and there is no pre-publication review of it. "
             "Either the staging destination was lost mid-build (uploads "
-            "self-disable after repeated failures — check the build machine's "
+            "pause after repeated failures — check the build machine's "
             "Hugging Face write token), or the manifest predates staging "
             "provenance. Rebuild with staging reaching its repo, or pass "
             "--allow-missing-staging to publish anyway. A build that declared "

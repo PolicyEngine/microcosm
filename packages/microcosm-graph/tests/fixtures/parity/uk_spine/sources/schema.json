@@ -63,6 +63,7 @@
       "frs_company_car_private_fuel": "bool",
       "frs_condition_limits_activities": "string",
       "frs_uc_carer_element": "string",
+      "frs_uc_housing_element_status": "string",
       "frs_uc_lcw_status": "string",
       "gender": "string",
       "healthy_start_vouchers": "float64",

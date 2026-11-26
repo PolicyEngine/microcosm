@@ -123,6 +123,7 @@ def test_every_uk_rule_has_one_declaration() -> None:
     assert dict(UK_NATIONAL_TARGET_WEIGHT_RULE_DECLARATIONS) == {
         "uniform": TargetWeightRule("uniform"),
         "family_equal": TargetWeightRule("level_equal"),
+        "loss_family_equal": TargetWeightRule("level_equal"),
     }
 
 

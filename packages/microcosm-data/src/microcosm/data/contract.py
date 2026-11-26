@@ -737,13 +737,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "e09318c248025d06054a9becc5d899e9cdec5059e713d7cbb908983d0aed574b"
+    "e16b3c080588e96f1b1a54f3fb15aa88ae9234f22377a1144a9f20788b203f02"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "579d7c867d32d815849d65d19d5c7ab579e882088be4c3d2537259cb59f74db9"
+    "a21e594a1016b36201db954dd2444ea281c046fe35bdf20efa3173605b2e2ef8"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "172723901c9bcbba984518cb62fcf12918bf1316256bd22f6019dc26d6db47c9"
+    "52451f8f793d739bf816b78214f5a32bb6855dcc80a33bff593e6162e6c99029"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -1392,10 +1392,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "c552c77c2e6b0ca23323996820d9a2f53833fa0377eef4c607bc5fde32e939cf"
+            "b6f74fe633416d9685fde5d2d1cc6a8eb808ef4668613838ba3dd3c13fec3135"
         ),
         "policy_sha256": (
-            "0a2635b7b22034ee1fa9b6574bc259805397171b367f4c7941509648704bf1bb"
+            "c3af4fbfec6266c66f46662306366c58707b9daf704b5ee9b040490db3078a50"
         ),
     },
     "calibration_seam": {
@@ -1408,10 +1408,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "60db375afb925f6547e2477b416e447ba84e466ce6f4680c09df3467fd1ebc37"
+            "f8c201e9da37448fdf9297b55daaedb360e0351aba3c8d04d090402ce57256ee"
         ),
         "policy_sha256": (
-            "ff18ac32a199d50ce018a971785e19fb11ad5ad8a1b09baacd3c56e7cfbe3909"
+            "c5228ffee556e0366e32697561462c223ae186f9589b670e17b63dcb59bd4a96"
         ),
     },
 }

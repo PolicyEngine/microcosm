@@ -234,6 +234,8 @@ class FakeEmitterClient:
         self.hub_files = hub_files if hub_files is not None else {}
         #: Override for ``read_back_run_files``, when a test needs one.
         self.read_back_answer: ReadBackResult | None = None
+        #: The ``wait_seconds`` of each ``read_back_run_files`` call, in order.
+        self.read_back_waits: list[float] = []
         #: Scripted release receipts: the change's answer, then each receipt
         #: asked for (the last one repeats).
         self.release_receipts = (
@@ -366,6 +368,7 @@ class FakeEmitterClient:
         self, repository: str, run_id: str, *, wait_seconds: float = 30.0
     ) -> ReadBackResult:
         self.calls.append("read_back_run_files")
+        self.read_back_waits.append(wait_seconds)
         if "huggingface" not in self.modules:
             return unavailable_read_back()
         if self.read_back_answer is not None:

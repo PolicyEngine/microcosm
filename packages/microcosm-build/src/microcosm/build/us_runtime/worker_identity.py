@@ -38,7 +38,7 @@ _SCHEMA_1_WORKER_IDENTITY_SCHEMA_VERSION = 1
 PRIMARY_QRF_WORKER_MODULE = "microcosm.build.us_runtime.puf_qrf_worker"
 PRIMARY_QRF_INTERPRETER_PLACEHOLDER = "{python_interpreter}"
 APPROVED_UV_LOCK_SHA256 = (
-    "97d599380ccbce69c5bd49a02acba0f47f68ebdc7a5684cc19078a486f9bb997"
+    "4271387ed14b888ad012a2e11530892259a8f638469699b366970902531f2079"
 )
 LEGACY_CAMPAIGN_UV_LOCK_SHA256 = (
     "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
@@ -494,12 +494,25 @@ def primary_qrf_worker_launch_environment() -> Iterator[dict[str, str]]:
     Disabling writes alone still allows Python to execute existing bytecode.
     A fresh, empty cache prefix prevents source-tree or inherited-prefix caches
     from being read, while the semantic identity binds only its placeholder.
+
+    Both also receive this process's record of its policyengine-us lock-file
+    check, so both compare the lock with that record instead of deriving it
+    again. The clean import trace therefore opens the same files whether or
+    not this process itself received a record from its parent, and the
+    identity does not depend on how the process computing it was started. The
+    record's value is not part of the identity.
     """
 
+    from microcosm.build.us_runtime.take_up_contract import (
+        us_engine_abi_lock_check_environment,
+    )
+
+    lock_check = us_engine_abi_lock_check_environment()
     with TemporaryDirectory(prefix="microcosm-qrf-pycache-") as cache_prefix:
         yield {
             **_WORKER_ENVIRONMENT_OVERRIDES,
             "PYTHONPYCACHEPREFIX": str(Path(cache_prefix).absolute()),
+            **lock_check,
         }
 
 

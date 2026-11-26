@@ -142,7 +142,9 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # which the open-surface readers before it bind (microcosm#1069).
         "pension_credit_take_up",
         # The Child Benefit redraw rewrites ``frs_take_up``'s two Child Benefit
-        # flags, which the open-surface readers before it bind (microcosm#1063).
+        # flags (microcosm#1063) and the SPI income stage's Child Benefit
+        # reports on the copies (microcosm#1508), which the open-surface
+        # readers before it bind.
         "child_benefit_take_up",
         # The Carer's Allowance draw rewrites ``would_claim_carers_allowance``,
         # the root cell the SPI income stage refreshes, which the open-surface
@@ -473,6 +475,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # claimant role and carer status over the whole frame, beside the admin
     # status carrier (microcosm#1095, Y1): an open surface.
     "uc_limited_capability": None,
+    # One engine materialization of the housing costs element over the whole
+    # frame, beside the admin status carrier (B1 of microcosm#1710): an open
+    # surface.
+    "uc_housing_costs_claim": None,
     # One temporary engine materialization of the Universal Credit award over
     # the whole frame, which also hands the stage the source lineage its pools
     # and receipt count by: an open surface (microcosm#1334).
@@ -808,6 +814,7 @@ _ROOT_PERSON_STRING = {
     "frs_uc_lcw_status",
     "frs_condition_limits_activities",
     "frs_uc_carer_element",
+    "frs_uc_housing_element_status",
 }
 _ROOT_PERSON_BOOL = {
     "is_household_head",
@@ -1329,6 +1336,9 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "uc_limited_capability_for_WRA", "bool"),
         _Cell("person", "uc_limited_capability_for_work", "bool"),
     ),
+    "uc_housing_costs_claim": (
+        _Cell("benunit", "would_claim_uc_housing_costs_element", "bool"),
+    ),
     "uc_take_up": (_Cell("benunit", "would_claim_uc", "bool"),),
     "uc_legacy_closure_take_up": (
         _Cell("benunit", "would_claim_uc_at_legacy_closure", "bool"),
@@ -1340,6 +1350,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "child_benefit_take_up": (
         _Cell("benunit", "would_claim_child_benefit", "bool"),
         _Cell("benunit", "child_benefit_opts_out", "bool"),
+        _Cell("person", "child_benefit_reported", "float64"),
     ),
     "carers_allowance_take_up": (
         _Cell("person", "would_claim_carers_allowance", "bool"),

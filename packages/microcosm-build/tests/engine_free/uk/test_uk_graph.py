@@ -64,8 +64,9 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # microcosm#1095 (P1) pip_points just before trading_allowance_receipts,
     # and (Y1) uc_limited_capability just before uc_take_up; and
     # microcosm#1095 uc_new_claimant_draw last, after
-    # trading_allowance_receipts.
-    assert len(expected) == 57
+    # trading_allowance_receipts; and B1 of microcosm#1710
+    # uc_housing_costs_claim after uc_limited_capability.
+    assert len(expected) == 58
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)

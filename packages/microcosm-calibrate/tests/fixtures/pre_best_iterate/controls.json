@@ -124,10 +124,10 @@
     "source_path": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py",
     "source_sha256": "f4b32c40a8675c37b0a4f3c1e48ca7b2078e803dac4413221aeb98c23b9e2066",
     "helper_source_sha256": {
-      "_apply_constraint": "86281bdf18bdc17acafbbe79e15fb6b4c4102840a1315c3b6bbf52b170d8749c",
+      "_apply_constraint": "83c043a3e29353196cc38dbbac34b6f0a3158559e3a3fc4b298ea204917b1bf9",
       "_prepare_warm_start_weights": "2e50a07a704ad2ab9d6529a965b7554f7aaba3972ec046a14e5a519e4f0904ed",
       "_project_to_total": "f220ae141fc9144a4a1eec2c894f49065e88bbc1fd18be837ddec2d96cdd52f0",
-      "_relative_error_loss": "e7bba6d694211827780e2d5a0c60436decbaa1dc9310a7caa62945ac4d50843d",
+      "_relative_error_loss": "c1467e48d95dcda283f50e171ec31dda5658facc9a0ec23ad7f430e035615529",
       "_validate_target_loss_cap": "7d7a663cc1de3f3667ea713329387a7913063335a47bc693299fd5c2479f8553"
     },
     "gates_source_path": "packages/microcosm-calibrate/src/microcosm/calibrate/gates.py",

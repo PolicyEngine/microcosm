@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import math
 import os
 from pathlib import Path
 
@@ -21,15 +20,11 @@ def add_staging_arguments(
     parser: argparse.ArgumentParser,
     *,
     repository: StagingRepositoryConfig,
-    default_upload_interval_seconds: float = 30.0,
 ) -> None:
     """Add staging controls using defaults supplied by a country module.
 
-    ``default_upload_interval_seconds`` lets a long-running command choose a
-    slower best-effort upload cadence: the Hub allows about 128 commits per
-    hour per repository and each run-bundle upload cycle performs up to eight
-    single-file commits, so a multi-hour solve at the 30-second default
-    exhausts the budget and loses uploads (the UK rowwise driver runs at 300).
+    A remote run's files are committed when the run starts, when a result
+    file is added and when it ends, so there is no upload interval to set.
     """
 
     parser.add_argument(
@@ -53,12 +48,6 @@ def add_staging_arguments(
         "--staging-candidate-id",
         help="Override the staging candidate identifier.",
     )
-    parser.add_argument(
-        "--staging-upload-interval-seconds",
-        type=float,
-        default=float(default_upload_interval_seconds),
-        help="Minimum interval between best-effort progress uploads.",
-    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--staging-local-only",
@@ -76,7 +65,11 @@ def add_staging_arguments(
     parser.add_argument(
         "--staging-read-back",
         action="store_true",
-        help="After final upload, authenticate and validate the remote core files.",
+        help=(
+            "Fail the build if reading the final commit back fails, and record "
+            "the read-back in the run's delivery summary. Without it, a remote "
+            "run still reads its final commit back, but a failure only warns."
+        ),
     )
 
 
@@ -85,11 +78,6 @@ def validate_staging_arguments(
 ) -> None:
     """Reject contradictory or incomplete staging configuration."""
 
-    interval = args.staging_upload_interval_seconds
-    if not math.isfinite(interval) or interval < 0.0:
-        parser.error(
-            "--staging-upload-interval-seconds must be finite and non-negative."
-        )
     if args.staging_read_back and (args.staging_local_only or args.no_staging):
         parser.error("--staging-read-back requires remote staging.")
     if not args.staging_local_only and not args.no_staging:
