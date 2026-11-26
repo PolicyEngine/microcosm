@@ -7209,6 +7209,8 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         # every attempt, by position, each raised when its consumer asks.
         self._stream_positions: list[int] = []
         self._unit_errors: dict[int, WorkerPoolUnitError] = {}
+        # Each reformed simulation whose unit failed on every attempt.
+        self._unfinished_units: dict[tuple[str, int], WorkerPoolUnitError] = {}
         self._opened: list[str] = []
         self._simulations_opened: dict[str, int] = {}
         self._passes_asked: dict[tuple[str, int], int] = {}
@@ -7456,7 +7458,9 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             )
 
     def _take(self, consumer: str, simulation: int | None):
-        """The next run of stream units for ``(consumer, simulation)``.
+        """The next run of stream units for ``(consumer, simulation)``, each
+        with its result, or with the ``WorkerPoolUnitError`` of a unit that
+        failed on every attempt.
 
         Units of a consumer opened before this one, which stopped before
         asking for them, are passed over. Any other unit in the way means the
@@ -7479,11 +7483,13 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             self._next_unit += 1
             try:
                 result = self._result_of(index)
-            except WorkerPoolUnitError:
+            except WorkerPoolUnitError as error:
                 if ours:
-                    # This consumer's own unit failed on every attempt.
-                    raise
-                # A unit of a consumer that stopped before asking for it.
+                    # This consumer's own unit failed on every attempt: the
+                    # caller raises it in the order the serial scorer would
+                    # have reached it.
+                    taken.append((unit, error))
+                # Otherwise a unit of a consumer that stopped before asking.
                 continue
             except BaseException as error:
                 # The pool cannot go on (a worker could not start, the scorer
@@ -7522,17 +7528,32 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             return next(self._stream)
         except WorkerPoolUnitError as failed_unit:
             failed = self._stream_positions[failed_unit.unit_index]
-            self._unit_errors[failed] = failed_unit
-            self._stream_positions = [
-                position
-                for position in range(index, len(self._stream_units))
-                if position not in self._unit_errors
-            ]
+            # A copy without the traceback: the raised error's frames hold
+            # the stopped run's finished results, which the fresh pool
+            # computes again.
+            kept = WorkerPoolUnitError(
+                str(failed_unit),
+                unit_index=failed,
+                label=failed_unit.label,
+                causes=failed_unit.causes,
+            )
+            kept.__cause__ = failed_unit.__cause__
+            self._unit_errors[failed] = kept
+            del failed_unit
+        self._stream_positions = [
+            position
+            for position in range(index, len(self._stream_units))
+            if position not in self._unit_errors
+        ]
+        if self._stream_positions:
             self._pool = self._new_pool()
             self._stream = self._pool.map(
                 [self._stream_units[position] for position in self._stream_positions]
             )
-            return self._result_of(index)
+        else:
+            # Nothing left to run: an empty generator, which close() accepts.
+            self._stream = (result for result in ())
+        return self._result_of(index)
 
     # ---- consumers ---------------------------------------------------------
 
@@ -7604,16 +7625,25 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
             key: [] for key in baseline_plan
         }
-        failure: PostExportUnitFailure | None = None
+        failure: PostExportUnitFailure | WorkerPoolUnitError | None = None
         for _, result in self._take(name, None):
+            # The serial scorer stops at the first batch that raises, so the
+            # first range in batch order that failed, either way, is raised.
+            if failure is not None:
+                continue
+            if isinstance(result, WorkerPoolUnitError):
+                failure = result
+                continue
             outcome = result.outcomes[0]
             if isinstance(outcome, PostExportUnitFailure):
-                failure = failure or outcome
-            elif failure is None:
+                failure = outcome
+            else:
                 for key, key_parts in zip(baseline_plan, outcome.parts, strict=True):
                     parts[key].extend(key_parts)
         if failure is not None:
             del parts
+            if isinstance(failure, WorkerPoolUnitError):
+                raise failure
             _raise_post_export_worker_failure(failure)
         return {
             key: _concatenate_post_export_parts(parts.pop(key)) for key in baseline_plan
@@ -7705,8 +7735,15 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                 "requests, so a consumer must ask for the same keys whatever "
                 "values it gets back."
             )
+        unfinished = self._unfinished_units.get((name, simulation))
+        if unfinished is not None:
+            raise unfinished
         if asked == 0:
             [(unit, result)] = self._take(name, simulation)
+            if isinstance(result, WorkerPoolUnitError):
+                # Kept, so asking again raises it again.
+                self._unfinished_units[(name, simulation)] = result
+                raise result
             self._serving = (name, simulation, unit, result)
         serving = self._serving
         if serving is None or serving[:2] != (name, simulation):
@@ -7817,13 +7854,16 @@ def _worker_pool_reports_record(
         "workers_stopped_over_cap": sum(
             report.workers_stopped_over_cap for report in reports
         ),
+        # Attempts are numbered within each pool; a unit a stopped run had
+        # finished and a fresh pool ran again is counted in both.
         "failed_attempts": [
             {
+                "pool": pool,
                 "unit": attempt.label,
                 "attempt": attempt.attempt,
                 "cause": attempt.cause,
             }
-            for report in reports
+            for pool, report in enumerate(reports)
             for attempt in report.failed_attempts
         ],
     }

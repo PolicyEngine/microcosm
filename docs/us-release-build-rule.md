@@ -552,7 +552,10 @@ one Microsimulation over the whole file.
     memory, went over its cap or died) raises `WorkerPoolUnitError` in the
     stage that asks for it, even when it failed while workers were still
     running an earlier stage's units, and the pool goes on with the other
-    units in fresh workers. A pool whose workers cannot start refuses every
+    units in fresh workers. The shared pool stops a run at such a failure,
+    so the units then in flight, the one due among them, start again in the
+    fresh pool. In a stage's own baseline pass the first range in batch
+    order that failed, either way, is the error raised. A pool whose workers cannot start refuses every
     stage that needs it (`PostExportPoolStoppedError`); a stage served from
     the shared pass's values is still served. Each of these is a
     `WorkerPoolError` and stops certification, the held-out reports included,
