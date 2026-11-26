@@ -2296,6 +2296,11 @@ def _require_pro_rata_populations(targets: list[dict]) -> None:
 def do_materialize(args) -> None:
     from scipy import sparse
 
+    from microcosm.build.us_runtime import target_nesting
+
+    # microcosm#1760: the shared cross-grain operator makes the district and
+    # county share rows. Record its own receipt of each pass from here on.
+    nesting_receipts = target_nesting.start_nesting_receipts()
     families = [item.strip() for item in args.families.split(",") if item.strip()]
     geographies = [item.strip() for item in args.geographies.split(",") if item.strip()]
     holdout_fraction = _cd_holdout_fraction(args)
@@ -2545,6 +2550,9 @@ def do_materialize(args) -> None:
             indent=2,
         )
     )
+    # A receipt only: no stage reads it and the run identity does not hold it.
+    target_nesting.write_nesting_receipts(args.checkpoint_dir, nesting_receipts)
+    target_nesting.stop_nesting_receipts()
     log(f"materialize stage complete, peak RSS {rss():.2f}GB")
 
 

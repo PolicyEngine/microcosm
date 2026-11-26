@@ -42,8 +42,12 @@ from microcosm.build.cross_grain import (
     apply_cross_grain_reconciliation,
 )
 from microcosm.build.us_runtime.cross_grain_declarations import (
+    COUNTY_ACS_HOUSEHOLDS,
+    COUNTY_POPULATION,
+    COUNTY_SOI,
     DISTRICT_SOI,
     load_us_cross_grain_declarations,
+    us_county_soi_nesting,
     us_cross_grain_mechanism,
     us_district_soi_nesting,
 )
@@ -871,3 +875,625 @@ def district_block_closure(specs: Sequence, *, rtol: float) -> list[dict]:
 
 def _bits(*values: float) -> bytes:
     return b"".join(struct.pack("<d", float(value)) for value in values)
+
+
+# ---------------------------------------------------------------------------
+# County helpers the county mechanisms share
+# ---------------------------------------------------------------------------
+
+#: The GEOID prefix of a county-equivalent in the ledger feeds.
+COUNTY_PREFIX = "0500000US"
+#: Puerto Rico (state 72) is outside the County Files. The county facts loader
+#: drops its municipios with a count; a row that still reaches the county rung
+#: is a defect, never a county to fit.
+PUERTO_RICO_STATE = 72
+
+
+def county_code_of(fact, *, source):
+    """The five-digit county code of a county fact, refusing bad geography.
+
+    The row geography is authoritative. A layout group value, when present,
+    must name the same county (a FIPS/state mismatch is refused), and a
+    Puerto Rico row reaching the rung is refused explicitly.
+    """
+    geography = fact.get("geography", {})
+    if geography.get("level") != "county":
+        raise ValueError(f"{source} county facts must be county rows: {geography!r}.")
+    geoid = str(geography.get("id", ""))
+    digits = geoid[len(COUNTY_PREFIX) :]
+    if (
+        not geoid.startswith(COUNTY_PREFIX)
+        or len(digits) != 5
+        or not (digits.isascii() and digits.isdigit())
+    ):
+        raise ValueError(f"Invalid county {source} geography {geoid!r}.")
+    code = int(digits)
+    if code // 1000 == PUERTO_RICO_STATE:
+        raise ValueError(
+            f"Puerto Rico {source} county fact {geoid} reached the county rung; "
+            "state 72 is outside the 3,144 County Files county-equivalents and "
+            "the county facts loader must drop it."
+        )
+    if not 1 <= code // 1000 <= 56 or code % 1000 == 0:
+        raise ValueError(f"Invalid county {source} geography {geoid!r}.")
+    group = (fact.get("layout") or {}).get("groupby_value_id")
+    if group is not None and str(group)[-5:] != digits:
+        raise ValueError(
+            f"{source} county fact {geoid} names layout county {group!r}; "
+            "geography and layout disagree on the county FIPS."
+        )
+    return code
+
+
+def county_hierarchy(name, code, *, parent=None):
+    """The hierarchy of a county row: its parent's, or the population one."""
+
+    from microcosm.calibrate import (
+        CalibrationHierarchy,
+        HierarchyCategory,
+        HierarchyGeography,
+        HierarchyNode,
+    )
+
+    # One deterministic label for a county in all families. Source labels are
+    # retained in metadata; no mutable county-name registry is needed.
+    geography = HierarchyGeography(f"{COUNTY_PREFIX}{code}", f"County {code}", "county")
+    if parent is not None and parent.hierarchy is not None:
+        return replace(
+            parent.hierarchy,
+            geography=geography,
+            target=HierarchyNode(
+                name, f"{parent.hierarchy.target.label}, county {code}"
+            ),
+        )
+    provider = HierarchyNode("census_population", "Census population")
+    return CalibrationHierarchy(
+        provider=provider,
+        category=HierarchyCategory(
+            "census_population.resident_population", "Resident population", provider.id
+        ),
+        geography=geography,
+        dimensions=(),
+        target=HierarchyNode(name, f"County {code} resident population"),
+    )
+
+
+def cell_members(metadata):
+    """The county codes one county child row covers (one unless combined)."""
+    members = metadata.get("state_county_cell_members")
+    if members:
+        return [int(member) for member in str(members).split(",")]
+    return [int(metadata["county_fips"])]
+
+
+# ---------------------------------------------------------------------------
+# State to county: resident population (issue row 8)
+# ---------------------------------------------------------------------------
+
+#: The quantity the county population mechanism reconciles.
+POPULATION_CONCEPT = "census_population.resident_population"
+
+
+def county_population_rows(
+    state_populations: Mapping, overlap_counties: np.ndarray, overlap_values: np.ndarray
+) -> dict[int, float]:
+    """County populations from ladder overlaps, reconciled to state levels.
+
+    Sums the ladder's overlap populations by county, then the operator
+    divides each state's total among its counties
+    (``scale_residual_to_largest``): the rounding residual goes to the largest
+    county, never a small one.
+
+    Raises:
+        ValueError: If a state has no county or no positive population, or
+            if a county has no state.
+    """
+
+    raw = {
+        int(code): controls.sum_of_lower_rows(overlap_values[overlap_counties == code])
+        for code in np.unique(overlap_counties)
+    }
+    mechanism = us_cross_grain_mechanism(COUNTY_POPULATION)
+    state_level, county_level = mechanism["higher_grain"], mechanism["lower_grain"]
+    blocks, block_codes = [], []
+    for state, target in sorted(state_populations.items()):
+        block = sorted(code for code in raw if code // 1000 == int(state))
+        total = controls.sum_of_lower_rows(raw[code] for code in block)
+        if not block or total <= 0 or not math.isfinite(target) or target <= 0:
+            raise ValueError(f"State {state} has no positive county/state population.")
+        blocks.append(
+            NestingBlock(
+                concept=POPULATION_CONCEPT,
+                filters=(),
+                control_geography_id=geography_id(state_level, f"{int(state):02d}"),
+                control_value=float(target),
+                lower_geography_ids=tuple(
+                    geography_id(county_level, f"{code:05d}") for code in block
+                ),
+                lower_values=tuple(raw[code] for code in block),
+            )
+        )
+        block_codes.append(block)
+    nested, _operator_receipt = reconcile_blocks(COUNTY_POPULATION, blocks)
+    counties: dict[int, float] = {}
+    for block, rows in zip(block_codes, nested, strict=True):
+        counties.update(zip(block, rows.values, strict=True))
+    unknown = sorted(set(raw) - set(counties))
+    if unknown:
+        raise ValueError(f"County populations have no state parent: {unknown}.")
+    return counties
+
+
+# ---------------------------------------------------------------------------
+# State to county: IRS SOI shares (issue row 6)
+# ---------------------------------------------------------------------------
+
+
+def is_broad_state_parent(spec) -> bool:
+    """A state SOI row county facts can divide: all returns, no class."""
+
+    metadata = spec.metadata
+    return (
+        spec.family == "irs_soi"
+        and metadata.get("ledger_geography_level") == "state"
+        and str(metadata.get("filing_status", "all")).lower() == "all"
+        and float(metadata.get("agi_lower_bound", "-inf")) == -math.inf
+        and float(metadata.get("agi_upper_bound", "inf")) == math.inf
+        and metadata.get("soi_return_universe", "all_returns") == "all_returns"
+        and metadata.get("itemized_only", "false").lower() != "true"
+        and metadata.get("taxable_only", "false").lower() != "true"
+        and spec.filter is None
+        and all(
+            str(metadata.get(key, "all")).lower() == "all"
+            for key in ("ledger_filter_filing_status", "ledger_filter_income_range")
+        )
+    )
+
+
+def validated_combined_cells(combined_cells):
+    """Declared combined cells as ``{absent: host}`` codes, refusing bad ones."""
+
+    cells = {int(absent): int(host) for absent, host in dict(combined_cells).items()}
+    for absent, host in cells.items():
+        if absent == host or absent // 1000 != host // 1000:
+            raise ValueError(
+                f"Declared SOI combined cell {absent:05d}->{host:05d} must join two "
+                "distinct counties of one state."
+            )
+        if host in cells:
+            raise ValueError(
+                f"Declared SOI combined cell host {host:05d} is itself merged."
+            )
+    return cells
+
+
+def county_soi_surface(
+    state_specs, facts, county_populations, *, combined_cells, soi_mode
+) -> NestedSurface:
+    """Rebase complete county fact blocks onto existing broad state totals.
+
+    Every state must carry county return count and AGI with unsliced state
+    parents. Other measures require both county facts and a state parent.
+    A county absent from a block is refused unless ``combined_cells`` declares
+    it, with its host present: then one child row covers both counties, its
+    share is the host's published value over the state's published sum, and
+    ``state_county_cell_members`` lists the member counties. The operator
+    divides each state row among its cells (``share_residual_to_largest``).
+    """
+
+    nesting = us_county_soi_nesting()
+    mechanism = us_cross_grain_mechanism(COUNTY_SOI)
+    state_level, county_level = mechanism["higher_grain"], mechanism["lower_grain"]
+    combined = validated_combined_cells(combined_cells)
+    blocks = defaultdict(dict)
+    for fact in facts:
+        observed = fact.get("observed_measure", {})
+        if observed.get("source_name") != "irs_soi":
+            continue
+        code = county_code_of(fact, source="SOI")
+        dimensions = fact.get("dimensions", {})
+        if any(
+            str(dimensions.get(key, "all")).lower() != "all"
+            for key in ("filing_status", "income_range")
+        ):
+            raise ValueError(
+                "County SOI requires all-return facts without AGI classes."
+            )
+        measure = observed.get("source_measure_id")
+        period = str(fact.get("period", {}).get("value", ""))
+        if fact.get("period", {}).get("type") != "tax_year":
+            raise ValueError("County SOI facts must carry a tax_year period.")
+        key = (code // 1000, measure, period)
+        if code in blocks[key]:
+            raise ValueError(f"Duplicate county SOI fact for {key}, {code:05d}.")
+        value = float(fact["value"])
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(
+                f"County SOI shares require finite nonnegative values: {code:05d}."
+            )
+        blocks[key][code] = (value, fact)
+    if not blocks:
+        raise ValueError(
+            "County facts carry no IRS SOI county rows; pass the pinned "
+            "--county-facts file (us/chronicle_county_facts.json, microcosm#922)."
+        )
+    parents = {}
+    for spec in state_specs:
+        if not is_broad_state_parent(spec):
+            continue
+        metadata = spec.metadata
+        state = int(metadata["state_fips"])
+        key = (
+            state,
+            metadata.get("source_measure_id"),
+            str(metadata.get("source_period", "")),
+        )
+        if key[1] not in nesting.required_measures and key[1] not in {
+            block[1] for block in blocks
+        }:
+            continue
+        if key in parents:
+            raise ValueError(f"Two state SOI parents for county concept {key}.")
+        parents[key] = spec
+    if not parents:
+        raise ValueError(
+            "No county SOI concept has an already materialized broad state parent."
+        )
+    for state in sorted({int(code) // 1000 for code in county_populations}):
+        for measure in nesting.required_measures:
+            if not any(key[:2] == (state, measure) for key in parents):
+                raise ValueError(
+                    f"Missing broad state SOI parent state={state:02d}, concept={measure}; "
+                    "state_county requires return count and AGI in every state."
+                )
+    # Every check a block must pass before the operator divides its control.
+    merges = defaultdict(list)
+    checked = []
+    for key, parent in sorted(parents.items()):
+        state, measure, period = key
+        expected = {
+            int(code) for code in county_populations if int(code) // 1000 == state
+        }
+        block = blocks.get(key, {})
+        completeness = controls.leg_completeness(
+            block, expected, combined_cells=combined
+        )
+        if not expected or not completeness.complete:
+            raise ValueError(
+                f"Incomplete county SOI block state={state:02d}, concept={measure}, period={period}; "
+                f"missing={[f'{code:05d}' for code in completeness.missing]}, unexpected={[f'{code:05d}' for code in completeness.unexpected]}. "
+                "County facts, ladder and county column must use matching boundaries; "
+                "only a declared combined SOI cell may cover an absent county."
+            )
+        members = {code: [code] for code in sorted(block)}
+        for code, host in sorted(completeness.merged.items()):
+            members[host].append(code)
+            merges[(host, code)].append(f"{measure}|{period}")
+        codes = sorted(block)
+        raw_values = [block[code][0] for code in codes]
+        if controls.sum_of_lower_rows(raw_values) <= 0:
+            raise ValueError(
+                f"County SOI block {key} has no positive share denominator."
+            )
+        shares, _total, _largest = controls.residual_shares(raw_values)
+        for code in codes:
+            unit = block[code][1].get("observed_measure", {}).get("unit")
+            if (
+                parent.metadata.get("ledger_measure_unit") is not None
+                and unit != parent.metadata["ledger_measure_unit"]
+            ):
+                raise ValueError(
+                    f"County SOI units differ from state parent {parent.name}: {unit!r}."
+                )
+        checked.append((key, parent, expected, block, members, codes, shares))
+
+    # The operator divides each state row among its county cells.
+    nested, operator_receipt = reconcile_blocks(
+        COUNTY_SOI,
+        [
+            NestingBlock(
+                concept=f"{parent.family}.{measure}",
+                filters=(("source_period", period),),
+                control_geography_id=geography_id(state_level, f"{state:02d}"),
+                control_value=float(parent.value),
+                lower_geography_ids=tuple(
+                    geography_id(county_level, f"{code:05d}") for code in codes
+                ),
+                lower_values=tuple(block[code][0] for code in codes),
+            )
+            for (state, measure, period), parent, _e, block, _m, codes, _s in checked
+        ],
+    )
+    specs, receipts = [], []
+    for (key, parent, expected, block, members, codes, shares), rows in zip(
+        checked, nested, strict=True
+    ):
+        state, measure, period = key
+        targets = list(rows.values)
+        state_population = controls.sum_of_lower_rows(
+            county_populations[code] for code in expected
+        )
+        for code, share, target in zip(codes, shares, targets, strict=True):
+            raw, fact = block[code]
+            county = f"{code:05d}"
+            cell = sorted(members[code])
+            name = f"county_{county}__{parent.name}"
+            metadata = {
+                **parent.metadata,
+                "ledger_geography_level": "county",
+                "ledger_geography_id": f"{COUNTY_PREFIX}{county}",
+                "ledger_geography_vintage": str(
+                    fact["geography"].get("vintage", period)
+                ),
+                "ledger_layout_record_set_spec_id": str(
+                    fact.get("layout", {}).get("record_set_spec_id", "county_soi")
+                ),
+                "county_fips": county,
+                "county_label": str(fact["geography"].get("name", county)),
+                "state_county_parent_target_name": parent.name,
+                "state_county_share": str(share),
+                "state_county_source_value": str(raw),
+                "county_population": str(
+                    controls.sum_of_lower_rows(
+                        county_populations[member] for member in cell
+                    )
+                ),
+                "state_population": str(state_population),
+            }
+            if len(cell) > 1:
+                metadata["state_county_cell_members"] = ",".join(
+                    f"{member:05d}" for member in cell
+                )
+                metadata["state_county_cell_basis"] = nesting.combined_cell_basis
+            specs.append(
+                replace(
+                    parent,
+                    name=name,
+                    measure=name,
+                    value=target,
+                    se=None,
+                    metadata=metadata,
+                    hierarchy=county_hierarchy(name, county, parent=parent),
+                    source=f"{parent.source}; IRS SOI county {period} within-state shares",
+                )
+            )
+        receipts.append(
+            {
+                "state_fips": f"{state:02d}",
+                "concept": measure,
+                "parent": parent.name,
+                "counties": len(expected),
+                "cells": len(codes),
+                "share_sum": controls.sum_of_lower_rows(shares),
+                "target_sum": controls.sum_of_lower_rows(targets),
+            }
+        )
+    # Counties without a state parent cannot silently disappear.
+    covered = {int(member) for spec in specs for member in cell_members(spec.metadata)}
+    missing = sorted(set(county_populations) - covered)
+    if missing:
+        raise ValueError(f"Counties have no materialized SOI state parent: {missing}.")
+    receipt = {
+        "soi_mode": soi_mode,
+        "county_targets": len(specs),
+        "concepts": sorted({key[1] for key in parents}),
+        "blocks": receipts,
+        "combined_cells": [
+            {
+                "members": sorted((f"{host:05d}", f"{absent:05d}")),
+                "host": f"{host:05d}",
+                "absent_from_soi": f"{absent:05d}",
+                "concepts": sorted(concepts),
+                "basis": nesting.combined_cell_basis,
+                "source": "https://www.irs.gov/pub/irs-soi/22incydocguide.docx",
+                "own_rows_kept": "ladder population, ACS households and "
+                "ACS validation rows stay per county",
+            }
+            for (host, absent), concepts in sorted(merges.items())
+        ],
+        "new_engine_columns": 0,
+        "basis": "state target x county fact / state sum of county facts",
+    }
+    return NestedSurface(
+        specs=tuple(specs), receipt=receipt, operator_receipt=operator_receipt
+    )
+
+
+# ---------------------------------------------------------------------------
+# County to state: ACS households (issue row 7)
+# ---------------------------------------------------------------------------
+
+
+def _state_label(state):
+    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
+
+    label = US_STATE_FIPS_TO_NAME.get(f"{int(state):02d}")
+    if label is None:
+        raise ValueError(f"State {int(state):02d} has no Census state name.")
+    return label
+
+
+def _acs_hierarchy(name, source_name, *, state=None, county=None):
+    from microcosm.calibrate import (
+        CalibrationHierarchy,
+        HierarchyCategory,
+        HierarchyGeography,
+        HierarchyNode,
+    )
+    from microcosm.calibrate.provider_labels import calibration_provider_label
+
+    provider = HierarchyNode(source_name, calibration_provider_label("us", source_name))
+    if county is not None:
+        # The same label every county family gives this county
+        # (county_hierarchy).
+        geography = HierarchyGeography(
+            f"{COUNTY_PREFIX}{county}", f"County {county}", "county"
+        )
+        label = f"County {county} households (ACS)"
+    else:
+        state_label = _state_label(state)
+        geography = HierarchyGeography(
+            f"0400000US{int(state):02d}", state_label, "state"
+        )
+        label = f"{state_label} households (ACS)"
+    return CalibrationHierarchy(
+        provider=provider,
+        category=HierarchyCategory("census_acs.households", "Households", provider.id),
+        geography=geography,
+        dimensions=(),
+        target=HierarchyNode(name, label),
+    )
+
+
+def acs_households_parent_name(state):
+    return f"acs_households_state_{int(state):02d}"
+
+
+def county_acs_household_surface(
+    values, county_populations, *, period, source_name, tables, family, measure
+) -> NestedSurface:
+    """State households parents and their county children (trained, levels).
+
+    ``values`` is ``{county: (estimate, margin of error or None, name)}`` for
+    the households measure. Each state parent is the sum of its counties'
+    estimates (``sum_of_lower_rows``), a new state target that moves state
+    household counts to ACS 5-year levels; the operator then divides it among
+    the counties by share (``share_residual_to_largest``), so they sum to it.
+    ACS margins of error ride in metadata.
+    """
+    from microcosm.calibrate import TargetSpec
+
+    mechanism = us_cross_grain_mechanism(COUNTY_ACS_HOUSEHOLDS)
+    state_level, county_level = mechanism["higher_grain"], mechanism["lower_grain"]
+    source = (
+        f"US Census Bureau {tables} B11001_001E (households), county; "
+        "state = sum of its counties"
+    )
+    checked = []
+    for state in sorted({int(code) // 1000 for code in county_populations}):
+        codes = sorted(code for code in values if code // 1000 == state)
+        public = [values[code][0] for code in codes]
+        total = controls.sum_of_lower_rows(public)
+        if not codes or total <= 0:
+            raise ValueError(
+                f"ACS county households for state {state:02d} have no positive "
+                "share denominator."
+            )
+        shares, _total, _largest = controls.residual_shares(public)
+        # Naming the state parent refuses a state with no Census name here,
+        # in state order, as it did when the parent was built in this loop.
+        parent_name = acs_households_parent_name(state)
+        parent_hierarchy = _acs_hierarchy(parent_name, source_name, state=state)
+        checked.append((state, codes, public, total, shares, parent_hierarchy))
+
+    # The operator divides each state's sum among its counties.
+    nested, operator_receipt = reconcile_blocks(
+        COUNTY_ACS_HOUSEHOLDS,
+        [
+            NestingBlock(
+                concept=f"{source_name}.{measure}",
+                filters=(),
+                control_geography_id=geography_id(state_level, f"{state:02d}"),
+                control_value=total,
+                lower_geography_ids=tuple(
+                    geography_id(county_level, f"{code:05d}") for code in codes
+                ),
+                lower_values=tuple(public),
+            )
+            for state, codes, public, total, _shares, _hierarchy in checked
+        ],
+    )
+    specs, receipts = [], []
+    for (state, codes, _public, total, shares, parent_hierarchy), rows in zip(
+        checked, nested, strict=True
+    ):
+        parent_name = acs_households_parent_name(state)
+        state_population = controls.sum_of_lower_rows(
+            county_populations[code] for code in codes
+        )
+        specs.append(
+            TargetSpec(
+                name=parent_name,
+                entity="household",
+                measure=parent_name,
+                value=total,
+                period=period,
+                source=source,
+                family=family,
+                metadata={
+                    "geography_level": "state",
+                    "state_fips": f"{state:02d}",
+                    "source_measure_id": measure,
+                    "acs_state_parent_basis": "sum of county estimates",
+                    "household_universe": "excludes ACS group quarters (TYPEHUGQ 2, 3)",
+                    "new_state_target": "true",
+                },
+                hierarchy=parent_hierarchy,
+            )
+        )
+        targets = list(rows.values)
+        for code, share, target in zip(codes, shares, targets, strict=True):
+            county = f"{code:05d}"
+            name = f"county_{county}__{parent_name}"
+            estimate, moe, label = values[code]
+            metadata = {
+                "geography_level": "county",
+                "county_fips": county,
+                "state_fips": f"{state:02d}",
+                "source_measure_id": measure,
+                "state_county_parent_target_name": parent_name,
+                "state_county_share": str(share),
+                "state_county_source_value": str(estimate),
+                "county_population": str(county_populations[code]),
+                "state_population": str(state_population),
+                "household_universe": "excludes ACS group quarters (TYPEHUGQ 2, 3)",
+            }
+            if label:
+                metadata["county_label"] = label
+            if moe is not None:
+                metadata["acs_margin_of_error"] = str(moe)
+            specs.append(
+                TargetSpec(
+                    name=name,
+                    entity="household",
+                    measure=name,
+                    value=target,
+                    period=period,
+                    source=f"US Census Bureau {tables} B11001_001E "
+                    "(households), county share of the state sum",
+                    family=family,
+                    metadata=metadata,
+                    hierarchy=_acs_hierarchy(name, source_name, county=county),
+                )
+            )
+        receipts.append(
+            {
+                "state_fips": f"{state:02d}",
+                "state_target": parent_name,
+                "state_households": total,
+                "counties": len(codes),
+                "share_sum": controls.sum_of_lower_rows(shares),
+                "target_sum": controls.sum_of_lower_rows(targets),
+                "counties_with_moe": sum(values[code][1] is not None for code in codes),
+            }
+        )
+    receipt = {
+        "family": family,
+        "source_measure_id": measure,
+        "source": f"{tables} county B11001",
+        "new_state_targets": len(receipts),
+        "county_targets": len(specs) - len(receipts),
+        "note": (
+            "New state targets: each state's households target is the sum "
+            "of its counties' ACS 5-year B11001_001E estimates, which moves "
+            "state household counts to ACS 5-year levels (the county pilot "
+            "found the release about 6% under ACS households). County rows "
+            "split those state targets; group-quarters records count as "
+            "no household."
+        ),
+        "blocks": receipts,
+        "new_engine_columns": 0,
+    }
+    return NestedSurface(
+        specs=tuple(specs), receipt=receipt, operator_receipt=operator_receipt
+    )
