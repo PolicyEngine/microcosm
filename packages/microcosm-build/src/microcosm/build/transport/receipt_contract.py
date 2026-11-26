@@ -833,7 +833,7 @@ def assign_receipts_v2(
                 # compared. Rate 1 makes the expected mass the pool's mass, so
                 # the numerical check below compares it with that mass and
                 # passes, while shortfall records the gap to the target.
-                rate = detail["rate"] = 1.0
+                rate = detail["rate"] = float(1)
                 detail["shortfall"] = target - mass
                 chosen = pool
             else:
