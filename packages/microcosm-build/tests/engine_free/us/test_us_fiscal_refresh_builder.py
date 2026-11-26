@@ -9313,7 +9313,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # frame, values and pass function main() wired to each variable.
     def fake_household_pass_record(frame, values, *, variable, reuse_refused=None):
         captured.setdefault("household_pass_records", []).append(
-            (variable, frame, values)
+            (variable, frame, values, reuse_refused)
         )
         return SimpleNamespace(variable=variable)
 
@@ -9329,7 +9329,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         reuse_refused=None,
     ):
         captured.setdefault("household_pass_reuses", []).append(
-            (record.variable, frame, maximum_microsim_batch_size, telemetry_stage)
+            (
+                record.variable,
+                frame,
+                maximum_microsim_batch_size,
+                telemetry_stage,
+                reuse_refused,
+            )
         )
         values = recompute(frame)
         captured.setdefault("household_pass_values", {})[record.variable] = values
@@ -9346,6 +9352,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(
         builder, "_medicaid_person_eligibility", fake_medicaid_person_eligibility
+    )
+
+    # A reason per frame, so the assertions can check which frame's claiming
+    # links each Medicaid record and reuse was judged on.
+    def fake_medicaid_claim_crossing(frame):
+        return f"claim-crossing:{id(frame)}"
+
+    monkeypatch.setattr(
+        builder, "_medicaid_claim_crossing", fake_medicaid_claim_crossing
     )
 
     monkeypatch.setattr(builder, "_household_pass_record", fake_household_pass_record)
@@ -10602,14 +10617,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     assert ssi_record[0] == "uncapped_ssi"
     assert ssi_record[1] is first_ssi_frame
     assert ssi_record[2] is first_ssi_values
+    assert ssi_record[3] is None
     assert medicaid_record[0] == "is_medicaid_eligible"
     assert medicaid_record[1] is captured["medicaid_first_pass_frame"]
     assert medicaid_record[2] is captured["medicaid_first_pass_eligibility"]
+    assert medicaid_record[3] == (
+        f"claim-crossing:{id(captured['medicaid_first_pass_frame'])}"
+    )
     export_frame = captured["final_ssi_frame"]
     reuses = captured["household_pass_reuses"]
     assert reuses[0][0] == "uncapped_ssi"
     assert reuses[0][1] is export_frame
-    assert reuses[0][2:] == (batch_size, "take_up_final_diagnostics")
+    assert reuses[0][2:] == (batch_size, "take_up_final_diagnostics", None)
     # The SSI recompute is the SSI pass, run on the export frame.
     assert len(later_ssi_calls) == 1
     assert later_ssi_calls[0][0] is export_frame
@@ -10624,7 +10643,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         assert captured["final_medicaid_frame"] is export_frame
         assert reuses[1][0] == "is_medicaid_eligible"
         assert reuses[1][1] is export_frame
-        assert reuses[1][2:] == (batch_size, "medicaid_final_diagnostics")
+        assert reuses[1][2:] == (
+            batch_size,
+            "medicaid_final_diagnostics",
+            f"claim-crossing:{id(export_frame)}",
+        )
         # The Medicaid recompute is the Medicaid pass, run on the export frame.
         ((medicaid_frame, medicaid_batch_size),) = captured[
             "medicaid_eligibility_calls"

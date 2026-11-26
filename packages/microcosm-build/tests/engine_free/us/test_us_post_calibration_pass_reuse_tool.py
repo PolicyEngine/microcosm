@@ -186,3 +186,58 @@ def test_a_refused_reuse_runs_the_whole_export_frame(builder, capsys) -> None:
     assert (reuse.reused_households, reuse.recomputed_households) == (0, 3)
     assert stand_in.household_sets[1:] == [[1, 2, 3]]
     assert "without reuse: a claim crosses households" in capsys.readouterr().out
+
+
+def test_one_family_garbage_collection_collects_once_and_restores(
+    builder, monkeypatch
+) -> None:
+    collections: list[int] = []
+    monkeypatch.setattr(builder.gc, "collect", lambda *args: collections.append(1))
+
+    with builder._one_family_garbage_collection():
+        builder._collect_family_garbage()
+        with builder._one_family_garbage_collection():
+            builder._collect_family_garbage()
+        assert collections == []
+    assert collections == [1]
+    assert builder._FAMILY_GARBAGE_DEFERRED is False
+
+    with pytest.raises(RuntimeError):
+        with builder._one_family_garbage_collection():
+            raise RuntimeError("pass failed")
+    assert collections == [1, 1]
+    assert builder._FAMILY_GARBAGE_DEFERRED is False
+    builder._collect_family_garbage()
+    assert collections == [1, 1, 1]
+
+
+def test_a_reuse_runs_one_full_collection_for_all_its_batches(
+    builder, monkeypatch
+) -> None:
+    """Each pass call ends with a full collection; a reuse of several batches
+    runs one, as a full pass does."""
+
+    collections: list[int] = []
+    monkeypatch.setattr(builder.gc, "collect", lambda *args: collections.append(1))
+    frame = _frame()
+    stand_in = _StandInPass()
+    record = record_household_pass(frame, stand_in(frame), _INPUTS)
+    # Household 1 changes; household 2 is the one checked household.
+    changed = _frame(income=(11.0, 0.0, 20.0, 30.0))
+
+    def pass_with_collection(run_frame):
+        values = stand_in(run_frame)
+        builder._collect_family_garbage()
+        return values
+
+    builder._reuse_household_pass(
+        record,
+        changed,
+        recompute=pass_with_collection,
+        maximum_microsim_batch_size=1,
+        description="Medicaid eligibility",
+    )
+
+    # Two pass calls, one per batch of one household, and one collection.
+    assert stand_in.household_sets[1:] == [[1], [2]]
+    assert collections == [1]
