@@ -25,6 +25,14 @@ walks every module each target and problem kernel hashes, its own module and
 the modules hashed beside this tuple included, and records the imports no
 review has classified yet (microcosm#1497). This module is not hashed, so an
 edit to a reason re-keys nothing; an edit to the tuple re-keys the kernels.
+
+``UK_FULL_PROBLEM_LOSS_WEIGHT_MODULE_NAMES`` is a second tuple of the same
+kind: the modules whose source decides the loss weights and loss scales that
+``uk.full.problem@1`` binds. That kernel alone hashes them, beside the target
+modules. They are named here, not imported by ``graph_targets``, because the
+target, selection and measures kernels share that module and run none of
+this code: an import there would be an edge from their hashed module to code
+they do not hash (microcosm#1729).
 """
 
 from __future__ import annotations
@@ -149,6 +157,40 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
         ),
     }
 )
+
+
+#: The modules whose source decides the loss weights and scales of the full
+#: problem, in the order ``uk.full.problem@1`` hashes them:
+#:
+#: - ``local_rowwise.prepare_uk_full_solve`` builds the weights from the rules
+#:   in ``target_weights`` and ``national_doctrine`` (microcosm#1124);
+#: - ``target_weights`` reads the UK-wide geography codes from
+#:   ``geography_constants``;
+#: - the loss scales the problem stores come from
+#:   ``calibrate.solve.default_target_loss_scales`` (microcosm#1492). All of
+#:   ``calibrate.solve`` is hashed: ``calibrate.adam@1``, whose hash every UK
+#:   solve kernel embeds, already hashes it, so an edit there re-solves anyway
+#:   and re-keys only the problem besides;
+#: - the arithmetic of every rule is the shared
+#:   ``calibrate.target_loss_rules`` (microcosm#1729), which ``target_weights``
+#:   and ``national_doctrine`` call.
+UK_FULL_PROBLEM_LOSS_WEIGHT_MODULE_NAMES: tuple[str, ...] = (
+    "microcosm.build.uk_runtime.local_rowwise",
+    "microcosm.build.uk_runtime.national_doctrine",
+    "microcosm.build.uk_runtime.target_weights",
+    "microcosm.calibrate.geography_constants",
+    "microcosm.calibrate.solve",
+    "microcosm.calibrate.target_loss_rules",
+)
+
+
+def uk_full_problem_loss_weight_modules() -> tuple[ModuleType, ...]:
+    """The modules of :data:`UK_FULL_PROBLEM_LOSS_WEIGHT_MODULE_NAMES`, imported."""
+
+    return tuple(
+        importlib.import_module(name)
+        for name in UK_FULL_PROBLEM_LOSS_WEIGHT_MODULE_NAMES
+    )
 
 
 def uk_target_compile_modules() -> tuple[ModuleType, ...]:

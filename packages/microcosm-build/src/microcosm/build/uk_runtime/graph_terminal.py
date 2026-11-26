@@ -1353,6 +1353,8 @@ class UKFullHoldoutKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
+
         from . import (
             dataset_size,
             graph_targets,
@@ -1374,6 +1376,9 @@ class UKFullHoldoutKernel(KernelBase):
                         local_doctrine,
                         national_doctrine,
                         target_weights,
+                        # The shared rules that compute the weights the
+                        # holdout re-applies (microcosm#1729).
+                        calibrate_target_loss_rules,
                         dependencies=self.capabilities.dependencies,
                     ),
                     # The holdout repeats the solve: it keys on the solve

@@ -42,7 +42,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # The SIPP 2023 donor download tag and the financial-asset cache lookup
     # move it again.
     assert first.spec_sha256 == (
-        "f8cf0b8a9f76ad869ff3dd1b9e724a76e5043862113e4990743274ceee85763c"
+        "9ef2736b6b2c8e9e02c6d12c76acb6b4349479cd7bfceb0124a7bb8264bc9219"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
