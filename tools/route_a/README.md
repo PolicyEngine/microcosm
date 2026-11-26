@@ -249,7 +249,11 @@ The certify stage scores the post-export stages in a pool of worker
 processes sized from the machine; `MICROCOSM_POST_EXPORT_WORKERS` in
 `route_a.env` (a number of workers, or `serial`) overrides it, and the driver
 exports it. On a machine under about 10.7 GiB, certification refuses to start
-without it. The stage's 110 GiB RSS cap counts the workers too.
+without it. The stage's 110 GiB RSS cap counts the workers too, and the
+worker count is not sized to it: the plan's peak is 3 GiB plus 5 GiB per
+worker (88 GiB for 17 workers on the 128 GiB build Mac), so on a machine
+where the formula gives more than 21 workers (about 151 GiB and 23 usable
+cores or more), set `MICROCOSM_POST_EXPORT_WORKERS` to 21 or fewer.
 
 The driver waits up to `RESOURCE_WAIT_HOURS` (example: 12) for admission and
 retries a supervisor admission race every five minutes. Every config includes

@@ -7199,16 +7199,25 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         # Why the pool could not start, or stopped serving its second run.
         self._start_failure: BaseException | None = None
         self._stopped: BaseException | None = None
-        # The settings the pool was started with.
+        # The settings the pool was started with, and the reports of the pools
+        # replaced since (a pool closes when a unit fails on every attempt).
         self._pool_settings: WorkerPoolSettings | None = None
+        self._replaced_reports: list[WorkerPoolReport] = []
+        self._merged_fallback_reason: str | None = None
+        # The second run's units still to be handed back by the current pool,
+        # as positions in ``_stream_units``, and the units that failed on
+        # every attempt, by position, each raised when its consumer asks.
+        self._stream_positions: list[int] = []
+        self._unit_errors: dict[int, WorkerPoolUnitError] = {}
         self._opened: list[str] = []
         self._simulations_opened: dict[str, int] = {}
         self._passes_asked: dict[tuple[str, int], int] = {}
         self._rules_counted: set[tuple[str, int]] = set()
-        # The last pass of each reformed simulation that failed: its keys and
-        # its failure, raised again if the consumer asks for them again.
+        # Each pass of a reformed simulation that failed: its keys and its
+        # failure, raised again if the consumer asks for those keys again.
         self._failed_passes: dict[
-            tuple[str, int], tuple[tuple[PostExportKey, ...], PostExportUnitFailure]
+            tuple[str, int],
+            list[tuple[tuple[PostExportKey, ...], PostExportUnitFailure]],
         ] = {}
         # The reform unit whose passes are being served: (consumer,
         # simulation, unit, result).
@@ -7280,7 +7289,12 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             raise
 
     def _new_pool(self) -> WorkerPool:
+        """A pool with this scorer's settings; a pool it replaces (closed by a
+        unit that failed on every attempt) leaves its report behind."""
         pooling = self._pooling
+        if self._pool is not None:
+            self._pool.close()
+            self._replaced_reports.append(self._pool.report())
         if self._pool_settings is None:
             self._pool_settings = _post_export_worker_settings(
                 pooling, workers=self._workers
@@ -7336,10 +7350,12 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                     )
                 layout.extend(self._reform_units(name))
             stream_units = tuple(layout)
+            self._units["fallback_baseline"] = len(stream_units) - len(reform_units)
         else:
             stream_units = reform_units
         if stream_units:
             self._stream_units = stream_units
+            self._stream_positions = list(range(len(stream_units)))
             self._stream = self._pool.map(stream_units)
 
     def _run_merged_baseline(
@@ -7399,6 +7415,7 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                 if unfinished is not None
                 else f"{failure.error_name}: {failure.message}"
             )
+            self._merged_fallback_reason = reason
             print(
                 f"Post-export merged baseline plan failed ({reason}); each "
                 "consumer scores its own baseline plan instead.",
@@ -7458,13 +7475,19 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                 break
             if not ours and unit.consumer not in self._opened:
                 break
+            index = self._next_unit
             self._next_unit += 1
             try:
-                result = next(self._stream)
+                result = self._result_of(index)
+            except WorkerPoolUnitError:
+                if ours:
+                    # This consumer's own unit failed on every attempt.
+                    raise
+                # A unit of a consumer that stopped before asking for it.
+                continue
             except BaseException as error:
-                # The pool stopped (a unit failed on every attempt, a worker
-                # could not start, the scorer closed): nothing after it can
-                # be served.
+                # The pool cannot go on (a worker could not start, the scorer
+                # closed): nothing after this can be served.
                 self._stopped = error
                 raise
             self._report_timing(unit, result)
@@ -7482,6 +7505,34 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                 "serves each consumer its recorded requests in that order."
             )
         return taken
+
+    def _result_of(self, index: int) -> PostExportUnitResult:
+        """The result of the second run's unit at ``index``, the next one due.
+
+        Workers run ahead of the consumers, and the pool stops a run as soon
+        as any unit in flight has failed on every attempt, which may be a
+        later consumer's. That unit's error is kept and raised when its own
+        consumer asks for it; the units from ``index`` on, without it, go on
+        in a fresh pool, as the serial scorer would score them.
+        """
+        error = self._unit_errors.pop(index, None)
+        if error is not None:
+            raise error
+        try:
+            return next(self._stream)
+        except WorkerPoolUnitError as failed_unit:
+            failed = self._stream_positions[failed_unit.unit_index]
+            self._unit_errors[failed] = failed_unit
+            self._stream_positions = [
+                position
+                for position in range(index, len(self._stream_units))
+                if position not in self._unit_errors
+            ]
+            self._pool = self._new_pool()
+            self._stream = self._pool.map(
+                [self._stream_units[position] for position in self._stream_positions]
+            )
+            return self._result_of(index)
 
     # ---- consumers ---------------------------------------------------------
 
@@ -7623,11 +7674,21 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         name = consumer.name
         recorded = self._requests[name].passes_of(simulation)
         asked = self._passes_asked.get((name, simulation), 0)
-        failed = self._failed_passes.get((name, simulation))
-        if failed is not None and failed[0] == tuple(keys):
+        failure = next(
+            (
+                failed
+                for failed_keys, failed in self._failed_passes.get(
+                    (name, simulation), ()
+                )
+                if failed_keys == tuple(keys)
+            ),
+            None,
+        )
+        if failure is not None:
             # The serial scorer runs a failed pass again when it is asked
-            # again, and its rules were built already.
-            failure = failed[1]
+            # again, and its rules were built already. (A request for some of
+            # a failed pass's keys is a pass the dry run did not record, and
+            # is refused below.)
             if failure.stage == "rules":
                 _raise_post_export_worker_failure(failure)
             if failure.stage != "responses":
@@ -7660,7 +7721,9 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         outcome = result.outcomes[asked]
         failed = isinstance(outcome, PostExportUnitFailure)
         if failed:
-            self._failed_passes[(name, simulation)] = (tuple(keys), outcome)
+            self._failed_passes.setdefault((name, simulation), []).append(
+                (tuple(keys), outcome)
+            )
         if failed and outcome.stage == "rules":
             _raise_post_export_worker_failure(outcome)
         if (name, simulation) not in self._rules_counted:
@@ -7711,10 +7774,16 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             ),
             "units": dict(self._units),
             "resources": self._pooling.resources,
+            # Why the merged baseline pass fell back to each consumer's own
+            # pass, if it did.
+            "merged_baseline_fallback": self._merged_fallback_reason,
             "report": None,
         }
+        reports = [*self._replaced_reports]
         if self._pool is not None:
-            record["report"] = _worker_pool_report_record(self._pool.report())
+            reports.append(self._pool.report())
+        if reports:
+            record["report"] = _worker_pool_reports_record(reports)
         return record
 
     def close(self) -> None:
@@ -7730,19 +7799,31 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             super().close()
 
 
-def _worker_pool_report_record(report: WorkerPoolReport) -> dict[str, object]:
+def _worker_pool_reports_record(
+    reports: Sequence[WorkerPoolReport],
+) -> dict[str, object]:
+    """The reports of every pool a scorer ran, in order, as one record."""
+    peaks = [
+        report.peak_worker_memory_bytes
+        for report in reports
+        if report.peak_worker_memory_bytes is not None
+    ]
     return {
-        "worker_starts": report.worker_starts,
-        "units_completed": report.units_completed,
-        "max_live_workers": report.max_live_workers,
-        "peak_worker_memory_bytes": report.peak_worker_memory_bytes,
-        "workers_stopped_over_cap": report.workers_stopped_over_cap,
+        "pools": len(reports),
+        "worker_starts": sum(report.worker_starts for report in reports),
+        "units_completed": sum(report.units_completed for report in reports),
+        "max_live_workers": max(report.max_live_workers for report in reports),
+        "peak_worker_memory_bytes": max(peaks) if peaks else None,
+        "workers_stopped_over_cap": sum(
+            report.workers_stopped_over_cap for report in reports
+        ),
         "failed_attempts": [
             {
                 "unit": attempt.label,
                 "attempt": attempt.attempt,
                 "cause": attempt.cause,
             }
+            for report in reports
             for attempt in report.failed_attempts
         ],
     }

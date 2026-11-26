@@ -19,8 +19,11 @@ consumers, writers and file names:
 3. ``take_up_participation``: ``us_take_up_participation_diagnostics`` and the
    stale count-calibrated check ``_main`` raises on.
 4. ``reform_coverage_smoke``: the release's smoke consumer on the
-   household-batched scorer (``_HouseholdBatchedPostExportScorer``), from the
-   baseline plan the engine-free dry run records.
+   household-batched scorer, from the plan the engine-free dry run records:
+   in the shared worker pool (``_PooledPostExportScorer``), as the command
+   scores by default, or in this process
+   (``_HouseholdBatchedPostExportScorer``, with
+   ``MICROCOSM_POST_EXPORT_WORKERS=serial``).
 5. ``reform_validation``: ``_reform_validation_consumer``. With the build's
    ``calibration_diagnostics.json`` its in-sample JCT rows come from the fit,
    as in the release; without it they are simulated (one extra reform pass
@@ -108,9 +111,12 @@ report (worker starts, failed attempts, peak worker memory). A line is written
 when the pass's results reach this process, so a pass whose results never do
 (the stage stopped, or the scorer closed first) has none, and the remaining
 passes of a stage that stopped early are written, and counted, under the stage
-that passes over them. Once a unit has failed on every attempt the pool stops:
-that stage records the failure, and a later stage that needs the pool records
-that it could not run as the probe's own failure, not the release's.
+that passes over them. A unit that fails on every attempt fails the stage that
+asks for it (a range of the merged baseline pass instead makes every stage
+score its own baseline pass), and the pool goes on with the other units in
+fresh workers; if no worker can start, each later stage that needs the pool
+records that it could not run as the probe's own failure, not the
+release's.
 
 Usage::
 
@@ -2621,6 +2627,25 @@ class ExportProbe:
                 f"at least {MINIMUM_BATCHES}."
             )
         self.scorer = scorer
+        # A held-out report has no stage here to raise its dry run's error, so
+        # the probe's merged pass then differs from certification's (whose
+        # plan would fail before its export).
+        unregistered = {
+            name: f"{type(error).__name__}: {error}"
+            for name, error in self.stage_request_errors.items()
+            if name not in self.stages
+        }
+        for name, error in unregistered.items():
+            self._add(
+                "open_scorer",
+                f"{name}'s plan is registered as in certification",
+                "error",
+                AUTHORITATIVE,
+                f"its engine-free dry run failed ({error}), so the probe's merged "
+                "baseline pass leaves out its keys; the release's plan would "
+                "fail before its export",
+                "fidelity of this probe to the release",
+            )
         return {
             "mode": "serial" if self.post_export_pooling is None else "pooled",
             "n_households": scorer.n_households,
@@ -2628,6 +2653,7 @@ class ExportProbe:
             "max_batch_households": scorer.max_batch_households,
             "maximum_batch_size": scorer.maximum_batch_size,
             "registered_consumers": list(plan.baseline_plans),
+            "unregistered_consumers": unregistered,
         }
 
     def _record_worker_pass(self, row: Mapping[str, Any]) -> None:
@@ -3340,6 +3366,23 @@ def reference_build_record(release_dir: Path | None) -> Path | None:
     return None
 
 
+#: The stages that score the export on the engine, in ``_main``'s order.
+ENGINE_STAGES = ("reform_coverage_smoke", "reform_validation", "demographics")
+
+
+def post_export_pooling_for(stages: Sequence[str], builder=None):
+    """Certification's post-export pool for a run of ``stages``, or ``None``.
+
+    Read from ``MICROCOSM_POST_EXPORT_WORKERS`` and this machine as
+    certification reads it (``_post_export_pooling_from_environment``), and
+    only when an engine stage runs: a probe of the frame-based stages alone
+    starts no pool, so it runs on any machine.
+    """
+    if not any(stage in ENGINE_STAGES for stage in stages):
+        return None
+    return (builder or load_builder())._post_export_pooling_from_environment()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--export", type=Path, required=True, help="H5 to score")
@@ -3487,7 +3530,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     # As certification: pooled scoring unless MICROCOSM_POST_EXPORT_WORKERS
     # says serial; a bad setting, or a machine too small for one worker,
     # stops here, before the export is loaded.
-    post_export_pooling = load_builder()._post_export_pooling_from_environment()
+    stages = tuple(stage.strip() for stage in args.stages.split(",") if stage)
+    post_export_pooling = post_export_pooling_for(stages)
     report = probe_export(
         args.export,
         args.out,
@@ -3495,7 +3539,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         receipt_path=receipt_path,
         source_export=args.source_export,
         source_settlement=not args.no_source_settlement,
-        stages=tuple(stage.strip() for stage in args.stages.split(",") if stage),
+        stages=stages,
         batch_size=args.batch_size,
         target_surface=surface["mode"],
         target_surface_source=surface["source"],
