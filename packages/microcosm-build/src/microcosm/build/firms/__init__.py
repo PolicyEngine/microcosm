@@ -10,7 +10,8 @@ first consumer.
 - :mod:`.bands`: values drawn inside a band from uniforms the caller supplies;
 - :mod:`.thinning`: stratified thinning with exact base weights;
 - :mod:`.registration`: the two-universe treatment of a register and a
-  tax-registration count, set by a :class:`RegistrationSpec`.
+  tax-registration count, set by a :class:`RegistrationSpec`;
+- :mod:`.rules`: the seam to a rule engine, with outputs keyed by firm id.
 """
 
 from __future__ import annotations
@@ -23,14 +24,19 @@ from .registration import (
     registration_propensity,
     select_to_weighted_target,
 )
+from .rules import FirmRuleOutputs, FirmRules, align_rule_outputs, weighted_totals
 from .thinning import stratified_thin
 
 __all__ = [
     "BAND_ROLES",
+    "FirmRuleOutputs",
+    "FirmRules",
     "RegistrationSpec",
+    "align_rule_outputs",
     "assign_scope_and_registration",
     "draw_in_band",
     "registration_propensity",
     "select_to_weighted_target",
     "stratified_thin",
+    "weighted_totals",
 ]
