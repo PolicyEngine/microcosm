@@ -250,7 +250,8 @@ def test_launcher_arguments_are_accepted_by_the_house_builder_parser(
     assert parsed.seed == 17
     assert parsed.pool_release_id == "fixture-publication"
     assert parsed.release_id == "populace-us-2024-k20000-fixture"
-    assert parsed.no_staging is True
+    # An exact-count build stages like any other build (microcosm#933).
+    assert parsed.no_staging is False
     assert parsed.ssi_take_up_prior_weight_basis == tmp_path / "ssi.json"
     assert parsed.ssi_take_up_prior_weight_basis_sha256 == "1" * 64
 
@@ -287,7 +288,7 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
 
     assert captured[captured.index("--exact-k") + 1] == "N"
     assert captured[captured.index("--seed") + 1] == "17"
-    assert "--no-staging" in captured
+    assert "--no-staging" not in captured
     assert captured[captured.index("--pool-manifest-sha256") + 1] == _sha256(manifest)
     assert captured[captured.index("--release-id") + 1] == "populace-us-2024-k8-fixture"
     # An exact-k run is a build of the national release (microcosm#1570): the
@@ -365,30 +366,23 @@ def test_pool_release_id_must_match_authenticated_manifest_identity(
         )
 
 
-def test_staging_credentials_cannot_enable_pointer_writes(
+def test_an_exact_count_build_stages_under_its_build_id(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A version 2 staging run writes no pointer file, so an exact-count build
+    stages in a run of its own, named for its build, and publishes nothing."""
+    from microcosm.build.staging_v2 import validate_staging_bundle
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
     launcher = _launcher_module()
     payload = _config_payload(
         requested_k=20_000,
         release_id="populace-us-2024-k20000-fixture",
     )
     config = launcher._read_config(_write_config(tmp_path, payload))
-    monkeypatch.setenv("HF_TOKEN", "credentialed-fixture")
     monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "fixture/staging")
-    constructed = False
-
-    class UnexpectedTelemetry:
-        def __init__(self, **kwargs):
-            nonlocal constructed
-            constructed = True
-
-    monkeypatch.setattr(
-        launcher.fiscal_release,
-        "StagingRunBundleWriter",
-        UnexpectedTelemetry,
-    )
     argv = launcher._builder_argv(
         config=config,
         pool_manifest=tmp_path / "pool.manifest.json",
@@ -396,28 +390,23 @@ def test_staging_credentials_cannot_enable_pointer_writes(
         k=20_000,
     )
     parsed = launcher.fiscal_release._parse_args(argv)
-
-    class Emitter:
-        def transition_stage(self, *args, **kwargs):
-            pass
-
-        def transition_calibration_progress(self, *args, **kwargs):
-            pass
-
-        def fail(self, *args, **kwargs):
-            pass
-
-        def complete(self):
-            pass
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(config.release_id, "US", "us_fiscal_refresh")
+    )
 
     progress = launcher.fiscal_release._build_progress(
         parsed,
         release_root=tmp_path / "out",
         release_id=config.release_id,
-        emitter=Emitter(),
+        emitter=emitter,
     )
+    progress.complete()
 
-    assert parsed.no_staging is True
-    assert progress.staging_bundle is None
-    assert constructed is False
-    assert not (tmp_path / "out" / "staging").exists()
+    assert parsed.no_staging is False
+    assert progress.run_id == config.release_id
+    documents = validate_staging_bundle(tmp_path / "out" / "staging", config.release_id)
+    assert documents["run_manifest"]["candidate_id"] == config.release_id
+    assert {request.repository for request in emitter.client.run_file_requests} == {
+        "fixture/staging"
+    }
+    assert emitter.client.release_requests == []

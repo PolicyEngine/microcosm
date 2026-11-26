@@ -7,7 +7,9 @@ in-memory emitter committed, and check them against the version 2 contract.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
+import inspect
 import json
 from importlib import metadata
 from types import SimpleNamespace
@@ -412,3 +414,239 @@ def test_certification_opens_a_version_2_run_of_its_own(builder, tmp_path) -> No
         "run_kind": "certification",
     }
     validate_staging_bundle(tmp_path / "staging", f"{BUILD}-certify")
+
+
+def _write_json(path, payload):
+    path.write_text(json.dumps(payload))
+    return path
+
+
+def test_us_result_files_of_aggregate_rows_are_staged(builder, tmp_path) -> None:
+    """Rows of aggregates by state, age band or program pass the reviewed list."""
+    progress, emitter = _remote_build_progress(builder, tmp_path)
+    demographics = _write_json(
+        tmp_path / "demographics.json",
+        {"age_bands": [{"band": "0-4", "weighted_people": 19.5e6}]},
+    )
+    take_up = _write_json(
+        tmp_path / "us_snap_state_take_up.json",
+        {"states": [{"state": "CA", "take_up_rate": 0.71}]},
+    )
+
+    progress.attach_artifact("demographics", demographics)
+    progress.attach_artifact("us_snap_state_take_up", take_up)
+
+    artifacts = _read(_run_dir(tmp_path), "run_manifest.json").get("artifacts")
+    assert isinstance(artifacts, list)
+    assert [artifact["logical_name"] for artifact in artifacts] == [
+        "demographics",
+        "us_snap_state_take_up",
+    ]
+    assert (
+        US_STAGING,
+        f"runs/{BUILD}/artifacts/demographics.json",
+    ) in emitter.client.hub_files
+
+
+def test_calibration_diagnostics_larger_than_5_mib_are_staged(
+    builder, tmp_path
+) -> None:
+    """Per-target rows the dashboard's calibration view reads, up to 32 MiB."""
+    progress, emitter = _remote_build_progress(builder, tmp_path)
+    targets = [
+        {"name": f"target_{index}", "target": 1.0, "final_estimate": 1.01}
+        for index in range(90_000)
+    ]
+    diagnostics = _write_json(
+        tmp_path / "calibration_diagnostics.json", {"targets": targets}
+    )
+    assert diagnostics.stat().st_size > 5 * 1024 * 1024
+
+    progress.attach_artifact("calibration_diagnostics", diagnostics)
+
+    artifacts = _read(_run_dir(tmp_path), "run_manifest.json").get("artifacts")
+    assert isinstance(artifacts, list)
+    assert [artifact["logical_name"] for artifact in artifacts] == [
+        "calibration_diagnostics"
+    ]
+    assert (
+        emitter.client.hub_files[
+            (US_STAGING, f"runs/{BUILD}/artifacts/calibration_diagnostics.json")
+        ]
+        == diagnostics.read_bytes()
+    )
+
+
+def test_a_result_file_not_on_the_reviewed_list_may_not_hold_rows(
+    builder, tmp_path, capsys
+) -> None:
+    progress, _ = _remote_build_progress(builder, tmp_path)
+    rows = _write_json(
+        tmp_path / "input_coverage.json",
+        {"columns": [{"column": "age", "covered": True}]},
+    )
+
+    progress.attach_artifact("input_coverage", rows)
+
+    artifacts = _read(_run_dir(tmp_path), "run_manifest.json").get("artifacts")
+    assert artifacts == []
+    assert "input_coverage" in capsys.readouterr().err
+
+
+def _attached_result_file_names(builder) -> set[str]:
+    """Every name the builder attaches a result file under, read from its source."""
+    source = (
+        _TEST_PATHS.repository / "tools" / "build_us_fiscal_refresh_release.py"
+    ).read_text()
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "attach_artifact"
+            and node.args
+        ):
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                names.add(first.value)
+            elif isinstance(first, ast.Name) and first.id.isupper():
+                names.add(getattr(builder, first.id))
+    return names
+
+
+def test_every_result_file_the_build_attaches_is_reviewed(builder) -> None:
+    attached = _attached_result_file_names(builder)
+    reviewed = getattr(builder, "US_STAGING_RESULT_FILES", {})
+
+    assert len(attached) == 20
+    assert attached == set(reviewed)
+
+
+def test_a_build_the_release_checks_refuse_closes_its_staging_run_blocked(
+    builder, tmp_path
+) -> None:
+    progress, emitter = _remote_build_progress(builder, tmp_path)
+    progress.stage("release_gates", message="Checking the release.")
+    try:
+        refusal = builder._BuildFailedReleaseGatesError(
+            ["Input coverage failed: x", "Target fit failed: y"]
+        )
+    except TypeError:
+        pytest.fail("the release-check refusal does not carry its failures")
+
+    progress.fail(refusal)
+
+    document = _read(_run_dir(tmp_path), "progress.json")
+    assert (document.get("status"), document.get("failure")) == ("blocked", None)
+    assert document.get("block") == {
+        "phase": "release_gates",
+        "blocking_failure_count": 2,
+        "blocking_gate_ids": [],
+    }
+    validate_staging_bundle(tmp_path / "staging", BUILD)
+    # The final commit is still confirmed, and hosted telemetry is unchanged.
+    assert emitter.client.read_back_waits == [120.0]
+    assert [event["status"] for event in _run_events(emitter)] == ["failed"]
+
+
+def test_a_local_only_run_writes_below_the_staging_dir(builder, tmp_path) -> None:
+    """--staging-dir is the local root: the run's files go to runs/<run_id>/."""
+    emitter = _hosted_telemetry()
+    arguments = _staging_arguments(builder, repository=None)
+    arguments.staging_dir = tmp_path / "local-staging"
+
+    progress = builder._build_progress(
+        arguments, release_root=tmp_path / "out", release_id=BUILD, emitter=emitter
+    )
+    progress.complete()
+
+    assert (tmp_path / "local-staging" / "runs" / BUILD / "run_manifest.json").is_file()
+    documents = validate_staging_bundle(tmp_path / "local-staging", BUILD)
+    delivery = documents["progress"]["delivery"]
+    assert (delivery["mode"], delivery["configured_repository"]) == (
+        "local_only",
+        None,
+    )
+    assert emitter.client.run_file_requests == []
+
+
+def test_the_staging_prefix_option_is_gone(builder, monkeypatch) -> None:
+    """Version 2 runs are always under runs/, so there is no prefix to set."""
+    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "candidate-runs")
+    argv = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+
+    assert not hasattr(builder._parse_args(argv), "staging_prefix")
+    with pytest.raises(SystemExit):
+        builder._parse_args([*argv, "--staging-prefix", "runs"])
+
+
+#: An exact-count build's arguments, as the launcher writes them, without
+#: ``--no-staging``.
+_EXACT_COUNT_ARGV = [
+    "--pool-manifest",
+    "pool.manifest.json",
+    "--pool-manifest-sha256",
+    "a" * 64,
+    "--pool-release-id",
+    "fixture-publication",
+    "--exact-k",
+    "20000",
+    "--exact-k-pi-hi",
+    "0.95",
+    "--ledger-facts",
+    "facts",
+    "--ledger-facts-sha256",
+    "b" * 64,
+    "--ledger-manifest-sha256",
+    "c" * 64,
+    "--incumbent-diagnostics",
+    "incumbent.json",
+    "--incumbent-diagnostics-sha256",
+    "d" * 64,
+    "--frozen-target-surface-sha256",
+    "e" * 64,
+    "--out",
+    "out",
+    "--release-id",
+    "populace-us-2024-k20000-fixture",
+    "--seed",
+    "17",
+]
+
+
+def test_an_exact_count_build_stages_under_its_build_id(builder, tmp_path) -> None:
+    try:
+        arguments = builder._parse_args(_EXACT_COUNT_ARGV)
+    except SystemExit:
+        pytest.fail("an exact-count build still requires --no-staging")
+    build = "populace-us-2024-k20000-fixture"
+    run_id = builder._telemetry_run_id(arguments, timestamp=builder.datetime.now())
+
+    progress = builder._build_progress(
+        arguments,
+        release_root=tmp_path,
+        release_id=build,
+        run_id=run_id,
+        emitter=_hosted_telemetry(),
+    )
+    progress.complete()
+
+    assert run_id == build
+    manifest = validate_staging_bundle(tmp_path / "staging", build)["run_manifest"]
+    assert (manifest["candidate_id"], manifest["status"]) == (build, "completed")
+
+
+def test_microcosm_has_no_version_1_staging_writer() -> None:
+    import microcosm.build as build_package
+    from microcosm.build.staging_storage import RunFileHandOver
+
+    assert importlib.util.find_spec("microcosm.build.staging") is None
+    for name in (
+        "StagingRunBundleWriter",
+        "LATEST_STAGING_POINTER",
+        "RUNS_INDEX",
+        "STAGING_SCHEMA_VERSION",
+    ):
+        assert not hasattr(build_package, name), name
+    parameters = inspect.signature(RunFileHandOver.hand_over).parameters
+    assert {"latest_pointer", "run_index_entry"}.isdisjoint(parameters)

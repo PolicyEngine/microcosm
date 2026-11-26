@@ -26,6 +26,7 @@ from microcosm.build.staging_v2 import (
     STAGING_CONTRACT_VERSION,
     STAGING_DOCUMENT_VERSION,
     StagingContentError,
+    StagingContentPolicy,
     StagingContractError,
     StagingReadBackError,
     StagingRunBundleWriterV2,
@@ -1390,3 +1391,119 @@ def test_a_missing_credential_ends_the_check_at_once(tmp_path):
     assert check.confirmed is False
     assert check.reason == "CREDENTIAL_MISSING"
     assert "read_back_run_files" not in emitter.calls
+
+
+_MEBIBYTE = 1024 * 1024
+
+
+def _policy(**options) -> StagingContentPolicy:
+    """A content policy with the reviewed-table options, which version 2 needs."""
+    try:
+        return StagingContentPolicy(**options)
+    except TypeError:
+        pytest.fail(f"StagingContentPolicy takes no {sorted(options)}")
+
+
+def _json_file(path: Path, payload) -> Path:
+    path.write_text(json.dumps(payload))
+    return path
+
+
+def _validate(policy, logical_name, source) -> bytes:
+    return policy.validate_artifact(
+        logical_name=logical_name,
+        artifact_kind="aggregate_diagnostics",
+        source=source,
+        classification="aggregate",
+    )
+
+
+def test_a_reviewed_aggregate_table_may_hold_rows(tmp_path) -> None:
+    policy = _policy(aggregate_tables={"demographics": 5 * _MEBIBYTE})
+    rows = {"age_bands": [{"band": "0-4", "weighted_people": 19.5e6}]}
+
+    _validate(policy, "demographics", _json_file(tmp_path / "demographics.json", rows))
+
+    with pytest.raises(StagingContentError, match="record array"):
+        _validate(policy, "input_coverage", _json_file(tmp_path / "other.json", rows))
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        {"states": [{"state": "CA", "token": "not for the repository"}]},
+        {"bands": [{"name": "A. Person", "age": 41}]},
+        {"summary": {"households": [{"weight": 1.0}]}},
+    ],
+    ids=["sensitive key", "individual record", "row collection"],
+)
+def test_a_reviewed_table_still_passes_every_other_check(tmp_path, rows) -> None:
+    policy = _policy(aggregate_tables={"demographics": 5 * _MEBIBYTE})
+
+    with pytest.raises(StagingContentError):
+        _validate(policy, "demographics", _json_file(tmp_path / "rows.json", rows))
+
+
+def test_a_reviewed_table_has_its_own_size_limit_up_to_the_emitters(tmp_path) -> None:
+    policy = _policy(aggregate_tables={"calibration_diagnostics": 32 * _MEBIBYTE})
+    large = _json_file(
+        tmp_path / "large.json",
+        {"targets": [{"name": f"t{index}", "target": 1.0} for index in range(250_000)]},
+    )
+    assert 5 * _MEBIBYTE < large.stat().st_size < 32 * _MEBIBYTE
+
+    _validate(policy, "calibration_diagnostics", large)
+    policy.validate_remote_file(
+        "runs/run-1/artifacts/calibration_diagnostics.json", large.read_bytes()
+    )
+    with pytest.raises(StagingContentError, match="byte limit"):
+        policy.validate_remote_file("runs/run-1/events.ndjson", large.read_bytes())
+    with pytest.raises(StagingContractError, match="emitter"):
+        _policy(aggregate_tables={"calibration_diagnostics": 33 * _MEBIBYTE})
+
+
+def test_a_bundle_with_a_reviewed_table_validates_under_its_own_policy(
+    tmp_path,
+) -> None:
+    policy = _policy(aggregate_tables={"demographics": 5 * _MEBIBYTE})
+    recorder = _recorder(tmp_path, content_policy=policy)
+    recorder.add_artifact(
+        "demographics",
+        _json_file(tmp_path / "demographics.json", {"age_bands": [{"band": "0-4"}]}),
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+    recorder.complete()
+
+    recorder.validate_local_bundle()
+    with pytest.raises(StagingContentError, match="record array"):
+        validate_staging_bundle(tmp_path / "telemetry", recorder.run_id)
+
+
+def test_an_artifact_past_the_emitters_request_limit_stays_out(tmp_path) -> None:
+    """The emitter refuses a whole hand-over past its request limit, documents
+    included, so an artifact that would take the run there is refused alone."""
+    recorder = _recorder(tmp_path, content_policy=_policy(max_artifact_bytes=100))
+    first = _json_file(tmp_path / "first.json", {"note": "a" * 60})
+    second = _json_file(tmp_path / "second.json", {"note": "b" * 60})
+    recorder.add_artifact(
+        "first", first, artifact_kind="validation_summary", classification="aggregate"
+    )
+    # Replacing an artifact counts only its new bytes.
+    recorder.add_artifact(
+        "first", first, artifact_kind="validation_summary", classification="aggregate"
+    )
+
+    with pytest.raises(StagingContentError, match="request limit"):
+        recorder.add_artifact(
+            "second",
+            second,
+            artifact_kind="validation_summary",
+            classification="aggregate",
+        )
+
+    manifest = json.loads(
+        (recorder.run_dir / "run_manifest.json").read_text(encoding="utf-8")
+    )
+    assert [artifact["logical_name"] for artifact in manifest["artifacts"]] == ["first"]
+    assert not (recorder.run_dir / "artifacts" / "second.json").exists()

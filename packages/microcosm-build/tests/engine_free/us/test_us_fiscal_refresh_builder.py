@@ -24,6 +24,7 @@ import pytest
 from hypothesis import strategies as st
 
 from microcosm.build.gates import single_record_concentration, tail_concentration_gate
+from microcosm.build.staging_v2 import disabled_staging_delivery
 from microcosm.build.us_runtime import h5_io as builder_h5_io
 from microcosm.build.us_runtime.input_mass import UsLine32Carriers
 from microcosm.calibrate import (
@@ -784,7 +785,7 @@ def test_a_build_that_failed_its_release_gates_exits_3(monkeypatch, capsys) -> N
     assert issubclass(builder._BuildFailedReleaseGatesError, RuntimeError)
 
     def failed(argv=None):
-        raise builder._BuildFailedReleaseGatesError("Release gates failed: ctc failed")
+        raise builder._BuildFailedReleaseGatesError(["ctc failed"])
 
     monkeypatch.setattr(builder, "main", failed)
     with pytest.raises(SystemExit) as exited:
@@ -2830,15 +2831,19 @@ def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
     assert "requires --base-h5" in capsys.readouterr().err
 
 
-def test_builder_exact_k_requires_pointer_suppression(capsys) -> None:
+def test_builder_exact_k_stages_unless_opted_out() -> None:
+    """Version 2 runs write no pointer file, so --exact-k needs no --no-staging."""
     builder = _load_builder_module()
     argv = _exact_k_builder_argv("20000")
+    assert builder._parse_args(argv).no_staging is True
     argv.remove("--no-staging")
 
-    with pytest.raises(SystemExit):
-        builder._parse_args(argv)
+    try:
+        parsed = builder._parse_args(argv)
+    except SystemExit:
+        pytest.fail("--exact-k still requires --no-staging")
 
-    assert "ExactKPointerSuppressionError" in capsys.readouterr().err
+    assert parsed.no_staging is False
 
 
 def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
@@ -3612,7 +3617,6 @@ def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None
 def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
     builder = _load_builder_module()
     monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-canary")
-    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "candidate-runs")
     monkeypatch.setattr(
         sys,
         "argv",
@@ -3628,13 +3632,13 @@ def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
     args = builder._parse_args()
 
     assert args.staging_repo_id == "policyengine/populace-us-canary"
-    assert args.staging_prefix == "candidate-runs"
+    # Version 2 runs are always under runs/, so no prefix is read.
+    assert not hasattr(args, "staging_prefix")
 
 
 def test_empty_staging_environment_does_not_disable_staging(monkeypatch) -> None:
     builder = _load_builder_module()
     monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "")
-    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "   ")
     monkeypatch.setattr(
         sys,
         "argv",
@@ -3650,7 +3654,6 @@ def test_empty_staging_environment_does_not_disable_staging(monkeypatch) -> None
     args = builder._parse_args()
 
     assert args.staging_repo_id == builder.STAGING_REPO_ID
-    assert args.staging_prefix == builder.DEFAULT_STAGING_PREFIX
 
 
 def test_env_default_treats_blank_as_unset_and_trims(monkeypatch) -> None:
@@ -7465,9 +7468,8 @@ def _run_green_register_release(
     # not stage, so neither did its certification; the build's block rides
     # inside.
     assert build_manifest["staging"] == {
-        "enabled": False,
-        "reason": "the build did not stage (--no-staging)",
-        "build": {"enabled": False, "reason": "--no-staging"},
+        **disabled_staging_delivery("the build did not stage (--no-staging)"),
+        "build": disabled_staging_delivery("--no-staging"),
     }
     # Beside the build's code, the certification that chose the tier, its
     # commit and what changed since the build's (microcosm#1585 item 11).
@@ -8097,7 +8099,20 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             run_id = "live-telemetry-test"
             repo_id = "policyengine/populace-us-staging"
             uploads_succeeded = 3
-            staging_bundle = object()
+            staging_bundle = SimpleNamespace(
+                delivery_summary={
+                    "contract_version": 2,
+                    "enabled": True,
+                    "mode": "local_and_remote",
+                    "run_id": "live-telemetry-test",
+                    "configured_repository": "policyengine/populace-us-staging",
+                    "upload_attempts": 3,
+                    "upload_successes": 3,
+                    "read_back": "not_requested",
+                    "last_error_code": None,
+                    "opt_out_reason": None,
+                }
+            )
             staging_opt_out_reason = None
 
             def stage(self, stage, **details):
@@ -15706,32 +15721,6 @@ def test_build_progress_hands_staging_files_to_the_build_emitter(
     ] == ["failed"]
 
 
-def test_hosted_progress_survives_staging_bundle_failure() -> None:
-    module = _load_builder_module()
-    emitter = _TestEmitter()
-
-    class FailingBundle:
-        def stage(self, *args, **kwargs):
-            raise OSError("staging disk unavailable")
-
-    progress = module._BuildProgress(
-        run_id="rel-1",
-        emitter=emitter,
-        staging_bundle=FailingBundle(),
-    )
-
-    with pytest.raises(OSError, match="staging disk unavailable"):
-        progress.stage("target_compilation", batches=4)
-
-    assert emitter.events == [
-        (
-            "stage",
-            "target_compilation",
-            {"status": "running", "message": None, "batches": 4},
-        )
-    ]
-
-
 def _solver_epoch_events(phase: str, epochs: int) -> list[dict[str, object]]:
     """One solve's per-epoch reports, as the calibrator emits them."""
 
@@ -15764,16 +15753,22 @@ def test_us_build_progress_forwards_each_solve_first_final_and_every_tenth_epoch
 
     module = _load_builder_module()
     emitter = _TestEmitter()
-    run_dir = tmp_path / "stage"
-    progress = module._BuildProgress(
-        run_id="rel-1",
-        emitter=emitter,
-        staging_bundle=module.StagingRunBundleWriter(
-            run_id="rel-1",
-            candidate_release_id="rel-1",
-            run_dir=run_dir,
-        ),
-    )
+    try:
+        progress = module._build_progress(
+            SimpleNamespace(
+                no_staging=False,
+                staging_dir=tmp_path / "stage",
+                staging_repo_id=None,
+                staging_run_id=None,
+            ),
+            release_root=tmp_path,
+            release_id="rel-1",
+            emitter=emitter,
+            epoch_every=module.CALIBRATION_EPOCH_EVERY,
+        )
+    except AttributeError as missing:
+        pytest.fail(f"opening a staging run reads a removed option: {missing}")
+    run_dir = tmp_path / "stage" / "runs" / "rel-1"
     solver_reports = [
         *_solver_epoch_events("l0_selection", 25),
         {"kind": "budget_probe", "budget_iteration": 1},
@@ -15799,7 +15794,7 @@ def test_us_build_progress_forwards_each_solve_first_final_and_every_tenth_epoch
     assert [(row["epoch"], row["epochs"], row["loss"]) for row in staged_rows] == [
         (epoch, 25, loss) for _phase, epoch, loss in expected_rows
     ]
-    latest = json.loads((run_dir / "progress.json").read_text())["calibration"]
+    latest = json.loads((run_dir / "progress.json").read_text())["details"]
     assert (latest["epoch"], latest["epochs"], latest["loss"]) == (25, 25, 4.0)
 
 
@@ -15852,9 +15847,9 @@ def test_us_short_run_forwards_each_solve_first_epoch_so_the_epoch_falls_at_the_
     ] == [(phase, epoch) for phase in solve_phases for epoch in (1, epochs)]
     staged_epochs = [
         row["epoch"]
-        for row in json.loads((run_dir / "calibration_progress.json").read_text())[
-            "events"
-        ]
+        for row in json.loads(
+            (run_dir / "runs" / "rel-1" / "calibration_progress.json").read_text()
+        )["events"]
     ]
     assert staged_epochs == [1, epochs, 1, epochs]
     refit_first_row = 2
@@ -16343,36 +16338,36 @@ def test_build_progress_replaces_any_previous_active_run(tmp_path) -> None:
 def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
     module = _load_builder_module()
 
-    assert module._staging_manifest_block(None) == {
-        "enabled": False,
-        "reason": "--no-staging",
-    }
+    assert module._staging_manifest_block(None) == disabled_staging_delivery(
+        "--no-staging"
+    )
+    assert module._staging_manifest_block(
+        SimpleNamespace(staging_bundle=None, staging_opt_out_reason="dry run")
+    ) == disabled_staging_delivery("dry run")
 
-    class Delivered:
-        run_id = "rel-1"
-        repo_id = "policyengine/populace-us-staging"
-        uploads_succeeded = 7
-        staging_bundle = object()
-        staging_opt_out_reason = None
-
-    assert module._staging_manifest_block(Delivered()) == {
+    delivery = {
+        "contract_version": 2,
         "enabled": True,
+        "mode": "local_and_remote",
         "run_id": "rel-1",
-        "repo_id": "policyengine/populace-us-staging",
-        "uploads_succeeded": 7,
+        "configured_repository": "policyengine/populace-us-staging",
+        "upload_attempts": 7,
+        "upload_successes": 0,
+        "read_back": "not_requested",
+        "last_error_code": "UPLOAD_FAILED",
+        "opt_out_reason": None,
     }
-
-    class Undelivered:
-        run_id = "rel-2"
-        repo_id = None
-        uploads_succeeded = 0
-        staging_bundle = object()
-        staging_opt_out_reason = None
-
-    block = module._staging_manifest_block(Undelivered())
-    assert block["enabled"] is True
-    assert block["uploads_succeeded"] == 0
-    assert block["repo_id"] is None
+    # A run that meant to stage records what reached its repository, so the
+    # publisher can tell it from an opt-out.
+    assert (
+        module._staging_manifest_block(
+            SimpleNamespace(
+                staging_bundle=SimpleNamespace(delivery_summary=delivery),
+                staging_opt_out_reason=None,
+            )
+        )
+        == delivery
+    )
 
 
 def test_staging_bundle_refuses_a_destinationless_namespace(tmp_path) -> None:
@@ -20846,12 +20841,11 @@ def _build_record_fixture(
         medicaid_take_up_diagnostics={"states": []},
         snap_state_take_up_diagnostics={"states": []},
         timing={"calibration_seconds": 1.0, "build_seconds": 3.0},
-        staging=staging or {"enabled": False, "reason": "--no-staging"},
+        staging=staging or disabled_staging_delivery("--no-staging"),
         staging_settings=staging_settings
         or {
             "no_staging": True,
             "repo_id": None,
-            "prefix": "runs",
         },
     )
     path = builder._write_us_build_record(release_root, payload)
@@ -21406,8 +21400,8 @@ def test_certification_stages_where_its_build_staged(
     builder = _load_builder_module()
     emitter = SimpleNamespace(client=None, available=False)
 
-    # A build that did not stage (--exact-k requires that) is certified
-    # without staging, with --no-staging or without it.
+    # A build that did not stage (--no-staging) is certified without
+    # staging, with --no-staging or without it.
     path, _ = _build_record_fixture(builder, tmp_path)
     record = builder._read_us_build_record(path)
     for argv in ([str(path.parent)], [str(path.parent), "--no-staging"]):
@@ -21419,10 +21413,9 @@ def test_certification_stages_where_its_build_staged(
         assert (
             progress.staging_opt_out_reason == "the build did not stage (--no-staging)"
         )
-    assert builder._staging_manifest_block(progress) == {
-        "enabled": False,
-        "reason": "the build did not stage (--no-staging)",
-    }
+    assert builder._staging_manifest_block(progress) == disabled_staging_delivery(
+        "the build did not stage (--no-staging)"
+    )
 
     staged = tmp_path / "staged"
     staged.mkdir()
@@ -21455,11 +21448,12 @@ def test_certification_stages_where_its_build_staged(
         emitter=emitter,
     )
     assert opted_out.staging_bundle is None
-    assert builder._staging_manifest_block(opted_out) == {
-        "enabled": False,
-        "reason": "--no-staging at certification; the build staged (run build-run)",
-    }
-    # A build that staged is certified into the same repository and prefix.
+    assert builder._staging_manifest_block(opted_out) == disabled_staging_delivery(
+        "--no-staging at certification; the build staged (run build-run)"
+    )
+    # A build that staged is certified into the same repository, in a
+    # version 2 run of the certification's own; a record's old prefix setting
+    # changes nothing.
     built: dict[str, object] = {}
 
     def build_progress(staging_args, **kwargs):
@@ -21482,12 +21476,14 @@ def test_certification_stages_where_its_build_staged(
         "staging_run_id": "b-certify",
         "staging_dir": None,
         "staging_repo_id": "policyengine/populace-us-staging",
-        "staging_prefix": "builds",
         "release_root": record.release_root,
         "release_id": record.build,
         "run_id": "b-certify",
         "emitter": emitter,
         "epoch_every": builder.CALIBRATION_EPOCH_EVERY,
+        "candidate_id": record.build,
+        "operation_id": "us_fiscal_refresh_certification",
+        "run_kind": "certification",
     }
 
 
