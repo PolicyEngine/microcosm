@@ -20,7 +20,12 @@ environment, which spawned workers inherit:
 - :data:`MEMORY_KEYS`: the most distinct keys one engine computes before it
   raises ``MemoryError``, as an engine that ran out of memory would;
 - :data:`SLOW`: JSON mapping a variable to the seconds each engine sleeps
-  before it computes that variable.
+  before it computes that variable;
+- :data:`WAIT_FOR`: JSON mapping a variable to a file each engine waits for
+  (two minutes at most) before it computes that variable;
+- :data:`FAIL_ON_HOUSEHOLDS` and :data:`MEMORY_ON_HOUSEHOLDS`: JSON mapping a
+  variable to household ids; an engine whose batch holds one of them raises
+  ``RuntimeError`` or ``MemoryError`` for that variable.
 
 Each fake reform carries the description it was built from, as the
 consumers' own builders mark the reforms they build.
@@ -57,6 +62,14 @@ COMPUTES = "MICROCOSM_TEST_POST_EXPORT_COMPUTES"
 ENGINE_LOG = "MICROCOSM_TEST_POST_EXPORT_ENGINE_LOG"
 MEMORY_KEYS = "MICROCOSM_TEST_POST_EXPORT_MEMORY_KEYS"
 SLOW = "MICROCOSM_TEST_POST_EXPORT_SLOW"
+WAIT_FOR = "MICROCOSM_TEST_POST_EXPORT_WAIT_FOR"
+FAIL_ON_HOUSEHOLDS = "MICROCOSM_TEST_POST_EXPORT_FAIL_ON_HOUSEHOLDS"
+MEMORY_ON_HOUSEHOLDS = "MICROCOSM_TEST_POST_EXPORT_MEMORY_ON_HOUSEHOLDS"
+
+
+def _households_for(variable: str, name: str) -> set[int]:
+    return set(json.loads(os.environ.get(name) or "{}").get(variable, ()))
+
 
 #: Parameter paths a fake reform sets from a ``ParameterChangesReform``
 #: payload, so a reform can move a behavioral-response parameter.
@@ -192,6 +205,18 @@ class FakeMicrosimulation:
         delay = json.loads(os.environ.get(SLOW) or "{}").get(variable)
         if delay:
             time.sleep(float(delay))
+        awaited = json.loads(os.environ.get(WAIT_FOR) or "{}").get(variable)
+        if awaited:
+            deadline = time.monotonic() + 120
+            while not Path(awaited).exists() and time.monotonic() < deadline:
+                time.sleep(0.1)
+        households = set(
+            int(value) for value in frame.table("household")["household_id"]
+        )
+        if households & _households_for(variable, FAIL_ON_HOUSEHOLDS):
+            raise RuntimeError(f"fixture engine refuses {variable}")
+        if households & _households_for(variable, MEMORY_ON_HOUSEHOLDS):
+            raise MemoryError(f"fixture engine holds too much for {variable}")
         computes = json.loads(os.environ.get(COMPUTES) or "{}")
         for computed in (variable, *computes.get(variable, ())):
             self.known.setdefault(computed, set()).add(period)

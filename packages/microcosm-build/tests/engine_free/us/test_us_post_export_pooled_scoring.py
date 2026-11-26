@@ -46,8 +46,11 @@ from test_support.microcosm_build.us_post_export_pool import (
     COMPUTES,
     ENGINE_LOG,
     FAIL_ON,
+    FAIL_ON_HOUSEHOLDS,
     MEMORY_KEYS,
+    MEMORY_ON_HOUSEHOLDS,
     SLOW,
+    WAIT_FOR,
     FakeMicrosimulation,
     build_fake_parameter_reform,
     build_fake_reform,
@@ -85,7 +88,16 @@ def pooled_reforms(monkeypatch, builder):
     monkeypatch.setattr(
         builder, "geography_coverage_payload", lambda path: {"h5": Path(path).name}
     )
-    for name in (FAIL_ON, COMPUTES, ENGINE_LOG, MEMORY_KEYS, SLOW):
+    for name in (
+        FAIL_ON,
+        COMPUTES,
+        ENGINE_LOG,
+        MEMORY_KEYS,
+        SLOW,
+        WAIT_FOR,
+        FAIL_ON_HOUSEHOLDS,
+        MEMORY_ON_HOUSEHOLDS,
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -1021,8 +1033,15 @@ def test_a_unit_the_pool_cannot_finish_fails_its_own_consumer_alone(
     scorer = _pooled_scorer(builder, plan, tmp_path / "pooled", 1)
     try:
         first = scorer.open_consumer("first", plan.baseline_plan("first"))
-        with pytest.raises(WorkerPoolUnitError, match="MemoryError"):
-            prefetching(first.simulate)
+        first.simulate(None).calculate("age", 2024)
+        reformed = first.simulate(build_fake_reform(FIXTURE_REFORM))
+        keys = (("income_tax", 2024), ("snap", 2024), ("ssi", 2024))
+        with pytest.raises(WorkerPoolUnitError, match="MemoryError") as failed:
+            reformed.prefetch(keys)
+        # Asked again, the unit's own error again, not a refusal of the order.
+        with pytest.raises(WorkerPoolUnitError) as again:
+            reformed.prefetch(keys)
+        assert str(again.value) == str(failed.value)
         for name in ("second", "third"):
             scoring = scorer.open_consumer(name, plan.baseline_plan(name))
             assert consumers[name](scoring.simulate) == expected[name], name
@@ -1032,6 +1051,7 @@ def test_a_unit_the_pool_cannot_finish_fails_its_own_consumer_alone(
         scorer.close()
     assert report["pools"] == 2
     assert len(report["failed_attempts"]) == 2
+    assert [attempt["pool"] for attempt in report["failed_attempts"]] == [0, 0]
 
 
 def test_a_later_units_failure_waits_for_its_own_consumer(
@@ -1041,10 +1061,13 @@ def test_a_later_units_failure_waits_for_its_own_consumer(
     monkeypatch,
 ) -> None:
     """Workers run ahead of the consumers. A later consumer's unit that fails
-    on every attempt while an earlier, slower unit is still running is that
-    later consumer's failure, not the earlier one's."""
+    on every attempt while an earlier unit is still running is that later
+    consumer's failure, not the earlier one's: the earlier unit's engine
+    waits until the later unit has failed twice, then runs again in a fresh
+    pool, and the stored error holds none of the stopped run's frames."""
+    import threading
+
     monkeypatch.setenv(MEMORY_KEYS, "2")
-    monkeypatch.setenv(SLOW, json.dumps({"snap": 15}))
 
     def prefetching(simulate):
         records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
@@ -1064,7 +1087,6 @@ def test_a_later_units_failure_waits_for_its_own_consumer(
         maximum_microsim_batch_size=BATCH_SIZE,
         consumers=consumers,
     )
-    monkeypatch.setenv(SLOW, "{}")
     serial = _serial_scorer(builder, plan, tmp_path / "serial")
     try:
         expected = consumers["slow"](
@@ -1072,17 +1094,36 @@ def test_a_later_units_failure_waits_for_its_own_consumer(
         )
     finally:
         serial.close()
-    monkeypatch.setenv(SLOW, json.dumps({"snap": 15}))
+    released = tmp_path / "released"
+    monkeypatch.setenv(WAIT_FOR, json.dumps({"snap": str(released)}))
     scorer = _pooled_scorer(builder, plan, tmp_path / "pooled", 2)
+    stop = threading.Event()
     try:
         slow = scorer.open_consumer("slow", plan.baseline_plan("slow"))
+        first_pool = scorer._pool
+
+        def release_once_the_later_unit_failed():
+            while not stop.wait(0.2):
+                if len(first_pool.report().failed_attempts) >= 2:
+                    released.touch()
+                    return
+
+        watcher = threading.Thread(target=release_once_the_later_unit_failed)
+        watcher.start()
         assert consumers["slow"](slow.simulate) == expected
         scorer.finish_consumer(slow)
+        assert all(
+            error.__traceback__ is None for error in scorer._unit_errors.values()
+        )
         failing = scorer.open_consumer("failing", plan.baseline_plan("failing"))
         with pytest.raises(WorkerPoolUnitError, match="failing reformed simulation 0"):
             prefetching(failing.simulate)
+        report = scorer.execution_record()["report"]
     finally:
+        stop.set()
         scorer.close()
+    assert released.exists()
+    assert report["pools"] == 2
 
 
 def test_a_pool_that_cannot_start_refuses_every_consumer(
@@ -1231,3 +1272,45 @@ def test_workers_check_they_run_the_parents_release_tool(builder) -> None:
 
     tool = Path(builder.__file__)
     assert builder._RELEASE_TOOL_SHA256 == hashlib.sha256(tool.read_bytes()).hexdigest()
+
+
+def test_a_stage_own_baseline_raises_its_first_problem_in_batch_order(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """After the merged pass fails, a stage's own baseline pass that raises in
+    its first batch raises that error, as the serial scorer does, even when a
+    later range of it also fails on every attempt in the pool."""
+    monkeypatch.setenv(FAIL_ON_HOUSEHOLDS, json.dumps({"snap": [1]}))
+    monkeypatch.setenv(MEMORY_ON_HOUSEHOLDS, json.dumps({"snap": [7]}))
+    consumers = {
+        "first": _baseline_consumer("age", "income_tax"),
+        "second": _baseline_consumer("age", "snap"),
+    }
+    plan = builder._post_export_scoring_plan(
+        n_households=N_HOUSEHOLDS,
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumers=consumers,
+    )
+
+    def run(scorer):
+        observed = {}
+        try:
+            for name, consumer in consumers.items():
+                try:
+                    scoring = scorer.open_consumer(name, plan.baseline_plan(name))
+                except (RuntimeError, MemoryError) as error:
+                    observed[name] = f"{type(error).__name__}: {error}"
+                    continue
+                observed[name] = consumer(scoring.simulate)
+        finally:
+            scorer.close()
+        return observed
+
+    monkeypatch.setenv(MEMORY_ON_HOUSEHOLDS, "{}")
+    serial = run(_serial_scorer(builder, plan, tmp_path / "serial"))
+    assert serial["second"] == "RuntimeError: fixture engine refuses snap"
+    monkeypatch.setenv(MEMORY_ON_HOUSEHOLDS, json.dumps({"snap": [7]}))
+    assert run(_pooled_scorer(builder, plan, tmp_path / "pooled", 2)) == serial
