@@ -128,6 +128,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Strict schema-v1 JSON release configuration.",
     )
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--no-staging",
+        action="store_true",
+        help=(
+            "Pass --no-staging to the build: no staging run files for it or its "
+            "certification. Exact-count builds stage by default (microcosm#933)."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -409,6 +417,7 @@ def _builder_argv(
     pool_manifest: Path,
     out: Path,
     k: str | int,
+    no_staging: bool = False,
 ) -> list[str]:
     argv = [
         "--pool-manifest",
@@ -452,6 +461,8 @@ def _builder_argv(
         "--refit-l2-lambda",
         str(config.refit_l2_lambda),
     ]
+    if no_staging:
+        argv.append("--no-staging")
     if config.ssi_take_up_prior_weight_basis is not None:
         argv.extend(
             [
@@ -470,6 +481,7 @@ def launch(
     config_path: Path,
     out: Path,
     release_builder: Callable[[Sequence[str] | None], object] = fiscal_release.main,
+    no_staging: bool = False,
 ) -> dict[str, object]:
     """Validate pins, build through the house release path, and write a receipt.
 
@@ -493,6 +505,7 @@ def launch(
             pool_manifest=resolved_pool_manifest,
             out=resolved_out,
             k=config.requested_k,
+            no_staging=no_staging,
         )
     )
     release_dir = resolved_out / "releases" / US_NATIONAL_RELEASE_ID
@@ -621,6 +634,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, object]:
         pool_manifest=args.pool_manifest,
         config_path=args.config,
         out=args.out,
+        no_staging=args.no_staging,
     )
 
 

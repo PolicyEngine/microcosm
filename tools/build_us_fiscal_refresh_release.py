@@ -13221,7 +13221,12 @@ class _BuildProgress:
         # final commit confirmed, before the telemetry outcome shuts the
         # emitter down (it drops a run's events after its outcome).
         try:
-            if self.staging_bundle is not None:
+            # A run the build already closed keeps its state: an error after
+            # it completed is the build's, for the hosted telemetry alone.
+            if (
+                self.staging_bundle is not None
+                and self.staging_bundle.status == "running"
+            ):
                 self._staged("record how the build ended", partial(_close_run, error))
                 confirm_and_report_final_commit(
                     self.staging_bundle, self.emitter, error=error
