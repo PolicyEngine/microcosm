@@ -311,8 +311,14 @@ class RunnerTests(unittest.TestCase):
                     return_value=published(runner.NATIONAL_RELEASE, BUILD, "2.147.2"),
                 ),
             ):
+                spawn.return_value = subprocess.CompletedProcess([], 0, "", "")
                 self.assertEqual(runner.certify(args), 0)
-            spawn.assert_not_called()
+            # The one command a dry run spawns asks whether the resolved base
+            # reads build folders.
+            (argv,), _ = spawn.call_args
+            self.assertEqual(spawn.call_count, 1)
+            self.assertEqual(argv[:2], ["git", "grep"])
+            self.assertIn("immutable-sha", argv)
             self.assertEqual(
                 read.call_args_list[1].args[0],
                 ["git", "rev-parse", "--verify", "stack-local^{commit}"],
@@ -724,6 +730,23 @@ class RunnerTests(unittest.TestCase):
                 fetched=fetched,
             )
         self.assertEqual((details, fetched), ([], []))
+
+    def test_a_resume_that_stops_routing_regions_refuses(self):
+        """The first attempt routed regions to a local-area build, and its
+        constant rewrite moved the local-area constants to that build; a
+        resume that drops the routing would keep them."""
+
+        with self.assertRaisesRegex(runner.CertifyError, "routes regions to"):
+            self.run_mock_pipeline(
+                resume=True,
+                replayed=["src/policyengine/data/bundle/manifest.json"],
+                old_record={
+                    "data_package": {"release_manifest_revision": NATIONAL_COMMIT},
+                    "regional_source_manifest_uri": runner.manifest_uri(
+                        runner.DENSE_RELEASE, DENSE_BUILD, DENSE_COMMIT
+                    ),
+                },
+            )
 
     def test_a_resume_at_another_commit_refuses_before_any_command(self):
         """The resumed bundle names the first attempt's national commit, so a

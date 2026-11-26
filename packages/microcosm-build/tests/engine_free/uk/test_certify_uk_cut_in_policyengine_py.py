@@ -512,6 +512,47 @@ def test_a_mismatch_needs_readable_text_in_every_field(flag, text):
     assert handoff.readable("ok") and not handoff.readable(text)
 
 
+def test_the_build_folder_support_check_reads_the_base(monkeypatch, tmp_path):
+    answers, seen = {"grep": 0}, []
+
+    def run(argv, **kwargs):
+        assert kwargs["cwd"] == tmp_path
+        seen.append(argv)
+        return handoff.subprocess.CompletedProcess(argv, answers["grep"], b"", b"")
+
+    monkeypatch.setattr(handoff.subprocess, "run", run)
+    assert handoff.build_folder_support(tmp_path, "c" * 40) is None
+    assert seen == [
+        ["git", "grep", "-q", "-e", "def read_build_folder", "c" * 40, "--",
+         "src/policyengine/provenance/manifest.py"]
+    ]  # fmt: skip
+    answers["grep"] = 1
+    assert "read_build_folder" in handoff.build_folder_support(tmp_path, "c" * 40)
+
+
+def test_a_base_that_cannot_read_build_folders_refuses_before_any_read(
+    monkeypatch, tmp_path
+):
+    """A .py base without #683 certifies only tags, which the build repository
+    no longer has, and an accepted mismatch would download every regional
+    file and set up a worktree before refusing."""
+
+    reads, downloads = _dense_route(monkeypatch, tmp_path)
+
+    def run(argv, **kwargs):
+        code = 1 if "def read_build_folder" in argv else 0
+        return subprocess.CompletedProcess(argv, code, "", "")
+
+    monkeypatch.setattr(handoff.subprocess, "run", run)
+    args = handoff.parse(
+        ["--national-build", NATIONAL, "--dense-build", DENSE, "--dry-run",
+         "--pepy-repo", str(tmp_path), *MISMATCH]
+    )  # fmt: skip
+    with pytest.raises(handoff.CertifyError, match="policyengine.py#683"):
+        handoff.certify(args)
+    assert (reads, downloads) == ([], [])
+
+
 def test_the_audit_support_check_reads_the_base(monkeypatch, tmp_path):
     answers = {"cat-file": 0, "grep": 0}
 
@@ -733,22 +774,32 @@ def _bundle_at(worktree, revision, regional_uri):
 
 
 def test_a_resumed_worktree_must_certify_the_same_commits(tmp_path):
-    """A resume at another commit would keep the first attempt's constants
-    while certify-data writes the new commit into the bundle."""
+    """A resume at another commit, or with another regional route, would keep
+    the first attempt's constants while certify-data writes this run's pins
+    into the bundle."""
 
     national = _build(handoff.NATIONAL_RELEASE, NATIONAL, NATIONAL_COMMIT)
     dense = _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
     relative = _bundle_at(tmp_path, NATIONAL_COMMIT, dense.manifest_uri)
-    handoff.check_resumed_pins(tmp_path, [relative], national, dense)
-    handoff.check_resumed_pins(tmp_path, [relative], national, None)
+    handoff.check_resumed_pins(tmp_path, [relative], national, dense.manifest_uri)
     # A worktree whose bundle is not yet modified holds nothing to compare.
     moved = _replace(national, commit="5" * 40)
-    handoff.check_resumed_pins(tmp_path, [], moved, dense)
+    handoff.check_resumed_pins(tmp_path, [], moved, dense.manifest_uri)
     with pytest.raises(handoff.CertifyError, match="national build at"):
-        handoff.check_resumed_pins(tmp_path, [relative], moved, dense)
+        handoff.check_resumed_pins(tmp_path, [relative], moved, dense.manifest_uri)
     other = _replace(dense, commit="6" * 40)
-    with pytest.raises(handoff.CertifyError, match="local-area build"):
-        handoff.check_resumed_pins(tmp_path, [relative], national, other)
+    # Another local-area build, an area-coded release, or no routing at all.
+    for regional in (
+        other.manifest_uri,
+        "hf://dataset/policyengine/another@1/releases/r/release_manifest.json",
+        None,
+    ):
+        with pytest.raises(handoff.CertifyError, match="routes regions to"):
+            handoff.check_resumed_pins(tmp_path, [relative], national, regional)
+    relative = _bundle_at(tmp_path, NATIONAL_COMMIT, None)
+    handoff.check_resumed_pins(tmp_path, [relative], national, None)
+    with pytest.raises(handoff.CertifyError, match="routes regions to None"):
+        handoff.check_resumed_pins(tmp_path, [relative], national, dense.manifest_uri)
 
 
 @pytest.mark.parametrize(
