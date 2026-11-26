@@ -157,7 +157,8 @@ asks for starts without it.
 A build does not start an emitter older than `MINIMUM_EMITTER_VERSION` in
 `microcosm.build.telemetry_emitter`, now 0.17.0, and the Modal image installs
 at least the same release (`image_emitter_requirement()` in
-`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.17.0`). The release is
+`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.17.0`), as does the UK
+launcher's image (`emitter_requirement()` in `tools/modal_uk_cut.py`). The release is
 written once, in microcosm-build's package data,
 `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`:
 the adapter reads it as package data, and the runner, which imports nothing

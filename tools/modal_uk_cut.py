@@ -6,6 +6,15 @@ lock with the ``uk`` extra, and runs the same one command with its work
 directory on the ``microcosm-uk-cuts`` Modal volume, so fetched inputs and
 every step's outputs survive the container and a rerun resumes.
 
+The build hands its uploads to the separately installed ``microcosm-emitter``
+(microcosm#1410, #1460), which the runner's preflight starts to check write
+access, and the workspace lock pins only its interface. So the image installs
+the emitter on its own, at or above the release
+``minimum_emitter_version.json`` names in the checkout that launches the app,
+as the US Modal image does. The build enforces the minimum of the commit it
+clones, so a commit that needs a newer emitter than a cached image holds stops
+at preflight; launch from a checkout at or after the commit.
+
 Processing UK Data Service microdata on Modal needs the data owners' OK
 before first use (``docs/uk-cut-anyone.md``). The volume keeps UKDS inputs
 and outputs, and anyone in the Modal workspace can read it.
@@ -35,8 +44,10 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -60,6 +71,20 @@ REGISTRY_SOURCE = Path(__file__).resolve().parents[1] / (
     "packages/microcosm-data/src/microcosm/data/gate_signing_keys.py"
 )
 REGISTRY_REMOTE = "/root/gate_signing_keys.py"
+#: The oldest emitter release a build starts, written once in microcosm-build's
+#: package data (``MINIMUM_EMITTER_VERSION`` in
+#: ``microcosm.build.telemetry_emitter``); read by its path, since the launcher
+#: cannot import microcosm.
+MINIMUM_EMITTER_VERSION_FILE = Path(__file__).resolve().parents[1] / (
+    "packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json"
+)
+EMITTER_RELEASE = re.compile(r"\d+\.\d+\.\d+")
+#: Where the image installs the emitter command, outside the environment the
+#: container syncs, and the variable through which the build's interface
+#: finds it (the interface also searches PATH).
+EMITTER_BIN_DIR = "/usr/local/bin"
+EMITTER_COMMAND = f"{EMITTER_BIN_DIR}/microcosm-emitter"
+EMITTER_COMMAND_ENV = "MICROCOSM_EMITTER_COMMAND"
 
 
 def load_gate_signing_keys(path: Path | None = None) -> ModuleType:
@@ -87,6 +112,28 @@ def load_gate_signing_keys(path: Path | None = None) -> ModuleType:
 registry = load_gate_signing_keys()
 
 
+def emitter_requirement() -> str:
+    """What the image installs: at least the oldest emitter release a build starts.
+
+    Read from ``MINIMUM_EMITTER_VERSION_FILE`` in the launching checkout.
+    Refuses a file that is missing or does not hold
+    ``{"minimum_emitter_version": "X.Y.Z"}``.
+    """
+
+    path = MINIMUM_EMITTER_VERSION_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise SystemExit(
+            f"cannot read the emitter's minimum release from {path} "
+            f"({type(error).__name__})."
+        ) from None
+    version = data.get("minimum_emitter_version") if isinstance(data, dict) else None
+    if not isinstance(version, str) or EMITTER_RELEASE.fullmatch(version) is None:
+        raise SystemExit(f'{path} must hold {{"minimum_emitter_version": "X.Y.Z"}}.')
+    return f"microcosm-emitter>={version}"
+
+
 def _secrets() -> list[modal.Secret]:
     # The launcher attaches the credentials only to a deliberate run: modal
     # run sends the app's secrets before the entrypoint can refuse. In the
@@ -107,9 +154,23 @@ def _image() -> modal.Image:
         modal.Image.debian_slim(python_version=PYTHON_VERSION)
         .apt_install("git", "build-essential", "libhdf5-dev")
         .pip_install(f"uv=={UV_VERSION}")
-        .env({"UV_LINK_MODE": "copy", "PYTHONDONTWRITEBYTECODE": "1"})
+        .env(
+            {
+                "UV_LINK_MODE": "copy",
+                "PYTHONDONTWRITEBYTECODE": "1",
+                EMITTER_COMMAND_ENV: EMITTER_COMMAND,
+            }
+        )
     )
     if modal.is_local():
+        # The newest release at or above the minimum when Modal first builds
+        # this step; Modal reuses the layer while the minimum is unchanged.
+        # Running its version fails the image build if the command cannot run.
+        image = image.run_commands(
+            f"UV_TOOL_BIN_DIR={EMITTER_BIN_DIR} uv tool install "
+            f"{shlex.quote(emitter_requirement())}",
+            f"{EMITTER_COMMAND} version",
+        )
         # Last, because Modal refuses build steps after a local file.
         image = image.add_local_file(str(REGISTRY_SOURCE), REGISTRY_REMOTE)
     return image
@@ -196,7 +257,8 @@ def plan(commit: str, label: str, *, publish: bool = False) -> list[str]:
     ]
     print(
         f"cut {label} at {commit[:9]} on Modal; publish={publish}; "
-        f"work dir {VOLUME_NAME}:{WORK}; missing credentials: {missing or 'none'}"
+        f"work dir {VOLUME_NAME}:{WORK}; emitter {emitter_requirement()}; "
+        f"missing credentials: {missing or 'none'}"
     )
     return missing
 
