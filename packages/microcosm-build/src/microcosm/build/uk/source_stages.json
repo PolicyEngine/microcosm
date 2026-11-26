@@ -4783,6 +4783,12 @@
      "format": "json"
     },
     {
+     "role": "ons_family_spending_income_deciles",
+     "resource": "ons_family_spending_income_decile_facts.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
      "role": "desnz_road_fuel_by_vehicle",
      "resource": "desnz_road_fuel_by_vehicle.json",
      "kind": "public_aggregate_reference",

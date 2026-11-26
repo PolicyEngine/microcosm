@@ -930,6 +930,22 @@ UK_LCFS_DECILE_FIT_RAKE_ITERATIONS = 100
 #: The largest gap from the frame's share of any mix category at which the
 #: reweighted donor counts as matching the frame's mix.
 UK_LCFS_DECILE_FIT_MIX_TOLERANCE = 1e-6
+#: ONS Family Spending, financial year ending 2025 (workbook 1, Table 3.1E),
+#: vendored from the pinned Chronicle feed: mean weekly household spending by
+#: equivalised disposable income decile on the updated OECD-modified scale,
+#: the decile receipt's official reference (microcosm#1717,
+#: PolicyEngine/chronicle#446).
+UK_ONS_FAMILY_SPENDING_RESOURCE = "ons_family_spending_income_decile_facts.json"
+UK_ONS_FAMILY_SPENDING_CONCEPT = "ons.family_spending.mean_weekly_household_expenditure"
+UK_ONS_FAMILY_SPENDING_PERIOD: tuple[str, int] = ("fiscal_year", 2024)
+UK_ONS_FAMILY_SPENDING_DECILE_DIMENSIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "income_decile_basis": "equivalised_disposable_income",
+        "equivalence_scale": "updated_oecd_modified_2_adult_reference",
+    }
+)
+#: The Family Spending group that is the twelve COICOP divisions together.
+UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL = "coicop_01_to_12"
 
 
 @dataclass
@@ -1254,6 +1270,14 @@ class UKLCFSConsumptionStageTransform:
                 sources=sources,
             )
         )
+        try:
+            published: dict[str, Any] = family_spending_by_decile()
+        except DiagnosticUnavailableError as error:
+            published = {
+                "resource": UK_ONS_FAMILY_SPENDING_RESOURCE,
+                "available": False,
+                "reason": str(error),
+            }
         decile_receipt = decile_fit(
             household_draws,
             recipient,
@@ -1261,6 +1285,7 @@ class UKLCFSConsumptionStageTransform:
             donor=donor,
             sources=sources,
             mix_donors=imputation.mix_donors,
+            published=published,
         )
         range_receipt = budget_and_mix_receipt(
             imputation, weights=weights, sources=sources
@@ -1744,6 +1769,80 @@ def division_capture_or_reason(
         }
 
 
+def family_spending_by_decile() -> dict[str, Any]:
+    """ONS Family Spending's mean weekly spending by income decile (microcosm#1717).
+
+    The vendored Table 3.1E rows: for each equivalised disposable income
+    decile group on the updated OECD-modified scale, and for all households,
+    the twelve COICOP divisions together and each division, in pounds a week
+    as published. A cell ONS suppresses has no row and reads ``None``.
+    Raises :class:`DiagnosticUnavailableError` when the resource lacks the
+    twelve divisions' total for a decile or for all households, so the
+    report-only receipt can record why.
+    """
+
+    period_type, period_value = UK_ONS_FAMILY_SPENDING_PERIOD
+    groups = (
+        UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL,
+        *(f"coicop_{code}" for code in UK_LCFS_DIVISION_COICOP.values()),
+    )
+    keys = (*(str(decile) for decile in range(1, 11)), "all")
+    table: dict[str, dict[str, float | None]] = {
+        key: dict.fromkeys(groups) for key in keys
+    }
+    rows = vendored_rows(
+        UK_ONS_FAMILY_SPENDING_RESOURCE,
+        concept=UK_ONS_FAMILY_SPENDING_CONCEPT,
+        period_type=period_type,
+        period_value=period_value,
+        geography_id="K02000001",
+    )
+    for row in rows:
+        dimensions = {
+            str(name): str(value)
+            for name, value in (row.get("dimensions") or {}).items()
+        }
+        group = dimensions.get("expenditure_group")
+        if group not in groups:
+            continue
+        if set(dimensions) == {"expenditure_group"}:
+            key = "all"
+        elif all(
+            dimensions.get(name) == value
+            for name, value in UK_ONS_FAMILY_SPENDING_DECILE_DIMENSIONS.items()
+        ):
+            key = dimensions.get("income_decile_group", "").removeprefix("decile_")
+            if key not in table:
+                continue
+        else:
+            continue
+        if table[key][group] is not None:
+            raise ValueError(
+                f"{UK_ONS_FAMILY_SPENDING_RESOURCE}: two {group} rows for {key}."
+            )
+        table[key][group] = float(row["value"])
+    missing = [
+        key
+        for key in keys
+        if table[key][UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL] is None
+    ]
+    if missing:
+        raise DiagnosticUnavailableError(
+            f"{UK_ONS_FAMILY_SPENDING_RESOURCE}: no "
+            f"{UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL} row for {', '.join(missing)}."
+        )
+    return {
+        "resource": UK_ONS_FAMILY_SPENDING_RESOURCE,
+        "concept": UK_ONS_FAMILY_SPENDING_CONCEPT,
+        "period_type": period_type,
+        "period_value": period_value,
+        "geography_id": "K02000001",
+        **UK_ONS_FAMILY_SPENDING_DECILE_DIMENSIONS,
+        "unit": "gbp_per_week",
+        "deciles": table,
+    }
+
+
 def budget_and_mix_receipt(
     imputation: UKLCFSConsumptionImputationResult,
     *,
@@ -1939,6 +2038,7 @@ def decile_fit(
     donor: pd.DataFrame,
     sources: np.ndarray | None,
     mix_donors: np.ndarray | None = None,
+    published: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The frame's spending beside the donor's, by income decile (microcosm#1717).
 
@@ -1966,6 +2066,15 @@ def decile_fit(
     mixes (:func:`effective_donor_count`, at the design weights) in each
     decile and in each region's deciles: the number of distinct mixes to
     expect when cutting spending by such a group.
+
+    Given ``published``, ONS Family Spending's table
+    (:func:`family_spending_by_decile`), each decile also sets the published
+    figures beside both surveys: the weekly mean as published, its shape (the
+    decile's mean over the mean of deciles 4 to 7), and the frame's and the
+    donor's own profiles (each decile's mean over its deciles 4 to 7) over
+    that shape. Shapes leave out the level, so the published weeks and price
+    year need no conversion. A ``published`` that records why it is
+    unavailable is carried as it stands.
 
     A decile resting on fewer than three source households on either side is
     withheld, as are the reweighted figures where the reweighted donor rests
@@ -2054,6 +2163,78 @@ def decile_fit(
     reference_ratio, reference_divisions = pooled(donor_weights)
     reweighted_reference, reweighted_divisions = pooled(reweighted)
 
+    # Family Spending beside both surveys: each one's own profile over the
+    # published shape, all against the mean of deciles 4 to 7.
+    published_table = None if published is None else published.get("deciles")
+    frame_profile_reference = donor_profile_reference = None
+    published_reference: dict[str, float | None] = {}
+    if published_table:
+        reference_frame = np.isin(frame_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES)
+        reference_donor = np.isin(donor_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES)
+        if (
+            min(supported(reference_frame, reference_donor, donor_weights))
+            >= UK_DISCLOSURE_FLOOR
+        ):
+            frame_profile_reference = side(frame_values, frame_weights, reference_frame)
+            donor_profile_reference = side(donor_values, donor_weights, reference_donor)
+        for group in published_table["all"]:
+            weekly = [
+                published_table[str(decile)][group]
+                for decile in UK_LCFS_DECILE_FIT_REFERENCE_DECILES
+            ]
+            published_reference[group] = (
+                None
+                if any(value is None for value in weekly)
+                else float(np.mean(weekly))
+            )
+
+    def against_published(
+        key: str, frame: Mapping[str, Any], donor_side: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        def one(
+            group: str,
+            frame_mean: float,
+            donor_mean: float,
+            frame_reference: float | None,
+            donor_reference: float | None,
+        ) -> dict[str, Any]:
+            weekly = published_table[key][group]
+            shape = shaped(weekly, published_reference.get(group))
+            frame_profile = shaped(frame_mean, frame_reference)
+            donor_profile = shaped(donor_mean, donor_reference)
+            return {
+                "weekly_mean": weekly,
+                "shape": shape,
+                "frame_over_published": shaped(frame_profile, shape),
+                "donor_over_published": shaped(donor_profile, shape),
+            }
+
+        frame_reference = frame_profile_reference or {}
+        donor_reference = donor_profile_reference or {}
+        return {
+            "total": one(
+                UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL,
+                frame["mean"],
+                donor_side["mean"],
+                frame_reference.get("mean"),
+                donor_reference.get("mean"),
+            ),
+            "divisions": {
+                column: one(
+                    f"coicop_{UK_LCFS_DIVISION_COICOP[column]}",
+                    float(frame["division_means"][j]),
+                    float(donor_side["division_means"][j]),
+                    None
+                    if not frame_reference
+                    else float(frame_reference["division_means"][j]),
+                    None
+                    if not donor_reference
+                    else float(donor_reference["division_means"][j]),
+                )
+                for j, column in enumerate(columns)
+            },
+        }
+
     def figures(
         frame_mean: float,
         donor_mean: float,
@@ -2080,7 +2261,7 @@ def decile_fit(
         }
 
     def cell(
-        frame_mask: np.ndarray, donor_mask: np.ndarray, met: bool | None
+        key: str, frame_mask: np.ndarray, donor_mask: np.ndarray, met: bool | None
     ) -> dict[str, Any]:
         frame_support, donor_support = supported(frame_mask, donor_mask, donor_weights)
         entry: dict[str, Any] = {
@@ -2127,16 +2308,24 @@ def decile_fit(
             )
             for j, column in enumerate(columns)
         }
+        if published_table:
+            entry["published"] = against_published(key, frame, donor_side)
         return entry
 
     deciles = [
         {
             "decile": decile,
-            **cell(frame_rank == decile, donor_rank == decile, mix_met.get(decile)),
+            **cell(
+                str(decile),
+                frame_rank == decile,
+                donor_rank == decile,
+                mix_met.get(decile),
+            ),
         }
         for decile in range(1, 11)
     ]
     everyone = cell(
+        "all",
         np.ones(len(frame_weights), dtype=bool),
         np.ones(len(donor_weights), dtype=bool),
         None,
@@ -2187,6 +2376,17 @@ def decile_fit(
         "deciles": deciles,
         "all": everyone,
         **({} if by_region is None else {"effective_mix_donors_by_region": by_region}),
+        **(
+            {}
+            if published is None
+            else {
+                "published": {
+                    name: value
+                    for name, value in published.items()
+                    if name != "deciles"
+                }
+            }
+        ),
     }
 
 

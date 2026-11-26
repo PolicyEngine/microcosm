@@ -752,6 +752,110 @@ def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> No
         assert "total" not in row
 
 
+def test_decile_fit_sets_family_spending_beside_both_surveys() -> None:
+    """Each survey's own decile profile over the published shape (microcosm#1717).
+
+    A published table rising by £100 a week a decile has deciles 4 to 7 at a
+    mean of £550, so decile 1's shape is 100/550; each survey's profile is its
+    decile mean over its own deciles 4 to 7. A suppressed cell (Education)
+    reads None throughout, and a table that is unavailable is carried as its
+    reason with no per-decile figures.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        UK_LCFS_DIVISION_COICOP,
+        _modified_oecd_scale,
+        decile_fit,
+        income_tenths,
+    )
+
+    donor = clean_lcfs_consumption_table(*_synthetic_lcfs_donor())
+    weights = donor["household_weight"].to_numpy(dtype=float)
+    groups = [
+        "coicop_01_to_12",
+        *(f"coicop_{code}" for code in UK_LCFS_DIVISION_COICOP.values()),
+    ]
+
+    def published_row(scale: float) -> dict[str, float | None]:
+        row: dict[str, float | None] = dict.fromkeys(groups, 10.0 * scale)
+        row["coicop_01_to_12"] = 100.0 * scale
+        row["coicop_10"] = None
+        return row
+
+    table = {str(decile): published_row(decile) for decile in range(1, 11)}
+    table["all"] = {**published_row(5.5), "coicop_10": 4.0}
+    published = {"resource": "family.json", "unit": "gbp_per_week", "deciles": table}
+    fit = decile_fit(
+        donor, donor, weights=weights, donor=donor, sources=None, published=published
+    )
+    assert fit["published"] == {"resource": "family.json", "unit": "gbp_per_week"}
+
+    rank = income_tenths(
+        donor["hbai_household_net_income"], _modified_oecd_scale(donor), weights
+    )
+    totals = donor[list(UK_LCFS_COICOP_DIVISION_COLUMNS)].sum(axis=1).to_numpy()
+    middle = np.isin(rank, (4, 5, 6, 7))
+    profile = np.average(totals[rank == 1], weights=weights[rank == 1]) / np.average(
+        totals[middle], weights=weights[middle]
+    )
+    bottom = fit["deciles"][0]["published"]
+    assert bottom["total"]["weekly_mean"] == 100.0
+    assert bottom["total"]["shape"] == pytest.approx(100.0 / 550.0)
+    assert bottom["total"]["frame_over_published"] == pytest.approx(
+        profile / (100.0 / 550.0)
+    )
+    assert bottom["total"]["donor_over_published"] == pytest.approx(
+        profile / (100.0 / 550.0)
+    )
+    education = "education_consumption"
+    assert bottom["divisions"][education] == {
+        "weekly_mean": None,
+        "shape": None,
+        "frame_over_published": None,
+        "donor_over_published": None,
+    }
+    assert fit["all"]["published"]["divisions"][education]["weekly_mean"] == 4.0
+    assert fit["all"]["published"]["divisions"][education]["shape"] is None
+
+    unavailable = {"resource": "family.json", "available": False, "reason": "no rows"}
+    without = decile_fit(
+        donor, donor, weights=weights, donor=donor, sources=None, published=unavailable
+    )
+    assert without["published"] == unavailable
+    assert all("published" not in row for row in [*without["deciles"], without["all"]])
+
+
+def test_family_spending_by_decile_reads_the_vendored_table() -> None:
+    """The vendored Table 3.1E rows, ten deciles and all households (#1717).
+
+    Education is suppressed in every decile, so it reads None there and has a
+    figure for all households; every decile has the twelve divisions' total.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL,
+        family_spending_by_decile,
+    )
+
+    published = family_spending_by_decile()
+    assert published["unit"] == "gbp_per_week"
+    assert (published["period_type"], published["period_value"]) == (
+        "fiscal_year",
+        2024,
+    )
+    assert published["equivalence_scale"] == "updated_oecd_modified_2_adult_reference"
+    deciles = published["deciles"]
+    assert list(deciles) == [*(str(decile) for decile in range(1, 11)), "all"]
+    totals = [
+        deciles[str(d)][UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL] for d in range(1, 11)
+    ]
+    assert all(total > 0 for total in totals)
+    assert totals[-1] > totals[0]
+    assert all(deciles[str(d)]["coicop_10"] is None for d in range(1, 11))
+    assert deciles["all"]["coicop_10"] is not None
+
+
 def test_budget_and_mix_receipt_reports_the_range_step() -> None:
     """The range step's two paths, each with its support band (microcosm#1717).
 

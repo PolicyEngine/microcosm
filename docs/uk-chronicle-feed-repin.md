@@ -539,3 +539,25 @@ the three property stages that bind the stock. The stock cells (microcosm#1524) 
 MJF7 and TS054 by MSOA from this feed. The regional targets' values move, so the frozen scoring
 register of the candidate evaluation (uk-candidate-eval) is due to be re-frozen before the next
 national solve.
+
+The `4e7d7746` re-pin (microcosm#1717) is the head of PolicyEngine/chronicle#450, on Chronicle main
+`ece6bb29`. It adds ONS Family Spending, financial year ending 2025: mean weekly household expenditure
+by commodity group, with each decile's weighted households and sample size, by equivalised disposable
+income decile on both equivalence scales and by gross income decile. That is 487 rows, 2,160,837 in
+all, under the same row contract. #450's base is Chronicle main, so its merge has its head's tree, and
+the artifact is built from that head. It follows `15040ea5` (2,160,350 rows, PolicyEngine/chronicle#443),
+whose rows are all byte-identical in it. Chronicle main's other merges since then add no UK facts: #445
+registers CenTax's childcare workbook raw-only, and #448 is US. The new
+`ons_family_spending_income_decile_facts.json` holds Table 3.1E's deciles on the updated OECD-modified
+scale and all households (133 rows). It is the official reference the LCFS decile receipt reads, and
+the country package declares it. Every other vendored resource changes only its pin stamps. The DESNZ
+constituency resource keeps its 2,526 values, with new keys and input digests.
+
+The national references and both compile-parity receipts are byte-identical. The national membership
+changes only its feed identity. The local membership also moves the DESNZ cells' derived fact keys. The
+local references gain the hierarchy category `microcosm.centax_childcare_parents`, which microcosm#1399
+declared after they were last generated; no reference changes. The local census, the validation-level
+register and the release input coverage manifest change only their source digests. The charter-H2
+fixture moves the stage contract hashes of the 21 stages that bind vendored resources, and regenerates
+byte-identically. The high-value home stock and the conditioned atomic-area supports pass their
+feed-input checks on the new pin, so neither is rebuilt.
