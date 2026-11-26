@@ -1,11 +1,21 @@
 """Staging telemetry for long-running Microcosm builds.
 
 Production releases are contract artifacts: they are only published after the
-build completes and validates. Staging telemetry is intentionally weaker and
-more incremental: it lets dashboards monitor a candidate build before it is a
-release by writing small JSON artifacts under ``runs/<run_id>/`` and,
-optionally, handing them to the build's local emitter, which commits them to a
-staging Hugging Face dataset repo with the build's own credential.
+build completes and validates. Staging telemetry is intentionally weaker: it
+records a candidate build before it is a release by writing small JSON
+artifacts under ``runs/<run_id>/`` and, optionally, handing them to the
+build's local emitter, which commits them to a staging Hugging Face dataset
+repo with the build's own credential.
+
+The writer hands the run's files over at three points only: when the run
+starts, when a result file is attached and when the run ends. Every hand-over
+is forced, so the emitter commits it at its next cycle, and carries the run's
+documents with every attached result file the emitter can take. Stage events
+and calibration progress in between are written locally and reach the repo
+with the next of those hand-overs; the build's hosted telemetry is the live
+record of a running build. Once the run has ended,
+:meth:`StagingRunBundleWriter.confirm_final_commit` has the emitter check
+that the final state reached the repo.
 """
 
 from __future__ import annotations
@@ -14,7 +24,6 @@ import json
 import math
 import shutil
 import sys
-import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -22,12 +31,18 @@ from pathlib import Path
 from typing import Any
 
 from microcosm.build.staging_storage import (
+    FinalCommitCheck,
     RunFileEmitter,
     RunFileHandOver,
+    warn_final_commit_unconfirmed,
     warn_hand_over_failure,
 )
 
 STAGING_SCHEMA_VERSION = 1
+#: The emitter refuses a whole hand-over in which one file is larger than
+#: this, or whose files together are larger than ``_MAX_RUN_REQUEST_BYTES``.
+_MAX_RUN_FILE_BYTES = 32 * 1024 * 1024
+_MAX_RUN_REQUEST_BYTES = 64 * 1024 * 1024
 LATEST_STAGING_POINTER = "latest_staging.json"
 RUNS_INDEX = "runs.json"
 DEFAULT_STAGING_PREFIX = "runs"
@@ -73,9 +88,6 @@ class StagingRunBundleWriter:
         emitter_client: The build's local emitter (the interface's
             ``EmitterClient``), which commits the handed-over files. Without
             one, a configured repository receives nothing.
-        upload_interval_seconds: Minimum interval between best-effort progress
-            hand-overs, and the emitter's interval between its commits of
-            them. Final states are always handed over.
     """
 
     run_id: str
@@ -84,7 +96,6 @@ class StagingRunBundleWriter:
     repo_id: str | None = None
     path_prefix: str = DEFAULT_STAGING_PREFIX
     emitter_client: RunFileEmitter | None = None
-    upload_interval_seconds: float = 30.0
     started_at: str = field(default_factory=_now)
 
     def __post_init__(self) -> None:
@@ -97,20 +108,26 @@ class StagingRunBundleWriter:
         self.path_prefix = self.path_prefix.strip().strip("/").strip()
         if not self.path_prefix:
             self.path_prefix = DEFAULT_STAGING_PREFIX
-        self._last_upload_at = 0.0
         self._hand_over = (
             RunFileHandOver(
                 self.emitter_client,
                 repository=self.repo_id.strip(),
                 run_id=self.run_id,
                 prefix=self.path_prefix,
-                commit_interval_seconds=self.upload_interval_seconds,
             )
             if self.repo_id
             else None
         )
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
+        #: Each attached result file's local copy, by its name in the run's
+        #: folder; every hand-over carries them, and the emitter skips bytes
+        #: it has already committed.
+        self._artifact_files: dict[str, Path] = {}
+        self._too_large_warned: set[str] = set()
+        #: Whether completion or failure handed the run's final state over;
+        #: until then there is no final commit to check.
+        self._final_state_handed_over = False
         self._progress: dict[str, Any] = {
             "schema_version": STAGING_SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -122,6 +139,10 @@ class StagingRunBundleWriter:
         }
         self._write_run_manifest()
         self.stage("created", message="Staging run created.")
+        # The run's start is handed over, so its folder exists in the
+        # repository from the start even if the build dies before its next
+        # hand-over (a result file or the end).
+        self._hand_over_run()
 
     @property
     def repo_run_prefix(self) -> str:
@@ -129,6 +150,11 @@ class StagingRunBundleWriter:
         # root-level fallback here: writing runs to the repo root is the
         # failure this class now refuses, not an alternative layout.
         return f"{self.path_prefix}/{self.run_id}"
+
+    @property
+    def remote_staging(self) -> bool:
+        """Whether the run's files go to a repository, through the emitter."""
+        return self._hand_over is not None
 
     @property
     def uploads_succeeded(self) -> int:
@@ -152,39 +178,37 @@ class StagingRunBundleWriter:
         *,
         latest_pointer: Path | None = None,
         run_index_entry: dict[str, Any] | None = None,
-        flush: bool,
     ) -> None:
-        if self._hand_over is None or not self.repo_id:
+        if self._hand_over is None or not self._hand_over.enabled:
             return
         # Best-effort: staging telemetry must never fail (or stall) a build.
         # After three hand-overs in a row the emitter does not accept (no
-        # emitter, or one that does not answer), stop for the rest of the run;
-        # local staging artifacts are still written.
+        # emitter, or one that does not answer), pause until the run's final
+        # state; local staging artifacts are still written.
         result = self._hand_over.hand_over(
             files,
             latest_pointer=latest_pointer,
             run_index_entry=run_index_entry,
-            flush=flush,
         )
         if result.accepted:
             return
         warn_hand_over_failure(self._hand_over.repository, result)
         if result.became_paused:
             print(
-                "warning: disabling staging hand-overs for this run after "
-                "three in a row failed; local staging artifacts are still "
-                "written.",
+                "warning: pausing staging hand-overs for this run after three "
+                "in a row failed, until its final state; local staging "
+                "artifacts are still written.",
                 file=sys.stderr,
             )
-            self.repo_id = None
 
-    def _maybe_upload(self, *, force: bool = False) -> None:
-        if not self.repo_id:
+    def _hand_over_run(self) -> None:
+        """Hand the run's folder over as it stands: its start, a result file, its end.
+
+        Every attached result file goes with the run's documents, so the final
+        hand-over also carries any the emitter missed while hand-overs paused.
+        """
+        if self._hand_over is None or not self._hand_over.enabled:
             return
-        now = time.monotonic()
-        if not force and now - self._last_upload_at < self.upload_interval_seconds:
-            return
-        self._last_upload_at = now
         files = [
             (filename, self.run_dir / filename)
             for filename in (
@@ -197,14 +221,59 @@ class StagingRunBundleWriter:
         ]
         pointer = self._write_latest_pointer()
         self._write_runs_index()
+        # A result file named like one of the run's documents is not sent in
+        # its place: the documents describe the run. The emitter totals the
+        # files and the pointer against its request limit.
+        documents = {filename for filename, _ in files}
+        files.extend(
+            self._sendable_result_files(
+                exclude=documents,
+                budget=_MAX_RUN_REQUEST_BYTES
+                - sum(local.stat().st_size for _, local in files)
+                - pointer.stat().st_size,
+            )
+        )
         # The emitter merges this run's entry into the repository's runs.json
         # when it commits, keeping every other run.
         self._hand_over_files(
             files,
             latest_pointer=pointer,
             run_index_entry=self.run_summary(),
-            flush=force,
         )
+
+    def _sendable_result_files(
+        self, *, exclude: set[str], budget: int
+    ) -> list[tuple[str, Path]]:
+        """The attached result files one hand-over can carry with the documents.
+
+        A file the emitter would refuse (over its size limit, or past the
+        request's) stays local with a warning, so it cannot get the run's
+        documents and final state refused with it.
+        """
+        sendable: list[tuple[str, Path]] = []
+        for filename, local in self._artifact_files.items():
+            if filename in exclude or not local.is_file():
+                continue
+            size = local.stat().st_size
+            if size > _MAX_RUN_FILE_BYTES or size > budget:
+                if filename not in self._too_large_warned:
+                    self._too_large_warned.add(filename)
+                    limit = (
+                        "the emitter's limit for one file"
+                        if size > _MAX_RUN_FILE_BYTES
+                        else "what is left of the emitter's limit for one hand-over"
+                    )
+                    print(
+                        f"warning: the staging result file {filename} "
+                        f"({size} bytes) is larger than {limit}; it stays in "
+                        "the local staging files, though the run manifest "
+                        "names it.",
+                        file=sys.stderr,
+                    )
+                continue
+            budget -= size
+            sendable.append((filename, local))
+        return sendable
 
     def _write_latest_pointer(self) -> Path:
         payload = {
@@ -289,9 +358,9 @@ class StagingRunBundleWriter:
         *,
         status: str = "running",
         message: str | None = None,
-        force_upload: bool = False,
         **details: Any,
     ) -> None:
+        """Record a stage locally; it reaches the repo with the next hand-over."""
         updated_at = _now()
         self._progress.update(
             {
@@ -313,7 +382,6 @@ class StagingRunBundleWriter:
                 "details": details,
             }
         )
-        self._maybe_upload(force=force_upload)
 
     def calibration_progress(self, event: dict[str, object]) -> None:
         if event.get("kind") != "calibration_epoch":
@@ -339,7 +407,6 @@ class StagingRunBundleWriter:
         )
         self._write_progress()
         self._write_calibration_progress()
-        self._maybe_upload()
 
     def attach_artifact(
         self,
@@ -347,8 +414,8 @@ class StagingRunBundleWriter:
         path: Path | str,
         *,
         copy: bool = False,
-        force_upload: bool = True,
     ) -> None:
+        """Record a result file and hand it over with the run's current files."""
         source = Path(path)
         local = self.run_dir / source.name if copy else source
         if copy and source.resolve() != local.resolve():
@@ -357,25 +424,68 @@ class StagingRunBundleWriter:
             "path": source.name,
             "staging_path": f"{self.repo_run_prefix}/{source.name}",
         }
+        self._artifact_files[source.name] = local
         self._write_run_manifest()
-        if local.exists():
-            self._hand_over_files([(source.name, local)], flush=force_upload)
-        self._maybe_upload(force=force_upload)
+        self._hand_over_run()
+
+    def _reopen_for_final_state(self) -> None:
+        """Hand the final state over even after failures paused hand-overs.
+
+        A run whose remote copy stays ``running`` forever is the gap the v20
+        national run met; the emitter retries its commits itself.
+        """
+        if self._hand_over is not None:
+            self._hand_over.reopen()
 
     def fail(self, error: BaseException) -> None:
+        self._reopen_for_final_state()
         self.stage(
             "failed",
             status="failed",
             message=str(error),
-            force_upload=True,
             error_type=type(error).__name__,
             traceback=traceback.format_exc(),
         )
+        self._hand_over_run()
+        self._final_state_handed_over = True
 
     def complete(self) -> None:
+        self._reopen_for_final_state()
         self.stage(
             "complete",
             status="passed",
             message="Staging run completed.",
-            force_upload=True,
         )
+        self._hand_over_run()
+        self._final_state_handed_over = True
+
+    def confirm_final_commit(
+        self, *, wait_seconds: float, read_back: bool = True
+    ) -> FinalCommitCheck | None:
+        """Check that the ended run's final state reached the Hub, through the emitter.
+
+        With ``read_back`` the emitter commits the run's pending files, waiting
+        up to ``wait_seconds``, and compares the Hub's copies; without it only
+        its receipts are read (see ``RunFileHandOver.confirm_final_commit``).
+        A check that fails warns and returns; it never fails the build. A run
+        without remote staging has nothing to check.
+        """
+        if self._hand_over is None:
+            return None
+        if self._progress.get("status") == "running":
+            raise RuntimeError(
+                "Only a completed or failed staging run has a final commit."
+            )
+        if not self._final_state_handed_over:
+            check = FinalCommitCheck(
+                confirmed=False,
+                reason="not_handed_over",
+                method="read_back" if read_back else "receipt",
+            )
+        else:
+            check = self._hand_over.confirm_final_commit(
+                wait_seconds=wait_seconds, read_back=read_back
+            )
+        if not check.confirmed:
+            warn_final_commit_unconfirmed(self._hand_over.repository, check)
+        return check

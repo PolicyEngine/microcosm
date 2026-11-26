@@ -3746,8 +3746,6 @@ def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
             str(tmp_path / "put2223uk.tab"),
             "--hmrc-ods",
             str(tmp_path / "hmrc.ods"),
-            "--staging-upload-interval-seconds",
-            "0",
         ]
     )
     state = SimpleNamespace(build_id="uk-spine-attempt-fixture")
@@ -3755,7 +3753,7 @@ def test_remote_spine_staging_hands_its_run_files_to_the_build_emitter(
     bundle = spine_build._create_staging_run_bundle(args, state=state)
 
     assert bundle.emitter_client is emitter.client
-    bundle.stage("input_verification", force_upload=True)
+    # The run's start reached the emitter when the bundle opened.
     request = emitter.client.run_file_requests[-1]
     assert (request.repository, request.run_id, request.prefix) == (
         "policyengine/populace-uk-staging",
@@ -6010,3 +6008,99 @@ def test_a_child_tab_without_chearns_is_refused(tmp_path: Path) -> None:
     stage = _write_fixture(tmp_path, tables)
     with pytest.raises(KeyError, match="CHEARNS"):
         UKFRSSpineStageTransform(tmp_path, stage=stage)(uk_frs_spine_seed_frame())
+
+
+def test_a_failed_spine_run_confirms_its_final_commit_before_its_outcome(tmp_path):
+    """The emitter drops events after a run's outcome, so the check goes first."""
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    client = FakeEmitterClient()
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(
+            run_id="uk-spine-final",
+            country_code="GB",
+            pipeline="uk_national_spine",
+            candidate_id="uk-spine-final",
+            producer_id="producer-a",
+        ),
+        client=client,
+    )
+    bundle = StagingRunBundleWriterV2(
+        run_id="uk-spine-final",
+        country_code="GB",
+        operation_id="uk_frs_spine",
+        pipeline_id="uk_national_spine",
+        pipeline_version="2026.10",
+        candidate_id="uk-spine-final",
+        local_dir=tmp_path / "staging",
+        run_kind="smoke",
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        emitter_client=client,
+    )
+
+    spine_build._close_failed_telemetry(bundle, emitter, RuntimeError("spine failed"))
+
+    assert client.read_back_waits == [120.0]
+    final_commit = [
+        (event["event_type"], event["stage_id"], event["status"])
+        for event in emitter.events
+        if event["details"].get("check") == "staging_final_commit"
+    ]
+    assert final_commit == [("progress", None, "completed")]
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["failed"]
+
+
+def test_an_interrupt_during_a_spine_refusal_checks_by_receipt_only(tmp_path):
+    """A SIGTERM that lands while a refusal unwinds closes the run blocked,
+    and its check must fit the grace before SIGKILL."""
+    from microcosm.build.gate_battery import GateBatteryBlockedError
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from microcosm.build.termination import BuildTerminatedError
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    client = FakeEmitterClient()
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(
+            run_id="uk-spine-refused",
+            country_code="GB",
+            pipeline="uk_national_spine",
+            candidate_id="uk-spine-refused",
+            producer_id="producer-a",
+        ),
+        client=client,
+    )
+    bundle = StagingRunBundleWriterV2(
+        run_id="uk-spine-refused",
+        country_code="GB",
+        operation_id="uk_frs_spine",
+        pipeline_id="uk_national_spine",
+        pipeline_version="2026.10",
+        candidate_id="uk-spine-refused",
+        local_dir=tmp_path / "staging",
+        run_kind="smoke",
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        emitter_client=client,
+    )
+    terminated = BuildTerminatedError()
+    terminated.__context__ = GateBatteryBlockedError(
+        "spine",
+        ["[uk_spine_check] missed"],
+        tmp_path / "missing-report.json",
+        blocking_gate_ids=["uk_spine_check"],
+    )
+
+    spine_build._close_failed_telemetry(bundle, emitter, terminated)
+
+    assert "read_back_run_files" not in client.calls
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["blocked"]

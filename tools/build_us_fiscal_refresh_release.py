@@ -98,12 +98,15 @@ from microcosm.build.gates import (
     target_profile_coverage_gate,
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.run_outcome import classify_failure
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
+from microcosm.build.staging_storage import confirm_and_report_final_commit
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
 )
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -2050,12 +2053,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--staging-run-id",
         help="Override the staging run id. Defaults to the candidate release id.",
-    )
-    parser.add_argument(
-        "--staging-upload-interval-seconds",
-        type=float,
-        default=30.0,
-        help="Minimum seconds between progress uploads to the staging repo.",
     )
     parser.add_argument(
         _DRY_RUN_REPORT_FLAG,
@@ -9312,7 +9309,6 @@ def _record_qrf_tail_concentration_gate(
                 *(gate.failures if gate_failures else ()),
                 *register_failures,
             ],
-            force_upload=True,
         )
     return register_failures
 
@@ -10033,7 +10029,6 @@ def _enforce_ssi_take_up_delivery(
                 status="failed",
                 message="SSI take-up enforced-band delivery gate failed.",
                 failures=list(delivery_gate.failures),
-                force_upload=True,
             )
     except Exception as error:
         failures.append(
@@ -13012,7 +13007,6 @@ class _BuildProgress:
         *,
         message: str | None = None,
         status: str = "running",
-        force_upload: bool = False,
         **details: Any,
     ) -> None:
         self.emitter.transition_stage(
@@ -13026,7 +13020,6 @@ class _BuildProgress:
                 stage,
                 message=message,
                 status=status,
-                force_upload=force_upload,
                 **details,
             )
 
@@ -13047,23 +13040,46 @@ class _BuildProgress:
             self.staging_bundle.attach_artifact(name, path, **details)
 
     def fail(self, error: BaseException) -> None:
-        # The staging run's failed state is handed to the emitter before the
-        # telemetry outcome shuts the emitter down.
+        # The staging run's failed state is handed to the emitter, and its
+        # final commit confirmed, before the telemetry outcome shuts the
+        # emitter down (it drops a run's events after its outcome).
         try:
             if self.staging_bundle is not None:
                 self.staging_bundle.fail(error)
+                confirm_and_report_final_commit(
+                    self.staging_bundle, self.emitter, error=error
+                )
         finally:
-            self.emitter.fail(error)
+            _fail_emitter(self.emitter, error)
 
     def complete(self) -> None:
         if self.staging_bundle is not None:
             self.staging_bundle.complete()
+            confirm_and_report_final_commit(self.staging_bundle, self.emitter)
         self.emitter.complete()
 
 
 #: The progress coordinator for the build in flight, so the entry point can
 #: report failure without threading another handle back through the call stack.
 _ACTIVE_PROGRESS: _BuildProgress | None = None
+
+
+def _fail_emitter(emitter: LocalTelemetryEmitter, error: BaseException) -> None:
+    """Record the build's failure; a SIGTERM as a termination, as UK builds do.
+
+    An error raised while a SIGTERM unwinds holds it in its cause chain, which
+    ``classify_failure`` follows.
+    """
+
+    classified = classify_failure(error)
+    if classified.error_code == "TERMINATED":
+        emitter.fail(
+            error,
+            failure_class=classified.failure_class or "terminated",
+            error_code=classified.error_code,
+        )
+        return
+    emitter.fail(error)
 
 
 class _WorkCounter:
@@ -13731,8 +13747,9 @@ def _release_dry_run_checks(
 def _staging_manifest_block(telemetry: _BuildProgress | None) -> dict[str, object]:
     """Record what staging did and distinguish an opt-out from non-delivery.
 
-    Uploads are best-effort and self-disable after repeated failures, so a
-    configured destination is not evidence that anything reached it.
+    Uploads are best-effort and pause after three refused in a row until the
+    run's final state, so a configured destination is not evidence that
+    anything reached it.
     """
 
     if telemetry is None or telemetry.staging_bundle is None:
@@ -13793,7 +13810,6 @@ def _build_progress(
         path_prefix=args.staging_prefix,
         # The build's emitter commits the run files with its own credential.
         emitter_client=emitter.client,
-        upload_interval_seconds=args.staging_upload_interval_seconds,
     )
     _ACTIVE_PROGRESS = _BuildProgress(
         run_id=run_id,
@@ -14599,7 +14615,6 @@ def _certify_progress(
             staging_dir=staging_dir,
             staging_repo_id=settings["repo_id"],
             staging_prefix=settings["prefix"],
-            staging_upload_interval_seconds=settings["upload_interval_seconds"],
         ),
         release_root=record.release_root,
         release_id=build,
@@ -14891,7 +14906,19 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     either tier is refused: a certified build is never changed.
     Certification opens its own staging run where the build staged
     (:func:`_certify_progress`) and marks it failed if it does not finish.
+    A SIGTERM is recorded as a termination, as in :func:`main`, and the
+    command then exits 143.
     """
+
+    with raise_on_sigterm():
+        try:
+            _certify_main_with_close_out(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _certify_main_with_close_out(argv: Sequence[str] | None) -> None:
+    """Run the certification and record how it ended (see :func:`certify_main`)."""
 
     global _ACTIVE_EMITTER
     parser = _certify_parser()
@@ -15014,7 +15041,7 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
             if telemetry is not None:
                 telemetry.fail(error)
             elif _ACTIVE_EMITTER.available:
-                _ACTIVE_EMITTER.fail(error)
+                _fail_emitter(_ACTIVE_EMITTER, error)
         except Exception as telemetry_error:  # pragma: no cover - defensive
             # A failing failure-report must not replace the real traceback.
             print(
@@ -15278,7 +15305,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     An uncaught build error previously left the dashboard status at ``running``
     forever. SIGKILL remains outside the reach of an in-process handler; this
-    closes the ordinary exception and termination half of the gap.
+    closes the ordinary exception and termination half of the gap. A SIGTERM
+    raises ``BuildTerminatedError`` (``microcosm.build.termination``), which
+    closes the staging run as failed and records a termination with the
+    emitter, and the program then exits 143.
 
     A build returns ``None``. ``--dry-run-gates-report`` leaves through
     ``SystemExit`` with the report's exit code: 1 on any certain failure, 2 on
@@ -15291,6 +15321,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     build's telemetry has completed its staging run and its emitter, which
     closes on that outcome.
     """
+
+    with raise_on_sigterm():
+        try:
+            _main_with_close_out(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _main_with_close_out(argv: Sequence[str] | None) -> None:
+    """Run :func:`_main` and record how it ended (see :func:`main`)."""
 
     global _ACTIVE_DRY_RUN
     _ACTIVE_DRY_RUN = None
@@ -15320,7 +15360,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     file=sys.stderr,
                 )
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.fail(error)
+            _fail_emitter(_ACTIVE_EMITTER, error)
         raise
     try:
         _finish_national_gate_shadow(
@@ -15336,7 +15376,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         # closed the emitter by now (see the docstring), so this records an
         # outcome only on an emitter that something left open.
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.fail(error)
+            _fail_emitter(_ACTIVE_EMITTER, error)
         raise
     if dry_run_exit is not None:
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
@@ -15451,7 +15491,6 @@ def _with_scf_education_debt_stage(
                 status="failed",
                 message="SCF education-debt signal gate failed.",
                 failures=list(gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16010,7 +16049,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             message="Compiled fiscal target registry.",
             n_targets=len(target_specs),
             target_profile_gate_passed=target_profile_gate.passed,
-            force_upload=True,
         )
 
     if telemetry is not None:
@@ -16073,7 +16111,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Weeks-unemployed input signal gate failed.",
                 failures=list(weeks_unemployed_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16156,7 +16193,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         "input signal."
                     ),
                     failures=list(post_selection_weeks_unemployed_gate.failures),
-                    force_upload=True,
                 )
             raise RuntimeError(
                 "Release gates failed: "
@@ -16239,7 +16275,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Base population scale gate failed.",
                 failures=list(base_population_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16262,7 +16297,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="QBI-input signal gate failed.",
                 failures=list(qbi_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16283,7 +16317,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Farm-business-income signal gate failed.",
                 failures=list(farm_business_income_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16304,7 +16337,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Domestic-production-ALD signal gate failed.",
                 failures=list(domestic_production_ald_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16325,7 +16357,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Child-support input signal gate failed.",
                 failures=list(child_support_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16346,7 +16377,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Disability-benefits input signal gate failed.",
                 failures=list(disability_benefits_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16367,7 +16397,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Workers-compensation input signal gate failed.",
                 failures=list(workers_compensation_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16388,7 +16417,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Educator-expense input signal gate failed.",
                 failures=list(educator_expense_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16409,7 +16437,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Form 4952 election input signal gate failed.",
                 failures=list(form_4952_election_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16430,7 +16457,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SALT-refund-income signal gate failed.",
                 failures=list(salt_refund_income_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16451,7 +16477,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Capital-gain details input signal gate failed.",
                 failures=list(capital_gain_details_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16479,7 +16504,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Childcare-input signal gate failed.",
                 failures=list(childcare_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16507,7 +16531,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Energy-subsidy signal gate failed.",
                 failures=list(energy_subsidy_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16526,7 +16549,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Alimony-input signal gate failed.",
                 failures=list(alimony_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16547,7 +16569,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Casualty-loss signal gate failed.",
                 failures=list(casualty_loss_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16568,7 +16589,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Miscellaneous-itemized signal gate failed.",
                 failures=list(misc_itemized_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16600,7 +16620,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Retirement-contribution signal gate failed.",
                 failures=list(retirement_contributions_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16632,7 +16651,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Immigration composition gate failed.",
                 failures=list(immigration_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16662,7 +16680,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Take-up signal gate failed.",
                 failures=list(take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16693,7 +16710,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Hours-worked signal gate failed.",
                 failures=list(hours_worked_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16724,7 +16740,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SNAP take-up signal gate failed.",
                 failures=list(snap_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16756,7 +16771,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Relationship-input signal gate failed.",
                 failures=list(relationship_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16791,7 +16805,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SPM independence role signal gate failed.",
                 failures=list(spm_independence_role_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16823,7 +16836,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Medicare take-up input signal gate failed.",
                 failures=list(medicare_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16844,7 +16856,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Prior-year-income signal gate failed.",
                 failures=list(prior_year_income_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16871,7 +16882,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Housing/tenure input signal gate failed.",
                 failures=list(housing_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16920,7 +16930,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="Retirement-distribution signal gate failed.",
                     failures=list(retirement_distributions_gate.failures),
-                    force_upload=True,
                 )
         except Exception as error:
             early_terminal_gate_failures.append(
@@ -16950,7 +16959,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Eligibility-inputs signal gate failed.",
                 failures=list(eligibility_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16985,7 +16993,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Education-input signal gate failed.",
                 failures=list(education_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17017,7 +17024,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Pregnancy signal gate failed.",
                 failures=list(pregnancy_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17045,7 +17051,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Reported-coverage vintage signal gate failed.",
                 failures=list(reported_coverage_vintage_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17078,7 +17083,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="WIC-claim input signal gate failed.",
                 failures=list(wic_claim_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17109,7 +17113,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SNAP discretionary-exemption signal gate failed.",
                 failures=list(snap_discretionary_exemption_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17202,7 +17205,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SCF-wealth signal gate failed.",
                 failures=list(scf_wealth_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17244,7 +17246,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SSI disability-criteria signal gate failed.",
                 failures=list(ssi_disability_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17280,7 +17281,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SIPP Head Start signal gate failed.",
                 failures=list(head_start_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17340,7 +17340,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SSI take-up assignment gate failed.",
                 failures=list(ssi_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17404,7 +17403,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SCF auto-loan signal gate failed.",
                 failures=list(scf_auto_loan_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17460,7 +17458,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SIPP-vehicle signal gate failed.",
                 failures=list(sipp_vehicles_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17496,7 +17493,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Voluntary-filing signal gate failed.",
                 failures=list(voluntary_filing_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17539,7 +17535,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SIPP-tip signal gate failed.",
                 failures=list(sipp_tips_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17583,7 +17578,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="CPS ORG/FLSA signal gate failed.",
                 failures=list(org_wages_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17615,7 +17609,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Health input signal gate failed.",
                 failures=list(health_input_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17653,7 +17646,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Medicaid take-up gate failed.",
                 failures=list(medicaid_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17687,7 +17679,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SNAP state take-up gate failed.",
                 failures=list(snap_state_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17722,7 +17713,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Other-health-insurance premium signal gate failed.",
                 failures=list(other_health_insurance_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17745,7 +17735,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="ESI premium signal gate failed on the base.",
                 failures=list(esi_premiums_base_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17786,7 +17775,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         status="failed",
                         message="Base-frame input mass parity gate failed.",
                         failures=list(input_mass_reference_gate.failures),
-                        force_upload=True,
                     )
             except Exception as error:
                 early_terminal_gate_failures.append(
@@ -17800,7 +17788,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="Base-frame input mass parity gate failed.",
                     failures=list(input_mass_reference_gate.failures),
-                    force_upload=True,
                 )
             raise RuntimeError(
                 "Release gates failed: "
@@ -17833,7 +17820,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         status="failed",
                         message="Degenerate input signal gate failed.",
                         failures=list(degenerate_input_gate.failures),
-                        force_upload=True,
                     )
             except Exception as error:
                 early_terminal_gate_failures.append(
@@ -17848,7 +17834,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="Degenerate input signal gate failed.",
                     failures=list(degenerate_input_gate.failures),
-                    force_upload=True,
                 )
             raise RuntimeError(
                 "Release gates failed: "
@@ -17886,7 +17871,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         status="failed",
                         message="eCPS parity gate failed.",
                         failures=list(ecps_parity_gate.failures),
-                        force_upload=True,
                     )
             except Exception as error:
                 early_terminal_gate_failures.append(
@@ -17900,7 +17884,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="eCPS parity gate failed.",
                     failures=list(ecps_parity_gate.failures),
-                    force_upload=True,
                 )
             raise RuntimeError(
                 "Release gates failed: "
@@ -18470,7 +18453,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="SSI take-up final export-frame gate failed.",
                     failures=list(final_ssi_take_up_gate.failures),
-                    force_upload=True,
                 )
         except Exception as error:
             early_terminal_gate_failures.append(
@@ -18905,7 +18887,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             message="Release gates failed; continuing to evaluate the "
             "remaining terminal gate groups before aborting.",
             failures=gate_failures,
-            force_upload=True,
         )
 
     # SPM measurement composition, as a batched pre-export gate.
@@ -18958,7 +18939,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             status="failed",
             message="SPM measurement composition gate failed.",
             failures=spm_composition_failures,
-            force_upload=True,
         )
 
     # Stored model inputs (microcosm#1026, decision d271), as a batched
@@ -18995,7 +18975,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             status="failed",
             message="Stored model inputs gate failed.",
             failures=stored_input_failures_,
-            force_upload=True,
         )
 
     terminal_batch_telemetry.stage(
@@ -19088,7 +19067,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Release input-column coverage gate failed.",
                 failures=list(input_coverage_gate.failures),
-                force_upload=True,
             )
     # microcosm#454: the calibrated ESI premium total over the anchor's
     # universe (every policyholder) against BEA NIPA 7.8 line 17 within tolerance,
@@ -19160,7 +19138,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="ESI premium anchor gate failed.",
                 failures=list(esi_premiums_anchor_gate.failures),
-                force_upload=True,
             )
     # #327: the export gate compares the calibrated export against a reference.
     # By default that reference is the raw pre-calibration base — but for a dense
@@ -19254,7 +19231,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Export input mass parity gate failed.",
                 failures=list(export_input_mass_gate.failures),
-                force_upload=True,
             )
     # microcosm#462: tail-concentration gate over the sparse QRF-imputed dollar
     # columns at the export's calibrated weights. The Build M defect — 89% of
@@ -19305,7 +19281,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             status="failed",
             message="Release gates failed (batched pre-export report).",
             failures=terminal_gate_failures,
-            force_upload=True,
         )
         build_refusal = _BuildFailedReleaseGatesError(
             "Release gates failed: " + "; ".join(terminal_gate_failures)
@@ -19486,7 +19461,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "no_staging": bool(args.no_staging),
                 "repo_id": args.staging_repo_id or None,
                 "prefix": args.staging_prefix,
-                "upload_interval_seconds": float(args.staging_upload_interval_seconds),
             },
         ),
     )
@@ -19660,7 +19634,6 @@ def _certify_us_build(
                     status="failed",
                     message="Reform-coverage smoke gate failed.",
                     failures=list(reform_coverage_smoke_gate.failures),
-                    force_upload=True,
                 )
             smoke_failures = [
                 f"Reform coverage smoke failed: {failure}"

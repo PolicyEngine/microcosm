@@ -111,7 +111,6 @@ def _remote_recorder(tmp_path, emitter=None, **kwargs):
         "delivery_mode": "local_and_remote",
         "repo_id": UK_STAGING,
         "emitter_client": emitter,
-        "upload_interval_seconds": 0,
         **kwargs,
     }
     return _recorder(tmp_path, **options), emitter
@@ -145,7 +144,7 @@ def test_staging_run_bundle_writer_sends_no_telemetry_events(tmp_path) -> None:
     """The writer hands over its files; hosted telemetry stays the build's."""
     assert "emitter" not in inspect.signature(StagingRunBundleWriterV2).parameters
     telemetry, emitter = _remote_recorder(tmp_path)
-    telemetry.stage("input_verification", force_upload=True)
+    telemetry.stage("input_verification")
     telemetry.complete()
     telemetry.verify_remote()
 
@@ -399,11 +398,13 @@ def test_remote_failures_are_best_effort_and_preserve_repository(tmp_path, capsy
         tmp_path, FakeEmitterClient(accept_run_files=False)
     )
 
-    telemetry.stage("input_verification", force_upload=True)
+    telemetry.stage("input_verification")
 
     delivery = telemetry.delivery_summary
     assert delivery["configured_repository"] == UK_STAGING
-    # The three files the emitter did not accept count as attempts.
+    # The run start's three files, which the emitter did not accept, count as
+    # attempts; the stage event stays local.
+    assert len(emitter.run_file_requests) == 1
     assert len(emitter.run_file_requests[-1].files) == 3
     assert delivery["upload_attempts"] == 3
     assert delivery["upload_successes"] == 0
@@ -448,13 +449,16 @@ def test_remote_read_back_validates_the_written_run(tmp_path):
 
 def test_remote_read_back_requires_a_final_run_status(tmp_path):
     telemetry, emitter = _remote_recorder(tmp_path)
+    # Only the run's start has reached the emitter.
+    calls = list(emitter.calls)
+    files = dict(emitter.hub_files)
 
     with pytest.raises(StagingContractError, match="completed, blocked or failed"):
         telemetry.verify_remote()
 
     assert telemetry.delivery_summary["read_back"] == "not_requested"
-    assert emitter.hub_files == {}
-    assert emitter.calls == []
+    assert emitter.hub_files == files
+    assert emitter.calls == calls
 
 
 @pytest.mark.parametrize("final_status", ["completed", "failed"])
@@ -549,8 +553,7 @@ def test_remote_delivery_matches_local_delivery_after_completion(tmp_path):
     # The documents carry the emitter's counts after the hand-over that
     # delivered them; this emitter commits at once.
     expected = telemetry.delivery_summary
-    assert expected["upload_attempts"] == len(telemetry._upload_paths())
-    assert expected["upload_successes"] == expected["upload_attempts"]
+    assert expected["upload_successes"] == expected["upload_attempts"] > 0
     remote = _remote_files(emitter)
     for filename in ("run_manifest.json", "progress.json"):
         document = json.loads(remote[f"runs/uk-smoke-5-42/{filename}"])
@@ -572,7 +575,7 @@ def test_delivery_counts_are_what_the_emitter_reported(tmp_path):
             }
 
     telemetry, emitter = _remote_recorder(tmp_path, NotYetCommitted())
-    telemetry.stage("input_verification", force_upload=True)
+    telemetry.stage("input_verification")
     telemetry.complete()
 
     delivery = telemetry.delivery_summary
@@ -631,7 +634,7 @@ def test_read_back_fails_when_the_final_state_was_not_handed_over(tmp_path):
     """The Hub can match what the emitter committed and still be stale."""
 
     telemetry, emitter = _remote_recorder(tmp_path)
-    telemetry.stage("input_verification", force_upload=True)
+    telemetry.stage("input_verification")
     emitter.accept_run_files = False
     telemetry.complete()
 
@@ -703,7 +706,7 @@ def test_a_failed_read_back_keeps_its_error_code_through_later_uploads(tmp_path)
         telemetry.verify_remote()
 
     # A successful upload afterwards cannot clear the failed verdict's code.
-    telemetry._maybe_upload(force=True)
+    telemetry._hand_over_run()
 
     delivery = telemetry.delivery_summary
     assert delivery["read_back"] == "failed"
@@ -1032,30 +1035,9 @@ def test_version_2_cli_uses_country_owned_repository_configuration(monkeypatch):
 
     args = parser.parse_args([])
     assert args.staging_repo_id == "example/configured-staging"
-    assert args.staging_upload_interval_seconds == 30.0
     assert not hasattr(args, "staging_prefix")
     with pytest.raises(SystemExit):
         parser.parse_args(["--staging-prefix", "candidate-runs"])
-
-
-def test_version_2_cli_lets_a_long_running_command_slow_its_upload_cadence():
-    """A multi-hour solve at 30 s exhausts the Hub's commit budget (v20 run)."""
-
-    repository = StagingRepositoryConfig(
-        default_repo_id="example/default-staging",
-        repo_id_environment_variable="EXAMPLE_STAGING_REPO_ID",
-    )
-    parser = argparse.ArgumentParser()
-    add_staging_arguments(
-        parser, repository=repository, default_upload_interval_seconds=300
-    )
-    assert parser.parse_args([]).staging_upload_interval_seconds == 300.0
-    assert (
-        parser.parse_args(
-            ["--staging-upload-interval-seconds", "45"]
-        ).staging_upload_interval_seconds
-        == 45.0
-    )
 
 
 def test_typed_artifacts_reject_one_scalar_individual_record(tmp_path):
@@ -1127,17 +1109,29 @@ def test_storage_only_reads_a_staged_file_through_the_hub_cache(tmp_path):
         assert not hasattr(storage, removed), removed
 
 
+def _add_aggregate_artifact(telemetry, tmp_path, name):
+    source = tmp_path / f"{name}.json"
+    source.write_text(json.dumps({"target_count": 3, "mean_loss": 0.25}))
+    telemetry.add_artifact(
+        name,
+        source,
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+
+
 def _paused_remote_recorder(tmp_path):
     emitter = FakeEmitterClient(accept_run_files=False)
     telemetry, _ = _remote_recorder(tmp_path, emitter)
     telemetry.set_sample(_sample())
-    # Three consecutive hand-overs the emitter does not accept pause the
-    # run's hand-overs until its final state.
-    for stage in ("input_verification", "sampling", "calibrating"):
-        telemetry.stage(stage, force_upload=True)
+    # Three consecutive hand-overs the emitter does not accept (the run's
+    # start and two artifacts) pause the run's hand-overs until its final
+    # state.
+    for name in ("first-summary", "second-summary"):
+        _add_aggregate_artifact(telemetry, tmp_path, name)
     assert telemetry.delivery_summary["last_error_code"] == "UPLOAD_FAILED"
     requests_paused = len(emitter.run_file_requests)
-    telemetry.stage("diagnostics", force_upload=True)
+    _add_aggregate_artifact(telemetry, tmp_path, "third-summary")
     assert len(emitter.run_file_requests) == requests_paused == 3
     return telemetry, emitter
 
@@ -1181,3 +1175,218 @@ def test_a_final_state_the_emitter_does_not_accept_stays_local(tmp_path, capsys)
     assert "final state was not handed over" in err
     # The local bundle is complete whatever the emitter did.
     assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"
+
+
+def _remote_run(tmp_path, emitter):
+    """A remote run handing its files to ``emitter``."""
+    return _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id=UK_STAGING,
+        emitter_client=emitter,
+    )
+
+
+def test_the_run_start_is_handed_over_and_flushed(tmp_path):
+    """The run's folder exists on the Hub from its start, whatever follows."""
+    emitter = FakeEmitterClient()
+
+    telemetry = _remote_run(tmp_path, emitter)
+
+    # The start's hand-over, then the two documents that carry the delivery
+    # counts once more, since the emitter's commit changed them.
+    start, refresh = emitter.run_file_requests
+    assert start.flush is True and refresh.flush is True
+    assert {"run_manifest.json", "progress.json", "events.ndjson"} <= {
+        item.relative_path for item in start.files
+    }
+    assert {item.relative_path for item in refresh.files} == {
+        "run_manifest.json",
+        "progress.json",
+    }
+    prefix = telemetry.repo_run_prefix
+    progress = json.loads(_remote_files(emitter)[f"{prefix}/progress.json"])
+    assert (progress["status"], progress["current_stage"]) == ("running", "created")
+
+
+def test_only_the_start_result_files_and_end_are_handed_over(tmp_path):
+    """Progress between those points stays local, however long the run takes."""
+    emitter = FakeEmitterClient()
+    telemetry = _remote_run(tmp_path, emitter)
+    prefix = telemetry.repo_run_prefix
+    after_start = len(emitter.run_file_requests)
+
+    telemetry.stage("input_loading")
+    for epoch in range(1, 4):
+        telemetry.calibration_progress(
+            {"kind": "calibration_epoch", "epoch": epoch, "epochs": 3, "loss": 1.0}
+        )
+    telemetry.stage("diagnostics")
+    assert len(emitter.run_file_requests) == after_start
+
+    summary = tmp_path / "fit_summary.json"
+    summary.write_text(json.dumps({"targets": 3, "loss": 0.5}))
+    telemetry.add_artifact(
+        "fit_summary",
+        summary,
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+    after_result = len(emitter.run_file_requests)
+    assert after_result > after_start
+    remote = _remote_files(emitter)
+    assert f"{prefix}/artifacts/fit_summary.json" in remote
+    manifest = json.loads(remote[f"{prefix}/run_manifest.json"])
+    assert [item["logical_name"] for item in manifest["artifacts"]] == ["fit_summary"]
+
+    telemetry.stage("release_check_evaluation")
+    assert len(emitter.run_file_requests) == after_result
+
+    telemetry.complete()
+    assert len(emitter.run_file_requests) > after_result
+    assert all(request.flush for request in emitter.run_file_requests)
+    remote = _remote_files(emitter)
+    progress = json.loads(remote[f"{prefix}/progress.json"])
+    assert (progress["status"], progress["current_stage"]) == ("completed", "complete")
+    calibration = json.loads(remote[f"{prefix}/calibration_progress.json"])
+    assert [row["epoch"] for row in calibration["events"]] == [1, 2, 3]
+
+
+def test_the_writer_has_no_commit_interval_clock_or_forced_stage_option():
+    """Every hand-over is forced, so neither an interval nor a flag applies."""
+    parameters = inspect.signature(StagingRunBundleWriterV2).parameters
+    assert "upload_interval_seconds" not in parameters
+    assert "monotonic" not in parameters
+    assert (
+        "force_upload"
+        not in inspect.signature(StagingRunBundleWriterV2.stage).parameters
+    )
+    assert (
+        "force_upload"
+        not in inspect.signature(StagingRunBundleWriterV2.add_artifact).parameters
+    )
+
+
+def test_the_staging_options_have_no_upload_interval():
+    parser = argparse.ArgumentParser()
+    add_staging_arguments(
+        parser,
+        repository=StagingRepositoryConfig(
+            default_repo_id=UK_STAGING,
+            repo_id_environment_variable="UK_STAGING_REPO_ID",
+        ),
+    )
+
+    assert "staging_upload_interval_seconds" not in vars(parser.parse_args([]))
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--staging-upload-interval-seconds", "30"])
+
+
+def _closed_remote_run(tmp_path, emitter):
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id=UK_STAGING,
+        emitter_client=emitter,
+    )
+    telemetry.complete()
+    return telemetry
+
+
+def test_a_completed_run_confirms_that_the_hub_holds_its_final_state(tmp_path):
+    emitter = FakeEmitterClient()
+    telemetry = _closed_remote_run(tmp_path, emitter)
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=120.0)
+
+    assert check.confirmed is True
+    assert check.reason is None
+    assert check.files_compared > 0
+    assert emitter.read_back_waits == [120.0]
+    # The opt-in read-back (--staging-read-back) keeps its own record.
+    assert telemetry.delivery_summary["read_back"] == "not_requested"
+
+
+def test_an_unconfirmed_final_commit_warns_without_raising(tmp_path, capsys):
+    emitter = FakeEmitterClient()
+    emitter.read_back_answer = {
+        "status": "failed",
+        "files": 3,
+        "mismatched_paths": [],
+        "error_code": "REPOSITORY_UNAVAILABLE",
+    }
+    telemetry = _closed_remote_run(tmp_path, emitter)
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=30.0)
+
+    assert check.confirmed is False
+    assert check.reason == "REPOSITORY_UNAVAILABLE"
+    assert telemetry.delivery_summary["read_back"] == "not_requested"
+    assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"
+    err = capsys.readouterr().err
+    assert "final commit" in err and "not confirmed" in err
+
+
+def test_a_final_state_the_emitter_refused_is_not_read_back(tmp_path):
+    emitter = FakeEmitterClient()
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id=UK_STAGING,
+        emitter_client=emitter,
+    )
+    emitter.accept_run_files = False
+    telemetry.complete()
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    check = telemetry.confirm_final_commit(wait_seconds=120.0)
+
+    assert check.confirmed is False
+    assert check.reason == "not_handed_over"
+    assert "read_back_run_files" not in emitter.calls
+
+
+def test_a_local_only_run_has_no_final_commit_to_confirm(tmp_path):
+    telemetry = _recorder(tmp_path)
+    telemetry.complete()
+    assert callable(getattr(telemetry, "confirm_final_commit", None))
+
+    assert telemetry.confirm_final_commit(wait_seconds=120.0) is None
+
+
+class _MissingCredential(FakeEmitterClient):
+    """An emitter with no Hugging Face credential: every commit stays pending."""
+
+    def _receipt(self, repository, run_id):
+        return {
+            **super()._receipt(repository, run_id),
+            "pending_files": 3,
+            "last_error_code": "CREDENTIAL_MISSING",
+        }
+
+
+def test_a_receipt_check_confirms_without_reading_the_hub_back(tmp_path):
+    """The check after an interrupt: the Hub comparison can outlast the grace."""
+    emitter = FakeEmitterClient()
+    telemetry = _closed_remote_run(tmp_path, emitter)
+
+    assert "read_back" in inspect.signature(telemetry.confirm_final_commit).parameters
+    check = telemetry.confirm_final_commit(wait_seconds=30.0, read_back=False)
+
+    assert check.confirmed is True
+    assert check.method == "receipt"
+    assert "read_back_run_files" not in emitter.calls
+
+
+def test_a_missing_credential_ends_the_check_at_once(tmp_path):
+    """Waiting cannot help a commit that has no credential."""
+    emitter = _MissingCredential()
+    telemetry = _closed_remote_run(tmp_path, emitter)
+
+    check = telemetry.confirm_final_commit(wait_seconds=120.0)
+
+    assert check.confirmed is False
+    assert check.reason == "CREDENTIAL_MISSING"
+    assert "read_back_run_files" not in emitter.calls
