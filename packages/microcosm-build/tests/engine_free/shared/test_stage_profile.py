@@ -498,6 +498,80 @@ def test__given_unavailable_procfs__then_ps_current_rss_is_returned(
     assert current_rss_bytes == 123 * 1024
 
 
+def _ps_output(stdout: str):
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(stdout=stdout)
+
+    return fake_run
+
+
+def _ps_raises(error: BaseException):
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        raise error
+
+    return fake_run
+
+
+@pytest.mark.parametrize(
+    ("ps_path", "fake_run"),
+    [
+        pytest.param(None, _ps_output("123\n"), id="no_ps_on_path"),
+        pytest.param("/bin/ps", _ps_output(""), id="empty_output"),
+        pytest.param("/bin/ps", _ps_output("busybox ps\n"), id="unparsable_output"),
+        pytest.param("/bin/ps", _ps_output("0\n"), id="zero_rss"),
+        pytest.param("/bin/ps", _ps_raises(PermissionError("denied")), id="denied"),
+        pytest.param(
+            "/bin/ps",
+            _ps_raises(stage_profile.subprocess.CalledProcessError(1, ["ps"])),
+            id="non_zero_exit",
+        ),
+    ],
+)
+def test__given_unavailable_procfs_and_unusable_ps__then_lifetime_peak_is_returned(
+    monkeypatch: pytest.MonkeyPatch,
+    ps_path: str | None,
+    fake_run: object,
+) -> None:
+    # Given
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (7_000_000,))
+    monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: ps_path)
+    monkeypatch.setattr(stage_profile.subprocess, "run", fake_run)
+
+    # When
+    current_rss_bytes = stage_profile.current_rss_bytes()
+
+    # Then
+    assert current_rss_bytes == 7_000_000
+
+
+def test__given_no_procfs_and_no_ps_on_path__then_stage_runs_and_is_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given: each ru_maxrss value serves, in order, the entry reading, the
+    # lifetime peak read after it, the exit reading and the peak read after it.
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (5_000_000, 5_000_000, 8_000_000, 8_000_000))
+    monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: None)
+    stage_ran = False
+
+    # When
+    with profile_stage("no_ps", tmp_path, sample_interval_seconds=0.001):
+        stage_ran = True
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["no_ps"]
+    assert stage_ran
+    assert record["status"] == "succeeded"
+    assert record["entry_rss_bytes"] == 5_000_000
+    assert record["exit_rss_bytes"] == 8_000_000
+    assert record["peak_rss_bytes"] == 8_000_000
+    assert record["peak_rss_source"] == "process_peak_rss_reached_during_stage"
+
+
 def test__given_exit_rss_failure__then_sampler_thread_is_still_cleaned_up(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
