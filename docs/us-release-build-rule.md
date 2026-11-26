@@ -539,6 +539,12 @@ known violations at run time:
   those responses score 0. A whole-file engine also scores 0 at the engine's
   zero default elasticities.
 
+Target compilation's JCT tax-expenditure reform batches
+(`_reform_household_income_tax`) build their engines the same way, from one
+reform system per reform, and refuse the same two things: a reform system that
+moves the behavioral-response parameters, before its first batch engine, and
+a batch engine that computed a baseline-branch reader, at every batch count.
+
 Tests pin the watched lists against the installed engine's formula sources,
 exercise each guard on a real engine, and compare the shipped baseline plans
 (20 smoke keys, 75 validation keys and 1 demographics key), served from the

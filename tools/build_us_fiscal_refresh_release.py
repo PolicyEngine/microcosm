@@ -5145,7 +5145,9 @@ US_POPULATION_AGGREGATE_VARIABLES = recert.POPULATION_AGGREGATE_VARIABLES
 #: holds a reform at the baseline's denominator; the others reach
 #: ``get_behavioral_response_measurements``, which measures a reform against
 #: ``get_branch("baseline")`` and would measure it against itself here. A reform
-#: pass refuses an engine that computed any of them, whatever its batch count.
+#: pass refuses an engine that computed any of them, whatever its batch count;
+#: so does each JCT reform batch of target compilation, whose engines also get
+#: the reform's system alone (``_refuse_batch_baseline_branch_readers``).
 #: Pinned in ``test_us_post_export_scoring.py``.
 POST_EXPORT_BASELINE_BRANCH_READERS = (
     "income_elasticity_lsr",
@@ -5158,9 +5160,10 @@ POST_EXPORT_BASELINE_BRANCH_READERS = (
 
 #: The other two formulas that read ``simulation.baseline``, and the parameter
 #: subtree each response is computed from. Without a baseline branch both
-#: return 0; with one they return 0 at zero elasticities. Every reform pass
-#: requires these parameters to remain at their baseline values before it
-#: builds a batch engine.
+#: return 0; with one they return 0 at zero elasticities. Every reform pass, and
+#: each JCT reform of target compilation
+#: (``_refuse_reform_moving_behavioral_responses``), requires these parameters
+#: to remain at their baseline values before it builds a batch engine.
 POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS = {
     "capital_gains_behavioral_response": "gov.simulation.capital_gains_responses",
     "labor_supply_behavioral_response": "gov.simulation.labor_supply_responses",
@@ -6549,6 +6552,25 @@ def _reform_household_income_tax(
     # ``default_tax_benefit_system(reform=...)`` construction the engine ran
     # per batch — and hand it to every batch simulation explicitly.
     reform_system = microsimulation_cls.default_tax_benefit_system(reform=reform)
+    # Each batch engine gets this system alone, not ``reform=`` as well, as the
+    # post-export scorer's do (``_HouseholdBatchedPostExportScorer._construct``).
+    # Given both, policyengine-us 2.2.1 clones the supplied system on every
+    # construction (``SPMSimulationMixin._prepare_spm_system`` ->
+    # ``clone_spm_system``: the parameter tree rebuilt and every variable
+    # deep-copied, so each batch starts on cold parameter caches), core applies
+    # the reform again to the clone, and core adds a ``baseline`` branch whose
+    # holders copy every input array: one clone per reform per batch, 1,947 in
+    # a release's target compilation. Given the system alone, the engine shares
+    # the system's policy (``share_spm_policy``) and has no ``baseline``
+    # branch, so this pass refuses the two ways a missing one changes what an
+    # engine scores: a reform that moves the behavioral-response parameters
+    # (below), and an engine that computed a formula reading the branch
+    # (``_refuse_batch_baseline_branch_readers``).
+    _refuse_reform_moving_behavioral_responses(
+        reform_system,
+        microsimulation_cls.default_tax_benefit_system_instance,
+        measure=reform_spec.measure,
+    )
     batches = tuple(_household_position_batches(n_households, batch_size))
     guard_armed = (
         len(batches) > 1
@@ -6583,12 +6605,11 @@ def _reform_household_income_tax(
             reformed = microsimulation_cls(
                 tax_benefit_system=reform_system,
                 dataset=reformed_dataset,
-                reform=reform,
             )
             try:
-                with (
-                    _record_engine_branches(reformed) if guard_armed else nullcontext()
-                ):
+                # Branches are recorded at every batch count, because the
+                # baseline-branch refusal applies to a single batch too.
+                with _record_engine_branches(reformed):
                     batch_income_tax = _collapse_tax_unit(
                         _calculate_array(reformed, "income_tax"),
                         batch_tax_unit_positions,
@@ -6601,6 +6622,12 @@ def _reform_household_income_tax(
                             batches=len(batches),
                             n_households=n_households,
                         )
+                    _refuse_batch_baseline_branch_readers(
+                        reformed,
+                        measure=reform_spec.measure,
+                        batch=batch,
+                        batches=len(batches),
+                    )
             finally:
                 release_engine_simulation(reformed)
             reform_income_tax[household_positions] = batch_income_tax
@@ -7779,6 +7806,66 @@ def _refuse_batch_population_aggregates(
         "Drop the target from the surface, or run the whole pool unbatched "
         "in one simulation with one slice or chunk. Disabling only inner "
         "batching still leaves slice- or chunk-local aggregates."
+    )
+
+
+def _refuse_reform_moving_behavioral_responses(
+    reform_system, baseline_system, *, measure: str
+) -> None:
+    """Refuse a JCT reform system that moves a behavioral-response parameter.
+
+    A JCT batch engine gets the reform's system alone, so it has no
+    ``baseline`` branch, and policyengine-us scores its labor-supply and
+    capital-gains responses as 0. An engine given ``reform=`` as well has one
+    and scores them from these parameters, as 0 while they are at the engine's
+    zero default elasticities. Called once per reform, before its first batch
+    engine.
+    """
+
+    moved = _moved_behavioral_response_parameters(
+        reform_system, baseline_system, PERIOD
+    )
+    if not moved:
+        return
+    raise ValueError(
+        f"Target materialization refuses JCT reform {measure}: its tax-benefit "
+        f"system sets behavioral-response parameters off baseline at {PERIOD}: "
+        f"{', '.join(moved)}. JCT reform batch engines carry no baseline "
+        "branch, so policyengine-us would score these responses as zero."
+    )
+
+
+def _refuse_batch_baseline_branch_readers(
+    simulation,
+    *,
+    measure: str,
+    batch: int,
+    batches: int,
+) -> None:
+    """Refuse a JCT batch engine that computed a formula reading ``baseline``.
+
+    The engine has no ``baseline`` branch (see ``_reform_household_income_tax``),
+    so these formulas compute from the reform where an engine given
+    ``reform=`` reads the baseline: the Medicaid state denominator from the
+    reform's own enrollment, and the behavioral-response measurements against
+    the reform itself. ``_record_engine_branches`` must be active, so that
+    branches a formula created and then deleted are read too. The base frame
+    holds no formula-owned column (``_assert_no_formula_owned_columns``), so
+    any known period was computed, not loaded.
+    """
+
+    computed = sorted(
+        _engine_known_periods(simulation, POST_EXPORT_BASELINE_BRANCH_READERS)
+    )
+    if not computed:
+        return
+    raise ValueError(
+        f"Target materialization of JCT reform {measure}: the engine for "
+        f"household batch {batch}/{batches} computed "
+        f"{', '.join(f'{variable}@{period}' for variable, period in computed)}. "
+        "These policyengine-us formulas read the engine's baseline branch, which "
+        "a JCT reform batch engine does not carry: it is given the reform's "
+        "tax-benefit system alone, without reform=."
     )
 
 
