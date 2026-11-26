@@ -100,6 +100,12 @@ from microcosm.build.gates import (
     target_fit_gate,
     target_profile_coverage_gate,
 )
+from microcosm.build.household_pass_reuse import (
+    HouseholdPassRecord,
+    HouseholdPassReuse,
+    record_household_pass,
+    reuse_household_pass,
+)
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.run_outcome import classify_failure
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
@@ -338,6 +344,9 @@ from microcosm.build.us_runtime.h5_io import (
     refuse_denied_pool_h5_digest,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
+)
+from microcosm.build.us_runtime.household_pass_inputs import (
+    us_household_pass_inputs,
 )
 from microcosm.build.us_runtime.input_mass import (
     us_input_mass_parity_gate,
@@ -4652,6 +4661,7 @@ def _with_medicaid_take_up_outputs(
     substitutions: Sequence[dict[str, object]] = (),
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    eligibility_recorder: Callable[[Frame, np.ndarray], None] | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Assign Medicaid take-up (microcosm #331) and return frame + diagnostics.
 
@@ -4660,6 +4670,8 @@ def _with_medicaid_take_up_outputs(
     they ride the take-up diagnostics so the gate can rot-check a backfilled
     substitution and the ``us_medicaid_take_up.json`` release artifact records
     exactly which states shipped a substituted point-in-time count.
+    ``eligibility_recorder``, when given, receives the frame and the
+    eligibility array computed on it, before the take-up assignment.
     """
     target_table = _medicaid_source_target_table(target_specs)
     if target_table.empty:
@@ -4673,6 +4685,8 @@ def _with_medicaid_take_up_outputs(
         simulation=simulation,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
     )
+    if eligibility_recorder is not None:
+        eligibility_recorder(frame, eligibility)
     return with_us_medicaid_take_up(
         frame,
         is_medicaid_eligible=eligibility,
@@ -4683,6 +4697,75 @@ def _with_medicaid_take_up_outputs(
     )
 
 
+def _household_pass_record(
+    frame: Frame, values: np.ndarray, *, variable: str
+) -> HouseholdPassRecord:
+    """Keep one pre-calibration pass of ``variable`` for reuse after calibration.
+
+    The record holds the values, the person IDs and a digest of each
+    household's rows over every column the installed policyengine-us can
+    read for ``variable`` (its static dependency graph); it holds no frame.
+    """
+
+    from policyengine_us.system import system
+
+    inputs = us_household_pass_inputs(
+        variable,
+        metadata_index=_formula_owned_gate_adapter(),
+        system=system,
+    )
+    return record_household_pass(frame, values, inputs)
+
+
+def _reuse_household_pass(
+    record: HouseholdPassRecord,
+    frame: Frame,
+    *,
+    recompute: Callable[[Frame], np.ndarray],
+    maximum_microsim_batch_size: int | None,
+    description: str,
+) -> HouseholdPassReuse:
+    """The pass's values on ``frame``, running policyengine-us only where needed.
+
+    Households whose digest matches the record take their recorded values.
+    ``recompute`` runs the pass on the others, together with one batch of
+    unchanged households as a check; if that check disagrees with the record,
+    ``recompute`` runs on every household (see
+    :func:`microcosm.build.household_pass_reuse.reuse_household_pass`).
+    """
+
+    checked_households = (
+        maximum_microsim_batch_size
+        if maximum_microsim_batch_size is not None and maximum_microsim_batch_size > 0
+        else DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    reuse = reuse_household_pass(
+        record,
+        frame,
+        recompute=recompute,
+        checked_household_count=checked_households,
+    )
+    total = reuse.reused_households + reuse.recomputed_households
+    if reuse.check_failed:
+        print(
+            f"WARNING: {description} recomputed for all {total:,} households: "
+            f"on {reuse.checked_households:,} households whose inputs did not "
+            "change, policyengine-us disagreed with the pre-calibration values "
+            f"({record.inputs.description}).",
+            flush=True,
+        )
+    else:
+        print(
+            f"Reused pre-calibration {description} for "
+            f"{reuse.reused_households:,} of {total:,} households; ran "
+            f"policyengine-us on {reuse.recomputed_households:,} households "
+            f"whose inputs changed and on {reuse.checked_households:,} "
+            "unchanged households as a check.",
+            flush=True,
+        )
+    return reuse
+
+
 def _medicaid_diagnostics_for_existing_output(
     frame: Frame,
     target_specs: tuple,
@@ -4690,18 +4773,30 @@ def _medicaid_diagnostics_for_existing_output(
     seed: int,
     substitutions: Sequence[dict[str, object]] = (),
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    eligibility: np.ndarray | None = None,
 ) -> dict[str, object]:
-    """Diagnose persisted Medicaid flags on actual release weights."""
+    """Diagnose persisted Medicaid flags on actual release weights.
+
+    ``eligibility`` is the person-aligned ``is_medicaid_eligible`` of
+    ``frame`` when the caller already has it (the post-calibration reuse of
+    the first pass); otherwise this runs the pass.
+    """
 
     target_table = _medicaid_source_target_table(target_specs)
     if target_table.empty:
         raise RuntimeError(
             "Final Medicaid take-up diagnostics require CMS state targets."
         )
-    eligibility = _medicaid_person_eligibility(
-        frame,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-    )
+    if eligibility is None:
+        eligibility = _medicaid_person_eligibility(
+            frame,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+    elif np.shape(eligibility) != (frame.n("person"),):
+        raise ValueError(
+            "Final Medicaid eligibility must hold one value per export person: "
+            f"{frame.n('person')} people, shape {np.shape(eligibility)}."
+        )
     assigned = us_medicaid_source_person_table(
         frame,
         is_medicaid_eligible=eligibility,
@@ -17646,6 +17741,11 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
+    # The post-calibration measurement reuses these values for every
+    # household whose December SSI inputs are unchanged on the export frame.
+    ssi_pass_record = _household_pass_record(
+        base_frame, ssi_uncapped_amount, variable="uncapped_ssi"
+    )
     base_frame, ssi_take_up_stage_diagnostics = with_us_ssi_take_up(
         base_frame,
         uncapped_ssi=ssi_uncapped_amount,
@@ -17958,13 +18058,20 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "state enrollment snapshots."
             ),
         )
+    # As for SSI, the post-calibration Medicaid diagnostics reuse this pass for
+    # households whose eligibility inputs are unchanged on the export frame.
+    medicaid_pass_records: list[HouseholdPassRecord] = []
     base_frame, medicaid_take_up_diagnostics = _with_medicaid_take_up_outputs(
         base_frame,
         target_specs,
         seed=args.seed,
         substitutions=medicaid_enrollment_substitutions,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        eligibility_recorder=lambda frame, eligibility: medicaid_pass_records.append(
+            _household_pass_record(frame, eligibility, variable="is_medicaid_eligible")
+        ),
     )
+    (medicaid_pass_record,) = medicaid_pass_records
     medicaid_take_up_gate = shadow_gate(
         "us_national_medicaid_take_up",
         lambda: us_medicaid_take_up_gate(medicaid_take_up_diagnostics),
@@ -18727,10 +18834,17 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             weights="calibrated_household_weights",
         )
     compilation = dict(compilation)
-    final_uncapped_ssi = _ssi_person_uncapped_amount(
+    final_uncapped_ssi = _reuse_household_pass(
+        ssi_pass_record,
         export_frame,
+        recompute=lambda frame: _ssi_person_uncapped_amount(
+            frame,
+            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        ),
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-    )
+        description="December SSI candidate amounts",
+    ).values
+    del ssi_pass_record
     ssi_take_up_diagnostics = dict(
         us_ssi_take_up_diagnostics(
             export_frame,
@@ -18820,6 +18934,18 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     seed=args.seed,
                     substitutions=medicaid_enrollment_substitutions,
                     maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+                    eligibility=_reuse_household_pass(
+                        medicaid_pass_record,
+                        export_frame,
+                        recompute=lambda frame: _medicaid_person_eligibility(
+                            frame,
+                            maximum_microsim_batch_size=(
+                                args.maximum_microsim_batch_size
+                            ),
+                        ),
+                        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+                        description="Medicaid eligibility",
+                    ).values,
                 )
             ),
         )

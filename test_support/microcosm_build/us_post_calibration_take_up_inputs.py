@@ -214,21 +214,33 @@ def main_frame_assignments(builder: ModuleType) -> MainFrameAssignments:
     base_frame_calls: list[tuple[int, str]] = []
     export_frame_calls: list[tuple[int, str]] = []
     for node in _statements_outside_nested_scopes(main):
+        if isinstance(node, ast.Call):
+            # A December SSI pass is a direct call, or the reuse of the
+            # recorded first pass on another frame.
+            called = _called_name(node)
+            frame_argument = None
+            if called == "_ssi_person_uncapped_amount":
+                frame_argument = node.args[0]
+            elif (
+                called == "_reuse_household_pass"
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "ssi_pass_record"
+            ):
+                frame_argument = node.args[1]
+            if frame_argument is not None:
+                ssi_passes.append(
+                    (
+                        first_line + node.lineno - 1,
+                        frame_argument.id
+                        if isinstance(frame_argument, ast.Name)
+                        else ast.dump(frame_argument),
+                    )
+                )
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
             continue
         names = {name for target in node.targets for name in _assigned_names(target)}
         called = _called_name(node.value)
         line = first_line + node.lineno - 1
-        if called == "_ssi_person_uncapped_amount":
-            frame_argument = node.value.args[0]
-            ssi_passes.append(
-                (
-                    line,
-                    frame_argument.id
-                    if isinstance(frame_argument, ast.Name)
-                    else ast.dump(frame_argument),
-                )
-            )
         if "base_frame" in names:
             base_frame_calls.append((line, called))
         if "export_frame" in names:
