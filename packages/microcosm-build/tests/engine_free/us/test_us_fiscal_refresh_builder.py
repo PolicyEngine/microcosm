@@ -9311,7 +9311,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # reuse runs its recompute on the frame it was given, as a real reuse
     # does for changed households, so the assertions below can check which
     # frame, values and pass function main() wired to each variable.
-    def fake_household_pass_record(frame, values, *, variable):
+    def fake_household_pass_record(frame, values, *, variable, reuse_refused=None):
         captured.setdefault("household_pass_records", []).append(
             (variable, frame, values)
         )
@@ -9326,6 +9326,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         description,
         telemetry=None,
         telemetry_stage="take_up_final_diagnostics",
+        reuse_refused=None,
     ):
         captured.setdefault("household_pass_reuses", []).append(
             (record.variable, frame, maximum_microsim_batch_size, telemetry_stage)

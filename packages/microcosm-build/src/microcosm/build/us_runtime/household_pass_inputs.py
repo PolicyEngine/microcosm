@@ -10,15 +10,25 @@ variable its formulas read through ``entity(...)``, ``add`` and similar
 calls, on any branch and in any period). That graph does not follow some
 reads, so the list adds, until nothing new appears:
 
-* every string in a listed variable's class source that names an engine
-  variable, which covers ``simulation.get_branch(...).calculate("...")``,
-  ``simulation.get_holder("...")`` and ``all_of_variables([...])``, together
-  with each such variable's own graph;
-* each listed variable's ``defined_for`` variable (the state flags such as
-  ``CA`` are named as ``StateCode`` members, not strings).
+* every string in a listed variable's class source, or among its formula
+  functions' constants and closure values, that names an engine variable,
+  with each such variable's own graph. That covers
+  ``simulation.get_branch(...).calculate("...")``,
+  ``simulation.get_holder("...")``, ``all_of_variables([...])`` and formulas
+  generated at import without a class source (the state flags such as ``CA``
+  read ``state_code_str`` this way);
+* each listed variable's ``defined_for`` variable (state programs name their
+  state flag as a ``StateCode`` member, not a string).
 
 A string that names a variable without reading it only adds a column to the
 digest, which can rerun a household but never reuses a wrong value.
+
+Reads inside module-level helper functions are not followed: in
+policyengine-us 2.2.1 the only variables those helpers read outside the list
+are behavioral-response measurements (``household_net_income``,
+``marginal_tax_rate`` and similar), which a simulation without a reform does
+not compute. ``test_us_household_pass_inputs.py`` pins that set, so an engine
+whose helpers read anything else fails until it is reviewed.
 """
 
 from __future__ import annotations
@@ -27,6 +37,7 @@ import ast
 import enum
 import inspect
 import textwrap
+import types
 from functools import cache
 
 from microcosm.build.household_pass_reuse import HouseholdPassInputs, PassInputColumn
@@ -123,8 +134,8 @@ def _class_string_constants(variable_class: type) -> frozenset[str]:
     try:
         source = inspect.getsource(variable_class)
     except (OSError, TypeError):
-        # A class generated at import has no source file; the static index
-        # covers those from its audited snapshot.
+        # A class generated at import has no class source; its formula
+        # functions' constants are read in _formula_strings.
         return frozenset()
     return frozenset(
         node.value
@@ -133,12 +144,44 @@ def _class_string_constants(variable_class: type) -> frozenset[str]:
     )
 
 
+def _code_strings(code: types.CodeType) -> set[str]:
+    strings = set()
+    for constant in code.co_consts:
+        if isinstance(constant, str):
+            strings.add(constant)
+        elif isinstance(constant, types.CodeType):
+            strings |= _code_strings(constant)
+    return strings
+
+
+def _formula_strings(definition) -> set[str]:
+    """Strings among the formula functions' constants and closure values."""
+
+    strings: set[str] = set()
+    for formula in definition.formulas.values():
+        code = getattr(formula, "__code__", None)
+        if code is not None:
+            strings |= _code_strings(code)
+        for cell in getattr(formula, "__closure__", None) or ():
+            try:
+                value = cell.cell_contents
+            except ValueError:
+                continue
+            if isinstance(value, str):
+                strings.add(value)
+            elif isinstance(value, (list, tuple, set, frozenset)):
+                strings |= {item for item in value if isinstance(item, str)}
+    return strings
+
+
 def _extra_reads(definition, system) -> set[str]:
     """Variables ``definition`` reads that its static graph may not show."""
 
     reads = {
         value
-        for value in _class_string_constants(type(definition))
+        for value in (
+            _class_string_constants(type(definition)) | _formula_strings(definition)
+        )
         if value in system.variables
     }
     defined_for = getattr(definition, "defined_for", None)

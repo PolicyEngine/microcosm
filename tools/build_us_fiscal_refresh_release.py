@@ -4723,8 +4723,32 @@ def _with_medicaid_take_up_outputs(
     )
 
 
+def _medicaid_claim_crossing(frame: Frame) -> str | None:
+    """Why ``frame``'s households are not independent for Medicaid, if they are not.
+
+    ``is_medicaid_eligible`` reads each person's claiming tax unit through
+    joins over every person in the simulation. A positive
+    ``medicaid_claiming_tax_unit_id`` that does not resolve within the
+    person's own household links two households, so neither can reuse a
+    value computed without the other.
+    """
+
+    try:
+        _assert_medicaid_claiming_tax_units_local(frame)
+    except ValueError:
+        return (
+            "a positive medicaid_claiming_tax_unit_id does not resolve within "
+            "the person's own household"
+        )
+    return None
+
+
 def _household_pass_record(
-    frame: Frame, values: np.ndarray, *, variable: str
+    frame: Frame,
+    values: np.ndarray,
+    *,
+    variable: str,
+    reuse_refused: str | None = None,
 ) -> HouseholdPassRecord:
     """Keep one pre-calibration pass of ``variable`` for reuse after calibration.
 
@@ -4742,7 +4766,7 @@ def _household_pass_record(
         metadata_index=_formula_owned_gate_adapter(),
         system=system,
     )
-    return record_household_pass(frame, values, inputs)
+    return record_household_pass(frame, values, inputs, reuse_refused=reuse_refused)
 
 
 def _reuse_household_pass(
@@ -4754,6 +4778,7 @@ def _reuse_household_pass(
     description: str,
     telemetry: _BuildProgress | None = None,
     telemetry_stage: str = "take_up_final_diagnostics",
+    reuse_refused: str | None = None,
 ) -> HouseholdPassReuse:
     """The pass's values on ``frame``, running policyengine-us only where needed.
 
@@ -4766,7 +4791,9 @@ def _reuse_household_pass(
     passes inside share one full garbage collection, as a full pass has.
     With ``telemetry``, ``telemetry_stage`` is reported running before the
     reuse and again with the counts after it; the counts are also printed.
-    No release file records them.
+    No release file records them. ``reuse_refused`` (a reason) runs the whole
+    frame, as does a record made with one. Without a positive batch size the
+    reruns take one selection, as the unbatched pass does.
     """
 
     def report(message: str, **details: object) -> None:
@@ -4783,11 +4810,13 @@ def _reuse_household_pass(
                 flush=True,
             )
 
-    batch_households = (
-        maximum_microsim_batch_size
-        if maximum_microsim_batch_size is not None and maximum_microsim_batch_size > 0
-        else DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    batched = (
+        maximum_microsim_batch_size is not None and maximum_microsim_batch_size > 0
     )
+    checked_households = (
+        maximum_microsim_batch_size if batched else DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    batch_households = maximum_microsim_batch_size if batched else frame.n("household")
     report(
         f"Reusing pre-calibration {description} for households whose inputs "
         "are unchanged."
@@ -4797,11 +4826,17 @@ def _reuse_household_pass(
             record,
             frame,
             recompute=recompute,
-            checked_household_count=batch_households,
+            checked_household_count=checked_households,
             batch_household_count=batch_households,
+            reuse_refused=reuse_refused,
         )
     total = reuse.reused_households + reuse.recomputed_households
-    if reuse.check_failed:
+    if reuse.reuse_refused is not None:
+        message = (
+            f"{description} recomputed for all {total:,} households without "
+            f"reuse: {reuse.reuse_refused}."
+        )
+    elif reuse.check_failed:
         message = (
             f"WARNING: {description} recomputed for all {total:,} households. "
             f"On {reuse.checked_households:,} households whose inputs did not "
@@ -4826,6 +4861,7 @@ def _reuse_household_pass(
             "recomputed_households": reuse.recomputed_households,
             "checked_households": reuse.checked_households,
             "check_failed": reuse.check_failed,
+            "reuse_refused": reuse.reuse_refused,
         },
     )
     return reuse
@@ -18141,7 +18177,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             else lambda frame, eligibility, records=medicaid_pass_records: (
                 records.append(
                     _household_pass_record(
-                        frame, eligibility, variable="is_medicaid_eligible"
+                        frame,
+                        eligibility,
+                        variable="is_medicaid_eligible",
+                        reuse_refused=_medicaid_claim_crossing(frame),
                     )
                 )
             )
@@ -19027,6 +19066,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         # A failed SSI delivery check closes the running
                         # stage; the Medicaid measurement opens its own.
                         telemetry_stage="medicaid_final_diagnostics",
+                        reuse_refused=_medicaid_claim_crossing(export_frame),
                     ).values,
                 )
             ),

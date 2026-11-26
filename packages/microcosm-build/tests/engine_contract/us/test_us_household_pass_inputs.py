@@ -127,3 +127,75 @@ def test_only_plain_inputs_with_neutral_defaults_read_as_absent(
     assert columns["uncapped_ssi"].absent_reads_default is False
     medically_needy_expenses = columns["medicaid_medically_needy_medical_expenses"]
     assert medically_needy_expenses.absent_reads_default is False
+
+
+#: Variables that module-level helper functions of listed formulas read and
+#: the list leaves out. Each is a behavioral-response measurement, read by
+#: ``get_behavioral_response_measurements``, ``calculate_income_lsr_effect`` or
+#: ``calculate_substitution_lsr_effect`` only when the simulation has a
+#: baseline branch and nonzero elasticities; the passes build no reform, and
+#: the engine-workflow trace finds none of them read.
+_REVIEWED_HELPER_READS = {
+    "household_net_income",
+    "income_elasticity",
+    "marginal_tax_rate",
+    "marginal_tax_rate_on_capital_gains",
+    "substitution_elasticity",
+}
+
+
+def _code_strings_and_names(code):
+    strings, names = set(), set(code.co_names)
+    for constant in code.co_consts:
+        if isinstance(constant, str):
+            strings.add(constant)
+        elif isinstance(constant, type(code)):
+            nested_strings, nested_names = _code_strings_and_names(constant)
+            strings |= nested_strings
+            names |= nested_names
+    return strings, names
+
+
+@pytest.mark.parametrize("variable", ["uncapped_ssi", "is_medicaid_eligible"])
+def test_helper_functions_read_no_unreviewed_variable_outside_the_list(
+    variable, metadata_index, system
+) -> None:
+    """The list does not follow module-level helpers; this pins what they read.
+
+    Walks every policyengine-us function a listed formula calls by global
+    name, and the functions those call, and collects the strings in their
+    code that name engine variables.
+    """
+
+    import types
+
+    listed = {
+        column.name
+        for column in us_household_pass_inputs(
+            variable, metadata_index=metadata_index, system=system
+        ).columns
+    }
+    helper_reads: set[str] = set()
+    for name in listed:
+        for formula in system.variables[name].formulas.values():
+            _, names = _code_strings_and_names(formula.__code__)
+            pending = [formula.__globals__.get(global_name) for global_name in names]
+            seen = set()
+            while pending:
+                helper = pending.pop()
+                if (
+                    not isinstance(helper, types.FunctionType)
+                    or not helper.__module__.startswith("policyengine_us")
+                    or helper in seen
+                ):
+                    continue
+                seen.add(helper)
+                strings, names = _code_strings_and_names(helper.__code__)
+                helper_reads |= {
+                    value for value in strings if value in system.variables
+                }
+                pending.extend(
+                    helper.__globals__.get(global_name) for global_name in names
+                )
+
+    assert helper_reads - listed == _REVIEWED_HELPER_READS

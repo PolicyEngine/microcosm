@@ -85,6 +85,10 @@ class HouseholdPassRecord:
     household_digests: np.ndarray
     person_ids: np.ndarray
     values: np.ndarray
+    #: Why the recorded frame's households are not independent for this
+    #: pass, if the caller found a reason; a reuse of this record then runs
+    #: the whole frame.
+    reuse_refused: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,9 @@ class HouseholdPassReuse:
     checked_households: int
     #: True when the check disagreed and every household was run again.
     check_failed: bool
+    #: Set when the record or the caller refused reuse and the whole frame
+    #: was run: the reason.
+    reuse_refused: str | None = None
 
 
 # Two digest halves. Numbers are digested from their bits, so the halves
@@ -300,9 +307,19 @@ def household_input_digests(
 
 
 def record_household_pass(
-    frame: Frame, values: np.ndarray, inputs: HouseholdPassInputs
+    frame: Frame,
+    values: np.ndarray,
+    inputs: HouseholdPassInputs,
+    *,
+    reuse_refused: str | None = None,
 ) -> HouseholdPassRecord:
-    """Keep a pass's values with the digests of the households they came from."""
+    """Keep a pass's values with the digests of the households they came from.
+
+    ``reuse_refused`` is the caller's reason, if any, why one household's
+    value on ``frame`` can depend on another household's rows (a cross-
+    household link the pass reads); a reuse of the record then runs the whole
+    frame.
+    """
 
     values = np.asarray(values)
     person = frame.table(frame.schema.person_entity)
@@ -318,6 +335,7 @@ def record_household_pass(
         household_digests=digests,
         person_ids=person[frame.schema.person_id_column].to_numpy().copy(),
         values=values.copy(),
+        reuse_refused=reuse_refused,
     )
 
 
@@ -405,6 +423,7 @@ def reuse_household_pass(
     recompute: Callable[[Frame], np.ndarray],
     checked_household_count: int,
     batch_household_count: int,
+    reuse_refused: str | None = None,
 ) -> HouseholdPassReuse:
     """Values of ``record``'s pass on ``frame``, rerunning only what changed.
 
@@ -414,12 +433,43 @@ def reuse_household_pass(
     ``checked_household_count`` unchanged households spread over the frame,
     in selections of at most ``batch_household_count`` households. If any
     checked person's value differs from the recorded one, ``recompute`` runs
-    on the whole frame and those values are returned.
+    on the whole frame and those values are returned. ``recompute`` also runs
+    on the whole frame, with nothing reused, when the record or the caller
+    (``reuse_refused``, for ``frame``) gives a reason the households are not
+    independent.
     """
 
     schema = frame.schema
     variable = record.inputs.variable
     dtype = record.values.dtype
+    refusal = record.reuse_refused or reuse_refused
+    if refusal is not None:
+        household_count = frame.n(record.inputs.household_entity)
+        person_households = pd.Index(
+            frame.table(record.inputs.household_entity)[
+                schema.id_column(record.inputs.household_entity)
+            ]
+        ).get_indexer(
+            frame.table(schema.person_entity)[
+                schema.membership_column(record.inputs.household_entity)
+            ].to_numpy()
+        )
+        return HouseholdPassReuse(
+            values=_run_households(
+                frame,
+                np.ones(household_count, dtype=bool),
+                person_households,
+                recompute,
+                variable=variable,
+                dtype=dtype,
+                batch_household_count=batch_household_count,
+            ),
+            reused_households=0,
+            recomputed_households=household_count,
+            checked_households=0,
+            check_failed=False,
+            reuse_refused=refusal,
+        )
     household_ids, digests = household_input_digests(frame, record.inputs)
     stored = pd.Index(record.household_ids).get_indexer(household_ids)
     unchanged = stored >= 0

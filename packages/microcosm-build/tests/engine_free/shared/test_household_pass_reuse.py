@@ -380,6 +380,38 @@ def test_a_failed_check_reruns_every_household() -> None:
     assert result.values.tobytes() == engine(frame).tobytes()
 
 
+@pytest.mark.parametrize("refused_by", ["record", "reuse"])
+def test_a_refusal_runs_the_whole_frame(refused_by) -> None:
+    """A caller that knows one household's value can depend on another's
+    rows (a link across households) refuses reuse, at record time for the
+    recorded frame or at reuse time for the new one."""
+
+    frame = _frame()
+    engine = _StandInEngine()
+    reason = "a claiming link crosses households"
+    record = record_household_pass(
+        frame,
+        engine(frame),
+        _INPUTS,
+        reuse_refused=reason if refused_by == "record" else None,
+    )
+
+    result = reuse_household_pass(
+        record,
+        frame,
+        recompute=engine,
+        checked_household_count=1,
+        batch_household_count=100,
+        reuse_refused=reason if refused_by == "reuse" else None,
+    )
+
+    assert result.reuse_refused == reason
+    assert (result.reused_households, result.recomputed_households) == (0, 5)
+    assert result.checked_households == 0
+    assert engine.calls[1] == [1, 2, 3, 4, 5]
+    assert result.values.tobytes() == engine(frame).tobytes()
+
+
 def test_record_and_reuse_refuse_misaligned_values() -> None:
     frame = _frame()
     engine = _StandInEngine()
