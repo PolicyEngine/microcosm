@@ -12,13 +12,13 @@ VAT scope and no registration. The rules return
 ``vat_liability_if_registered`` in pounds, keyed by ``firm_id``;
 ``align_rule_outputs`` puts it back in the generator's row order.
 
-Today the only implementation in source is ``LegacyVATEvaluatorRules``, which
-wraps an existing ``UKFirmVATRuleEvaluator`` such as the Axiom RuleSpec
-evaluator. A future ``PolicyEngineUKFirmRules`` adapter will replace it: it
-will run policyengine-uk's firm entity on the candidate table, read
-``firm_vat_liability_if_registered`` (the liability ``firm_vat`` charges a
-registered firm) and reconcile ``firm_vat_registered`` with the generator's
-registration flags. Axiom then stays an optional cross-check. No reference VAT
+Two implementations live in source. ``PolicyEngineUKFirmRules``
+(``firm_policyengine_uk_rules``) runs policyengine-uk's firm entity on the
+candidate table and reads ``firm_vat_liability_if_registered`` (the liability
+``firm_vat`` charges a registered firm); reconciling ``firm_vat_registered``
+with the generator's registration flags is still to come.
+``LegacyVATEvaluatorRules`` wraps an existing ``UKFirmVATRuleEvaluator`` such as
+the Axiom RuleSpec evaluator, which stays an optional cross-check. No reference VAT
 evaluator lives in source; tests bring their own doubles.
 """
 

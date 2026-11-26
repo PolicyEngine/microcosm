@@ -16,6 +16,9 @@ generator draws none of them.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from types import MappingProxyType
+
 import numpy as np
 import pandas as pd
 
@@ -102,6 +105,100 @@ UK_FIRM_MICROCOSM_COLUMNS = (
 
 #: The export's columns, in order.
 UK_FIRM_TABLE_COLUMNS = (*UK_FIRM_POLICYENGINE_UK_COLUMNS, *UK_FIRM_MICROCOSM_COLUMNS)
+
+#: Microcosm-only columns: none may share a name with a policyengine-uk variable,
+#: or a dataset load would read it as one.
+UK_FIRM_MICROCOSM_ONLY_COLUMNS = UK_FIRM_MICROCOSM_COLUMNS
+
+#: Values of ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS``:
+#:
+#: - ``set``: mapped directly from a generator column;
+#: - ``derived``: computed from other columns by a rule;
+#: - ``assumed``: carries a data assumption beyond the source;
+#: - ``not_set``: not exported; policyengine-uk's default applies.
+UK_FIRM_INPUT_STATUSES = ("set", "derived", "assumed", "not_set")
+
+#: Every formula-less policyengine-uk firm input (branch firm-entity-engine at
+#: ``0d1c25010``, the committed snapshot) -> how this export fills it. The keys
+#: with status other than ``not_set`` are exactly ``UK_FIRM_POLICYENGINE_UK_COLUMNS``.
+#: ``firm_input_vat`` is ``ASSUMED_INPUT_VAT_RATE`` on all input costs. Every other
+#: input waits for a source (region and legal status, paybill, profit, rateable
+#: value, flags), so policyengine-uk applies its default.
+UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
+    {
+        "firm_id": "set",
+        "firm_weight": "set",
+        "firm_turnover": "set",
+        "firm_input_costs": "set",
+        "firm_employees": "set",
+        "firm_sic_section": "set",
+        "firm_region": "not_set",
+        "firm_standard_rated_supplies": "derived",
+        "firm_exempt_supplies": "derived",
+        "firm_vat_voluntarily_registered": "derived",
+        "firm_in_england": "not_set",
+        "firm_input_vat": "assumed",
+        "firm_legal_form": "not_set",
+        "firm_is_public_body": "not_set",
+        "firm_paybill": "not_set",
+        "firm_taxable_trading_profit": "not_set",
+        "firm_rateable_value": "not_set",
+        "firm_n_associated_companies": "not_set",
+        "firm_small_profits_rate_excluded": "not_set",
+        "firm_is_bank": "not_set",
+        "firm_is_charity": "not_set",
+        "firm_is_single_director_company": "not_set",
+        "firm_in_freeport": "not_set",
+        "firm_zero_rated_supplies": "not_set",
+        "firm_reduced_rated_supplies": "not_set",
+        "firm_is_limited_cost_trader": "not_set",
+        "firm_uses_flat_rate_scheme": "not_set",
+        "firm_is_industrial_property": "not_set",
+        "firm_is_pub_or_live_music_venue": "not_set",
+        "firm_is_live_music_venue": "not_set",
+        "firm_is_rhl_property": "not_set",
+        "firm_is_wales_retail_property": "not_set",
+        "firm_is_wales_higher_multiplier_excluded": "not_set",
+        "firm_months_empty": "not_set",
+        "firm_n_properties": "not_set",
+        "firm_property_occupied": "not_set",
+        "firm_aia_share": "not_set",
+        "firm_capex_main_pool_new": "not_set",
+        "firm_capex_main_pool_new_for_leasing": "not_set",
+        "firm_capex_main_pool_used": "not_set",
+        "firm_capex_special_rate_new": "not_set",
+        "firm_capex_special_rate_used": "not_set",
+        "firm_capex_structures": "not_set",
+        "firm_disposal_proceeds_main_pool": "not_set",
+        "firm_disposal_proceeds_full_expensing": "not_set",
+        "firm_main_pool_brought_forward": "not_set",
+        "firm_sba_qualifying_cost_brought_forward": "not_set",
+        "firm_special_rate_pool_brought_forward": "not_set",
+        "firm_bank_surcharge_allowance_share": "not_set",
+        "firm_deductions_allowance_share": "not_set",
+        "firm_exempt_distributions": "not_set",
+        "firm_losses_brought_forward": "not_set",
+        "firm_non_trading_profits": "not_set",
+        "firm_apprenticeship_levy_allowance_share": "not_set",
+        "firm_claims_employment_allowance": "not_set",
+        "firm_zero_rated_class_1_earnings": "not_set",
+        "firm_class_1a_benefits": "not_set",
+        "firm_employees_above_auto_enrolment_upper_limit": "not_set",
+        "firm_employees_below_auto_enrolment_earnings_trigger": "not_set",
+        "firm_employees_below_secondary_threshold": "not_set",
+        "firm_paybill_above_auto_enrolment_upper_limit": "not_set",
+        "firm_paybill_below_auto_enrolment_earnings_trigger": "not_set",
+        "firm_paybill_below_secondary_threshold": "not_set",
+        "firm_low_paid_hours": "not_set",
+        "firm_low_paid_paybill": "not_set",
+        "firm_is_sme": "not_set",
+        "firm_qualifying_rd_expenditure": "not_set",
+        "firm_rdec_paye_nic_cap_supplied": "not_set",
+        "firm_rd_staff_paye_nic": "not_set",
+        "firm_relevant_paye_nic_liabilities": "not_set",
+        "firm_total_relevant_expenditure": "not_set",
+    }
+)
 
 _BOOL_COLUMNS = (
     "firm_vat_voluntarily_registered",
@@ -324,8 +421,11 @@ __all__ = [
     "UK_FIRM_CANDIDATE_RULES_COLUMNS",
     "UK_FIRM_CANDIDATE_SOURCE_COLUMNS",
     "UK_FIRM_EXPORT_SOURCE_COLUMNS",
+    "UK_FIRM_INPUT_STATUSES",
     "UK_FIRM_MICROCOSM_COLUMNS",
+    "UK_FIRM_MICROCOSM_ONLY_COLUMNS",
     "UK_FIRM_POLICYENGINE_UK_COLUMNS",
+    "UK_FIRM_POLICYENGINE_UK_INPUT_STATUS",
     "UK_FIRM_SIC_SECTIONS",
     "UK_FIRM_SIC_SECTION_UNKNOWN",
     "UK_FIRM_TABLE_COLUMNS",

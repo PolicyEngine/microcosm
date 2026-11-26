@@ -45,6 +45,9 @@ from microcosm.build.uk_runtime.diagnostics import (
     uk_zero_weight_strata,
     write_uk_calibration_diagnostics,
 )
+from microcosm.build.uk_runtime.firm_build import (
+    build_uk_firm_dataset,
+)
 from microcosm.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -76,6 +79,12 @@ from microcosm.build.uk_runtime.firm_generation import (
     validate_uk_firm_population,
     write_uk_firm_population,
 )
+from microcosm.build.uk_runtime.firm_policyengine_uk_rules import (
+    POLICYENGINE_UK_FIRM_TAX_VARIABLES,
+    PolicyEngineUKFirmRules,
+    evaluate_uk_firm_taxes,
+    weighted_uk_firm_tax_totals,
+)
 from microcosm.build.uk_runtime.firm_rules import (
     LegacyVATEvaluatorRules,
     UKFirmRuleOutputs,
@@ -85,6 +94,7 @@ from microcosm.build.uk_runtime.firm_rules import (
 )
 from microcosm.build.uk_runtime.firm_table import (
     ASSUMED_INPUT_VAT_RATE,
+    UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
     UK_FIRM_TABLE_COLUMNS,
     build_candidate_rules_table,
     to_policyengine_uk_firm_table,
@@ -997,6 +1007,12 @@ __all__ = [
     "LegacyVATEvaluatorRules",
     "UKFirmRuleOutputs",
     "UKFirmRules",
+    "build_uk_firm_dataset",
+    "PolicyEngineUKFirmRules",
+    "POLICYENGINE_UK_FIRM_TAX_VARIABLES",
+    "evaluate_uk_firm_taxes",
+    "weighted_uk_firm_tax_totals",
+    "UK_FIRM_POLICYENGINE_UK_INPUT_STATUS",
     "align_rule_outputs",
     "rule_period_for_vintage",
     "ASSUMED_INPUT_VAT_RATE",
