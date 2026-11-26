@@ -741,6 +741,22 @@ def test_driver_settings_reach_the_emitter_check_and_the_stages(tmp_path: Path) 
     assert exported.stdout.decode().splitlines() == ["1", good]
 
 
+def test_the_post_export_worker_setting_reaches_certification(tmp_path: Path) -> None:
+    """A settings-file ``MICROCOSM_POST_EXPORT_WORKERS`` is exported, so the
+    certify stage (which inherits the driver's environment) scores with the
+    workers it names, or serially."""
+
+    main, _ = _tiny_main(tmp_path, {_EMITTER_FLOOR_REL: _FLOOR})
+    exported = run_driver_settings(
+        tmp_path,
+        {"MAIN": str(main), "MICROCOSM_POST_EXPORT_WORKERS": "serial"},
+        "\nprintenv MICROCOSM_POST_EXPORT_WORKERS\n",
+    )
+    assert exported.stdout.decode().splitlines() == ["serial"]
+    example = (ROUTE_A_TOOLS / "route_a.env.example").read_text(encoding="utf-8")
+    assert "MICROCOSM_POST_EXPORT_WORKERS" in example
+
+
 def test_the_emitter_floor_is_read_at_the_requested_commit(tmp_path: Path) -> None:
     """``--resolve`` reads the floor of the commit it checks, not of the
     checkout: an older commit with a lower floor accepts an older emitter."""
