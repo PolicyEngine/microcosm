@@ -1,32 +1,44 @@
 """Resident-memory (RSS) and wall-time profiling for build stages.
 
 Each profiled stage gets one record in ``stage_profile.json``. Its
-``peak_rss_bytes`` is measured in one of two ways, and ``peak_rss_source``
-says which:
+``entry_rss_bytes`` and ``exit_rss_bytes`` are current RSS read as the stage
+starts and ends. Its ``peak_rss_bytes`` is measured in one of two ways, and
+``peak_rss_source`` says which:
 
 - Where ``/proc/self/statm`` is readable (Linux), a background thread reads
-  current RSS from it every ``sample_interval_seconds`` and keeps the largest
-  value, together with the entry and exit readings (``"sampled_current_rss"``).
+  current RSS from it every ``sample_interval_seconds``. The peak is the
+  largest of those samples and the entry and exit readings
+  (``"sampled_current_rss"``).
 - Elsewhere (macOS, or a container that hides ``/proc``), reading current RSS
-  means starting a ``ps`` process, so no background thread runs. The peak is
-  the process's lifetime peak RSS, ``getrusage(RUSAGE_SELF).ru_maxrss``, read
-  when the stage starts and when it ends:
+  means starting a ``ps`` process, so no background thread runs. Instead the
+  process's lifetime peak RSS, ``getrusage(RUSAGE_SELF).ru_maxrss``, is read
+  just after the entry reading and just after the exit reading. The peak is
+  the larger of the second ``ru_maxrss`` reading and the entry and exit
+  readings; it is the second ``ru_maxrss`` reading unless ``ps`` and
+  ``getrusage`` disagree.
 
-  - ``"process_peak_rss_reached_during_stage"``: the lifetime peak rose during
-    the stage, so the value read at the end is the stage's own peak.
-  - ``"process_peak_rss_reached_before_stage"``: the lifetime peak did not rise
-    during the stage. The value is the process's peak from before the stage
-    (startup and imports, an earlier profiled stage in the same process, or
-    memory a new process is charged for at start), and the stage's own peak
-    is at most this.
-  - ``"entry_and_exit_rss"``: ``getrusage`` gave no usable value;
-    ``sampling_error`` says why, and the peak is the larger of the entry and
-    exit readings.
+  - ``"process_peak_rss_reached_during_stage"``: ``ru_maxrss`` rose between
+    the two readings, so the process reached its highest RSS so far during
+    the stage, and the peak is the stage's own peak.
+  - ``"process_peak_rss_reached_before_stage"``: ``ru_maxrss`` did not rise,
+    so the stage's own peak is at most the recorded peak, which the process
+    reached before the stage. That can be during startup and imports, or in
+    an earlier profiled stage in the same process. On Linux it can also be
+    the parent process's peak: ``exec`` carries the old address space's peak
+    into ``ru_maxrss``, and after ``vfork`` (as Python's ``subprocess`` uses)
+    that address space is the parent's. macOS starts a new process's
+    ``ru_maxrss`` from zero.
+
+Either way, the record says ``"entry_and_exit_rss"`` when nothing between
+the entry and exit readings was measured: the stage ended before the first
+background sample, the first sample failed, or ``getrusage`` gave no usable
+value. ``sampling_error`` says what failed, and the peak is the larger of the
+entry and exit readings.
 
 In every case ``peak_rss_bytes`` is at least ``entry_rss_bytes`` and
 ``exit_rss_bytes``. Records written before ``peak_rss_source`` existed lack the
-field; they were all sampled the first way, with ``ps`` standing in for
-``/proc`` where it was unreadable.
+field; they were all measured by background sampling, with ``ps`` standing in
+for ``/proc`` where it was unreadable.
 """
 
 from __future__ import annotations
@@ -190,7 +202,11 @@ class _RssSampler:
                 peak_rss_bytes=self._peak_rss_bytes,
                 sample_count=self._sample_count,
                 sampling_error=self._sampling_error,
-                source=PEAK_RSS_SAMPLED_CURRENT_RSS,
+                source=(
+                    PEAK_RSS_SAMPLED_CURRENT_RSS
+                    if self._sample_count > 0
+                    else PEAK_RSS_ENTRY_AND_EXIT_RSS
+                ),
             )
 
     def _sample_until_stopped(self) -> None:
@@ -210,31 +226,33 @@ class _ProcessPeakRssReader:
     """Read the process's lifetime peak RSS when one stage starts and ends.
 
     Used where reading current RSS means starting a ``ps`` process. It starts
-    no thread and no process.
+    no thread and no process. Each ``ru_maxrss`` reading is taken just after
+    the entry or exit reading, so that reading is at most the lifetime peak
+    read next to it.
     """
 
     def __init__(self, *, entry_rss_bytes: int) -> None:
         self._entry_rss_bytes = entry_rss_bytes
         self._peak_at_start: int | None = None
-        self._peak_at_end: int | None = None
         self._sampling_error: dict[str, str] | None = None
 
     def start(self) -> None:
-        """Read the lifetime peak as the stage starts."""
+        """Read the lifetime peak just after the entry reading."""
 
         self._peak_at_start = self._read()
 
     def stop(self) -> None:
-        """Read the lifetime peak as the stage ends."""
-
-        if self._sampling_error is None:
-            self._peak_at_end = self._read()
+        """Do nothing; ``result`` reads the lifetime peak after the exit reading."""
 
     def result(self, *, exit_rss_bytes: int) -> _PeakRss:
-        """Return the stage's peak, never below the entry or exit reading."""
+        """Read the lifetime peak again and return the stage's peak.
 
+        The peak is never below the entry or exit reading.
+        """
+
+        peak_at_end = self._read() if self._sampling_error is None else None
         entry_and_exit_peak = max(self._entry_rss_bytes, exit_rss_bytes)
-        if self._peak_at_start is None or self._peak_at_end is None:
+        if self._peak_at_start is None or peak_at_end is None:
             return _PeakRss(
                 peak_rss_bytes=entry_and_exit_peak,
                 sample_count=0,
@@ -242,12 +260,12 @@ class _ProcessPeakRssReader:
                 source=PEAK_RSS_ENTRY_AND_EXIT_RSS,
             )
         return _PeakRss(
-            peak_rss_bytes=max(self._peak_at_end, entry_and_exit_peak),
+            peak_rss_bytes=max(peak_at_end, entry_and_exit_peak),
             sample_count=0,
             sampling_error=None,
             source=(
                 PEAK_RSS_PROCESS_PEAK_REACHED_DURING_STAGE
-                if self._peak_at_end > self._peak_at_start
+                if peak_at_end > self._peak_at_start
                 else PEAK_RSS_PROCESS_PEAK_REACHED_BEFORE_STAGE
             ),
         )
