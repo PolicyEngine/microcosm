@@ -22,6 +22,46 @@ def _with_readable_procfs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(stage_profile, "_read_procfs_current_rss_bytes", lambda: 4096)
 
 
+def _with_procfs_samples(
+    monkeypatch: pytest.MonkeyPatch,
+    background_reading,
+) -> None:
+    """Make /proc readable to the main thread, and let background reads vary.
+
+    The main thread's read decides that /proc can be sampled. Reads from any
+    other thread return ``background_reading()``.
+    """
+
+    def fake_read_procfs_current_rss_bytes() -> int | None:
+        if threading.current_thread() is threading.main_thread():
+            return 4096
+        return background_reading()
+
+    monkeypatch.setattr(
+        stage_profile,
+        "_read_procfs_current_rss_bytes",
+        fake_read_procfs_current_rss_bytes,
+    )
+
+
+def _main_thread_rss_readings(values: tuple[int, ...]):
+    """Return a fake ``_current_rss_bytes`` for the entry and exit readings.
+
+    Background samples must read /proc themselves, so a call from any other
+    thread fails.
+    """
+
+    remaining_values = iter(values)
+
+    def fake_current_rss_bytes() -> int:
+        assert threading.current_thread() is threading.main_thread(), (
+            "background samples must read /proc, not current_rss_bytes"
+        )
+        return next(remaining_values)
+
+    return fake_current_rss_bytes
+
+
 def _without_procfs(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the profiler find no /proc, as on macOS."""
 
@@ -98,20 +138,15 @@ def test__given_successful_stage__then_sampled_peak_and_status_are_recorded(
     tmp_path: Path,
 ) -> None:
     # Given
-    _with_readable_procfs(monkeypatch)
-    main_thread_values = iter((100, 200))
     background_sampled = threading.Event()
 
-    def fake_current_rss_bytes() -> int:
-        if threading.current_thread() is threading.main_thread():
-            return next(main_thread_values)
+    def background_procfs_reading() -> int:
         background_sampled.set()
         return 500
 
+    _with_procfs_samples(monkeypatch, background_procfs_reading)
     monkeypatch.setattr(
-        stage_profile,
-        "_current_rss_bytes",
-        fake_current_rss_bytes,
+        stage_profile, "_current_rss_bytes", _main_thread_rss_readings((100, 200))
     )
 
     # When
@@ -283,17 +318,16 @@ def test__given_procfs_and_first_sample_fails__then_peak_is_entry_and_exit(
     tmp_path: Path,
 ) -> None:
     # Given
-    _with_readable_procfs(monkeypatch)
-    main_thread_values = iter((100, 200))
     sample_failed = threading.Event()
 
-    def fake_current_rss_bytes() -> int:
-        if threading.current_thread() is threading.main_thread():
-            return next(main_thread_values)
+    def background_procfs_reading() -> None:
         sample_failed.set()
-        raise RuntimeError("sample unavailable")
+        return None
 
-    monkeypatch.setattr(stage_profile, "_current_rss_bytes", fake_current_rss_bytes)
+    _with_procfs_samples(monkeypatch, background_procfs_reading)
+    monkeypatch.setattr(
+        stage_profile, "_current_rss_bytes", _main_thread_rss_readings((100, 200))
+    )
 
     # When
     with profile_stage("first_sample_fails", tmp_path, sample_interval_seconds=0.001):
@@ -305,9 +339,42 @@ def test__given_procfs_and_first_sample_fails__then_peak_is_entry_and_exit(
     assert record["peak_rss_bytes"] == 200
     assert record["peak_rss_source"] == "entry_and_exit_rss"
     assert record["sampling_error"] == {
-        "message": "sample unavailable",
+        "message": "/proc/self/statm did not report current RSS",
         "type": "builtins.RuntimeError",
     }
+
+
+def test__given_procfs_lost_mid_stage_and_no_ps__then_no_lifetime_peak_is_sampled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given: /proc reports current RSS when the stage starts and ends, but not
+    # to the background thread, and the image has no ps. A sample must not
+    # fall back to ru_maxrss, which on Linux can be the parent's peak.
+    sample_attempted = threading.Event()
+
+    def background_procfs_reading() -> None:
+        sample_attempted.set()
+        return None
+
+    _with_procfs_samples(monkeypatch, background_procfs_reading)
+    _with_operating_system(monkeypatch, "Linux")
+    _with_lifetime_peaks(monkeypatch, (4 * 1024 * 1024,))
+    monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: None)
+
+    # When
+    with profile_stage("procfs_lost", tmp_path, sample_interval_seconds=0.001):
+        assert sample_attempted.wait(timeout=1.0)
+        time.sleep(0.05)
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["procfs_lost"]
+    assert record["entry_rss_bytes"] == 4096
+    assert record["exit_rss_bytes"] == 4096
+    assert record["peak_rss_bytes"] == 4096
+    assert record["rss_sample_count"] == 0
+    assert record["peak_rss_source"] == "entry_and_exit_rss"
+    assert record["sampling_error"]["type"] == "builtins.RuntimeError"
 
 
 def test__given_no_procfs_and_unreadable_lifetime_peak__then_error_is_recorded(
@@ -505,6 +572,13 @@ def _ps_output(stdout: str):
     return fake_run
 
 
+def _ps_undecodable_output(*_args: object, **kwargs: object) -> SimpleNamespace:
+    """Decode a byte that is not UTF-8 the way ``subprocess.run`` would."""
+
+    errors = kwargs.get("errors") or "strict"
+    return SimpleNamespace(stdout=b"\xff\n".decode("utf-8", errors=errors))
+
+
 def _ps_raises(error: BaseException):
     def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
         raise error
@@ -519,6 +593,13 @@ def _ps_raises(error: BaseException):
         pytest.param("/bin/ps", _ps_output(""), id="empty_output"),
         pytest.param("/bin/ps", _ps_output("busybox ps\n"), id="unparsable_output"),
         pytest.param("/bin/ps", _ps_output("0\n"), id="zero_rss"),
+        pytest.param("/bin/ps", _ps_output("-5\n"), id="negative_rss"),
+        pytest.param("/bin/ps", _ps_undecodable_output, id="undecodable_output"),
+        pytest.param(
+            "/bin/ps",
+            _ps_raises(stage_profile.subprocess.TimeoutExpired(["ps"], 5.0)),
+            id="timeout",
+        ),
         pytest.param("/bin/ps", _ps_raises(PermissionError("denied")), id="denied"),
         pytest.param(
             "/bin/ps",
