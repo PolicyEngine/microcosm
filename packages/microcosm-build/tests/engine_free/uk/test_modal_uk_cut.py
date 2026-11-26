@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -74,14 +75,103 @@ def test_planning_contacts_no_modal_service(monkeypatch, capsys):
     assert "missing credentials" in capsys.readouterr().out
 
 
+def _image_steps(stub, step):
+    """The calls named ``step`` the module made on the stub, in order."""
+
+    return [entry for entry in stub.mock_calls if entry[0].split(".")[-1] == step]
+
+
 def test_the_image_carries_the_registry_for_the_container(monkeypatch):
     module, stub = _load_app(monkeypatch)
     built = stub.Image.debian_slim.return_value.apt_install.return_value
-    added = built.pip_install.return_value.env.return_value.add_local_file
+    # The registry's copy comes after the emitter's install: Modal refuses
+    # build steps after a local file.
+    installed = built.pip_install.return_value.env.return_value.run_commands
+    added = installed.return_value.add_local_file
     added.assert_called_once_with(str(module.REGISTRY_SOURCE), module.REGISTRY_REMOTE)
     assert module.REGISTRY_SOURCE.is_file()
     # Modal places the app module in /root, beside the registry's copy.
     assert Path(module.REGISTRY_REMOTE).parent == Path("/root")
+
+
+def test_the_image_installs_the_emitter_at_the_builds_minimum_release(monkeypatch):
+    """The pre-flight starts the separately installed emitter (#1410, #1460)."""
+
+    from microcosm.build.telemetry_emitter import MINIMUM_EMITTER_VERSION
+
+    _, stub = _load_app(monkeypatch)
+    assert [step.args for step in _image_steps(stub, "run_commands")] == [
+        (
+            "UV_TOOL_BIN_DIR=/usr/local/bin uv tool install "
+            f"'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'",
+            "/usr/local/bin/microcosm-emitter version",
+        )
+    ]
+
+
+def test_the_build_is_pointed_at_the_installed_emitter(monkeypatch):
+    _, stub = _load_app(monkeypatch)
+    (environment,) = _image_steps(stub, "env")
+    assert environment.args[0].get("MICROCOSM_EMITTER_COMMAND") == (
+        "/usr/local/bin/microcosm-emitter"
+    )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        "not json",
+        "[]",
+        '{"minimum_emitter_version": 17}',
+        '{"minimum_emitter_version": "0.17"}',
+        '{"minimum_emitter_version": "0.17.0 "}',
+    ],
+)
+def test_an_unreadable_minimum_release_stops_the_image_definition(
+    monkeypatch, tmp_path, content
+):
+    module, _ = _load_app(monkeypatch)
+    version_file = tmp_path / "minimum_emitter_version.json"
+    if content is not None:
+        version_file.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(
+        module, "MINIMUM_EMITTER_VERSION_FILE", version_file, raising=False
+    )
+    with pytest.raises(SystemExit, match=re.escape(str(version_file))):
+        module._image()
+
+
+def test_the_container_defines_the_image_without_the_checkout(monkeypatch, tmp_path):
+    """The container imports the module at /root, with no checkout around it."""
+
+    module, stub = _load_app(monkeypatch)
+    monkeypatch.setattr(
+        module,
+        "MINIMUM_EMITTER_VERSION_FILE",
+        tmp_path / "missing" / "minimum_emitter_version.json",
+        raising=False,
+    )
+    stub.is_local.return_value = False
+    stub.reset_mock()
+    module._image()
+    assert _image_steps(stub, "run_commands") == []
+    assert _image_steps(stub, "add_local_file") == []
+
+
+def test_the_plan_names_the_emitter_the_image_installs(monkeypatch, capsys):
+    from microcosm.build.telemetry_emitter import MINIMUM_EMITTER_VERSION
+
+    module, _ = _load_app(monkeypatch)
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda argv, **kw: module.subprocess.CompletedProcess(argv, 0),
+    )
+    module.plan("a" * 40, "t")
+    assert f"emitter microcosm-emitter>={MINIMUM_EMITTER_VERSION}" in (
+        capsys.readouterr().out
+    )
 
 
 def test_the_registry_loads_from_a_bare_copy(monkeypatch, tmp_path):
