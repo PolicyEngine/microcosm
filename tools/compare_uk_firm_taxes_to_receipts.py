@@ -89,11 +89,10 @@ VAT_IN_SAMPLE_CAVEAT = (
 )
 
 PAYBILL_ASSUMED_CAVEAT = (
-    "Assumed input, not a validation: firm_paybill is not observed. It is the "
-    "generator's headcount times the ONS ASHE 2025 section mean annual gross "
-    "pay (all employee jobs), with working proprietors counted as employees "
-    "and out-of-frame zero-turnover traders included, so agreement or "
-    "disagreement here reflects that assumption, not the model."
+    "Assumed input, not a validation: firm_paybill is not observed, and this "
+    "build does not set it. Any total here rests on a paybill assumed outside "
+    "the build, so agreement or disagreement reflects that assumption, not the "
+    "model."
 )
 
 PAY_SPLIT_UNSET_CAVEAT = (

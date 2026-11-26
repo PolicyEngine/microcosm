@@ -90,6 +90,7 @@ from microcosm.build.uk_runtime.firm_rules import (
     UKFirmRuleOutputs,
     UKFirmRules,
     align_rule_outputs,
+    data_years_for_vintage,
     rule_period_for_vintage,
 )
 from microcosm.build.uk_runtime.firm_table import (
@@ -1015,6 +1016,7 @@ __all__ = [
     "UK_FIRM_POLICYENGINE_UK_INPUT_STATUS",
     "align_rule_outputs",
     "rule_period_for_vintage",
+    "data_years_for_vintage",
     "ASSUMED_INPUT_VAT_RATE",
     "UK_FIRM_TABLE_COLUMNS",
     "build_candidate_rules_table",

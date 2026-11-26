@@ -104,10 +104,12 @@ covers the current paper target surface used by the adapter, including ONS
 SIC-by-turnover, ONS SIC-by-employment, HMRC VAT-registered firms by SIC, and
 HMRC net VAT liability by SIC. VAT liability comes from a rules engine through
 the `UKFirmRules` seam in `uk_runtime/firm_rules.py`, whose outputs are keyed by
-`firm_id`. The firm rules home is policyengine-uk; until its firm-rules adapter
-lands, an Axiom RuleSpec artifact can be passed through `AxiomVATRuleEvaluator`,
-which the seam wraps (`LegacyVATEvaluatorRules`) and which stays an optional
-cross-check afterwards. Calibration uses the paper's two universes (ONS frame
+`firm_id`. The firm rules home is policyengine-uk: `PolicyEngineUKFirmRules`
+(`uk_runtime/firm_policyengine_uk_rules.py`) reads its firm VAT liability once
+the policyengine-uk firm entity is installed. An Axiom RuleSpec artifact can
+still be passed through `AxiomVATRuleEvaluator`, which the seam wraps
+(`LegacyVATEvaluatorRules`), as an optional cross-check. `tools/build_uk_firms.py`
+runs a local build to `uk_firms.parquet` with a JSON receipt. Calibration uses the paper's two universes (ONS frame
 rows, and HMRC registered-trader rows weighted by per-band registration
 propensity), optional stratified thinning (`UKFirmGenerationConfig.fast()`), and
 the public `solve_constraint_system`. `uk_runtime/firm_table.py` exports the

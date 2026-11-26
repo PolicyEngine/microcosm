@@ -83,8 +83,12 @@ UK_FIRM_DATA_YEARS_BY_VINTAGE: Mapping[str, Mapping[str, str] | None] = (
                 {
                     "ons_frame_turnover": "2023-24",
                     "ons_frame_turnover_note": (
-                        "ONS UK Business 2025, note 4: turnover for most traders "
-                        "is from VAT returns covering the financial year 2023/2024."
+                        "ONS, UK business: activity, size and location, 2025 "
+                        "(published 2025-09-24; https://www.ons.gov.uk/"
+                        "businessindustryandtrade/business/activitysizeandlocation/"
+                        "datasets/ukbusinessactivitysizeandlocation), note 4: "
+                        "turnover for most traders is from VAT returns covering "
+                        "the financial year 2023/2024."
                     ),
                     "hmrc_vat_statistics": "2024-25",
                 }
@@ -95,7 +99,12 @@ UK_FIRM_DATA_YEARS_BY_VINTAGE: Mapping[str, Mapping[str, str] | None] = (
 
 
 def data_years_for_vintage(data_vintage: str) -> dict[str, str] | None:
-    """The years a firm data vintage's sources describe, or ``None`` if unchecked."""
+    """The years a firm data vintage's sources describe, or ``None`` if unchecked.
+
+    Keyed on the data vintage, not on the files a build reads: a build of
+    vintage ``"2024-25"`` records these years whatever its processed tables
+    hold.
+    """
 
     if data_vintage not in UK_FIRM_DATA_YEARS_BY_VINTAGE:
         raise ValueError(
@@ -172,7 +181,12 @@ def align_rule_outputs(
     has no output, or when the outputs hold a firm not requested.
     """
 
-    return _align_rule_outputs(outputs, firm_id)[UK_FIRM_VAT_OUTPUT]
+    aligned = _align_rule_outputs(outputs, firm_id)
+    if UK_FIRM_VAT_OUTPUT not in aligned:
+        raise ValueError(
+            f"UK firm rule outputs lack {UK_FIRM_VAT_OUTPUT}; they hold {sorted(aligned)}."
+        )
+    return aligned[UK_FIRM_VAT_OUTPUT]
 
 
 #: Candidate-table columns ``LegacyVATEvaluatorRules`` reads.

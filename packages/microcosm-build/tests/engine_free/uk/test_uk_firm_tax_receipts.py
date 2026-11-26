@@ -162,9 +162,7 @@ def test_report_end_to_end(tmp_path) -> None:
     assert "England only" in lines["firm_business_rates"]
     for tax in ("firm_employer_ni", "apprenticeship_levy"):
         assert "not a validation" in lines[tax]
-        assert "ASHE 2025" in lines[tax]
-        assert "working proprietors" in lines[tax]
-        assert "zero-turnover" in lines[tax]
+        assert "does not set it" in lines[tax]
         assert "public sector" not in lines[tax]
     assert "firm_paybill_below_secondary_threshold" in lines["firm_employer_ni"]
     assert "firm_is_single_director_company" in lines["firm_employer_ni"]
