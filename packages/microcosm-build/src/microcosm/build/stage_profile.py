@@ -1,44 +1,59 @@
 """Resident-memory (RSS) and wall-time profiling for build stages.
 
-Each profiled stage gets one record in ``stage_profile.json``. Its
-``entry_rss_bytes`` and ``exit_rss_bytes`` are current RSS read as the stage
-starts and ends. Its ``peak_rss_bytes`` is measured in one of two ways, and
-``peak_rss_source`` says which:
+Each profiled stage gets one record in ``stage_profile.json``.
+
+``entry_rss_bytes`` and ``exit_rss_bytes`` are read by ``current_rss_bytes``
+as the stage starts and ends. That is current RSS from ``/proc/self/statm``
+where it is readable, and otherwise current RSS from one ``ps`` call. Where
+``ps`` fails too, the reading is the process's lifetime peak RSS from
+``getrusage`` instead of its current RSS. That happens on Linux without
+``/proc``, because ``ps`` reads ``/proc`` there, and in sandboxes that deny
+``ps``.
+
+``peak_rss_bytes`` is measured in one of two ways, and ``peak_rss_source``
+says which:
 
 - Where ``/proc/self/statm`` is readable (Linux), a background thread reads
-  current RSS from it every ``sample_interval_seconds``. The peak is the
-  largest of those samples and the entry and exit readings
-  (``"sampled_current_rss"``).
-- Elsewhere (macOS, or a container that hides ``/proc``), reading current RSS
-  means starting a ``ps`` process, so no background thread runs. Instead the
-  process's lifetime peak RSS, ``getrusage(RUSAGE_SELF).ru_maxrss``, is read
-  just after the entry reading and just after the exit reading. The peak is
-  the larger of the second ``ru_maxrss`` reading and the entry and exit
-  readings; it is the second ``ru_maxrss`` reading unless ``ps`` and
-  ``getrusage`` disagree.
+  current RSS every ``sample_interval_seconds``. The peak is the largest of
+  those samples and the entry and exit readings (``"sampled_current_rss"``).
+  If a sample fails, sampling stops for the rest of the stage and
+  ``sampling_error`` says why, so the peak covers only the samples taken
+  before that.
+- Elsewhere (macOS, or a container that hides ``/proc``), no background thread
+  runs, because each reading of current RSS would start a ``ps`` process.
+  Instead the process's lifetime peak RSS, ``getrusage(RUSAGE_SELF).ru_maxrss``,
+  is read just after the entry reading and again just after the exit reading.
+  The peak is the larger of the second ``ru_maxrss`` reading and the entry and
+  exit readings. It is the second ``ru_maxrss`` reading unless the entry or
+  exit reading disagrees with ``getrusage``.
 
   - ``"process_peak_rss_reached_during_stage"``: ``ru_maxrss`` rose between
-    the two readings, so the process reached its highest RSS so far during
-    the stage, and the peak is the stage's own peak.
-  - ``"process_peak_rss_reached_before_stage"``: ``ru_maxrss`` did not rise,
-    so the stage's own peak is at most the recorded peak, which the process
-    reached before the stage. That can be during startup and imports, or in
-    an earlier profiled stage in the same process. On Linux it can also be
-    the parent process's peak: ``exec`` carries the old address space's peak
-    into ``ru_maxrss``, and after ``vfork`` (as Python's ``subprocess`` uses)
-    that address space is the parent's. macOS starts a new process's
-    ``ru_maxrss`` from zero.
+    the two readings. So the process reached its highest RSS so far during
+    the stage or, by at most a few pages, during the exit reading's ``ps``
+    call. The peak is the stage's own peak.
+  - ``"process_peak_rss_reached_before_stage"``: ``ru_maxrss`` did not rise.
+    The process reached the recorded peak before the stage, and the stage's
+    own peak is at most that. The earlier peak can come from startup and
+    imports, or from an earlier profiled stage in the same process. On Linux
+    it can also be the parent process's peak: a child started with ``vfork``
+    or ``posix_spawn``, as Python's ``subprocess`` normally does there,
+    receives the parent's peak in its ``ru_maxrss`` at ``exec``. macOS starts
+    a new process's ``ru_maxrss`` near zero.
 
-Either way, the record says ``"entry_and_exit_rss"`` when nothing between
+On either path the record says ``"entry_and_exit_rss"`` when nothing between
 the entry and exit readings was measured: the stage ended before the first
 background sample, the first sample failed, or ``getrusage`` gave no usable
-value. ``sampling_error`` says what failed, and the peak is the larger of the
-entry and exit readings.
+value. ``sampling_error`` says what failed, if anything did. The peak is the
+larger of the entry and exit readings.
 
 In every case ``peak_rss_bytes`` is at least ``entry_rss_bytes`` and
-``exit_rss_bytes``. Records written before ``peak_rss_source`` existed lack the
-field; they were all measured by background sampling, with ``ps`` standing in
-for ``/proc`` where it was unreadable.
+``exit_rss_bytes``.
+
+Records written before ``peak_rss_source`` existed lack the field. Their peak
+is the largest of their ``rss_sample_count`` background samples and their
+entry and exit readings. Each of those readings was taken the way
+``current_rss_bytes`` takes one, which on macOS started a ``ps`` process for
+each.
 """
 
 from __future__ import annotations
