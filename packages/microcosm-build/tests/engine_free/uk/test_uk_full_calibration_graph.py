@@ -264,7 +264,7 @@ def binding_solver():
 
 
 @pytest.mark.parametrize("k", [None, 2, 3])
-def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
+def test_overlay_summaries_replay_dense_and_size_artifacts_without_solving(
     k, tmp_path, monkeypatch
 ):
     from microcosm.build.uk_runtime.orrery_contract import (
@@ -274,7 +274,6 @@ def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
     from microcosm.graph import (
         collect_execution_evidence,
         graph_schema,
-        orrery_document,
         record_run_binding,
     )
 
@@ -353,29 +352,29 @@ def test_orrery_summary_replays_dense_and_size_artifacts_without_solving(
     assert '"household_ids":' not in serialized
     assert '"pool_row_indices":' not in serialized
     assert '"inclusion_probabilities":' not in serialized
-    document = orrery_document(graph, execution=evidence)
-    result_node = next(
-        node
-        for node in document["nodes"]
-        if json.loads(node["id"]) == ["operation", endpoints.result_producer]
+    (phase,) = evidence["phases"]
+    # The phase binds each summary to the operation and artifact it describes.
+    summarised = {(item["node"], item["artifact"]) for item in phase["summaries"]}
+    assert {(endpoints.result_producer, "result"), ("pool", "preflight")} <= summarised
+    operations = phase["operations"]
+    assert (
+        operations[endpoints.result_producer]["artifact_summary_status"]["result"]
+        == "present"
     )
-    assert result_node["data"]["artifact_summaries"]
-    pool = next(
-        node
-        for node in document["nodes"]
-        if json.loads(node["id"]) == ["operation", "pool"]
-    )
-    assert pool["data"]["artifact_summaries"]["preflight"]["tables"]["gates"]["rows"]
-    assert [badge["label"] for badge in pool["statuses"]] == [
-        "Execution: completed",
-        "Computed: numerical",
-    ]
-    single_file = [
+    pool = operations["pool"]
+    assert pool["artifact_summary_status"]["preflight"] == "present"
+    assert (pool["execution"], pool["cache"]) == ("completed", "miss")
+    assert pool["kernel_role"] != "gate"
+    single_file_bytes = [
         artifact
-        for artifact in document["artifacts"]
-        if artifact["label"].endswith("(bytes, 1 file)")
+        for artifact in phase["artifacts"]
+        if artifact["kind"] == "bytes" and len(artifact["payloads"]) == 1
     ]
-    assert single_file and all(len(a["sha256"]) == 64 for a in single_file)
+    assert single_file_bytes and all(
+        len(payload["sha256"]) == 64
+        for artifact in single_file_bytes
+        for payload in artifact["payloads"].values()
+    )
 
 
 def test_reused_draw_skips_rng_and_rejects_changed_binding(monkeypatch):
@@ -699,7 +698,7 @@ def test_select_warm_starts_the_search_and_refuses_bad_hints(monkeypatch):
     }
 
 
-def test_summary_provider_failure_is_diagnostic_in_capture_and_strict_at_export(
+def test_summary_provider_failure_is_recorded_in_capture_and_raised_on_collection(
     tmp_path,
 ):
     from microcosm.calibrate.artifacts import PROBLEM_TYPE
@@ -707,7 +706,6 @@ def test_summary_provider_failure_is_diagnostic_in_capture_and_strict_at_export(
         collect_execution_evidence,
         graph_schema,
         load_run_evidence,
-        orrery_document,
         record_run_binding,
         save_run_evidence,
     )
@@ -745,14 +743,11 @@ def test_summary_provider_failure_is_diagnostic_in_capture_and_strict_at_export(
     assert problem["error"] == "RuntimeError: provider refused the artifact"
     status = evidence["phases"][0]["operations"]["pool"]["artifact_summary_status"]
     assert status["problem"] == "provider_failed"
-    document = orrery_document(graph, execution=evidence)
-    pool = next(
-        node
-        for node in document["nodes"]
-        if json.loads(node["id"]) == ["operation", "pool"]
-    )
-    assert pool["data"]["artifact_summaries"]["problem"]["status"] == "provider_failed"
-    # The explicit export runs providers strictly.
+    assert ("pool", "problem") in {
+        (item["node"], item["artifact"]) for item in evidence["phases"][0]["summaries"]
+    }
+    # Collecting the overlay from a recorded run with the same providers runs
+    # them strictly: the provider's error is raised, not recorded.
     run = record_run_binding(graph, manifest, attempt_id="fixture", phase="numerical")
     with pytest.raises(RuntimeError, match="provider refused"):
         collect_execution_evidence(

@@ -31,6 +31,7 @@ from microcosm.fit import donors as fit_donors
 from microcosm.fit import held_out as fit_held_out
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+from microcosm.frame.table_copies import copy_series, copy_table
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -1143,14 +1144,16 @@ def _minimal_frame(context: KernelContext) -> Frame:
                 reason=reason,
             ),
         )
-    return Frame(
+    # One copy of each input column, in the block layout copy(deep=True) gives,
+    # which Frame.adopt stores without copying again.
+    return Frame.adopt(
         {
-            entity: context.tables[entity].copy(deep=True)
+            entity: copy_table(context.tables[entity])
             for entity in UK_NATIONAL_SCHEMA.entities
         },
         UK_NATIONAL_SCHEMA,
         {"household": context.weights["household"]},
-        context.strata.copy(deep=True),
+        copy_series(context.strata),
         mass_log=mass_log,
         metadata={"time_period": str(context.params.get("time_period", "2024"))},
     )

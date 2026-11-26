@@ -371,10 +371,12 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm.fit.qrf, moves it again.
             # calibrate's return_frame option in solve moves it again.
             # microcosm#1686's shared SIPP person-file read moves it again.
+            # The SIPP 2023 donor download tag and the financial-asset cache lookup
+            # move it again.
             # Importing torch inside the solve functions that use it, and the
             # QRF chain passing its workers a lock-file check record, move it
             # again.
-            "spec_sha256": "098de45a444dba7a1151503f78b4c4574bb4acd60a0be0351cdc69528d2469de",
+            "spec_sha256": "4c3c3beab01e381aadfea510f61ca28117670d35c6bed1e4bb0df2fa1be07b2e",
         },
     }
 

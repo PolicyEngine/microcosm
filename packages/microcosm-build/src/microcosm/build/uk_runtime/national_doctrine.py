@@ -10,11 +10,17 @@ run.
 
 from __future__ import annotations
 
-from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, replace
+from types import MappingProxyType
 
 import numpy as np
+
+from microcosm.calibrate.target_loss_rules import (
+    TargetLossRows,
+    TargetWeightRule,
+    target_loss_weights_for_rule,
+)
 
 __all__ = [
     "UK_NATIONAL_LEARNING_RATE",
@@ -26,6 +32,7 @@ __all__ = [
     "UK_NATIONAL_SOLVE_EPOCHS",
     "UK_NATIONAL_TARGET_LOSS_CAP",
     "UK_NATIONAL_TARGET_WEIGHT_RULE",
+    "UK_NATIONAL_TARGET_WEIGHT_RULE_DECLARATIONS",
     "uk_doctrine_with_overrides",
     "uk_national_target_loss_weights",
     "UKNationalSolveDoctrine",
@@ -67,6 +74,19 @@ _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
 # records no overrides. "uniform" stays vocabulary: a receipted per-run
 # override, never silently reachable.
 _ALLOWED_TARGET_WEIGHT_RULES = ("uniform", "family_equal")
+#: Each national rule name as a shared rule of
+#: :mod:`microcosm.calibrate.target_loss_rules`: the UK's declaration
+#: (microcosm#1729). ``family_equal`` is the shared ``level_equal`` with each
+#: family as one level: one equal share for each family, divided evenly among
+#: its members.
+UK_NATIONAL_TARGET_WEIGHT_RULE_DECLARATIONS: Mapping[str, TargetWeightRule] = (
+    MappingProxyType(
+        {
+            "uniform": TargetWeightRule("uniform"),
+            "family_equal": TargetWeightRule("level_equal"),
+        }
+    )
+)
 _ALLOWED_MASS_RULES = ("free",)
 _OVERRIDABLE_FIELDS = frozenset(
     {"epochs", "learning_rate", "target_weight_rule", "target_loss_cap"}
@@ -223,9 +243,8 @@ def uk_national_target_loss_weights(
         raise ValueError("family_equal weighting requires a non-empty register.")
     if any(not label for label in labels):
         raise ValueError("every target must declare a family for family_equal.")
-    counts = Counter(labels)
-    family_count = len(counts)
-    return np.asarray(
-        [1.0 / (family_count * counts[label]) for label in labels],
-        dtype=np.float64,
+    # The arithmetic is the shared rule's; this rule reads no target value.
+    return target_loss_weights_for_rule(
+        TargetLossRows(values=np.zeros(len(labels)), levels=labels),
+        UK_NATIONAL_TARGET_WEIGHT_RULE_DECLARATIONS[rule],
     )

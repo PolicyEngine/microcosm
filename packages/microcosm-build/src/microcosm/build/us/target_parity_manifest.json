@@ -494,7 +494,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -505,7 +505,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -516,7 +516,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -527,7 +527,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -538,7 +538,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -549,7 +549,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -560,7 +560,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -571,7 +571,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -582,7 +582,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -593,7 +593,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -604,7 +604,7 @@
    "status": "reviewed_exclusion",
    "classification": "off_by_default",
    "reason": "Federal Student Aid loan portfolio tables (chronicle#347). The location, age and debt-size tables bind only in a build that carries the imputed federal student loan balance columns (microcosm#1357: student_loan_targets=True, set by the release tool's --scf-education-debt), and the loan-type, repayment-plan and summary tables stay diagnostic there too; the default compile, which this manifest describes, turns none of them into a target.",
-   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 33,250 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
+   "evidence": "compile_us_fiscal_target_registry(age_targets=True) + apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: 31,748 targets, none from the feed's 461 ed_fsa facts; sample fact ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
    "fence": {
     "origin": "microcosm#1074 (re-pin to chronicle#347's packages): a source new to the feed, bound as an opt-in family by microcosm#1357. This re-pin did not search the retired us-data pipeline for a student loan portfolio target.",
     "purpose": "a default build has no federal student loan balance columns, so it cannot materialize these targets; the opt-in keeps a default build and a --scf-education-debt build from failing each other on the one-surface contract.",
@@ -655,7 +655,7 @@
   },
   "irs_soi.congressional_district_2022": {
    "status": "compiled",
-   "note": "One US target surface: national, state, and congressional-district facts compile for every calibrated artifact. Geography is a constraint; artifact record count changes only L0, never target membership. There is no local-versus-national surface. Congressional-district rows inform shape while national and state actuals retain control ownership."
+   "note": "One US target surface: national, state, and congressional-district facts compile for every calibrated artifact. Geography is a constraint; artifact record count changes only L0, never target membership. There is no local-versus-national surface. Congressional-district rows inform shape while national and state actuals retain control ownership. Its capital-gains rows ship as shares of its own US row scaled to the national Table 1.4 control, and that US row retires (microcosm#1038); facts it reads from the wrong IRS column are excluded (US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS)."
   },
   "irs_soi.filing_season_week47": {
    "status": "compiled"

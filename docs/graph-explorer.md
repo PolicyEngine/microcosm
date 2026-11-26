@@ -1,9 +1,9 @@
 # Graph explorer
 
-For declaration and schema inspection with Orrery, see the
-[Orrery adapter](orrery-adapter.md). The run
-renderer described below remains unchanged, including its separate cache and
-gate statuses.
+For the compiler schema and execution overlay from which the collector
+builds a graph's Orrery graph files, see [Orrery inputs](orrery-adapter.md).
+The run renderer described below remains unchanged, including its separate
+cache and validation-check statuses.
 
 The graph explorer is one self-contained HTML file generated from a compiled
 graph and its run manifest. It contains its own CSS, JavaScript, DAG, and small

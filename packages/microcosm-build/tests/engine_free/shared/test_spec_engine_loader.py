@@ -39,10 +39,12 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # microcosm.fit.qrf, moves the fit kernels' bytes again.
     # calibrate's return_frame option in solve moves it again.
     # microcosm#1686's shared SIPP person-file read moves it again.
+    # The SIPP 2023 donor download tag and the financial-asset cache lookup
+    # move it again.
     # Importing torch inside the solve functions that use it, and the QRF chain
     # passing its workers a lock-file check record, move it again.
     assert first.spec_sha256 == (
-        "30724d025798cf3a979bb80b3d584b1bda4070edcf8f6dfa3567e12e994df9c1"
+        "55fe6aee2557efed00c0a4da13f1bac5d28b6c12a28608bc1016e346c9fbb952"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

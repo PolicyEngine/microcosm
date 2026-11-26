@@ -228,7 +228,7 @@ in a key are left out), except the Orrery inputs: `graph.schema.json`,
 `graph.execution.json` and each `upstream-<sha256>.json` are `orrery_schema`,
 `execution_overlay` and `orrery_upstream`, the interface's roles, so the
 emitter submits them to the collector (see
-[UK graph publication](orrery-publication.md)). The manifest,
+[UK graph inputs](orrery-publication.md)). The manifest,
 `staged_manifest.json` and `sha256sums.txt` are `build_manifest`,
 `staged_manifest` and `checksums`. The
 emitter writes the bundle in one commit with the build's own credential, and
@@ -251,7 +251,7 @@ With that, the emitter submits the bundle's calibration diagnostics (with the
 build manifest as `build_manifest`) to the collector once the Hugging Face
 commit lands, as a `calibration-diagnostics` submission whose folder is
 `staged/<run_id>`, and its Orrery inputs as an `orrery-inputs` submission
-([UK graph publication](orrery-publication.md)), with the build's Hugging
+([UK graph inputs](orrery-publication.md)), with the build's Hugging
 Face credential. Every emitter a
 build or the re-stage command starts has its collector submissions switched
 on (`telemetry_emitter.COLLECTOR_SUBMISSIONS`, through the setting emitter

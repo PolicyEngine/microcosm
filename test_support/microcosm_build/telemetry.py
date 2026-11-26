@@ -21,23 +21,11 @@ cover both.
 from __future__ import annotations
 
 import sys
-import uuid
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
 from typing import Any
 
-from microcosm_emitter_interface.orrery import (
-    PublicationFileRole,
-    PublicationInventory,
-)
-
 from microcosm.build.telemetry_emitter import LocalTelemetryEmitter, TelemetryRun
-from test_support.microcosm_build.emitter import (
-    FakeEmitterClient,
-)
-from test_support.microcosm_build.emitter import (
-    fake_publication_inventory as _measured_inventory,
-)
+from test_support.microcosm_build.emitter import FakeEmitterClient
 
 BUILD_COMPLETED_MESSAGE = "Microcosm build completed."
 BUILD_BLOCKED_MESSAGE = "Validation checks refused the candidate at {phase}."
@@ -57,13 +45,6 @@ _TRANSITION_STATUSES = {
 #: and stopping a build that must send telemetry) puts it back with
 #: ``monkeypatch.setattr(LocalTelemetryEmitter, "start", classmethod(ADAPTER_START))``.
 ADAPTER_START = LocalTelemetryEmitter.start.__func__
-
-
-def fake_publication_inventory(
-    directory: Path, roles: Mapping[str, PublicationFileRole]
-) -> PublicationInventory:
-    """Measure only synthetic test files without starting an emitter."""
-    return _measured_inventory(directory, roles, uuid.uuid4().hex)
 
 
 class _Lifecycle:

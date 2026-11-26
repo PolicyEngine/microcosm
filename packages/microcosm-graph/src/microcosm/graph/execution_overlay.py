@@ -1,11 +1,11 @@
-"""The execution overlay as its own file, shared by evidence capture and projection.
+"""The execution overlay as its own file, the collector's input beside the schema.
 
 :func:`microcosm.graph.evidence.collect_execution_evidence` verifies recorded
-runs against the content store and returns the overlay;
-:mod:`microcosm.graph.orrery` projects it. The file holds that same object as
-canonical JSON, so a process that only projects can read it back. This module
-needs only the standard library, so that process needs neither the store nor
-numpy, pandas or microcosm-frame.
+runs against the content store and returns the overlay; the collector
+projects it, with the graph schema, into the Orrery graph files. The file
+holds that same object as canonical JSON, so a process that only reads it
+back needs neither the store nor numpy, pandas or microcosm-frame: this module
+needs only the standard library.
 """
 
 from __future__ import annotations
@@ -49,7 +49,8 @@ def execution_overlay_bytes(overlay: object) -> bytes:
     """Serialize an overlay from ``collect_execution_evidence`` as canonical JSON.
 
     :func:`load_execution_overlay` reads the bytes back as an equal object, so
-    projecting it gives the same Orrery JSON as projecting ``overlay`` itself.
+    the collector projects the same Orrery JSON from the file as from
+    ``overlay`` itself.
     """
 
     return canonical_json(_overlay_object(_plain_json(overlay)))
@@ -59,10 +60,10 @@ def load_execution_overlay(path: Path) -> dict:
     """Read an overlay file written from :func:`execution_overlay_bytes`.
 
     Only a UTF-8 regular file within the schema's serialized size limit, which
-    evidence collection and projection both apply to the overlay, is read.
-    Duplicate keys, non-finite numbers, values outside the schema's JSON bounds
-    and any other protocol are refused. The overlay's graph binding and its
-    records are checked when it is projected.
+    evidence collection also applies to the overlay, is read. Duplicate keys,
+    non-finite numbers, values outside the schema's JSON bounds and any other
+    protocol are refused. The overlay's graph binding and its records are
+    checked by the collector's projection.
     """
 
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))

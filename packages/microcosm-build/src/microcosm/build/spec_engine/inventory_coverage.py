@@ -413,11 +413,13 @@ EXPECTED_HASHES = {
     # is unchanged, and no draw changes.
     # microcosm#1686's shared SIPP person-file read moves both again: the five
     # SIPP donor tables are byte-identical, and no draw changes.
+    # The SIPP 2023 donor download tag and the financial-asset cache lookup
+    # move both again: the donor bytes are unchanged, and no draw changes.
     # Importing torch inside the solve functions that use it, and the QRF chain
     # handing each worker a record of its caller's lock-file check, move both
     # again: solve's and puf_qrf_chain's attested bytes change; no draw does.
-    "seed_map": "18f3d56228481759dc55e88557150ec8d2017fbbe43e100392ce3502aab749ac",
-    "seed_protocol": "60168760c5521b6b808c35496863317ff97427f2305a8c80d73dce7390c89b4f",
+    "seed_map": "9c809470367a211c88ba047211ad9461850ca56100af41d56d807312ee8ccd5f",
+    "seed_protocol": "eea4cf01a4924295e760edbe74e368dc6a48d66334ffe9a04d2fa13beebee2c5",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",
