@@ -12,7 +12,6 @@ import json
 import math
 import re
 import sys
-import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,10 +19,13 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Literal, NoReturn
 
 from jsonschema import Draft202012Validator, FormatChecker
+from microcosm_emitter_interface.staging import ReadBackResult
 
 from microcosm.build.staging_storage import (
+    FinalCommitCheck,
     RunFileEmitter,
     RunFileHandOver,
+    warn_final_commit_unconfirmed,
     warn_hand_over_failure,
 )
 
@@ -810,7 +812,14 @@ class StagingRunBundleWriterV2:
 
     In ``local_and_remote`` mode the run's files go to ``emitter_client``, the
     build's local emitter, which commits them to ``repo_id`` with the build's
-    own Hugging Face credential and reads them back on request. The delivery
+    own Hugging Face credential and reads them back on request. The writer
+    hands them over, forced, at three points only: when the run starts (its
+    construction), when an artifact is added and when the run ends. Stage
+    events and calibration progress in between are written locally and reach
+    the repository with the next of those hand-overs. Once the run has ended,
+    :meth:`confirm_final_commit` has the emitter check that its final state
+    reached the repository, and :meth:`verify_remote` is the stricter
+    read-back that ``--staging-read-back`` asks for. The delivery
     summary in each document carries the emitter's counts as of that
     document's hand-over: the files it attempted to commit (plus any it did
     not accept) and the files it committed. A document never counts the
@@ -835,10 +844,8 @@ class StagingRunBundleWriterV2:
         run_kind: str = "build",
         delivery_mode: DeliveryMode = "local_and_remote",
         repo_id: str | None = None,
-        upload_interval_seconds: float = 30.0,
         emitter_client: RunFileEmitter | None = None,
         clock: Callable[[], str] = _utc_now,
-        monotonic: Callable[[], float] = time.monotonic,
         content_policy: StagingContentPolicy | None = None,
     ) -> None:
         self.run_id = _safe_identifier(run_id, label="run_id")
@@ -873,9 +880,7 @@ class StagingRunBundleWriterV2:
         self.local_dir = Path(local_dir)
         self.run_dir = self.local_dir / DEFAULT_STAGING_PREFIX / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        self.upload_interval_seconds = max(0.0, float(upload_interval_seconds))
         self._clock = clock
-        self._monotonic = monotonic
         self._content_policy = content_policy or StagingContentPolicy()
         self.emitter_client = emitter_client
         self._hand_over = (
@@ -884,7 +889,6 @@ class StagingRunBundleWriterV2:
                 repository=self.repo_id,
                 run_id=self.run_id,
                 prefix=DEFAULT_STAGING_PREFIX,
-                commit_interval_seconds=self.upload_interval_seconds,
             )
             if self.delivery_mode == "local_and_remote" and self.repo_id
             else None
@@ -901,7 +905,9 @@ class StagingRunBundleWriterV2:
         self._artifacts: list[dict[str, Any]] = []
         self._events: list[dict[str, Any]] = []
         self._calibration_events: list[dict[str, Any]] = []
-        self._last_upload_at = 0.0
+        #: Whether completion, failure or a block handed the final state
+        #: over; until then there is no final commit to check.
+        self._final_state_handed_over = False
         self._delivery = {
             "contract_version": STAGING_CONTRACT_VERSION,
             "enabled": True,
@@ -922,10 +928,19 @@ class StagingRunBundleWriterV2:
             timestamp=self.started_at,
         )
         self._persist_bundle()
+        # The run's start is handed over, so its folder exists in the
+        # repository from the start even if the build dies before its next
+        # hand-over (an artifact or the end).
+        self._hand_over_run()
 
     @property
     def repo_run_prefix(self) -> str:
         return f"{DEFAULT_STAGING_PREFIX}/{self.run_id}"
+
+    @property
+    def remote_staging(self) -> bool:
+        """Whether the run's files go to a repository, through the emitter."""
+        return self._hand_over is not None
 
     @property
     def uploads_succeeded(self) -> int:
@@ -955,9 +970,9 @@ class StagingRunBundleWriterV2:
         *,
         event_status: Literal["started", "completed", "failed", "progress"] = "started",
         message: str | None = None,
-        force_upload: bool = False,
         **details: Any,
     ) -> None:
+        """Record a stage locally; it reaches the repo with the next hand-over."""
         self._require_running("add a stage event")
         stage_id = _safe_identifier(stage_id, label="stage_id")
         safe_details = _jsonable(details)
@@ -974,7 +989,6 @@ class StagingRunBundleWriterV2:
             timestamp=self.updated_at,
         )
         self._persist_bundle()
-        self._maybe_upload(force=force_upload)
 
     def calibration_progress(self, event: Mapping[str, Any]) -> None:
         if event.get("kind") != "calibration_epoch":
@@ -1006,7 +1020,6 @@ class StagingRunBundleWriterV2:
             event_type="calibration",
         )
         self._persist_bundle()
-        self._maybe_upload()
 
     def add_artifact(
         self,
@@ -1015,8 +1028,8 @@ class StagingRunBundleWriterV2:
         *,
         artifact_kind: str,
         classification: str,
-        force_upload: bool = True,
     ) -> dict[str, Any]:
+        """Record a result file and hand it over with the run's current files."""
         self._require_running("add an artifact")
         source_path = Path(source)
         data = self._content_policy.validate_artifact(
@@ -1046,7 +1059,7 @@ class StagingRunBundleWriterV2:
         self._artifacts.append(artifact)
         self._artifacts.sort(key=lambda item: item["logical_name"])
         self._persist_bundle()
-        self._maybe_upload(force=force_upload)
+        self._hand_over_run()
         return dict(artifact)
 
     def fail(
@@ -1177,12 +1190,49 @@ class StagingRunBundleWriterV2:
         self._persist_bundle()
         self._terminal_upload()
 
-    def verify_remote(self) -> None:
+    def confirm_final_commit(
+        self, *, wait_seconds: float, read_back: bool = True
+    ) -> FinalCommitCheck | None:
+        """Check that the ended run's final state reached the Hub, through the emitter.
+
+        With ``read_back`` the emitter commits the run's pending files, waiting
+        up to ``wait_seconds``, and compares the Hub's copies; without it only
+        its receipts are read (see ``RunFileHandOver.confirm_final_commit``).
+        A check that fails warns and returns; it never fails the build, and
+        the delivery summary's ``read_back`` stays the record of
+        :meth:`verify_remote`. A run without remote staging has nothing to
+        check.
+        """
+        if self._hand_over is None:
+            return None
+        if self.status == "running":
+            raise StagingContractError(
+                "Only a completed, blocked or failed staging run has a final commit."
+            )
+        if not self._final_state_handed_over:
+            # Closing the run failed before its final state was handed over
+            # (its documents could not be written, say), so the emitter's
+            # last commit is an earlier state of the run.
+            check = FinalCommitCheck(
+                confirmed=False,
+                reason="not_handed_over",
+                method="read_back" if read_back else "receipt",
+            )
+        else:
+            check = self._hand_over.confirm_final_commit(
+                wait_seconds=wait_seconds, read_back=read_back
+            )
+        if not check.confirmed:
+            warn_final_commit_unconfirmed(self._hand_over.repository, check)
+        return check
+
+    def verify_remote(self) -> ReadBackResult:
         """Have the emitter compare the Hub's copy of the run with what it committed.
 
         The emitter first commits the run's pending files, waiting up to
         ``READ_BACK_WAIT_SECONDS``. Any answer but ``passed`` (a differing or
         missing file, files still pending, no emitter) fails the read-back.
+        Returns the emitter's answer when it passed.
         """
         if self.status == "running":
             raise StagingContractError(
@@ -1191,7 +1241,7 @@ class StagingRunBundleWriterV2:
             )
         if self._hand_over is None:
             raise StagingReadBackError("Remote read-back requires remote staging mode.")
-        self._maybe_upload(force=True)
+        self._hand_over_run()
         if self._hand_over.last_accepted is not True:
             # The emitter compares the Hub with what it committed; without the
             # current files that can be an older state of the run.
@@ -1212,7 +1262,8 @@ class StagingRunBundleWriterV2:
         # run files are present and valid: a failed refresh cannot change the
         # verified local state (``_record_delivery``), and the remote copy may
         # then still show the delivery as it was before read-back.
-        self._maybe_upload(force=True)
+        self._hand_over_run()
+        return result
 
     def _fail_read_back(self, message: str) -> NoReturn:
         self._delivery["read_back"] = "failed"
@@ -1376,9 +1427,9 @@ class StagingRunBundleWriterV2:
         )
         self._delivery["last_error_code"] = "UPLOAD_FAILED" if failed else None
 
-    def _hand_over_files(self, files: list[tuple[str, Path]], *, flush: bool) -> bool:
+    def _hand_over_files(self, files: list[tuple[str, Path]]) -> bool:
         assert self._hand_over is not None
-        result = self._hand_over.hand_over(files, flush=flush)
+        result = self._hand_over.hand_over(files)
         if not result.accepted:
             warn_hand_over_failure(self._hand_over.repository, result)
         if result.became_paused:
@@ -1404,7 +1455,8 @@ class StagingRunBundleWriterV2:
         if self._hand_over is None:
             return
         self._hand_over.reopen()
-        self._maybe_upload(force=True)
+        self._hand_over_run()
+        self._final_state_handed_over = True
         if self._hand_over.last_accepted is False:
             print(
                 "warning: the staging run's final state was not handed over to "
@@ -1413,14 +1465,11 @@ class StagingRunBundleWriterV2:
                 file=sys.stderr,
             )
 
-    def _maybe_upload(self, *, force: bool = False) -> None:
+    def _hand_over_run(self) -> None:
+        """Hand the run's current files over: its start, an artifact, its end."""
         hand_over = self._hand_over
         if hand_over is None or not hand_over.enabled:
             return
-        now = self._monotonic()
-        if not force and now - self._last_upload_at < self.upload_interval_seconds:
-            return
-        self._last_upload_at = now
         # The documents carry the emitter's counts as of this hand-over.
         hand_over.receipt()
         self._record_delivery()
@@ -1433,7 +1482,7 @@ class StagingRunBundleWriterV2:
             )
             files.append((remote_path.removeprefix(prefix), local_path))
         handed_over = dict(self._delivery)
-        self._hand_over_files(files, flush=force)
+        self._hand_over_files(files)
         self._record_delivery()
         if self._delivery == handed_over:
             return
@@ -1447,8 +1496,7 @@ class StagingRunBundleWriterV2:
             [
                 ("run_manifest.json", self.run_dir / "run_manifest.json"),
                 ("progress.json", self.run_dir / "progress.json"),
-            ],
-            flush=force,
+            ]
         )
         if hand_over.last_accepted is False:
             self._record_delivery()

@@ -11,6 +11,8 @@ each consumer's output from their results. These tests check that:
 - the descriptors list the requests in the order the serial scorer runs them
   (the baseline plan, then each reform pass), name the reformed simulation
   that asked for each, and rebuild the reform that simulation was given;
+- a ``prefetch`` of several keys is one reform pass, and its keys not asked
+  before follow in ascending period order, as the scorer computes them;
 - every descriptor survives a pickle round trip through a spawned process;
 - the dry run refuses a reform it cannot describe or pickle;
 - descriptors cannot be hashed and keep their own copy of a reform's
@@ -87,6 +89,11 @@ def test_the_dry_run_returns_every_request_as_a_descriptor(builder, no_engine) -
             period=builder.PERIOD
         )[:2]
     }
+    obbba_groups = {
+        (spec.budget_measure, spec.period)
+        for spec in specs
+        if reform_validation_module._is_obbba_spec(spec)
+    }
     recorded: dict[str, tuple[PostExportRequest, ...]] = {}
     for name, consumer in _shipped_consumers(builder).items():
         requests = builder._record_post_export_request_descriptors(name, consumer)
@@ -103,7 +110,13 @@ def test_the_dry_run_returns_every_request_as_a_descriptor(builder, no_engine) -
         # run's.
         plan, passes = builder._record_post_export_requests(consumer)
         assert tuple(request.key for request in baseline) == plan
-        assert len(reformed) == passes
+        # One pass per reform request, except reform validation's pre-OBBBA
+        # state: one prefetch reads it for every OBBBA group in one pass
+        # (microcosm#1595).
+        shared_pass_requests = (
+            len(obbba_groups) - 1 if name == "reform_validation" else 0
+        )
+        assert len(reformed) == passes + shared_pass_requests
         recorded[name] = requests
     assert list(recorded) == [
         "reform_coverage_smoke",
@@ -148,7 +161,7 @@ def test_the_dry_run_returns_every_request_as_a_descriptor(builder, no_engine) -
         if not reform_validation_module._is_obbba_spec(spec)
         and not (spec.in_sample and spec.id in fitted)
     ]
-    # OBBBA: each (measure, period) group scores the pre-OBBBA state, then one
+    # OBBBA: every (measure, period) group reads the pre-OBBBA state, then one
     # stacked state per provision.
     obbba = [spec for spec in specs if reform_validation_module._is_obbba_spec(spec)]
     states = [
@@ -167,8 +180,20 @@ def test_the_dry_run_returns_every_request_as_a_descriptor(builder, no_engine) -
             (spec.budget_measure, spec.period) for spec in obbba
         )
     ]
-    assert len({request.reformed_simulation for request in validation}) == len(
-        validation
+    # One reformed simulation per request, except the pre-OBBBA state: every
+    # group's key comes from one simulation of it (microcosm#1595).
+    assert (
+        len(
+            {
+                request.reformed_simulation
+                for request in states
+                if request.reform == pre_obbba
+            }
+        )
+        == 1
+    )
+    assert len({request.reformed_simulation for request in validation}) == (
+        len(validation) - len(groups) + 1
     )
 
     for name in (
@@ -362,6 +387,71 @@ def test_the_dry_run_refuses_a_reformed_simulation_asked_after_the_next_opens(
         scoring = scorer.open_consumer("fixture", (("income_tax", 2024, None),))
         with pytest.raises(RuntimeError, match="asked a finished reform"):
             consumer(scoring.simulate)
+    finally:
+        scorer.close()
+
+
+def _prefetching_consumer(*, prefetch_after_the_next_opens: bool):
+    """A consumer that asks its first reformed simulation for one key, then
+    prefetches three (one asked already, two new in descending period order),
+    prefetches an asked key again, and asks a second reformed simulation for
+    one key; optionally it then prefetches from the first again."""
+    first = ParameterChangesReform({"gov.fixture.first": {"2024-01-01": 1}})
+    second = ParameterChangesReform({"gov.fixture.second": {"2024-01-01": 2}})
+
+    def consumer(simulate):
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+
+        def reformed(source):
+            return simulate(
+                source if records_only else build_post_export_reform(source)
+            )
+
+        first_simulation = reformed(first)
+        first_simulation.calculate("income_tax", 2026)
+        first_simulation.prefetch(
+            (("estate_tax", 2027), ("income_tax", 2026), ("estate_tax", 2026))
+        )
+        first_simulation.prefetch((("estate_tax", 2027),))
+        reformed(second).calculate("income_tax", 2026)
+        if prefetch_after_the_next_opens:
+            first_simulation.prefetch((("income_tax", 2027),))
+
+    return consumer, first, second
+
+
+def test_a_prefetch_is_one_pass_with_its_new_keys_in_ascending_period_order(
+    builder, fake_reforms, tmp_path
+) -> None:
+    """``_BatchedPostExportReform.prefetch`` scores the keys a reformed
+    simulation was not asked before in one pass, in ascending period order.
+    The dry run records those keys in that order, counts that prefetch as one
+    pass and a prefetch of asked keys as none, and refuses a prefetch of a
+    reformed simulation once the next one has opened, as the scorer does."""
+    consumer, first, second = _prefetching_consumer(prefetch_after_the_next_opens=False)
+    requests = builder._record_post_export_request_descriptors("fixture", consumer)
+    assert [(r.position, r.reformed_simulation, r.reform, r.key) for r in requests] == [
+        (0, 0, first, ("income_tax", 2026, None)),
+        (1, 0, first, ("estate_tax", 2026, None)),
+        (2, 0, first, ("estate_tax", 2027, None)),
+        (3, 1, second, ("income_tax", 2026, None)),
+    ]
+    assert builder._record_post_export_requests(consumer) == ((), 3)
+
+    late_consumer, _, _ = _prefetching_consumer(prefetch_after_the_next_opens=True)
+    refusal = r"reformed simulation 0 for .* after opening reformed simulation 1\."
+    with pytest.raises(RuntimeError, match=refusal):
+        builder._record_post_export_request_descriptors("fixture", late_consumer)
+
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    try:
+        scoring = scorer.open_consumer("fixture", (), planned_reform_passes=3)
+        consumer(scoring.simulate)
+        assert scoring.record()["reform_passes"] == 3
+        scorer.finish_consumer(scoring)
+        late_scoring = scorer.open_consumer("late fixture", ())
+        with pytest.raises(RuntimeError, match="asked a finished reform"):
+            late_consumer(late_scoring.simulate)
     finally:
         scorer.close()
 
@@ -612,10 +702,13 @@ _RECORDED_OUTPUT_SHA256 = {
 
 
 #: The reform passes the plan counts for each stage (its progress reporting
-#: reads them), on the same fixture; also as on origin/main at fcabe4e65.
+#: reads them), on the same fixture; as on origin/main at fcabe4e65, except
+#: reform validation's: it scores the pre-OBBBA state once for both OBBBA
+#: groups (microcosm#1595), so it counts 63 passes, one fewer, for the same
+#: 64 reform requests.
 _PLANNED_REFORM_PASSES = {
     "reform_coverage_smoke": 43,
-    "reform_validation": 64,
+    "reform_validation": 63,
     "demographics": 0,
     "ssi_social_security_holdout": 0,
     "medicare_irmaa_holdout": 0,

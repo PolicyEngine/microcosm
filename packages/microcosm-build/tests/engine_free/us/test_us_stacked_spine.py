@@ -4481,7 +4481,14 @@ def test_stacked_worker_first_torch_import_forces_autoload_off(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Exercise the stacked launch in a child with no preloaded parent packages."""
+    """Exercise the stacked launch in a child with no preloaded parent packages.
+
+    Loading the worker no longer imports torch (``microcosm.calibrate.solve``
+    imports it inside the functions that use it), so the child loads the worker
+    module, checks that torch is still absent, and then makes the process's
+    first torch import itself. The launcher's forced controls must be in effect
+    before the worker module sets its own device-backend override.
+    """
 
     import subprocess
 
@@ -4525,7 +4532,7 @@ def test_stacked_worker_first_torch_import_forces_autoload_off(
         ),
     )
     # Keep the real chain's subprocess argv/environment assembly; replace only
-    # the model/checkpoint work, which the first-import probe never reaches.
+    # the model/checkpoint work, which the probe never runs.
     monkeypatch.setattr(
         chain_module,
         "_load_manifest",
@@ -4541,18 +4548,20 @@ def test_stacked_worker_first_torch_import_forces_autoload_off(
     launch_prefixes: list[Path] = []
     script = r"""
 import builtins
+import importlib
 import json
 import os
-import runpy
 import sys
 
 assert "torch" not in sys.modules
 assert "microcosm.build" not in sys.modules
+launcher_autoload = os.environ.get("TORCH_DEVICE_BACKEND_AUTOLOAD")
 original_import = builtins.__import__
 
 def record_first_torch_import(name, *args, **kwargs):
     if name == "torch" or name.startswith("torch."):
         print("FIRST_TORCH_IMPORT=" + json.dumps({
+            "launcher_autoload": launcher_autoload,
             "autoload": os.environ.get("TORCH_DEVICE_BACKEND_AUTOLOAD"),
             "worker_loaded": "microcosm.build.us_runtime.puf_qrf_worker" in sys.modules,
             "pycache_prefix": sys.pycache_prefix,
@@ -4563,8 +4572,11 @@ def record_first_torch_import(name, *args, **kwargs):
 
 builtins.__import__ = record_first_torch_import
 sys.argv = [sys.argv[1], *sys.argv[2:]]
-runpy.run_module("microcosm.build.us_runtime.puf_qrf_worker", run_name="__main__")
-raise AssertionError("worker never imported torch")
+importlib.import_module("microcosm.build.us_runtime.puf_qrf_worker")
+if "torch" in sys.modules:
+    raise AssertionError("loading the worker imported torch")
+import torch  # noqa: E402,F401 - the process's first torch import, recorded above
+raise AssertionError("the first torch import was not recorded")
 """
 
     def launch_probe(argv: list[str], **kwargs):
@@ -4616,8 +4628,9 @@ raise AssertionError("worker never imported torch")
     assert len(launch_prefixes) == 1
     assert observed == [
         {
+            "launcher_autoload": "0",
             "autoload": "0",
-            "worker_loaded": False,
+            "worker_loaded": True,
             "pycache_prefix": str(launch_prefixes[0]),
             "dont_write_bytecode": 1,
         }

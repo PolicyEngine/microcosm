@@ -6,8 +6,10 @@ import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import sys
+import time
 import weakref
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -7284,7 +7286,12 @@ def _run_green_register_release(
                 def simulate(reform):
                     return SimpleNamespace(calculate=calculate)
 
-            return SimpleNamespace(name=name, simulate=simulate, record=lambda: record)
+            return SimpleNamespace(
+                name=name,
+                simulate=simulate,
+                record=lambda: record,
+                baseline_from_merged_pass=False,
+            )
 
         def finish_consumer(self, scoring):
             captured.setdefault("finished_consumers", []).append(scoring.name)
@@ -15641,7 +15648,6 @@ def test_staging_bundle_defaults_on_and_no_staging_disables_files(
             staging_repo_id=None,
             staging_run_id=None,
             staging_prefix=args.staging_prefix,
-            staging_upload_interval_seconds=60.0,
             epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
             dense_default_dataset=False,
         )
@@ -15687,7 +15693,6 @@ def test_build_progress_hands_staging_files_to_the_build_emitter(
         staging_repo_id="policyengine/populace-us-staging",
         staging_run_id=None,
         staging_prefix="runs",
-        staging_upload_interval_seconds=60.0,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -15695,7 +15700,7 @@ def test_build_progress_hands_staging_files_to_the_build_emitter(
     progress = module._build_progress(
         args, release_root=tmp_path, release_id="rel-1", emitter=emitter
     )
-    progress.stage("target_compilation", force_upload=True)
+    progress.stage("target_compilation")
     progress.fail(RuntimeError("build exploded"))
 
     client = emitter.client
@@ -15844,7 +15849,6 @@ def test_us_short_run_forwards_each_solve_first_epoch_so_the_epoch_falls_at_the_
         staging_repo_id=None,
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
-        staging_upload_interval_seconds=60.0,
         epochs=epochs,
         dense_default_dataset=False,
     )
@@ -15902,7 +15906,6 @@ def test_us_build_progress_stride_keeps_long_runs_under_the_row_cap(
         staging_repo_id=None,
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
-        staging_upload_interval_seconds=60.0,
         epochs=epochs,
         dense_default_dataset=dense_default_dataset,
     )
@@ -15989,6 +15992,320 @@ def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch) -> None:
     assert [str(error) for error in recorded] == ["build exploded"]
 
 
+class _SigtermReachedTheTestError(Exception):
+    """The test's own SIGTERM handler ran: the build installed none."""
+
+
+def test_a_sigterm_closes_the_staging_run_as_failed_and_exits_143(monkeypatch) -> None:
+    """SIGTERM reaches the build's failure path instead of killing it outright.
+
+    The test installs its own handler first, so a build that handles no SIGTERM
+    fails this test instead of ending the test process.
+    """
+    module = _load_builder_module()
+    recorded: list[BaseException] = []
+
+    class Telemetry:
+        def fail(self, error):
+            recorded.append(error)
+
+    def terminated_build(argv=None):
+        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(5)
+        pytest.fail("SIGTERM did not interrupt the build")
+
+    def test_handler(signum, frame):
+        raise _SigtermReachedTheTestError()
+
+    monkeypatch.setattr(module, "_ACTIVE_PROGRESS", Telemetry())
+    monkeypatch.setattr(module, "_main", terminated_build)
+    previous_handler = signal.signal(signal.SIGTERM, test_handler)
+    try:
+        with pytest.raises(BaseException) as raised:
+            module.main()
+        handler_after_build = signal.getsignal(signal.SIGTERM)
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+
+    assert isinstance(raised.value, SystemExit)
+    assert raised.value.code == 143
+    assert [type(error).__name__ for error in recorded] == ["BuildTerminatedError"]
+    # The build puts back the handler it found.
+    assert handler_after_build is test_handler
+
+
+def _remote_build_progress(module, tmp_path, client=None):
+    """A build's progress with remote staging, on one in-memory emitter."""
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun("rel-1", "US", "us_fiscal_refresh"), client=client
+    )
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id="policyengine/populace-us-staging",
+        staging_run_id=None,
+        staging_prefix="runs",
+        epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
+        dense_default_dataset=False,
+    )
+    progress = module._build_progress(
+        args, release_root=tmp_path, release_id="rel-1", emitter=emitter
+    )
+    return progress, emitter
+
+
+def _final_commit_events(emitter) -> list[tuple[str, dict]]:
+    """The final-commit check's reports: progress events outside any stage."""
+    events = [
+        event
+        for event in emitter.events
+        if event["details"].get("check") == "staging_final_commit"
+    ]
+    assert all(
+        (event["event_type"], event["stage_id"]) == ("progress", None)
+        for event in events
+    )
+    return [(event["status"], event["details"]) for event in events]
+
+
+def _run_events(emitter) -> list[dict]:
+    return [event for event in emitter.events if event["event_type"] == "run"]
+
+
+def test_a_completed_build_confirms_its_final_staging_commit(tmp_path) -> None:
+    """The read-back runs before the emitter closes, and the collector hears it."""
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+
+    progress.complete()
+
+    client = emitter.client
+    assert client.read_back_waits == [120.0]
+    assert client.calls.index("read_back_run_files") < client.calls.index("close")
+    events = _final_commit_events(emitter)
+    assert [status for status, _ in events] == ["completed"]
+    assert events[-1][1]["confirmed"] is True
+    assert events[-1][1]["method"] == "read_back"
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["completed"]
+
+
+def test_an_unconfirmed_final_commit_still_completes_the_build(
+    tmp_path, capsys
+) -> None:
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    module = _load_builder_module()
+    client = FakeEmitterClient()
+    client.read_back_answer = {
+        "status": "pending",
+        "files": 0,
+        "mismatched_paths": [],
+        "error_code": None,
+    }
+    progress, emitter = _remote_build_progress(module, tmp_path, client=client)
+
+    progress.complete()
+
+    events = _final_commit_events(emitter)
+    assert [status for status, _ in events] == ["failed"]
+    assert events[-1][1]["confirmed"] is False
+    assert events[-1][1]["reason"] == "pending"
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["completed"]
+    assert "not confirmed" in capsys.readouterr().err
+
+
+def test_a_failed_build_confirms_its_final_staging_commit(tmp_path) -> None:
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+
+    progress.fail(RuntimeError("build exploded"))
+
+    assert emitter.client.read_back_waits == [120.0]
+    assert [status for status, _ in _final_commit_events(emitter)] == ["completed"]
+    assert [
+        event["status"] for event in emitter.events if event["event_type"] == "run"
+    ] == ["failed"]
+
+
+def test_a_terminated_build_checks_its_final_commit_by_receipt_only(
+    tmp_path,
+) -> None:
+    """The Modal runner sends SIGKILL 60 seconds after SIGTERM, so the check
+    skips the Hub comparison (a request of up to 60 seconds) and reads the
+    receipt."""
+    from microcosm.build.termination import BuildTerminatedError
+
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+
+    progress.fail(BuildTerminatedError())
+
+    assert "read_back_run_files" not in emitter.client.calls
+    events = _final_commit_events(emitter)
+    assert [status for status, _ in events] == ["completed"]
+    assert events[-1][1]["method"] == "receipt"
+    run_events = [event for event in emitter.events if event["event_type"] == "run"]
+    assert [event["status"] for event in run_events] == ["failed"]
+    assert run_events[0]["details"]["error_code"] == "TERMINATED"
+
+
+def test_a_failed_build_keeps_the_stage_it_failed_in(tmp_path) -> None:
+    """The check's report must not end the build's stage or take its place."""
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+    progress.stage("export_dataset", message="Exporting the dataset.")
+
+    progress.fail(RuntimeError("export failed"))
+
+    (failure,) = _run_events(emitter)
+    assert failure["details"]["failed_during"] == "export_dataset"
+    assert [
+        event["status"]
+        for event in emitter.events
+        if event["stage_id"] == "export_dataset"
+    ] == ["started", "failed"]
+
+
+def test_an_interrupt_during_the_check_keeps_the_builds_own_failure(
+    tmp_path, capsys
+) -> None:
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    class InterruptedReadBack(FakeEmitterClient):
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            raise KeyboardInterrupt
+
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(
+        module, tmp_path, client=InterruptedReadBack()
+    )
+
+    try:
+        progress.fail(RuntimeError("export failed"))
+    except KeyboardInterrupt:
+        pytest.fail("the interrupt escaped the build's close-out")
+
+    (failure,) = _run_events(emitter)
+    assert failure["status"] == "failed"
+    assert failure["message"] == "export failed"
+    events = _final_commit_events(emitter)
+    assert [details["reason"] for _, details in events] == ["interrupted"]
+    assert "not confirmed" in capsys.readouterr().err
+
+
+def test_an_operator_interrupt_checks_the_final_commit_by_receipt_only(
+    tmp_path,
+) -> None:
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+
+    progress.fail(KeyboardInterrupt())
+
+    assert "read_back_run_files" not in emitter.client.calls
+    assert [details["method"] for _, details in _final_commit_events(emitter)] == [
+        "receipt"
+    ]
+
+
+def test_a_sigterm_during_certification_exits_143(monkeypatch) -> None:
+    """Certification opens a staging run too, so it handles SIGTERM as a build does.
+
+    The test installs its own handler first, so a command that handles no
+    SIGTERM fails this test instead of ending the test process.
+    """
+    module = _load_builder_module()
+
+    def terminated_parser():
+        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(5)
+        pytest.fail("SIGTERM did not interrupt certification")
+
+    def test_handler(signum, frame):
+        raise _SigtermReachedTheTestError()
+
+    monkeypatch.setattr(module, "_certify_parser", terminated_parser)
+    previous_handler = signal.signal(signal.SIGTERM, test_handler)
+    try:
+        with pytest.raises(BaseException) as raised:
+            module.certify_main(["build"])
+        handler_after_certification = signal.getsignal(signal.SIGTERM)
+    finally:
+        signal.signal(signal.SIGTERM, previous_handler)
+
+    assert isinstance(raised.value, SystemExit)
+    assert raised.value.code == 143
+    assert handler_after_certification is test_handler
+
+
+def test_a_failure_caused_by_a_sigterm_is_recorded_as_a_termination(
+    tmp_path,
+) -> None:
+    """An error raised while a SIGTERM unwinds is still the build's termination."""
+    from microcosm.build.termination import BuildTerminatedError
+
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(module, tmp_path)
+    error = RuntimeError("cleanup failed")
+    error.__cause__ = BuildTerminatedError()
+
+    progress.fail(error)
+
+    (failure,) = _run_events(emitter)
+    assert failure["details"].get("error_code") == "TERMINATED"
+    assert "read_back_run_files" not in emitter.client.calls
+
+
+def test_an_interrupt_during_the_success_check_still_completes_the_build(
+    tmp_path,
+) -> None:
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    class InterruptedReadBack(FakeEmitterClient):
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            raise KeyboardInterrupt
+
+    module = _load_builder_module()
+    progress, emitter = _remote_build_progress(
+        module, tmp_path, client=InterruptedReadBack()
+    )
+
+    try:
+        progress.complete()
+    except KeyboardInterrupt:
+        pytest.fail("the interrupt escaped the build's close-out")
+
+    assert [event["status"] for event in _run_events(emitter)] == ["completed"]
+    assert [details["reason"] for _, details in _final_commit_events(emitter)] == [
+        "interrupted"
+    ]
+
+
+def test_the_release_parser_has_no_staging_upload_interval() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                "--staging-upload-interval-seconds",
+                "30",
+            ]
+        )
+    assert (
+        "force_upload" not in inspect.signature(builder._BuildProgress.stage).parameters
+    )
+
+
 def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) -> None:
     module = _load_builder_module()
 
@@ -16017,7 +16334,6 @@ def test_build_progress_replaces_any_previous_active_run(tmp_path) -> None:
         staging_repo_id=None,
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
-        staging_upload_interval_seconds=60.0,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -16084,7 +16400,6 @@ def test_staging_bundle_refuses_a_destinationless_namespace(tmp_path) -> None:
         staging_repo_id="",
         staging_run_id=None,
         staging_prefix=module.DEFAULT_STAGING_PREFIX,
-        staging_upload_interval_seconds=60.0,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -18395,7 +18710,8 @@ def test_qrf_tail_register_refusal_is_wired_into_the_evidence_certification() ->
     [owner_check] = _calls_named(gate, "_evidence_known_failures")
     [register_refusal] = _calls_named(gate, "_qrf_tail_register_evidence_refusal")
     assert ast.unparse(register_refusal.args[0]) == "failures"
-    certify = _builder_function(builder, "certify_main")
+    # certify_main runs this body under its SIGTERM handler.
+    certify = _builder_function(builder, "_certify_main_with_close_out")
     [checked] = _calls_named(certify, "_refuse_an_unowned_evidence_certification")
     [placed] = _calls_named(certify, "_place_build_for_certification")
     [scored] = _calls_named(certify, "_certify_us_build")
@@ -20553,7 +20869,6 @@ def _build_record_fixture(
             "no_staging": True,
             "repo_id": None,
             "prefix": "runs",
-            "upload_interval_seconds": 30.0,
         },
     )
     path = builder._write_us_build_record(release_root, payload)
@@ -21128,6 +21443,8 @@ def test_certification_stages_where_its_build_staged(
 
     staged = tmp_path / "staged"
     staged.mkdir()
+    # A record written before the upload interval was removed still carries
+    # it; certification ignores it.
     path, _ = _build_record_fixture(
         builder,
         staged,
@@ -21183,7 +21500,6 @@ def test_certification_stages_where_its_build_staged(
         "staging_dir": None,
         "staging_repo_id": "policyengine/populace-us-staging",
         "staging_prefix": "builds",
-        "staging_upload_interval_seconds": 12.0,
         "release_root": record.release_root,
         "release_id": record.build,
         "run_id": "b-certify",

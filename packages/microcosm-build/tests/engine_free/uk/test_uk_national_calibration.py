@@ -23,6 +23,7 @@ from microcosm.build.ledger_targets import LedgerTargetReference
 from microcosm.build.uk_runtime import (
     UK_NATIONAL_L0_LAMBDA,
     UK_NATIONAL_LEARNING_RATE,
+    UK_NATIONAL_LOSS_FAMILIES,
     UK_NATIONAL_MASS_RULE,
     UK_NATIONAL_MAX_WEIGHT_RATIO,
     UK_NATIONAL_SEED,
@@ -32,6 +33,7 @@ from microcosm.build.uk_runtime import (
     UK_NATIONAL_TARGET_WEIGHT_RULE,
     UKNationalSolveDoctrine,
     uk_doctrine_with_overrides,
+    uk_national_loss_families,
     uk_national_target_loss_weights,
 )
 from microcosm.build.uk_runtime.graph_national import (
@@ -501,7 +503,9 @@ def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None
     assert manifest["weights"]["mass_log_records"] == 1
     assert manifest["solve"]["n_targets"] == 1
     assert manifest["solve"]["n_households"] == 4
-    assert manifest["parameters"]["doctrine"]["target_weight_rule"] == "family_equal"
+    assert (
+        manifest["parameters"]["doctrine"]["target_weight_rule"] == "loss_family_equal"
+    )
 
 
 def test_uc_calibration_accepts_benunit_grain_reference_on_nested_frame() -> None:
@@ -847,7 +851,9 @@ def test_evidence_block_requires_calibrated_kind_and_the_calibration_record() ->
 def test_national_doctrine_constants_are_the_declared_contract() -> None:
     # María's ruling (2026-09-20, microcosm#965): the certified-cut posture every
     # campaign national run overrode to — 1,500 epochs, family_equal — is
-    # the doctrine, so a certified national cut records no overrides.
+    # the doctrine, so a certified national cut records no overrides. Her
+    # ruling of 2026-11-25 (microcosm#1710) moves the rule to loss_family_equal,
+    # which splits DWP's Universal Credit family into three loss families.
     assert UK_NATIONAL_SOLVE_EPOCHS == 1500
     assert UK_NATIONAL_LEARNING_RATE == 0.02
     assert UK_NATIONAL_MAX_WEIGHT_RATIO == 10.0
@@ -857,11 +863,12 @@ def test_national_doctrine_constants_are_the_declared_contract() -> None:
     assert UK_NATIONAL_MASS_RULE == "free"
     # "uniform" (the 2026-08-24 default) stays vocabulary: an explicit,
     # receipted per-run override, never silently reachable.
-    assert UK_NATIONAL_TARGET_WEIGHT_RULE == "family_equal"
+    assert UK_NATIONAL_TARGET_WEIGHT_RULE == "loss_family_equal"
     assert UK_NATIONAL_SOLVE_DOCTRINE == UKNationalSolveDoctrine()
     assert UK_NATIONAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
-    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "family_equal"
+    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "loss_family_equal"
     assert UKNationalSolveDoctrine(target_weight_rule="uniform")
+    assert UKNationalSolveDoctrine(target_weight_rule="family_equal")
 
 
 def test_uk_doctrine_with_overrides_receipts_effective_diffs_only() -> None:
@@ -890,7 +897,7 @@ def test_uk_doctrine_with_overrides_receipts_effective_diffs_only() -> None:
         "epochs": {"default": 1500, "effective": 128},
         "learning_rate": {"default": 0.02, "effective": 0.01},
         "target_loss_cap": {"default": 10.0, "effective": 5.0},
-        "target_weight_rule": {"default": "family_equal", "effective": "uniform"},
+        "target_weight_rule": {"default": "loss_family_equal", "effective": "uniform"},
     }
 
 
@@ -924,6 +931,97 @@ def test_uniform_rule_defers_to_the_kernel_default() -> None:
 def test_family_equal_refuses_an_undeclared_family() -> None:
     with pytest.raises(ValueError, match="must declare a family"):
         uk_national_target_loss_weights(["hmrc", ""], rule="family_equal")
+
+
+_UC = "dwp_universal_credit"
+
+
+def test_loss_family_equal_splits_universal_credit_into_three_families() -> None:
+    # María's ruling (2026-11-25, microcosm#1710): DWP's UC family takes three
+    # loss families by contract target; every other family keeps its own.
+    families = [_UC] * 6 + ["hmrc", "obr"]
+    targets = [
+        "dwp.uc.payment_distribution_single",
+        "dwp.uc.payment_distribution_lone_parent",
+        "dwp.uc.households",
+        "dwp.uc.households_children_1",
+        "dwp.uc.households_housing_element_social_rented",
+        "dwp.uc.households_lcwra_element",
+        "hmrc.not_split",
+        None,
+    ]
+    assert uk_national_loss_families(families, targets) == [
+        "dwp_universal_credit_award_bands",
+        "dwp_universal_credit_award_bands",
+        "dwp_universal_credit_composition",
+        "dwp_universal_credit_composition",
+        "dwp_universal_credit_housing_and_single_tables",
+        "dwp_universal_credit_housing_and_single_tables",
+        "hmrc",
+        "obr",
+    ]
+    weights = uk_national_target_loss_weights(
+        families, rule="loss_family_equal", contract_target_ids=targets
+    )
+    assert weights is not None
+    # Five loss families of one fifth each, split evenly inside.
+    assert weights.tolist() == pytest.approx([0.1] * 6 + [0.2, 0.2])
+    # family_equal keeps UC whole: its six rows share one third.
+    assert uk_national_target_loss_weights(families, rule="family_equal").tolist() == (
+        pytest.approx([1 / 18] * 6 + [1 / 3, 1 / 3])
+    )
+
+
+def test_loss_family_equal_refuses_an_unlisted_universal_credit_target() -> None:
+    # The any-tenure housing element is in the contract but unbound: bound, it
+    # would take a loss family only after review.
+    with pytest.raises(ValueError, match="does not list"):
+        uk_national_target_loss_weights(
+            [_UC, "obr"],
+            rule="loss_family_equal",
+            contract_target_ids=["dwp.uc.households_housing_element", None],
+        )
+    with pytest.raises(ValueError, match="needs each row's contract target"):
+        uk_national_target_loss_weights([_UC], rule="loss_family_equal")
+    with pytest.raises(ValueError, match="align row for row"):
+        uk_national_loss_families([_UC, "obr"], ["dwp.uc.households"])
+
+
+def test_loss_families_list_the_bound_universal_credit_contract() -> None:
+    uk = importlib_resources.files("microcosm.build.uk")
+    references = json.loads((uk / "target_references.json").read_text())[
+        "target_references"
+    ]
+    contract = {
+        reference["metadata"]["contract_target_id"]
+        for reference in references
+        if reference.get("family") == _UC
+    }
+    excluded = {
+        entry["name"]
+        for entry in json.loads(
+            (uk / "calibration_measure_exclusions.json").read_text()
+        )["exclusions"]
+    }
+    splits = UK_NATIONAL_LOSS_FAMILIES[_UC]
+    listed = [target for targets in splits.values() for target in targets]
+    assert len(listed) == len(set(listed)) == 23
+    assert [len(targets) for targets in splits.values()] == [4, 11, 8]
+    # Every listed target is in the contract, and the UC targets the split
+    # leaves out are the six the national register excludes, so a bound UC row
+    # always has a loss family.
+    assert set(listed) <= contract
+    unlisted = contract - set(listed)
+    assert unlisted == {
+        "dwp.uc.households_housing_element",
+        "dwp.uc.people_aged_16_to_24",
+        "dwp.uc.people_aged_16_to_21_no_work_requirements",
+        "dwp.uc.people_aged_16_to_21_other_regimes",
+        "dwp.uc.people_aged_22_to_24_no_work_requirements",
+        "dwp.uc.people_aged_22_to_24_other_regimes",
+    }
+    assert unlisted <= excluded
+    assert set(UK_NATIONAL_LOSS_FAMILIES) == {_UC}
 
 
 def test_national_doctrine_rejects_tampered_bounds() -> None:

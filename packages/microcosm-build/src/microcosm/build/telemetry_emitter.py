@@ -135,7 +135,7 @@ def _packaged_minimum_emitter_version() -> str:
 #: newest release then. 0.17.0 includes ``parent_build_manifest.json`` and
 #: ``reform_validation.json``, which a release publication hands over under
 #: the roles ``parent_build_manifest`` and ``reform_validation`` when the
-#: release has them (only some US releases do), in the build's
+#: release has them (some US releases, and every BE build), in the build's
 #: ``calibration-diagnostics`` submission to the collector; 0.16.0 leaves
 #: both out. 0.16.0, from 2026-11-16, added collector provenance on a
 #: promotion or withdrawal: once the change lands, it submits

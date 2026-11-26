@@ -495,7 +495,8 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
     # in-household care hours carrier (microcosm#1418), the admin UC limited
-    # capability carrier (microcosm#1095, Y1), the limiting condition carrier
+    # capability carrier (microcosm#1095, Y1), the admin UC housing element
+    # carrier (B1 of microcosm#1710), the limiting condition carrier
     # its imputation reads (PolicyEngine/microcosm#1663), the UC claim recency
     # carrier (microcosm#1095), the company car carriers
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the value the
@@ -514,6 +515,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         FRS_LANDLORD_CARRIER_COLUMN,
         FRS_UC_CARER_ELEMENT_COLUMN,
         FRS_UC_CLAIM_MONTHS_COLUMN,
+        FRS_UC_HOUSING_ELEMENT_COLUMN,
         FRS_UC_LCW_STATUS_COLUMN,
     )
     from microcosm.build.uk_runtime.property_localisation import RANK_BASIS_COLUMN
@@ -539,6 +541,7 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
         | {f"person.{FRS_IN_HOUSEHOLD_CARE_HOURS_COLUMN}"}
         | {f"person.{FRS_CARE_RECIPIENTS_COLUMN}"}
         | {f"person.{FRS_UC_LCW_STATUS_COLUMN}"}
+        | {f"person.{FRS_UC_HOUSING_ELEMENT_COLUMN}"}
         | {f"person.{FRS_CONDITION_LIMITS_COLUMN}"}
         | {f"person.{FRS_UC_CARER_ELEMENT_COLUMN}"}
         | {f"benunit.{FRS_UC_CLAIM_MONTHS_COLUMN}"}

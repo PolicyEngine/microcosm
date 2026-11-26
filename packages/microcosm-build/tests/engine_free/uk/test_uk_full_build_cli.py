@@ -93,7 +93,9 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
     assert args.target_weight_rule == "nation_grain_family_equal_sqrt_count"
     assert args.expected_constituency_vintage == "2024_pcon"
     assert args.sample_seed == 578
-    assert args.staging_upload_interval_seconds == 300.0
+    # Staging run files are committed at the run's start, result files and
+    # end, so there is no upload interval.
+    assert not hasattr(args, "staging_upload_interval_seconds")
     assert args._explicit_arguments == frozenset()
     cli.validate_cli_args(args)
     explicit = arguments(tmp_path, "--epochs", "8", "--n-clones", "2")
@@ -108,6 +110,10 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
         (["--allow-unpinned-feed"], "--allow-unpinned-feed"),
         (["--reference-h5", "reference.h5"], "--reference-h5"),
         (["--target-weight-rule", "family_equal"], "--target-weight-rule family_equal"),
+        (
+            ["--target-weight-rule", "loss_family_equal"],
+            "--target-weight-rule loss_family_equal",
+        ),
     ],
 )
 def test_dense_role_refuses_the_national_knobs(tmp_path, extra, needle):
@@ -1550,8 +1556,6 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
-        "--staging-upload-interval-seconds",
-        "0",
         staging=None,
         on_prepare=_drive_epochs,
     )
@@ -1885,8 +1889,6 @@ def test_a_staged_dense_bundle_names_its_build_and_candidate_release_for_the_col
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
-        "--staging-upload-interval-seconds",
-        "0",
         "--staging-run-id",
         "uk-dense-staging-run",
         staging=None,
@@ -2626,8 +2628,6 @@ def test_a_failed_refresh_after_a_passed_read_back_still_records_the_attempt(
     status, out = run_dense_main(
         tmp_path,
         monkeypatch,
-        "--staging-upload-interval-seconds",
-        "0",
         "--staging-read-back",
         staging=None,
     )
@@ -4364,3 +4364,257 @@ def test_a_dense_build_that_must_send_telemetry_stops_before_any_input_without_a
 
     assert raised.value.reason == "command_not_found"
     assert sorted(tmp_path.rglob("*")) == before
+
+
+def _remote_uk_run(tmp_path, name, client=None):
+    """A remote UK staging run and the build's emitter, on one in-memory client.
+
+    The emitter stays open after the run's outcome, as the full build's does.
+    """
+    from microcosm.build.staging_v2 import StagingRunBundleWriterV2
+    from microcosm.build.telemetry_emitter import TelemetryRun
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
+
+    client = client if client is not None else FakeEmitterClient()
+    emitter = FakeTelemetryEmitter(
+        TelemetryRun(
+            run_id=name,
+            country_code="GB",
+            pipeline="uk_local_candidate",
+            candidate_id=name,
+            producer_id="producer-a",
+        ),
+        client=client,
+        close_service_on_finish=False,
+    )
+    bundle = StagingRunBundleWriterV2(
+        run_id=name,
+        country_code="GB",
+        operation_id="uk_full_build",
+        pipeline_id="uk_local_candidate",
+        pipeline_version="2026.10",
+        candidate_id=name,
+        local_dir=tmp_path / name,
+        release_id=None,
+        run_kind="smoke",
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        emitter_client=client,
+    )
+    return bundle, emitter, client
+
+
+def _final_commit_events(emitter):
+    """The final-commit check's reports: progress events outside any stage."""
+    events = [
+        event
+        for event in emitter.events
+        if event["details"].get("check") == "staging_final_commit"
+    ]
+    assert all(
+        (event["event_type"], event["stage_id"]) == ("progress", None)
+        for event in events
+    )
+    return events
+
+
+def _final_commit_statuses(emitter):
+    return [event["status"] for event in _final_commit_events(emitter)]
+
+
+def _run_statuses(emitter):
+    return [event["status"] for event in emitter.events if event["event_type"] == "run"]
+
+
+def test_a_finalized_remote_run_confirms_its_final_commit_without_the_flag(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-ok")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    rowwise_staging.finalize_staging_run_bundle(
+        SimpleNamespace(staging_read_back=False), bundle
+    )
+
+    assert client.read_back_waits == [120.0]
+    assert _final_commit_statuses(emitter) == ["completed"]
+    # Without --staging-read-back the run's own documents keep that record.
+    assert bundle.delivery_summary["read_back"] == "not_requested"
+
+
+def test_an_unconfirmed_final_commit_warns_and_the_build_goes_on(
+    tmp_path, monkeypatch, capsys
+):
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-missing")
+    client.read_back_answer = {
+        "status": "failed",
+        "files": 0,
+        "mismatched_paths": [],
+        "error_code": "NO_COMMITTED_FILES",
+    }
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    rowwise_staging.finalize_staging_run_bundle(
+        SimpleNamespace(staging_read_back=False), bundle
+    )
+
+    assert _final_commit_statuses(emitter) == ["failed"]
+    (failed,) = _final_commit_events(emitter)
+    assert failed["details"]["reason"] == "NO_COMMITTED_FILES"
+    assert bundle.validate_local_bundle()["progress"]["status"] == "completed"
+    assert "not confirmed" in capsys.readouterr().err
+
+
+def test_a_failed_run_confirms_its_final_commit_before_its_outcome(
+    tmp_path, monkeypatch
+):
+    """The emitter drops events after a run's outcome, so the check goes first."""
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-failed")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
+
+    assert client.read_back_waits == [120.0]
+    assert _final_commit_statuses(emitter) == ["completed"]
+    assert _run_statuses(emitter) == ["failed"]
+
+
+def test_a_terminated_run_checks_its_final_commit_by_receipt_only(
+    tmp_path, monkeypatch
+):
+    """The Hub comparison can take up to 60 seconds, past the grace a
+    supervisor gives after SIGTERM, so the check reads the receipt."""
+    from microcosm.build.termination import BuildTerminatedError
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-terminated")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    rowwise_staging.fail_staging_run_bundle(bundle, BuildTerminatedError())
+
+    assert "read_back_run_files" not in client.calls
+    (report,) = _final_commit_events(emitter)
+    assert (report["status"], report["details"]["method"]) == (
+        "completed",
+        "receipt",
+    )
+    assert _run_statuses(emitter) == ["failed"]
+
+
+def test_a_failed_uk_run_keeps_the_stage_it_failed_in(tmp_path, monkeypatch):
+    """The check's report must not end the build's stage or take its place."""
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-stage")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+    emitter.transition_stage("calibration", message="Solving.")
+
+    rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
+
+    (failure,) = [event for event in emitter.events if event["event_type"] == "run"]
+    assert failure["details"]["failed_during"] == "calibration"
+    assert [
+        event["status"]
+        for event in emitter.events
+        if event["stage_id"] == "calibration"
+    ] == ["started", "failed"]
+
+
+def test_an_interrupt_during_the_check_still_records_the_failure(tmp_path, monkeypatch):
+    from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.emitter import FakeEmitterClient
+
+    class InterruptedReadBack(FakeEmitterClient):
+        def read_back_run_files(self, repository, run_id, *, wait_seconds=30.0):
+            raise KeyboardInterrupt
+
+    bundle, emitter, client = _remote_uk_run(
+        tmp_path, "uk-final-interrupted", client=InterruptedReadBack()
+    )
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    try:
+        rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
+    except KeyboardInterrupt:
+        pytest.fail("the interrupt escaped the build's close-out")
+
+    assert _run_statuses(emitter) == ["failed"]
+    (report,) = _final_commit_events(emitter)
+    assert report["details"]["reason"] == "interrupted"
+
+
+def test_a_blocked_run_confirms_its_final_commit_before_its_outcome(tmp_path):
+    from microcosm.build.run_outcome import GateBlock
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-blocked")
+
+    rowwise_staging.close_run_blocked(
+        bundle,
+        emitter,
+        GateBlock.of(
+            "terminal",
+            ["uk_local_target_fit"],
+            gate_statuses={"uk_local_target_fit": "failed"},
+        ),
+    )
+
+    assert client.read_back_waits == [120.0]
+    assert _final_commit_statuses(emitter) == ["completed"]
+    assert _run_statuses(emitter) == ["blocked"]
+
+
+def test_an_interrupt_during_a_refusal_checks_by_receipt_only(tmp_path, monkeypatch):
+    """A SIGTERM that lands while a refusal unwinds closes the run blocked, and
+    its check must still fit the grace before SIGKILL."""
+    from microcosm.build.gate_battery import GateBatteryBlockedError
+    from microcosm.build.termination import BuildTerminatedError
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-refused")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+    terminated = BuildTerminatedError()
+    terminated.__context__ = GateBatteryBlockedError(
+        "terminal",
+        ["[uk_local_target_fit] missed"],
+        tmp_path / "missing-report.json",
+        blocking_gate_ids=["uk_local_target_fit"],
+    )
+
+    rowwise_staging.fail_staging_run_bundle(bundle, terminated)
+
+    assert _run_statuses(emitter) == ["blocked"]
+    assert "read_back_run_files" not in client.calls
+    (report,) = _final_commit_events(emitter)
+    assert report["details"]["method"] == "receipt"
+
+
+def test_a_failure_whose_final_write_fails_is_not_reported_confirmed(
+    tmp_path, monkeypatch
+):
+    """Nothing new reached the emitter, so the run's earlier hand-over must
+    not pass for its final state."""
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    bundle, emitter, client = _remote_uk_run(tmp_path, "uk-final-write-failed")
+    monkeypatch.setattr(rowwise_staging, "_ACTIVE_EMITTER", emitter)
+
+    def disk_full():
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(bundle, "_persist_bundle", disk_full)
+
+    rowwise_staging.fail_staging_run_bundle(bundle, RuntimeError("solver exploded"))
+
+    assert "read_back_run_files" not in client.calls
+    assert [
+        report["details"]["confirmed"] for report in _final_commit_events(emitter)
+    ] == [False]
+    assert _run_statuses(emitter) == ["failed"]

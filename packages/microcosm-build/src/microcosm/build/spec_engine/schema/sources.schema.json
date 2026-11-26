@@ -7141,6 +7141,59 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "outputs",
+      "carrier",
+      "statuses",
+      "not_linked",
+      "element",
+      "linked_scope",
+      "rule",
+      "scope"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_uc_housing_claim_from_admin_status"
+      },
+      "outputs": {
+       "type": "array",
+       "minItems": 1,
+       "maxItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "carrier": {
+       "type": "string"
+      },
+      "statuses": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "not_linked": {
+       "type": "string"
+      },
+      "element": {
+       "type": "string"
+      },
+      "linked_scope": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      },
+      "scope": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "output",
       "draw",
       "order_draw",
@@ -9036,6 +9089,95 @@
        }
       },
       "rows": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "seed",
+      "rows",
+      "twin",
+      "person_twin",
+      "eligibility",
+      "charge_income",
+      "charge_parameters",
+      "children",
+      "income_bands",
+      "source_household",
+      "minimum_source_households",
+      "amount",
+      "landing",
+      "weight_mapping",
+      "rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_spi_reported_child_benefit"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "twin": {
+       "type": "string"
+      },
+      "person_twin": {
+       "type": "string"
+      },
+      "eligibility": {
+       "type": "string"
+      },
+      "charge_income": {
+       "type": "string"
+      },
+      "charge_parameters": {
+       "type": "string"
+      },
+      "children": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "income_bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "source_household": {
+       "type": "string"
+      },
+      "minimum_source_households": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "amount": {
+       "type": "string"
+      },
+      "landing": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "rule": {
        "type": "string"
       }
      }
