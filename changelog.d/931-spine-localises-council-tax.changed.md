@@ -33,7 +33,7 @@ Localise Great Britain council tax by each clone's local authority just before t
   - `release_input_coverage_manifest.json` regenerates without an H5, and `--check` passes. It gains the new family, and every family's source-manifest digest moves.
 - **What moves.**
   - Values, at one clone. Before `council_tax_localise` every existing column keeps its values: `frs_council_tax`'s bill is as before, and the flag is a new column.
-    - Great Britain's council tax, the reported council tax reduction and the rebate move by each household's ratio: its authority's 2024-25 Band D over the expected Band D of its own draw cell.
+    - Great Britain's council tax, the reported council tax reduction and the rebate move by each household's ratio: its authority's 2024-25 Band D over the expected Band D of its own draw cell. On a statute row the reduction and the rebate move by the bill's own change instead.
     - Missing bills, and bills netted of a reduction of unknown size, take the 2024-25 statute where the band was observed.
     - A reduction or rebate above the new bill is capped at it.
     - SPI copies and income band donors move at their region-level cell.

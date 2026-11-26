@@ -58,10 +58,16 @@ capped at the bill outside Northern Ireland):
   ``frs_council_tax``'s bill where the band was not observed; ``not_levied``
   is refused. The ratio multiplies the bill in float64.
 - **Reductions.** On every Great Britain row the rebate and the one person's
-  reported council tax reduction are scaled by the same ratio and then capped
-  at the new bill: ``min(r x amount, bill)``. Since the cap repeats one
-  operation on equal inputs, the rebate equals the reduction after the stage
-  wherever it did before.
+  reported council tax reduction move by the same factor as the row's bill
+  and are then capped at the new bill. On a ratio path the factor is the
+  ratio: ``min(r x amount, bill)``. On a statute row whose old bill is
+  positive it is the bill's own change, ``min(amount x new / old, new)``,
+  one correctly rounded quotient of exact rationals, so a reduction that met
+  the old bill meets the statute bill exactly and a household on full
+  reduction pays nothing (Vahid's item 7 of 16 Nov 2026, agreed 17 Nov); a
+  statute row whose old bill is zero has no change to follow and takes the
+  ratio. Since each step repeats one operation on equal inputs, the rebate
+  equals the reduction after the stage wherever it did before.
 
 The household weights pass through, and the stage records its household mass
 receipt under its own reason. It computes with exact rationals, one correctly
@@ -940,6 +946,33 @@ def _statutory_bills(
     return result
 
 
+def _scaled_amounts(
+    amounts: np.ndarray,
+    *,
+    ratios: np.ndarray,
+    statute: np.ndarray,
+    old_bills: np.ndarray,
+    new_bills: np.ndarray,
+) -> np.ndarray:
+    """Each amount moved by its row's factor, before the cap at the new bill.
+
+    A row of ``statute`` (a statute row whose old bill is positive) takes the
+    bill's own change: ``amount x new / old``, one correctly rounded quotient
+    of the three exact rationals, so an amount equal to its old bill becomes
+    the new bill exactly. Every other row takes its ratio, ``r x amount``, in
+    float64. Equal amounts on equal inputs stay equal.
+    """
+
+    scaled = ratios * amounts
+    for position in np.flatnonzero(statute & (amounts > 0.0)).tolist():
+        scaled[position] = float(
+            Fraction(float(amounts[position]))
+            * Fraction(float(new_bills[position]))
+            / Fraction(float(old_bills[position]))
+        )
+    return scaled
+
+
 def localise_uk_council_tax(
     household: pd.DataFrame,
     person: pd.DataFrame,
@@ -961,9 +994,13 @@ def localise_uk_council_tax(
     observed band, takes ``r x council_tax``; a Great Britain FRS row whose
     provenance is ``missing`` or ``unknown_reduction`` with an observed band
     takes the 2024-25 statute. On every Great Britain row the rebate and the
-    reduction take ``min(r x amount, bill)``. Returns the columns on their
-    tables' indexes and in their row order, float64; a row's values depend
-    on its own inputs and its cell alone, never on the tables' row order.
+    reduction move by the bill's factor and are capped at the new bill: ``min(r
+    x amount, bill)`` on a ratio path, and on a statute row whose old bill is
+    positive ``min(amount x new / old, new)`` (:func:`_scaled_amounts`); a
+    statute row whose old bill is zero takes the ratio. Returns the columns on
+    their tables' indexes and in their row order, float64; a row's values
+    depend on its own inputs and its cell alone, never on the tables' row
+    order.
 
     Refused, naming columns and declared constants only: a missing column; a
     bill, rebate or reduction that is not float64, or not finite and
@@ -1004,9 +1041,19 @@ def localise_uk_council_tax(
     new_bill[formula_rows] = _statutory_bills(
         household, formula_rows, references.authority_band_d
     )
+    # A statute row with a positive old bill moves its rebate and reduction by
+    # the bill's own change; every other Great Britain row by its ratio.
+    statute = np.zeros(len(household), dtype=bool)
+    statute[formula_rows] = bill[formula_rows] > 0.0
     gb_rows = np.flatnonzero(great_britain)
     new_rebate = rebate.copy()
-    scaled_rebate = ratio[gb_rows] * rebate[gb_rows]
+    scaled_rebate = _scaled_amounts(
+        rebate[gb_rows],
+        ratios=ratio[gb_rows],
+        statute=statute[gb_rows],
+        old_bills=bill[gb_rows],
+        new_bills=new_bill[gb_rows],
+    )
     new_rebate[gb_rows] = np.minimum(scaled_rebate, new_bill[gb_rows])
     capped = np.zeros(len(household), dtype=bool)
     capped[gb_rows] = scaled_rebate > new_bill[gb_rows]
@@ -1014,7 +1061,13 @@ def localise_uk_council_tax(
     new_reduction = reduction.copy()
     carriers = np.flatnonzero((reduction > 0.0) & great_britain[members.owner])
     owners = members.owner[carriers]
-    scaled_reduction = ratio[owners] * reduction[carriers]
+    scaled_reduction = _scaled_amounts(
+        reduction[carriers],
+        ratios=ratio[owners],
+        statute=statute[owners],
+        old_bills=bill[owners],
+        new_bills=new_bill[owners],
+    )
     new_reduction[carriers] = np.minimum(scaled_reduction, new_bill[owners])
     capped[owners[scaled_reduction > new_bill[owners]]] = True
     return UKSpineCouncilTax(

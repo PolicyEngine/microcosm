@@ -6,8 +6,9 @@ Great Britain household's council tax at the local authority the spine drew
 for it. The FRS bill is multiplied by the authority's 2024-25 Band D over the
 expected Band D of the household's own draw cell. Where no gross bill was
 observed and the band was, the bill is the 2024-25 statute. The rebate and
-the reported council tax reduction are scaled by the same ratio and capped
-at the new bill. Northern Ireland's rows are left as they are. sources.yaml
+the reported council tax reduction move with the bill, by the ratio on a
+ratio path and by the bill's own change on a statute row, and are capped at
+the new bill. Northern Ireland's rows are left as they are. sources.yaml
 declares G6 between private_rent and was_wealth; the transform here runs as a
 stage built from the reviewed declaration spine_council_tax states, which the
 packaged stage equals.
@@ -31,8 +32,10 @@ They hold:
   ratio averages one over every Great Britain cell of the toys;
 - each row takes its path; ratio rows scale the bill, rebate and reduction
   by the ratio, bit for bit; statute rows price their band at their own
-  authority by nation, with the single-adult discount, and scale the rebate
-  and reduction by the ratio, in a cell of two authorities too;
+  authority by nation, with the single-adult discount, and move the rebate
+  and reduction by the bill's own change, one rounding of exact rationals,
+  in a cell of two authorities too, so a household whose reduction met its
+  old bill meets the statute bill exactly;
 - the cap holds every Great Britain reduction and rebate at the new bill;
 - Northern Ireland is left bit for bit, a reduction above its zero bill
   included, which is counted;
@@ -375,6 +378,14 @@ class _Expected:
     capped: bool
 
 
+def _moved_with_the_bill(amount: float, old_bill: float, new_bill: float) -> float:
+    """``amount x new_bill / old_bill`` rounded once from the exact rationals."""
+
+    if amount == 0.0:
+        return 0.0
+    return float(Fraction(amount) * Fraction(new_bill) / Fraction(old_bill))
+
+
 def _expected_rows(frame: Frame) -> list[_Expected]:
     """Every household row's localisation from the toy supports, the
     invented Band D and the statute restated, in row order. A row's level is
@@ -445,7 +456,14 @@ def _expected_rows(frame: Frame) -> list[_Expected]:
             new_bill = float(statute)
         else:
             new_bill = ratio * bill
-        scaled_rebate, scaled_reduction = ratio * rebate, ratio * reduction
+        if path in _FORMULA_PATHS and bill > 0.0:
+            # The bill's own change, one rounding of the exact quotient.
+            scaled_rebate, scaled_reduction = (
+                _moved_with_the_bill(amount, bill, new_bill)
+                for amount in (rebate, reduction)
+            )
+        else:
+            scaled_rebate, scaled_reduction = ratio * rebate, ratio * reduction
         rows.append(
             _Expected(
                 cell,
@@ -883,15 +901,23 @@ def test_statute_rows_price_their_band_at_their_authority_by_nation(clones) -> N
         assert bool(row["council_tax_band_observed"])
         assert _bits(household["council_tax"].iloc[position]) == _bits(float(bill))
         priced.add((nation, band, single))
-        # Below the cap, the rebate and the reduction take the row's ratio, as
-        # on a ratio row: the statute prices the bill alone.
-        ratio = expected[position].ratio
+        # Below the cap, the rebate and the reduction move by the bill's own
+        # change, not the row's ratio: a reduction keeps its share of the bill.
+        old = float(row["council_tax"])
+        assert old > 0.0
         if not expected[position].capped:
             assert _bits(household["council_tax_rebate"].iloc[position]) == _bits(
-                ratio * float(row["council_tax_rebate"])
+                _moved_with_the_bill(float(row["council_tax_rebate"]), old, float(bill))
             )
-            assert _bits(after_carried[position]) == _bits(ratio * carried[position])
-            if ratio != 1.0 and carried[position] > 0.0:
+            assert _bits(after_carried[position]) == _bits(
+                _moved_with_the_bill(float(carried[position]), old, float(bill))
+            )
+            ratio = expected[position].ratio
+            if (
+                ratio != 1.0
+                and carried[position] > 0.0
+                and after_carried[position] != ratio * carried[position]
+            ):
                 scaled_in_wide_cells += 1
     # Wales's band I with and without the discount, Scotland's bands E to H,
     # and England's.
@@ -901,8 +927,59 @@ def test_statute_rows_price_their_band_at_their_authority_by_nation(clones) -> N
     assert {single for _, _, single in priced} == {True, False}
     # A statute row in a cell of two authorities, its ratio not one, carries a
     # reduction the cap leaves alone: the statute prices its own authority's
-    # Band D, not the cell's expected one, and its reduction takes the ratio.
+    # Band D, not the cell's expected one, and its reduction follows the bill,
+    # where the ratio would have moved it elsewhere.
     assert scaled_in_wide_cells
+
+
+@pytest.mark.parametrize("clones", [1, 3])
+def test_a_statute_row_on_full_reduction_pays_nothing(clones) -> None:
+    """Vahid's item 7 of 16 Nov 2026, agreed 17 Nov: a statute row whose
+    reduction met its old bill meets the statute bill exactly, the rebate
+    with it, and is not capped. Under the ratio, a household on full
+    reduction whose statute bill rose above ``r x`` its old bill was left
+    paying the difference; the toys hold such a row."""
+
+    frame = _frame(clones)
+    household = frame.table("household").copy()
+    person = frame.table("person").copy()
+    paths = _local(clones).paths
+    statute = np.isin(paths, _FORMULA_PATHS)
+    old = household["council_tax"].to_numpy(dtype=float)
+    assert statute.any() and (old[statute] > 0.0).all()
+    household.loc[statute, "council_tax_rebate"] = household.loc[statute, "council_tax"]
+    first = ~person["person_household_id"].duplicated().to_numpy(dtype=bool)
+    reduction = person[_REDUCTION].to_numpy(dtype=float).copy()
+    bill_by_id = dict(zip(household["household_id"].to_numpy(), old, strict=True))
+    owners = person["person_household_id"].to_numpy()
+    on_statute = set(household.loc[statute, "household_id"].to_numpy().tolist())
+    for position in np.flatnonzero(first).tolist():
+        if owners[position] in on_statute:
+            reduction[position] = bill_by_id[owners[position]]
+    person[_REDUCTION] = reduction
+    edited = _with(frame, household=household, person=person)
+    local = localise_uk_council_tax(
+        edited.table("household"),
+        edited.table("person"),
+        definition=_definition(),
+        supports=_supports(),
+        band_d=_band_d(),
+    )
+    new_bill = local.council_tax.to_numpy(dtype=float)
+    after_rebate = local.council_tax_rebate.to_numpy(dtype=float)
+    after_reduction = _carried(
+        edited.table("household"),
+        edited.table("person").assign(
+            **{_REDUCTION: local.council_tax_benefit_reported.to_numpy(dtype=float)}
+        ),
+    )
+    assert np.array_equal(_bits(after_rebate[statute]), _bits(new_bill[statute]))
+    assert np.array_equal(_bits(after_reduction[statute]), _bits(new_bill[statute]))
+    assert not local.capped[statute].any()
+    # Some such row's statute bill is above its ratio times its old bill, where
+    # the ratio would have left the household paying the difference.
+    ratios = np.asarray(local.references.ratios, dtype=float)
+    assert (ratios[statute] * old[statute] < new_bill[statute]).any()
 
 
 @pytest.mark.parametrize("clones", [1, 3])
