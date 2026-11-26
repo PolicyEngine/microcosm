@@ -265,14 +265,20 @@ def _made_in_released_simulation(clone: Any, simulations: list[Any]) -> bool:
     tax rates make a branch per adult, compute household income in it and
     delete it), which the release walk never reaches; its ``parent_branch``
     still leads to the simulation it was made from.
+
+    An attribute read that raises (a dead weak proxy, or a property of another
+    engine version) answers ``False``: the entry is left alone.
     """
-    current = getattr(clone, "simulation", None)
-    for _ in range(_MAXIMUM_BRANCH_DEPTH):
-        if current is None:
-            return False
-        if any(current is simulation for simulation in simulations):
-            return True
-        current = getattr(current, "parent_branch", None)
+    try:
+        current = getattr(clone, "simulation", None)
+        for _ in range(_MAXIMUM_BRANCH_DEPTH):
+            if current is None:
+                return False
+            if any(current is simulation for simulation in simulations):
+                return True
+            current = getattr(current, "parent_branch", None)
+    except Exception:
+        return False
     return False
 
 
@@ -302,9 +308,11 @@ def _drop_pinned_rule_copies(systems: list[Any], simulations: list[Any]) -> None
     simulation and branch gets a system object of its own, so no later engine
     can reuse a removed entry and no scored value changes. (Were a system
     shared by a simulation still running, its next lookup would clone again,
-    as any miss does.) Entries made elsewhere, dead entries, a missing cache,
-    a cache that is not a dict and entries without a weak reference first are
-    left alone. The module is not imported here.
+    as any miss does.) An entry whose base system is already collected is
+    still removed when its clone was made in a released simulation. Entries
+    made elsewhere, dead or not, a missing cache, a cache that is not a dict
+    and entries without a weak reference first are left alone. The module is
+    not imported here.
 
     policyengine-us 2.88.6 holds every part of an entry weakly
     (PolicyEngine/policyengine-us#10550). Its entries are matched by their
@@ -322,11 +330,12 @@ def _drop_pinned_rule_copies(systems: list[Any], simulations: list[Any]) -> None
         if not isinstance(base_reference, weakref.ReferenceType):
             continue
         base = base_reference()
-        if base is None:
-            continue
+        pinned_from_a_released_system = base is not None and any(
+            base is system for system in systems
+        )
         clone = entry[2] if len(entry) > 2 else None
         if (
-            any(base is system for system in systems)
+            pinned_from_a_released_system
             or _made_in_released_simulation(clone, simulations)
         ) and cache.get(pin_name) is entry:
             del cache[pin_name]
